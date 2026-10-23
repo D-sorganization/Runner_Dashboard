@@ -1409,6 +1409,39 @@
         "title": "CreateActionProposalRequest",
         "type": "object"
       },
+      "CreateIntakeProposalRequest": {
+        "description": "Manual/testing create; production path is email-intake principal only.",
+        "properties": {
+          "body_plain": {
+            "minLength": 1,
+            "title": "Body Plain",
+            "type": "string"
+          },
+          "dispatch": {
+            "additionalProperties": true,
+            "title": "Dispatch",
+            "type": "object"
+          },
+          "message_id": {
+            "default": "",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "sender": {
+            "default": "",
+            "title": "Sender",
+            "type": "string"
+          },
+          "subject": {
+            "default": "",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": ["body_plain"],
+        "title": "CreateIntakeProposalRequest",
+        "type": "object"
+      },
       "CreateProposalRequest": {
         "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
         "properties": {
@@ -1622,6 +1655,35 @@
         },
         "required": ["title"],
         "title": "CreateWorkItemRequest",
+        "type": "object"
+      },
+      "DecideIntakeProposalRequest": {
+        "properties": {
+          "decision": {
+            "description": "approved or rejected",
+            "title": "Decision",
+            "type": "string"
+          },
+          "execute_dispatch": {
+            "default": false,
+            "description": "When approving, call staff dispatch (never automatic from intake).",
+            "title": "Execute Dispatch",
+            "type": "boolean"
+          },
+          "owner_approval_ref": {
+            "default": "",
+            "description": "Required when agent-grok approves; names Dieter's explicit approval.",
+            "title": "Owner Approval Ref",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["decision"],
+        "title": "DecideIntakeProposalRequest",
         "type": "object"
       },
       "DecideProposalRequest": {
@@ -2102,6 +2164,280 @@
         },
         "required": ["token", "expires_at"],
         "title": "FleetRunTokenResponse",
+        "type": "object"
+      },
+      "FrictionCreate": {
+        "properties": {
+          "detector": {
+            "default": "",
+            "maxLength": 4000,
+            "title": "Detector",
+            "type": "string"
+          },
+          "detector_ref": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Detector Ref",
+            "type": "string"
+          },
+          "fix": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Fix",
+            "type": "string"
+          },
+          "fix_ref": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Fix Ref",
+            "type": "string"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "seen": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Seen",
+            "type": "string"
+          },
+          "status": {
+            "default": "open",
+            "enum": ["open", "in_progress", "waiting", "closed"],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": ["title", "seen"],
+        "title": "FrictionCreate",
+        "type": "object"
+      },
+      "FrictionItem": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "default": "",
+            "title": "Created By",
+            "type": "string"
+          },
+          "detector": {
+            "default": "",
+            "title": "Detector",
+            "type": "string"
+          },
+          "detector_ref": {
+            "default": "",
+            "title": "Detector Ref",
+            "type": "string"
+          },
+          "fix": {
+            "default": "",
+            "title": "Fix",
+            "type": "string"
+          },
+          "fix_ref": {
+            "default": "",
+            "title": "Fix Ref",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "recurrence_count": {
+            "default": 0,
+            "title": "Recurrence Count",
+            "type": "integer"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "seen": {
+            "title": "Seen",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["open", "in_progress", "waiting", "closed"],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "seen",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "FrictionItem",
+        "type": "object"
+      },
+      "FrictionList": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FrictionItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": ["items", "count"],
+        "title": "FrictionList",
+        "type": "object"
+      },
+      "FrictionUpdate": {
+        "properties": {
+          "detector": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detector"
+          },
+          "detector_ref": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detector Ref"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix"
+          },
+          "fix_ref": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fix Ref"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "seen": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seen"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": ["open", "in_progress", "waiting", "closed"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "FrictionUpdate",
         "type": "object"
       },
       "GithubCredentialResponse": {
@@ -3731,6 +4067,196 @@
           }
         },
         "title": "PushTestRequest",
+        "type": "object"
+      },
+      "QuestionAnswer": {
+        "properties": {
+          "answer": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          }
+        },
+        "required": ["answer"],
+        "title": "QuestionAnswer",
+        "type": "object"
+      },
+      "QuestionCreate": {
+        "properties": {
+          "issue": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          }
+        },
+        "required": ["question"],
+        "title": "QuestionCreate",
+        "type": "object"
+      },
+      "QuestionItem": {
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "answered_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered By"
+          },
+          "asked_at": {
+            "title": "Asked At",
+            "type": "string"
+          },
+          "asked_by": {
+            "default": "",
+            "title": "Asked By",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "recommended": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "status": {
+            "enum": ["open", "answered", "withdrawn"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": ["id", "question", "asked_at", "status"],
+        "title": "QuestionItem",
+        "type": "object"
+      },
+      "QuestionList": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": ["items", "count"],
+        "title": "QuestionList",
         "type": "object"
       },
       "QueueActionRequest": {
@@ -7028,6 +7554,12 @@
             "title": "Exclusions Active",
             "type": "integer"
           },
+          "friction_open": {
+            "default": 0,
+            "description": "Friction ledger rows not yet closed",
+            "title": "Friction Open",
+            "type": "integer"
+          },
           "generated_at": {
             "description": "ISO-8601 UTC timestamp",
             "title": "Generated At",
@@ -7080,6 +7612,12 @@
             "description": "Redacted GitHub App user OAuth expiry for hub operators (#2075)",
             "title": "Operator Auth",
             "type": "object"
+          },
+          "owner_questions_open": {
+            "default": 0,
+            "description": "Owner questions awaiting an answer",
+            "title": "Owner Questions Open",
+            "type": "integer"
           },
           "providers": {
             "additionalProperties": true,
@@ -19312,6 +19850,462 @@
         "tags": ["diagnostics"]
       }
     },
+    "/api/v1/fleet/friction": {
+      "get": {
+        "operationId": "list_friction_api_v1_fleet_friction_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["open", "in_progress", "waiting", "closed"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrictionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Friction",
+        "tags": ["fleet-friction"]
+      },
+      "post": {
+        "operationId": "create_friction_api_v1_fleet_friction_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FrictionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrictionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Friction",
+        "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/friction/{friction_id}": {
+      "patch": {
+        "operationId": "update_friction_api_v1_fleet_friction__friction_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "friction_id",
+            "required": true,
+            "schema": {
+              "title": "Friction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FrictionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrictionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Update Friction",
+        "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/friction/{friction_id}/recurrence": {
+      "post": {
+        "description": "Detectors call this when a closed or open friction recurs: increments the count, stamps last_seen_at.",
+        "operationId": "friction_recurrence_api_v1_fleet_friction__friction_id__recurrence_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "friction_id",
+            "required": true,
+            "schema": {
+              "title": "Friction Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrictionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Friction Recurrence",
+        "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/owner-questions": {
+      "get": {
+        "operationId": "list_owner_questions_api_v1_fleet_owner_questions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["open", "answered", "withdrawn"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Owner Questions",
+        "tags": ["fleet-friction"]
+      },
+      "post": {
+        "operationId": "ask_owner_question_api_v1_fleet_owner_questions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ask Owner Question",
+        "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/owner-questions/{question_id}/answer": {
+      "post": {
+        "operationId": "answer_owner_question_api_v1_fleet_owner_questions__question_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "question_id",
+            "required": true,
+            "schema": {
+              "title": "Question Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionAnswer"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Answer Owner Question",
+        "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/owner-questions/{question_id}/withdraw": {
+      "post": {
+        "operationId": "withdraw_owner_question_api_v1_fleet_owner_questions__question_id__withdraw_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "question_id",
+            "required": true,
+            "schema": {
+              "title": "Question Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Withdraw Owner Question",
+        "tags": ["fleet-friction"]
+      }
+    },
     "/api/v1/library/browse": {
       "get": {
         "operationId": "library_browse_route_api_v1_library_browse_get",
@@ -20659,6 +21653,232 @@
         ],
         "summary": "Metrics Weekly Summary",
         "tags": ["delivery-metrics"]
+      }
+    },
+    "/api/v1/proposals": {
+      "get": {
+        "operationId": "list_intake_proposals_api_v1_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Intake Proposals Api V1 Proposals Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Intake Proposals",
+        "tags": ["intake-proposals"]
+      },
+      "post": {
+        "operationId": "create_intake_proposal_api_v1_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIntakeProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Intake Proposal Api V1 Proposals Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Intake Proposal",
+        "tags": ["intake-proposals"]
+      }
+    },
+    "/api/v1/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "get_intake_proposal_api_v1_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Intake Proposal Api V1 Proposals  Proposal Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Intake Proposal",
+        "tags": ["intake-proposals"]
+      }
+    },
+    "/api/v1/proposals/{proposal_id}/decide": {
+      "post": {
+        "operationId": "decide_intake_proposal_api_v1_proposals__proposal_id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideIntakeProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Decide Intake Proposal Api V1 Proposals  Proposal Id  Decide Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Decide Intake Proposal",
+        "tags": ["intake-proposals"]
       }
     },
     "/api/v1/staff/actions": {
