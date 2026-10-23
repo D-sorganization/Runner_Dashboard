@@ -167,6 +167,14 @@ def test_normalize_machine_entry_minimal() -> None:
     assert isinstance(result["tailscale_nodes"], list)
 
 
+def test_checked_in_brick_registry_disables_github_actions_runners() -> None:
+    registry_path = Path(__file__).resolve().parents[1] / "backend" / "machine_registry.yml"
+    registry = mr.load_machine_registry(path=registry_path)
+    brick = next(machine for machine in registry["machines"] if machine["name"] == "Brick")
+
+    assert brick["runners"] == {"min": 0, "default": 0, "max": 0}
+
+
 def test_normalize_machine_entry_requires_name() -> None:
     with pytest.raises(ValueError, match="name"):
         mr._normalize_machine_entry({})
