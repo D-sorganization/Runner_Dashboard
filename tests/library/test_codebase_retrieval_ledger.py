@@ -7,17 +7,20 @@ from library.codebase_retrieval_ledger import codebase_references_for_run, recor
 from library.db import init_library_db
 from library.retrieval_ledger import record_retrievals, references_for_run
 
+_TEST_COMMIT_SHA = "1" * 40
+
 
 def _reference(**overrides: object) -> dict[str, object]:
+    commit_sha = _TEST_COMMIT_SHA
     fields: dict[str, object] = {
         "node": "DeskComputer",
         "repo": "Runner_Dashboard",
-        "commit_sha": "1234567890abcdef1234567890abcdef12345678",
+        "commit_sha": commit_sha,
         "relative_path": "backend/staff/review.py",
         "line_start": 10,
         "line_end": 16,
         "content_hash": "a" * 64,
-        "citation": ("[ref:DeskComputer:codebase:Runner_Dashboard@12345678:backend/staff/review.py#L10-L16]"),
+        "citation": (f"[ref:DeskComputer:codebase:Runner_Dashboard@{commit_sha[:8]}:backend/staff/review.py#L10-L16]"),
     }
     fields.update(overrides)
     return fields
@@ -34,7 +37,7 @@ def test_codebase_run_references_are_append_only_idempotent_and_readable(tmp_pat
             "run_id": "run-1",
             "node": "DeskComputer",
             "repo": "Runner_Dashboard",
-            "commit_sha": "1234567890abcdef1234567890abcdef12345678",
+            "commit_sha": _TEST_COMMIT_SHA,
             "relative_path": "backend/staff/review.py",
             "line_start": 10,
             "line_end": 16,
@@ -58,7 +61,7 @@ def test_codebase_run_references_are_append_only_idempotent_and_readable(tmp_pat
         {"line_start": 0},
         {"line_end": 9},
         {"content_hash": "short"},
-        {"citation": "[ref:other:codebase:Runner_Dashboard@12345678:backend/staff/review.py#L10-L16]"},
+        {"citation": f"[ref:other:codebase:Runner_Dashboard@{_TEST_COMMIT_SHA[:8]}:backend/staff/review.py#L10-L16]"},
     ],
 )
 def test_codebase_run_reference_rejects_invalid_identity(tmp_path: Path, overrides: dict[str, object]) -> None:
@@ -93,7 +96,9 @@ def test_codebase_run_reference_limits_are_enforced(tmp_path: Path) -> None:
         values = []
         for index in range(start, start + count):
             path = f"docs/item-{index}.md"
-            citation = f"[ref:DeskComputer:codebase:Runner_Dashboard@12345678:{path}#L{index + 1}-L{index + 1}]"
+            citation = (
+                f"[ref:DeskComputer:codebase:Runner_Dashboard@{_TEST_COMMIT_SHA[:8]}:{path}#L{index + 1}-L{index + 1}]"
+            )
             values.append(
                 _reference(
                     relative_path=path,
