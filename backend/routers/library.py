@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
+from library.browse import browse_directory
 from library.db import init_library_db, library_db_path
 from library.search import (
     DEFAULT_BUDGET,
@@ -37,9 +38,30 @@ def _db() -> Path:
     return path
 
 
+@router.get("/browse")
+def library_browse_route(
+    path: str | None = None,
+    _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        return browse_directory(path)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, detail=str(exc)) from exc
+    except (PermissionError, ValueError) as exc:
+        raise HTTPException(403 if isinstance(exc, PermissionError) else 422, detail=str(exc)) from exc
+
+
 @router.get("/sources")
 def library_sources_route(_principal: Principal = Depends(require_scope("fleet.read"))) -> dict[str, Any]:  # noqa: B008
-    return {"sources": list_sources(_db())}
+    from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE
+
+    return {
+        "sources": list_sources(_db()),
+        "machine_role": MACHINE_ROLE,
+        "is_hub": MACHINE_ROLE == "hub",
+        "current_node": HOSTNAME,
+        "nodes": [{"name": k, "url": v} for k, v in sorted(FLEET_NODES.items())],
+    }
 
 
 @router.post("/sources")

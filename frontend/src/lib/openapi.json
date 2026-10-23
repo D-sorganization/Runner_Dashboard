@@ -17985,6 +17985,63 @@
         "tags": ["diagnostics"]
       }
     },
+    "/api/v1/library/browse": {
+      "get": {
+        "operationId": "library_browse_route_api_v1_library_browse_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Browse Route Api V1 Library Browse Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Browse Route",
+        "tags": ["library"]
+      }
+    },
     "/api/v1/library/search": {
       "get": {
         "operationId": "library_search_api_v1_library_search_get",
