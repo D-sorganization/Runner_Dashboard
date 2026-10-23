@@ -25,8 +25,10 @@ from identity import (
     require_scope,
 )
 from library.browse import browse_directory
+from library.citations import _cap_fetch_text, _parse_cite
 from library.db import init_library_db, library_db_path
 from library.pool import _hit_to_dict, federated_search, get_pooled_catalog, refresh_catalog
+from library.run_reference_recording import record_run_references, requested_run_id
 from library.search import (
     DEFAULT_BUDGET,
     MAX_BUDGET,
@@ -245,39 +247,6 @@ def library_work(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-_CITE_KEY = re.compile(
-    r"^\[ref:(?P<node>[^:\]]+):(?P<source>[a-z0-9][a-z0-9-]{0,62}):w(?P<work>[1-9][0-9]*):"
-    r"p(?P<passage>[1-9][0-9]*)#sha256=(?P<sha>[0-9a-fA-F]{8}):p\.(?P<start>[1-9][0-9]*)-(?P<end>[1-9][0-9]*)\]$"
-)
-_CITE_URI = re.compile(
-    r"^lib://(?P<source>[a-z0-9][a-z0-9-]{0,62})/w(?P<work>[1-9][0-9]*)/"
-    r"p(?P<passage>[1-9][0-9]*)@(?P<sha>[0-9a-fA-F]{8})#p(?P<start>[1-9][0-9]*)-(?P<end>[1-9][0-9]*)$"
-)
-
-
-def _parse_cite(cite: str) -> dict[str, Any]:
-    match = _CITE_KEY.fullmatch(cite) or _CITE_URI.fullmatch(cite)
-    if match is None:
-        raise HTTPException(status_code=422, detail="cite must be a canonical library reference")
-    values = match.groupdict()
-    return {
-        "node": values.get("node"),
-        "source_id": values["source"],
-        "work_id": int(values["work"]),
-        "passage_id": int(values["passage"]),
-        "sha_prefix": values["sha"].lower(),
-        "page_start": int(values["start"]),
-        "page_end": int(values["end"]),
-    }
-
-
-MAX_FETCH_TEXT_BYTES = 400  # Snippet cap; canonical citation is separate.
-
-
-def _cap_fetch_text(value: Any) -> str:
-    return str(value or "").encode("utf-8")[:MAX_FETCH_TEXT_BYTES].decode("utf-8", errors="ignore")
-
-
 def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
     from dashboard_config import HOSTNAME
 
@@ -309,6 +278,7 @@ def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
 
 @router.get("/fetch")
 async def library_fetch(
+    request: Request,
     cite: str = Query(..., min_length=1, max_length=512),
     scope: str = Query("federated", pattern="^(local|federated)$"),
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
@@ -318,12 +288,15 @@ async def library_fetch(
     from dashboard_config import FLEET_NODES, HOSTNAME
     from library.pool import validate_node_url
 
+    run_id = requested_run_id(request, _principal)
     ref = _parse_cite(cite)
     local_name = HOSTNAME or "local"
     local_missing: HTTPException | None = None
     if scope == "local" or ref["node"] in (None, local_name, "local"):
         try:
-            return _fetch_local(ref, shared_only=_principal.id == "fleet-peer")
+            payload = _fetch_local(ref, shared_only=_principal.id == "fleet-peer")
+            record_run_references(run_id, [payload], _db())
+            return payload
         except HTTPException as exc:
             if scope == "local" or ref["node"] is not None:
                 raise
@@ -391,6 +364,7 @@ async def library_fetch(
     }
     if len(identities) != 1:
         raise HTTPException(status_code=409, detail="citation is ambiguous across registered nodes")
+    record_run_references(run_id, [hits[0]], _db())
     return hits[0]
 
 
@@ -407,6 +381,7 @@ async def library_search(
 ) -> dict[str, Any]:
     from dashboard_config import HOSTNAME
 
+    run_id = requested_run_id(request, _principal)
     scope = request.query_params.get("scope", "federated")
     shared = request.query_params.get("shared") in ("1", "true", "True")
     tokens_budget = budget if budget is not None else budget_tokens or DEFAULT_BUDGET
@@ -426,6 +401,7 @@ async def library_search(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         passages = [_hit_to_dict(h, HOSTNAME or "local") for h in hits]
+        record_run_references(run_id, passages, _db())
         return {
             "query": q,
             "topic": topic,
@@ -440,6 +416,7 @@ async def library_search(
         res = await federated_search(q, k=k, budget_tokens=tokens_budget, topic=topic, repo=repo, db_path=_db())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record_run_references(run_id, res.passages, _db())
     return {
         "query": res.query,
         "topic": res.topic,

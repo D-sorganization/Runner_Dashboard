@@ -738,10 +738,15 @@ class FleetClient:
         _check(op != "fetch" or source == "library", "fetch is only supported for library")
         _check(cite is None or (source == "library" and op == "fetch"), "cite is only supported for library fetch")
         _check(
-            run_id is None or (source in {"library", "codebase"} and op == "search"),
-            "run_id is only supported for library or codebase search",
+            run_id is None
+            or (source == "library" and op in ("search", "fetch"))
+            or (source == "codebase" and op == "search"),
+            "run_id is only supported for library search/fetch or codebase search",
         )
         _check(source != "codebase" or op == "search", "codebase only supports search")
+        effective_run_id = run_id
+        if effective_run_id is None and source == "library" and op in ("search", "fetch"):
+            effective_run_id = os.environ.get("STAFF_RUN_ID")
         effective_k = min(max(1, int(k)), 5)
         offset = max(0, int(offset))
 
@@ -825,7 +830,12 @@ class FleetClient:
                 if cite is None:
                     raise FleetArgumentError("cite is required for library fetch")
                 citation = _text(cite, "cite", 512)
-                data = self.request("GET", "/api/v1/library/fetch", params={"cite": citation})
+                headers = (
+                    {"X-Staff-Run-ID": _match(PATTERNS.ident, effective_run_id, "run_id")}
+                    if effective_run_id is not None
+                    else None
+                )
+                data = self.request("GET", "/api/v1/library/fetch", params={"cite": citation}, headers=headers)
                 if not isinstance(data, dict):
                     data = {}
                 result = {
@@ -854,7 +864,11 @@ class FleetClient:
                 params["repo"] = repo
             if topic:
                 params["topic"] = topic
-            headers = {"X-Staff-Run-ID": _match(PATTERNS.ident, run_id, "run_id")} if run_id is not None else None
+            headers = (
+                {"X-Staff-Run-ID": _match(PATTERNS.ident, effective_run_id, "run_id")}
+                if effective_run_id is not None
+                else None
+            )
             data = self.request("GET", "/api/v1/library/search", params=params, headers=headers)
             items = data.get("passages", []) if isinstance(data, dict) else []
             if not isinstance(items, list):
