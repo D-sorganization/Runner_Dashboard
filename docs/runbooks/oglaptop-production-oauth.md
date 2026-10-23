@@ -19,7 +19,7 @@ port**.
 | Host | Role | Registry `dashboard_url` (HTTP, direct) | HTTPS origin (Serve) | OAuth callback (register on GitHub App) |
 | ---- | ---- | --------------------------------------- | -------------------- | --------------------------------------- |
 | **DeskComputer** | Fleet hub (production operator UI) | `http://deskcomputer.tail2bbcc7.ts.net:8321` | `https://deskcomputer.tail2bbcc7.ts.net` | `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback` |
-| **OGLaptop** | Worker (legacy #1141 pin in code; see below) | `http://oglaptop.tail2bbcc7.ts.net:8321` | `https://oglaptop.tail2bbcc7.ts.net` | `https://oglaptop.tail2bbcc7.ts.net/api/auth/callback` |
+| **OGLaptop** | Worker (not a hub origin by default) | `http://oglaptop.tail2bbcc7.ts.net:8321` | `https://oglaptop.tail2bbcc7.ts.net` | `https://oglaptop.tail2bbcc7.ts.net/api/auth/callback` |
 
 GitHub Apps permit multiple user authorization callback URLs. Register the
 callback for each HTTPS origin that is deliberately served and configured; do
@@ -28,12 +28,14 @@ one active origin/callback pair.
 
 ### Application contract (`oauth_config.py`)
 
-The default public origin and callback come from the active registry hub. An
-explicit `DASHBOARD_OAUTH_ALLOWED_ORIGINS` entry can support a planned legacy
-migration, but every entry must be a bare HTTPS origin (no credentials, path,
-query, or fragment). The callback must equal
-`{DASHBOARD_PUBLIC_ORIGIN}/api/auth/callback`. OGLaptop is a worker; its HTTPS
-origin is permitted only when deliberately allowlisted for a migration.
+The default public origin and callback come from the active registry hub. If
+`DASHBOARD_PUBLIC_ORIGIN` or `GITHUB_OAUTH_CALLBACK_URL` is omitted, the runtime
+derives it from that hub; if either override is supplied, the origin must be in
+the active hub or explicit HTTPS allowlist and the callback must equal
+`{DASHBOARD_PUBLIC_ORIGIN}/api/auth/callback`. An explicit
+`DASHBOARD_OAUTH_ALLOWED_ORIGINS` entry is for a planned legacy migration only
+and must be a bare HTTPS origin (no credentials, path, query, or fragment). A
+worker origin such as OGLaptop is not allowed unless deliberately allowlisted.
 
 ## GitHub App settings (one-time)
 
@@ -41,10 +43,13 @@ In **GitHub → Organization → GitHub Apps → [fleet Runner Dashboard app]**:
 
 1. **Expire user authorization tokens** — enable (required for `refresh_token`;
    [GitHub docs](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)).
-2. **User authorization callback URL(s)** -- add the active DeskComputer
-   callback: `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback`.
-   Add an OGLaptop callback only for a planned migration when that HTTPS origin
-   is served and explicitly allowlisted.
+2. **User authorization callback URL(s)** — inspect the existing registration
+   first and confirm it contains the callback for the active registry hub HTTPS
+   origin (currently DeskComputer):
+   `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback`. If it is absent,
+   stop before attempting login and have an authorized GitHub App owner decide
+   whether to add it. Add a worker callback only for an approved, deliberately
+   served and allowlisted migration; do not request broader OAuth scopes.
 3. **Client ID / Client secret** — use the App’s OAuth client credentials (not a
    standalone OAuth App). Generate a **new client secret** if rotating off a
    legacy OAuth App or after exposure; update only the hub `env` file on the host.
@@ -74,11 +79,14 @@ Required keys for browser OAuth (names only):
 GITHUB_CLIENT_ID=<fleet-github-app-client-id>
 GITHUB_CLIENT_SECRET=<fleet-github-app-client-secret>
 GITHUB_ORG=D-sorganization
-DASHBOARD_PUBLIC_ORIGIN=https://deskcomputer.tail2bbcc7.ts.net
-GITHUB_OAUTH_CALLBACK_URL=https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback
 DASHBOARD_TLS=1
 SESSION_SECRET=<at-least-32-chars>
 ```
+
+`DASHBOARD_PUBLIC_ORIGIN` and `GITHUB_OAUTH_CALLBACK_URL` are optional when
+the runtime can load the fleet registry. When set explicitly, use the active
+hub HTTPS origin and its `/api/auth/callback` URL, and verify that callback is
+registered on the existing fleet GitHub App before attempting login.
 
 Hub installation credentials (same file; not copied to nodes):
 
@@ -99,9 +107,25 @@ on spoke nodes.
   show no public dashboard mapping.
 - Session cookie: `Secure`, `HttpOnly`, `SameSite=Strict` when `DASHBOARD_TLS=1`.
 
+## Current Hub Snapshot (Checked 2026-10-23)
+
+The active DeskComputer deployment reports a healthy dashboard and the current
+Tailscale Serve route is `https://deskcomputer.tail2bbcc7.ts.net` proxying to the
+local dashboard on port 8321. OAuth is separately blocked: `/api/health` reports
+`github_client_id_invalid`, `github_client_secret_invalid`,
+`session_secret_invalid`, `tls_required`, and
+`development_auth_must_be_unset`. The service process has no client ID, client
+secret, session secret, or `DASHBOARD_TLS` setting; it does have
+`DASHBOARD_LOOPBACK_AUTH` and `DASHBOARD_LOOPBACK_OPERATOR_WRITES`. Values are
+not recorded here. The origin and callback overrides are unset, so the runtime
+uses the registry-derived DeskComputer origin and callback. Recheck this snapshot
+with `/api/health` and `tailscale serve status` before any setup; a healthy route
+does not mean OAuth credentials are ready. The existing App callback registration
+has not been verified.
+
 ## Verification
 
-After hub env is provisioned and `main` has deployed (#2193+):
+After the authorized hub environment setup and a normal deploy:
 
 1. `GET https://<your-active-origin>/api/health` — `oauth.ready: true`,
    `oauth.flow: "github_app_user_to_server"`, `oauth.operator_sessions` present
