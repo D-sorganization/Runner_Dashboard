@@ -110,13 +110,145 @@ def test_authenticated_run_retrieves_records_and_verifies_its_own_citation(
     assert verified.json()["citations"][0]["status"] == "verified"
 
 
+@pytest.mark.parametrize("route", ["fetch", "search"])
+def test_authenticated_run_without_header_records_its_own_retrieval(
+    api: TestClient, run_identity: SimpleNamespace, route: str
+) -> None:
+    response = api.get(
+        "/api/v1/library/" + route,
+        params={"scope": "local", **({"cite": CITATION} if route == "fetch" else {"q": "Evidence"})},
+        headers={"Authorization": "Bearer " + run_identity.token},
+    )
+    assert response.status_code == 200
+    assert len(references_for_run(library_routes._db(), "run-agent")) == 1
+
+
+def test_derived_run_identity_still_checks_the_stored_role(api: TestClient, run_identity: SimpleNamespace) -> None:
+    run_identity.runs["run-agent"].role = "different-role"
+    response = api.get(
+        "/api/v1/library/search",
+        params={"q": "Evidence", "scope": "local"},
+        headers={"Authorization": "Bearer " + run_identity.token},
+    )
+    assert response.status_code == 403
+    assert references_for_run(library_routes._db(), "run-agent") == []
+
+
+@pytest.mark.parametrize("route", ["search", "verify"])
+def test_revocation_after_authentication_fails_closed_for_ledger_routes(
+    api: TestClient, run_identity: SimpleNamespace, route: str
+) -> None:
+    def authenticate_then_revoke() -> identity.Principal:
+        principal = run_identity.manager.verify_token(run_identity.token)
+        assert principal is not None
+        tokens.revoke_run_token("run-agent")
+        return principal
+
+    api.app.dependency_overrides[library_routes.require_library_peer] = authenticate_then_revoke
+    headers = {"Authorization": "Bearer " + run_identity.token}
+    if route == "search":
+        response = api.get(
+            "/api/v1/library/search",
+            params={"q": "Evidence", "scope": "local"},
+            headers=headers,
+        )
+    else:
+        response = api.post(
+            "/api/v1/library/verify",
+            headers=headers,
+            json={"content": "Evidence for the retrieval ledger. " + CITATION},
+        )
+    assert response.status_code == 403
+    assert references_for_run(library_routes._db(), "run-agent") == []
+
+
+def test_active_run_token_cannot_select_another_run_it_requested(
+    api: TestClient, run_identity: SimpleNamespace
+) -> None:
+    run_identity.runs["run-other"].requested_by = run_identity.principal.id
+    response = api.get(
+        "/api/v1/library/search",
+        params={"q": "Evidence", "scope": "local"},
+        headers={"Authorization": "Bearer " + run_identity.token, "X-Staff-Run-ID": "run-other"},
+    )
+    assert response.status_code == 403
+    assert references_for_run(library_routes._db(), "run-other") == []
+
+
+def test_active_run_token_cannot_verify_against_another_owned_run_ledger(
+    api: TestClient, run_identity: SimpleNamespace
+) -> None:
+    run_identity.runs["run-other"].requested_by = run_identity.principal.id
+    response = api.post(
+        "/api/v1/library/verify",
+        headers={"Authorization": "Bearer " + run_identity.token},
+        json={"content": CITATION, "run_id": "run-other"},
+    )
+    assert response.status_code == 403
+    assert references_for_run(library_routes._db(), "run-other") == []
+
+
+def test_authenticated_run_verification_without_run_id_uses_its_ledger(
+    api: TestClient, run_identity: SimpleNamespace
+) -> None:
+    headers = {"Authorization": "Bearer " + run_identity.token, "X-Staff-Run-ID": "run-agent"}
+    retrieved = api.get(
+        "/api/v1/library/search",
+        params={"q": "Evidence", "scope": "local"},
+        headers=headers,
+    )
+    assert retrieved.status_code == 200
+    assert len(references_for_run(library_routes._db(), "run-agent")) == 1
+    verified = api.post(
+        "/api/v1/library/verify",
+        headers={"Authorization": "Bearer " + run_identity.token},
+        json={"content": "Evidence for the retrieval ledger. " + CITATION},
+    )
+    assert verified.status_code == 200
+    assert verified.json()["citations"][0]["status"] == "verified"
+
+
+def test_authenticated_run_without_retrieval_cannot_verify_unrecorded_citation(
+    api: TestClient, run_identity: SimpleNamespace
+) -> None:
+    verified = api.post(
+        "/api/v1/library/verify",
+        headers={"Authorization": "Bearer " + run_identity.token},
+        json={"content": "Evidence for the retrieval ledger. " + CITATION},
+    )
+    assert verified.status_code == 200
+    assert verified.json()["citations"][0]["status"] == "unretrieved_reference"
+
+
+def test_verification_rejects_conflicting_explicit_run_id_sources(
+    api: TestClient, run_identity: SimpleNamespace
+) -> None:
+    response = api.post(
+        "/api/v1/library/verify",
+        headers={"Authorization": "Bearer " + run_identity.token, "X-Staff-Run-ID": "run-agent"},
+        json={"content": CITATION, "run_id": "run-other"},
+    )
+    assert response.status_code == 422
+
+
+def test_non_run_operator_without_run_id_keeps_non_ledger_behavior(api: TestClient) -> None:
+    from identity import Principal
+
+    api.app.dependency_overrides[library_routes.require_library_peer] = lambda: Principal(
+        id="operator", type="human", name="Operator", roles=["admin"]
+    )
+    response = api.get("/api/v1/library/search", params={"q": "Evidence", "scope": "local"})
+    assert response.status_code == 200
+    assert references_for_run(library_routes._db(), "run-agent") == []
+
+
 @pytest.mark.parametrize("run_id", ["run-other", "missing"])
 def test_authenticated_run_cannot_record_or_verify_other_runs(
     api: TestClient, run_identity: SimpleNamespace, run_id: str
 ) -> None:
     headers = {"Authorization": "Bearer " + run_identity.token, "X-Staff-Run-ID": run_id}
     response = api.get("/api/v1/library/fetch", params={"cite": CITATION, "scope": "local"}, headers=headers)
-    assert response.status_code == (404 if run_id == "missing" else 403)
+    assert response.status_code == 403
     verified = api.post("/api/v1/library/verify", headers=headers, json={"content": CITATION, "run_id": run_id})
     assert verified.status_code == response.status_code
     assert references_for_run(library_routes._db(), run_id) == []

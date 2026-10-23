@@ -41,6 +41,18 @@ ACTION_POLICY: Final[frozenset[str]] = frozenset(FLEET_ACTION_SCOPES.keys())
 _active_run_tokens: dict[str, str] = {}  # run_id -> principal_id
 
 
+def active_run_id_for_principal(principal_id: str) -> str | None:
+    """Resolve only an exact principal ID currently bound in the run-token registry."""
+    return next(
+        (
+            run_id
+            for run_id, active_principal_id in tuple(_active_run_tokens.items())
+            if active_principal_id == principal_id
+        ),
+        None,
+    )
+
+
 def is_active_run_principal(*, run_id: str, role: str, principal_id: str) -> bool:
     """Match an already authenticated caller to its exact active run binding.
 
