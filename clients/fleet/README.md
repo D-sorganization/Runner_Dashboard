@@ -35,6 +35,7 @@ except FleetAPIError as exc:
 python3 clients/fleet/fleetctl.py library sources
 python3 clients/fleet/fleetctl.py library search "energy transfer" --k 3 --run-id run-123
 python3 clients/fleet/fleetctl.py library fetch '[ref:DeskComputer:shared:w1:p3#sha256=1234abcd:p.3-3]' --run-id run-123
+python3 clients/fleet/fleetctl.py library verify --file docs/report.md --run-id run-123
 ```
 
 Fetch accepts the canonical citation returned by search. The example is illustrative;
@@ -44,6 +45,13 @@ omitted, the client uses `STAFF_RUN_ID` if set. Source discovery reports local a
 pooled availability using existing permissions and does not mutate the registry.
 These commands share the unified query implementation; existing flat commands remain
 available. The source/work/page locator form is tracked separately in #2437.
+
+Verification reads a UTF-8 file (up to 1,000,000 characters) and sends its content to
+the existing verification API. It prints JSON and exits 0 for verified content,
+1 for invalid references or API failures, and 2 for invalid local input. The optional
+run ID uses the same ownership checks and `STAFF_RUN_ID` default. The Python client
+also exposes `library_verify(content, run_id=None)`; the shared command accepts
+content rather than granting a tool access to local files.
 
 For setup in each agent (Claude Code, Codex, Gemini CLI and Grok Bot), token minting and
 the recommended agent loop, see [`docs/agents/connect.md`](../../docs/agents/connect.md).

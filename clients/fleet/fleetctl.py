@@ -23,7 +23,13 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fleet_client import FleetAPIError, FleetArgumentError, FleetClient, run_doctor  # noqa: E402
+from fleet_client import (  # noqa: E402
+    MAX_VERIFICATION_CHARACTERS,
+    FleetAPIError,
+    FleetArgumentError,
+    FleetClient,
+    run_doctor,
+)
 from fleet_tools import BY_CLI, COMMANDS, Command  # noqa: E402
 
 
@@ -75,6 +81,10 @@ def _add_library_operations(parser: argparse.ArgumentParser) -> None:
             _add_argument(child, positional, query.properties[positional], positional=True)
         for name in optional:
             _add_argument(child, name, query.properties[name], positional=False)
+    verify = operations.add_parser("verify", help="Verify citations and links in a UTF-8 file.")
+    verify.set_defaults(command="library-verify", content=None)
+    verify.add_argument("--file", dest="verification_file", required=True, type=Path)
+    _add_argument(verify, "run_id", BY_CLI["library-verify"].properties["run_id"], positional=False)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -133,12 +143,21 @@ def main(argv: list[str] | None = None) -> int:
         return _doctor(client, namespace)
     command = BY_CLI[namespace.command]
     try:
+        if getattr(namespace, "verification_file", None) is not None:
+            try:
+                with namespace.verification_file.open(encoding="utf-8", newline="") as document:
+                    namespace.content = document.read(MAX_VERIFICATION_CHARACTERS + 1)
+            except (OSError, UnicodeError) as exc:
+                raise FleetArgumentError("verification file must be readable UTF-8") from exc
         client = FleetClient(
             namespace.url, timeout=namespace.timeout, agent=namespace.default_agent, session=namespace.default_session
         )
-        _emit(command.invoke(client, _arguments(command, namespace)))
+        result = command.invoke(client, _arguments(command, namespace))
+        _emit(result)
         if client.identity()["session_source"] == "derived" and client.session:
             sys.stderr.write(f"fleetctl: derived session; export FLEET_SESSION={client.session} to reuse it\n")
+        if command.cli == "library-verify" and not result["verified"]:
+            return 1
     except FleetArgumentError as exc:
         _emit({"error": "invalid_arguments", "message": str(exc)})
         return 2
