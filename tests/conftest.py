@@ -174,6 +174,15 @@ def _no_real_plan_quota(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_barb_turnover_store(tmp_path, monkeypatch):
+    """Panel completion appends a Barb turnover note (#2511); tests write it to a per-test store, never ``state/``."""
+    from staff import barb_continuity  # noqa: PLC0415
+
+    monkeypatch.setenv("BARB_CONTINUITY_DB", str(tmp_path / "barb_continuity.sqlite3"))
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", None)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_chat_scratch_sweep(monkeypatch):
     """Chat turns never sweep the node's real temp dir or Claude projects root (#1688).
 
@@ -252,8 +261,8 @@ def staff_cli_installed(monkeypatch):
     rather than host installation use this opt-in fixture so CI does not depend on
     which agent CLIs happen to be on its PATH.
     """
-    from staff.adapters import ProviderAdapter  # noqa: PLC0415
     from staff import cli_version
+    from staff.adapters import ProviderAdapter  # noqa: PLC0415
 
     installed_providers: set[str] = set()
 

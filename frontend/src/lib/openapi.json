@@ -1409,6 +1409,39 @@
         "title": "CreateActionProposalRequest",
         "type": "object"
       },
+      "CreateIntakeProposalRequest": {
+        "description": "Manual/testing create; production path is email-intake principal only.",
+        "properties": {
+          "body_plain": {
+            "minLength": 1,
+            "title": "Body Plain",
+            "type": "string"
+          },
+          "dispatch": {
+            "additionalProperties": true,
+            "title": "Dispatch",
+            "type": "object"
+          },
+          "message_id": {
+            "default": "",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "sender": {
+            "default": "",
+            "title": "Sender",
+            "type": "string"
+          },
+          "subject": {
+            "default": "",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": ["body_plain"],
+        "title": "CreateIntakeProposalRequest",
+        "type": "object"
+      },
       "CreateProposalRequest": {
         "description": "Payload for submitting a suggestion to the Board (POST /api/proposals).",
         "properties": {
@@ -1622,6 +1655,35 @@
         },
         "required": ["title"],
         "title": "CreateWorkItemRequest",
+        "type": "object"
+      },
+      "DecideIntakeProposalRequest": {
+        "properties": {
+          "decision": {
+            "description": "approved or rejected",
+            "title": "Decision",
+            "type": "string"
+          },
+          "execute_dispatch": {
+            "default": false,
+            "description": "When approving, call staff dispatch (never automatic from intake).",
+            "title": "Execute Dispatch",
+            "type": "boolean"
+          },
+          "owner_approval_ref": {
+            "default": "",
+            "description": "Required when agent-grok approves; names Dieter's explicit approval.",
+            "title": "Owner Approval Ref",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["decision"],
+        "title": "DecideIntakeProposalRequest",
         "type": "object"
       },
       "DecideProposalRequest": {
@@ -2777,6 +2839,11 @@
             "minItems": 3,
             "title": "Experts",
             "type": "array"
+          },
+          "ground_repos": {
+            "default": true,
+            "title": "Ground Repos",
+            "type": "boolean"
           },
           "mode": {
             "default": "debate",
@@ -20472,6 +20539,232 @@
         "tags": ["delivery-metrics"]
       }
     },
+    "/api/v1/proposals": {
+      "get": {
+        "operationId": "list_intake_proposals_api_v1_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Intake Proposals Api V1 Proposals Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Intake Proposals",
+        "tags": ["intake-proposals"]
+      },
+      "post": {
+        "operationId": "create_intake_proposal_api_v1_proposals_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIntakeProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Intake Proposal Api V1 Proposals Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Intake Proposal",
+        "tags": ["intake-proposals"]
+      }
+    },
+    "/api/v1/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "get_intake_proposal_api_v1_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Intake Proposal Api V1 Proposals  Proposal Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Intake Proposal",
+        "tags": ["intake-proposals"]
+      }
+    },
+    "/api/v1/proposals/{proposal_id}/decide": {
+      "post": {
+        "operationId": "decide_intake_proposal_api_v1_proposals__proposal_id__decide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideIntakeProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Decide Intake Proposal Api V1 Proposals  Proposal Id  Decide Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Decide Intake Proposal",
+        "tags": ["intake-proposals"]
+      }
+    },
     "/api/v1/staff/actions": {
       "get": {
         "description": "List all allowlisted staff actions, schemas, risk classes, and required scopes.",
@@ -22274,7 +22567,7 @@
     },
     "/api/v1/staff/panels/presets": {
       "get": {
-        "description": "Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.",
+        "description": "Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).",
         "operationId": "get_panel_presets_api_v1_staff_panels_presets_get",
         "responses": {
           "200": {

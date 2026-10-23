@@ -5835,6 +5835,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Intake Proposals */
+        get: operations["list_intake_proposals_api_v1_proposals_get"];
+        put?: never;
+        /** Create Intake Proposal */
+        post: operations["create_intake_proposal_api_v1_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Intake Proposal */
+        get: operations["get_intake_proposal_api_v1_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/proposals/{proposal_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Intake Proposal */
+        post: operations["decide_intake_proposal_api_v1_proposals__proposal_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/actions": {
         parameters: {
             query?: never;
@@ -6424,7 +6476,7 @@ export interface paths {
         };
         /**
          * Expert panel presets
-         * @description Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.
+         * @description Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).
          */
         get: operations["get_panel_presets_api_v1_staff_panels_presets_get"];
         put?: never;
@@ -8387,6 +8439,33 @@ export interface components {
             thread_id: string;
         };
         /**
+         * CreateIntakeProposalRequest
+         * @description Manual/testing create; production path is email-intake principal only.
+         */
+        CreateIntakeProposalRequest: {
+            /** Body Plain */
+            body_plain: string;
+            /** Dispatch */
+            dispatch?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Message Id
+             * @default
+             */
+            message_id: string;
+            /**
+             * Sender
+             * @default
+             */
+            sender: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject: string;
+        };
+        /**
          * CreateProposalRequest
          * @description Payload for submitting a suggestion to the Board (POST /api/proposals).
          */
@@ -8455,6 +8534,31 @@ export interface components {
             thread_id?: string | null;
             /** Title */
             title: string;
+        };
+        /** DecideIntakeProposalRequest */
+        DecideIntakeProposalRequest: {
+            /**
+             * Decision
+             * @description approved or rejected
+             */
+            decision: string;
+            /**
+             * Execute Dispatch
+             * @description When approving, call staff dispatch (never automatic from intake).
+             * @default false
+             */
+            execute_dispatch: boolean;
+            /**
+             * Owner Approval Ref
+             * @description Required when agent-grok approves; names Dieter's explicit approval.
+             * @default
+             */
+            owner_approval_ref: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
         };
         /** DecideProposalRequest */
         DecideProposalRequest: {
@@ -8979,6 +9083,11 @@ export interface components {
             confirm_cost: boolean;
             /** Experts */
             experts: components["schemas"]["PanelExpert"][];
+            /**
+             * Ground Repos
+             * @default true
+             */
+            ground_repos: boolean;
             /**
              * Mode
              * @default debate
@@ -19836,6 +19945,145 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_intake_proposals_api_v1_proposals_get: {
+        parameters: {
+            query?: {
+                state?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_intake_proposal_api_v1_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIntakeProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_intake_proposal_api_v1_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_intake_proposal_api_v1_proposals__proposal_id__decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideIntakeProposalRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

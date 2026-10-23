@@ -25,6 +25,30 @@ const mockPresets: PanelPresetsResponse = {
   providers: ["claude", "codex", "gemini"],
 };
 
+function fleetPresets(opts: { argonAvailable?: boolean } = {}): PanelPresetsResponse {
+  const argonAvailable = opts.argonAvailable ?? true;
+  return {
+    presets: [
+      {
+        id: "fleet-decision",
+        title: "Fleet decision panel (Argon / Astra / Fable)",
+        experts: [
+          {
+            name: "Argon",
+            perspective: "Systems efficiency.",
+            provider: "antigravity",
+            model: "gemini-4-argon-high",
+            available: argonAvailable,
+          },
+          { name: "Astra", perspective: "Architecture.", provider: "codex", model: "gpt-6-astra", available: true },
+          { name: "Fable", perspective: "Skeptic.", provider: "claude", model: "claude-fable-5-1", available: true },
+        ],
+      },
+    ],
+    providers: argonAvailable ? ["codex", "antigravity", "claude"] : ["codex", "claude"],
+  };
+}
+
 const mockThread: ThreadInfo = {
   id: "thread-panel-1",
   title: "Panel on Microservices",
@@ -215,5 +239,45 @@ describe("NewPanelForm", () => {
     await waitFor(() => {
       expect(screen.getByText(/2 panels are already running/i)).toBeInTheDocument();
     });
+  });
+
+  it("prefills provider and model per seat from the fleet-decision preset", async () => {
+    panelApiMock.fetchPanelPresets.mockResolvedValue(fleetPresets());
+    render(<NewPanelForm onCreated={vi.fn()} />);
+    await waitFor(() => expect(panelApiMock.fetchPanelPresets).toHaveBeenCalled());
+    await screen.findByRole("option", { name: /fleet decision panel/i });
+
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: "fleet-decision" } });
+
+    expect(screen.getAllByLabelText(/expert name/i).map((el) => (el as HTMLInputElement).value)).toEqual([
+      "Argon",
+      "Astra",
+      "Fable",
+    ]);
+    expect(screen.getAllByLabelText(/expert provider/i).map((el) => (el as HTMLSelectElement).value)).toEqual([
+      "antigravity",
+      "codex",
+      "claude",
+    ]);
+    expect(screen.getAllByLabelText(/expert model/i).map((el) => (el as HTMLInputElement).value)).toEqual([
+      "gemini-4-argon-high",
+      "gpt-6-astra",
+      "claude-fable-5-1",
+    ]);
+    expect(screen.queryByRole("status", { name: /fallback/i })).not.toBeInTheDocument();
+  });
+
+  it("falls back visibly, not silently, when a preset seat's provider is unavailable", async () => {
+    panelApiMock.fetchPanelPresets.mockResolvedValue(fleetPresets({ argonAvailable: false }));
+    render(<NewPanelForm onCreated={vi.fn()} />);
+    await screen.findByRole("option", { name: /fleet decision panel/i });
+
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: "fleet-decision" } });
+
+    const providers = screen.getAllByLabelText(/expert provider/i).map((el) => (el as HTMLSelectElement).value);
+    expect(providers).toEqual(["codex", "codex", "claude"]);
+    expect(screen.getAllByLabelText(/expert model/i)[0]).toHaveValue("");
+    const note = screen.getByRole("status", { name: /fallback/i });
+    expect(note).toHaveTextContent(/Argon: antigravity \(gemini-4-argon-high\) is unavailable/);
   });
 });

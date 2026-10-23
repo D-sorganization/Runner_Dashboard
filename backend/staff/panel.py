@@ -17,17 +17,20 @@ import re
 import shutil
 import tempfile
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 import provider_switch
 from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
+from staff.barb_continuity import get_barb_continuity_store
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
 from staff.cli_projects import PANEL_SCRATCH_PREFIX
 from staff.conversation_models import ThreadRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.group_models import GroupCostEstimate, get_group_threshold, lookup_seat_price
+from staff.panel_grounding import GROUNDING_DIR, GROUNDING_TOOLS, build_snapshot, remove_snapshot
 from staff.panel_models import (
     CODEBASE_REPOS,
     DEFAULT_TURN_TIMEOUT_SECONDS,
@@ -51,6 +54,7 @@ __all__ = [
     "panel_result",
     "parse_stance",
     "run_panel",
+    "record_panel_turnover",
     "start_panel_thread",
 ]
 
@@ -113,12 +117,23 @@ def _transcript(turns: list[dict[str, Any]]) -> str:
     return "\n\n".join(parts)
 
 
+def _tool_brief(grounded_repos: tuple[str, ...]) -> str:
+    if not grounded_repos:
+        return "Do not use tools or edit files; answer from your own knowledge."
+    return (
+        "Your working directory holds read-only snapshots of origin/main, one folder per repository: "
+        f"{', '.join(grounded_repos)}. Read files there to verify any code you cite and give file paths. "
+        "Never edit files or run commands that change anything."
+    )
+
+
 def build_turn_prompt(
     request: PanelCreateRequest,
     speaker: PanelSpeaker,
     round_no: int,
     turns: list[dict[str, Any]],
     codebase_context: str = "",
+    grounded_repos: tuple[str, ...] = (),
 ) -> str:
     """The prompt for one expert turn: persona, mode, round, topic and the whole discussion so far."""
     others = ", ".join(f"{e.name} ({e.perspective})" for e in request.experts if e.name != speaker.name)
@@ -128,7 +143,7 @@ def build_turn_prompt(
         f"The other panelists: {others}.\n\n"
         f"{_MODE_BRIEF[request.mode]}\n\n"
         f"This is round {round_no} of {request.rounds}. Keep your turn under 300 words. "
-        "Do not use tools or edit files; answer from your own knowledge.\n\n"
+        f"{_tool_brief(grounded_repos)}\n\n"
         f"## Topic\n{request.topic}\n\n"
         f"{codebase_context}\n\n"
         f"## Discussion so far\n{_transcript(turns)}\n\n"
@@ -291,6 +306,47 @@ async def _speak(
     return {"message_id": placeholder.id, "status": status, "text": text, "stance": stance}
 
 
+async def _prepare_grounding(request: PanelCreateRequest) -> str | None:
+    """Snapshot the named repos for read-only seat access; None when not asked for or nothing could be built."""
+    from staff.workspace import find_repo_checkout
+
+    if not request.repos or not request.ground_repos:
+        return None
+    roots = {repo: root for repo in request.repos if (root := find_repo_checkout(repo)) is not None}
+    if not roots:
+        log.warning("panel grounding requested but no checkout found for %s", request.repos)
+        return None
+    try:
+        return await asyncio.to_thread(build_snapshot, roots)
+    except Exception as exc:  # noqa: BLE001 — a grounding problem degrades the panel, never fails it
+        log.warning("panel grounding snapshot failed: %s", exc)
+        return None
+
+
+def _grounded_repo_names(grounding_dir: str | None) -> tuple[str, ...]:
+    if not grounding_dir:
+        return ()
+    return tuple(sorted(p.name for p in Path(grounding_dir).iterdir() if p.is_dir()))
+
+
+def record_panel_turnover(thread_id: str, topic: str, consensus: bool, rounds_used: int, ok: bool) -> None:
+    """Append a Barb turnover note (scope ``panel``) for a finished panel. Never raises."""
+    try:
+        outcome = "consensus reached" if consensus else "no consensus"
+        get_barb_continuity_store().append_turnover(
+            scope="panel",
+            author="panel-engine",
+            summary=(
+                f"Panel {'complete' if ok else 'failed'} ({outcome}, {rounds_used} round(s)) on: "
+                f"{topic[:200]}. Thread {thread_id}."
+            ),
+            completed=[f"panel thread {thread_id}"] if ok else [],
+            next_actions=[f"Read the synthesis at /api/v1/staff/panels/{thread_id}"],
+        )
+    except Exception as exc:  # noqa: BLE001 — a turnover problem must never fail a panel
+        log.warning("panel %s turnover note not recorded: %s", thread_id, exc)
+
+
 async def run_panel(
     thread_id: str,
     request: PanelCreateRequest,
@@ -305,6 +361,9 @@ async def run_panel(
     turns: list[dict[str, Any]] = []
     rounds_used, consensus = 0, False
     _ACTIVE_PANELS.add(thread_id)
+    grounding_dir = await _prepare_grounding(request)
+    grounding_token = GROUNDING_DIR.set(grounding_dir)
+    grounded_repos = _grounded_repo_names(grounding_dir)
     try:
         try:  # never awaited: the sweep must not hold up or abandon the panel (#1683)
             cli_projects.start_panel_sweep(os.environ)
@@ -314,7 +373,7 @@ async def run_panel(
             round_turns = []
             for expert in request.experts:
                 speaker = _speaker(expert)
-                prompt = build_turn_prompt(request, speaker, round_no, turns, codebase_context)
+                prompt = build_turn_prompt(request, speaker, round_no, turns, codebase_context, grounded_repos)
                 meta = {"is_panel_turn": True, "panel_round": round_no, "panel_expert": speaker.name}
                 record = await _speak(store, thread_id, speaker, prompt, meta, run, turn_timeout)
                 record.update(round=round_no, expert=speaker.name)
@@ -339,11 +398,16 @@ async def run_panel(
             status="complete" if ok else "failed",
             synthesis_message_id=synthesis["message_id"] if ok else None,
         )
+        record_panel_turnover(thread_id, request.topic, consensus, rounds_used, ok)
     except Exception as exc:  # noqa: BLE001 — record the failure on the thread, never leave it "running"
         log.exception("panel %s failed", thread_id)
         _set_panel_state(store, thread_id, status="failed", error=str(exc))
     finally:
         _ACTIVE_PANELS.discard(thread_id)
+        GROUNDING_DIR.reset(grounding_token)
+        if grounding_dir:
+            cli_projects.remove_turn_project(grounding_dir, os.environ)
+            remove_snapshot(grounding_dir)
 
 
 def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | None:
@@ -409,15 +473,18 @@ async def default_turn_runner(
     except KeyError:
         return TurnOutcome(ok=False, error=f"unknown provider {speaker.provider!r}")
     scratch_dir = tempfile.mkdtemp(prefix=PANEL_SCRATCH_PREFIX)
+    grounding_dir = GROUNDING_DIR.get() if speaker.name != MODERATOR_NAME else None
+    workdir = grounding_dir or scratch_dir  # a snapshot is shared by the panel and removed by run_panel
+    tools = GROUNDING_TOOLS if grounding_dir else ()
     env: dict[str, str] = {**os.environ}
     proc = None
     try:
         try:
-            cmd = adapter.chat_argv(prompt=prompt, workdir=scratch_dir, model=speaker.model, read_only_tools=())
+            cmd = adapter.chat_argv(prompt=prompt, workdir=workdir, model=speaker.model, read_only_tools=tools)
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             return TurnOutcome(ok=False, error=str(exc))
         env.update(adapter.runtime_env())
-        proc = spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
+        proc = spawn_cli_process(cmd=cmd, cwd=workdir, env=env)
         bus = get_thread_bus() if message_id is not None else _NULL_BUS
         out = await stream_turn_output(
             reader=LiveProcessReader(proc),

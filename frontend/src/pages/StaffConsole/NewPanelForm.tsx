@@ -40,6 +40,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
   const [presets, setPresets] = useState<PanelPreset[]>([]);
   const [providers, setProviders] = useState<string[]>(DEFAULT_PROVIDERS);
   const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [seatNotes, setSeatNotes] = useState<string[]>([]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -75,17 +76,25 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
 
   const handleSelectPreset = (presetId: string) => {
     setSelectedPresetId(presetId);
+    setSeatNotes([]);
     if (!presetId) return;
     const found = presets.find((p) => p.id === presetId);
     if (!found) return;
 
     const defaultProvider = providers[0] || "claude";
-    const mapped: PanelFormExpert[] = found.experts.map((e) => ({
-      name: e.name,
-      perspective: e.perspective,
-      provider: defaultProvider,
-      model: "",
-    }));
+    const notes: string[] = [];
+    const mapped: PanelFormExpert[] = found.experts.map((e) => {
+      if (!e.provider) return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
+      if (e.available === false || !providers.includes(e.provider)) {
+        // Never swap silently: say which seat fell back, to what, and what it was meant to be.
+        notes.push(
+          `${e.name}: ${e.provider}${e.model ? ` (${e.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
+        );
+        return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
+      }
+      return { name: e.name, perspective: e.perspective, provider: e.provider, model: e.model ?? "" };
+    });
+    setSeatNotes(notes);
     setExperts(mapped);
   };
 
@@ -120,6 +129,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
       confirm_cost: confirmCost,
       pack_id: "cartographer" as const,
       preload_codebase: true,
+      ground_repos: true,
       moderator_provider: providers[0] || "claude",
       experts: experts.map((e) => ({
         name: e.name.trim(),
@@ -181,6 +191,16 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
           ))}
         </select>
       </div>
+
+      {seatNotes.length > 0 && (
+        <div role="status" aria-label="Preset seat fallback" className="panel-form__submit-error">
+          <ul>
+            {seatNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Topic Textarea */}
       <div className="panel-form__field">
