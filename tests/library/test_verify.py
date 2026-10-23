@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
+import httpx
+import pytest
 from library.db import init_library_db
 from library.retrieval_ledger import record_retrievals
 from library.verify import verify_content
+
+
+@pytest.fixture(autouse=True)
+def _local_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    import dashboard_config
+
+    monkeypatch.setattr(dashboard_config, "HOSTNAME", "desk", raising=False)
 
 
 def _indexed(tmp_path: Path) -> tuple[Path, str]:
@@ -110,6 +120,13 @@ def test_verify_requires_run_ledger_membership(tmp_path: Path) -> None:
         ],
     )
     assert verify_content(db, cite, run_id="run-1")["citations"][0]["verified"] is True
+    lib_cite = f"lib://shared/w1/p19@{digest[:8]}#p7-8"
+    assert (
+        verify_content(db, f"Rotational power improves turbine efficiency. {lib_cite}", run_id="run-1")["citations"][0][
+            "verified"
+        ]
+        is True
+    )
 
 
 def test_verify_requires_exact_node_in_run_ledger(tmp_path: Path) -> None:
@@ -134,6 +151,167 @@ def test_verify_requires_exact_node_in_run_ledger(tmp_path: Path) -> None:
     result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}", run_id="run-1")
 
     assert result["citations"][0]["status"] == "node_mismatch"
+    assert result["citations"][0]["verified"] is False
+
+
+def test_remote_citation_does_not_resolve_against_colliding_local_ids(tmp_path: Path, monkeypatch) -> None:
+    db, digest = _indexed(tmp_path)
+    calls = []
+
+    def verify_peer(match, content, *, deadline, fleet_nodes, expected_sha256=None):
+        calls.append((match.group("node"), match.group(0)))
+        return {"citation": match.group(0), "verified": False, "status": "peer_unavailable"}
+
+    monkeypatch.setattr("library.verify._verify_peer_citation", verify_peer, raising=False)
+    cite = f"[ref:other-node:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+
+    result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}")
+
+    assert calls == [("other-node", cite)]
+    assert result["citations"][0]["status"] == "peer_unavailable"
+    assert result["citations"][0]["verified"] is False
+
+
+@pytest.mark.parametrize("fault", [None, "citation", "source", "digest", "page", "timeout", "malformed"])
+def test_remote_citation_uses_only_configured_peer_and_returns_checked_metadata(
+    tmp_path: Path, monkeypatch, fault: str | None
+) -> None:
+    import dashboard_config
+    import library.verify as verifier
+
+    db, digest = _indexed(tmp_path)
+    monkeypatch.setattr(dashboard_config, "FLEET_NODES", {"peer": "https://peer.example"}, raising=False)
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "test-peer-token")
+    cite = f"[ref:peer:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+    observed: dict[str, object] = {}
+    remote_citation = "[ref:other:shared:w1:p19#sha256=00000000:p.7-8]" if fault == "citation" else cite
+    remote_source = "wrong-source" if fault == "source" else "shared"
+    remote_digest = ("f" if digest[0] != "f" else "e") * 64 if fault == "digest" else digest
+    remote_page_start = 6 if fault == "page" else 7
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        observed["url"] = str(request.url)
+        observed["authorization"] = request.headers.get("Authorization")
+        observed["body"] = request.read().decode()
+        if fault == "timeout":
+            raise httpx.ReadTimeout("peer timed out", request=request)
+        if fault == "malformed":
+            return httpx.Response(200, content=b"not-json")
+        return httpx.Response(
+            200,
+            json={
+                "verified": True,
+                "citations": [
+                    {
+                        "citation": remote_citation,
+                        "node": "peer",
+                        "verified": True,
+                        "status": "verified",
+                        "work": {"id": 1, "title": "Remote title"},
+                        "file": {"source_id": remote_source, "sha256": remote_digest},
+                        "passage": {"id": 19, "page_start": remote_page_start, "page_end": 8},
+                    }
+                ],
+                "links": [],
+            },
+        )
+
+    client_type = httpx.Client
+    transport = httpx.MockTransport(handle)
+    monkeypatch.setattr(verifier.httpx, "Client", lambda **kwargs: client_type(transport=transport, **kwargs))
+    result = verify_content(
+        db, f"PRIVATE EARLIER CONTENT {('x' * 600)} Rotational power improves turbine efficiency. {cite}"
+    )
+
+    assert result["citations"][0]["verified"] is (fault is None)
+    if fault is not None:
+        assert result["citations"][0]["status"] == "peer_unavailable"
+    assert observed["url"] == "https://peer.example/api/v1/library/verify"
+    assert observed["authorization"] == "Bearer test-peer-token"
+    body = json.loads(str(observed["body"]))
+    assert body["local_only"] is True
+    assert "PRIVATE EARLIER CONTENT" not in body["content"]
+    assert cite in body["content"]
+
+
+def test_remote_run_reference_is_rejected_before_peer_lookup(tmp_path: Path, monkeypatch) -> None:
+    db, digest = _indexed(tmp_path)
+    cite = f"[ref:peer:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+    monkeypatch.setattr(
+        "library.verify._verify_peer_citation",
+        lambda *args, **kwargs: pytest.fail("peer lookup preceded hub ledger check"),
+    )
+
+    result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}", run_id="run-absent")
+
+    assert result["citations"][0]["status"] == "unretrieved_reference"
+
+
+def test_remote_run_ledger_hash_is_bound_before_peer_lookup(tmp_path: Path, monkeypatch) -> None:
+    db, digest = _indexed(tmp_path)
+    record_retrievals(
+        db,
+        run_id="run-1",
+        references=[
+            {
+                "node": "peer",
+                "source_id": "shared",
+                "work_id": 1,
+                "passage_id": 19,
+                "file_sha256": digest,
+                "page_start": 7,
+                "page_end": 8,
+            }
+        ],
+    )
+    observed: list[set[str] | None] = []
+
+    def verify_peer(match, content, *, deadline, fleet_nodes, expected_sha256):
+        observed.append(expected_sha256)
+        return {"citation": match.group(0), "verified": False, "status": "peer_unavailable"}
+
+    monkeypatch.setattr("library.verify._verify_peer_citation", verify_peer)
+    cite = f"[ref:peer:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+
+    verify_content(db, f"Rotational power improves turbine efficiency. {cite}", run_id="run-1")
+
+    assert observed == [{digest}]
+
+
+def test_peer_local_only_mode_never_forwards_remote_citation(tmp_path: Path, monkeypatch) -> None:
+    db, digest = _indexed(tmp_path)
+    monkeypatch.setattr(
+        "library.verify._verify_peer_citation",
+        lambda *args, **kwargs: pytest.fail("local-only peer verification recursed"),
+    )
+    cite = f"[ref:peer:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+
+    result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}", local_only=True)
+
+    assert result["citations"][0]["status"] == "node_mismatch"
+    assert result["citations"][0]["verified"] is False
+
+
+@pytest.mark.parametrize("configured,token", [(False, "secret"), (True, "")])
+def test_missing_peer_configuration_or_token_fails_without_network(
+    tmp_path: Path, monkeypatch, configured: bool, token: str
+) -> None:
+    import dashboard_config
+    import library.verify as verifier
+
+    db, digest = _indexed(tmp_path)
+    nodes = {"peer": "https://peer.example"} if configured else {}
+    monkeypatch.setattr(dashboard_config, "FLEET_NODES", nodes, raising=False)
+    if token:
+        monkeypatch.setenv("HUB_FLEET_TOKEN", token)
+    else:
+        monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+    monkeypatch.setattr(verifier.httpx, "Client", lambda **kwargs: pytest.fail("unexpected peer request"))
+    cite = f"[ref:peer:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+
+    result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}")
+
+    assert result["citations"][0]["status"] == "peer_unavailable"
     assert result["citations"][0]["verified"] is False
 
 
