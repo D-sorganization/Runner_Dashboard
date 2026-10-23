@@ -481,5 +481,8 @@ def register_standard_actions(registry: ActionRegistry) -> None:
             executor=execute_open_pr,
         ),
     )
+    from staff.dashboard_navigation import register_dashboard_navigation_action
+
+    register_dashboard_navigation_action(registry)
     for ad in standard_defs:
         registry.register(ad)

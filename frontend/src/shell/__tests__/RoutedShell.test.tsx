@@ -11,7 +11,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { act, render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
@@ -249,6 +249,28 @@ describe("RoutedShell — URL is the source of truth", () => {
     await user.click(screen.getByText("go-queue"));
     expect(await screen.findByTestId("pathname")).toHaveTextContent("/work");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
+  });
+
+  it("accepts assistant navigation only for registered tab ids", async () => {
+    renderAt("/");
+    await screen.findByTestId("active-tab");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "queue" } }));
+    });
+    expect(await screen.findByTestId("pathname")).toHaveTextContent("/work");
+    expect(await screen.findByTestId("native-queue")).toBeInTheDocument();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "https://example.com" } }));
+    });
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "/fleet" } }));
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "not-a-real-tab" } }));
+    });
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
   });
 
   it("redirects retired /staff/maxwell bookmarks to the Staff Console (#1338)", async () => {
