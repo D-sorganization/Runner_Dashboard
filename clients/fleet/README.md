@@ -29,6 +29,22 @@ except FleetAPIError as exc:
         ...  # another agent holds the issue, so pick other work
 ```
 
+## Read-Only Library Commands
+
+```bash
+python3 clients/fleet/fleetctl.py library sources
+python3 clients/fleet/fleetctl.py library search "energy transfer" --k 3 --run-id run-123
+python3 clients/fleet/fleetctl.py library fetch '[ref:DeskComputer:shared:w1:p3#sha256=1234abcd:p.3-3]' --run-id run-123
+```
+
+Fetch accepts the canonical citation returned by search. The example is illustrative;
+use a real search result. Search and fetch preserve citation metadata and cap passage
+snippets at 400 UTF-8 bytes. Run IDs must belong to the authenticated caller; when
+omitted, the client uses `STAFF_RUN_ID` if set. Source discovery reports local and
+pooled availability using existing permissions and does not mutate the registry.
+These commands share the unified query implementation; existing flat commands remain
+available. The source/work/page locator form is tracked separately in #2437.
+
 For setup in each agent (Claude Code, Codex, Gemini CLI and Grok Bot), token minting and
 the recommended agent loop, see [`docs/agents/connect.md`](../../docs/agents/connect.md).
 
