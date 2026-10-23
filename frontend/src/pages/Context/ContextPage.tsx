@@ -22,7 +22,16 @@ export interface ContextLesson {
   quarantine_reason?: string;
 }
 
+export interface ContextSkillInfo {
+  name: string;
+  version: string;
+  pin: string;
+  content_hash: string;
+  source_path: string;
+}
+
 export interface ContextRunRecord {
+  skill_pin?: string;
   id: string;
   role: string;
   repo: string;
@@ -39,6 +48,7 @@ export interface ContextRunRecord {
 
 export interface ContextPageProps {
   pack?: ContextPackInfo | null;
+  skills?: ContextSkillInfo[] | null;
   lessons?: ContextLesson[];
   runs?: ContextRunRecord[];
   isLoading?: boolean;
@@ -55,12 +65,16 @@ function requestState<T>(value: T | undefined): RequestState {
 
 export function ContextPage({
   pack: propPack,
+  skills: propSkills,
   lessons: propLessons,
   runs: propRuns,
   error: propError = null,
   onRefresh,
 }: ContextPageProps) {
   const [pack, setPack] = useState<ContextPackInfo | null>(propPack ?? null);
+  const [skills, setSkills] = useState<ContextSkillInfo[]>(propSkills ?? []);
+  const [skillsState, setSkillsState] = useState<RequestState>(propSkills === undefined ? "loading" : propSkills === null ? "unavailable" : "available");
+  const [skillsError, setSkillsError] = useState<string | null>(null);
   const [lessons, setLessons] = useState<ContextLesson[]>(propLessons ?? []);
   const [runs, setRuns] = useState<ContextRunRecord[]>(propRuns ?? []);
   const [packState, setPackState] = useState<RequestState>(requestState(propPack));
@@ -70,9 +84,28 @@ export function ContextPage({
   const [error, setError] = useState<string | null>(propError);
 
   useEffect(() => { if (propPack !== undefined) { setPack(propPack); setPackState(requestState(propPack)); } }, [propPack]);
+  useEffect(() => { if (propSkills !== undefined) { setSkills(propSkills ?? []); setSkillsState(propSkills === null ? "unavailable" : "available"); } }, [propSkills]);
   useEffect(() => { if (propLessons !== undefined) { setLessons(propLessons); setLessonsState(requestState(propLessons)); } }, [propLessons]);
   useEffect(() => { if (propRuns !== undefined) { setRuns(propRuns); setRunsState(requestState(propRuns)); } }, [propRuns]);
   useEffect(() => { if (propError !== undefined) setError(propError); }, [propError]);
+
+  const fetchSkills = async () => {
+    setSkillsState("loading");
+    setSkillsError(null);
+    try {
+      const response = await legacyFetch("/api/v1/staff/skills");
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result: unknown = await response.json();
+      if (typeof result !== "object" || result === null || !("skills" in result) || !Array.isArray(result.skills)) {
+        throw new Error("The service returned an invalid skill registry response.");
+      }
+      setSkills(result.skills as ContextSkillInfo[]);
+      setSkillsState("available");
+    } catch (err: unknown) {
+      setSkillsState("unavailable");
+      setSkillsError(err instanceof Error ? err.message : "Could not load the skill registry.");
+    }
+  };
 
   const fetchData = async () => {
     if (propPack !== undefined && propLessons !== undefined && propRuns !== undefined) return;
@@ -121,6 +154,10 @@ export function ContextPage({
   };
 
   useEffect(() => {
+    if (propSkills === undefined) void fetchSkills();
+  }, [propSkills]);
+
+  useEffect(() => {
     if (propPack === undefined || propLessons === undefined || propRuns === undefined) {
       void fetchData();
     }
@@ -157,7 +194,7 @@ export function ContextPage({
     <div className="p-6 max-w-7xl mx-auto space-y-8 font-sans text-neutral-100">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Fleet Context & Shared Memory</h1>
-        <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, latest per-repo run versions, lesson review queue, and per-run context estimates. AGENTS.md synchronization and Tier-1 pack pins are not reported by the current API.</p>
+        <p className="text-sm text-neutral-400 mt-1">Tier-0 standards pin, current Tier-1 skill registry, latest per-repo run versions, lesson review queue, and per-run context estimates. AGENTS.md synchronization is not reported by the current API.</p>
       </div>
 
       {pack ? (
@@ -179,7 +216,7 @@ export function ContextPage({
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Content Digest</span><span className="font-mono text-xs text-neutral-300 break-all">{pack.digest}</span></div>
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Source Location</span><span className="font-mono text-xs text-neutral-300 break-all">{pack.source_path}</span></div>
           </div>
-          <p className="text-xs text-neutral-400">Tier-1 pack versions are not reported by the current API.</p>
+          <p className="text-xs text-neutral-400">Tier-1 skills are reported separately in the registry below.</p>
         </section>
       ) : (
         <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 text-sm text-neutral-300" role="status">
@@ -187,6 +224,19 @@ export function ContextPage({
           {packState === "unavailable" && <button onClick={onRefresh || fetchData} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry pack data</button>}
         </section>
       )}
+
+      <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-4">
+        <div><h2 className="text-lg font-semibold">Current Tier-1 Skill Packs</h2><p className="text-xs text-neutral-400">Registry versions and content pins from the staff skills API.</p></div>
+        {skillsState === "loading" ? <p className="text-sm text-neutral-400">Loading skill registry &</p> : skillsState === "unavailable" ? <div className="text-sm text-amber-300" role="status">Tier-1 skill registry unavailable{skillsError ? ` (${skillsError})` : ""}.<button onClick={fetchSkills} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry skills</button></div> : skills.length === 0 ? <p className="text-sm text-neutral-400">No Tier-1 skills are currently registered.</p> : (
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {skills.map((skill) => <li key={skill.pin} className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
+              <div className="font-medium text-neutral-200">{skill.name} <span className="font-mono text-xs text-neutral-400">v{skill.version}</span></div>
+              <div className="mt-1 break-all font-mono text-xs text-blue-300">{skill.pin}</div>
+              <div className="mt-1 break-all font-mono text-xs text-neutral-500">{skill.source_path}</div>
+            </li>)}
+          </ul>
+        )}
+      </section>
 
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-4">
         <h2 className="text-lg font-semibold">Standards Pack Version at Latest Recorded Run</h2>
@@ -281,7 +331,7 @@ export function ContextPage({
 
                   return (
                     <tr key={r.id} className="hover:bg-neutral-800/30">
-                      <td className="py-2.5 px-3"><div className="font-mono text-xs font-semibold text-neutral-200">{r.id}</div><div className="text-xs text-neutral-400">{r.role} ({r.repo})</div></td>
+                      <td className="py-2.5 px-3"><div className="font-mono text-xs font-semibold text-neutral-200">{r.id}</div><div className="text-xs text-neutral-400">{r.role} ({r.repo})</div>{r.skill_pin && <div className="mt-1 break-all font-mono text-xs text-neutral-500">Tier-1 skill: {r.skill_pin}</div>}</td>
                       <td className="py-2.5 px-3 font-mono text-xs text-neutral-300">{t0} / {t1Skills} / {t1Lessons}</td>
                       <td className="py-2.5 px-3 font-mono text-xs text-neutral-200 font-medium"><div>{total} known tokens</div>{fullPromptEstimate !== undefined && <div className="mt-1 text-neutral-500">Full prompt: {fullPromptEstimate} (estimate)</div>}</td>
                       <td className="py-2.5 px-3" data-testid={`run-cap-${r.id}`}>
