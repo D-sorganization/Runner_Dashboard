@@ -690,6 +690,7 @@ class FleetClient:
         topic: str | None = None,
         budget: int | None = None,
         k: int | None = None,
+        scope: str | None = None,
     ) -> Any:
         q = _text(query, "query", 512)
         params: dict[str, Any] = {"q": q}
@@ -701,6 +702,9 @@ class FleetClient:
             params["budget"] = _positive_int(budget, "budget")
         if k is not None:
             params["k"] = _positive_int(k, "k")
+        if scope is not None:
+            _check(scope in ("local", "federated"), "scope must be local or federated")
+            params["scope"] = scope
         return self.request("GET", "/api/v1/library/search", params=_compact(params))
 
     def library_work(self, work_id: int) -> Any:
@@ -757,6 +761,7 @@ class FleetClient:
         full: bool = False,
         cite: str | None = None,
         run_id: str | None = None,
+        scope: str | None = None,
     ) -> dict[str, Any]:
         """Unified fleet context query tool (#2223).
 
@@ -777,6 +782,11 @@ class FleetClient:
             "run_id is only supported for library search/fetch or codebase search",
         )
         _check(source != "codebase" or op == "search", "codebase only supports search")
+        _check(
+            scope is None or (source == "library" and op == "search"),
+            "scope is only supported for library search",
+        )
+        _check(scope is None or scope in ("local", "federated"), "scope must be local or federated")
         effective_run_id = run_id
         if effective_run_id is None and source == "library" and op in ("search", "fetch"):
             effective_run_id = os.environ.get("STAFF_RUN_ID")
@@ -897,6 +907,8 @@ class FleetClient:
                 params["repo"] = repo
             if topic:
                 params["topic"] = topic
+            if scope is not None:
+                params["scope"] = scope
             headers = (
                 {"X-Staff-Run-ID": _match(PATTERNS.ident, effective_run_id, "run_id")}
                 if effective_run_id is not None

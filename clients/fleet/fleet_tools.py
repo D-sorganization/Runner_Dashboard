@@ -613,6 +613,11 @@ COMMANDS: tuple[Command, ...] = (
             },
             "repo": REPO,
             "topic": {"type": "string", "description": "Optional topic filter for library queries."},
+            "scope": {
+                "type": "string",
+                "enum": ["local", "federated"],
+                "description": "Optional library search scope; omitted preserves federated shared-only defaults.",
+            },
             "k": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max results to return (capped at 5)."},
             "offset": {"type": "integer", "minimum": 0, "description": "Pagination offset."},
             "full": {
@@ -644,6 +649,11 @@ COMMANDS: tuple[Command, ...] = (
             "query": {"type": "string", "description": "Search query."},
             "repo": REPO,
             "topic": {"type": "string", "description": "Topic filter."},
+            "scope": {
+                "type": "string",
+                "enum": ["local", "federated"],
+                "description": "Optional library search scope; omitted preserves federated shared-only defaults.",
+            },
             "k": {"type": "integer", "minimum": 1, "maximum": 5},
             "offset": {"type": "integer", "minimum": 0},
             "full": {"type": "boolean"},

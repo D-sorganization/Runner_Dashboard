@@ -69,7 +69,7 @@ def _add_library_operations(parser: argparse.ArgumentParser) -> None:
     query = BY_CLI["query"]
     operations = parser.add_subparsers(dest="library_operation", required=True)
     for operation, positional, optional in (
-        ("search", "query", ("repo", "topic", "k", "offset", "full", "run_id")),
+        ("search", "query", ("repo", "topic", "k", "offset", "full", "run_id", "scope")),
         ("sources", None, ()),
     ):
         child = operations.add_parser(operation, help=f"Read-only library {operation}.")

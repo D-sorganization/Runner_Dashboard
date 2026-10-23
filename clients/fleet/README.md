@@ -34,12 +34,15 @@ except FleetAPIError as exc:
 ```bash
 python3 clients/fleet/fleetctl.py library sources
 python3 clients/fleet/fleetctl.py library search "energy transfer" --k 3 --run-id run-123
+python3 clients/fleet/fleetctl.py library search "energy transfer" --scope local
 python3 clients/fleet/fleetctl.py library fetch '[ref:DeskComputer:shared:w1:p3#sha256=1234abcd:p.3-3]' --run-id run-123
 python3 clients/fleet/fleetctl.py library fetch desk-x9-library 42 --page 3
 python3 clients/fleet/fleetctl.py library fetch desk-x9-library 42 --page 3 --scope federated --run-id run-123
 python3 clients/fleet/fleetctl.py library verify --file docs/report.md --run-id run-123
 ```
 
+Library search omits scope by default, preserving federated shared-only behavior. Pass
+`--scope local` to search private local material, or `--scope federated` explicitly.
 Fetch accepts either the canonical citation returned by search or a source id, work id,
 and one-based page locator. The citation example is illustrative; use a real search
 result. Locator fetch defaults to local scope so a private local source can be read

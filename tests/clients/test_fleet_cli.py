@@ -299,3 +299,32 @@ def test_library_fetch_locator_accepts_explicit_node(capsys: pytest.CaptureFixtu
         "scope": "local",
         "node": "OGLaptop",
     }
+
+
+def test_library_search_scope_is_explicit_and_defaults_unchanged(
+    capsys: pytest.CaptureFixture[str], fake_api: Any
+) -> None:
+    code, _ = _run(capsys, fake_api, "library", "search", "private topic", "--scope", "local")
+
+    assert code == 0
+    assert fake_api.last.path == "/api/v1/library/search"
+    assert fake_api.last.query["scope"] == "local"
+
+    code, _ = _run(capsys, fake_api, "library", "search", "shared topic")
+
+    assert code == 0
+    assert "scope" not in fake_api.last.query
+
+
+def test_unified_library_search_scope_rejected_for_other_sources(
+    capsys: pytest.CaptureFixture[str], fake_api: Any
+) -> None:
+    code, _ = _run(capsys, fake_api, "query", "--source", "library", "--query", "private topic", "--scope", "local")
+
+    assert code == 0
+    assert fake_api.last.query["scope"] == "local"
+
+    code, out = _run(capsys, fake_api, "query", "--source", "knowledge", "--query", "topic", "--scope", "local")
+
+    assert code == 2
+    assert "only supported for library search" in out["message"]
