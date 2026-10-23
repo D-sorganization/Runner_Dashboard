@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
+python3 "$root/scripts/agent-bus-hook-bridge.py" pre-push || true
 exec python3 "$root/scripts/pre_push_agent_check.py"
