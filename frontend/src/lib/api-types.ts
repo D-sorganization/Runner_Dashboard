@@ -9443,6 +9443,8 @@ export interface components {
              * @default true
              */
             preload_codebase: boolean;
+            /** Quorum */
+            quorum?: number | null;
             /** Repos */
             repos?: string[] | null;
             /**
