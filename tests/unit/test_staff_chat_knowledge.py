@@ -21,6 +21,8 @@ from staff.conversations import (
 from staff.roles import RoleSpec
 from staff.thread_bus import reset_thread_bus
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def conv_store(tmp_path: Path) -> ConversationStore:
@@ -187,6 +189,7 @@ async def test_chat_turn_execution_carries_knowledge_block(
 
     with (
         patch.object(runner, "_spawn_cli_process", side_effect=mock_spawn),
+        patch("staff.chat.version_gate", return_value=None),
         patch("staff.chat.load_roles", return_value={"disciple": disciple_role}),
     ):
         result = await runner.execute_turn(

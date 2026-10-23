@@ -94,6 +94,11 @@ def build_cartographer_pack(repos: Mapping[str, Path], output: Path | None = Non
     return build_pack(manifest, clean, pack_path)
 
 
+def cartographer_manifest(repos: Mapping[str, Path]) -> PackManifest:
+    """Return the authoritative fixed-source manifest for configured checkout roots."""
+    return _manifest(repos)[1]
+
+
 def estimate_context_tokens(text: str) -> int:
     """Use UTF-8 bytes as a conservative upper bound for byte-token models."""
     if not isinstance(text, str):
