@@ -61,9 +61,6 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   activeMenuRef.current = activeMenu;
   const prevThreadIdRef = useRef(threadId);
   const conversationOpeningRef = useRef(false);
-  const conversationWasOpeningRef = useRef(false);
-  conversationWasOpeningRef.current = conversationOpeningRef.current;
-  conversationOpeningRef.current = conversationOpening;
   const latestTextRef = useRef(text);
   latestTextRef.current = text;
 
@@ -80,7 +77,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
     const previousThreadId = prevThreadIdRef.current;
     const saved = getDraft(threadId);
     const keepNew = previousThreadId === "new" && threadId !== "new" && !saved && latestTextRef.current.trim().length > 0;
-    const keepHandoffDraft = (conversationOpeningRef.current || conversationWasOpeningRef.current) && latestTextRef.current.trim().length > 0;
+    const keepHandoffDraft = conversationOpeningRef.current && !saved && latestTextRef.current.trim().length > 0;
     const nextText = keepNew || keepHandoffDraft ? latestTextRef.current : saved;
     if (keepNew) { saveDraft(threadId, nextText); clearDraft("new"); }
     else if (keepHandoffDraft) saveDraft(threadId, nextText);
@@ -92,6 +89,10 @@ export const Composer: React.FC<ComposerComponentProps> = ({
     setIdempotencyKey(null);
     setActiveMenu(null);
   }, [threadId]);
+
+  useEffect(() => {
+    conversationOpeningRef.current = conversationOpening;
+  }, [conversationOpening]);
 
   // Handle external prefill (e.g. empty-state suggestion chips)
   useEffect(() => {

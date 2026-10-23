@@ -255,6 +255,45 @@ describe("Composer Component", () => {
     );
   });
 
+  it("preserves a handoff draft in StrictMode when completion changes the thread", () => {
+    const { rerender } = render(
+      <React.StrictMode>
+        <Composer threadId="old-thread" conversationOpening roles={MOCK_ROLES} onSendMessage={vi.fn()} />
+      </React.StrictMode>,
+    );
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+    fireEvent.change(textarea, { target: { value: "Keep this for the restored conversation" } });
+
+    rerender(
+      <React.StrictMode>
+        <Composer threadId="restored-thread" roles={MOCK_ROLES} onSendMessage={vi.fn()} />
+      </React.StrictMode>,
+    );
+
+    expect(textarea).toHaveValue("Keep this for the restored conversation");
+    expect(localStorage.getItem("staff-console:draft:restored-thread")).toBe(
+      "Keep this for the restored conversation",
+    );
+  });
+
+  it("keeps both thread drafts when the destination already has saved text", () => {
+    localStorage.setItem("staff-console:draft:old-thread", "Original saved draft");
+    localStorage.setItem("staff-console:draft:restored-thread", "Destination draft");
+    const { rerender } = render(
+      <Composer threadId="old-thread" conversationOpening roles={MOCK_ROLES} onSendMessage={vi.fn()} />,
+    );
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+    fireEvent.change(textarea, { target: { value: "Updated outgoing draft" } });
+
+    rerender(
+      <Composer threadId="restored-thread" roles={MOCK_ROLES} onSendMessage={vi.fn()} />,
+    );
+
+    expect(textarea).toHaveValue("Destination draft");
+    expect(localStorage.getItem("staff-console:draft:old-thread")).toBe("Updated outgoing draft");
+    expect(localStorage.getItem("staff-console:draft:restored-thread")).toBe("Destination draft");
+  });
+
   it("stages files via the + button into the Librarian intake queue and includes attachment metadata on send (#2540)", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
