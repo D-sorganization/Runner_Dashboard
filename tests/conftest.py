@@ -462,6 +462,8 @@ def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
         "staff.cli_oauth_session.provider_oauth_session_alive",
         "staff.provider_dispatch_preflight.provider_oauth_session_alive",
         "staff.provider_auth_preflight.provider_oauth_session_alive",
+        # Runs ``agy`` itself when the host has it on PATH (#2501).
+        "staff.cli_oauth_session.antigravity_oauth_session_alive",
     ):
         monkeypatch.setattr(target, alive)
     # The host's real token expiry / refresh state must not reach the probe (#2501):
