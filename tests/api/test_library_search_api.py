@@ -15,6 +15,10 @@ _XHR = {"X-Requested-With": "XMLHttpRequest"}
 
 
 def _app(tmp_path: Path, monkeypatch) -> FastAPI:
+    import dashboard_config
+
+    monkeypatch.setattr(dashboard_config, "HOSTNAME", "desk", raising=False)
+    monkeypatch.setattr(dashboard_config, "FLEET_NODES", {}, raising=False)
     cfg = tmp_path / "collections.yml"
     cfg.write_text("repos: {}\ntopics:\n  Golf:\n    folders: [Golf]\n")
     monkeypatch.setenv("LIBRARY_COLLECTIONS_PATH", str(cfg))
@@ -54,5 +58,19 @@ def test_library_verify_endpoints(tmp_path: Path, monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["citations"][0]["status"] == "citation_not_found"
+    local_response = client.post("/api/v1/library/verify", json={"content": cite, "local_only": True}, headers=_XHR)
+    assert local_response.status_code == 200
+    assert local_response.json()["citations"][0]["status"] == "citation_not_found"
+    remote_local_only = client.post(
+        "/api/v1/library/verify",
+        json={"content": cite.replace("desk", "peer"), "local_only": True},
+        headers=_XHR,
+    )
+    assert remote_local_only.status_code == 200
+    assert remote_local_only.json()["citations"][0]["status"] == "node_mismatch"
+    assert (
+        client.post("/api/v1/library/verify", json={"content": cite, "local_only": "yes"}, headers=_XHR).status_code
+        == 422
+    )
     assert client.get("/api/v1/library/verify", params={"cite": "not-a-citation"}, headers=_XHR).status_code == 422
     assert client.post("/api/v1/library/verify", json={"content": 123}, headers=_XHR).status_code == 422
