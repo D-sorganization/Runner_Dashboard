@@ -39,3 +39,59 @@ Any agent (`grok-barb`, `codex-barb`, `claude-barb`, `agy-barb`, `cursor-barb`, 
 - `barb:night-watch`
 
 Releasing a lease (`POST /api/v1/staff/barb/leases/release`) enforces a **turnover compliance check**: the holder must have logged a turnover entry during the shift (`POST /api/v1/staff/barb/turnover`) or provide `turnover_summary` inline on release.
+
+## 5. Current Fleet Empirical Capability State (Audit 2026-10-23)
+
+**Data Source:** `/api/staff/report-cards` (14-day rolling window; 170 terminal runs analyzed)  
+**Audit Method:** Zero-LLM-cost analysis; Wilson 95% confidence intervals; empirical first-pass success rates
+
+### CLI Agent Capability Leaderboard
+
+| Rank | Provider | Model | First-Pass Success | Grade | Sample | Key Metrics |
+|---|---|---|---|---|---|---|
+| **1** | claude | default | 57% [47–67%] | **B** | 93 runs | High rework (43%); suitable for complex roles (`chief-architect`, `pr-remediator`, `code-reviewer`) |
+| **2** | claude | sonnet | 25% [5–70%] | **D** | 4 runs | Low sample; auth issues; avoid until stabilized |
+| **3** | codex | gpt-6-luna | 30% [17–48%] | **D** | 30 runs | 79% token waste; skill loading errors (design-by-contract YAML); 1 cli_missing failure on DeskComputer |
+| **4** | antigravity | gemini-3.8-flash-high | 16.7% [5–45%] | **F** | 12 runs | 93% token waste; unsuitable for complex tasks; read-only triage only (night-watch, sanitation, bean-counter) |
+| **5** | codex | default | 13.8% [6–31%] | **D/F** | 29 runs | 86% rework; similar failures as gpt-6-luna |
+
+**Routing Recommendation:**
+- **Primary:** `claude` (default) for all standard & complex workloads (57% first-pass yield).
+- **Secondary:** `antigravity` for advisory/read-only triage only (16% success; high token waste).
+- **Avoid Until Fixed:** `codex` (binary missing on DeskComputer; skill loading errors; 79–89% token waste).
+- **Avoid:** `claude` (sonnet) until leaderboard sample size >20 runs and auth issues resolved.
+
+### Fleet Node Status & Auth Alerts (2026-10-23T05:35Z)
+
+| Node | Status | claude Auth | codex Auth | antigravity Auth | pr-remediator Status |
+|---|---|---|---|---|---|
+| **DeskComputer** | ✅ Online | ⚠️ Expiring (~2.5h) | ✅ OK | ⚠️ Stale (131d) | running |
+| **ControlTower** | ✅ Online | ⚠️ Expiring (~1.8h) | ✅ OK | ⚠️ Stale (131d) | running |
+| **Brick** | ✅ Online | ❌ **Expired** (2026-10-15) | ✅ OK | ✅ OK | ❌ **DEAD** (liveness stale 7d) |
+| **OGLaptop** | ❌ **OFFLINE** | — | — | — | — |
+
+**Critical Actions (Next 2 Hours):**
+- Refresh claude OAuth on DeskComputer, ControlTower, Brick (see `docs/runbooks/durable-provider-credentials.md`).
+- Refresh antigravity subscription token on all nodes (stale >90 days).
+- Restore codex binary on DeskComputer or route tasks to ControlTower/Brick.
+- Fix codex skills: verify `~/.codex/skills/design-by-contract/SKILL.md` YAML frontmatter (must start/end with `---`).
+
+### barb-operator SKILL.md Installation Status
+
+✅ **Claimed Deployed:** Recent turnover (grok-barb, 2026-10-23T05:19:38Z) states "Installed universal barb-operator SKILL.md across codex, claude, gemini, and cursor on all 4 nodes" (PR RD #2285, PR RM #2364).
+
+⏳ **Verification Deferred:** Headless CLI cannot verify GUI app skill installations; requires interactive desktop session. Expected paths:
+- `~/.claude/skills/barb-operator/SKILL.md` (Claude Desktop)
+- `~/.codex/skills/barb-operator/SKILL.md` (Codex Desktop)
+- `~/.gemini/skills/barb-operator/SKILL.md` (Gemini/Antigravity Desktop)
+- `~/.cursor/skills/barb-operator/SKILL.md` (Cursor Desktop)
+
+**Source of Truth:** `Repository_Management/skills/fleet/barb-operator/SKILL.md` (universal skill for all desktop personas).
+
+### Handoff Protocol & Multi-Barb Continuity
+
+✅ **Live & Active:** 6 scoped Barb roles, 6 app personas, active lease enforcement, turnover compliance checks.
+
+⚠️ **Compliance Alert:** `rd-barb` currently holds `barb:dispatch-coordinator` lease (expires 2026-10-23T07:19:38Z) **without logged turnover**. Must release lease with `turnover_summary` or pending turnover entry before expiration.
+
+**See Also:** `AGENTS.md` → Fleet Core Rules → PR Lifecycle; lane-prs.md for concurrent Barb role checkout patterns.
