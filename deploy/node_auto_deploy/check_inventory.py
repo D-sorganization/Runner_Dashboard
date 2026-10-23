@@ -48,7 +48,7 @@ def normalize_latest_check_runs(checks: list[dict[str, Any]], expected_sha: str)
     sha = normalize_commit_sha(expected_sha)
     if sha is None:
         raise CheckInventoryUnavailable("expected check inventory commit is invalid")
-    groups: dict[tuple[int, int, str], list[tuple[int, datetime | None, dict[str, Any]]]] = {}
+    groups: dict[tuple[int, int, str], list[tuple[int, dict[str, Any]]]] = {}
     for record in checks:
         if validate_check_run_record(record) is not None:
             raise CheckInventoryUnavailable("check inventory contains a malformed record")
@@ -73,21 +73,17 @@ def normalize_latest_check_runs(checks: list[dict[str, Any]], expected_sha: str)
         name = record.get("name")
         if "started_at" not in record:
             raise CheckInventoryUnavailable("check inventory is missing started_at")
-        started = _started_at(record.get("started_at"))
+        _started_at(record.get("started_at"))
         if run_id is None or app_id is None or suite_id is None or not isinstance(name, str) or not name:
             raise CheckInventoryUnavailable("check inventory has invalid attempt identity metadata")
-        groups.setdefault((app_id, suite_id, name), []).append((run_id, started, record))
+        groups.setdefault((app_id, suite_id, name), []).append((run_id, record))
 
     latest: list[dict[str, Any]] = []
     for attempts in groups.values():
         attempts.sort(key=lambda item: item[0])
-        previous_started: datetime | None = None
-        for _, started, _ in attempts:
-            if started is not None and previous_started is not None and started < previous_started:
-                raise CheckInventoryUnavailable("check-run ids and started_at are not monotonic")
-            if started is not None:
-                previous_started = started
-        latest.append(attempts[-1][2])
+        # IDs identify creation order; start timestamps from parallel checks
+        # can legitimately be out of order within one suite/name group.
+        latest.append(attempts[-1][1])
     return latest
 
 

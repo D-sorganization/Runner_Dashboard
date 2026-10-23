@@ -14,6 +14,7 @@ from node_auto_deploy.runner import CycleDeps, _check_runs_for_commit  # noqa: E
 from node_auto_deploy.state import AutoDeployState  # noqa: E402
 
 SHA = "a" * 40
+B79_SHA = "b79b270ce6dc520c84dfe4f3267f52999b9ed0e8"  # pragma: allowlist secret
 
 
 def _run(identifier: int, conclusion: str = "success") -> dict:
@@ -54,9 +55,9 @@ def _api_run(
     }
 
 
-def _fetch(get):
+def _fetch(get, sha: str = SHA):
     deps = CycleDeps(get, lambda: [], lambda: {}, lambda: 0, AutoDeployState())
-    return _check_runs_for_commit(deps, "owner/repo", SHA)
+    return _check_runs_for_commit(deps, "owner/repo", sha)
 
 
 def test_failure_on_second_page_blocks_deployment() -> None:
@@ -288,28 +289,43 @@ def test_missing_or_malformed_attempt_metadata_fails_closed(bad_field: str) -> N
         _fetch(lambda _: {"total_count": 1, "check_runs": [check]})
 
 
-def test_check_run_id_order_must_agree_with_known_start_timestamps() -> None:
-    checks = [
-        _api_run(
-            100,
-            name="Docker build",
-            conclusion="failure",
-            status="completed",
-            suite_id=10,
-            started_at="2026-10-23T03:01:00Z",
-        ),
-        _api_run(
-            101,
-            name="Docker build",
-            conclusion="success",
-            status="completed",
-            suite_id=10,
-            started_at="2026-10-23T03:00:00Z",
-        ),
-    ]
+@pytest.mark.parametrize("reverse", [False, True])
+def test_parallel_same_suite_checks_allow_nonmonotonic_start_times(reverse: bool) -> None:
+    # Redacted exact record metadata from b79b270: GitHub assigned the newer
+    # skipped CheckRun an earlier start (and completion) time than the success.
+    earlier_id = _api_run(
+        120258276607,
+        name="tests",
+        conclusion="success",
+        status="completed",
+        suite_id=108160610760,
+        started_at="2026-10-23T05:30:06Z",
+    )
+    earlier_id.update(
+        head_sha=B79_SHA,
+        completed_at="2026-10-23T05:30:09Z",
+        app={"id": 15368, "slug": "github-actions"},
+    )
+    newer_id = _api_run(
+        120258277376,
+        name="tests",
+        conclusion="skipped",
+        status="completed",
+        suite_id=108160610760,
+        started_at="2026-10-23T05:30:04Z",
+    )
+    newer_id.update(
+        head_sha=B79_SHA,
+        completed_at="2026-10-23T05:30:03Z",
+        app={"id": 15368, "slug": "github-actions"},
+    )
+    checks = [earlier_id, newer_id]
+    if reverse:
+        checks.reverse()
 
-    with pytest.raises(RuntimeError, match="monotonic"):
-        _fetch(lambda _: {"total_count": 2, "check_runs": checks})
+    fetched = _fetch(lambda _: {"total_count": 2, "check_runs": checks}, B79_SHA)
+
+    assert fetched == [newer_id]
 
 
 def test_raw_check_cap_is_enforced_before_attempt_normalization() -> None:
