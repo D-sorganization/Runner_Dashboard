@@ -20,6 +20,7 @@ import type { ShellAction } from "./DesktopShell"
 export function buildShellActions(
   isLoggedIn: boolean,
   onLoggedOut: () => void = () => window.location.reload(),
+  onLogoutFailed: () => void = () => {},
 ): ShellAction[] {
   return [
     {
@@ -41,8 +42,11 @@ export function buildShellActions(
             method: "POST",
             headers: { "X-Requested-With": "XMLHttpRequest" },
           })
-            .then(() => onLoggedOut())
-            .catch(() => onLoggedOut())
+            .then((response) => {
+              if (response.ok) onLoggedOut()
+              else onLogoutFailed()
+            })
+            .catch(() => onLogoutFailed())
         } else {
           window.location.href = "/api/auth/github"
         }

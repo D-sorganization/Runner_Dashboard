@@ -74,6 +74,7 @@ describe("SessionExpiredDialog", () => {
       method: "POST",
       credentials: "include",
       cache: "no-store",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
     });
   });
 });

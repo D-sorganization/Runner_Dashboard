@@ -40,6 +40,18 @@ describe("buildShellActions", () => {
   beforeEach(() => {
     window.localStorage.clear()
   })
+
+  it.each([403, 503, "network"])("reports failed logout (%s) without claiming success", async (failure) => {
+    const onLoggedOut = vi.fn()
+    const onLogoutFailed = vi.fn()
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+    if (failure === "network") fetchMock.mockRejectedValue(new TypeError("Network unavailable"))
+    else fetchMock.mockResolvedValue(new Response(null, { status: failure as number }))
+    const auth = buildShellActions(true, onLoggedOut, onLogoutFailed).find((a) => a.id === "auth")!
+    auth.onClick()
+    await vi.waitFor(() => expect(onLogoutFailed).toHaveBeenCalledTimes(1))
+    expect(onLoggedOut).not.toHaveBeenCalled()
+  })
   afterEach(() => {
     vi.restoreAllMocks()
   })

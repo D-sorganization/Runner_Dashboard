@@ -281,6 +281,7 @@ export function AppShell({
   // Reactive dashboard-session state (#842): the topbar Login/Logout label
   // derives from this hook, so it updates on focus / visibility / logout.
   const { loggedIn, refresh: refreshSession } = useSession();
+  const { showToast } = useToast();
 
   // Per-tab intro header dismissal (#822).
   const [dismissedIntros, setDismissedIntros] = React.useState<
@@ -403,7 +404,9 @@ export function AppShell({
     <DesktopShell
       activeTabId={activeTab}
       onSelect={onSelectTab}
-      actions={buildShellActions(loggedIn, refreshSession)}
+      actions={buildShellActions(loggedIn, refreshSession, () => {
+        showToast("Could not sign out. Please try again.", { variant: "error" });
+      })}
       helpAbout={<HelpAbout onNavigate={onSelectTab} />}
       intro={introNode}
       headerExtra={

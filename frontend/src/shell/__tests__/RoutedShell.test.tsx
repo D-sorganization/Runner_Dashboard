@@ -18,6 +18,7 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 // --- Mocks: keep the test light and focused on routing -------------------
 
 const breakpointMock = vi.fn(() => "lg");
+const sessionMock = vi.fn(() => ({ loggedIn: false, refresh: vi.fn() }));
 
 
 vi.mock("../../pages/Analysis", () => ({
@@ -150,7 +151,7 @@ vi.mock("../../hooks/useBreakpoint", async (orig) => {
 });
 
 vi.mock("../../hooks/useSession", () => ({
-  useSession: () => ({ loggedIn: false, refresh: vi.fn() }),
+  useSession: () => sessionMock(),
 }));
 
 vi.mock("../../lib/useProviderRegistry", () => ({
@@ -169,10 +170,12 @@ vi.mock("../DesktopShell", () => ({
     activeTabId: string;
     onSelect: (id: string) => void;
     children: React.ReactNode;
+    actions?: Array<{ id: string; label: string; onClick: () => void }>;
   }) => (
     <div>
       <span data-testid="active-tab">{props.activeTabId}</span>
       <button onClick={() => props.onSelect("queue")}>go-queue</button>
+      {props.actions?.map(action => <button key={action.id} onClick={action.onClick}>{action.label}</button>)}
       {props.children}
     </div>
   ),
@@ -222,12 +225,28 @@ describe("RoutedShell — URL is the source of truth", () => {
     cleanup();
     localStorage.clear();
     breakpointMock.mockReturnValue("lg");
+    sessionMock.mockReturnValue({ loggedIn: false, refresh: vi.fn() });
   });
 
   it("derives the default tab from the root path", async () => {
     renderAt("/");
     expect(await screen.findByTestId("active-tab")).toHaveTextContent("staff");
     expect(await screen.findByTestId("native-staff")).toBeInTheDocument();
+  });
+
+  it("shows an accessible error when sign-out fails instead of silently refreshing", async () => {
+    const refresh = vi.fn();
+    sessionMock.mockReturnValue({ loggedIn: true, refresh });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
+    try {
+      renderAt("/t/queue", { withToaster: true });
+      await userEvent.setup().click(screen.getByRole("button", { name: "Logout" }));
+      const message = await screen.findByText("Could not sign out. Please try again.");
+      expect(message.closest('[role="alert"]')).not.toBeNull();
+      expect(refresh).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("derives the active tab from the /t/:tabId param", async () => {
