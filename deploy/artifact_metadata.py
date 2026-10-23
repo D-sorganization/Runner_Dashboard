@@ -79,7 +79,10 @@ def build_static_asset_manifest(dist_dir: Path) -> dict[str, object]:
         if len(entries) >= _MAX_STATIC_ASSET_FILES:
             raise ValueError(f"static asset manifest exceeds {_MAX_STATIC_ASSET_FILES} entries")
 
-        size = path.stat().st_size
+        try:
+            size = path.stat().st_size
+        except OSError as exc:
+            raise ValueError("static asset changed while building manifest") from exc
         if size > _MAX_STATIC_ASSET_FILE_BYTES:
             raise ValueError("static asset exceeds per-file manifest limit")
         total_bytes += size
@@ -88,11 +91,18 @@ def build_static_asset_manifest(dist_dir: Path) -> dict[str, object]:
 
         digest = hashlib.sha256()
         bytes_read = 0
-        with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
-                bytes_read += len(chunk)
-                digest.update(chunk)
-        if bytes_read != size:
+        try:
+            with path.open("rb") as stream:
+                while bytes_read < size:
+                    chunk = stream.read(min(1024 * 1024, size - bytes_read))
+                    if not chunk:
+                        break
+                    bytes_read += len(chunk)
+                    digest.update(chunk)
+            current_size = path.stat().st_size
+        except OSError as exc:
+            raise ValueError("static asset changed while building manifest") from exc
+        if bytes_read != size or current_size != size:
             raise ValueError("static asset changed while building manifest")
         entries.append({"path": relative.as_posix(), "size_bytes": size, "sha256": digest.hexdigest()})
 
