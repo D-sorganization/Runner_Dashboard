@@ -6,7 +6,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Composer } from "../Composer";
 import type { StaffRoleItem } from "../types";
 
@@ -308,6 +308,121 @@ describe("Composer Component", () => {
         }),
       );
     });
+    fetchMock.mockRestore();
+  });
+
+  it("shows a pending upload and blocks both button and Enter sends until it settles", async () => {
+    let resolveUpload!: (response: Response) => void;
+    const upload = new Promise<Response>((resolve) => { resolveUpload = resolve; });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(upload);
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+    render(<Composer threadId="thread-pending-upload" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    try {
+      fireEvent.change(screen.getByTestId("composer-file-input"), {
+        target: { files: [new File(["notes"], "pending.md", { type: "text/markdown" })] },
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const attachment = await screen.findByTestId("composer-attachment-pending.md");
+      expect(attachment).toHaveTextContent(/uploading/i);
+      fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review this file" } });
+
+      expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+      fireEvent.keyDown(screen.getByPlaceholderText(/message barb/i), { key: "Enter" });
+      expect(onSend).not.toHaveBeenCalled();
+    } finally {
+      resolveUpload({ ok: true, status: 200, json: async () => ({ id: 31, sha256: "pending" }) } as Response);
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("does not retry a failed message while an attachment upload is pending", async () => {
+    let resolveUpload!: (response: Response) => void;
+    const upload = new Promise<Response>((resolve) => { resolveUpload = resolve; });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(upload);
+    const onSend = vi.fn().mockRejectedValueOnce(new Error("temporary failure"));
+    render(<Composer threadId="thread-pending-retry" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    try {
+      fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review later" } });
+      fireEvent.click(screen.getByRole("button", { name: /send/i }));
+      await screen.findByRole("alert");
+      fireEvent.change(screen.getByTestId("composer-file-input"), {
+        target: { files: [new File(["notes"], "retry.md", { type: "text/markdown" })] },
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      const retry = screen.getByRole("button", { name: /^retry$/i });
+      expect(retry).toBeDisabled();
+      fireEvent.click(retry);
+      fireEvent.keyDown(screen.getByPlaceholderText(/message barb/i), { key: "Enter" });
+      expect(onSend).toHaveBeenCalledTimes(1);
+    } finally {
+      resolveUpload({ ok: true, status: 200, json: async () => ({ id: 32, sha256: "retry" }) } as Response);
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("does not restore an attachment removed while its upload is pending", async () => {
+    let resolveUpload!: (response: Response) => void;
+    const upload = new Promise<Response>((resolve) => { resolveUpload = resolve; });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(upload);
+    render(<Composer threadId="thread-removed-pending" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+
+    try {
+      fireEvent.change(screen.getByTestId("composer-file-input"), {
+        target: { files: [new File(["notes"], "removed.md", { type: "text/markdown" })] },
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      const attachment = await screen.findByTestId("composer-attachment-removed.md");
+      fireEvent.click(within(attachment).getByRole("button", { name: /remove removed.md/i }));
+      expect(screen.queryByTestId("composer-attachment-removed.md")).not.toBeInTheDocument();
+
+      resolveUpload({ ok: true, status: 200, json: async () => ({ id: 33, sha256: "removed" }) } as Response);
+      await waitFor(() => expect(screen.queryByTestId("composer-attachment-removed.md")).not.toBeInTheDocument());
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("shows HTTP intake rejection and prevents sending an omitted attachment", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({ ok: false, status: 503 } as Response);
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+    render(<Composer threadId="thread-http-upload-failure" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Please review this file" } });
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["notes"], "offline.md", { type: "text/markdown" })] },
+    });
+
+    const attachment = await screen.findByTestId("composer-attachment-offline.md");
+    expect(attachment).toHaveClass("staff-composer__chip--rejected");
+    expect(attachment).toHaveTextContent("Upload failed (503)");
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+    expect(onSend).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("keeps a failed intake upload visible and blocks a send that would omit the file", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+    render(<Composer threadId="thread-upload-failure" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review this attachment" } });
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["notes"], "notes.md", { type: "text/markdown" })] },
+    });
+
+    const attachment = await screen.findByTestId("composer-attachment-notes.md");
+    await waitFor(() => expect(attachment).toHaveClass("staff-composer__chip--rejected"));
+    expect(attachment).toHaveTextContent(/failed/i);
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /remove notes.md/i }));
+    expect(screen.getByRole("button", { name: /send/i })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0].meta).toBeUndefined();
     fetchMock.mockRestore();
   });
 });

@@ -59,6 +59,11 @@ export function StaffConsoleDesktop({
   );
   const [showRoster, setShowRoster] = useState(!chatFirst);
   const [composerPrefill, setComposerPrefill] = useState("");
+  const [prefillSeq, setPrefillSeq] = useState(0);
+  const applyComposerPrefill = (nextText: string) => {
+    setComposerPrefill(nextText);
+    setPrefillSeq((n) => n + 1);
+  };
   const { roles, activeThread, currentRole } = sc;
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
   // Readiness comes only from the backend's providers and schedule reports (#1804).
@@ -265,6 +270,7 @@ export function StaffConsoleDesktop({
               focusOnThreadChange
               isPanel={isPanelThread(activeThread)}
               prefilledText={composerPrefill}
+              prefillSeq={prefillSeq}
             />
           </>
         ) : (
@@ -290,7 +296,7 @@ export function StaffConsoleDesktop({
                         key={text}
                         type="button"
                         className="staff-console__suggestion-chip"
-                        onClick={() => setComposerPrefill(text)}
+                        onClick={() => applyComposerPrefill(text)}
                       >
                         {text}
                       </button>
@@ -299,7 +305,7 @@ export function StaffConsoleDesktop({
                   {chatFirst && (
                     <div className="staff-console__project-starters" aria-label="Project starters">
                       {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
-                        <button key={project} type="button" className="staff-console__project-starter" aria-label={`Start ${project}`} onClick={() => setComposerPrefill(prompt)}>
+                        <button key={project} type="button" className="staff-console__project-starter" aria-label={`Start ${project}`} onClick={() => applyComposerPrefill(prompt)}>
                           <span>Start with {project}</span>
                           <span>Prepare a test-first triage</span>
                         </button>
@@ -317,6 +323,7 @@ export function StaffConsoleDesktop({
               placeholder="Message Barb or type /dispatch…"
               autoFocus={chatFirst}
               prefilledText={composerPrefill}
+              prefillSeq={prefillSeq}
             />
           </>
         )}

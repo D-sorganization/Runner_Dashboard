@@ -170,7 +170,7 @@ export async function uploadIntakeFile(
       return { ...base, status: "rejected", error: `Upload failed (${resp.status})` };
     }
   } catch {
-    // Fallback when offline/mocked without fetch handler
+    return { ...base, status: "rejected", error: "Upload failed. Remove this file and choose it again to retry." };
   }
-  return base;
+  return { ...base, status: "rejected", error: "Upload did not complete. Remove this file and choose it again to retry." };
 }

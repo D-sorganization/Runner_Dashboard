@@ -26,6 +26,7 @@ import { MicGlyph } from "../decompIcons";
 
 interface ComposerComponentProps extends BaseComposerProps {
   prefilledText?: string;
+  prefillSeq?: number;
 }
 
 export const Composer: React.FC<ComposerComponentProps> = ({
@@ -40,6 +41,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   autoFocus = false,
   isPanel = false,
   prefilledText,
+  prefillSeq = 0,
 }) => {
   const [text, setText] = useState<string>(() => getDraft(threadId));
   const [sendState, setSendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
@@ -89,7 +91,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       saveDraft(threadId, prefilledText);
       textareaRef.current?.focus();
     }
-  }, [prefilledText, threadId]);
+  }, [prefilledText, prefillSeq, threadId]);
 
   // SC-D9: after a thread switch, keyboard focus follows the conversation.
   const focusedThreadRef = useRef(threadId);
@@ -195,19 +197,36 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   };
 
   const attachedItems = useMemo(() => attachments.filter((a) => a.status === "attached"), [attachments]);
+  const hasUnsettledAttachments = attachments.some((item) => item.status !== "attached");
   const stageFiles = async (files: FileList | null) => {
     if (!files?.length) return;
-    for (const f of Array.from(files)) {
-      const item = await uploadIntakeFile(f, sensitivity, threadId);
-      setAttachments((prev) => [...prev, item]);
-    }
+    const staged = Array.from(files).map((file) => {
+      const id = "upload-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      return {
+        id,
+        file,
+        pending: {
+          id,
+          filename: file.name,
+          sizeBytes: file.size,
+          mimeType: file.type || "application/octet-stream",
+          sensitivity,
+          status: "pending" as const,
+        },
+      };
+    });
+    setAttachments((prev) => [...prev, ...staged.map((item) => item.pending)]);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    await Promise.all(staged.map(async ({ id, file }) => {
+      const uploaded = await uploadIntakeFile(file, sensitivity, threadId);
+      setAttachments((prev) => prev.map((item) => item.id === id ? { ...uploaded, id } : item));
+    }));
     textareaRef.current?.focus();
   };
 
   const executeSend = async (retryKey?: string) => {
     const trimmed = text.trim();
-    if ((!trimmed && !attachedItems.length) || sendState === "sending" || disabled || isPanel) return;
+    if ((!trimmed && !attachedItems.length) || hasUnsettledAttachments || sendState === "sending" || disabled || isPanel) return;
 
     const key = retryKey || idempotencyKey || generateIdempotencyKey(threadId);
     setIdempotencyKey(key);
@@ -313,7 +332,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   // Auto-grow rows from 1 to 10
   const lineCount = (text.match(/\n/g) || []).length + 1;
   const rows = Math.min(10, Math.max(1, lineCount));
-  const isSendDisabled = disabled || isPanel || sendState === "sending" || (!text.trim() && !attachedItems.length);
+  const isSendDisabled = disabled || isPanel || sendState === "sending" || hasUnsettledAttachments || (!text.trim() && !attachedItems.length);
 
   return (
     <div className={`staff-composer ${className}`} role="region" aria-label="Message composer">
@@ -330,7 +349,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       {errorMessage && (
         <div role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--badge-danger-bg)", border: "1px solid var(--accent-red)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--accent-red)" }}>
           <span>Failed to send message: {errorMessage}</span>
-          <button type="button" onClick={() => executeSend(idempotencyKey || undefined)} style={{ background: "var(--accent-red)", color: "var(--text-on-accent)", border: "none", borderRadius: 4, padding: "2px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Retry</button>
+          <button type="button" onClick={() => executeSend(idempotencyKey || undefined)} disabled={hasUnsettledAttachments || sendState === "sending"} style={{ background: "var(--accent-red)", color: "var(--text-on-accent)", border: "none", borderRadius: 4, padding: "2px 10px", cursor: hasUnsettledAttachments || sendState === "sending" ? "not-allowed" : "pointer", opacity: hasUnsettledAttachments || sendState === "sending" ? 0.6 : 1, fontSize: 11, fontWeight: 600 }}>Retry</button>
         </div>
       )}
       {voiceError && (
@@ -359,7 +378,8 @@ export const Composer: React.FC<ComposerComponentProps> = ({
             {attachments.map((att) => (
               <span key={att.id} className={`staff-composer__chip staff-composer__chip--${att.status}`} data-testid={`composer-attachment-${att.filename}`}>
                 <span>{att.filename}</span>
-                <span className="staff-composer__chip-badge">{att.sensitivity}</span><span className="staff-composer__chip-status">{att.status}</span>
+                <span className="staff-composer__chip-badge">{att.sensitivity}</span><span className="staff-composer__chip-status" role="status" aria-live="polite">{att.status === "pending" ? "Uploading…" : att.status}</span>
+                {att.error && <span className="staff-composer__chip-error" role="status">{att.error}</span>}
                 <button type="button" className="staff-composer__chip-remove" aria-label={`Remove ${att.filename}`} onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}>×</button>
               </span>
             ))}
