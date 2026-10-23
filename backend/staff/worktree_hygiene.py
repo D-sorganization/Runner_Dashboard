@@ -46,7 +46,7 @@ def persist_run_transcript(store: Any, rec_id: str, workdir: Path) -> Path | Non
             os.fsync(output.fileno())
         os.replace(temporary, dst)
         if os.name != "nt":
-            directory = os.open(dst_dir, os.O_RDONLY | os.O_DIRECTORY)
+            directory = os.open(dst_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
             try:
                 os.fsync(directory)
             finally:

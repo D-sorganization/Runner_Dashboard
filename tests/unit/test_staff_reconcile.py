@@ -18,6 +18,8 @@ from staff.reconcile import reconcile_executing_proposals, reconcile_orphaned_ru
 from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def temp_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> RunStore:
