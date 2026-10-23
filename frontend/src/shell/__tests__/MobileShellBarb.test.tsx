@@ -29,18 +29,56 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("MobileShell Barb access", () => {
-  it("keeps Barb available from mobile sections and navigates without closing the conversation", async () => {
+  it("closes the mobile modal after quick navigation and preserves Barb for reopening", async () => {
     const onTabChange = vi.fn();
     const { rerender } = render(
       <MobileShell currentTab="projects" onTabChange={onTabChange}><div>Projects</div></MobileShell>,
     );
 
-    fireEvent.click(screen.getByTestId("mobile-ask-barb"));
+    const trigger = screen.getByTestId("mobile-ask-barb");
+    trigger.focus();
+    fireEvent.click(trigger);
     const panel = await screen.findByRole("dialog", { name: "Ask Barb" });
 
     fireEvent.click(screen.getByRole("button", { name: /open fleet command/i }));
     expect(onTabChange).toHaveBeenCalledWith("fleet-command");
+    expect(screen.queryByRole("dialog", { name: "Ask Barb" })).not.toBeInTheDocument();
+    expect(screen.getByRole("main")).not.toHaveAttribute("inert");
+    expect(trigger).toHaveFocus();
     rerender(<MobileShell currentTab="fleet-command" onTabChange={onTabChange}><div>Fleet Command</div></MobileShell>);
+    expect(screen.getByRole("main")).toHaveTextContent("Fleet Command");
+    fireEvent.click(screen.getByTestId("mobile-ask-barb"));
+    expect(await screen.findByRole("dialog", { name: "Ask Barb" })).toBe(panel);
+  });
+
+  it("closes the mobile modal after a registered assistant navigation result", async () => {
+    render(
+      <MobileShell currentTab="projects" onTabChange={vi.fn()}><div>Projects</div></MobileShell>,
+    );
+    fireEvent.click(screen.getByTestId("mobile-ask-barb"));
+    await screen.findByRole("dialog", { name: "Ask Barb" });
+
+    fireEvent(
+      window,
+      new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "queue" } }),
+    );
+
+    expect(screen.queryByRole("dialog", { name: "Ask Barb" })).not.toBeInTheDocument();
+    expect(screen.getByRole("main")).not.toHaveAttribute("inert");
+  });
+
+  it("leaves the mobile modal open for unregistered assistant navigation", async () => {
+    render(
+      <MobileShell currentTab="projects" onTabChange={vi.fn()}><div>Projects</div></MobileShell>,
+    );
+    fireEvent.click(screen.getByTestId("mobile-ask-barb"));
+    const panel = await screen.findByRole("dialog", { name: "Ask Barb" });
+
+    fireEvent(
+      window,
+      new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "https://example.com" } }),
+    );
+
     expect(screen.getByRole("dialog", { name: "Ask Barb" })).toBe(panel);
   });
 
