@@ -1,0 +1,326 @@
+"""Bounded publisher-wait behavior using fake GitHub and sleep commands."""
+
+from __future__ import annotations
+
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "deploy"))
+from main_auto_release.publish_cli import main as publish_cli_main  # noqa: E402
+
+SHA = "a474ee662a55f9437677116a4d269f74946a8d10"  # pragma: allowlist secret
+SCRIPT = ROOT / "deploy" / "publish-main-ci-release.sh"
+WORKFLOW = ROOT / ".github" / "workflows" / "main-ci-auto-release.yml"
+
+
+def _runs(*records: dict[str, object]) -> dict[str, object]:
+    return {
+        "total_count": len(records),
+        "check_runs": [{"id": 1001 + index, **record} for index, record in enumerate(records)],
+    }
+
+
+def _record(status: str, conclusion: str | None) -> dict[str, object]:
+    return {
+        "head_sha": SHA,
+        "name": "quality-gate",
+        "status": status,
+        "conclusion": conclusion,
+    }
+
+
+def _posix_path(path: Path) -> str:
+    rendered = path.as_posix()
+    if len(rendered) >= 3 and rendered[1] == ":" and rendered[2] == "/":
+        return f"/mnt/{rendered[0].lower()}{rendered[2:]}"
+    return rendered
+
+
+def _run_publisher(
+    tmp_path: Path,
+    checks: list[dict[str, object]],
+    *,
+    main_sha: str = SHA,
+    main_shas: list[str] | None = None,
+    fail_check_api: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    if os.name == "nt":
+        wsl = shutil.which("wsl.exe")
+        if not wsl:
+            pytest.skip("WSL is required for publisher shell integration tests on Windows")
+        shell_command = [wsl, "--exec", "/bin/bash", "-c"]
+    else:
+        bash = shutil.which("bash")
+        if not bash:
+            pytest.skip("bash is required for publisher shell integration tests")
+        shell_command = [bash, "-c"]
+
+    sequence_file = tmp_path / "checks.json"
+    sequence_file.write_text(json.dumps(checks), encoding="utf-8")
+    main_sequence_file = tmp_path / "main-shas.json"
+    main_sequence_file.write_text(json.dumps(main_shas or [main_sha]), encoding="utf-8")
+    count_file = tmp_path / "check-count.txt"
+    count_file.write_text("0", encoding="utf-8")
+    main_count_file = tmp_path / "main-count.txt"
+    main_count_file.write_text("0", encoding="utf-8")
+    sleep_log = tmp_path / "sleep.log"
+    gh = tmp_path / "fake-gh.py"
+    gh.write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "endpoint = next((arg for arg in args if arg.startswith('repos/')), '')\n"
+        "if endpoint.endswith('/commits/main'):\n"
+        "    count_path = Path(os.environ['FAKE_MAIN_COUNT'])\n"
+        "    index = int(count_path.read_text())\n"
+        "    count_path.write_text(str(index + 1))\n"
+        "    rows = json.loads(Path(os.environ['FAKE_MAIN_SEQUENCE']).read_text())\n"
+        "    print(rows[min(index, len(rows) - 1)])\n"
+        "elif '/check-runs?' in endpoint:\n"
+        "    if '--paginate' not in args or '--slurp' not in args:\n"
+        "        print('check-runs request must paginate and slurp', file=sys.stderr)\n"
+        "        raise SystemExit(2)\n"
+        "    if os.environ.get('FAKE_CHECK_API_FAIL') == '1':\n"
+        "        print('fake API unavailable', file=sys.stderr)\n"
+        "        raise SystemExit(1)\n"
+        "    count_path = Path(os.environ['FAKE_CHECK_COUNT'])\n"
+        "    index = int(count_path.read_text())\n"
+        "    count_path.write_text(str(index + 1))\n"
+        "    rows = json.loads(Path(os.environ['FAKE_CHECK_SEQUENCE']).read_text())\n"
+        "    print(json.dumps([rows[min(index, len(rows) - 1)]]))\n"
+        "elif endpoint.endswith('/releases?per_page=100'):\n"
+        "    print('[]')\n"
+        "else:\n"
+        "    print('unexpected fake gh endpoint: ' + endpoint, file=sys.stderr)\n"
+        "    raise SystemExit(2)\n",
+        encoding="utf-8",
+    )
+    bash_env = tmp_path / "bash-env.sh"
+    bash_env.write_bytes(
+        (
+            "gh() { python3 " + shlex.quote(_posix_path(gh)) + ' "$@"; }\n'
+            'sleep() { printf \'%s\\n\' "$*" >> "$FAKE_SLEEP_LOG"; }\n'
+        ).encode("utf-8")
+    )
+
+    env = dict(os.environ)
+    env.update(
+        {
+            "BASH_ENV": _posix_path(bash_env),
+            "GITHUB_REPOSITORY": "D-sorganization/Runner_Dashboard",
+            "FAKE_MAIN_SEQUENCE": _posix_path(main_sequence_file),
+            "FAKE_MAIN_COUNT": _posix_path(main_count_file),
+            "FAKE_CHECK_SEQUENCE": _posix_path(sequence_file),
+            "FAKE_CHECK_COUNT": _posix_path(count_file),
+            "FAKE_CHECK_API_FAIL": "1" if fail_check_api else "0",
+            "FAKE_SLEEP_LOG": _posix_path(sleep_log),
+            "GATE_ATTEMPTS": "3",
+            "GATE_SLEEP_SECS": "1",
+            "RUNNER_TEMP": _posix_path(tmp_path),
+        }
+    )
+    wsl_variables = [
+        "BASH_ENV",
+        "GITHUB_REPOSITORY",
+        "FAKE_MAIN_SEQUENCE",
+        "FAKE_MAIN_COUNT",
+        "FAKE_CHECK_SEQUENCE",
+        "FAKE_CHECK_COUNT",
+        "FAKE_CHECK_API_FAIL",
+        "FAKE_SLEEP_LOG",
+        "GATE_ATTEMPTS",
+        "GATE_SLEEP_SECS",
+        "RUNNER_TEMP",
+    ]
+    existing_wsl_env = env.get("WSLENV", "")
+    env["WSLENV"] = ":".join(filter(None, [existing_wsl_env, *wsl_variables]))
+    command = (
+        "exec bash "
+        + shlex.quote(_posix_path(SCRIPT))
+        + " "
+        + " ".join(
+            shlex.quote(arg)
+            for arg in (
+                "--sha",
+                SHA,
+                "--committer-date",
+                "2026-10-22T00:00:00Z",
+                "--dry-run",
+                "--require-current-main",
+            )
+        )
+    )
+    return subprocess.run(
+        [*shell_command, command],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_terminal_failure_stops_without_sleeping_or_releasing(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("completed", "failure"))],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "terminal" in result.stdout.lower()
+    assert not (tmp_path / "sleep.log").exists()
+    assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "1"
+    assert "DRY RUN" not in result.stdout
+
+
+def test_verify_cli_distinguishes_terminal_failure_from_pending(tmp_path: Path) -> None:
+    terminal_path = tmp_path / "terminal.json"
+    terminal_path.write_text(json.dumps(_runs(_record("completed", "failure"))), encoding="utf-8")
+    pending_path = tmp_path / "pending.json"
+    pending_path.write_text(json.dumps(_runs(_record("in_progress", None))), encoding="utf-8")
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(terminal_path)]) == 2
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(pending_path)]) == 1
+
+
+def test_verify_cli_fails_closed_on_invalid_payload(tmp_path: Path) -> None:
+    malformed_path = tmp_path / "malformed.json"
+    malformed_path.write_text('{"check_runs": ["not a check run"]}', encoding="utf-8")
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(malformed_path)]) == 3
+
+
+def test_verify_cli_fails_closed_when_pagination_is_incomplete(tmp_path: Path) -> None:
+    partial_path = tmp_path / "partial.json"
+    partial_path.write_text(json.dumps([{"total_count": 2, "check_runs": [_record("completed", "success")]}]))
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(partial_path)]) == 3
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda runs: runs[0].update(id=runs[1]["id"]),
+        lambda runs: runs[0].update(id=0),
+        lambda runs: runs[0].update(head_sha="not-a-sha"),
+        lambda runs: runs[0].update(name="  "),
+    ],
+)
+def test_verify_cli_rejects_duplicate_or_malformed_check_run_identity(tmp_path: Path, mutate) -> None:
+    runs = [_record("completed", "success"), _record("completed", "success")]
+    runs[1]["id"] = 1002
+    mutate(runs)
+    payload = tmp_path / "invalid-identity.json"
+    payload.write_text(json.dumps(_runs(*runs)), encoding="utf-8")
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(payload)]) == 3
+
+
+def test_verify_cli_flattens_complete_paginated_payload(tmp_path: Path) -> None:
+    complete_path = tmp_path / "complete.json"
+    complete_path.write_text(
+        json.dumps(
+            [
+                {"total_count": 2, "check_runs": [{"id": 1001, **_record("completed", "success")}]},
+                {
+                    "total_count": 2,
+                    "check_runs": [
+                        {
+                            "id": 1002,
+                            "head_sha": SHA,
+                            "name": "frontend-tests",
+                            "status": "completed",
+                            "conclusion": "success",
+                        }
+                    ],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(complete_path)]) == 0
+
+
+def test_github_api_error_is_a_failed_publisher_job(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("completed", "success"))],
+        fail_check_api=True,
+    )
+
+    assert result.returncode != 0
+    assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "0"
+    assert "DRY RUN" not in result.stdout
+
+
+def test_pending_gate_waits_then_passes_current_main_dry_run(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [
+            _runs(_record("in_progress", None)),
+            _runs(_record("completed", "success")),
+        ],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "CI gate waiting" in result.stdout
+    assert "DRY RUN: would publish" in result.stdout
+    assert len((tmp_path / "sleep.log").read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_pending_gate_exhausts_bound_without_release(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("in_progress", None))],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "after 3 attempts" in result.stdout
+    assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "3"
+    assert len((tmp_path / "sleep.log").read_text(encoding="utf-8").splitlines()) == 2
+    assert "DRY RUN" not in result.stdout
+
+
+def test_superseded_automatic_commit_skips_before_polling(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("completed", "success"))],
+        main_sha="b" * 40,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "superseded" in result.stdout.lower()
+    assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "0"
+    assert "DRY RUN" not in result.stdout
+
+
+def test_superseded_automatic_commit_skips_before_publication(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("completed", "success"))],
+        main_shas=[SHA, "b" * 40],
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "superseded" in result.stdout.lower()
+    assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "1"
+    assert "DRY RUN" not in result.stdout
+
+
+def test_workflow_run_publisher_requires_successful_trigger_and_current_main() -> None:
+    config = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    condition = str(config["jobs"]["publish"]["if"])
+    assert "github.event.workflow_run.conclusion == 'success'" in condition
+    auto_run = config["jobs"]["publish"]["steps"][-1]["run"]
+    dispatch_run = config["jobs"]["publish-dispatch"]["steps"][-1]["run"]
+    assert "--require-current-main" in auto_run
+    assert "--require-current-main" not in dispatch_run  # Manual dispatch keeps explicit-SHA semantics.

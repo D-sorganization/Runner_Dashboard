@@ -367,7 +367,7 @@ describe("RoutedShell — URL is the source of truth", () => {
   it.each([
     ["/fleet", "mobile-overview"],
     ["/t/queue", "mobile-queue"],
-    ["/t/maxwell", "mobile-maxwell"],
+    ["/t/maxwell", "native-maxwell"],
     ["/t/remediation", "mobile-remediation"],
     ["/t/reports", "mobile-reports"],
     ["/fleet/insights", "mobile-reports"],

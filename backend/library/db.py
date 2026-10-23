@@ -14,9 +14,14 @@ CREATE TABLE IF NOT EXISTS works (
     doi TEXT, isbn TEXT, format TEXT NOT NULL, topics TEXT, provenance TEXT,
     status TEXT NOT NULL DEFAULT 'active', needs_ocr INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS files (
-    id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id), rel_path TEXT NOT NULL UNIQUE,
+    id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id),
+    source_id TEXT NOT NULL DEFAULT 'default', rel_path TEXT NOT NULL,
     drive_id TEXT, drive_link TEXT, mtime REAL NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'present');
+    status TEXT NOT NULL DEFAULT 'present', UNIQUE(source_id, rel_path));
+CREATE TABLE IF NOT EXISTS library_sources (
+    id TEXT PRIMARY KEY, label TEXT NOT NULL, root_path TEXT NOT NULL UNIQUE, shared INTEGER NOT NULL DEFAULT 0,
+    include_globs TEXT NOT NULL DEFAULT '[]', exclude_globs TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL,
+    created_by TEXT, last_ingest_at TEXT, status TEXT NOT NULL DEFAULT 'active');
 CREATE TABLE IF NOT EXISTS passages (
     id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id), page_start INTEGER NOT NULL,
     page_end INTEGER NOT NULL, section TEXT, text TEXT NOT NULL, token_estimate INTEGER NOT NULL);
@@ -38,6 +43,25 @@ def _migrate(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
     if "source_root" not in cols:
         conn.execute("ALTER TABLE files ADD COLUMN source_root TEXT NOT NULL DEFAULT ''")
+        cols.add("source_root")
+    if "source_id" not in cols or "rel_path" in {row[1] for row in conn.execute("PRAGMA index_list(files)") if row[2]}:
+        # SQLite cannot drop the legacy UNIQUE(rel_path) constraint. Rebuild the
+        # small index table while preserving row ids and all source metadata.
+        conn.execute("ALTER TABLE files RENAME TO files_legacy")
+        conn.execute("""CREATE TABLE files (
+            id INTEGER PRIMARY KEY, work_id INTEGER NOT NULL REFERENCES works(id),
+            source_id TEXT NOT NULL DEFAULT 'default', rel_path TEXT NOT NULL,
+            drive_id TEXT, drive_link TEXT, mtime REAL NOT NULL, size INTEGER NOT NULL,
+            sha256 TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'present',
+            source_root TEXT NOT NULL DEFAULT '', UNIQUE(source_id, rel_path))""")
+        legacy_cols = {row[1] for row in conn.execute("PRAGMA table_info(files_legacy)")}
+        source = "source_id" if "source_id" in legacy_cols else "'default'"
+        conn.execute(
+            "INSERT INTO files(id,work_id,source_id,rel_path,drive_id,drive_link,mtime,size,sha256,status,source_root) "
+            f"SELECT id,work_id,{source},rel_path,drive_id,drive_link,mtime,size,sha256,status,source_root "
+            "FROM files_legacy"
+        )
+        conn.execute("DROP TABLE files_legacy")
     run_cols = {row[1] for row in conn.execute("PRAGMA table_info(ingest_runs)")}
     for name in ("files_skipped", "files_rejected", "files_removed"):
         if name not in run_cols:
@@ -62,6 +86,7 @@ def init_library_db(path: Path | None = None) -> Path:
     db = Path(path) if path is not None else library_db_path()
     db.parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(db)) as conn:
+        conn.execute("PRAGMA foreign_keys = OFF")
         conn.executescript(_SCHEMA)
         _migrate(conn)
         conn.commit()

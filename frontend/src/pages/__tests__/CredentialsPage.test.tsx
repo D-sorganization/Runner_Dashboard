@@ -8,9 +8,8 @@
  * 2. Summary stat row reflects the summary payload.
  * 3. Renders a card per probe with status label + detail/setup hint.
  * 4. Re-probe button invokes onRefresh and reflects loading.
- * 5. "Set API key" / "Replace API key" wording + onSetKey on desktop.
- * 6. Error banner renders the error string.
- * 7. Mobile gates behind a lock screen until unlocked.
+ * 5. Error banner renders the error string.
+ * 6. Mobile gates behind a lock screen until unlocked.
  */
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -101,74 +100,6 @@ describe("CredentialsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("submits a prompted key and refreshes probes", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation((input, init) => {
-        const url = String(input);
-        if (url.endsWith("/api/credentials/set-key")) {
-          return Promise.resolve(
-            new Response(JSON.stringify({ ok: true }), { status: 200 }),
-          );
-        }
-        if (url.endsWith("/api/credentials")) {
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({
-                probes: [PROBES[1]],
-                summary: { ready: 0, not_ready: 1, total: 1 },
-              }),
-              { status: 200 },
-            ),
-          );
-        }
-        return Promise.reject(
-          new Error("unexpected credentials fetch " + url + " " + init?.method),
-        );
-      });
-    vi.spyOn(window, "prompt").mockReturnValue("sk-test");
-
-    render(<CredentialsPage />);
-
-    fireEvent.click(await screen.findByText("Set API key"));
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/credentials/set-key",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            provider: "openai",
-            key: "sk-test",
-            restart_maxwell: false,
-          }),
-        }),
-      ),
-    );
-  });
-
-  it("does not submit a key when the prompt is cancelled", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          probes: [PROBES[1]],
-          summary: { ready: 0, not_ready: 1, total: 1 },
-        }),
-        { status: 200 },
-      ),
-    );
-    vi.spyOn(window, "prompt").mockReturnValue(null);
-
-    render(<CredentialsPage />);
-
-    fireEvent.click(await screen.findByText("Set API key"));
-
-    expect(
-      fetchMock.mock.calls.some(([input]) =>
-        String(input).endsWith("/api/credentials/set-key"),
-      ),
-    ).toBe(false);
-  });
 });
 
 describe("CredentialsTab", () => {
@@ -230,14 +161,10 @@ describe("CredentialsTab", () => {
     expect(screen.getByText("Probing...")).toBeInTheDocument();
   });
 
-  it("invokes onSetKey with the probe on desktop", () => {
-    const onSetKey = vi.fn();
-    render(
-      <CredentialsTab probes={PROBES} summary={{}} loading={false} onRefresh={() => {}} onSetKey={onSetKey} />,
-    );
-    fireEvent.click(screen.getByText("Replace API key"));
-    expect(onSetKey).toHaveBeenCalledWith(expect.objectContaining({ id: "anthropic" }));
-    expect(screen.getByText("Set API key")).toBeInTheDocument();
+  it("does not render set-key actions (subscription logins only)", () => {
+    render(<CredentialsTab probes={PROBES} summary={{}} loading={false} onRefresh={() => {}} />);
+    expect(screen.queryByText("Set API key")).not.toBeInTheDocument();
+    expect(screen.queryByText("Replace API key")).not.toBeInTheDocument();
   });
 
   it("falls back to the raw status string for unknown statuses", () => {
@@ -406,63 +333,4 @@ describe("CredentialsTab", () => {
     expect(sent.credential.response.signature).toEqual([8, 9]);
   });
 
-  it("shows a confirm sheet before mutating a key on mobile", async () => {
-    vi.stubGlobal("PublicKeyCredential", function () {});
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({ challenge: "AAAA", allow_credentials: [] }))));
-    vi.stubGlobal("navigator", {
-      credentials: { get: () => Promise.resolve({ id: "c", type: "public-key", rawId: new ArrayBuffer(0), response: {} }) },
-    });
-    const onSetKey = vi.fn();
-    render(
-      <CredentialsTab probes={PROBES} summary={{}} loading={false} onRefresh={() => {}} onSetKey={onSetKey} mobile />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Show credentials" }));
-    await waitFor(() => expect(screen.getByText("Replace API key")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("Replace API key"));
-    // Confirm sheet appears; onSetKey only fires after Confirm.
-    expect(screen.getByText("Confirm sensitive operation")).toBeInTheDocument();
-    expect(onSetKey).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("Confirm"));
-    expect(onSetKey).toHaveBeenCalledWith(expect.objectContaining({ id: "anthropic" }));
-  });
-
-  it("dismisses the mobile confirm sheet via Cancel without mutating", async () => {
-    vi.stubGlobal("PublicKeyCredential", function () {});
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({ challenge: "AAAA", allow_credentials: [] }))));
-    vi.stubGlobal("navigator", {
-      credentials: { get: () => Promise.resolve({ id: "c", type: "public-key", rawId: new ArrayBuffer(0), response: {} }) },
-    });
-    const onSetKey = vi.fn();
-    render(
-      <CredentialsTab probes={PROBES} summary={{}} loading={false} onRefresh={() => {}} onSetKey={onSetKey} mobile />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Show credentials" }));
-    await waitFor(() => expect(screen.getByText("Replace API key")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("Replace API key"));
-    fireEvent.click(screen.getByText("Cancel"));
-    expect(screen.queryByText("Confirm sensitive operation")).not.toBeInTheDocument();
-    expect(onSetKey).not.toHaveBeenCalled();
-  });
-
-  it("falls back to key_provider in the confirm sheet copy", async () => {
-    vi.stubGlobal("PublicKeyCredential", function () {});
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(jsonResponse({ challenge: "AAAA", allow_credentials: [] }))));
-    vi.stubGlobal("navigator", {
-      credentials: { get: () => Promise.resolve({ id: "c", type: "public-key", rawId: new ArrayBuffer(0), response: {} }) },
-    });
-    render(
-      <CredentialsTab
-        probes={[{ id: "p", status: "missing_key", usable: false, key_provider: "perplexity" }]}
-        summary={{}}
-        loading={false}
-        onRefresh={() => {}}
-        onSetKey={() => {}}
-        mobile
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Show credentials" }));
-    await waitFor(() => expect(screen.getByText("Set API key")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("Set API key"));
-    expect(screen.getByText(/perplexity/)).toBeInTheDocument();
-  });
 });

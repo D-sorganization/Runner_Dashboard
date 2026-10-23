@@ -466,25 +466,22 @@ def test_safe_subprocess_env_excludes_secrets(monkeypatch) -> None:
     }
 
 
-def test_safe_subprocess_env_excludes_provider_key_map_values(monkeypatch) -> None:
-    credentials_source = Path("backend/routers/credentials.py").read_text(encoding="utf-8")
-    credentials_tree = ast.parse(credentials_source)
-    provider_map_node = next(
-        node
-        for node in ast.walk(credentials_tree)
-        if isinstance(node, ast.AnnAssign)
-        and isinstance(node.target, ast.Name)
-        and node.target.id == "_PROVIDER_KEY_MAP"
+def test_safe_subprocess_env_excludes_subscription_provider_key_env_vars(monkeypatch) -> None:
+    """Provider API-key env vars must never reach subprocesses (set-key UI retired #2170)."""
+    provider_key_env_vars = (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GOOGLE_API_KEY",
+        "JULES_API_KEY",
+        "LINEAR_API_KEY",
     )
-    provider_key_map = ast.literal_eval(provider_map_node.value)
-
-    fake_env = {key: f"value-{key}" for key in set(provider_key_map.values())}
+    fake_env = {key: f"value-{key}" for key in provider_key_env_vars}
     fake_env["PATH"] = "/usr/bin"
     monkeypatch.setattr("os.environ", fake_env)
 
     result = security.safe_subprocess_env()
 
-    for env_var in set(provider_key_map.values()):
+    for env_var in provider_key_env_vars:
         assert env_var not in result
     assert result == {"PATH": "/usr/bin"}
 

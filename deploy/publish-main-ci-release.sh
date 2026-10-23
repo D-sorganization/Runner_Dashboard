@@ -8,6 +8,7 @@ COMMITTER_DATE=""
 KEEP_RELEASES=30
 PROTECTED_SHAS=""
 DRY_RUN=false
+REQUIRE_CURRENT_MAIN=false
 
 usage() {
   cat <<'EOF'
@@ -18,6 +19,7 @@ Options:
   --committer-date DATE     commit.committer.date from GitHub (UTC)
   --keep N                  Retain newest N auto-releases (default: 30)
   --protected-sha LIST      Comma-separated SHAs never deleted during retention
+  --require-current-main    Skip when this SHA is no longer the current main head
   --dry-run                 Plan only; do not create tag/release or delete old rows
   -h, --help                Show help
 EOF
@@ -29,6 +31,7 @@ while [[ $# -gt 0 ]]; do
     --committer-date) COMMITTER_DATE="$2"; shift 2 ;;
     --keep) KEEP_RELEASES="$2"; shift 2 ;;
     --protected-sha) PROTECTED_SHAS="$2"; shift 2 ;;
+    --require-current-main) REQUIRE_CURRENT_MAIN=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -46,13 +49,46 @@ RELEASES_JSON="${WORK_DIR}/releases.json"
 GATE_ATTEMPTS="${GATE_ATTEMPTS:-90}"
 GATE_SLEEP_SECS="${GATE_SLEEP_SECS:-60}"
 gate_ok=false
-for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
-  gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" > "$CHECK_JSON"
-  if python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-gate \
-    --publisher --sha "$SHA" --check-runs-json "$CHECK_JSON"; then
-    gate_ok=true
-    break
+
+skip_if_main_moved() {
+  [[ "$REQUIRE_CURRENT_MAIN" == "true" ]] || return 0
+  current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
+  [[ "$current_main_sha" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "GitHub returned an invalid current-main SHA; refusing release" >&2
+    exit 1
+  }
+  if [[ "$current_main_sha" != "$SHA" ]]; then
+    echo "Main CI release candidate ${SHA:0:7} was superseded by ${current_main_sha:0:7}; skipping release"
+    exit 0
   fi
+}
+
+for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
+  skip_if_main_moved
+  gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" --paginate --slurp > "$CHECK_JSON"
+  gate_status=0
+  python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-gate \
+    --publisher --sha "$SHA" --check-runs-json "$CHECK_JSON" || gate_status=$?
+  case "$gate_status" in
+    0)
+      gate_ok=true
+      break
+      ;;
+    1)
+      ;;
+    2)
+      echo "CI gate has terminal failures for ${SHA:0:7}; skipping release"
+      exit 0
+      ;;
+    3)
+      echo "CI gate response is invalid or incomplete for ${SHA:0:7}; refusing release" >&2
+      exit 3
+      ;;
+    *)
+      echo "CI gate verifier failed unexpectedly with status ${gate_status}; refusing release" >&2
+      exit "$gate_status"
+      ;;
+  esac
   if [[ "$attempt" -eq "$GATE_ATTEMPTS" ]]; then
     echo "CI gate not satisfied for ${SHA:0:7} after ${GATE_ATTEMPTS} attempts; skipping release"
     exit 0
@@ -63,6 +99,8 @@ done
 if [[ "$gate_ok" != "true" ]]; then
   exit 0
 fi
+
+skip_if_main_moved
 
 gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > "$RELEASES_JSON"
 if python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" should-skip \
@@ -104,6 +142,8 @@ NOTES_FILE="${WORK_DIR}/release-notes.md"
   echo "- commit: \`${SHA}\`"
   echo "- artifact sha256: \`${SHA256}\`"
 } > "$NOTES_FILE"
+
+skip_if_main_moved
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

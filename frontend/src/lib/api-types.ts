@@ -1615,26 +1615,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/credentials/clear-key": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Clear Credential Key
-         * @description Remove an API key from the server-side env files and maxwell YAML.
-         */
-        post: operations["clear_credential_key_api_credentials_clear_key_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/credentials/launch-auth": {
         parameters: {
             query?: never;
@@ -1651,30 +1631,6 @@ export interface paths {
          *     Returns immediately with a job_id; the UI can poll /status.
          */
         post: operations["launch_auth_api_credentials_launch_auth_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/credentials/set-key": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Set Credential Key
-         * @description Write an API key to the server-side env files. Never returns the key value.
-         *
-         *     Writes to ~/.config/maxwell-daemon/env and ~/.config/runner-dashboard/env,
-         *     updates the current process environment, patches maxwell-daemon.yaml api_key,
-         *     then optionally restarts maxwell-daemon.
-         */
-        post: operations["set_credential_key_api_credentials_set_key_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5510,6 +5466,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Library Sources Route */
+        get: operations["library_sources_route_api_v1_library_sources_get"];
+        put?: never;
+        /** Library Add Source */
+        post: operations["library_add_source_api_v1_library_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Library Remove Source */
+        delete: operations["library_remove_source_api_v1_library_sources__source_id__delete"];
+        options?: never;
+        head?: never;
+        /** Library Update Source */
+        patch: operations["library_update_source_api_v1_library_sources__source_id__patch"];
+        trace?: never;
+    };
     "/api/v1/library/stats": {
         parameters: {
             query?: never;
@@ -7719,19 +7711,6 @@ export interface components {
             /** Session */
             session: string;
         };
-        /** ClearKeyRequest */
-        ClearKeyRequest: {
-            /**
-             * Provider
-             * @description Provider id whose key should be removed
-             */
-            provider: string;
-            /**
-             * Restart Maxwell
-             * @default true
-             */
-            restart_maxwell: boolean;
-        };
         /**
          * ClientErrorPayload
          * @description Payload sent by TabErrorBoundary when an error is caught.
@@ -9331,25 +9310,6 @@ export interface components {
              * @default 0
              */
             wakeups_count: number;
-        };
-        /** SetKeyRequest */
-        SetKeyRequest: {
-            /**
-             * Key
-             * @description The API key value (never logged)
-             */
-            key: string;
-            /**
-             * Provider
-             * @description Provider id, e.g. 'claude', 'gemini', 'codex'
-             */
-            provider: string;
-            /**
-             * Restart Maxwell
-             * @description Restart maxwell-daemon after saving
-             * @default true
-             */
-            restart_maxwell: boolean;
         };
         /**
          * StaffAuditListResponse
@@ -13246,41 +13206,6 @@ export interface operations {
             };
         };
     };
-    clear_credential_key_api_credentials_clear_key_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ClearKeyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     launch_auth_api_credentials_launch_auth_post: {
         parameters: {
             query?: never;
@@ -13291,41 +13216,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LaunchAuthRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_credential_key_api_credentials_set_key_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetKeyRequest"];
             };
         };
         responses: {
@@ -18382,6 +18272,137 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_sources_route_api_v1_library_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    library_add_source_api_v1_library_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_remove_source_api_v1_library_sources__source_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_update_source_api_v1_library_sources__source_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

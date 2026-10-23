@@ -55,7 +55,7 @@ The Antigravity CLI manages its own Google sign-in session.
 
 2. **Session Persistence:**
    The login state is stored under `~/.gemini/settings.json` and `~/.gemini/antigravity-cli/`.
-   Use the same service user, HOME and `ANTIGRAVITY_HOME` for sign-in and dispatch. Staff runs require subscription Google OAuth; do not configure API-key billing.
+   Use the same service user, HOME and `ANTIGRAVITY_HOME` for sign-in and dispatch. Staff runs require subscription Google OAuth; the dashboard Credentials tab does not accept `GOOGLE_API_KEY` or `ANTIGRAVITY_API_KEY` and will not treat them as logged in.
 
 3. **Status Check:**
    Verify authentication:

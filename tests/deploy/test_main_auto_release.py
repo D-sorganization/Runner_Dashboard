@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -12,6 +12,7 @@ sys.path.insert(0, str(REPO / "deploy"))
 from main_auto_release.gate import (  # noqa: E402
     commit_passes_main_ci_gate,
     commit_passes_publisher_ci_gate,
+    publisher_gate_failure_is_terminal,
     select_green_commit_with_release,
 )
 from main_auto_release.naming import (  # noqa: E402
@@ -94,6 +95,44 @@ def test_cancelled_docker_blocks_release() -> None:
     assert "Build and scan image" in detail
 
 
+def test_terminal_publisher_failure_cannot_be_repaired_by_a_later_run() -> None:
+    runs = _minimal_failing_runs(_FAIL_SHA, failing_name="quality-gate", failing_conclusion="failure")
+    runs.append({"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "in_progress", "conclusion": None})
+
+    assert publisher_gate_failure_is_terminal(runs, _FAIL_SHA) is True
+
+
+def test_cancelled_or_pending_runs_remain_retryable() -> None:
+    cancelled = _minimal_failing_runs(
+        _CANCEL_SHA,
+        failing_name="quality-gate",
+        failing_conclusion="cancelled",
+    )
+    pending = [{"head_sha": _CANCEL_SHA, "name": "quality-gate", "status": "in_progress", "conclusion": None}]
+
+    assert publisher_gate_failure_is_terminal(cancelled, _CANCEL_SHA) is True
+    assert publisher_gate_failure_is_terminal(pending, _CANCEL_SHA) is False
+
+
+def test_current_sha_with_only_cancelled_blocking_runs_is_terminal() -> None:
+    runs = [
+        {"head_sha": _CANCEL_SHA, "name": name, "status": "completed", "conclusion": "cancelled"}
+        for name in ("quality-gate", "tests (3.11)", "container-build")
+    ]
+
+    assert commit_passes_publisher_ci_gate(runs, _CANCEL_SHA)[0] is False
+    assert publisher_gate_failure_is_terminal(runs, _CANCEL_SHA) is True
+
+
+def test_malformed_publisher_check_run_is_terminal_fail_closed() -> None:
+    runs = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "completed"}, "bad-record"]
+
+    assert publisher_gate_failure_is_terminal(runs, _FAIL_SHA) is True
+
+    unknown_status = [{"head_sha": _FAIL_SHA, "name": "quality-gate", "status": "waiting"}]
+    assert publisher_gate_failure_is_terminal(unknown_status, _FAIL_SHA) is True
+
+
 def test_auto_release_tag_is_deterministic() -> None:
     tag = auto_release_tag_for_commit(_GREEN_SHA, _COMMIT_DATE)
     assert tag == "v2026.10.22-a474ee6"
@@ -156,7 +195,7 @@ def test_retention_never_deletes_protected_shas() -> None:
             "draft": False,
             "tag_name": f"v2026.10.{i:02d}-abc1234",
             "target_commitish": f"{i:040x}",
-            "published_at": datetime(2026, 10, 1, tzinfo=timezone.utc).isoformat(),
+            "published_at": datetime(2026, 10, 1, tzinfo=UTC).isoformat(),
         }
         for i in range(35)
     ]

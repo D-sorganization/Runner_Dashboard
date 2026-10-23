@@ -9,10 +9,6 @@
  *   - a short "first things to check" checklist;
  *   - the keyboard shortcuts.
  *
- * It is also the intended mount point for the codebase chat assistant (a later
- * issue) — kept as a self-contained surface so that can slot in without
- * touching the shell.
- *
  * Accessibility: built on the `Dialog` primitive (focus trap, Escape-to-close,
  * focus restore, `aria-modal`, inert siblings). The trigger is a labelled
  * button with a tooltip; pressing "?" anywhere (outside a text field) opens it.
@@ -31,7 +27,6 @@ import {
 } from "../primitives/Dialog";
 import { Tooltip } from "../primitives/Tooltip";
 import { navItemById } from "./navRegistry";
-import { CodebaseChat } from "../pages/Maxwell";
 
 /** Shape of `GET /api/version` we care about (extra fields tolerated). */
 export interface VersionInfo {
@@ -63,7 +58,7 @@ const FIRST_CHECKS: readonly string[] = [
   "Are you signed in? The topbar shows Login vs Logout.",
   "Is the runner fleet healthy? Open the Fleet tab.",
   "Is anything stuck? Check the Queue tab for long-waiting jobs.",
-  "AI features quiet? Maxwell-Daemon must be running — start it from Settings → Local Tools.",
+  "Need AI help? Open the Staff Console — Cartographer and Librarian answer codebase and docs questions.",
   "Something failing? The Diagnostics tab runs self-checks.",
 ];
 
@@ -107,7 +102,6 @@ export function HelpAbout({
   fetchImpl,
 }: HelpAboutProps): React.ReactElement {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"help" | "chat">("help");
   const [version, setVersion] = useState<VersionInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -204,113 +198,64 @@ function HelpCircleIcon({ className }: { className?: string }): React.ReactEleme
       <Dialog open={open} onClose={() => setOpen(false)}>
         <DialogTitle>Runner Dashboard — Help &amp; About</DialogTitle>
         <DialogContent>
-          <div
-            role="tablist"
-            aria-label="Help and About sections"
-            className="help-about__tabs"
+          <p className="help-about__intro">
+            The operator console for the self-hosted GitHub Actions runner fleet:
+            monitor runner health, manage the job queue, dispatch AI remediation
+            agents, and orchestrate the fleet from one place.
+          </p>
+
+          <dl className="help-about__meta">
+            <dt className="help-about__muted">Version</dt>
+            <dd className="help-about__meta-value">
+              <VersionLine version={version} loading={loading} error={error} />
+            </dd>
+          </dl>
+
+          <section aria-label="Key tabs" className="help-about__section">
+            <h3 className="help-about__heading">Key tabs</h3>
+            <div className="help-about__quick-links">
+              {quickLinks.map((it) => (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={() => go(it.tabId)}
+                  title={it.tooltip}
+                  className="help-about__quick-link"
+                >
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section
+            aria-label="First things to check"
+            className="help-about__section"
           >
-            <button
-              type="button"
-              role="tab"
-              id="help-tab-help"
-              aria-selected={tab === "help"}
-              aria-controls="help-panel-help"
-              onClick={() => setTab("help")}
-              className={`help-about__tab ${tab === "help" ? "help-about__tab--active" : ""}`}
-            >
-              Help &amp; About
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="help-tab-chat"
-              aria-selected={tab === "chat"}
-              aria-controls="help-panel-chat"
-              onClick={() => setTab("chat")}
-              className={`help-about__tab ${tab === "chat" ? "help-about__tab--active" : ""}`}
-            >
-              Ask the codebase
-            </button>
-          </div>
+            <h3 className="help-about__heading">First things to check</h3>
+            <ol className="help-about__checklist">
+              {FIRST_CHECKS.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ol>
+          </section>
 
-          {tab === "chat" ? (
-            <div
-              role="tabpanel"
-              id="help-panel-chat"
-              aria-labelledby="help-tab-chat"
-            >
-              <CodebaseChat fetchImpl={fetchImpl} onNavigate={go} />
-            </div>
-          ) : (
-            <div
-              role="tabpanel"
-              id="help-panel-help"
-              aria-labelledby="help-tab-help"
-            >
-              <p className="help-about__intro">
-                The operator console for the self-hosted GitHub Actions runner
-                fleet: monitor runner health, manage the job queue, dispatch AI
-                remediation agents, and orchestrate the fleet from one place.
-              </p>
-
-              <dl className="help-about__meta">
-                <dt className="help-about__muted">Version</dt>
-                <dd className="help-about__meta-value">
-                  <VersionLine
-                    version={version}
-                    loading={loading}
-                    error={error}
-                  />
-                </dd>
-              </dl>
-
-              <section aria-label="Key tabs" className="help-about__section">
-                <h3 className="help-about__heading">Key tabs</h3>
-                <div className="help-about__quick-links">
-                  {quickLinks.map((it) => (
-                    <button
-                      key={it.id}
-                      type="button"
-                      onClick={() => go(it.tabId)}
-                      title={it.tooltip}
-                      className="help-about__quick-link"
-                    >
-                      {it.label}
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section
-                aria-label="First things to check"
-                className="help-about__section"
-              >
-                <h3 className="help-about__heading">First things to check</h3>
-                <ol className="help-about__checklist">
-                  {FIRST_CHECKS.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ol>
-              </section>
-
-              <section
-                aria-label="Keyboard shortcuts"
-                className="help-about__section"
-              >
-                <h3 className="help-about__heading">Keyboard shortcuts</h3>
-                <dl className="help-about__shortcuts">
-                  {SHORTCUTS.map((s) => (
-                    <React.Fragment key={s.keys}>
-                      <dt>
-                        <kbd className="help-about__kbd">{s.keys}</kbd>
-                      </dt>
-                      <dd className="help-about__shortcut-label">{s.label}</dd>
-                    </React.Fragment>
-                  ))}
-                </dl>
-              </section>
-            </div>
-          )}
+          <section
+            aria-label="Keyboard shortcuts"
+            className="help-about__section"
+          >
+            <h3 className="help-about__heading">Keyboard shortcuts</h3>
+            <dl className="help-about__shortcuts">
+              {SHORTCUTS.map((s) => (
+                <React.Fragment key={s.keys}>
+                  <dt>
+                    <kbd className="help-about__kbd">{s.keys}</kbd>
+                  </dt>
+                  <dd className="help-about__shortcut-label">{s.label}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+          </section>
         </DialogContent>
         <DialogActions>
           <DialogClose>Close</DialogClose>
