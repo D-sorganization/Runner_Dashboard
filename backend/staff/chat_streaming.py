@@ -12,7 +12,7 @@ import logging
 import subprocess
 import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -268,6 +268,8 @@ async def stream_turn_output(
     thread_id: str,
     placeholder_id: str,
     hide_memory_summary: bool = False,
+    epoch: int | None = None,
+    is_current_epoch: Callable[[], bool] | None = None,
 ) -> TurnStreamOutput:
     """Streams stdout lines incrementally, publishes tokens live over SSE bus, and returns final output."""
     stdout_text: list[str] = []
@@ -299,13 +301,19 @@ async def stream_turn_output(
             if t_first_token is None:
                 t_first_token = time.monotonic()
             publishable = summary_filter.feed(delta) if summary_filter is not None else delta
-            if publishable:
-                await bus.publish_token(thread_id, placeholder_id, publishable)
+            if publishable and (is_current_epoch is None or is_current_epoch()):
+                if epoch is None:
+                    await bus.publish_token(thread_id, placeholder_id, publishable)
+                else:
+                    await bus.publish_token(thread_id, placeholder_id, publishable, epoch=epoch)
 
     if summary_filter is not None:
         pending = summary_filter.finish()
-        if pending:
-            await bus.publish_token(thread_id, placeholder_id, pending)
+        if pending and (is_current_epoch is None or is_current_epoch()):
+            if epoch is None:
+                await bus.publish_token(thread_id, placeholder_id, pending)
+            else:
+                await bus.publish_token(thread_id, placeholder_id, pending, epoch=epoch)
 
     return TurnStreamOutput(
         stdout_lines=stdout_text,

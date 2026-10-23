@@ -357,6 +357,11 @@ def execute_proposal(
     prop = s.get_proposal(proposal_id)
     if not prop:
         raise ProposalReplayError(f"Proposal {proposal_id} not found")
+    thread = s.get_thread(prop.thread_id) if prop.thread_id else None
+    if thread is not None and thread.epoch != prop.epoch:
+        raise ProposalReplayError(
+            f"Proposal {proposal_id} belongs to stale thread epoch {prop.epoch}; current epoch is {thread.epoch}"
+        )
     verify_params_hash(prop, params_hash)
 
     if is_proposal_expired(prop):
