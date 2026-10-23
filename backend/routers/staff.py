@@ -393,6 +393,7 @@ async def dispatch(
     role: str,
     body: RunBody,
     request: Request,
+    force_duplicate: bool = Query(default=False, include_in_schema=False),
     caller: Principal = Depends(require_staff_run_dispatch()),
 ) -> dict[str, Any]:
     """Dispatch a staff run on this node, or preview it with ``dry_run``.
@@ -404,11 +405,16 @@ async def dispatch(
     PR-consolidation decision (#1213) is evaluated first and lands in
     ``plan.consolidation`` and the run's ``strategy_mode``.
     """
-    return await run_dispatch(role, body, request, caller)
+    return await run_dispatch(role, body, request, caller, force_duplicate=force_duplicate)
 
 
 async def run_dispatch(
-    role: str, body: RunBody, request: Request, caller: Principal, operation_id: str = ""
+    role: str,
+    body: RunBody,
+    request: Request,
+    caller: Principal,
+    operation_id: str = "",
+    force_duplicate: bool = False,
 ) -> dict[str, Any]:
     """The /run policy; ``operation_id`` comes from the v1 Idempotency-Key reservation (#1796)."""
     caller_id = staff_fleet.caller_identity(caller)
@@ -426,6 +432,14 @@ async def run_dispatch(
         surface = obo.get("surface") or surface
         thread_id = obo.get("thread_id") or thread_id
         origin_node = obo.get("origin_node") or origin_node
+
+    is_force = force_duplicate
+    try:
+        raw_json = await request.json()
+        if isinstance(raw_json, dict) and raw_json.get("force_duplicate"):
+            is_force = True
+    except Exception:
+        pass
 
     cmd = DispatchCommand(
         role=role,
@@ -448,5 +462,6 @@ async def run_dispatch(
         task_type=body.task_type,
         standards_extra=body.standards_extra,
         requested_skill=body.skill,
+        force_duplicate=is_force,
     )
     return await dispatch_staff_run(cmd, caller)

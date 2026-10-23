@@ -10,7 +10,13 @@ from datetime import timedelta
 from pathlib import Path
 
 from dispatch_arm_cap.time_parse import parse_iso_timestamp
-from dispatch_arm_cap.types import AdmitContext, AdmitDecision, HealthVerdict
+from dispatch_arm_cap.types import (
+    AdmitContext,
+    AdmitDecision,
+    HealthVerdict,
+    fallback_temp_store_path,
+    resolve_store_path,
+)
 from time_utils import utc_now_iso
 
 _SCHEMA = """
@@ -46,8 +52,8 @@ CREATE TABLE IF NOT EXISTS cap_disarm_state (
 class ArmCapStore:
     """SQLite-backed reservations and reconciled armed inventory."""
 
-    def __init__(self, path: Path) -> None:
-        self._path = path
+    def __init__(self, path: Path | None = None) -> None:
+        self._path = path if path is not None else resolve_store_path()
         self._lock = threading.Lock()
         self._init_db()
 
@@ -58,9 +64,19 @@ class ArmCapStore:
         return conn
 
     def _init_db(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
-            conn.executescript(_SCHEMA)
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with self._connect() as conn:
+                conn.executescript(_SCHEMA)
+        except (sqlite3.OperationalError, OSError):
+            fallback = fallback_temp_store_path()
+            if self._path != fallback:
+                self._path = fallback
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                with self._connect() as conn:
+                    conn.executescript(_SCHEMA)
+            else:
+                raise
 
     def expire_stale_reservations(self, now_iso: str | None = None) -> int:
         now = now_iso or utc_now_iso()
