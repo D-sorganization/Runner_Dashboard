@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import re
 import sqlite3
 from contextlib import closing
@@ -102,15 +103,33 @@ def seed_default_source(db_path: Path | None = None) -> None:
         logging.getLogger("dashboard.library.sources").warning("could not seed default library source: %s", exc)
 
 
+def source_availability(root_path: str | Path) -> str:
+    """Report read access to a registered root without mutating the registry or source."""
+    root = Path(root_path)
+    try:
+        if root.is_symlink() or not root.is_dir() or not os.access(root, os.R_OK | os.X_OK):
+            return "unavailable"
+    except OSError:
+        return "unavailable"
+    return "available"
+
+
 def list_sources(db_path: Path) -> list[dict[str, Any]]:
     db = init_library_db(db_path)
     with closing(sqlite3.connect(db)) as conn:
         conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT * FROM library_sources WHERE status='active' ORDER BY id").fetchall()
+        rows = conn.execute("SELECT * FROM library_sources ORDER BY id").fetchall()
         counts = dict(
             conn.execute("SELECT source_id, COUNT(*) FROM files WHERE status='present' GROUP BY source_id").fetchall()
         )
-    return [{**_row(row), "file_count": counts.get(row["id"], 0)} for row in rows]
+    return [
+        {
+            **_row(row),
+            "file_count": counts.get(row["id"], 0),
+            "availability": source_availability(row["root_path"]),
+        }
+        for row in rows
+    ]
 
 
 def get_source(db_path: Path, source_id: str) -> dict[str, Any]:

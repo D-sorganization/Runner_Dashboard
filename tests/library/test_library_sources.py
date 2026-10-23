@@ -119,3 +119,62 @@ def test_unregister_does_not_touch_source_tree(tmp_path: Path) -> None:
     add_source(db, source_id="keep", label="Keep", root_path=root)
     remove_source(db, "keep")
     assert (item.read_bytes(), item.stat().st_mtime_ns) == before
+
+
+def test_source_availability_tracks_disconnect_without_deleting_index(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    root.mkdir()
+    item = root / "keep.pdf"
+    item.write_bytes(make_text_pdf("A source document which remains available after reconnect."))
+    original = item.read_bytes()
+    db = tmp_path / "library.sqlite"
+    add_source(db, source_id="desk-x9-library", label="Desk X9", root_path=root)
+    ingest_directory(root, db_path=db, source_id="desk-x9-library")
+
+    assert list_sources(db)[0]["availability"] == "available"
+    disconnected = tmp_path / "disconnected"
+    root.rename(disconnected)
+    unavailable = list_sources(db)
+    assert len(unavailable) == 1
+    assert unavailable[0]["availability"] == "unavailable"
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT status FROM files WHERE source_id='desk-x9-library'").fetchone() == ("present",)
+        assert conn.execute("SELECT id FROM library_sources WHERE id='desk-x9-library'").fetchone() == (
+            "desk-x9-library",
+        )
+    assert (disconnected / "keep.pdf").read_bytes() == original
+
+    disconnected.rename(root)
+    assert list_sources(db)[0]["availability"] == "available"
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM files WHERE source_id='desk-x9-library'").fetchone() == (1,)
+        assert conn.execute("SELECT COUNT(*) FROM works WHERE status='active'").fetchone() == (1,)
+
+
+def test_source_list_cli_reports_unavailable_without_network_or_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import socket
+    import sys
+
+    from library.__main__ import main
+
+    data = tmp_path / "data"
+    root = tmp_path / "source"
+    root.mkdir()
+    item = root / "notes.md"
+    item.write_text("still on the disconnected source", encoding="utf-8")
+    db = data / "library.sqlite"
+    monkeypatch.setenv("LIBRARY_DATA_DIR", str(data))
+    add_source(db, source_id="drive-mirror", label="Drive mirror", root_path=root)
+    disconnected = tmp_path / "disconnected"
+    root.rename(disconnected)
+    monkeypatch.setattr(sys, "argv", ["library", "sources", "list"])
+    monkeypatch.setattr(socket, "create_connection", lambda *args, **kwargs: pytest.fail("unexpected network access"))
+
+    assert main() == 0
+    output = capsys.readouterr().out
+    assert "drive-mirror" in output
+    assert "availability=unavailable" in output
+    assert item.name == "notes.md"
+    assert (disconnected / item.name).read_text(encoding="utf-8") == "still on the disconnected source"

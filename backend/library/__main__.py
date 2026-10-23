@@ -41,7 +41,8 @@ def main() -> int:
                 rows = list_sources(db)
                 for row in rows:
                     sys.stdout.write(
-                        f"{row['id']}\t{row['label']}\t{row['root_path']}\tshared={str(row['shared']).lower()}\n"
+                        f"{row['id']}\t{row['label']}\t{row['root_path']}\tshared={str(row['shared']).lower()}\t"
+                        f"availability={row['availability']}\n"
                     )
             elif args.source_command == "add":
                 add_source(db, source_id=args.id, label=args.label, root_path=args.root_path, shared=args.shared)
