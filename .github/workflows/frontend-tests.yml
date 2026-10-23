@@ -16,6 +16,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  frontend-required:
+    name: frontend-required
+    needs: [frontend-scope, typecheck, vitest, perf-budget, playwright-e2e, staff-console-e2e]
+    if: always()
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 5
+    steps:
+      - name: Require all applicable frontend checks
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          scope = needs["frontend-scope"]
+          outputs = scope.get("outputs", {})
+          flags = [outputs.get(key) for key in ("run_frontend_tests", "run_staff_e2e")]
+          if scope["result"] != "success" or any(flag not in ("true", "false") for flag in flags):
+              sys.exit("Frontend scope failed or did not report explicit scope decisions")
+          frontend, staff = (flag == "true" for flag in flags)
+          required = {
+              "typecheck": True,
+              "vitest": frontend,
+              "perf-budget": frontend,
+              "playwright-e2e": frontend,
+              "staff-console-e2e": staff,
+          }
+          failed = []
+          for job, applicable in required.items():
+              result = needs[job]["result"]
+              allowed = {"success"} if applicable else {"success", "skipped"}
+              if result not in allowed:
+                  failed.append(f"{job}={result}")
+          if failed:
+              sys.exit("Frontend checks did not succeed: " + ", ".join(failed))
+          print("All applicable frontend checks succeeded")
+          PY
+
   frontend-scope:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
