@@ -41,6 +41,8 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
   const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -58,7 +60,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
       element.setAttribute("inert", "");
     });
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") onCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -73,7 +75,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
       }
       restoreFocusRef.current = null;
     };
-  }, [open, onClose, mobile]);
+  }, [open, mobile]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!mobile || !open || event.key !== "Tab") return;
