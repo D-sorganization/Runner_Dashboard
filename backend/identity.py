@@ -352,23 +352,37 @@ def require_principal(
         principal_id = session.get("principal_id")
         session_id = session.get("session_id")
         if principal_id and principal_id in identity_manager.principals:
+            from tailnet_identity import tailnet_principal as _tp_check  # noqa: PLC0415
+
+            can_fallback = _tp_check(request) is not None or (
+                _loopback_auth_enabled()
+                and _is_loopback_request(request)
+                and os.environ.get("DASHBOARD_LOOPBACK_SESSION_FALLBACK", "").strip().lower()
+                in {"1", "true", "yes", "on"}
+            )
             # Reject sessions that have been revoked or FIFO-evicted
             if session_id and not sm.touch_session(session_id):
-                raise HTTPException(status_code=401, detail="Session revoked or expired")
-            from github_app_user_oauth import (  # noqa: PLC0415
-                UserOAuthRevokedError,
-                UserOAuthTransientError,
-                ensure_fresh_access_token,
-            )
+                if can_fallback:
+                    if hasattr(request, "session") and isinstance(request.session, dict):
+                        request.session.clear()
+                else:
+                    raise HTTPException(status_code=401, detail="Session revoked or expired")
+            else:
+                from github_app_user_oauth import (  # noqa: PLC0415
+                    UserOAuthRevokedError,
+                    UserOAuthTransientError,
+                    ensure_fresh_access_token,
+                )
 
-            try:
-                ensure_fresh_access_token(principal_id)
-            except UserOAuthTransientError as exc:
-                raise HTTPException(status_code=503, detail=str(exc)) from exc
-            except UserOAuthRevokedError as exc:
-                request.session.clear()
-                raise HTTPException(status_code=401, detail=str(exc)) from exc
-            prin = identity_manager.principals[principal_id]
+                try:
+                    ensure_fresh_access_token(principal_id)
+                    prin = identity_manager.principals[principal_id]
+                except UserOAuthTransientError as exc:
+                    raise HTTPException(status_code=503, detail=str(exc)) from exc
+                except UserOAuthRevokedError as exc:
+                    request.session.clear()
+                    if not can_fallback:
+                        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
     # 3. Optional phone sign-in over the tailnet via Tailscale identity headers
     # (issue #1755). Only admitted when the raw transport peer is loopback

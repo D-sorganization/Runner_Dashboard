@@ -142,9 +142,11 @@ def tailnet_principal(request: Request) -> Principal | None:
     if not _tailscale_auth_enabled():
         return None
 
+    direct_allow = os.getenv("DASHBOARD_TAILSCALE_DIRECT_ALLOW", "0").strip().lower() in ("1", "true", "yes")
     scope = getattr(request, "scope", None)
     transport_peer = scope.get(_TRANSPORT_PEER_SCOPE_KEY) if isinstance(scope, dict) else None
-    if not _is_loopback_addr(transport_peer):
+    is_loopback_peer = _is_loopback_addr(transport_peer)
+    if not is_loopback_peer and not (direct_allow and _is_tailnet_addr(transport_peer)):
         return None
 
     client = getattr(request, "client", None)
@@ -152,12 +154,20 @@ def tailnet_principal(request: Request) -> Principal | None:
     if not _is_tailnet_addr(resolved_host):
         return None
 
-    login_header = request.headers.get("Tailscale-User-Login")
+    login_header = request.headers.get("Tailscale-User-Login") if is_loopback_peer else None
+    allowed = _allowed_logins()
     if not login_header:
-        return None
-    login = login_header.strip()
-    if not login or login.lower() not in _allowed_logins():
-        return None
+        if direct_allow and allowed:
+            raw_logins = [
+                part.strip() for part in os.getenv("DASHBOARD_TAILSCALE_LOGINS", "").split(",") if part.strip()
+            ]
+            login = raw_logins[0] if raw_logins else sorted(allowed)[0]
+        else:
+            return None
+    else:
+        login = login_header.strip()
+        if not login or login.lower() not in allowed:
+            return None
 
     name_header = request.headers.get("Tailscale-User-Name")
     name = name_header.strip() if name_header and name_header.strip() else login
@@ -167,6 +177,12 @@ def tailnet_principal(request: Request) -> Principal | None:
     roles = ["loopback"]
     if _from_other_tailnet_device(str(resolved_host)):
         roles.append(TAILNET_APPROVER_ROLE)
+    if os.getenv("DASHBOARD_TAILSCALE_OPERATOR_WRITES", "0").strip().lower() in ("1", "true", "yes") or os.getenv(
+        "DASHBOARD_LOOPBACK_OPERATOR_WRITES", "0"
+    ).strip().lower() in ("1", "true", "yes"):
+        for extra_role in ("operator", "admin"):
+            if extra_role not in roles:
+                roles.append(extra_role)
 
     return Principal(
         id=f"tailscale:{login}",

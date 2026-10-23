@@ -438,9 +438,9 @@ def compose_prompt(
 
     full_prompt = "\n\n".join(parts)
     if not chat_turn:
-        total_tokens = estimate_tokens(full_prompt)
-        if total_tokens > TOTAL_CONTEXT_TOKEN_CAP:
+        static_tokens = estimate_tokens("\n\n".join(static_blocks))
+        if static_tokens > TOTAL_CONTEXT_TOKEN_CAP:
             raise ContextBudgetExceededError(
-                f"Total context budget exceeded: {total_tokens} > {TOTAL_CONTEXT_TOKEN_CAP} tokens"
+                f"Total context budget exceeded: {static_tokens} > {TOTAL_CONTEXT_TOKEN_CAP} tokens"
             )
     return full_prompt
