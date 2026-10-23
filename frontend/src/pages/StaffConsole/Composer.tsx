@@ -108,6 +108,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
         return next;
       });
       setVoiceError(null);
+      textareaRef.current?.focus();
     },
     onError: (err) => setVoiceError(err),
   });
@@ -289,6 +290,12 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       }
     }
 
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "v" && voice.available) {
+      e.preventDefault();
+      voice.toggle();
+      return;
+    }
+
     // Normal Enter sends, Shift+Enter makes newline
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -394,21 +401,29 @@ export const Composer: React.FC<ComposerComponentProps> = ({
             aria-label={
               !voice.available
                 ? "Voice input not supported"
-                : voice.recording
-                  ? "Stop voice input"
-                  : "Voice input"
+                : voice.transcribing
+                  ? "Transcribing voice input"
+                  : voice.recording
+                    ? "Stop voice input"
+                    : "Voice input"
             }
             aria-pressed={voice.recording}
             onClick={voice.available ? voice.toggle : undefined}
-            disabled={disabled || isPanel || sendState === "sending" || !voice.available}
-            title={!voice.available ? "Voice input is not supported in this browser" : undefined}
+            disabled={disabled || isPanel || sendState === "sending" || !voice.available || voice.transcribing}
+            title={
+              !voice.available
+                ? "Voice input is not supported in this browser"
+                : voice.engine === "local-whisper"
+                  ? "Local Whisper voice input (Ctrl+Shift+V)"
+                  : "Voice input (cloud fallback, Ctrl+Shift+V)"
+            }
             className={`staff-composer__voice-btn ${voice.recording ? "staff-composer__voice-btn--recording" : ""}`}
             style={{
               cursor: voice.available && !isPanel ? "pointer" : "not-allowed",
               opacity: voice.available && !isPanel ? 1 : 0.4,
             }}
           >
-            {voice.recording ? "■" : <MicGlyph size={16} />}
+            {voice.transcribing ? "…" : voice.recording ? "■" : <MicGlyph size={16} />}
           </button>
 
           {/* Circular Accent Send Button */}
