@@ -229,6 +229,27 @@ async def board_v1(
     return await staff_fleet.aggregate_board(mine, peers)
 
 
+@router.get("/context/agents-sync")
+async def context_agents_sync_v1(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Compare published managed AGENTS blocks with the Repository_Management source."""
+    from cache_utils import cache_get, cache_set
+    from projects.service import configured_repos, fetch_repo_file
+    from staff.agents_sync import build_agents_sync_report
+
+    cached = cache_get("context:agents-sync", 600)
+    if cached is not None:
+        return cached
+
+    async def fetch_file(repo: str, path: str) -> str | None:
+        return await fetch_repo_file(repo, path)
+
+    report = await build_agents_sync_report(fetch_file, configured_repos())
+    cache_set("context:agents-sync", report)
+    return report
+
+
 @router.get("/summary", response_model=StaffSummaryResponse, response_model_exclude_none=True)
 async def summary_v1(
     _peer: Principal = Depends(require_scope("staff.read")),
