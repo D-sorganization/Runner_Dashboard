@@ -86,14 +86,16 @@ class StaffRunner:
 
     # ── planning ─────────────────────────────────────────────────────────
     def plan(self, req: RunRequest) -> RunPlan:
-        """Resolve role + provider + prompt without side effects.
-
-        Raises ``ValueError`` with an operator-readable message on bad input.
-        """
+        """Resolve role + provider + prompt without side effects (raises ValueError on bad input)."""
+        from library.dispatch_hook import library_references_for_plan
+        from staff.cloud_dispatch import resolve_plan_execution
+        from staff.dispatch_bundle import DispatchContractError, resolve_dispatch_bundle
+        from staff.failover_dispatch import resolve_provider_and_model
+        from staff.failover_model import resolve_launch_model, role_base_tier
+        from staff.provider_failover_config import resolve_failover_chain
         from staff.role_dispatch import resolve_dispatch_role
 
         role = resolve_dispatch_role(self.roles(), req)
-        from staff.failover_dispatch import resolve_provider_and_model
 
         provider, _chain_model, model_tier, auth_skipped = resolve_provider_and_model(
             self._adapters, self.machine, req, role
@@ -108,8 +110,6 @@ class StaffRunner:
         lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
         paragraph = consolidation.prompt_paragraph(req.consolidation) if req.consolidation else ""
         focus = focus_mod.focus_paragraph(req.repo, focus_mod.load_items(self._focus_loader)) if req.repo else ""
-        from staff.dispatch_bundle import DispatchContractError, resolve_dispatch_bundle
-
         try:
             bundle = resolve_dispatch_bundle(
                 role=role.name,
@@ -120,8 +120,6 @@ class StaffRunner:
             )
         except DispatchContractError as exc:
             raise ValueError(str(exc)) from exc
-        from library.dispatch_hook import library_references_for_plan
-
         repo_lessons = select_repo_lessons(req.repo)
         references_block, library_work_ids = library_references_for_plan(role, req)
         prompt = workspace.compose_prompt(
@@ -136,9 +134,6 @@ class StaffRunner:
             library_references=references_block,
             repo_lessons_result=repo_lessons,
         )
-        from staff.failover_model import resolve_launch_model, role_base_tier
-        from staff.provider_failover_config import resolve_failover_chain
-
         adapter = self._adapters[provider]
         chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)
         step = next((s for s in chain if s.provider == provider), None)
@@ -150,24 +145,9 @@ class StaffRunner:
             step=step,
             active_tier=role_base_tier(role),
         )
-        execution_mode = (getattr(req, "execution_mode", "local") or "local").strip().lower()
-        cloud_stdin = ""
-        if execution_mode == "cloud":
-            from staff.cloud_dispatch import build_cloud_dispatch
-
-            cloud = build_cloud_dispatch(
-                provider,
-                req.prompt,
-                model=effective_model,
-                repo=req.repo,
-                issue=req.issue,
-                pr=req.pr,
-            )
-            argv = cloud.argv
-            cloud_stdin = cloud.stdin or ""
-            lease = False
-        else:
-            argv = adapter.build_command(prompt, "<workdir>", effective_model, **ops.read_only_kwargs(role))
+        execution_mode, argv, cloud_stdin, lease = resolve_plan_execution(
+            req, role, provider, adapter, prompt, effective_model, lease, ops.read_only_kwargs(role)
+        )
         return RunPlan(
             role=role.name,
             provider=provider,
@@ -212,11 +192,7 @@ class StaffRunner:
         return rec
 
     def admit(self, req: RunRequest, *, run_id: str | None = None) -> tuple[RunRecord, RunPlan, bool]:
-        """Validate and persist as ``queued`` without starting a worker (#1796).
-
-        A ``run_id`` that already has a row returns that row with ``created=False``, so
-        a retried operation is admitted once. Call :meth:`launch` only when created.
-        """
+        """Validate and persist as ``queued`` without starting a worker (#1796)."""
         plan = self.plan(req)
         if run_id and (existing := self.store.get_run(run_id)) is not None:
             return existing, plan, False
@@ -326,10 +302,11 @@ class StaffRunner:
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
             antigravity_permissions(read_only=role.code_read_only, workdir=workdir, gitdir=gitdir)
-        if plan.execution_mode == "cloud":
-            argv = list(plan.argv)
-        else:
-            argv = adapter.build_command(prompt, str(workdir), plan.model, **ops.read_only_kwargs(role), **launch_paths)
+        from staff.cloud_dispatch import record_cloud_session_from_transcript, resolve_execute_launch, scrub_api_key_env
+
+        launch_argv, launch_label, stdin_payload = resolve_execute_launch(
+            plan, adapter, prompt, workdir, ops.read_only_kwargs(role), launch_paths
+        )
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
@@ -348,8 +325,6 @@ class StaffRunner:
         if env is None:
             return
         if plan.execution_mode == "cloud":
-            from staff.cloud_dispatch import scrub_api_key_env
-
             env = scrub_api_key_env(env)
         env = ops.apply_staff_run_fleet_token(
             store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
@@ -357,14 +332,6 @@ class StaffRunner:
         if env is None:
             return
         try:
-            stdin_payload = plan.cloud_stdin if plan.execution_mode == "cloud" and plan.cloud_stdin else None
-            if plan.execution_mode == "cloud" and argv and argv[0] == "gh":
-                launch_argv = argv
-                launch_label = "gh (cloud workflow)"
-            else:
-                exe = shutil.which(adapter.executable) or adapter.executable
-                launch_argv = [exe, *argv[1:]]
-                launch_label = f"{adapter.executable} ({plan.provider})"
             proc = subprocess.Popen(  # noqa: S603
                 launch_argv,
                 cwd=str(workdir),
@@ -415,15 +382,7 @@ class StaffRunner:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
             if plan.execution_mode == "cloud":
-                from staff.cloud_dispatch import parse_remote_session_url
-
-                remote_url = parse_remote_session_url(
-                    plan.provider,
-                    transcript.read_text(encoding="utf-8", errors="replace"),
-                )
-                if remote_url:
-                    store.update_run(rec.id, remote_session_url=remote_url)
-                    store.append_event(rec.id, "cloud", f"remote session {remote_url}")
+                record_cloud_session_from_transcript(store, rec.id, plan.provider, transcript)
             question = ops.extract_transcript_question(transcript)
 
             if not cancelled and rc == 0 and not result_line and not question:
@@ -517,12 +476,7 @@ class StaffRunner:
             workspace.finalize_run_worktree(self.store, rec.id, workdir, plan.repo, branch=plan.branch)
 
     def _pump_output(
-        self,
-        rec: RunRecord,
-        adapter: ProviderAdapter,
-        proc: subprocess.Popen[str],
-        transcript: Path,
-        watchdog: StaffWatchdog | None = None,
+        self, rec: RunRecord, adapter: ProviderAdapter, proc: Any, transcript: Path, watchdog: Any = None
     ) -> Any:
         return ops.pump_output(rec, adapter, proc, transcript, self.store, watchdog)
 

@@ -139,3 +139,58 @@ def parse_remote_session_url(provider: str, text: str) -> str | None:
         return m.group(0)
     urls = _URL_RE.findall(text)
     return urls[0] if urls else None
+
+
+def resolve_plan_execution(
+    req: Any,
+    role: Any,
+    provider: str,
+    adapter: Any,
+    prompt: str,
+    effective_model: str | None,
+    lease: bool,
+    read_only_kwargs: Mapping[str, Any],
+) -> tuple[str, list[str], str, bool]:
+    """Return ``(execution_mode, argv, cloud_stdin, lease)`` for :meth:`StaffRunner.plan`."""
+    execution_mode = (getattr(req, "execution_mode", "local") or "local").strip().lower()
+    if execution_mode == "cloud":
+        cloud = build_cloud_dispatch(
+            provider,
+            req.prompt,
+            model=effective_model,
+            repo=req.repo,
+            issue=req.issue,
+            pr=req.pr,
+        )
+        return execution_mode, cloud.argv, cloud.stdin or "", False
+    argv = adapter.build_command(prompt, "<workdir>", effective_model, **read_only_kwargs)
+    return execution_mode, argv, "", lease
+
+
+def resolve_execute_launch(
+    plan: Any,
+    adapter: Any,
+    prompt: str,
+    workdir: Any,
+    read_only_kwargs: Mapping[str, Any],
+    launch_paths: Mapping[str, Any],
+) -> tuple[list[str], str, str | None]:
+    """Return ``(launch_argv, launch_label, stdin_payload)`` for :meth:`StaffRunner._execute`."""
+    argv = (
+        list(plan.argv)
+        if plan.execution_mode == "cloud"
+        else adapter.build_command(prompt, str(workdir), plan.model, **read_only_kwargs, **launch_paths)
+    )
+    stdin_payload = plan.cloud_stdin if plan.execution_mode == "cloud" and plan.cloud_stdin else None
+    if plan.execution_mode == "cloud" and argv and argv[0] == "gh":
+        return argv, "gh (cloud workflow)", stdin_payload
+    exe = shutil.which(adapter.executable) or adapter.executable
+    return [exe, *argv[1:]], f"{adapter.executable} ({plan.provider})", stdin_payload
+
+
+def record_cloud_session_from_transcript(store: Any, run_id: str, provider: str, transcript: Any) -> None:
+    """Parse and persist ``remote_session_url`` from transcript when present."""
+    remote_url = parse_remote_session_url(provider, transcript.read_text(encoding="utf-8", errors="replace"))
+    if remote_url:
+        store.update_run(run_id, remote_session_url=remote_url)
+        store.append_event(run_id, "cloud", f"remote session {remote_url}")
