@@ -2,11 +2,13 @@
 import os
 import secrets
 import time
+from dataclasses import replace
 from typing import Any
 
 import httpx
 import session_management as sm
 from browser_csrf import issue_browser_csrf
+from browser_origin import browser_origin, external_browser_request
 from external_ingress import validated_browser_owner_id
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
@@ -79,6 +81,20 @@ def _production_oauth_config() -> OAuthConfig:
     return OAuthConfig.from_env()
 
 
+def _oauth_config_for_request(request: Request) -> OAuthConfig:
+    """Select callbacks from explicit configuration, never forwarded host values."""
+    config = _production_oauth_config()
+    if not external_browser_request(request):
+        return config
+    origin = browser_origin()
+    if origin is None:
+        _clear_oauth_state(request)
+        raise HTTPException(status_code=503, detail="Request not permitted")
+    # Preserve the existing explicit OAuth allowlist and all credential/TLS
+    # readiness checks. A browser origin alone does not authorize a callback.
+    return replace(config, public_origin=origin, callback_url=f"{origin}/api/auth/callback")
+
+
 def _require_production_oauth(config: OAuthConfig) -> None:
     """Translate the pure configuration contract into a redacted HTTP error."""
     try:
@@ -97,13 +113,18 @@ def _require_production_oauth(config: OAuthConfig) -> None:
 def _clear_oauth_state(request: Request) -> None:
     request.session.pop("oauth_state", None)
     request.session.pop("oauth_state_ts", None)
+    request.session.pop("oauth_origin", None)
 
 
 @router.get("/github")
 async def github_login(request: Request):
     """Start GitHub OAuth flow."""
-    config = _production_oauth_config()
-    if not config.diagnostic()["ready"] and os.getenv("DASHBOARD_DEV_LOGIN") != "1":
+    config = _oauth_config_for_request(request)
+    if (
+        not config.diagnostic()["ready"]
+        and os.getenv("DASHBOARD_DEV_LOGIN") != "1"
+        and not external_browser_request(request)
+    ):
         from identity import _is_loopback_request, _loopback_auth_enabled
         from tailnet_identity import tailnet_principal
 
@@ -124,6 +145,7 @@ async def github_login(request: Request):
     state = secrets.token_urlsafe(16)
     request.session["oauth_state"] = state
     request.session["oauth_state_ts"] = time.time()
+    request.session["oauth_origin"] = config.public_origin
     return RedirectResponse(url=config.authorization_url(state))
 
 
@@ -131,14 +153,18 @@ async def github_login(request: Request):
 async def github_callback(request: Request, code: str, state: str):
     """Handle GitHub OAuth callback."""
     check_auth_rate_limit(request)  # issue #320: 5 attempts / 5 min per IP
-    config = _production_oauth_config()
     try:
+        config = _oauth_config_for_request(request)
         _require_production_oauth(config)
     except HTTPException:
         _clear_oauth_state(request)
         raise
     saved_state = request.session.get("oauth_state")
     if not saved_state or not secrets.compare_digest(state, saved_state):
+        _clear_oauth_state(request)
+        raise HTTPException(status_code=400, detail="Invalid state")
+    saved_origin = request.session.get("oauth_origin")
+    if (saved_origin is not None or external_browser_request(request)) and saved_origin != config.public_origin:
         _clear_oauth_state(request)
         raise HTTPException(status_code=400, detail="Invalid state")
     state_ts = float(request.session.get("oauth_state_ts") or 0)

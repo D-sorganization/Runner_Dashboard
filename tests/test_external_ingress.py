@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import logging
 
+import pytest
 from external_ingress import _is_external_ingress, deny_external_ingress_bearer
 from fastapi import Request
+
+pytestmark = pytest.mark.unit
 
 
 def _request(headers: list[tuple[bytes, bytes]], *, path: str = "/api/v1/staff/threads") -> Request:
@@ -40,6 +43,14 @@ def test_local_origin_bearer_is_not_external_ingress() -> None:
 
     assert not _is_external_ingress(request)
     assert deny_external_ingress_bearer(request, logging.getLogger("external_ingress")) is None
+
+
+def test_configured_browser_host_denies_bearer_without_edge_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN", "https://ops.example.invalid")
+    request = _request([(b"authorization", b"Bearer must-not-log"), (b"host", b"ops.example.invalid")])
+    response = deny_external_ingress_bearer(request, logging.getLogger("external_ingress"))
+    assert response is not None and response.status_code == 403
+    assert response.body == b'{"error":"Request not permitted"}'
 
 
 def test_malformed_origin_fails_closed_for_bearer() -> None:
