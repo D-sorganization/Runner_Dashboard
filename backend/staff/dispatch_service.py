@@ -85,6 +85,7 @@ class DispatchCommand:
     requested_skill: str | None = None
     # Force duplicate run/PR: bypasses pre-dispatch open-PR and active-run guards (#2254).
     force_duplicate: bool = False
+    execution_mode: str = "local"
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -321,6 +322,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         task_type=cmd.task_type,
         standards_extra=cmd.standards_extra,
         requested_skill=cmd.requested_skill,
+        execution_mode=cmd.execution_mode or "local",
     )
     try:
         plan = runner.plan(req)

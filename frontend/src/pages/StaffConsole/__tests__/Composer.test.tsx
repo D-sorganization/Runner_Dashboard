@@ -396,7 +396,7 @@ describe("Composer Component", () => {
     });
 
     const attachment = await screen.findByTestId("composer-attachment-offline.md");
-    expect(attachment).toHaveClass("staff-composer__chip--rejected");
+    await waitFor(() => expect(attachment).toHaveClass("staff-composer__chip--rejected"));
     expect(attachment).toHaveTextContent("Upload failed (503)");
     expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
     expect(onSend).not.toHaveBeenCalled();
