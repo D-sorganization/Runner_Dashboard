@@ -186,7 +186,7 @@ def _index_epub(
     author, title, year = _parse_filename(path.stem)
     author = author or meta_author
     title = title or meta_title
-    work_id = _ensure_work_epub(conn, digest, author, title, year)
+    work_id = _ensure_work_simple(conn, digest, author, title, year, fmt="epub")
     _upsert_file(conn, work_id, rel, source_root, stat, digest, source_id)
     _merge_work_topics(conn, work_id, rel)
     _replace_epub_passages(conn, work_id, title or "", chapters)
@@ -261,129 +261,68 @@ def _ensure_work(conn: sqlite3.Connection, digest: str, reader: PdfReader, path:
     return int(cur.lastrowid)
 
 
-def _ensure_work_epub(
-    conn: sqlite3.Connection, digest: str, author: str | None, title: str | None, year: int | None
+def _ensure_work_simple(
+    conn: sqlite3.Connection, digest: str, author: str | None, title: str | None, year: int | None, fmt: str = "epub"
 ) -> int:
     row = conn.execute("SELECT id FROM works WHERE sha256 = ?", (digest,)).fetchone()
     if row:
         return int(row[0])
     cur = conn.execute(
-        "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,'epub','active',0)",
-        (digest, author, title, year),
+        "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,?,'active',0)",
+        (digest, author, title, year, fmt),
     )
-    if cur.lastrowid is None:
-        raise RuntimeError("insert work failed")
     return int(cur.lastrowid)
 
 
-def _replace_passages(conn: sqlite3.Connection, work_id: int, reader: PdfReader) -> None:
+def _insert_passages(
+    conn: sqlite3.Connection, work_id: int, title_s: str, passages: list[tuple[str | None, int, int, str]]
+) -> None:
     conn.execute("DELETE FROM passages WHERE work_id = ?", (work_id,))
-    title = conn.execute("SELECT title FROM works WHERE id = ?", (work_id,)).fetchone()
-    title_s = (title[0] if title else None) or ""
-    for i in range(len(reader.pages)):
-        text = _page_text(reader, i)
-        if not text.strip():
-            continue
+    for section, start, end, text in passages:
         cur = conn.execute(
             "INSERT INTO passages (work_id, page_start, page_end, section, text, token_estimate)"
-            " VALUES (?, ?, ?, NULL, ?, ?)",
-            (work_id, i + 1, i + 1, text, estimate_tokens(text)),
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (work_id, start, end, section, text, estimate_tokens(text)),
         )
         conn.execute(
             "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
             (cur.lastrowid, title_s, text),
         )
+
+
+def _replace_passages(conn: sqlite3.Connection, work_id: int, reader: PdfReader) -> None:
+    title = conn.execute("SELECT title FROM works WHERE id = ?", (work_id,)).fetchone()
+    passages = [(None, i + 1, i + 1, txt) for i in range(len(reader.pages)) if (txt := _page_text(reader, i).strip())]
+    _insert_passages(conn, work_id, (title[0] if title else None) or "", passages)
 
 
 def _replace_epub_passages(
     conn: sqlite3.Connection, work_id: int, title_s: str, chapters: list[tuple[str, str]]
 ) -> None:
-    conn.execute("DELETE FROM passages WHERE work_id = ?", (work_id,))
-    for idx, (section, text) in enumerate(chapters, start=1):
-        cur = conn.execute(
-            "INSERT INTO passages (work_id, page_start, page_end, section, text, token_estimate)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (work_id, idx, idx, section, text, estimate_tokens(text)),
-        )
-        conn.execute(
-            "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
-            (cur.lastrowid, title_s, text),
-        )
+    _insert_passages(conn, work_id, title_s, [(sec, idx, idx, txt) for idx, (sec, txt) in enumerate(chapters, start=1)])
 
 
 def _extract_text_passages(raw: bytes, fmt: str) -> list[tuple[str | None, int, int, str]]:
-    text = raw.decode("utf-8", errors="replace")
-    lines = text.splitlines(keepends=True)
+    lines = raw.decode("utf-8", errors="replace").splitlines(keepends=True)
     if not lines:
         return []
     passages: list[tuple[str | None, int, int, str]] = []
-    current_section: str | None = None
-    cur_lines: list[str] = []
-    start_line = 1
-    cur_chars = 0
-
-    for line_idx, line in enumerate(lines, start=1):
+    sec, cur, start, chars = None, [], 1, 0
+    for idx, line in enumerate(lines, start=1):
         stripped = line.strip()
-        is_heading = fmt in ("md", "markdown") and stripped.startswith("#")
-        if is_heading:
-            if cur_lines:
-                chunk = "".join(cur_lines).strip()
-                if chunk:
-                    passages.append((current_section, start_line, line_idx - 1, chunk))
-                cur_lines = []
-                cur_chars = 0
-            current_section = stripped.lstrip("#").strip() or None
-            start_line = line_idx
-            cur_lines.append(line)
-            cur_chars += len(line)
-        else:
-            if cur_chars + len(line) > 1500 and cur_lines:
-                chunk = "".join(cur_lines).strip()
-                if chunk:
-                    passages.append((current_section, start_line, line_idx - 1, chunk))
-                cur_lines = [line]
-                cur_chars = len(line)
-                start_line = line_idx
-            else:
-                cur_lines.append(line)
-                cur_chars += len(line)
-
-    if cur_lines:
-        chunk = "".join(cur_lines).strip()
-        if chunk:
-            passages.append((current_section, start_line, len(lines), chunk))
+        is_hd = fmt in ("md", "markdown") and stripped.startswith("#")
+        if (is_hd or chars + len(line) > 1500) and cur:
+            txt = "".join(cur).strip()
+            if txt:
+                passages.append((sec, start, idx - 1, txt))
+            cur, chars, start = [], 0, idx
+        if is_hd:
+            sec = stripped.lstrip("#").strip() or None
+        cur.append(line)
+        chars += len(line)
+    if cur and (txt := "".join(cur).strip()):
+        passages.append((sec, start, len(lines), txt))
     return passages
-
-
-def _ensure_work_text(
-    conn: sqlite3.Connection, digest: str, author: str | None, title: str | None, year: int | None, fmt: str
-) -> int:
-    row = conn.execute("SELECT id FROM works WHERE sha256 = ?", (digest,)).fetchone()
-    if row:
-        return int(row[0])
-    cur = conn.execute(
-        "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,?, 'active', 0)",
-        (digest, author, title, year, fmt),
-    )
-    if cur.lastrowid is None:
-        raise RuntimeError("insert work failed")
-    return int(cur.lastrowid)
-
-
-def _replace_text_passages(
-    conn: sqlite3.Connection, work_id: int, title_s: str, passages: list[tuple[str | None, int, int, str]]
-) -> None:
-    conn.execute("DELETE FROM passages WHERE work_id = ?", (work_id,))
-    for section, start_line, end_line, chunk in passages:
-        cur = conn.execute(
-            "INSERT INTO passages (work_id, page_start, page_end, section, text, token_estimate)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (work_id, start_line, end_line, section, chunk, estimate_tokens(chunk)),
-        )
-        conn.execute(
-            "INSERT INTO passages_fts (rowid, title, text) VALUES (?, ?, ?)",
-            (cur.lastrowid, title_s, chunk),
-        )
 
 
 def _index_text(
@@ -402,10 +341,10 @@ def _index_text(
         _record_rejection(conn, source_root, rel, "empty_file", datetime.now(UTC).isoformat())
         return False
     author, title, year = _parse_filename(path.stem)
-    work_id = _ensure_work_text(conn, digest, author, title, year, fmt)
+    work_id = _ensure_work_simple(conn, digest, author, title, year, fmt=fmt)
     _upsert_file(conn, work_id, rel, source_root, stat, digest, source_id)
     _merge_work_topics(conn, work_id, rel)
-    _replace_text_passages(conn, work_id, title or path.stem, passages)
+    _insert_passages(conn, work_id, title or path.stem, passages)
     return True
 
 
