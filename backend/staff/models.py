@@ -323,6 +323,7 @@ class StaffSummaryResponse(BaseModel):
         description="Per-machine provider cooldown rows after capacity/quota/rate-limit (#2047)",
     )
     holds: list[dict[str, Any]] = Field(default_factory=list)
+    exclusions_active: int = Field(default=0, description="Active dispatch exclusions (repo/issue lanes)")
     liveness_alerts: list[StaffRoleLiveness] = Field(default_factory=list)
     roles: list[dict[str, Any]] = Field(default_factory=list)
     operator_auth: dict[str, Any] = Field(

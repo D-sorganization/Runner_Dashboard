@@ -180,6 +180,23 @@ async def _forward(target: str, cmd: DispatchCommand, on_behalf_of: str) -> dict
     return {**data, "machine": data.get("machine", target), "forwarded_to": target}
 
 
+def _refuse_if_excluded(cmd: DispatchCommand) -> None:
+    """409 when (repo, issue, declared paths) fall in an active dispatch exclusion.
+
+    Runs before any forward/plan/audit so no run row exists for a refused lane. It
+    applies to dry runs too, so a preview tells the caller the lane is owned.
+    """
+    if not cmd.repo:
+        return
+    from dispatch_routing import extract_declared_paths  # noqa: PLC0415
+    from staff.exclusions import ExclusionsList, refusal_detail  # noqa: PLC0415
+
+    hit = ExclusionsList().blocking(cmd.repo, cmd.issue, extract_declared_paths(cmd.prompt))
+    if hit is not None:
+        log.info("staff: dispatch of %s on %s#%s refused by exclusion %s", cmd.role, cmd.repo, cmd.issue, hit.id)
+        raise HTTPException(status_code=409, detail=refusal_detail(hit))
+
+
 async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[str, Any]:
     """Dispatch (or preview) one staff run under the shared policy.
 
@@ -191,6 +208,8 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     outage starts nothing. Any refusal is an ``HTTPException`` raised before a run row
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
+    _refuse_if_excluded(cmd)
+
     if not cmd.dry_run and not cmd.force_duplicate and cmd.issue and cmd.repo:
         from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
 

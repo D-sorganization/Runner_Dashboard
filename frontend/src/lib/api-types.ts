@@ -4652,6 +4652,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/exclusions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Exclusions */
+        get: operations["list_exclusions_api_staff_exclusions_get"];
+        put?: never;
+        /**
+         * Add Exclusion
+         * @description Add (or replace the identical repo/issue/glob) exclusion; the caller is recorded as ``created_by``.
+         */
+        post: operations["add_exclusion_api_staff_exclusions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/exclusions/{exclusion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Exclusion */
+        delete: operations["delete_exclusion_api_staff_exclusions__exclusion_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/github-app/preflight": {
         parameters: {
             query?: never;
@@ -6105,6 +6143,44 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/exclusions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Exclusions */
+        get: operations["list_exclusions_api_v1_staff_exclusions_get"];
+        put?: never;
+        /**
+         * Add Exclusion
+         * @description Add (or replace the identical repo/issue/glob) exclusion; the caller is recorded as ``created_by``.
+         */
+        post: operations["add_exclusion_api_v1_staff_exclusions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/exclusions/{exclusion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Exclusion */
+        delete: operations["delete_exclusion_api_v1_staff_exclusions__exclusion_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8561,6 +8637,27 @@ export interface components {
         EvaluateBoardPayload: {
             board_route?: components["schemas"]["BoardRoute"] | null;
             criteria?: components["schemas"]["BoardRoutingCriteria"];
+        };
+        /**
+         * ExclusionBody
+         * @description POST body. DbC: the JSON shape of ``staff.exclusions.Exclusion`` minus server-set fields.
+         */
+        ExclusionBody: {
+            /** Expires At */
+            expires_at?: string | null;
+            /** Issue */
+            issue?: number | null;
+            /** Owner */
+            owner: string;
+            /**
+             * Path Glob
+             * @default
+             */
+            path_glob: string;
+            /** Reason */
+            reason: string;
+            /** Repo */
+            repo: string;
         };
         /**
          * ExecutionConfig
@@ -11081,6 +11178,12 @@ export interface components {
             attention?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Exclusions Active
+             * @description Active dispatch exclusions (repo/issue lanes)
+             * @default 0
+             */
+            exclusions_active: number;
             /**
              * Generated At
              * @description ISO-8601 UTC timestamp
@@ -17780,6 +17883,96 @@ export interface operations {
             };
         };
     };
+    list_exclusions_api_staff_exclusions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    add_exclusion_api_staff_exclusions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExclusionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_exclusion_api_staff_exclusions__exclusion_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exclusion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     github_app_preflight_api_staff_github_app_preflight_get: {
         parameters: {
             query?: never;
@@ -20401,6 +20594,96 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_exclusions_api_v1_staff_exclusions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    add_exclusion_api_v1_staff_exclusions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExclusionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_exclusion_api_v1_staff_exclusions__exclusion_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exclusion_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
