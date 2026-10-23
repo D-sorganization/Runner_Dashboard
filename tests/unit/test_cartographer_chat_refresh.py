@@ -15,6 +15,31 @@ pytestmark = pytest.mark.unit
 REPOS = ("UpstreamDrift", "AffineDrift", "Gasification_Model", "Tools", "Repository_Management", "Runner_Dashboard")
 
 
+def test_chat_warns_when_cached_default_is_newer_than_indexed_checkout(source_pack) -> None:
+    roots, manifest, knowledge = source_pack
+    refresh_pack(manifest, roots=roots, knowledge_dir=knowledge)
+    root = roots["UpstreamDrift"]
+    indexed = git(root, "rev-parse", "HEAD")
+    remote = git(
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit-tree",
+        "HEAD^{tree}",
+        "-p",
+        indexed,
+        "-m",
+        "remote update",
+    )
+    git(root, "update-ref", "refs/remotes/origin/main", remote)
+    role = RoleSpec(name="barb", title="Barb", tools=["search_code"], repos=["UpstreamDrift"])
+    block = build_knowledge_turn_block(role, "energy contracts")
+    assert block and "Indexed code map is stale" in block
+    assert indexed[:8] in block and len(block.encode()) <= 800
+
+
 def git(root: Path, *args: str) -> str:
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 

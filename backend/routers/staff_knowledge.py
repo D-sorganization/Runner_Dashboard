@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from knowledge_pack import KnowledgePack
 from knowledge_pack.cartographer import format_codebase_reference
-from knowledge_pack.sources import head_commit
+from staff.codebase_freshness import snapshot_is_stale
 from staff.knowledge_refresh import get_knowledge_dir, pack_is_stale
 from staff.models_insights import (
     StaffKnowledgeInfoResponse,
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/knowledge")
 
 
 def _codebase_state(pack: KnowledgePack) -> tuple[dict[str, Path], bool]:
-    """Compare indexed commits with current Git heads without scanning source trees.
+    """Compare indexed commits with local heads and cached remote defaults.
 
     Cartographer serves a committed snapshot. Dirty working files do not replace
     its evidence; each emitted passage is separately checked against its Git blob.
@@ -41,7 +41,7 @@ def _codebase_state(pack: KnowledgePack) -> tuple[dict[str, Path], bool]:
     stale = (
         not roots
         or len(roots) != len(commits)
-        or any(head_commit(root) != commits[name] for name, root in roots.items())
+        or any(snapshot_is_stale(root, commits[name]) for name, root in roots.items())
     )
     return roots, stale
 

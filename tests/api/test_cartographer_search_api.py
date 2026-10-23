@@ -84,6 +84,31 @@ def test_uncommitted_indexed_text_is_omitted(fixture: SearchFixture) -> None:
     assert data["count"] == 0 and data["passages"] == []
 
 
+def test_cached_default_ahead_of_checkout_is_stale_without_changing_citations(fixture: SearchFixture) -> None:
+    client, root, _ = fixture
+    indexed = git(root, "rev-parse", "HEAD")
+    remote = git(
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit-tree",
+        "HEAD^{tree}",
+        "-p",
+        indexed,
+        "-m",
+        "remote architecture update",
+    )
+    git(root, "update-ref", "refs/remotes/origin/main", remote)
+    git(root, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+    data = client.get("/api/v1/staff/knowledge/cartographer/search?q=energy").json()
+    assert data["stale"] is True
+    assert data["passages"] and all(hit["commit"] == indexed for hit in data["passages"])
+    assert client.get("/api/v1/staff/knowledge/cartographer").json()["stale"] is True
+    assert git(root, "rev-parse", "HEAD") == indexed
+
+
 def test_missing_checkout_has_no_citations_and_does_not_claim_fresh(
     fixture: SearchFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
