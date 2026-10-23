@@ -112,6 +112,25 @@ def library_remove_source(
     return {"removed": True}
 
 
+@router.post("/sources/{source_id}/reindex", include_in_schema=False)
+def library_reindex_source(
+    source_id: str,
+    _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+) -> dict[str, Any]:
+    from library.ingest import ingest_directory
+    from library.sources import get_source
+
+    try:
+        source = get_source(_db(), source_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    root = Path(source["root_path"])
+    if not root.is_dir():
+        raise HTTPException(status_code=404, detail=f"source root not found on disk: {root}")
+    stats = ingest_directory(root, db_path=_db(), source_id=source_id)
+    return {"status": "ok", "source_id": source_id, "stats": stats}
+
+
 @router.post("/submissions")
 def library_create_submission(
     body: dict[str, Any],
