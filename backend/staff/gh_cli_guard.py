@@ -9,11 +9,21 @@ import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 
-EXEMPT_ISSUE_LABELS: frozenset[str] = frozenset({
-    "wontfix", "roadmap", "duplicate", "invalid", "not-planned",
-    "verified", "verified-closed", "needs-human-review",
-    "closure-guard-bypass", "keep-closed", "archived-backlog",
-})
+EXEMPT_ISSUE_LABELS: frozenset[str] = frozenset(
+    {
+        "wontfix",
+        "roadmap",
+        "duplicate",
+        "invalid",
+        "not-planned",
+        "verified",
+        "verified-closed",
+        "needs-human-review",
+        "closure-guard-bypass",
+        "keep-closed",
+        "archived-backlog",
+    }
+)
 _CLOSING_TMPL = r"(?:^|[^a-zA-Z0-9_])(close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:[\w.-]+/[\w.-]+)?#{num}\b"
 _PR_REF_RE = re.compile(r"(?:\bPR\s*#|\bpull/|#)(\d+)\b", re.IGNORECASE)
 
@@ -129,7 +139,10 @@ def _backfill_pr_closing_keyword(real_gh: str, repo_args: list[str], pr_num: int
     try:
         subprocess.run(
             [real_gh, "pr", "edit", str(pr_num), *repo_args, "--body", cleaned],
-            capture_output=True, text=True, timeout=20, check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
         )
     except Exception:
         pass
@@ -177,10 +190,18 @@ def check_and_prepare_issue_close(
                     break
 
     if not allowed:
-        q = f"{issue_num} in:body,title"
-        prs = _run_gh_json(
-            real_gh, ["pr", "list", *repo_args, "-s", "merged", "-S", q, "-L", "20", "--json", "number,title,body,labels"]
-        )
+        cmd = [
+            "pr",
+            "list",
+            *repo_args,
+            "-s",
+            "merged",
+            "-S",
+            f"{issue_num} in:body,title",
+            "--json",
+            "number,title,body,labels",
+        ]
+        prs = _run_gh_json(real_gh, cmd)
         pat = _closing_re(issue_num)
         for pr in prs if isinstance(prs, list) else []:
             if not isinstance(pr, dict) or "jules-verification-failed" in _label_names(pr.get("labels")):
@@ -191,10 +212,14 @@ def check_and_prepare_issue_close(
                 break
 
     if not allowed:
-        return False, list(argv), (
-            f"ERROR [staff-gh-close-guard]: Cannot close issue #{issue_num} without verified implementation evidence.\n"
-            f"Verify-Issue-Closure.yml will automatically reopen issues closed without proof.\n"
-            f"Provide a merged PR citing `Closes #{issue_num}` (or `--comment` citing PR #<num>) or an exempt label.\n"
+        return (
+            False,
+            list(argv),
+            (
+                f"ERROR [staff-gh-close-guard]: Cannot close issue #{issue_num} without verified implementation evidence.\n"
+                f"Verify-Issue-Closure.yml will automatically reopen issues closed without proof.\n"
+                f"Provide a merged PR citing `Closes #{issue_num}` (or `--comment` citing PR #<num>) or an exempt label.\n"
+            ),
         )
 
     if matched_pr is not None:
@@ -202,7 +227,10 @@ def check_and_prepare_issue_close(
     if comment:
         subprocess.run(
             [real_gh, "issue", "comment", str(issue_num), *repo_args, "--body", comment],
-            capture_output=True, text=True, timeout=20, check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
         )
         return True, stripped_args, ""
     return True, list(argv), ""
