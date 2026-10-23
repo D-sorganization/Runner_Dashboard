@@ -73,6 +73,8 @@ describe("BarbSidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /triage upstreamdrift/i }));
     const input = screen.getByRole("textbox", { name: /staff conversation input/i });
     expect((input as HTMLTextAreaElement).value).toContain("UpstreamDrift");
+    expect((input as HTMLTextAreaElement).value).toContain("review open issues and pull requests in the UpstreamDrift repository");
+    expect((input as HTMLTextAreaElement).value).toContain("registered workflows");
     expect(sendMessage).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
