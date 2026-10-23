@@ -107,3 +107,56 @@ def test_library_root_must_be_existing_directory_below_mount(tmp_path: Path) -> 
     assert registration.library_root(candidate, "Library") == library.resolve()
     with pytest.raises(ValueError, match="must already exist"):
         registration.library_root(candidate, "Missing")
+
+
+def test_detects_verified_crucial_x9_pro_product_code(tmp_path: Path) -> None:
+    mount_root = tmp_path / "mnt"
+    drive = mount_root / "d"
+    drive.mkdir(parents=True)
+    volumes = [{"DriveLetter": "D", "FileSystemLabel": "X9 Pro", "UniqueId": r"\\?\Volume{x9-pro}"}]
+    partitions = [{"DriveLetter": "D", "DiskNumber": 9}]
+    disks = [
+        {
+            "Number": 9,
+            "FriendlyName": "Micron CT4000X9PROSSD9",
+            "SerialNumber": "PRIVATE-SERIAL-1234",
+            "BusType": "USB",
+        }
+    ]
+
+    candidate = registration.find_x9_mount(
+        volumes,
+        partitions,
+        disks,
+        mount_root=mount_root,
+        mount_checker=lambda path: path == drive,
+    )
+
+    assert candidate.label == "X9 Pro"
+    assert candidate.model == "Micron CT4000X9PROSSD9"
+    assert candidate.serial_suffix == "1234"
+
+
+@pytest.mark.parametrize(
+    ("label", "model"),
+    [
+        ("X9 Pro", "Generic USB Storage"),
+        ("Archive", "Micron CT4000X9PROSSD9"),
+        ("Crucial X9 Pro", "Micron CT5000X9PROSSD9"),
+    ],
+)
+def test_rejects_unverified_x9_pro_identity(tmp_path: Path, label: str, model: str) -> None:
+    mount_root = tmp_path / "mnt"
+    (mount_root / "d").mkdir(parents=True)
+    volumes = [{"DriveLetter": "D", "FileSystemLabel": label, "UniqueId": "volume-id"}]
+    partitions = [{"DriveLetter": "D", "DiskNumber": 9}]
+    disks = [{"Number": 9, "FriendlyName": model, "SerialNumber": "SERIAL1234", "BusType": "USB"}]
+
+    with pytest.raises(ValueError, match="identity could not be verified"):
+        registration.find_x9_mount(
+            volumes,
+            partitions,
+            disks,
+            mount_root=mount_root,
+            mount_checker=lambda _path: True,
+        )

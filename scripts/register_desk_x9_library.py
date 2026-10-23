@@ -61,6 +61,22 @@ def read_windows_inventory() -> tuple[list[dict[str, Any]], ...]:
     )
 
 
+def _matches_x9_identity(label: str, model: str) -> bool:
+    """Match supported Crucial X9 volume labels to verified product identities."""
+    normalized_label = label.casefold()
+    if normalized_label == "crucial x9":
+        return bool(re.search(r"\bCrucial\s+X9(?:\s+SSD)?\b(?!\s+Pro)", model, re.I))
+    if normalized_label in {"x9 pro", "crucial x9 pro"}:
+        return bool(
+            re.search(
+                r"\b(?:Micron|Crucial)\s+CT(?:1000|2000|4000)X9PROSSD9\b",
+                model,
+                re.I,
+            )
+        )
+    return False
+
+
 def find_x9_mount(
     volumes: list[dict[str, Any]],
     partitions: list[dict[str, Any]],
@@ -78,15 +94,16 @@ def find_x9_mount(
         letter = str(volume.get("DriveLetter", "")).upper()
         part = partition_by_letter.get(letter)
         disk = disk_by_number.get(str(part.get("DiskNumber"))) if part else None
-        if not disk or not re.search(r"\bCrucial\s+X9\b", str(disk.get("FriendlyName", "")), re.I):
+        if not disk:
             continue
         label, serial, volume_id = (
             str(volume.get("FileSystemLabel", "")),
             str(disk.get("SerialNumber", "")).strip(),
             str(volume.get("UniqueId", "")).strip(),
         )
+        model = str(disk.get("FriendlyName", ""))
         if (
-            label.casefold() != "crucial x9"
+            not _matches_x9_identity(label, model)
             or str(disk.get("BusType", "")).casefold() != "usb"
             or len(letter) != 1
             or not serial
@@ -96,9 +113,7 @@ def find_x9_mount(
         mount = mount_root / letter.lower()
         if mount.is_symlink() or not mount.is_dir() or not checker(mount):
             continue
-        found.append(
-            MountCandidate(letter, mount.resolve(), label, str(disk["FriendlyName"]), "USB", serial, volume_id)
-        )
+        found.append(MountCandidate(letter, mount.resolve(), label, model, "USB", serial, volume_id))
     if len(found) != 1:
         if len(found) > 1:
             raise ValueError("multiple mounted Crucial X9 volumes found; refusing registration")
