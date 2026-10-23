@@ -18555,6 +18555,16 @@
                 }
               }
             },
+            "description": "Idempotent replay"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDigestAppendResponse"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {

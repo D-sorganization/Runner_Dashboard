@@ -216,11 +216,12 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
     remote_client: TestClient, memory_env: dict[str, str]
 ) -> None:
     secret = "ghp_" + "A" * 36
+    origin_secret = "ghp_" + "B" * 36
     payload = {
         "source_product": "dashboard",
         "conversation_id": "thread-42",
         "user_message_id": "message-8",
-        "reported_origin_principal": "human:dieterolson",
+        "reported_origin_principal": f"human:dieterolson token {origin_secret}",
         "summary": f"Decided to ship; token {secret}",
         "decisions": ["Keep memory canonical"],
         "open_items": ["Verify replay"],
@@ -236,9 +237,10 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
     assert first.json()["entry"]["id"] == replay.json()["entry"]["id"]
     entry = first.json()["entry"]
     assert entry["author_principal"].endswith("memory-digest-summarizer-test")
-    assert entry["body"]["reported_origin_principal"] == "human:dieterolson"
+    assert entry["body"]["reported_origin_principal"] == "human:dieterolson token [REDACTED_GITHUB_TOKEN]"
     assert "[REDACTED_GITHUB_TOKEN]" in entry["body"]["summary"]
     assert secret not in first.text
+    assert origin_secret not in first.text
     listed = remote_client.get("/api/v1/memory?type=session_digest", headers=_auth(memory_env["hands"]))
     assert len(listed.json()["entries"]) == 1
 
@@ -298,6 +300,17 @@ def test_summarize_scope_does_not_authorize_general_memory_writes(
     )
     assert response.status_code == 403
     assert response.json()["detail"]["required_scope"] == "memory.write"
+
+
+def test_session_digest_openapi_documents_create_and_replay_statuses(remote_client: TestClient) -> None:
+    responses = remote_client.get("/openapi.json").json()["paths"]["/api/v1/memory/session-digest"]["post"]["responses"]
+
+    assert "201" in responses
+    assert "200" in responses
+    assert (
+        responses["201"]["content"]["application/json"]["schema"]
+        == responses["200"]["content"]["application/json"]["schema"]
+    )
 
 
 @pytest.mark.parametrize(

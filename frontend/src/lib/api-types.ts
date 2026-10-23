@@ -18633,8 +18633,17 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description Idempotent replay */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionDigestAppendResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

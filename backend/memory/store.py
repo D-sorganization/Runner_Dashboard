@@ -89,7 +89,9 @@ class AssistantMemoryStore:
         )
 
     def total_payload_bytes(self) -> int:
-        row = self._db.execute("SELECT COALESCE(SUM(LENGTH(body_json)), 0) FROM memory_entries").fetchone()
+        row = self._db.execute(
+            "SELECT COALESCE(SUM(LENGTH(CAST(body_json AS BLOB))), 0) FROM memory_entries"
+        ).fetchone()
         return int(row[0] if row else 0)
 
     def append(self, entry: MemoryEntry) -> MemoryEntry:
@@ -146,10 +148,7 @@ class AssistantMemoryStore:
                     self._db.execute("COMMIT")
                     return _Row(*row).to_entry(), True
 
-                total = self._db.execute(
-                    "SELECT COALESCE(SUM(LENGTH(CAST(body_json AS BLOB))), 0) FROM memory_entries"
-                ).fetchone()
-                if int(total[0] if total else 0) + payload > MAX_STORE_BYTES:
+                if self.total_payload_bytes() + payload > MAX_STORE_BYTES:
                     raise ValueError("store_size_cap_exceeded")
                 self._db.execute(
                     """

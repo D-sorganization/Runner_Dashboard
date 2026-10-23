@@ -75,7 +75,9 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
     body = {
         "conversation_id": req.conversation_id,
         "user_message_id": req.user_message_id,
-        "reported_origin_principal": req.reported_origin_principal,
+        "reported_origin_principal": (
+            redact_memory_text(req.reported_origin_principal) if req.reported_origin_principal is not None else None
+        ),
         "summary": redact_memory_text(req.summary),
         "decisions": [redact_memory_text(item) for item in req.decisions],
         "open_items": [redact_memory_text(item) for item in req.open_items],

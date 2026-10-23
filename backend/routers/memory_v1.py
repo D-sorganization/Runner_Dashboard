@@ -60,7 +60,12 @@ async def post_memory_entry(
     return MemoryAppendResponse(entry=entry)
 
 
-@router.post("/session-digest", response_model=SessionDigestAppendResponse)
+@router.post(
+    "/session-digest",
+    response_model=SessionDigestAppendResponse,
+    status_code=201,
+    responses={200: {"model": SessionDigestAppendResponse, "description": "Idempotent replay"}},
+)
 async def post_session_digest(
     body: SessionDigestAppendRequest,
     response: Response,
