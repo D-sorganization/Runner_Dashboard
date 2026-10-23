@@ -152,7 +152,7 @@ test.describe("chat", () => {
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
     await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
-    await expect(page).toHaveURL(/\/staff\?role=barb&thread=[^&]+/);
+    await expect(page).toHaveURL(/\/staff[?]role=barb&thread=[^&]+/);
 
     await page.reload();
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
@@ -487,12 +487,12 @@ test.describe("approved dashboard navigation", () => {
     const desktopCard = desktopDrawer.locator(`[data-proposal-id="${desktopProposalId}"]`);
     await expect(desktopCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await desktopCard.getByRole("button", { name: /^Approve$/ }).click();
-    await expect(page).toHaveURL(/\/context(?:\?|$)/);
+    await expect(page).toHaveURL(/\/context(?:[?]|$)/);
     await expect(desktopDrawer).toContainText("open Context");
     await expect(desktopDrawer).toContainText("Action Executed");
 
     await desktopDrawer.getByRole("button", { name: "Open Projects" }).click();
-    await expect(page).toHaveURL(/\/projects(?:\?|$)/);
+    await expect(page).toHaveURL(/\/projects(?:[?]|$)/);
 
     const replayContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
     const replayPage = await replayContext.newPage();
@@ -502,7 +502,7 @@ test.describe("approved dashboard navigation", () => {
     await replayPage.goto(`/projects?role=barb&thread=${encodeURIComponent(threadId)}`);
     await replayPage.getByRole("button", { name: "Ask Barb" }).click();
     await expect(replayPage.getByTestId("barb-sidebar")).toBeVisible();
-    await expect(replayPage).toHaveURL(/\/projects(?:\?|$)/);
+    await expect(replayPage).toHaveURL(/\/projects(?:[?]|$)/);
     await replayContext.close();
 
     const restoredContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -516,7 +516,7 @@ test.describe("approved dashboard navigation", () => {
     await expect(restoredDrawer).toBeVisible();
     await expect(restoredDrawer).toContainText("open Context");
     await expect(restoredDrawer).toContainText("Action Executed");
-    await expect(restoredPage).toHaveURL(/\/projects(?:\?|$)/);
+    await expect(restoredPage).toHaveURL(/\/projects(?:[?]|$)/);
     await restoredContext.close();
 
     if (!(await desktopDrawer.isVisible())) await page.getByRole("button", { name: "Ask Barb" }).click();
@@ -528,7 +528,7 @@ test.describe("approved dashboard navigation", () => {
     const mobileCard = mobileDrawer.locator(`[data-proposal-id="${mobileProposalId}"]`);
     await expect(mobileCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await mobileCard.getByRole("button", { name: /^Approve$/ }).click();
-    await expect(page).toHaveURL(/\/context(?:\?|$)/);
+    await expect(page).toHaveURL(/\/context(?:[?]|$)/);
     await expect(mobileDrawer).toHaveAttribute("aria-hidden", "true");
     await page.getByRole("button", { name: "Ask Barb" }).click();
     const reopenedDrawer = page.getByTestId("barb-sidebar");
@@ -559,5 +559,59 @@ test.describe("approved dashboard navigation", () => {
     expect(new URL(page.url()).pathname).toBe("/");
     expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
     await requesterContext.close();
+  });
+});
+
+
+test.describe("persistent Barb conversation selection", () => {
+  test("keeps a new sidebar conversation selected through navigation and mobile remount", async ({ page, request }) => {
+    const backendPort = process.env.STAFF_E2E_BACKEND_PORT ?? "5092";
+    const backendUrl = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${backendPort}`;
+    const created = await request.post(`${backendUrl}/api/v1/staff/threads`, {
+      headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
+      data: { role: "barb", kind: "auto", title: "Original Barb conversation A" },
+    });
+    expect(created.ok()).toBeTruthy();
+    const originalThreadId = (await created.json()).id as string;
+
+    await page.goto(`/staff?role=barb&thread=${encodeURIComponent(originalThreadId)}`);
+    await page.getByTestId("ask-barb-toggle").click();
+    const sidebar = page.getByTestId("barb-sidebar");
+    await expect(sidebar.getByRole("region", {
+      name: "Conversation thread with Original Barb conversation A",
+    })).toBeVisible();
+
+    const createdThreadResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/v1/staff/threads"),
+    );
+    await sidebar.getByRole("button", { name: "New chat" }).click();
+    const createdThreadBody = await (await createdThreadResponse).json();
+    const newThreadId = createdThreadBody.id as string;
+    expect(newThreadId).not.toBe(originalThreadId);
+    await expect(page).toHaveURL(new RegExp(`thread=${newThreadId}`));
+    await expect(sidebar.getByRole("region", {
+      name: "Conversation thread with Conversation with Barb",
+    })).toBeVisible();
+
+    await sidebar.getByRole("button", { name: "Open Projects" }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects[?][^#]*thread=${newThreadId}`));
+    await sidebar.getByRole("button", { name: "Close Ask Barb" }).click();
+    await page.getByTestId("ask-barb-toggle").click();
+    await expect(sidebar.getByRole("region", {
+      name: "Conversation thread with Conversation with Barb",
+    })).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const askBarb = page.getByRole("button", { name: "Ask Barb" });
+    await expect(askBarb).toBeVisible();
+    await askBarb.click();
+    const mobileSidebar = page.getByTestId("barb-sidebar");
+    await expect(mobileSidebar).toBeVisible();
+    await expect(mobileSidebar.getByRole("region", {
+      name: "Conversation thread with Conversation with Barb",
+    })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/projects[?][^#]*thread=${newThreadId}`));
   });
 });
