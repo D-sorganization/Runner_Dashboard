@@ -301,7 +301,10 @@ def test_concurrent_auto_reviews_of_one_pr_queue_a_single_review(store: RunStore
     assert len(runner.submitted) == 1
 
 
-def _review_in_subprocess(db_path: str, start_at: float) -> int:
+_REVIEW_START_BARRIER: Any = None
+
+
+def _review_in_subprocess(db_path: str) -> int:
     """Child process: one auto-review attempt against the shared runs DB; returns submits."""
     import os
     import time
@@ -320,7 +323,8 @@ def _review_in_subprocess(db_path: str, start_at: float) -> int:
             )
 
     runner = _SlowChildRunner(child_store, _roster("gemini"))
-    time.sleep(max(0.0, start_at - time.time()))
+    if _REVIEW_START_BARRIER is not None:
+        _REVIEW_START_BARRIER.wait(timeout=10)
     auto_review_if_eligible(author, _verified(42), store=child_store, runner=runner, gh_probe=_Trailers([]))
     return len(runner.submitted)
 
@@ -329,11 +333,15 @@ def _review_in_subprocess(db_path: str, start_at: float) -> int:
 @pytest.mark.skipif(sys.platform == "win32", reason="fork context and fcntl cross-process locks are POSIX-only")
 def test_auto_review_dedupe_holds_across_worker_processes(tmp_path: Path) -> None:
     import multiprocessing
-    import time
 
     db = tmp_path / "runs.sqlite3"
     _add(RunStore(db), _run("run-author"), pr_number=42)
-    start_at = time.time() + 1.0
-    with multiprocessing.get_context("fork").Pool(2) as pool:
-        submits = pool.starmap(_review_in_subprocess, [(str(db), start_at), (str(db), start_at)])
+    context = multiprocessing.get_context("fork")
+    global _REVIEW_START_BARRIER
+    _REVIEW_START_BARRIER = context.Barrier(2)
+    try:
+        with context.Pool(2) as pool:
+            submits = pool.map(_review_in_subprocess, [str(db), str(db)])
+    finally:
+        _REVIEW_START_BARRIER = None
     assert sum(submits) == 1
