@@ -257,6 +257,13 @@ def _parse_cite(cite: str) -> dict[str, Any]:
     }
 
 
+MAX_FETCH_TEXT_BYTES = 400  # Snippet cap; canonical citation is separate.
+
+
+def _cap_fetch_text(value: Any) -> str:
+    return str(value or "").encode("utf-8")[:MAX_FETCH_TEXT_BYTES].decode("utf-8", errors="ignore")
+
+
 def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
     from dashboard_config import HOSTNAME
 
@@ -281,7 +288,7 @@ def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
         "passage_id": hit.passage_id,
         "page_start": hit.page_start,
         "page_end": hit.page_end,
-        "text": hit.text,
+        "text": _cap_fetch_text(hit.text),
         "token_estimate": hit.token_estimate,
     }
 
@@ -350,9 +357,7 @@ async def library_fetch(
                             or returned["sha_prefix"] != ref["sha_prefix"]
                         ):
                             continue
-                        payload["text"] = (
-                            str(payload.get("text", "")).encode("utf-8")[:2000].decode("utf-8", errors="ignore")
-                        )
+                        payload["text"] = _cap_fetch_text(payload.get("text"))
                         payload["node"] = node
                         hits.append(payload)
                 except (httpx.HTTPError, ValueError):

@@ -65,12 +65,11 @@ def test_fetch_rejects_hash_and_page_mismatch(tmp_path: Path) -> None:
 
 def test_fetch_hard_caps_utf8_bytes_for_unbroken_unicode(tmp_path: Path) -> None:
     app, cite = _app(tmp_path)
-    with sqlite3.connect(library_routes._db()) as conn:
-        conn.execute("UPDATE passages SET text=?, token_estimate=1 WHERE id=7", ("界" * 4000,))
-        conn.commit()
-    response = TestClient(app).get("/api/v1/library/fetch", params={"cite": cite})
-    assert response.status_code == 200
-    assert len(response.json()["text"].encode("utf-8")) <= 2000
+    for sample, expected_bytes in (("界" * 4000, 399), ("x" * 4000, 400)):
+        with sqlite3.connect(library_routes._db()) as conn:
+            conn.execute("UPDATE passages SET text=?, token_estimate=1 WHERE id=7", (sample,))
+        response = TestClient(app).get("/api/v1/library/fetch", params={"cite": cite})
+        assert len(response.json()["text"].encode("utf-8")) == expected_bytes
 
 
 def test_peer_fetch_cannot_resolve_unshared_source(tmp_path: Path) -> None:
