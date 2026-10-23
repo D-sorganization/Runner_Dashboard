@@ -737,7 +737,8 @@ class FleetClient:
         _check(op != "fetch" or source == "library", "fetch is only supported for library")
         _check(cite is None or (source == "library" and op == "fetch"), "cite is only supported for library fetch")
         _check(
-            run_id is None or (source == "library" and op == "search"), "run_id is only supported for library search"
+            run_id is None or (source in {"library", "codebase"} and op == "search"),
+            "run_id is only supported for library or codebase search",
         )
         _check(source != "codebase" or op == "search", "codebase only supports search")
         effective_k = min(max(1, int(k)), 5)
@@ -891,6 +892,10 @@ class FleetClient:
             if not query or not query.strip():
                 raise FleetArgumentError("query is required for codebase search")
             params = {"q": query, "k": min(100, effective_k + offset)}
+            identity = run_id if run_id is not None else os.environ.get("STAFF_RUN_ID")
+            if identity is not None:
+                _check(len(identity) <= 120, "run_id must be at most 120 characters")
+                params["run_id"] = _match(PATTERNS.ident, identity, "run_id")
             data = self.request("GET", "/api/v1/staff/knowledge/cartographer/search", params=params)
             items = data.get("passages", []) if isinstance(data, dict) else []
             if not isinstance(items, list):
@@ -898,15 +903,16 @@ class FleetClient:
             page = items[offset : offset + effective_k]
             results = [
                 {
-                    "id": f"{item.get('repo', '')}:{item.get('source', '')}",
+                    "id": item["citation"],
                     "title": item.get("title") or item.get("source") or "Codebase passage",
-                    "snippet": str(item.get("text", ""))[:400],
+                    "snippet": _library_snippet(item.get("text")),
                     "ref": item.get("citation"),
                     "citation": item.get("citation"),
                     "repo": item.get("repo"),
                     "source": item.get("source"),
                     "commit": item.get("commit"),
                     "content_hash": item.get("content_hash"),
+                    **{key: item.get(key) for key in ("anchor", "status", "authority", "authority_rank", "score")},
                 }
                 for item in page
                 if isinstance(item, dict) and item.get("citation")
@@ -915,6 +921,7 @@ class FleetClient:
                 "status": "ok",
                 "source": "codebase",
                 "stale": bool(data.get("stale", True)) if isinstance(data, dict) else True,
+                **({"run_id": data.get("run_id")} if isinstance(data, dict) and "run_id" in data else {}),
                 "results": results,
                 "has_more": len(items) > (offset + effective_k),
             }
@@ -995,6 +1002,12 @@ class FleetClient:
         return self.fleet_query(
             source="library", op="search", query=query, repo=repo, topic=topic, k=k, offset=offset, full=full
         )
+
+    def query_codebase(
+        self, query: str | None = None, k: int = 5, offset: int = 0, run_id: str | None = None
+    ) -> dict[str, Any]:
+        """Search indexed committed code, optionally recording evidence for an owned run."""
+        return self.fleet_query(source="codebase", query=query, k=k, offset=offset, run_id=run_id)
 
     def query_knowledge(
         self, query: str | None = None, repo: str | None = None, k: int = 5, offset: int = 0, full: bool = False
