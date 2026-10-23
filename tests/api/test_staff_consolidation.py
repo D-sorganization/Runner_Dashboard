@@ -289,7 +289,7 @@ def test_plan_and_submit_carry_the_decision_and_parse_the_outcome(staff: runner_
     plan = staff.plan(req)
     assert plan.to_dict()["consolidation"] == decision
     assert "Consolidation mode: consolidate — open PRs 12 >= 6." in plan.prompt
-    assert plan.prompt.index("Consolidation mode") < plan.prompt.index("Fleet rules:")
+    assert plan.prompt.index("Fleet standards") < plan.prompt.index("Consolidation mode")
     bare = staff.plan(RunRequest(role="pr-remediator", repo="UpstreamDrift", prompt="sweep"))
     assert bare.to_dict()["consolidation"] is None and "Consolidation mode" not in bare.prompt
 

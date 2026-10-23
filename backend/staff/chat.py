@@ -13,7 +13,6 @@ import logging
 import os
 import subprocess
 import time
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from staff.adapters import (
@@ -36,7 +35,8 @@ from staff.chat_failures import (
     record_chat_failure_if_pending,
 )
 from staff.chat_fleet_context import build_fleet_context_block
-from staff.chat_handoff import post_reply_handoff
+from staff.chat_handoff import post_reply_handoff as post_reply_handoff
+from staff.chat_handoff import run_chat_turn_in_background
 from staff.chat_history import (
     DEFAULT_TOKEN_BUDGET,
     build_pending_proposals_block,
@@ -45,6 +45,7 @@ from staff.chat_history import (
 )
 from staff.chat_issue_context import build_issue_context_block
 from staff.chat_knowledge import build_knowledge_turn_block
+from staff.chat_memory_summary import extract_summary, finish_summary, summary_instruction
 from staff.chat_pool import (
     DEFAULT_BARB_RESERVED_SLOTS,
     DEFAULT_CHAT_ACQUIRE_TIMEOUT,
@@ -52,6 +53,7 @@ from staff.chat_pool import (
     ChatConcurrencyPool,
     get_chat_pool,
 )
+from staff.chat_result import ChatTurnResult
 from staff.chat_scratch import thread_scratch_dir
 from staff.chat_shared_memory import build_shared_memory_context_block
 from staff.chat_streaming import (
@@ -87,24 +89,6 @@ __all__ = [
     "get_chat_pool",
     "run_chat_turn_in_background",
 ]
-
-
-@dataclass
-class ChatTurnResult:
-    """Outcome of a conversational chat turn."""
-
-    ok: bool
-    reply: str = ""
-    session_id: str | None = None
-    handoff: str | None = None
-    question: str | None = None
-    actions: list[ProposedAction] = field(default_factory=list)
-    failure_class: str | None = None
-    retryable: bool = False
-    remediation: str = ""
-    error: str | None = None
-    metrics: dict[str, Any] = field(default_factory=dict)
-    replayed_history: bool = False
 
 
 class ChatTurnRunner:
@@ -163,7 +147,14 @@ class ChatTurnRunner:
         issue_block = await build_issue_context_block(role, raw_prompt)
         shared_memory_block = await build_shared_memory_context_block(role_name, requester)
         pending_block = build_pending_proposals_block(self.conv_store, thread_id)
-        context_blocks = (fleet_block, issue_block, knowledge_block, shared_memory_block, pending_block)
+        context_blocks = (
+            fleet_block,
+            issue_block,
+            knowledge_block,
+            shared_memory_block,
+            pending_block,
+            summary_instruction(role_name, requester),
+        )
         prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
 
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
@@ -224,6 +215,15 @@ class ChatTurnRunner:
                             fallback_steps,
                             result,
                         )
+                        await finish_summary(
+                            self.conv_store,
+                            role_name,
+                            requester,
+                            thread_id,
+                            user_message_id,
+                            placeholder_id,
+                            result.memory_digest,
+                        )
                         return result
                     log.info(
                         "Session resume failed for %s on thread %s; falling back to replay",
@@ -258,6 +258,15 @@ class ChatTurnRunner:
                         candidate,
                         fallback_steps,
                         result,
+                    )
+                    await finish_summary(
+                        self.conv_store,
+                        role_name,
+                        requester,
+                        thread_id,
+                        user_message_id,
+                        placeholder_id,
+                        result.memory_digest,
                     )
                     return result
 
@@ -357,6 +366,7 @@ class ChatTurnRunner:
             bus=bus,
             thread_id=thread_id,
             placeholder_id=placeholder_id,
+            hide_memory_summary=bool(summary_instruction(role.name if role else "", requester)),
         )
         stdout_text = stream_out.stdout_lines
         stderr_text = stream_out.stderr_lines
@@ -387,7 +397,10 @@ class ChatTurnRunner:
             )
 
         # Parse structured reply contract
-        parsed = parse_reply(stream_out.reply_text or raw_combined, role=role)
+        reply_text, memory_digest = stream_out.reply_text or raw_combined, None
+        if summary_instruction(role.name if role else "", requester):
+            reply_text, memory_digest = extract_summary(reply_text)
+        parsed = parse_reply(reply_text, role=role)
 
         metrics = {
             "time_to_first_token_seconds": round(ttft, 3),
@@ -459,40 +472,5 @@ class ChatTurnRunner:
             question=parsed.question,
             actions=created_proposals,
             metrics=metrics,
-        )
-
-
-async def run_chat_turn_in_background(
-    thread_id: str,
-    user_message_id: str,
-    placeholder_id: str,
-    role_name: str,
-    caller_id: str,
-    requester: Principal | None = None,
-) -> None:
-    """Async background task invoked by POST /threads/{id}/messages to execute reply."""
-    try:
-        runner = ChatTurnRunner()
-        result = await runner.execute_turn(
-            thread_id=thread_id,
-            user_message_id=user_message_id,
-            placeholder_id=placeholder_id,
-            role_name=role_name,
-            requester=requester,
-        )
-        if result.ok and result.handoff:
-            await post_reply_handoff(
-                thread_id=thread_id,
-                user_message_id=user_message_id,
-                from_role=role_name,
-                to_role=result.handoff,
-                reply=result.reply,
-                caller_id=caller_id,
-            )
-    except Exception as exc:  # noqa: BLE001
-        log.error(
-            "Unhandled error during chat turn for thread %s: %s",
-            thread_id,
-            exc,
-            exc_info=True,
+            memory_digest=memory_digest,
         )

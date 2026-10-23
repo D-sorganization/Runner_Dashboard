@@ -18,6 +18,7 @@ from typing import Any, TypedDict
 import provider_switch
 from staff import cli_version, workspace
 from staff import quota as quota_mod
+from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ProviderAdapter
 from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
@@ -330,6 +331,12 @@ def execute_retry_nudge(
     try:
         launch_paths = resolve_launch_paths(adapter, workdir)
         ro_kwargs: ReadOnlyKwargs = read_only_kwargs(role) if role is not None else {}
+        if adapter.provider_id == "antigravity":
+            antigravity_permissions(
+                read_only=bool(ro_kwargs.get("read_only")),
+                workdir=workdir,
+                gitdir=Path(launch_paths.get("gitdir", str(workdir))),
+            )
         nudge_argv = adapter.build_command(
             RESULT_NUDGE_PROMPT,
             str(workdir),
@@ -429,5 +436,7 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         origin_node=getattr(req, "origin_node", "") or "",
         skill_pin=getattr(plan, "skill_pin", "") or "",
         standards_version=getattr(plan, "standards_version", "") or "",
+        standards_tokens=getattr(plan, "standards_tokens", 0) or 0,
+        context_stamp=getattr(plan, "context_stamp", "{}") or "{}",
         library_work_ids=json.dumps(list(getattr(plan, "library_work_ids", ()) or ())),
     )

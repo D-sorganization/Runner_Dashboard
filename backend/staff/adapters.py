@@ -172,6 +172,8 @@ class ProviderAdapter:
                 assert not any(tool in allowed_entries for tool in CLAUDE_WRITE_TOOLS), (  # noqa: S101
                     "allowed tools must not contain write tools in read-only mode"
                 )
+            if self.provider_id == "antigravity" and "--mode" in out:
+                out[out.index("--mode") + 1] = "plan"
         if session_id:
             if self.provider_id in ("codex", "ollama") and prompt in out:
                 p_idx = out.index(prompt)
@@ -179,6 +181,8 @@ class ProviderAdapter:
                 out.insert(p_idx + 1, session_id)
             elif self.provider_id in ("codex", "ollama"):
                 out.extend(["--session", session_id])
+            elif self.provider_id == "antigravity":
+                out.extend(["--conversation", session_id])
             else:
                 out.extend(["--resume", session_id])
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
@@ -244,7 +248,7 @@ class ProviderAdapter:
             ]
             cmd += read_only
             if session_id:
-                cmd += ["--resume", session_id]
+                cmd += ["--conversation", session_id]
         elif self.provider_id == "cursor-agent":
             cmd = [
                 self.executable,
@@ -366,8 +370,10 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "stream-json",
             "--add-dir",
             "{workdir}",
+            "--add-dir",
+            "{gitdir}",
             "--mode",
-            "plan",
+            "auto",
             "--model",
             "{model}",
         ),
@@ -376,7 +382,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         json_lines=True,
         unattended=True,
         notes=(
-            "Unattended ``--mode plan`` (#1586); native Linux ``agy`` on WSL PATH; "
+            "Unattended ``--mode auto`` with explicit shell permissions (#2243); native Linux ``agy`` on WSL PATH; "
             "run ``agy`` for Google OAuth sign-in."
         ),
     ),

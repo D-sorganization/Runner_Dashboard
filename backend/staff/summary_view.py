@@ -23,6 +23,7 @@ from staff.provider_auth_preflight import (
     provider_auth_cache_snapshot,
 )
 from staff.runner import get_runner
+from staff.standards_registry import load_fleet_standards
 
 __all__ = ["build_staff_summary"]
 
@@ -64,6 +65,7 @@ async def build_staff_summary() -> dict[str, Any]:
     auth_attention: list[dict[str, Any]] = []
     for _machine, snap in (provider_auth.get("machines") or {}).items():
         auth_attention.extend(attention_items_from_provider_auth(snap))
+    standards = load_fleet_standards()
     attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
     keep = (
         "id",
@@ -91,6 +93,11 @@ async def build_staff_summary() -> dict[str, Any]:
         "holds": staff_fleet.holds_snapshot(),
         "liveness_alerts": board_view.get("liveness_alerts", []),
         "provider_auth": provider_auth,
+        "standards_pin": standards.pin,
+        "standards_source": standards.source_path,
+        "standards_version": standards.version,
+        "standards_attention": standards.source_path == "<builtin>",
+        "standards_fallback": standards.source_path == "<builtin>",
         "roles": [
             {
                 "name": s.name,

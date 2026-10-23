@@ -19,11 +19,12 @@ def test_fleet_rules_carry_all_agent_guardrails() -> None:
     assert "open pull request already references it" in rules  # #1225: no duplicate PRs for linked issues
 
 
-def test_compose_prompt_always_ends_with_fleet_rules() -> None:
+def test_compose_prompt_carries_fleet_standards_in_static_prefix() -> None:
     prompt = workspace.compose_prompt(
         _role(), repo="Tools", target_ref="issue #1", operator_prompt="", branch="staff/night-watch-1"
     )
-    assert prompt.endswith(workspace.FLEET_RULES)
+    assert prompt.startswith("Fleet standards")
+    assert workspace.FLEET_RULES in prompt
     assert "claim:local" in prompt
 
 
@@ -50,7 +51,7 @@ def test_unattended_prompt_points_at_local_dashboard_api(monkeypatch) -> None:  
     )
     assert "curl -s http://127.0.0.1:8321/api/staff/summary" in prompt
     assert "$FLEET_API_TOKEN" in prompt
-    assert prompt.endswith(workspace.FLEET_RULES)
+    assert workspace.FLEET_RULES in prompt
 
 
 def test_dashboard_api_note_follows_dashboard_port(monkeypatch) -> None:  # noqa: ANN001
@@ -62,7 +63,7 @@ def test_read_only_run_prompt_also_points_at_dashboard_api() -> None:
     role = RoleSpec(name="critic", title="Critic", permissions={"code_read_only": True})
     prompt = workspace.compose_prompt(role, repo="Tools", target_ref="", operator_prompt="x", branch="b")
     assert "/api/staff/summary" in prompt
-    assert prompt.endswith(workspace.READ_ONLY_FLEET_RULES)
+    assert workspace.READ_ONLY_FLEET_RULES in prompt
 
 
 def test_chat_turn_prompt_has_no_dashboard_api_note() -> None:
