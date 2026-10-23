@@ -182,7 +182,10 @@ describe("StaffConsoleDesktop", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
 
-    expect(await screen.findByTestId("staff-console-error-send")).toHaveTextContent("500 Internal Server Error");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to send message: 500 Internal Server Error");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /staff conversation input/i })).toHaveValue("hello");
   });
 
   it("holds a Board message over the cost threshold until the user confirms (SC-D7, #1342)", async () => {
