@@ -23,6 +23,7 @@ from main_auto_release.naming import (  # noqa: E402
     AUTO_RELEASE_NOTES_HEADER,
     auto_release_tag_for_commit,
     auto_release_version_for_commit,
+    is_auto_release_tag,
 )
 from main_auto_release.release_index import commit_has_release  # noqa: E402
 from main_auto_release.retention import select_releases_to_delete  # noqa: E402
@@ -102,6 +103,117 @@ def cmd_verify_gate(args: argparse.Namespace) -> int:
     return 1
 
 
+def _load_compare(path: Path, expected_base: str, expected_head: str | None = None) -> tuple[str, str, str, str] | None:
+    """Validate GitHub compare metadata and bind it to the requested commits."""
+    try:
+        payload = _load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    base = payload.get("base_commit")
+    head = payload.get("head_commit")
+    merge_base = payload.get("merge_base_commit")
+    status = payload.get("status")
+    if not isinstance(base, dict) or not isinstance(head, dict) or not isinstance(merge_base, dict):
+        return None
+    base_sha = normalize_commit_sha(str(base.get("sha", "")))
+    head_sha = normalize_commit_sha(str(head.get("sha", "")))
+    merge_base_sha = normalize_commit_sha(str(merge_base.get("sha", "")))
+    expected_base_sha = normalize_commit_sha(expected_base)
+    expected_head_sha = normalize_commit_sha(expected_head) if expected_head is not None else None
+    if not isinstance(status, str):
+        return None
+    if (
+        base_sha is None
+        or head_sha is None
+        or merge_base_sha is None
+        or expected_base_sha is None
+        or base_sha != expected_base_sha
+        or (expected_head is not None and head_sha != expected_head_sha)
+        or status not in {"ahead", "behind", "diverged", "identical"}
+    ):
+        return None
+    return status, base_sha, head_sha, merge_base_sha
+
+
+def cmd_verify_main_ancestor(args: argparse.Namespace) -> int:
+    candidate = normalize_commit_sha(args.sha)
+    if candidate is None:
+        sys.stderr.write("candidate SHA must be a full commit id\n")
+        return 3
+    compare = _load_compare(Path(args.compare_json), candidate)
+    if compare is None:
+        sys.stderr.write("invalid or mismatched GitHub main compare response\n")
+        return 3
+    status, base_sha, head_sha, merge_base_sha = compare
+    if status == "identical" and base_sha == head_sha == merge_base_sha == candidate:
+        sys.stdout.write("release candidate is current main\n")
+        return 0
+    if status == "ahead" and merge_base_sha == candidate:
+        sys.stdout.write(f"release candidate {candidate[:7]} remains an ancestor of main {head_sha[:7]}\n")
+        return 0
+    if status == "behind" and merge_base_sha == head_sha:
+        sys.stdout.write(f"release candidate {candidate[:7]} is not yet in main history\n")
+        return 1
+    if status == "diverged":
+        sys.stdout.write(f"release candidate {candidate[:7]} is not an ancestor of current main\n")
+        return 1
+    sys.stderr.write("inconsistent GitHub main compare response; refusing release\n")
+    return 3
+
+
+def cmd_latest_auto_release_sha(args: argparse.Namespace) -> int:
+    try:
+        releases = _load_json(Path(args.releases_json))
+    except (OSError, json.JSONDecodeError):
+        sys.stderr.write("invalid releases payload\n")
+        return 3
+    if not isinstance(releases, list):
+        sys.stderr.write("releases payload must be a list\n")
+        return 3
+    for release in releases:
+        if not isinstance(release, dict) or release.get("draft"):
+            continue
+        tag = release.get("tag_name")
+        if not isinstance(tag, str) or not is_auto_release_tag(tag):
+            continue
+        sha = normalize_commit_sha(str(release.get("target_commitish") or ""))
+        if sha is None:
+            sys.stderr.write("latest auto-release does not identify a full commit SHA\n")
+            return 3
+        sys.stdout.write(sha + "\n")
+        return 0
+    return 0
+
+
+def cmd_verify_release_order(args: argparse.Namespace) -> int:
+    candidate = normalize_commit_sha(args.sha)
+    released = normalize_commit_sha(args.released_sha)
+    if candidate is None or released is None:
+        sys.stderr.write("candidate and released SHAs must be full commit ids\n")
+        return 3
+    if candidate == released:
+        sys.stdout.write("candidate already has an auto-release\n")
+        return 0
+    compare = _load_compare(Path(args.compare_json), candidate, released)
+    if compare is None:
+        sys.stderr.write("invalid or mismatched GitHub release-order compare response\n")
+        return 3
+    status, _, _, merge_base_sha = compare
+    if status == "ahead" and merge_base_sha == candidate:
+        sys.stdout.write(f"newer auto-release {released[:7]} already descends from candidate {candidate[:7]}\n")
+        return 1
+    if status == "behind" and merge_base_sha == released:
+        sys.stdout.write(f"candidate {candidate[:7]} is newer than latest auto-release {released[:7]}\n")
+        return 0
+    if status == "identical" and merge_base_sha == candidate:
+        sys.stdout.write("candidate already has an auto-release\n")
+        return 0
+    sys.stderr.write("cannot prove candidate release order relative to latest auto-release\n")
+    return 3
+
+
 def cmd_plan_tag(args: argparse.Namespace) -> int:
     tag = auto_release_tag_for_commit(args.sha, args.committer_date)
     version = auto_release_version_for_commit(args.sha, args.committer_date)
@@ -155,6 +267,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Ignore this workflow's own in-flight check runs",
     )
     verify.set_defaults(func=cmd_verify_gate)
+
+    ancestor = sub.add_parser(
+        "verify-main-ancestor",
+        help="Require GitHub compare metadata to prove the candidate is on current main history",
+    )
+    ancestor.add_argument("--sha", required=True)
+    ancestor.add_argument("--compare-json", required=True)
+    ancestor.set_defaults(func=cmd_verify_main_ancestor)
+
+    latest_release = sub.add_parser(
+        "latest-auto-release-sha",
+        help="Print the newest auto-release target SHA, or nothing when no auto-release exists",
+    )
+    latest_release.add_argument("--releases-json", required=True)
+    latest_release.set_defaults(func=cmd_latest_auto_release_sha)
+
+    release_order = sub.add_parser(
+        "verify-release-order",
+        help="Prevent publication behind the latest auto-release using GitHub compare metadata",
+    )
+    release_order.add_argument("--sha", required=True)
+    release_order.add_argument("--released-sha", required=True)
+    release_order.add_argument("--compare-json", required=True)
+    release_order.set_defaults(func=cmd_verify_release_order)
 
     plan = sub.add_parser("plan-tag", help="Print deterministic auto-release tag and version")
     plan.add_argument("--sha", required=True)
