@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 from contextlib import closing
 from pathlib import Path
 
 _DEFAULT_DATA = Path.home() / ".local" / "share" / "runner-dashboard" / "library"
+_INITIALIZED_DATABASES: set[tuple[str, int, int]] = set()
+_INIT_LOCK = threading.RLock()
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS works (
     id INTEGER PRIMARY KEY, sha256 TEXT NOT NULL UNIQUE, author TEXT, title TEXT, year INTEGER,
@@ -88,11 +91,21 @@ def library_source_dir() -> Path | None:
 def init_library_db(path: Path | None = None) -> Path:
     db = Path(path) if path is not None else library_db_path()
     db.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(db)) as conn:
-        conn.execute("PRAGMA foreign_keys = OFF")
-        conn.executescript(_SCHEMA)
-        _migrate(conn)
-        conn.commit()
+    with _INIT_LOCK:
+        resolved = db.resolve()
+        try:
+            stat = resolved.stat()
+            identity = (str(resolved), stat.st_dev, stat.st_ino)
+        except FileNotFoundError:
+            identity = None
+        if identity not in _INITIALIZED_DATABASES:
+            with closing(sqlite3.connect(db)) as conn:
+                conn.execute("PRAGMA foreign_keys = OFF")
+                conn.executescript(_SCHEMA)
+                _migrate(conn)
+                conn.commit()
+            stat = resolved.stat()
+            _INITIALIZED_DATABASES.add((str(resolved), stat.st_dev, stat.st_ino))
     return db
 
 
