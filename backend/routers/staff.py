@@ -281,33 +281,6 @@ async def get_run(
     }
 
 
-@router.get(
-    "/local-runs/{run_id}",
-    response_model=StaffRunDetailResponse,
-    response_model_exclude_none=True,
-    include_in_schema=False,
-)
-async def get_local_run(
-    run_id: str,
-    events: int = Query(default=200, ge=0, le=MAX_LIMIT),
-    _peer: Principal = Depends(require_scope("staff.read")),
-) -> dict[str, Any]:
-    """Return this node's run detail without any peer lookup.
-
-    The distinct path is intentional: older nodes treat ``local=1`` as an
-    ordinary query parameter and may recursively search their peers.
-    """
-    try:
-        return await get_run(run_id=run_id, events=events, local=True, _peer=_peer)
-    except HTTPException as exc:
-        if exc.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "local_run_not_found", "run_id": run_id},
-            ) from exc
-        raise
-
-
 @router.get("/runs/{run_id}/stream")
 async def stream_run(
     run_id: str,
@@ -373,24 +346,6 @@ async def stream_run(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
-
-
-@router.get("/local-runs/{run_id}/stream", include_in_schema=False)
-async def stream_local_run(
-    run_id: str,
-    after: int = Query(default=0, ge=0),
-    _peer: Principal = Depends(require_scope("staff.read")),
-) -> StreamingResponse:
-    """Stream only a run stored on this node; never federate the lookup."""
-    try:
-        return await stream_run(run_id=run_id, after=after, local=True, _peer=_peer)
-    except HTTPException as exc:
-        if exc.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "local_run_not_found", "run_id": run_id},
-            ) from exc
-        raise
 
 
 class GithubCredentialResponse(BaseModel):
@@ -472,28 +427,6 @@ async def cancel_run(
     log.info("staff: cancel %s by %s → %s", run_id, caller_str, ok)
     rec = runner.store.get_run(run_id)
     return {"cancelled": ok, "run": rec.to_dict() if rec else None}
-
-
-@router.post(
-    "/local-runs/{run_id}/cancel",
-    response_model=StaffCancelResponse,
-    response_model_exclude_none=True,
-    include_in_schema=False,
-)
-async def cancel_local_run(
-    run_id: str,
-    caller: Principal = Depends(require_scope("staff.cancel")),
-) -> dict[str, Any]:
-    """Cancel only a run stored on this node; never federate the lookup."""
-    try:
-        return await cancel_run(run_id=run_id, local=True, caller=caller)
-    except HTTPException as exc:
-        if exc.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "local_run_not_found", "run_id": run_id},
-            ) from exc
-        raise
 
 
 @router.post(
