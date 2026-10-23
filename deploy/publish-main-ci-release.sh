@@ -136,7 +136,7 @@ verify_automatic_release_eligibility
 
 for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
   skip_if_main_moved
-  gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100" --paginate --slurp > "$CHECK_JSON"
+  gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100&filter=all" --paginate --slurp > "$CHECK_JSON"
   gate_status=0
   python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-gate \
     --publisher --sha "$SHA" --check-runs-json "$CHECK_JSON" || gate_status=$?

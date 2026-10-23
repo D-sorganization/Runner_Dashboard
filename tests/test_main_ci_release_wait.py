@@ -36,6 +36,9 @@ def _record(status: str, conclusion: str | None) -> dict[str, object]:
         "name": "quality-gate",
         "status": status,
         "conclusion": conclusion,
+        "started_at": "2026-10-22T00:00:00Z",
+        "check_suite": {"id": 1},
+        "app": {"id": 1, "slug": "github-actions"},
     }
 
 
@@ -125,6 +128,9 @@ def _run_publisher(
         "elif '/check-runs?' in endpoint:\n"
         "    if '--paginate' not in args or '--slurp' not in args:\n"
         "        print('check-runs request must paginate and slurp', file=sys.stderr)\n"
+        "        raise SystemExit(2)\n"
+        "    if 'filter=all' not in endpoint:\n"
+        "        print('check-runs request must include filter=all', file=sys.stderr)\n"
         "        raise SystemExit(2)\n"
         "    if os.environ.get('FAKE_CHECK_API_FAIL') == '1':\n"
         "        print('fake API unavailable', file=sys.stderr)\n"
@@ -565,6 +571,9 @@ def test_verify_cli_flattens_complete_paginated_payload(tmp_path: Path) -> None:
                             "name": "frontend-tests",
                             "status": "completed",
                             "conclusion": "success",
+                            "started_at": "2026-10-22T00:00:00Z",
+                            "check_suite": {"id": 2},
+                            "app": {"id": 1, "slug": "github-actions"},
                         }
                     ],
                 },
@@ -574,6 +583,64 @@ def test_verify_cli_flattens_complete_paginated_payload(tmp_path: Path) -> None:
     )
 
     assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(complete_path)]) == 0
+
+
+def test_publisher_normalizes_latest_check_attempt_like_node(tmp_path: Path) -> None:
+    payload = [
+        {
+            "total_count": 2,
+            "check_runs": [
+                {"id": 1001, **_record("completed", "failure")},
+                {
+                    "id": 1002,
+                    **{
+                        **_record("completed", "success"),
+                        "started_at": "2026-10-22T00:01:00Z",
+                    },
+                },
+            ],
+        }
+    ]
+    attempts_path = tmp_path / "same-suite-attempts.json"
+    attempts_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(attempts_path)]) == 0
+
+
+def test_publisher_rejects_raw_inventory_over_5000_before_normalizing(tmp_path: Path) -> None:
+    attempts = [{"id": 1001 + i, **_record("completed", "cancelled")} for i in range(5001)]
+    payload_path = tmp_path / "over-cap-checks.json"
+    payload_path.write_text(json.dumps([{"total_count": 5001, "check_runs": attempts}]), encoding="utf-8")
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(payload_path)]) == 3
+
+
+@pytest.mark.parametrize("bad_record", ["foreign_sha", "missing_conclusion"])
+def test_publisher_rejects_bad_older_attempt_before_normalizing(tmp_path: Path, bad_record: str) -> None:
+    older = {"id": 1001, **_record("completed", "failure")}
+    if bad_record == "foreign_sha":
+        older["head_sha"] = "b" * 40
+    else:
+        older.pop("conclusion")
+    payload = [
+        {
+            "total_count": 2,
+            "check_runs": [
+                older,
+                {
+                    "id": 1002,
+                    **{
+                        **_record("completed", "success"),
+                        "started_at": "2026-10-22T00:01:00Z",
+                    },
+                },
+            ],
+        }
+    ]
+    payload_path = tmp_path / f"bad-older-{bad_record}.json"
+    payload_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(payload_path)]) == 3
 
 
 def test_github_api_error_is_a_failed_publisher_job(tmp_path: Path) -> None:
