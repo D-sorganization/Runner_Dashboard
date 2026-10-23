@@ -223,6 +223,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 type="button"
                 className="staff-mobile__details-btn"
                 data-testid="staff-mobile-new-conversation-btn"
+                aria-label="New conversation"
                 onClick={() => void sc.newConversation()}
               >
                 New conversation

@@ -8,6 +8,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(path.join(__dirname, "../StaffPage.css"), "utf8");
+const shellCss = readFileSync(path.join(__dirname, "../../../index.css"), "utf8");
 const staffBlock = css.match(/(^|\n)\.staff\s*\{([^}]*)\}/)?.[2] ?? "";
 
 describe("Staff page box", () => {
@@ -15,5 +16,10 @@ describe("Staff page box", () => {
     expect(staffBlock).toMatch(/width:\s*100%/);
     expect(staffBlock).toMatch(/box-sizing:\s*border-box/);
     expect(staffBlock).toMatch(/margin:\s*0/);
+  });
+
+  it("lets the Staff page share the main area with its intro instead of overflowing it", () => {
+    expect(shellCss).toMatch(/\.desktop-shell__main--staff\s*\{[^}]*display:\s*flex/);
+    expect(shellCss).toMatch(/\.desktop-shell__main--staff > \.staff\s*\{[^}]*height:\s*auto/);
   });
 });

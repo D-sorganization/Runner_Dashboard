@@ -1,0 +1,78 @@
+/* Persistent Barb drawer shared across desktop and mobile sections. */
+.barb-sidebar {
+  position: fixed; z-index: 1000; inset: 52px 0 0 auto;
+  display: flex; width: min(440px, calc(100vw - 56px)); flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--bg-primary); box-shadow: var(--shadow-modal);
+  visibility: hidden; transform: translateX(100%);
+  transition: transform 180ms ease-out, visibility 180ms ease-out;
+}
+.barb-sidebar--open { visibility: visible; transform: translateX(0); }
+.barb-sidebar__header,
+.barb-sidebar__routes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.barb-sidebar__header { min-height: 60px; padding: 10px 16px; }
+.barb-sidebar__identity,
+.barb-sidebar__header-actions { display: flex; align-items: center; gap: 10px; }
+.barb-sidebar__identity { min-width: 0; }
+.barb-sidebar__mark {
+  display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--badge-info-bg); color: var(--accent-blue);
+}
+.barb-sidebar__identity h2,
+.barb-sidebar__identity p { margin: 0; }
+.barb-sidebar__identity h2 { color: var(--text-primary); font-size: 14px; font-weight: 650; }
+.barb-sidebar__identity p { color: var(--text-muted); font-size: 11px; }
+.barb-sidebar__new,
+.barb-sidebar__close,
+.barb-sidebar__routes button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+}
+.barb-sidebar__new { padding: 0 9px; font-size: 11px; }
+.barb-sidebar__close { width: 30px; font-size: 18px; line-height: 1; }
+.barb-sidebar__new:hover,
+.barb-sidebar__close:hover,
+.barb-sidebar__routes button:hover { border-color: var(--accent-blue); background: var(--bg-hover); color: var(--text-primary); }
+.barb-sidebar__new:focus-visible,
+.barb-sidebar__close:focus-visible,
+.barb-sidebar__routes button:focus-visible,
+.barb-sidebar__project:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+.barb-sidebar__routes { justify-content: initial; gap: 7px; padding: 10px 14px; }
+.barb-sidebar__routes button { min-width: 0; flex: 1; justify-content: space-between; gap: 4px; padding: 7px 8px; font-size: 11px; }
+.barb-sidebar__conversation { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.barb-sidebar__thread { display: flex; min-height: 0; flex: 1; overflow-y: auto; }
+.barb-sidebar__welcome { flex: 1; overflow-y: auto; padding: 24px 18px; }
+.barb-sidebar__eyebrow { color: var(--accent-blue); font-size: 10px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+.barb-sidebar__welcome h3 { margin: 10px 0 6px; color: var(--text-primary); font-size: 18px; font-weight: 620; line-height: 1.25; }
+.barb-sidebar__welcome > p { margin: 0 0 20px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.barb-sidebar__projects { display: grid; gap: 10px; }
+.barb-sidebar__project {
+  display: flex; min-height: 104px; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 13px 14px; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-secondary); cursor: pointer; text-align: left;
+  transition: border-color 140ms ease-out, background-color 140ms ease-out, transform 140ms ease-out;
+}
+.barb-sidebar__project:hover { transform: translateY(-1px); border-color: var(--accent-blue); background: var(--bg-hover); }
+.barb-sidebar__project-name { color: var(--text-primary); font-size: 13px; font-weight: 650; }
+.barb-sidebar__project-summary { color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
+.barb-sidebar__project-action { margin-top: auto; color: var(--accent-blue); font-size: 10px; font-weight: 650; }
+.barb-sidebar--mobile { inset: 0 0 calc(var(--bottom-nav-height, 64px) + env(safe-area-inset-bottom)); z-index: 1200; width: 100vw; }
+@media (prefers-reduced-motion: reduce) {
+  .barb-sidebar, .barb-sidebar__project, .barb-sidebar__routes button { transition: none; }
+}

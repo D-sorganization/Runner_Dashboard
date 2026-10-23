@@ -1,0 +1,46 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MobileShell } from "../MobileShell";
+
+const mockUseStaffConsole = vi.hoisted(() => vi.fn());
+vi.mock("../../pages/StaffConsole/useStaffConsole", () => ({
+  useStaffConsole: mockUseStaffConsole,
+}));
+vi.mock("../../hooks/useBreakpoint", () => ({ useBreakpoint: () => "md" }));
+
+const role = {
+  name: "barb",
+  title: "Barb",
+  summary: "Fleet concierge",
+  group: "leadership" as const,
+  valid: true,
+};
+
+beforeEach(() => {
+  mockUseStaffConsole.mockReturnValue({
+    roles: [role], activeThread: null, messages: [], isReconnecting: false,
+    error: null, sendMessage: vi.fn(), costGuard: { pending: null, confirm: vi.fn(), cancel: vi.fn() },
+    approveProposal: vi.fn(), denyProposal: vi.fn(), cancelRun: vi.fn(),
+    answerRun: vi.fn(), dismissError: vi.fn(), newConversation: vi.fn(), openRole: vi.fn(),
+  });
+});
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+describe("MobileShell Barb access", () => {
+  it("keeps Barb available from mobile sections and navigates without closing the conversation", async () => {
+    const onTabChange = vi.fn();
+    const { rerender } = render(
+      <MobileShell currentTab="projects" onTabChange={onTabChange}><div>Projects</div></MobileShell>,
+    );
+
+    fireEvent.click(screen.getByTestId("mobile-ask-barb"));
+    const panel = await screen.findByRole("dialog", { name: "Ask Barb" });
+
+    fireEvent.click(screen.getByRole("button", { name: /open fleet command/i }));
+    expect(onTabChange).toHaveBeenCalledWith("fleet-command");
+    rerender(<MobileShell currentTab="fleet-command" onTabChange={onTabChange}><div>Fleet Command</div></MobileShell>);
+    expect(screen.getByRole("dialog", { name: "Ask Barb" })).toBe(panel);
+  });
+});
