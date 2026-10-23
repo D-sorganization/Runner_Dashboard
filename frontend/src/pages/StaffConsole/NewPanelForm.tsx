@@ -23,7 +23,7 @@ export interface NewPanelFormProps {
   onCancel?: () => void;
 }
 
-const DEFAULT_PROVIDERS = ["claude", "codex", "gemini"];
+const DEFAULT_PROVIDERS = ["claude", "codex", "antigravity"];
 
 const INITIAL_EXPERTS: PanelFormExpert[] = [
   { name: "", perspective: "", provider: "claude", model: "" },

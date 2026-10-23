@@ -5725,6 +5725,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/intake": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Library Intake List Route */
+        get: operations["library_intake_list_route_api_v1_library_intake_get"];
+        put?: never;
+        /** Library Intake Stage Route */
+        post: operations["library_intake_stage_route_api_v1_library_intake_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/library/intake/{intake_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Library Intake Promote Route */
+        post: operations["library_intake_promote_route_api_v1_library_intake__intake_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/search": {
         parameters: {
             query?: never;
@@ -6052,6 +6087,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/security/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Config */
+        get: operations["get_config_api_v1_security_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/contracts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Contracts
+         * @description Every tracked repository's contract status. Never 5xx for one repository.
+         */
+        get: operations["list_contracts_api_v1_security_contracts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/contracts/{repo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Contract */
+        get: operations["get_contract_api_v1_security_contracts__repo__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Findings */
+        get: operations["list_findings_api_v1_security_findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/findings/{finding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Finding */
+        get: operations["get_finding_api_v1_security_findings__finding_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/findings/{finding_id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Triage Finding */
+        post: operations["triage_finding_api_v1_security_findings__finding_id__triage_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/posture": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Posture */
+        get: operations["get_posture_api_v1_security_posture_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/actions": {
         parameters: {
             query?: never;
@@ -6189,6 +6346,23 @@ export interface paths {
         put?: never;
         /** Check out a scoped Barb sub-role lease */
         post: operations["post_barb_lease_checkout_api_v1_staff_barb_leases_checkout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/leases/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extend the caller's own live Barb lease */
+        post: operations["post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7597,6 +7771,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/vault/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Vault Audit */
+        get: operations["get_vault_audit_api_v1_vault_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vault/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Secrets */
+        get: operations["get_secrets_api_v1_vault_secrets_get"];
+        put?: never;
+        /** Create Or Update Secret */
+        post: operations["create_or_update_secret_api_v1_vault_secrets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vault/secrets/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Secret */
+        delete: operations["remove_secret_api_v1_vault_secrets__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/version": {
         parameters: {
             query?: never;
@@ -8069,7 +8295,7 @@ export interface components {
              */
             desktop_app: string;
             /** Expected Epoch */
-            expected_epoch?: number | null;
+            expected_epoch: number;
             /**
              * Machine
              * @default
@@ -8096,7 +8322,7 @@ export interface components {
         /** BarbLeaseCheckoutRequest */
         BarbLeaseCheckoutRequest: {
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /**
              * Machine
              * @default
@@ -8107,6 +8333,11 @@ export interface components {
              * @default rd-barb
              */
             persona: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
             /**
              * Scope
              * @default barb:front-door
@@ -8128,6 +8359,20 @@ export interface components {
              */
             ttl_sec: number;
         };
+        /** BarbLeaseHeartbeatRequest */
+        BarbLeaseHeartbeatRequest: {
+            /** Epoch */
+            epoch: number;
+            /** Holder */
+            holder?: string | null;
+            /** Scope */
+            scope: string;
+            /**
+             * Ttl Sec
+             * @default 3600
+             */
+            ttl_sec: number;
+        };
         /** BarbLeaseReleaseRequest */
         BarbLeaseReleaseRequest: {
             /** Blockers */
@@ -8140,7 +8385,7 @@ export interface components {
              */
             force: boolean;
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /** In Progress Items */
             in_progress_items?: string[];
             /** Next Actions */
@@ -8233,7 +8478,7 @@ export interface components {
             /** Completed Items */
             completed_items?: string[];
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /** In Progress Items */
             in_progress_items?: string[];
             /**
@@ -9245,6 +9490,27 @@ export interface components {
             /** Ttl Seconds */
             ttl_seconds: number;
         };
+        /** LibraryIntakeCreateRequest */
+        LibraryIntakeCreateRequest: {
+            /** Content Base64 */
+            content_base64: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Mime Type
+             * @default application/octet-stream
+             */
+            mime_type: string;
+            /**
+             * Sensitivity
+             * @default confidential_work
+             */
+            sensitivity: string | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
+            /** Thread Id */
+            thread_id?: string | null;
+        };
         /** LibraryRunReference */
         LibraryRunReference: {
             /** Citation */
@@ -9443,6 +9709,8 @@ export interface components {
              * @default true
              */
             preload_codebase: boolean;
+            /** Quorum */
+            quorum?: number | null;
             /** Repos */
             repos?: string[] | null;
             /**
@@ -11822,6 +12090,19 @@ export interface components {
             /** Tool Call Id */
             tool_call_id: string;
         };
+        /** TriageRequest */
+        TriageRequest: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /**
+             * State
+             * @description one of new, confirmed, inconclusive, false_positive, accepted_risk, fixed
+             */
+            state: string;
+        };
         /** UpdateThreadRequest */
         UpdateThreadRequest: {
             /** Status */
@@ -11841,6 +12122,23 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** VaultSecretWriteRequest */
+        VaultSecretWriteRequest: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Key */
+            key: string;
+            /**
+             * Scope
+             * @default global
+             */
+            scope: string;
+            /** Value */
+            value: string;
         };
         /** WebVitalEntry */
         WebVitalEntry: {
@@ -20110,6 +20408,108 @@ export interface operations {
             };
         };
     };
+    library_intake_list_route_api_v1_library_intake_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                sensitivity?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_intake_stage_route_api_v1_library_intake_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryIntakeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_intake_promote_route_api_v1_library_intake__intake_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                intake_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     library_search_api_v1_library_search_get: {
         parameters: {
             query: {
@@ -20890,6 +21290,223 @@ export interface operations {
             };
         };
     };
+    get_config_api_v1_security_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_contracts_api_v1_security_contracts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_contract_api_v1_security_contracts__repo__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_findings_api_v1_security_findings_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+                state?: string | null;
+                severity?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_finding_api_v1_security_findings__finding_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                finding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_finding_api_v1_security_findings__finding_id__triage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                finding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_posture_api_v1_security_posture_get: {
+        parameters: {
+            query?: {
+                /** @description include GitHub alert counts (cached) */
+                alerts?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_actions_api_v1_staff_actions_get: {
         parameters: {
             query?: never;
@@ -21163,6 +21780,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BarbLeaseCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseHeartbeatRequest"];
             };
         };
         responses: {
@@ -23706,6 +24358,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffDispatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_vault_audit_api_v1_vault_audit_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_secrets_api_v1_vault_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    create_or_update_secret_api_v1_vault_secrets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultSecretWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_secret_api_v1_vault_secrets__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

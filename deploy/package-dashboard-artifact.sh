@@ -171,6 +171,7 @@ cp "${SCRIPT_DIR}/scripts/claude_statusline_quota.py" "${STAGE_DIR}/scripts/clau
 METADATA_ARGS=(
     --repo-root "${SCRIPT_DIR}" --version "${VERSION}" --python-minor "${PYTHON_MINOR}"
     --sha "${GIT_SHA}" --output "${STAGE_DIR}/deployment.json"
+    --static-assets-dir "${STAGE_DIR}/dist"
 )
 python3 "${SCRIPT_DIR}/deploy/artifact_metadata.py" "${METADATA_ARGS[@]}"
 chmod 644 "${STAGE_DIR}/deployment.json"

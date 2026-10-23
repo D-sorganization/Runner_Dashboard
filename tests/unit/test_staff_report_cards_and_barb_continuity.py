@@ -327,7 +327,7 @@ def test_api_routes_for_report_cards_and_barb_continuity(tmp_path: Path, monkeyp
 
     co = client.post(
         "/api/v1/staff/barb/leases/checkout",
-        json={"scope": "barb:front-door", "holder": "grok-1", "persona": "grok-barb"},
+        json={"scope": "barb:front-door", "holder": "test:grok-1", "persona": "grok-barb"},
     )
     assert co.status_code == 200
     assert co.json()["lease"]["scope"] == "barb:front-door"
@@ -387,7 +387,7 @@ def test_leaderboard_recommend_agent_and_barb_leases_route(tmp_path: Path, monke
     client = TestClient(app)
     post_res = client.post(
         "/api/v1/staff/barb/leases",
-        json={"scope": "barb:front-door", "holder": "grok-barb", "persona": "grok-barb"},
+        json={"scope": "barb:front-door", "holder": "test:grok-barb", "persona": "grok-barb"},
     )
     assert post_res.status_code == 200
     get_res = client.get("/api/v1/staff/barb/leases")

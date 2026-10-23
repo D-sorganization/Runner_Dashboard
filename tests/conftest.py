@@ -4,6 +4,7 @@
 # ---------------------------------------------------------------------------
 import os  # noqa: E402
 import shlex  # noqa: E402
+import shutil  # noqa: E402
 import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
@@ -108,6 +109,27 @@ def _no_real_provider_cli(monkeypatch):
         return real_popen(args, *positional, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", guarded_popen)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_provider_cli_discovery(monkeypatch):
+    """Keep host-installed provider CLIs out of staff discovery (#2501).
+
+    ``cli_version`` and ``ProviderAdapter.installed`` resolve executables with
+    the shared ``shutil.which``; on a host with a real ``claude`` on PATH the
+    probe path runs. Provider CLI names resolve to ``None`` unless a test pins
+    ``shutil.which`` itself (or uses ``staff_cli_installed``); every other
+    command resolves normally.
+    """
+    real_which = shutil.which
+    provider_cli_names = {"codex", "claude", "agy", "antigravity"}
+
+    def which(cmd, *args, **kwargs):
+        if os.path.basename(os.fspath(cmd)).lower().removesuffix(".exe") in provider_cli_names:
+            return None
+        return real_which(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "which", which)
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +298,7 @@ def staff_cli_installed(monkeypatch):
 
     monkeypatch.setattr(ProviderAdapter, "installed", _installed)
     monkeypatch.setattr(cli_version, "is_outdated", lambda *a, **kw: False)
-    monkeypatch.setattr(cli_version, "installed_version", lambda *a, **kw: "2.0.0")
+    monkeypatch.setattr(cli_version, "installed_version", lambda *a, **kw: (99, 0, 0))
 
     def _mark_installed(*providers: str) -> None:
         installed_providers.update(providers)
@@ -438,8 +460,15 @@ def _staff_oauth_preflight_ok(monkeypatch, request):  # noqa: ANN001
         "staff.cli_oauth_session.provider_oauth_session_alive",
         "staff.provider_dispatch_preflight.provider_oauth_session_alive",
         "staff.provider_auth_preflight.provider_oauth_session_alive",
+        # Runs ``agy`` itself when the host has it on PATH (#2501).
+        "staff.cli_oauth_session.antigravity_oauth_session_alive",
     ):
         monkeypatch.setattr(target, alive)
+    # The host's real token expiry / refresh state must not reach the probe (#2501):
+    # a logged-in dev machine otherwise yields synthetic ``provider-auth-*`` attention items.
+    monkeypatch.setattr("staff.provider_auth_preflight.oauth_expiry_epoch_for_provider", lambda *_a, **_k: None)
+    monkeypatch.setattr("staff.provider_auth_preflight.oauth_last_refresh_epoch_for_provider", lambda *_a, **_k: None)
+    monkeypatch.setattr("staff.provider_auth_preflight.oauth_has_refresh_token_for_provider", lambda *_a, **_k: False)
     try:
         from staff.provider_auth_preflight import _cache  # noqa: PLC0415
 

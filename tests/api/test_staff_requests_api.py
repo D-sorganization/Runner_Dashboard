@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from identity import Principal, require_principal
+from identity import Principal, format_caller, require_principal
 from server import app
 from staff import dispatch_service
 from staff.actions import ACTION_REGISTRY
@@ -188,6 +188,64 @@ def test_request_needing_approval_is_recorded_but_not_executed(client: TestClien
     wi = get_work_item_store().get_work_item(data["work_item_id"])
     assert wi is not None and wi.state == "open"
     assert CALLS == []
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_review_request_exposes_stored_card_and_retains_approval_boundary(
+    client: TestClient, dispatch_ok: None, legacy: bool
+) -> None:
+    _as(REQUESTER)
+    response = client.post(URL, json=_body(), headers=_XHR)
+    assert response.status_code == 202
+    data = response.json()
+    store = get_conversation_store()
+    if not legacy:
+        recorded = store.get_message(data["message_id"])
+        assert recorded is not None and recorded.kind == "action_proposal"
+    if legacy:
+        store.update_message(data["message_id"], kind="text", meta={"request": _body()})
+
+    def card() -> dict[str, Any]:
+        detail = client.get(f"/api/v1/staff/threads/{data['thread_id']}")
+        assert detail.status_code == 200, detail.text
+        message = next(m for m in detail.json()["messages"] if m["id"] == data["message_id"])
+        assert message["kind"] == "action_proposal"
+        assert message["author_kind"] == "user" and message["author"] == format_caller(REQUESTER)
+        return message["meta"]["proposal"]
+
+    pending = card()
+    assert pending["id"] == data["proposal_id"]
+    assert pending["status"] == "pending" and pending["risk_level"] == "medium"
+    assert pending["params"]["repo"] == "Runner_Dashboard"
+    assert pending["description"].endswith("fix the flaky test")
+    preview_url = f"/api/v1/staff/proposals/{pending['id']}"
+    preview = client.get(preview_url).json()
+    decision = {"decision": "approved", "execute": True, "params_hash": preview["params_hash"]}
+    refused = client.post(f"{preview_url}/decide", json=decision, headers=_XHR)
+    assert refused.status_code == 403 and CALLS == []
+
+    _as(OPERATOR)
+    approved = client.post(f"{preview_url}/decide", json=decision, headers=_XHR)
+    assert approved.status_code == 200, approved.text
+    assert len(CALLS) == 1
+    assert card()["status"] == "executed"
+    client.post(f"{preview_url}/decide", json=decision, headers=_XHR)
+    assert len(CALLS) == 1, "reloading or repeating a decision must not dispatch twice"
+
+
+def test_plain_request_metadata_cannot_fabricate_an_approval_card(client: TestClient, dispatch_ok: None) -> None:
+    response = client.post(URL, json=_body(), headers=_XHR).json()
+    message = get_conversation_store().add_message(
+        thread_id=response["thread_id"],
+        author_kind="user",
+        author="operator-user",
+        body_md="ordinary note",
+        meta={"request": _body(), "proposal_id": response["proposal_id"]},
+    )
+    detail = client.get(f"/api/v1/staff/threads/{response['thread_id']}").json()
+    rendered = next(m for m in detail["messages"] if m["id"] == message.id)
+    assert rendered["kind"] != "action_proposal"
+    assert "proposal" not in rendered["meta"]
 
 
 def test_backend_failure_is_classified_and_keeps_the_request(client: TestClient, dispatch_rate_limited: None) -> None:

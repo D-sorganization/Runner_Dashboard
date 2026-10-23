@@ -45,6 +45,11 @@
 .context-page [class~="gap-4"] { gap: 16px; }
 .context-page [class~="grid"] { display: grid; }
 .context-page [class~="grid-cols-1"] { grid-template-columns: minmax(0, 1fr); }
+.context-page .context-pack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 16px;
+}
 .context-page [class~="space-y-3"] > * + * { margin-top: 12px; }
 .context-page [class~="space-y-4"] > * + * { margin-top: 16px; }
 .context-page .overflow-x-auto { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
@@ -88,7 +93,6 @@
 .context-page button { min-height: var(--mobile-hit-target, 44px); }
 @media (min-width: 720px) {
   .context-page [class~="md:grid-cols-2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .context-page [class~="md:grid-cols-4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 719px) {
   .context-page { gap: 16px; padding: 16px; }

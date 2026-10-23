@@ -81,6 +81,32 @@ test.describe("chat", () => {
     await expect(page.getByRole("button", { name: /^E2E Analyst, Status:/ })).toBeVisible();
   });
 
+  test("project starters keep the named repository context and wait for explicit send", async ({ page }) => {
+    let messagePosts = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && /\/threads\/[^/]+\/messages$/.test(new URL(request.url()).pathname)) {
+        messagePosts += 1;
+      }
+    });
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/staff");
+      const composer = page.getByRole("textbox", { name: COMPOSER });
+      await expect(composer).toBeVisible();
+
+      await page.getByRole("button", { name: "Start UpstreamDrift" }).click();
+      await expect(composer).toHaveValue(/open issues and pull requests in the UpstreamDrift repository/);
+      await expect(composer).toHaveValue(/wait for my approval before dispatching/);
+
+      await page.getByRole("button", { name: "Start AffineDrift" }).click();
+      await expect(composer).toHaveValue(/open issues and pull requests in the AffineDrift repository/);
+      await expect(composer).toHaveValue(/wait for my approval before dispatching/);
+    }
+
+    expect(messagePosts).toBe(0);
+  });
+
   test("sending from the mobile chat-first home reveals Barb's conversation", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/staff");
@@ -407,6 +433,20 @@ test.describe("approved dashboard navigation", () => {
     await expect(replayPage.getByTestId("barb-sidebar")).toBeVisible();
     await expect(replayPage).toHaveURL(/\/projects(?:\?|$)/);
     await replayContext.close();
+
+    const restoredContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const restoredPage = await restoredContext.newPage();
+    await restoredPage.route("**/api/**", (route) =>
+      route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+    );
+    await restoredPage.goto("/projects");
+    await restoredPage.getByRole("button", { name: "Ask Barb" }).click();
+    const restoredDrawer = restoredPage.getByTestId("barb-sidebar");
+    await expect(restoredDrawer).toBeVisible();
+    await expect(restoredDrawer).toContainText("open Context");
+    await expect(restoredDrawer).toContainText("Action Executed");
+    await expect(restoredPage).toHaveURL(/\/projects(?:\?|$)/);
+    await restoredContext.close();
 
     if (!(await desktopDrawer.isVisible())) await page.getByRole("button", { name: "Ask Barb" }).click();
     const mobileProposalId = await proposeFromSidebar(requesterDrawer, "navigate");

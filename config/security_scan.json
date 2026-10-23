@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "_comment": "Operator settings for the fleet security scanner (epic #2566). Repos opt in with .oss-scanner/; these keys are operator-only and rejected in project.yaml. Real scans require a scan host with isolation 'vm'.",
+  "defaults": {
+    "enabled": false,
+    "full_scan_days": 30,
+    "priority": 3
+  },
+  "repos": {
+    "UpstreamDrift": { "enabled": false, "priority": 1 },
+    "AffineDrift": { "enabled": false, "priority": 2 },
+    "Tools": { "enabled": false, "priority": 2 }
+  },
+  "scan_hosts": {},
+  "window": {
+    "start": "01:00",
+    "end": "06:00",
+    "timezone": "America/Los_Angeles"
+  },
+  "min_free_gb": 60,
+  "max_new_findings_per_scan": 10,
+  "usd_per_day": 5.0,
+  "alerts_ttl_seconds": 21600
+}

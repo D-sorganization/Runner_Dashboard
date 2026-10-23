@@ -82,7 +82,7 @@ export function RemediationPRsSubTab({
   const [dispatching, setDispatching] = useState(false);
   const [dispatchMsg, setDispatchMsg] = useState<DispatchMsg | null>(null);
 
-  const [modalProvider, setModalProvider] = useState("jules_api");
+  const [modalProvider, setModalProvider] = useState("codex_cli");
   const [modalPrompt, setModalPrompt] = useState("");
 
   const fetchPRs = useCallback(() => {

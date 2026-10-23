@@ -155,13 +155,18 @@ export function ProjectCard({
         {decisions_needed.length === 0 ? (
           <span style={{ color: "var(--text-secondary)" }}> — none</span>
         ) : (
-          <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
-            {decisions_needed.map((d) => (
-              <li key={d}>
-                <OwnerMarkdown text={d} as="span" />
-              </li>
-            ))}
-          </ul>
+          <details style={{ marginTop: 4 }}>
+            <summary style={{ cursor: "pointer", color: "var(--text-secondary)" }}>
+              View {decisions_needed.length} {decisions_needed.length === 1 ? "decision" : "decisions"}
+            </summary>
+            <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>
+              {decisions_needed.map((d) => (
+                <li key={d}>
+                  <OwnerMarkdown text={d} as="span" />
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
       </div>
       <div style={{ marginTop: 8, fontSize: 13 }}>

@@ -116,11 +116,7 @@ def test_a_held_collation_pr_is_never_force_pushed() -> None:
 
 
 def test_needs_full_history_to_find_the_adding_commit() -> None:
-    checkouts = [
-        step
-        for step in _job()["steps"]
-        if str(step.get("uses", "")).startswith("actions/checkout")
-    ]
+    checkouts = [step for step in _job()["steps"] if str(step.get("uses", "")).startswith("actions/checkout")]
     depths = [step["with"]["fetch-depth"] for step in checkouts]
     assert 0 in depths, "collation needs full history to resolve the adding commit"
 
@@ -157,3 +153,30 @@ def test_is_classified_in_the_runner_routing_policy(name: str) -> None:
 
     policy = json.loads((_ROOT / "config" / "workflow_runner_routing_policy.json").read_text("utf-8"))
     assert any(name in cls["workflows"] for cls in policy["workflow_classes"].values())
+
+
+def _step(name: str) -> dict[str, Any]:
+    steps = cast("list[dict[str, Any]]", _job()["steps"])
+    return next(s for s in steps if s.get("name") == name)
+
+
+def test_missing_credentials_report_pending_count_and_owner_action() -> None:
+    """Runner_Dashboard#2014: unset App secrets must not look like a green no-op."""
+    step = _step("Preflight Jules app credentials")
+    assert "pending-fragments.outputs.count" in step["if"]
+    assert "PENDING_COUNT" in step["env"]
+    script = step["run"]
+    assert "GITHUB_STEP_SUMMARY" in script
+    assert "Owner action" in script
+    assert "JULES_APP_ID" in script
+    assert "JULES_APP_PRIVATE_KEY" in script
+    assert "Change fragments not collated" in script
+
+
+def test_token_step_is_gated_on_credential_preflight() -> None:
+    step = _step("Generate fleet app token")
+    assert "credentials-present == 'true'" in step["if"]
+
+
+def test_no_permissive_token_fallback() -> None:
+    assert "secrets.GITHUB_TOKEN" not in WORKFLOW.read_text("utf-8")

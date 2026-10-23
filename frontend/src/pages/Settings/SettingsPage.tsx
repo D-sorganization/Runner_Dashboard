@@ -8,6 +8,7 @@
  */
 import React, { useEffect } from "react";
 import { ThemeSettings } from "../../components/ThemeSettings";
+import { VaultPanel } from "../../components/VaultPanel";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { CredentialsMobile } from "../Credentials";
 import { CredentialsPage } from "../CredentialsPage";
@@ -35,6 +36,7 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "principals", title: "Principals", render: () => <PrincipalsTab /> },
   { id: "theme", title: "Theme", render: () => <ThemeSettings /> },
   { id: "local-tools", title: "Local Tools", render: () => <LocalAppsPage /> },
+  { id: "vault", title: "Secure Vault", render: () => <VaultPanel /> },
 ];
 
 function scrollToHash(): void {

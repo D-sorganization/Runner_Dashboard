@@ -57,7 +57,9 @@ PROPOSAL_DECISIONS = ("approved", "denied")
 # dropdowns exactly (Repository_Management/.github/ISSUE_TEMPLATE/board-proposal.yml).
 PROPOSAL_ESTIMATED_EFFORTS = ("Low", "Medium", "High")
 PROPOSAL_URGENCIES = ("Routine", "Urgent", "Emergency")
-MEMORY_ENTRY_TYPES = ("session_digest", "decision", "task", "transcript")
+MEMORY_ENTRY_TYPES = ("session_digest", "decision", "task", "transcript", "lesson")
+LESSON_MAX_CHARS = 400  # mirrors backend/memory/contract.py LESSON_MAX_CHARS
+MEMORY_VISIBILITIES = ("fleet", "barb-only")
 
 _TEXT_CONTROLS = "\n\t"
 _SESSION_UNSAFE = re.compile(r"[^A-Za-z0-9_.-]")

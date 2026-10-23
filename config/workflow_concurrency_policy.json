@@ -7,7 +7,7 @@
     "arm-cap-reconcile.yml": "Armed-PR inventory reconcile must finish SQLite inventory sync before optional disarm dispatch; cancel mid-run risks cap drift.",
     "deploy-qualified-release.yml": "A root deployment transaction must reach commit or rollback and cannot be interrupted safely.",
     "release.yml": "Release publishing must not be interrupted after versioning and tag orchestration begin.",
-    "main-ci-auto-release.yml": "Per-SHA release packaging runs npm ci, wheelhouse build, and gh release create; workflow_run overlap must not cancel an in-flight publish for the same commit."
+    "main-ci-auto-release.yml": "Per-SHA release packaging runs npm ci, wheelhouse build, and gh release create; the publish job (job-level group main-ci-auto-release-publish) must never be cancelled mid-upload; only the wait-only gate job is cancellable."
   },
   "pr_concurrency_singleton_allowlist": {
     "Agent-Redundant-PR-Closer.yml": "Duplicate PR arbitration intentionally runs as one repo-wide singleton to compare all open PRs."

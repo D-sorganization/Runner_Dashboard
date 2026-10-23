@@ -90,7 +90,7 @@ describe("LibraryPage", () => {
   it("adds a preferential Google Drive folder source and toggles preferential status", async () => {
     let createdPayload: Record<string, unknown> | null = null;
     let patchedPayload: Record<string, unknown> | null = null;
-    const driveRow = { id: "agent-shared-drive", label: "Agent Shared Drive", root_path: "gdrive://1AbCdEfGhIjKlMnOpQrStUvWxYz", backend_type: "google_drive_connector", drive_folder_id: "1AbCdEfGhIjKlMnOpQrStUvWxYz", shared: true, preferential: true, priority: 1, status: "active" };
+    const driveRow = { id: "agent-shared-drive", label: "Agent Shared Drive", root_path: "gdrive://DriveFolderFixture12345", backend_type: "google_drive_connector", drive_folder_id: "DriveFolderFixture12345", shared: true, preferential: true, priority: 1, status: "active" };
     mockFetch((url, opts) => {
       if (url.includes("/sources/agent-shared-drive") && opts?.method === "PATCH") { patchedPayload = JSON.parse(String(opts.body)) as Record<string, unknown>; return { ...driveRow, preferential: false, priority: 2 }; }
       if (url.endsWith("/sources") && opts?.method === "POST") { createdPayload = JSON.parse(String(opts.body)) as Record<string, unknown>; return driveRow; }
@@ -98,13 +98,13 @@ describe("LibraryPage", () => {
     });
     render(<LibraryPage />);
     fireEvent.click(await screen.findByRole("button", { name: /add google drive/i }));
-    fireEvent.change(screen.getByLabelText(/drive folder url or id/i), { target: { value: "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz" } });
+    fireEvent.change(screen.getByLabelText(/drive folder url or id/i), { target: { value: "https://drive.google.com/drive/folders/DriveFolderFixture12345" } });
     fireEvent.change(screen.getByLabelText(/drive label/i), { target: { value: "Agent Shared Drive" } });
     fireEvent.change(screen.getByLabelText(/repo tags/i), { target: { value: "Runner_Dashboard, AffineDrift" } });
     fireEvent.click(screen.getByRole("button", { name: /save google drive source/i }));
-    await waitFor(() => expect(createdPayload).toEqual(expect.objectContaining({ id: "agent-shared-drive", label: "Agent Shared Drive", backend_type: "google_drive_connector", drive_folder_url: "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz", shared: true, preferential: true, priority: 1, repos: ["Runner_Dashboard", "AffineDrift"] })));
+    await waitFor(() => expect(createdPayload).toEqual(expect.objectContaining({ id: "agent-shared-drive", label: "Agent Shared Drive", backend_type: "google_drive_connector", drive_folder_url: "https://drive.google.com/drive/folders/DriveFolderFixture12345", shared: true, preferential: true, priority: 1, repos: ["Runner_Dashboard", "AffineDrift"] })));
     expect(await screen.findByText("Google Drive (Connector · P1)")).toBeInTheDocument();
-    expect(screen.getByText("1AbCdEfGhIjKlMnOpQrStUvWxYz")).toBeInTheDocument();
+    expect(screen.getByText("DriveFolderFixture12345")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Preferential Agent Shared Drive"));
     await waitFor(() => expect(patchedPayload).toEqual({ preferential: false, priority: 2 }));
   });
