@@ -46,11 +46,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: taxonomy-rollout
+  # Ordinary issue labels must neither allocate rollout jobs nor cancel an
+  # explicitly requested rollout. Each ignored event gets an isolated group.
+  group: >-
+    taxonomy-rollout-${{ (github.event_name == 'workflow_dispatch' || github.event.label.name == 'rollout:taxonomy' || github.event.label.name == 'rollout:taxonomy-apply') && 'requested' || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   route:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' &&
+       (github.event.label.name == 'rollout:taxonomy' || github.event.label.name == 'rollout:taxonomy-apply'))
     # Decide what stage to run based on the triggering label (or dispatch
     # input). Exposed as outputs for downstream jobs.
     runs-on: d-sorg-fleet
