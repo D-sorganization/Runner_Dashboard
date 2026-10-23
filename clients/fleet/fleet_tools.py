@@ -607,7 +607,7 @@ COMMANDS: tuple[Command, ...] = (
             "cite": {"type": "string", "description": "Canonical citation for a library fetch."},
             "run_id": {
                 **RUN_ID,
-                "description": "Associate a library search with this staff run for retrieval recording.",
+                "description": "Associate library search or fetch with this staff run for retrieval recording.",
             },
             "repo": REPO,
             "topic": {"type": "string", "description": "Optional topic filter for library queries."},

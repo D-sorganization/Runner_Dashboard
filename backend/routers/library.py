@@ -56,6 +56,48 @@ def _db() -> Path:
     return path
 
 
+def _requested_run_id(request: Request, principal: Principal) -> str | None:
+    """Validate an optional caller run identity before doing retrieval work."""
+    run_id = request.headers.get("X-Staff-Run-ID") or os.environ.get("STAFF_RUN_ID")
+    if run_id is None:
+        return None
+    from library.retrieval_ledger import authorize_run_owner
+    from staff.store import get_run_store
+
+    try:
+        authorize_run_owner(get_run_store(), run_id=run_id, principal_id=principal.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="invalid run id") from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="run not found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="run belongs to another principal") from exc
+    return run_id
+
+
+def _record_run_references(run_id: str | None, passages: list[dict[str, Any]]) -> None:
+    if run_id is None or not passages:
+        return
+    from library.retrieval_ledger import record_retrievals
+
+    references = [
+        {
+            "node": passage.get("node"),
+            "source_id": passage.get("source_id"),
+            "work_id": passage.get("work_id"),
+            "passage_id": passage.get("passage_id"),
+            "file_sha256": passage.get("file_sha256"),
+            "page_start": passage.get("page_start"),
+            "page_end": passage.get("page_end"),
+        }
+        for passage in passages
+    ]
+    try:
+        record_retrievals(_db(), run_id=run_id, references=references)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="retrieval identity could not be recorded") from exc
+
+
 def require_library_peer(
     request: Request,
     header_token: str | None = Depends(auth_header),
@@ -308,6 +350,7 @@ def _fetch_local(cite: dict[str, Any], *, shared_only: bool) -> dict[str, Any]:
 
 @router.get("/fetch")
 async def library_fetch(
+    request: Request,
     cite: str = Query(..., min_length=1, max_length=512),
     scope: str = Query("federated", pattern="^(local|federated)$"),
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
@@ -317,12 +360,15 @@ async def library_fetch(
     from dashboard_config import FLEET_NODES, HOSTNAME
     from library.pool import validate_node_url
 
+    run_id = _requested_run_id(request, _principal)
     ref = _parse_cite(cite)
     local_name = HOSTNAME or "local"
     local_missing: HTTPException | None = None
     if scope == "local" or ref["node"] in (None, local_name, "local"):
         try:
-            return _fetch_local(ref, shared_only=_principal.id == "fleet-peer")
+            payload = _fetch_local(ref, shared_only=_principal.id == "fleet-peer")
+            _record_run_references(run_id, [payload])
+            return payload
         except HTTPException as exc:
             if scope == "local" or ref["node"] is not None:
                 raise
@@ -390,6 +436,7 @@ async def library_fetch(
     }
     if len(identities) != 1:
         raise HTTPException(status_code=409, detail="citation is ambiguous across registered nodes")
+    _record_run_references(run_id, [hits[0]])
     return hits[0]
 
 
@@ -406,6 +453,7 @@ async def library_search(
 ) -> dict[str, Any]:
     from dashboard_config import HOSTNAME
 
+    run_id = _requested_run_id(request, _principal)
     scope = request.query_params.get("scope", "federated")
     shared = request.query_params.get("shared") in ("1", "true", "True")
     tokens_budget = budget if budget is not None else budget_tokens or DEFAULT_BUDGET
@@ -425,6 +473,7 @@ async def library_search(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         passages = [_hit_to_dict(h, HOSTNAME or "local") for h in hits]
+        _record_run_references(run_id, passages)
         return {
             "query": q,
             "topic": topic,
@@ -439,6 +488,7 @@ async def library_search(
         res = await federated_search(q, k=k, budget_tokens=tokens_budget, topic=topic, repo=repo, db_path=_db())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _record_run_references(run_id, res.passages)
     return {
         "query": res.query,
         "topic": res.topic,

@@ -216,3 +216,22 @@ def test_library_fetch_requires_cite_and_search_run_id_is_validated(monkeypatch:
         client.fleet_query(source="library", op="fetch")
     with pytest.raises(FleetArgumentError):
         client.fleet_query(source="library", query="bounded", run_id="not a run id")
+
+
+def test_staff_run_id_environment_propagates_to_library_search_and_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    monkeypatch.setenv("STAFF_RUN_ID", "run_env_123")
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def mock_request(method: str, path: str, **kwargs: Any) -> Any:
+        calls.append((method, path, kwargs))
+        if path.endswith("/fetch"):
+            return {"text": "passage", "cite_key": "[ref:node:shared:w1:p7#sha256=12345678:p.4-4]"}
+        return {"passages": []}
+
+    monkeypatch.setattr(client, "request", mock_request)
+    client.fleet_query(source="library", query="bounded")
+    client.fleet_query(source="library", op="fetch", cite="[ref:node:shared:w1:p7#sha256=12345678:p.4-4]")
+
+    assert calls[0][2]["headers"] == {"X-Staff-Run-ID": "run_env_123"}
+    assert calls[1][2]["headers"] == {"X-Staff-Run-ID": "run_env_123"}
