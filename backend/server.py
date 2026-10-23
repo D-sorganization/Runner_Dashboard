@@ -798,8 +798,8 @@ from routers import priorities as _priorities_router  # noqa: E402
 app.include_router(_priorities_router.router)
 
 # Board Proposals suggestion box (issue #1284, CR-7).
-from routers import proposals as _proposals_router  # noqa: E402
 from routers import intake_proposals as _intake_proposals_router  # noqa: E402
+from routers import proposals as _proposals_router  # noqa: E402
 
 app.include_router(_proposals_router.router)
 app.include_router(_intake_proposals_router.router)

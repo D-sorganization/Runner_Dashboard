@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, principal_has_scope, require_principal
 from intake_proposals.store import IntakeProposalStore, default_intake_proposal_store
