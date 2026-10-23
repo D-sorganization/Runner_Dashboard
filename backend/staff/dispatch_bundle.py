@@ -39,7 +39,7 @@ class DispatchBundle:
     fallback_status: str = "ok"
     standards: FleetStandards | None = None
 
-    def context_stamp(self, *, prompt: str = "") -> dict[str, Any]:
+    def context_stamp(self, *, prompt: str = "", lessons_tokens: int = 0) -> dict[str, Any]:
         t0 = self.standards_tokens or estimate_tokens(self.standards_block)
         t1_skills = estimate_tokens(self.skill_block)
         return {
@@ -52,7 +52,8 @@ class DispatchBundle:
             "token_estimates": {
                 "tier0_standards": t0,
                 "tier1_skills": t1_skills,
-                "total_injected": estimate_tokens(prompt) if prompt else (t0 + t1_skills),
+                "tier1_lessons": lessons_tokens,
+                "total_injected": estimate_tokens(prompt) if prompt else (t0 + t1_skills + lessons_tokens),
             },
             "estimator_version": ESTIMATOR_VERSION,
         }
