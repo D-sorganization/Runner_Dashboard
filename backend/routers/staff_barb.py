@@ -4,6 +4,7 @@ Mounted under ``/api/v1/staff``:
   GET  /barb/status             Authority role, epoch and outbox depth (#1800)
   GET  /barb/continuity         Scoped leases, turnover log, compliance status & task inventory
   POST /barb/leases/checkout    Check out a scoped Barb sub-role (e.g. barb:front-door)
+  POST /barb/leases/heartbeat   Extend the caller's own live lease (holder bound to caller)
   POST /barb/leases/release     Release a scoped Barb lease (enforces turnover compliance)
   GET  /barb/turnover           List turnover log entries
   POST /barb/turnover           Append a shift turnover log entry
@@ -16,10 +17,12 @@ Mounted under ``/api/v1/staff``:
 # ruff: noqa: B008
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
+import orchestration_audit as _audit
 from fastapi import APIRouter, Depends, HTTPException, Query
-from identity import Principal, require_scope
+from identity import Principal, format_caller, principal_has_scope, require_scope
 from pydantic import BaseModel, Field
 from staff.barb_continuity import classify_task_surface, get_barb_continuity_store
 from staff.barb_runtime import barb_status
@@ -28,19 +31,47 @@ from staff.runner import get_runner
 router = APIRouter(tags=["staff-barb"])
 
 
+MAX_LEASE_TTL_SEC = 14400  # mirrors the store clamp; larger requests are rejected, not silently shortened
+
+
+def bind_holder(caller: Principal, requested: str | None) -> str:
+    """Derive the lease holder from the authenticated caller; reject a mismatching claim (403).
+
+    A claimed holder must equal the caller id or extend it as ``<caller-id>:<suffix>`` (lets agents sharing
+    the fleet bearer token tell their seats apart without being able to impersonate another principal).
+    """
+    cid = caller.id
+    if not requested or requested == cid:
+        return cid
+    if requested.startswith(cid + ":") and len(requested) > len(cid) + 1:
+        return requested
+    raise HTTPException(
+        status_code=403,
+        detail={"error": "holder_caller_mismatch", "caller": cid, "holder": requested},
+    )
+
+
 class BarbLeaseCheckoutRequest(BaseModel):
     scope: str = Field(default="barb:front-door", max_length=64)
-    holder: str = Field(..., min_length=1, max_length=128)
+    holder: str | None = Field(default=None, max_length=128)
     persona: str = Field(default="rd-barb", max_length=64)
     machine: str = Field(default="", max_length=64)
-    ttl_sec: int = Field(default=3600, ge=60, le=86400)
+    ttl_sec: int = Field(default=3600, ge=60, le=MAX_LEASE_TTL_SEC)
     summary: str = Field(default="", max_length=500)
     takeover: bool = False
+    reason: str = Field(default="", max_length=500)
+
+
+class BarbLeaseHeartbeatRequest(BaseModel):
+    scope: str = Field(..., min_length=1, max_length=64)
+    epoch: int = Field(..., ge=1)
+    holder: str | None = Field(default=None, max_length=128)
+    ttl_sec: int = Field(default=3600, ge=60, le=MAX_LEASE_TTL_SEC)
 
 
 class BarbLeaseReleaseRequest(BaseModel):
     scope: str = Field(..., min_length=1, max_length=64)
-    holder: str = Field(..., min_length=1, max_length=128)
+    holder: str | None = Field(default=None, max_length=128)
     turnover_summary: str = Field(default="", max_length=2000)
     completed_items: list[str] = Field(default_factory=list)
     in_progress_items: list[str] = Field(default_factory=list)
@@ -52,7 +83,7 @@ class BarbLeaseReleaseRequest(BaseModel):
 class BarbTurnoverCreateRequest(BaseModel):
     scope: str = Field(default="barb:front-door", max_length=64)
     persona: str = Field(default="rd-barb", max_length=64)
-    holder: str = Field(..., min_length=1, max_length=128)
+    holder: str | None = Field(default=None, max_length=128)
     machine: str = Field(default="", max_length=64)
     summary: str = Field(..., min_length=1, max_length=2000)
     completed_items: list[str] = Field(default_factory=list)
@@ -88,7 +119,7 @@ class BarbHandoffTransitionRequest(BaseModel):
     desktop_app: str = Field(default="", max_length=64)
     artifact_uri: str = Field(default="", max_length=500)
     resume_notes: str = Field(default="", max_length=1000)
-    expected_epoch: int | None = None
+    expected_epoch: int = Field(..., ge=0)  # fencing token is mandatory
 
 
 class BarbSurfaceClassifyRequest(BaseModel):
@@ -136,10 +167,20 @@ async def post_barb_lease_checkout(
     req: BarbLeaseCheckoutRequest,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
+    holder = bind_holder(_caller, req.holder)
+    if req.takeover:
+        if not principal_has_scope(_caller, "staff.admin"):
+            raise HTTPException(
+                status_code=403, detail={"error": "takeover_requires_operator", "required_scope": "staff.admin"}
+            )
+        if not req.reason.strip():
+            raise HTTPException(status_code=422, detail={"error": "takeover_reason_required"})
     store = get_barb_continuity_store()
+    # SEAM (lease-epoch fencing, pending design panel): dispatch/directive writers should later
+    # validate the lease ``epoch`` returned here; intentionally not enforced yet.
     res = store.checkout_lease(
         scope=req.scope,
-        holder=req.holder,
+        holder=holder,
         persona=req.persona,
         machine=req.machine or get_runner().machine,
         ttl_seconds=req.ttl_sec,
@@ -148,6 +189,35 @@ async def post_barb_lease_checkout(
     )
     if not res["acquired"]:
         raise HTTPException(status_code=409, detail=res)
+    if req.takeover:
+        await _audit.append_orchestration_audit(
+            {
+                "orchestration_type": "barb_lease",
+                "action": "barb.lease.takeover",
+                "scope": req.scope,
+                "new_holder": holder,
+                "epoch": res["lease"]["epoch"],
+                "reason": req.reason.strip(),
+                "requested_by": _caller.id,
+                "caller": format_caller(_caller),
+                "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            }
+        )
+    return {"ok": True, **res}
+
+
+@router.post("/barb/leases/heartbeat", summary="Extend the caller's own live Barb lease")
+async def post_barb_lease_heartbeat(
+    req: BarbLeaseHeartbeatRequest,
+    _caller: Principal = Depends(require_scope("staff.dispatch")),
+) -> dict[str, Any]:
+    holder = bind_holder(_caller, req.holder)
+    res = get_barb_continuity_store().heartbeat_lease(
+        scope=req.scope, holder=holder, epoch=req.epoch, ttl_seconds=req.ttl_sec
+    )
+    if not res["renewed"]:
+        code = 403 if res["reason"] == "holder_mismatch" else 409
+        raise HTTPException(status_code=code, detail=res)
     return {"ok": True, **res}
 
 
@@ -156,11 +226,12 @@ async def post_barb_lease_release(
     req: BarbLeaseReleaseRequest,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
+    holder = bind_holder(_caller, req.holder)
     store = get_barb_continuity_store()
     if req.turnover_summary.strip():
         store.append_turnover(
             scope=req.scope,
-            author=req.holder,
+            author=holder,
             machine=get_runner().machine,
             summary=req.turnover_summary,
             completed=req.completed_items,
@@ -168,7 +239,7 @@ async def post_barb_lease_release(
             next_actions=req.next_actions,
             blockers=req.blockers,
         )
-    res = store.release_lease(scope=req.scope, holder=req.holder, require_turnover=not req.force)
+    res = store.release_lease(scope=req.scope, holder=holder, require_turnover=not req.force)
     if not res["released"]:
         raise HTTPException(status_code=409, detail=res)
     return {"ok": True, **res}
@@ -192,7 +263,7 @@ async def post_barb_turnover(
     entry = get_barb_continuity_store().append_turnover(
         scope=req.scope,
         persona=req.persona,
-        author=req.holder,
+        author=bind_holder(_caller, req.holder),
         machine=req.machine or get_runner().machine,
         summary=req.summary,
         completed=req.completed_items,

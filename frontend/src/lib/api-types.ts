@@ -6195,6 +6195,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/barb/leases/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Extend the caller's own live Barb lease */
+        post: operations["post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/barb/leases/release": {
         parameters: {
             query?: never;
@@ -8069,7 +8086,7 @@ export interface components {
              */
             desktop_app: string;
             /** Expected Epoch */
-            expected_epoch?: number | null;
+            expected_epoch: number;
             /**
              * Machine
              * @default
@@ -8096,7 +8113,7 @@ export interface components {
         /** BarbLeaseCheckoutRequest */
         BarbLeaseCheckoutRequest: {
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /**
              * Machine
              * @default
@@ -8107,6 +8124,11 @@ export interface components {
              * @default rd-barb
              */
             persona: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
             /**
              * Scope
              * @default barb:front-door
@@ -8128,6 +8150,20 @@ export interface components {
              */
             ttl_sec: number;
         };
+        /** BarbLeaseHeartbeatRequest */
+        BarbLeaseHeartbeatRequest: {
+            /** Epoch */
+            epoch: number;
+            /** Holder */
+            holder?: string | null;
+            /** Scope */
+            scope: string;
+            /**
+             * Ttl Sec
+             * @default 3600
+             */
+            ttl_sec: number;
+        };
         /** BarbLeaseReleaseRequest */
         BarbLeaseReleaseRequest: {
             /** Blockers */
@@ -8140,7 +8176,7 @@ export interface components {
              */
             force: boolean;
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /** In Progress Items */
             in_progress_items?: string[];
             /** Next Actions */
@@ -8233,7 +8269,7 @@ export interface components {
             /** Completed Items */
             completed_items?: string[];
             /** Holder */
-            holder: string;
+            holder?: string | null;
             /** In Progress Items */
             in_progress_items?: string[];
             /**
@@ -9443,6 +9479,8 @@ export interface components {
              * @default true
              */
             preload_codebase: boolean;
+            /** Quorum */
+            quorum?: number | null;
             /** Repos */
             repos?: string[] | null;
             /**
@@ -21163,6 +21201,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BarbLeaseCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseHeartbeatRequest"];
             };
         };
         responses: {
