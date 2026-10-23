@@ -71,9 +71,13 @@ export function ActiveProviderControl({
   }, [active, registry]);
 
   const activeProvider = resolved.providerId ? registry.byId(resolved.providerId) : undefined;
-  const triggerLabel = activeProvider
-    ? `Provider: ${activeProvider.label}${resolved.model ? ` · ${resolved.model}` : ""}`
-    : "Provider: none";
+  const selectedProvider = activeProvider
+    ? `${activeProvider.label}${resolved.model ? ` · ${resolved.model}` : ""}`
+    : null;
+  const triggerLabel = selectedProvider ? `Provider: ${selectedProvider}` : "Provider: not set";
+  const triggerTooltip = selectedProvider
+    ? `Global provider preference: ${selectedProvider}. Staff conversations use each role's configured provider.`
+    : "Global provider preference is not set. Staff conversations use each role's configured provider.";
 
   const handleChange = useCallback(
     (selection: ProviderModelSelection) => {
@@ -94,12 +98,12 @@ export function ActiveProviderControl({
 
   return (
     <div ref={rootRef} style={{ position: "relative", display: "inline-flex" }}>
-      <Tooltip content={triggerLabel} placement="bottom">
+      <Tooltip content={triggerTooltip} placement="bottom">
         <button
           type="button"
           aria-haspopup="dialog"
           aria-expanded={open}
-          title={triggerLabel}
+          title={triggerTooltip}
           onClick={() => setOpen((v) => !v)}
           className="shell-action shell-icon-btn"
           style={{

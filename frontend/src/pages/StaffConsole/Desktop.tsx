@@ -123,7 +123,7 @@ export function StaffConsoleDesktop({
         <header className="staff-console__header">
           <div className="staff-console__header-left">
             <h2 className="staff-console__title">
-              {activeThread ? activeThread.title : "Staff Console"}
+              {activeThread ? activeThread.title : chatFirst ? "Ask Barb" : "Staff Console"}
             </h2>
             {participantsCount > 0 && (
               <span

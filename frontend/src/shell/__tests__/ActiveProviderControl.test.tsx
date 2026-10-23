@@ -84,16 +84,27 @@ describe("useActiveProvider", () => {
 });
 
 describe("ActiveProviderControl", () => {
-  it("shows the current active provider label", () => {
+  it("keeps the selected provider label and explains its global scope", async () => {
     localStorage.setItem(ACTIVE_PROVIDER_KEY, "claude-cli");
     render(<ActiveProviderControl registry={registry} />);
-    expect(screen.getByText(/Claude CLI/i)).toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Provider: Claude CLI" });
+    expect(trigger).toBeInTheDocument();
+    fireEvent.mouseEnter(trigger);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Global provider preference: Claude CLI. Staff conversations use each role's configured provider.",
+    );
   });
 
-  it("shows a sensible default label when nothing is active", () => {
+  it("explains the unset global preference and role-level provider behavior", async () => {
     render(<ActiveProviderControl registry={registry} />);
-    // Falls back to the first authenticated provider's label or a placeholder.
-    expect(screen.getByRole("button", { name: /provider/i })).toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Provider: not set" });
+    expect(trigger).toBeInTheDocument();
+    fireEvent.mouseEnter(trigger);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(
+      "Global provider preference is not set. Staff conversations use each role's configured provider.",
+    );
+    expect(trigger).toHaveAttribute("title", tooltip.textContent);
   });
 
   it("persists a new selection made through the popover", () => {
