@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 
 def _parse_env_file(path: Path) -> tuple[str | None, bool]:
@@ -54,13 +57,13 @@ def main(argv: list[str] | None = None) -> int:
     backend = repo_root / "backend"
     registry_path = backend / "machine_registry.yml"
     if not registry_path.is_file():
-        print(f"ERROR: machine_registry.yml not found at {registry_path}", file=sys.stderr)
+        log.error("machine_registry.yml not found at %s", registry_path)
         return 1
 
     try:
         import yaml
     except ImportError:
-        print("ERROR: PyYAML is required for fleet-env-preflight (install backend deps)", file=sys.stderr)
+        log.error("PyYAML is required for fleet-env-preflight (install backend deps)")
         return 1
 
     sys.path.insert(0, str(backend))
@@ -76,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
             allow_registry_override=allow,
         )
     except RuntimeError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        log.error("%s", exc)
         return 1
     return 0
 
