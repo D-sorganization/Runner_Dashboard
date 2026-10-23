@@ -78,6 +78,9 @@ class PrProbe(Protocol):
     def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
         """Commits ``branch`` is ahead of ``base`` on the remote (0 if absent). Raises GitHubLookupError."""
 
+    def get(self, repo: str, number: int) -> PullRequest | None:
+        """Look up PR ``number`` in ``repo`` directly. Raises GitHubLookupError."""
+
 
 def verify_mode() -> str:
     """``STAFF_VERIFY_MODE``, defaulting to ``report`` when unset or unknown."""
@@ -131,6 +134,14 @@ def _age(rec: RunRecord, now: datetime) -> timedelta:
     return now - datetime.fromisoformat(rec.ended_at.replace("Z", "+00:00"))
 
 
+def _target_pr_number(rec: RunRecord) -> int | None:
+    if getattr(rec, "target_kind", "") != "pr":
+        return None
+    raw = getattr(rec, "target_number", None) or getattr(rec, "pr_number", None) or getattr(rec, "target_ref", "")
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    return int(digits) if digits else None
+
+
 def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -> Verdict:
     """Look up the run's PR (only when one is expected) and decide.
 
@@ -144,6 +155,8 @@ def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -
     if rec.status == "succeeded" and opens_pr and rec.branch:
         try:
             pr = probe.find(rec.repo, rec.branch)
+            if pr is None and (target_pr := _target_pr_number(rec)) is not None and hasattr(probe, "get"):
+                pr = probe.get(rec.repo, target_pr)
         except GitHubLookupError as exc:
             return Verdict("unverified", f"GitHub lookup failed: {exc}")
         if pr is None:

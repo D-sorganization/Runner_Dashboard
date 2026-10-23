@@ -1,0 +1,1 @@
+Fix `pr-remediator` post-run verification by falling back to `probe.get(repo, target_pr)` when commits are pushed to an existing PR branch, and expire blocking quota windows older than 2 hours so out-of-band quota resets cannot deadlock dispatches (#2478).

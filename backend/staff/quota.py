@@ -27,7 +27,7 @@ import os
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +54,7 @@ QUOTA_ACCOUNT: dict[str, str] = {"claude": "claude", "codex": "codex"}
 _WINDOW_NAMES = {300: "five_hour", 10080: "seven_day"}
 _CODEX_FILES_SCANNED = 5
 _CODEX_TAIL_BYTES = 512 * 1024
+STALE_BLOCK_AGE = timedelta(hours=2)
 
 
 def _utc(ts: Any) -> datetime | None:
@@ -111,13 +112,19 @@ class QuotaSnapshot:
     limited_until: datetime | None = None
 
     def current(self, now: datetime) -> QuotaSnapshot:
-        """The snapshot as of ``now``: windows past their reset time are dropped.
+        """The snapshot as of ``now``: windows past their reset time or stale blocks are dropped.
 
         Post: every remaining window resets after ``now`` (or has no known
-        reset); ``limited_until`` is cleared once it has passed.
+        reset); blocking windows (>= 85%) older than 2h and expired ``limited_until`` are cleared.
         """
-        windows = tuple(w for w in self.windows if w.resets_at is None or w.resets_at > now)
-        limited = self.limited_until if self.limited_until and self.limited_until > now else None
+        stale_block = (now - self.observed_at) >= STALE_BLOCK_AGE
+        windows = tuple(
+            w
+            for w in self.windows
+            if (w.resets_at is None or w.resets_at > now)
+            and not (stale_block and w.used_percent >= DEFAULT_CEILING_PERCENT)
+        )
+        limited = self.limited_until if self.limited_until and self.limited_until > now and not stale_block else None
         return replace(self, windows=windows, limited_until=limited)
 
     def peak(self) -> QuotaWindow | None:
@@ -140,7 +147,7 @@ class QuotaSnapshot:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> QuotaSnapshot:
-        observed = _utc(data.get("observed_at"))
+        observed = _utc(data.get("observed_at") or data.get("updated_at"))
         if observed is None:
             raise ValueError("snapshot without observed_at")
         return cls(
