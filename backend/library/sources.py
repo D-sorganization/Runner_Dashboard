@@ -222,6 +222,34 @@ def list_sources(db_path: Path) -> list[dict[str, Any]]:
     return items
 
 
+def verify_sources_health(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Return read-only health and effective sharing for registered sources."""
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM library_sources WHERE status='active' ORDER BY id").fetchall()
+    shared_by_drive_id = {
+        str(row["drive_folder_id"]): all(
+            bool(other["shared"]) for other in rows if other["drive_folder_id"] == row["drive_folder_id"]
+        )
+        for row in rows
+        if row["drive_folder_id"]
+    }
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        backend = str(row["backend_type"])
+        folder_id = str(row["drive_folder_id"] or "")
+        connector = backend == "google_drive_connector"
+        result: dict[str, Any] = {
+            "id": row["id"],
+            "backend_type": backend,
+            "availability": source_availability(row["root_path"], backend_type=backend, drive_folder_id=folder_id),
+        }
+        if connector:
+            result["connector_ready"] = bool(_DRIVE_ID_RE.fullmatch(folder_id))
+            result["effective_shared"] = bool(row["shared"]) and shared_by_drive_id.get(folder_id, False)
+        results.append(result)
+    return results
+
+
 def list_shared_drive_sources(db_path: Path, *, repo: str | None = None) -> list[dict[str, Any]]:
     """Return active, shared Google Drive connector sources ordered preferentially."""
     target = (repo or "").strip().lower()

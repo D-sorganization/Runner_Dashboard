@@ -253,9 +253,78 @@ def test_connector_api_rejects_malformed_or_conflicting_folder_references(tmp_pa
     for fields in (
         {"drive_folder_id": 123},
         {
-            "drive_folder_id": "1AbCdEfGhIjKlMnOpQrStUvWxYz_012",
-            "drive_folder_url": "https://drive.google.com/drive/folders/1ZyXwVuTsRqPoNmLkJiHgFeDcBa987654",
+            "drive_folder_id": "test-folder-1111",
+            "drive_folder_url": "https://drive.google.com/drive/folders/test-folder-2222",
         },
     ):
         response = client.post("/api/v1/library/sources", json={**base, **fields}, headers=_XHR)
         assert response.status_code == 422
+
+
+def test_verify_sources_reports_backend_health_and_restrictive_sharing(tmp_path: Path) -> None:
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
+    client = _client(tmp_path / "library.sqlite", principal)
+    local = tmp_path / "local"
+    mirror = tmp_path / "mirror"
+    local.mkdir()
+    mirror.mkdir()
+    for payload in (
+        {
+            "id": "connector",
+            "label": "Connector",
+            "backend_type": "google_drive_connector",
+            "drive_folder_id": "1ZyXwVuTsRqPoNmLkJiHgFeDcBa987654",
+            "shared": True,
+        },
+        {
+            "id": "drive-local",
+            "label": "Drive local",
+            "backend_type": "google_drive_local",
+            "root_path": str(local),
+            "drive_folder_id": "1ZyXwVuTsRqPoNmLkJiHgFeDcBa987654",
+            "shared": True,
+        },
+        {"id": "folder", "label": "Folder", "backend_type": "local_folder", "root_path": str(mirror), "shared": True},
+    ):
+        assert client.post("/api/v1/library/sources", json=payload, headers=_XHR).status_code == 200
+    # A restrictive duplicate registration must suppress effective connector sharing.
+    assert client.patch("/api/v1/library/sources/drive-local", json={"shared": False}, headers=_XHR).status_code == 200
+
+    response = client.get("/api/v1/library/sources/verify", headers=_XHR)
+
+    assert response.status_code == 200
+    statuses = {item["id"]: item for item in response.json()["sources"]}
+    assert statuses["connector"]["connector_ready"] is True
+    assert statuses["connector"]["effective_shared"] is False
+    assert statuses["drive-local"]["availability"] == "available"
+    assert statuses["folder"]["availability"] == "available"
+
+
+def test_verify_sources_reports_unavailable_mount_without_mutation(tmp_path: Path) -> None:
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
+    db = tmp_path / "library.sqlite"
+    client = _client(db, principal)
+    root = tmp_path / "mount"
+    root.mkdir()
+    assert (
+        client.post(
+            "/api/v1/library/sources",
+            json={"id": "mount", "label": "Mount", "backend_type": "local_folder", "root_path": str(root)},
+            headers=_XHR,
+        ).status_code
+        == 200
+    )
+    root.rmdir()
+
+    response = client.get("/api/v1/library/sources/verify", headers=_XHR)
+
+    assert response.status_code == 200
+    assert response.json()["sources"][0]["availability"] == "unavailable"
+    import sqlite3
+
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM library_sources WHERE id='mount'").fetchone()[0] == 1
