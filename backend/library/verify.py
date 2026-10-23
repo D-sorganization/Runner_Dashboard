@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
+from library.citation_claims import claim_is_supported
+from library.codebase_refs import verify_codebase_citations
+
 _CITATION = re.compile(
     r"\[ref:(?P<node>[A-Za-z0-9][A-Za-z0-9.-]{0,63}):(?P<source>[a-z0-9][a-z0-9-]{0,62}):"
     r"w(?P<work>\d+):p(?P<passage>\d+)#sha256=(?P<sha>[a-fA-F0-9]{8}):p\.(?P<start>\d+)-(?P<end>\d+)\]"
@@ -16,11 +19,6 @@ _CITATION = re.compile(
 )
 _LINK = re.compile(r"(?<!!)\[[^\]]*\]\((?P<url>[^)]+)\)")
 _LEGACY = re.compile(r"\(work_id=(?P<work>\d+)\)")
-_WORD = re.compile(r"[a-z0-9]{3,}")
-
-
-def _words(value: str) -> set[str]:
-    return set(_WORD.findall(value.lower()))
 
 
 def _anchors(markdown: str) -> set[str]:
@@ -74,16 +72,7 @@ def _verify_citation(
             result.update(status="node_mismatch" if matching_retrievals else "unretrieved_reference")
             return result
     # Check the bounded sentence immediately preceding the citation. Never return passage text.
-    prefix = content[max(0, match.start() - 500) : match.start()].rstrip()
-    if prefix.endswith((".", "!", "?")):
-        prefix = prefix[:-1]
-    claim = re.split(r"[.!?\n]", prefix)[-1]
-    claim_words = _words(claim)
-    passage_words = _words(str(row[8]))
-    quoted = re.findall(r"[\"“]([^\"”]{1,200})[\"”]", claim)
-    if any(quote.casefold() not in str(row[8]).casefold() for quote in quoted) or (
-        claim_words and len(claim_words & passage_words) / len(claim_words) < 0.2
-    ):
+    if not claim_is_supported(content, match.start(), str(row[8])):
         result.update(status="misappropriated_reference")
         return result
     result.update(
@@ -115,6 +104,7 @@ def verify_content(
         {"citation": match.group(0), "verified": False, "status": "legacy_unverifiable"}
         for match in _LEGACY.finditer(content)
     )
+    citations.extend(verify_codebase_citations(db_path, content, run_id))
     links: list[dict[str, Any]] = []
     for match in _LINK.finditer(content):
         url = match.group("url").strip()
