@@ -155,8 +155,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
       const thread = await sc.openRole(roleName);
       if (!thread) return;
       applyComposerPrefill(prefill);
-      setView("thread");
-      onOpenThread?.(thread.id);
+      setView("thread"); onOpenThread?.(thread.id);
 
       pushThreadUrl(roleName, thread.id);
     },
@@ -294,10 +293,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               roles={roles}
               selectedRole={selectedRole || undefined}
               onSendMessage={handleSendMessage}
-              placeholder={`Message ${currentRoleObj.title || "staff"}…`}
-              isPanel={isPanelThread(activeThread)}
-              prefilledText={composerPrefill}
-              prefillSeq={prefillSeq}
+              placeholder={`Message ${currentRoleObj.title || "staff"}…`} isPanel={isPanelThread(activeThread)} prefilledText={composerPrefill} prefillSeq={prefillSeq}
             />
           </div>
 
