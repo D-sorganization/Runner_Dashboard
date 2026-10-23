@@ -23,6 +23,7 @@ from staff.provider_auth_preflight import (
     provider_auth_cache_snapshot,
 )
 from staff.runner import get_runner
+from staff.standards_registry import load_fleet_standards
 
 __all__ = ["build_staff_summary"]
 
@@ -64,7 +65,25 @@ async def build_staff_summary() -> dict[str, Any]:
     auth_attention: list[dict[str, Any]] = []
     for _machine, snap in (provider_auth.get("machines") or {}).items():
         auth_attention.extend(attention_items_from_provider_auth(snap))
-    attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
+    standards = load_fleet_standards()
+    standards_attention: list[dict[str, Any]] = []
+    if standards.source_path == "<builtin>":
+        standards_attention.append(
+            {
+                "id": "standards-builtin-fallback",
+                "role": "hub",
+                "status": "warning",
+                "failure_class": "standards_fallback",
+                "error": f"Fleet standards resolved to built-in fallback ({standards.pin})",
+                "remediation": "Provide staff/standards/FLEET.md in Repository_Management or set STAFF_STANDARDS_PATH.",
+            }
+        )
+    attention = (
+        attention_items_from_preflight(preflight)
+        + auth_attention
+        + format_attention_items(recent)
+        + standards_attention
+    )
     keep = (
         "id",
         "role",
@@ -91,6 +110,9 @@ async def build_staff_summary() -> dict[str, Any]:
         "holds": staff_fleet.holds_snapshot(),
         "liveness_alerts": board_view.get("liveness_alerts", []),
         "provider_auth": provider_auth,
+        "standards_pin": standards.pin,
+        "standards_source": standards.source_path,
+        "standards_version": standards.version,
         "roles": [
             {
                 "name": s.name,

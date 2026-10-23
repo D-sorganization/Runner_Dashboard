@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import platform
@@ -39,6 +40,7 @@ from staff.runner_ops import (
     resolve_launch_paths,
     select_first_available_provider,
 )
+from staff.standards_registry import estimate_tokens
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -177,6 +179,8 @@ class StaffRunner:
             head_ref=req.head_ref,
             skill_pin=bundle.skill_pin,
             standards_version=bundle.standards_version,
+            standards_tokens=bundle.standards_tokens or estimate_tokens(bundle.standards_block),
+            context_stamp=json.dumps(bundle.context_stamp(prompt=prompt)),
             library_work_ids=library_work_ids,
             provider_auth_skipped=tuple(auth_skipped),
         )

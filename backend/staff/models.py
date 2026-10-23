@@ -328,6 +328,9 @@ class StaffSummaryResponse(BaseModel):
         default_factory=dict,
         description="Redacted GitHub App user OAuth expiry for hub operators (#2075)",
     )
+    standards_pin: str | None = Field(default=None, description="Resolved fleet standards pin (issue #2220)")
+    standards_source: str | None = Field(default=None, description="Path or <builtin> where standards were resolved")
+    standards_version: str | None = Field(default=None, description="Resolved fleet standards semver")
 
     model_config = ConfigDict(extra="allow")
 

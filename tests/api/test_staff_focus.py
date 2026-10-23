@@ -61,7 +61,8 @@ def test_plan_prompt_carries_focus_before_fleet_rules(tmp_path, monkeypatch, sta
     staff = runner_mod.StaffRunner(roles_loader=lambda: {role.name: role}, focus_loader=lambda: [BOARD, ALL, THEIRS])
     plan = staff.plan(runner_mod.RunRequest(role="issue-remediator", repo="Gasification_Model", prompt="sweep"))
     assert plan.focus and plan.to_dict()["focus"] == plan.focus
-    assert plan.prompt.index("Fleet focus") < plan.prompt.index("Fleet rules:")
+    assert "Fleet focus" in plan.prompt
+    assert plan.prompt.index("Fleet standards") < plan.prompt.index("Fleet focus")
     assert "Tools only" not in plan.prompt
 
 

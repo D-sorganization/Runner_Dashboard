@@ -106,6 +106,8 @@ class RunRecord:
     model_tier: str = ""
     skill_pin: str = ""
     standards_version: str = ""
+    standards_tokens: int = 0
+    context_stamp: str = "{}"
     library_work_ids: str = "[]"
 
     def __post_init__(self) -> None:

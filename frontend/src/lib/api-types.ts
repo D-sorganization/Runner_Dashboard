@@ -10360,6 +10360,21 @@ export interface components {
             spend_today_usd?: {
                 [key: string]: number;
             };
+            /**
+             * Standards Pin
+             * @description Resolved fleet standards pin (issue #2220)
+             */
+            standards_pin?: string | null;
+            /**
+             * Standards Source
+             * @description Path or <builtin> where standards were resolved
+             */
+            standards_source?: string | null;
+            /**
+             * Standards Version
+             * @description Resolved fleet standards semver
+             */
+            standards_version?: string | null;
         } & {
             [key: string]: unknown;
         };

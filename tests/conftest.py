@@ -253,6 +253,7 @@ def staff_cli_installed(monkeypatch):
     which agent CLIs happen to be on its PATH.
     """
     from staff.adapters import ProviderAdapter  # noqa: PLC0415
+    from staff import cli_version
 
     installed_providers: set[str] = set()
 
@@ -260,6 +261,8 @@ def staff_cli_installed(monkeypatch):
         return adapter.provider_id in installed_providers
 
     monkeypatch.setattr(ProviderAdapter, "installed", _installed)
+    monkeypatch.setattr(cli_version, "is_outdated", lambda *a, **kw: False)
+    monkeypatch.setattr(cli_version, "installed_version", lambda *a, **kw: "2.0.0")
 
     def _mark_installed(*providers: str) -> None:
         installed_providers.update(providers)

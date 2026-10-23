@@ -32,5 +32,7 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("model_tier", "TEXT NOT NULL DEFAULT ''"),
     ("skill_pin", "TEXT NOT NULL DEFAULT ''"),
     ("standards_version", "TEXT NOT NULL DEFAULT ''"),
+    ("standards_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("context_stamp", "TEXT NOT NULL DEFAULT '{}'"),
     ("library_work_ids", "TEXT NOT NULL DEFAULT '[]'"),
 )

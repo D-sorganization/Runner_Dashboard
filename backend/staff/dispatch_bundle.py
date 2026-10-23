@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from staff.skills.contract import SkillDetail, semver_sort_key
 from staff.skills.registry import get_skill, list_skills, repo_matches_skill
-from staff.standards_registry import FleetStandards, load_fleet_standards
+from staff.standards_registry import (
+    ESTIMATOR_VERSION,
+    FleetStandards,
+    estimate_tokens,
+    load_fleet_standards,
+)
 
 log = logging.getLogger("dashboard.staff.dispatch_bundle")
 
@@ -26,6 +32,30 @@ class DispatchBundle:
     standards_pin: str
     skill_block: str
     standards_block: str
+    standards_source: str = ""
+    standards_tokens: int = 0
+    content_digest: str = ""
+    source_revision: str = ""
+    fallback_status: str = "ok"
+    standards: FleetStandards | None = None
+
+    def context_stamp(self, *, prompt: str = "") -> dict[str, Any]:
+        t0 = self.standards_tokens or estimate_tokens(self.standards_block)
+        t1_skills = estimate_tokens(self.skill_block)
+        return {
+            "pack_version": self.standards_version,
+            "content_digest": self.content_digest,
+            "source_revision": self.source_revision,
+            "requested_pack": f"fleet-standards@{self.standards_version}",
+            "resolved_pack": self.standards_pin,
+            "fallback_status": self.fallback_status,
+            "token_estimates": {
+                "tier0_standards": t0,
+                "tier1_skills": t1_skills,
+                "total_injected": estimate_tokens(prompt) if prompt else (t0 + t1_skills),
+            },
+            "estimator_version": ESTIMATOR_VERSION,
+        }
 
 
 def _task_matches(skill_tasks: tuple[str, ...], task_type: str) -> bool:
@@ -50,6 +80,22 @@ def _standards_block(standards: FleetStandards, standards_extra: str) -> str:
     return f"Fleet standards ({standards.pin}):\n{standards_body}"
 
 
+def _standards_fields(standards: FleetStandards, extra: str) -> dict[str, Any]:
+    st = _standards_block(standards, extra)
+    fb = "builtin_fallback" if standards.source_path == "<builtin>" else "ok"
+    return {
+        "standards_version": standards.version,
+        "standards_pin": standards.pin,
+        "standards_block": st,
+        "standards_source": standards.source_path,
+        "standards_tokens": estimate_tokens(st),
+        "content_digest": standards.digest,
+        "source_revision": standards.source_revision,
+        "fallback_status": fb,
+        "standards": standards,
+    }
+
+
 def _bundle_from_detail(
     detail: SkillDetail,
     standards: FleetStandards,
@@ -62,10 +108,8 @@ def _bundle_from_detail(
     return DispatchBundle(
         skill_pin=detail.pin,
         skill_version=detail.version,
-        standards_version=standards.version,
-        standards_pin=standards.pin,
         skill_block=skill_block,
-        standards_block=_standards_block(standards, standards_extra),
+        **_standards_fields(standards, standards_extra),
     )
 
 
@@ -73,10 +117,8 @@ def _bundle_without_skill(standards: FleetStandards, standards_extra: str) -> Di
     return DispatchBundle(
         skill_pin="",
         skill_version="",
-        standards_version=standards.version,
-        standards_pin=standards.pin,
         skill_block="",
-        standards_block=_standards_block(standards, standards_extra),
+        **_standards_fields(standards, standards_extra),
     )
 
 
