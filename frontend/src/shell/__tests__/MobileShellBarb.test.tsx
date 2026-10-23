@@ -43,4 +43,38 @@ describe("MobileShell Barb access", () => {
     rerender(<MobileShell currentTab="fleet-command" onTabChange={onTabChange}><div>Fleet Command</div></MobileShell>);
     expect(screen.getByRole("dialog", { name: "Ask Barb" })).toBe(panel);
   });
+
+  it("traps keyboard focus in the modal and restores it to the trigger on close", async () => {
+    render(
+      <MobileShell currentTab="projects" onTabChange={vi.fn()}><div>Projects</div></MobileShell>,
+    );
+    const trigger = screen.getByTestId("mobile-ask-barb");
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = await screen.findByRole("dialog", { name: "Ask Barb" });
+    const close = screen.getByRole("button", { name: "Close Ask Barb" });
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ));
+    const last = focusable[focusable.length - 1];
+    expect(close).toHaveFocus();
+    const shellSiblings = Array.from(dialog.parentElement!.children).filter((element) => element !== dialog);
+    expect(shellSiblings.length).toBeGreaterThan(0);
+    shellSiblings.forEach((element) => expect(element).toHaveAttribute("inert"));
+
+    last.focus();
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    dialog.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(close).toHaveFocus();
+
+    const shiftTab = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+    close.dispatchEvent(shiftTab);
+    expect(shiftTab.defaultPrevented).toBe(true);
+    expect(last).toHaveFocus();
+
+    fireEvent.click(close);
+    expect(trigger).toHaveFocus();
+  });
 });
