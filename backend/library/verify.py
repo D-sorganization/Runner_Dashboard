@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -39,6 +40,31 @@ _PEER_FAILURE_STATUSES = {
 }
 
 
+async def _fetch_peer_response(target: str, token: str, content: str, timeout_s: float) -> bytes | None:
+    """Fetch a bounded peer response under one wall-clock deadline."""
+    chunks: list[bytes] = []
+    response_size = 0
+    async with asyncio.timeout(timeout_s):
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_s, connect=min(timeout_s, 1.0)),
+            follow_redirects=False,
+        ) as client:
+            async with client.stream(
+                "POST",
+                f"{target}/api/v1/library/verify",
+                json={"content": content, "local_only": True},
+                headers={"Authorization": f"Bearer {token}"},
+            ) as response:
+                if response.status_code != 200:
+                    return None
+                async for chunk in response.aiter_bytes():
+                    response_size += len(chunk)
+                    if response_size > _FEDERATED_RESPONSE_LIMIT:
+                        return None
+                    chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _verify_peer_citation(
     match: re.Match[str],
     content: str,
@@ -59,7 +85,7 @@ def _verify_peer_citation(
     page_end = groups["end"] or groups["libend"]
     digest_prefix = (groups["sha"] or groups["libsha"]).lower()
     citation = match.group(0)
-    result: dict[str, Any] = {"citation": citation[:500], "verified": False, "status": "peer_unavailable"}
+    result: dict[str, Any] = {"citation": citation[:500], "node": node, "verified": False, "status": "peer_unavailable"}
     raw_url = fleet_nodes.get(node)
     token = os.environ.get("HUB_FLEET_TOKEN", "")
     remaining = deadline - time.monotonic()
@@ -67,27 +93,14 @@ def _verify_peer_citation(
         return result
     try:
         target = validate_node_url(raw_url, fleet_nodes)
-        context = content[max(0, match.start() - 500) : match.end()]
-        with httpx.Client(
-            timeout=httpx.Timeout(min(remaining, 2.0), connect=min(remaining, 1.0)),
-            follow_redirects=False,
-        ) as client:
-            with client.stream(
-                "POST",
-                f"{target}/api/v1/library/verify",
-                json={"content": context, "local_only": True},
-                headers={"Authorization": f"Bearer {token}"},
-            ) as response:
-                if response.status_code != 200:
-                    return result
-                chunks: list[bytes] = []
-                response_size = 0
-                for chunk in response.iter_bytes():
-                    response_size += len(chunk)
-                    if response_size > _FEDERATED_RESPONSE_LIMIT:
-                        return result
-                    chunks.append(chunk)
-        payload = json.loads(b"".join(chunks))
+        # Keep the local claim window while removing earlier citations so the
+        # peer sees exactly the citation currently being verified.
+        context_prefix = content[max(0, match.start() - 500) : match.start()]
+        context = _CITATION.sub(" ", context_prefix) + citation
+        body = asyncio.run(_fetch_peer_response(target, token, context, min(remaining, 2.0)))
+        if body is None:
+            return result
+        payload = json.loads(body)
         citations = payload.get("citations") if isinstance(payload, dict) else None
         if not isinstance(citations, list) or len(citations) != 1 or not isinstance(citations[0], dict):
             return result
@@ -126,6 +139,7 @@ def _verify_peer_citation(
             safe_work["year"] = year
         return {
             "citation": citation[:500],
+            "node": node,
             "verified": True,
             "status": "verified",
             "work": safe_work,
@@ -136,7 +150,7 @@ def _verify_peer_citation(
                 "page_end": int(page_end),
             },
         }
-    except (httpx.HTTPError, ValueError, KeyError, TypeError, OSError):
+    except (httpx.HTTPError, TimeoutError, ValueError, KeyError, TypeError, OSError, RuntimeError):
         return result
 
 

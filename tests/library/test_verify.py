@@ -172,7 +172,7 @@ def test_remote_citation_does_not_resolve_against_colliding_local_ids(tmp_path: 
     assert result["citations"][0]["verified"] is False
 
 
-@pytest.mark.parametrize("fault", [None, "citation", "source", "digest", "page", "timeout", "malformed"])
+@pytest.mark.parametrize("fault", [None, "multiple", "citation", "source", "digest", "page", "timeout", "malformed"])
 def test_remote_citation_uses_only_configured_peer_and_returns_checked_metadata(
     tmp_path: Path, monkeypatch, fault: str | None
 ) -> None:
@@ -183,7 +183,9 @@ def test_remote_citation_uses_only_configured_peer_and_returns_checked_metadata(
     monkeypatch.setattr(dashboard_config, "FLEET_NODES", {"peer": "https://peer.example"}, raising=False)
     monkeypatch.setenv("HUB_FLEET_TOKEN", "test-peer-token")
     cite = f"[ref:peer:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+    cite2 = f"[ref:peer:shared:w1:p20#sha256={digest[:8]}:p.9-10]"
     observed: dict[str, object] = {}
+    forwarded: list[str] = []
     remote_citation = "[ref:other:shared:w1:p19#sha256=00000000:p.7-8]" if fault == "citation" else cite
     remote_source = "wrong-source" if fault == "source" else "shared"
     remote_digest = ("f" if digest[0] != "f" else "e") * 64 if fault == "digest" else digest
@@ -192,7 +194,10 @@ def test_remote_citation_uses_only_configured_peer_and_returns_checked_metadata(
     def handle(request: httpx.Request) -> httpx.Response:
         observed["url"] = str(request.url)
         observed["authorization"] = request.headers.get("Authorization")
-        observed["body"] = request.read().decode()
+        request_content = json.loads(request.read())["content"]
+        forwarded.append(request_content)
+        selected = cite2 if fault == "multiple" and cite2 in request_content else cite
+        passage_id, page_start = (20, 9) if selected == cite2 else (19, 7)
         if fault == "timeout":
             raise httpx.ReadTimeout("peer timed out", request=request)
         if fault == "malformed":
@@ -203,35 +208,63 @@ def test_remote_citation_uses_only_configured_peer_and_returns_checked_metadata(
                 "verified": True,
                 "citations": [
                     {
-                        "citation": remote_citation,
+                        "citation": remote_citation if fault == "citation" else selected,
                         "node": "peer",
                         "verified": True,
                         "status": "verified",
                         "work": {"id": 1, "title": "Remote title"},
                         "file": {"source_id": remote_source, "sha256": remote_digest},
-                        "passage": {"id": 19, "page_start": remote_page_start, "page_end": 8},
+                        "passage": {
+                            "id": passage_id,
+                            "page_start": remote_page_start if selected == cite else page_start,
+                            "page_end": 10 if selected == cite2 else 8,
+                        },
                     }
                 ],
                 "links": [],
             },
         )
 
-    client_type = httpx.Client
+    client_type = httpx.AsyncClient
     transport = httpx.MockTransport(handle)
-    monkeypatch.setattr(verifier.httpx, "Client", lambda **kwargs: client_type(transport=transport, **kwargs))
-    result = verify_content(
-        db, f"PRIVATE EARLIER CONTENT {('x' * 600)} Rotational power improves turbine efficiency. {cite}"
-    )
+    monkeypatch.setattr(verifier.httpx, "AsyncClient", lambda **kwargs: client_type(transport=transport, **kwargs))
+    content = f"PRIVATE EARLIER CONTENT {('x' * 600)} Rotational power improves turbine efficiency. {cite}"
+    if fault == "multiple":
+        content += f"\nTurbine rotational power increases efficiency. {cite2}"
+    result = verify_content(db, content)
 
-    assert result["citations"][0]["verified"] is (fault is None)
-    if fault is not None:
+    expected = [fault in (None, "multiple")] * (2 if fault == "multiple" else 1)
+    assert [item["verified"] for item in result["citations"]] == expected
+    if fault not in (None, "multiple"):
         assert result["citations"][0]["status"] == "peer_unavailable"
     assert observed["url"] == "https://peer.example/api/v1/library/verify"
     assert observed["authorization"] == "Bearer test-peer-token"
-    body = json.loads(str(observed["body"]))
-    assert body["local_only"] is True
-    assert "PRIVATE EARLIER CONTENT" not in body["content"]
-    assert cite in body["content"]
+    assert all("PRIVATE EARLIER CONTENT" not in text and text.count("[ref:") == 1 for text in forwarded)
+
+
+def test_peer_stream_has_one_wall_clock_deadline(monkeypatch) -> None:
+    import asyncio
+    import time
+
+    import library.verify as verifier
+
+    class SlowStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for _ in range(5):
+                await asyncio.sleep(0.04)
+                yield b"{}"
+
+        async def aclose(self) -> None: ...
+
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, stream=SlowStream()))
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(verifier.httpx, "AsyncClient", lambda **kwargs: client_type(transport=transport, **kwargs))
+    started = time.monotonic()
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(verifier._fetch_peer_response("https://peer.example", "token", "content", 0.1))
+
+    assert time.monotonic() - started < 0.3
 
 
 def test_remote_run_reference_is_rejected_before_peer_lookup(tmp_path: Path, monkeypatch) -> None:
@@ -306,7 +339,7 @@ def test_missing_peer_configuration_or_token_fails_without_network(
         monkeypatch.setenv("HUB_FLEET_TOKEN", token)
     else:
         monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
-    monkeypatch.setattr(verifier.httpx, "Client", lambda **kwargs: pytest.fail("unexpected peer request"))
+    monkeypatch.setattr(verifier.httpx, "AsyncClient", lambda **kwargs: pytest.fail("unexpected peer request"))
     cite = f"[ref:peer:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
 
     result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}")
