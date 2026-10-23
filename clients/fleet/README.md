@@ -34,17 +34,26 @@ except FleetAPIError as exc:
 ```bash
 python3 clients/fleet/fleetctl.py library sources
 python3 clients/fleet/fleetctl.py library search "energy transfer" --k 3 --run-id run-123
+python3 clients/fleet/fleetctl.py library search "energy transfer" --scope local
 python3 clients/fleet/fleetctl.py library fetch '[ref:DeskComputer:shared:w1:p3#sha256=1234abcd:p.3-3]' --run-id run-123
+python3 clients/fleet/fleetctl.py library fetch desk-x9-library 42 --page 3
+python3 clients/fleet/fleetctl.py library fetch desk-x9-library 42 --page 3 --scope federated --run-id run-123
 python3 clients/fleet/fleetctl.py library verify --file docs/report.md --run-id run-123
 ```
 
-Fetch accepts the canonical citation returned by search. The example is illustrative;
-use a real search result. Search and fetch preserve citation metadata and cap passage
-snippets at 400 UTF-8 bytes. Run IDs must belong to the authenticated caller; when
-omitted, the client uses `STAFF_RUN_ID` if set. Source discovery reports local and
-pooled availability using existing permissions and does not mutate the registry.
-These commands share the unified query implementation; existing flat commands remain
-available. The source/work/page locator form is tracked separately in #2437.
+Library search omits scope by default, preserving federated shared-only behavior. Pass
+`--scope local` to search private local material, or `--scope federated` explicitly.
+Fetch accepts either the canonical citation returned by search or a source id, work id,
+and one-based page locator. The citation example is illustrative; use a real search
+result. Locator fetch defaults to local scope so a private local source can be read
+without contacting peers; add `--scope federated` to search registered peers for shared
+sources, or `--node NAME` to select one registered peer. Responses preserve the canonical
+citation and digest/node/source metadata, with passage text capped at 400 UTF-8 bytes.
+Run IDs must belong to the authenticated caller; when omitted, the client uses
+`STAFF_RUN_ID` if set. Source discovery reports local and pooled availability using
+existing permissions and does not mutate the registry. Citation fetch continues through
+the unified query implementation; locator fetch calls the same bounded, read-only API.
+Existing flat commands remain available.
 
 Verification reads a UTF-8 file (up to 1,000,000 characters) and sends its content to
 the existing verification API. It prints JSON and exits 0 for verified content,

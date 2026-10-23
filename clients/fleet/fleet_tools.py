@@ -613,6 +613,11 @@ COMMANDS: tuple[Command, ...] = (
             },
             "repo": REPO,
             "topic": {"type": "string", "description": "Optional topic filter for library queries."},
+            "scope": {
+                "type": "string",
+                "enum": ["local", "federated"],
+                "description": "Optional library search scope; omitted preserves federated shared-only defaults.",
+            },
             "k": {"type": "integer", "minimum": 1, "maximum": 5, "description": "Max results to return (capped at 5)."},
             "offset": {"type": "integer", "minimum": 0, "description": "Pagination offset."},
             "full": {
@@ -644,6 +649,11 @@ COMMANDS: tuple[Command, ...] = (
             "query": {"type": "string", "description": "Search query."},
             "repo": REPO,
             "topic": {"type": "string", "description": "Topic filter."},
+            "scope": {
+                "type": "string",
+                "enum": ["local", "federated"],
+                "description": "Optional library search scope; omitted preserves federated shared-only defaults.",
+            },
             "k": {"type": "integer", "minimum": 1, "maximum": 5},
             "offset": {"type": "integer", "minimum": 0},
             "full": {"type": "boolean"},
@@ -653,6 +663,24 @@ COMMANDS: tuple[Command, ...] = (
         "library-sources",
         "library_sources",
         "Read local and pooled library sources, including peer availability (no mutations).",
+    ),
+    Command(
+        "library-fetch-page",
+        "library_fetch_page",
+        "Fetch one library passage by source id, work id, and page.",
+        {
+            "source_id": {
+                "type": "string",
+                "pattern": r"^[a-z0-9][a-z0-9-]{0,62}$",
+                "description": "Registered library source id.",
+            },
+            "work_id": {"type": "integer", "minimum": 1, "description": "Library work id."},
+            "page": {"type": "integer", "minimum": 1, "description": "One-based page number."},
+            "scope": {"type": "string", "enum": ["local", "federated"]},
+            "node": {"type": "string", "maxLength": 128, "description": "Optional registered fleet node."},
+            "run_id": RUN_ID,
+        },
+        required=("source_id", "work_id", "page"),
     ),
     Command(
         "library-verify",

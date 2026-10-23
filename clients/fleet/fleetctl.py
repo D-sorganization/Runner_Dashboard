@@ -69,8 +69,7 @@ def _add_library_operations(parser: argparse.ArgumentParser) -> None:
     query = BY_CLI["query"]
     operations = parser.add_subparsers(dest="library_operation", required=True)
     for operation, positional, optional in (
-        ("search", "query", ("repo", "topic", "k", "offset", "full", "run_id")),
-        ("fetch", "cite", ("run_id",)),
+        ("search", "query", ("repo", "topic", "k", "offset", "full", "run_id", "scope")),
         ("sources", None, ()),
     ):
         child = operations.add_parser(operation, help=f"Read-only library {operation}.")
@@ -81,6 +80,16 @@ def _add_library_operations(parser: argparse.ArgumentParser) -> None:
             _add_argument(child, positional, query.properties[positional], positional=True)
         for name in optional:
             _add_argument(child, name, query.properties[name], positional=False)
+    fetch = operations.add_parser("fetch", help="Fetch a cited passage or a source/work/page locator.")
+    fetch.add_argument("cite", help="Canonical citation, or source id when work id and page are supplied.")
+    fetch.add_argument("work_id", nargs="?", type=int, help="Work id for a source/work/page locator.")
+    fetch.add_argument("--page", type=int, help="One-based page number for a source/work/page locator.")
+    fetch.add_argument("--scope", choices=("local", "federated"), help="Locator scope (defaults to local).")
+    fetch.add_argument("--node", help="Optional registered node for a locator.")
+    _add_argument(fetch, "run_id", query.properties["run_id"], positional=False)
+    fetch_defaults: dict[str, Any] = {name: None for name in query.properties}
+    fetch_defaults.update(source="library", op="fetch", work_id=None, page=None, scope=None, node=None)
+    fetch.set_defaults(command="query", **fetch_defaults)
     verify = operations.add_parser("verify", help="Verify citations and links in a UTF-8 file.")
     verify.set_defaults(command="library-verify", content=None)
     verify.add_argument("--file", dest="verification_file", required=True, type=Path)
@@ -152,7 +161,30 @@ def main(argv: list[str] | None = None) -> int:
         client = FleetClient(
             namespace.url, timeout=namespace.timeout, agent=namespace.default_agent, session=namespace.default_session
         )
-        result = command.invoke(client, _arguments(command, namespace))
+        if namespace.command == "query" and getattr(namespace, "library_operation", None) == "fetch":
+            work_id = namespace.work_id
+            page = namespace.page
+            if (work_id is None) != (page is None):
+                raise FleetArgumentError("source/work/page locator requires both work id and --page")
+            if work_id is None:
+                if namespace.scope is not None or namespace.node is not None:
+                    raise FleetArgumentError("--scope and --node require a source/work/page locator")
+                result = command.invoke(client, _arguments(command, namespace))
+            else:
+                locator_command = BY_CLI["library-fetch-page"]
+                result = locator_command.invoke(
+                    client,
+                    {
+                        "source_id": namespace.cite,
+                        "work_id": work_id,
+                        "page": page,
+                        "scope": namespace.scope,
+                        "node": namespace.node,
+                        "run_id": namespace.run_id,
+                    },
+                )
+        else:
+            result = command.invoke(client, _arguments(command, namespace))
         _emit(result)
         if client.identity()["session_source"] == "derived" and client.session:
             sys.stderr.write(f"fleetctl: derived session; export FLEET_SESSION={client.session} to reuse it\n")
