@@ -82,10 +82,14 @@ def _source(root: Path, fields: dict[str, str], deadline: float) -> tuple[str, s
     return commit, text
 
 
-def _context() -> tuple[dict[str, Path], PackManifest]:
+def _context(knowledge_dir: Path | None = None, *, allow_ambient: bool = True) -> tuple[dict[str, Path], PackManifest]:
     from staff.knowledge_refresh import get_knowledge_dir, resolve_pack_roots
 
-    path = get_knowledge_dir() / "cartographer.sqlite"
+    if knowledge_dir is None:
+        if not allow_ambient:
+            raise FileNotFoundError("knowledge directory was not explicitly supplied")
+        knowledge_dir = get_knowledge_dir()
+    path = Path(knowledge_dir) / "cartographer.sqlite"
     pack = KnowledgePack.open(path)
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
         manifest = manifest_from_dict(
@@ -116,7 +120,14 @@ def _retrieved_text(fields: dict[str, str], text: str, refs: list[dict[str, Any]
     return pieces
 
 
-def verify_codebase_citations(db: Path, content: str, run_id: str | None) -> list[dict[str, Any]]:
+def verify_codebase_citations(
+    db: Path,
+    content: str,
+    run_id: str | None,
+    *,
+    knowledge_dir: Path | None = None,
+    allow_ambient: bool = True,
+) -> list[dict[str, Any]]:
     """Prove local immutable source and exact run scope; never return source text.
 
     Only indexed configured repositories are eligible. No pack rebuild, tree scan
@@ -130,7 +141,7 @@ def verify_codebase_citations(db: Path, content: str, run_id: str | None) -> lis
         return [{"verified": False, "status": "citation_limit_exceeded"}]
     try:
         deadline = time.monotonic() + _VERIFY_SECONDS
-        roots, manifest = _context()
+        roots, manifest = _context(knowledge_dir, allow_ambient=allow_ambient)
         refs = codebase_references_for_run(db, run_id) if run_id is not None else []
     except (OSError, ValueError, PackFormatError, sqlite3.Error, KeyError, TypeError, IndexError):
         return [{"citation": m[0][:500], "verified": False, "status": "codebase_unavailable"} for m in tokens]

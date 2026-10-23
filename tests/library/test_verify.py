@@ -101,9 +101,11 @@ def test_verify_requires_run_ledger_membership(tmp_path: Path) -> None:
     db, digest = _indexed(tmp_path)
     cite = f"[ref:desk:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
 
+    before = hashlib.sha256(db.read_bytes()).hexdigest()
     result = verify_content(db, cite, run_id="run-1")
 
     assert result["citations"][0]["status"] == "unretrieved_reference"
+    assert hashlib.sha256(db.read_bytes()).hexdigest() == before
     record_retrievals(
         db,
         run_id="run-1",

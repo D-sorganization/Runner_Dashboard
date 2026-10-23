@@ -145,16 +145,21 @@ def references_for_run(db: Path, run_id: str) -> list[dict[str, Any]]:
     """Return canonical identities in stable order for citation verification."""
     if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id):
         raise ValueError("invalid run_id")
-    with closing(sqlite3.connect(db)) as conn:
-        conn.row_factory = sqlite3.Row
-        conn.execute(_SCHEMA)
-        rows = conn.execute(
-            "SELECT run_id,node,source_id,work_id,passage_id,file_sha256,page_start,page_end,citation,"
-            "valid,reason,evidence_json,verified_at,retrieved_at "
-            "FROM staff_run_references WHERE run_id=? "
-            "ORDER BY node,source_id,work_id,passage_id,file_sha256,page_start,page_end",
-            (run_id,),
-        ).fetchall()
+    uri = f"{Path(db).resolve().as_uri()}?mode=ro"
+    try:
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT run_id,node,source_id,work_id,passage_id,file_sha256,page_start,page_end,citation,"
+                "valid,reason,evidence_json,verified_at,retrieved_at "
+                "FROM staff_run_references WHERE run_id=? "
+                "ORDER BY node,source_id,work_id,passage_id,file_sha256,page_start,page_end",
+                (run_id,),
+            ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return []
+        raise
     return [
         {
             "run_id": run_id_value,

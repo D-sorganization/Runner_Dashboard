@@ -159,15 +159,20 @@ def codebase_references_for_run(db: Path, run_id: str) -> list[dict[str, Any]]:
     """Return the stable, text-free codebase identities recorded for one run."""
     if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id):
         raise ValueError("invalid run_id")
-    with closing(sqlite3.connect(db)) as conn:
-        conn.row_factory = sqlite3.Row
-        conn.execute(_SCHEMA)
-        rows = conn.execute(
-            "SELECT run_id,node,repo,commit_sha,relative_path,line_start,line_end,content_hash,citation "
-            "FROM staff_run_codebase_references WHERE run_id=? "
-            "ORDER BY node,repo,commit_sha,relative_path,line_start,line_end,content_hash",
-            (run_id,),
-        ).fetchall()
+    uri = f"{Path(db).resolve().as_uri()}?mode=ro"
+    try:
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT run_id,node,repo,commit_sha,relative_path,line_start,line_end,content_hash,citation "
+                "FROM staff_run_codebase_references WHERE run_id=? "
+                "ORDER BY node,repo,commit_sha,relative_path,line_start,line_end,content_hash",
+                (run_id,),
+            ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return []
+        raise
     keys = (
         "run_id",
         "node",

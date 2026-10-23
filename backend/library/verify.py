@@ -291,6 +291,8 @@ def verify_content(
     *,
     run_id: str | None = None,
     repo_root: Path | None = None,
+    knowledge_dir: Path | None = None,
+    allow_ambient_knowledge: bool = True,
     local_only: bool = False,
 ) -> dict[str, Any]:
     """Verify citation tokens and relative links without modifying the library."""
@@ -303,10 +305,14 @@ def verify_content(
     citations: list[dict[str, Any]] = []
     from dashboard_config import HOSTNAME
 
+    db_path = Path(db_path)
+    if not db_path.is_file():
+        raise ValueError("library database does not exist")
     local_node = HOSTNAME or "local"
     deadline = time.monotonic() + _FEDERATED_VERIFY_DEADLINE_S
     remote_count = 0
-    with sqlite3.connect(db_path) as conn:
+    db_uri = f"{db_path.resolve().as_uri()}?mode=ro"
+    with sqlite3.connect(db_uri, uri=True) as conn:
         conn.row_factory = sqlite3.Row
         for match in _CITATION.finditer(content):
             is_remote = (match.group("node") or local_node) != local_node
@@ -324,7 +330,15 @@ def verify_content(
         {"citation": match.group(0), "verified": False, "status": "legacy_unverifiable"}
         for match in _LEGACY.finditer(content)
     )
-    citations.extend(verify_codebase_citations(db_path, content, run_id))
+    citations.extend(
+        verify_codebase_citations(
+            db_path,
+            content,
+            run_id,
+            knowledge_dir=knowledge_dir,
+            allow_ambient=allow_ambient_knowledge,
+        )
+    )
     citations.extend(
         {"citation": match[0][:500], "verified": False, "status": "invalid_citation"}
         for match in REFERENCE_TOKEN.finditer(content)
