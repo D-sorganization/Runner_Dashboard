@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fleet_barb_seat import BarbSeatMixin
+from fleet_exclusion_tools import ExclusionClientMixin
 from fleet_friction_tools import FrictionClientMixin
 from fleet_validators import (
     BROADCAST,
@@ -89,7 +90,7 @@ DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
-class FleetClient(BarbSeatMixin, FrictionClientMixin):
+class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""
 

@@ -112,6 +112,20 @@ def _add_barb_seat(sub: Any) -> None:
             _add_argument(child, name, schema, positional=name in command.positional)
 
 
+def _add_exclusions(sub: Any) -> None:
+    """``fleetctl exclusions {list,add,remove}``."""
+    group = sub.add_parser("exclusions", help="Dispatch exclusions.").add_subparsers(
+        dest="exclusion_action", required=True, metavar="ACTION"
+    )
+    for command in COMMANDS:
+        if not command.cli.startswith("exclusions "):
+            continue
+        child = group.add_parser(command.cli.split(" ", 1)[1], help=command.description)
+        child.set_defaults(command=command.cli)
+        for name, schema in command.properties.items():
+            _add_argument(child, name, schema, positional=name in command.positional)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fleetctl", description="Runner Dashboard Fleet API client (JSON output).")
     parser.add_argument("--url", help="API base URL (default $FLEET_API_URL or http://127.0.0.1:8321).")
@@ -126,6 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
         for name, schema in command.properties.items():
             _add_argument(cmd_parser, name, schema, positional=name in command.positional)
     _add_barb_seat(sub)
+    _add_exclusions(sub)
     _add_library_operations(sub.add_parser("library", help="Read-only library search, fetch and source discovery."))
     doctor = sub.add_parser(
         "doctor",
