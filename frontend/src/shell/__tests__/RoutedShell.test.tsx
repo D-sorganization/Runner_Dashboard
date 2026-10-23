@@ -74,6 +74,9 @@ vi.mock("../../pages/Operations/OperationsPage", () => ({
 vi.mock("../../pages/ProjectsPage", () => ({
   default: () => <div data-testid="native-projects">Projects</div>,
 }));
+vi.mock("../../pages/Security/SecurityPage", () => ({
+  default: () => <div data-testid="native-security">Security</div>,
+}));
 vi.mock("../../pages/Staff/StaffPage", () => ({
   default: () => <div data-testid="native-staff">Staff</div>,
 }));
@@ -319,6 +322,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     ["overview", "native-overview"],
     ["operations", "native-operations"],
     ["insights", "native-analysis"],
+    ["security", "native-security"],
     ["code-requests", "native-code-requests"],
     ["queue", "native-queue"],
     ["remediation", "native-remediation"],
