@@ -1,0 +1,151 @@
+name: Reusable PR Cap Warning
+
+# Always warning-only. Later enforcement requires a separate owner decision.
+on:
+  workflow_call:
+    inputs:
+      cap:
+        description: Optional integer override; empty uses the canonical PR_CAP
+        type: string
+        required: false
+        default: ""
+
+# This distinct group avoids blocking the caller on its own reusable workflow.
+# A pending run may be replaced by a newer event for the same PR, so not every
+# event is processed.
+concurrency:
+  group: pr-cap-reusable-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  counter:
+    if: github.event_name == 'pull_request_target'
+    runs-on: d-sorg-fleet
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      report: ${{ steps.report.outputs.report }}
+      status: ${{ steps.report.outputs.status }}
+      reason: ${{ steps.report.outputs.reason }}
+    steps:
+      - name: Checkout Trusted Base Bundle
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # For pull_request_target, github.sha is the base commit, never PR code.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/fleet-pr-cap
+      - name: Set Up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Count and Report Metadata
+        id: report
+        working-directory: .github/fleet-pr-cap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REPO: ${{ github.repository }}
+          TARGET_PR: ${{ github.event.pull_request.number }}
+          CAP_OVERRIDE: ${{ inputs.cap }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--repo "$TARGET_REPO" --pr "$TARGET_PR" --json)
+          if [ -n "$CAP_OVERRIDE" ]; then args+=(--cap "$CAP_OVERRIDE"); fi
+          REPORT_JSON="$(python -m scripts.pr_cap_report "${args[@]}")"
+          export REPORT_JSON
+          python - <<'PY'
+          import json
+          import os
+          from scripts.pr_cap_report import render_summary
+
+          report = json.loads(os.environ["REPORT_JSON"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("report=" + json.dumps(report, separators=(",", ":")) + "\n")
+              output.write("status=" + report["status"] + "\n")
+              output.write("reason=" + report["reason"] + "\n")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## PR Cap: Warning Phase\n\n" + render_summary(report) + "\n")
+          if report["status"] == "WARN":
+              print("::warning::PR cap advisory; see the check summary.")
+          PY
+
+  comment:
+    needs: counter
+    if: >-
+      github.event_name == 'pull_request_target' &&
+      needs.counter.outputs.status == 'WARN' &&
+      (needs.counter.outputs.reason == 'cap_exceeded' ||
+       needs.counter.outputs.reason == 'unknown_identity')
+    runs-on: d-sorg-fleet
+    timeout-minutes: 5
+    continue-on-error: true
+    permissions:
+      pull-requests: write
+    concurrency:
+      group: pr-cap-comment-${{ github.repository }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - name: Post the First Advisory Only
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          CAP_REPORT: ${{ needs.counter.outputs.report }}
+        with:
+          retries: 0
+          script: |
+            try {
+              const report = JSON.parse(process.env.CAP_REPORT || '{}');
+              const integer = value => Number.isSafeInteger(value) && value >= 0;
+              const numbers = report.matching_numbers;
+              if (report.status !== 'WARN' ||
+                  !['cap_exceeded', 'unknown_identity'].includes(report.reason) ||
+                  ![report.count, report.cap, report.unknown_count,
+                    report.eligible_count].every(integer) ||
+                  !Array.isArray(numbers) ||
+                  !numbers.every(value => integer(value) && value > 0) ||
+                  new Set(numbers).size !== numbers.length ||
+                  report.count !== numbers.length ||
+                  report.count > report.eligible_count ||
+                  report.unknown_count > report.eligible_count ||
+                  (report.reason === 'cap_exceeded' &&
+                    (report.agent === null || report.count <= report.cap)) ||
+                  (report.reason === 'unknown_identity' &&
+                    (report.agent !== null || report.count !== 0)) ||
+                  !(report.agent === null || (typeof report.agent === 'string' &&
+                    /^[a-z0-9-]{1,40}$/.test(report.agent)))) {
+                core.warning('Invalid cap report; no comment was posted.');
+                return;
+              }
+              const number = context.payload.pull_request?.number;
+              const baseRepo = context.payload.pull_request?.base?.repo?.full_name;
+              if (context.eventName !== 'pull_request_target' ||
+                  !Number.isSafeInteger(number) || number <= 0 ||
+                  baseRepo?.toLowerCase() !==
+                    `${context.repo.owner}/${context.repo.repo}`.toLowerCase()) {
+                core.warning('Invalid target metadata; no comment was posted.');
+                return;
+              }
+              const target = {...context.repo, issue_number: number};
+              const marker = '<!-- fleet-pr-cap -->';
+              const comments = await github.paginate(github.rest.issues.listComments,
+                {...target, per_page: 100});
+              if (comments.some(comment => comment.user?.login === 'github-actions[bot]' &&
+                  comment.body?.includes(marker))) return;
+              const refs = [...numbers].sort((a, b) => a - b).map(n => `#${n}`);
+              const detail = report.reason === 'cap_exceeded'
+                ? `${report.agent}: ${report.count}/${report.cap} eligible open PRs. ` +
+                  `Finish an existing PR or use your lane branch. PRs: ${refs.join(', ')}.`
+                : 'Agent identity is unknown. Add the appropriate agent identity signal.';
+              const body = `${marker}\nPR cap advisory (warning phase).\n\n${detail}\n\n` +
+                `Unknown identity share: ${report.unknown_count}/${report.eligible_count} ` +
+                'eligible open PRs. Drafts and policy exemptions are excluded.\n\n' +
+                'This is the first advisory snapshot; later results are in check summaries. ' +
+                'This workflow does not change PR state or merge settings.';
+              await github.rest.issues.createComment({...target, body});
+            } catch {
+              core.warning('PR cap comment unavailable; warning phase remains non-blocking.');
+            }

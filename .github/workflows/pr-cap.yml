@@ -1,0 +1,25 @@
+name: PR Cap Warning
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, ready_for_review, reopened, labeled, unlabeled]
+
+# A pending run may be replaced by a newer event for the same PR, so not every
+# event is processed. Separate caller and reusable groups avoid self-blocking.
+concurrency:
+  group: pr-cap-caller-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  pr-cap:
+    if: >-
+      github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
+      startsWith(github.event.label.name, 'agent:') ||
+      github.event.label.name == 'ship-alone'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/reusable-pr-cap.yml

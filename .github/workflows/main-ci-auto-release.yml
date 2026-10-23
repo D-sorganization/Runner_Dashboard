@@ -55,7 +55,7 @@ jobs:
           echo "committer_date=${COMMITTER_DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python (wheelhouse for artifact packaging)
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
           cache: pip
@@ -103,7 +103,7 @@ jobs:
           echo "committer_date=${COMMITTER_DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python (wheelhouse for artifact packaging)
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
           cache: pip

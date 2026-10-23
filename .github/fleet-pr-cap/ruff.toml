@@ -1,0 +1,62 @@
+# ruff.toml
+# Configuration for the Ruff linter
+# Matches standards defined in ci-standard.yml
+
+# Target Python 3.12 (matches the active CI baseline)
+target-version = "py312"
+line-length = 88  # Matches Black standard (88 chars)
+
+# Exclude generated code and standard noise
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+    ".env",
+    "node_modules",
+    "*.ipynb",  # Jupyter notebooks often fail standard linting
+    "Claude_Skills",  # Third-party skill scripts from antigravity-kit
+    "Project_Template/Claude_Skills",  # Template skills (copied as-is to new projects)
+]
+
+[lint]
+# Enable specific rule sets:
+# E = pycodestyle errors
+# F = Pyflakes (Logic errors)
+# W = pycodestyle warnings
+# I = isort (Import sorting)
+# B = flake8-bugbear (Catches likely bugs/traps)
+# UP = pyupgrade (Modernizes old Python syntax)
+select = ["E", "F", "W", "I", "B", "UP"]
+
+# Ignore:
+# D = pydocstyle (We let the 'Doc-Scribe' agent handle docstrings, so we don't lint them strictly here)
+ignore = ["D"]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.per-file-ignores]
+# Ignore "unused imports" in __init__.py files (common pattern)
+"__init__.py" = ["F401"]
+# Allow assertions in tests
+"tests/*" = ["S101"]
+# Ignore all linting in third-party Claude Skills
+"Claude_Skills/**/*.py" = ["ALL"]
+"Project_Template/Claude_Skills/**/*.py" = ["ALL"]
+# Scripts with embedded YAML/Python in multi-line strings (E501 noqa can't suppress inside literals)
+"scripts/update_prs.py" = ["E501"]
+"scripts/fix_heavy_tests_architecture.py" = ["E501"]
+"scripts/update_dockerfile_with_viewers.py" = ["E501"]
+"scripts/patch_jules_pick_runner.py" = ["E501"]
+"scripts/migrate_ci_runner.py" = ["E501"]
+"scripts/update_dockerfile.py" = ["E501"]
+"scripts/patch_jules_files_only.py" = ["E501"]
+# runner-dashboard backend: self-contained FastAPI app; keeps many long
+# log-format strings and inline SQL intact rather than wrapping them.
+"runner-dashboard/backend/*.py" = ["E501"]
+
+[lint.isort]
+# Tells Ruff how to group your own code vs. libraries
+known-first-party = ["src", "games", "tools"]
