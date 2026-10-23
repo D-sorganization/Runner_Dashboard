@@ -8,8 +8,10 @@ and that unattended agents stopping with questions (needs_input) can receive ans
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any
 
+from staff import claim_guard
 from staff.barb_fence import FencedAuthorityError
 from staff.barb_runtime import enqueue_run_card, get_authority_config, relay_payload
 from staff.barb_versions import ApplyOutcome, ApplyResult
@@ -322,6 +324,9 @@ def handle_run_status_change(
     relay_fn: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
+    if status in claim_guard.TERMINAL_STATUSES and run.target_kind == "issue":
+        # Drop the claim label this run applied (#2562); off-thread so a slow `gh` never delays the status change.
+        threading.Thread(target=claim_guard.release_claim, args=(run.id, status), daemon=True).start()
     config = get_authority_config()
     if config.is_replica and run.thread_id:
         # A replica never commits a conversation write: stage the update for the authority (#1800).

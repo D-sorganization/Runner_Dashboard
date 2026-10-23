@@ -10257,10 +10257,20 @@ export interface components {
          */
         RunBody: {
             /**
+             * Claim Override Reason
+             * @default
+             */
+            claim_override_reason: string;
+            /**
              * Dry Run
              * @default false
              */
             dry_run: boolean;
+            /**
+             * Force Claim Override
+             * @default false
+             */
+            force_claim_override: boolean;
             /**
              * Ignore Budget
              * @default false

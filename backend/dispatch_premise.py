@@ -184,13 +184,20 @@ async def check_issue_has_active_claim(
     *,
     gh_get_fn: Any = None,
     lease_mgr: Any = None,
+    check_labels: bool = True,
 ) -> tuple[bool, str]:
-    """Return True if an active claim:* lease or label exists for the issue."""
+    """Return True if an active claim:* lease or label exists for the issue.
+
+    ``check_labels=False`` skips the GitHub label read (staff dispatch does it in
+    ``staff.claim_guard``, #2562) and keeps the local runner-lease check.
+    """
     full_repo = _normalize_repo(repository)
     endpoint = f"/repos/{full_repo}/issues/{issue_number}"
 
     issue: dict[str, Any] = {}
-    if gh_get_fn:
+    if not check_labels:
+        pass
+    elif gh_get_fn:
         res = await gh_get_fn(endpoint)
         issue = res if isinstance(res, dict) else {}
     else:
@@ -315,6 +322,8 @@ async def evaluate_dispatch_premise(
     lease_mgr: Any = None,
     repo_root: Path | None = None,
     issue_body: str = "",
+    check_claim_labels: bool = True,
+    check_open_pr: bool = True,
 ) -> PremiseCheckResult:
     """Evaluate whether a task dispatch premise is valid or should be skipped.
 
@@ -332,6 +341,7 @@ async def evaluate_dispatch_premise(
             issue_number,
             gh_get_fn=gh_get_fn,
             lease_mgr=lease_mgr,
+            check_labels=check_claim_labels,
         )
         if has_claim:
             return PremiseCheckResult(
@@ -341,7 +351,7 @@ async def evaluate_dispatch_premise(
             )
 
     # 2. Open PR reference check
-    if issue_number:
+    if issue_number and check_open_pr:
         has_pr, pr_info = await check_issue_has_open_pr(
             full_repo,
             issue_number,

@@ -84,6 +84,9 @@ class RunBody(BaseModel):
     dry_run: bool = False
     # Run even when the role's budget or the provider's plan window is spent (#1588); audited.
     ignore_budget: bool = False
+    # Operator-only: dispatch despite a foreign claim:* label / closing PR; needs a reason; audited (#2562).
+    force_claim_override: bool = False
+    claim_override_reason: str = Field(default="", max_length=500)
     # Set by a forwarding peer so a retried forward admits one run (#1796); ignored from others.
     operation_id: str | None = Field(default=None, max_length=80, pattern=r"^[A-Za-z0-9-]+$")
     # Unattended skill selection (#2157): filters registry skills; omit to match role/repo automatically.

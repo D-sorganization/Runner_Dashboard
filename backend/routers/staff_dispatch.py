@@ -65,5 +65,7 @@ async def run_dispatch(
         standards_extra=body.standards_extra,
         requested_skill=body.skill,
         force_duplicate=is_force,
+        force_claim_override=body.force_claim_override,
+        claim_override_reason=body.claim_override_reason,
     )
     return await dispatch_staff_run(cmd, caller)
