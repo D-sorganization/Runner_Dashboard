@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -17,13 +17,14 @@ SHA = "a" * 40
 
 
 def _run(identifier: int, conclusion: str = "success") -> dict:
+    started = datetime(2026, 1, 1, tzinfo=timezone.utc)  # noqa: UP017 - deployment also supports Python 3.10
     return {
         "id": identifier + 1,
         "head_sha": SHA,
         "name": f"check-{identifier}",
         "status": "completed",
         "conclusion": conclusion,
-        "started_at": (datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=identifier)).isoformat(),
+        "started_at": (started + timedelta(seconds=identifier)).isoformat(),
         "check_suite": {"id": 1},
         "app": {"id": 1, "slug": "fixture"},
     }

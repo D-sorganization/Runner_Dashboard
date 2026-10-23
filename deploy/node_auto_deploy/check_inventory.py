@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from node_auto_deploy.check_runs import (
@@ -40,7 +40,7 @@ def _started_at(value: Any) -> datetime | None:
         raise CheckInventoryUnavailable("check inventory has an invalid started_at") from exc
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise CheckInventoryUnavailable("check inventory started_at must include a timezone")
-    return parsed.astimezone(UTC)
+    return parsed.astimezone(timezone.utc)  # noqa: UP017 - runtime supports Python 3.10
 
 
 def normalize_latest_check_runs(checks: list[dict[str, Any]], expected_sha: str) -> list[dict[str, Any]]:
