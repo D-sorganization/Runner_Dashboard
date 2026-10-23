@@ -125,3 +125,5 @@
 .staff-composer__chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border-color); background: var(--bg-secondary); }
 .staff-composer__chip-badge { font-size: 10px; opacity: 0.8; }
 .staff-composer__chip-remove { border: none; background: transparent; cursor: pointer; padding: 0 2px; }
+
+.staff-composer__chip-error { color: var(--accent-red); font-size: 11px; }
