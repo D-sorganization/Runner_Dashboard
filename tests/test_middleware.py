@@ -64,6 +64,11 @@ def test_auth_perimeter_rejects_bearer_credentials_on_cloudflare_ingress(monkeyp
     assert response.json() == {"error": "Request not permitted"}
     assert "never-log-this" not in caplog.text
     assert "blocked bearer credential on external ingress" in caplog.text
+    event = next(record for record in caplog.records if record.message == "blocked bearer credential on external ingress")
+    assert event.reason == "machine_credentials_not_allowed_on_external_ingress"
+    assert event.source_ip == "testclient"
+    assert event.cf_ray == "test-ray"
+    assert event.path == "/api/v1/staff/threads"
 
 
 def test_auth_perimeter_rejects_bearer_credentials_with_external_origin(monkeypatch) -> None:
