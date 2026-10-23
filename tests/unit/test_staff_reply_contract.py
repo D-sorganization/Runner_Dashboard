@@ -7,6 +7,7 @@ from staff.reply_contract import (
     ALL_KNOWN_ACTIONS,
     FLEET_ACTIONS,
     STANDARD_ACTION_REQUIREMENTS,
+    is_action_allowed_for_role,
     parse_reply,
 )
 from staff.roles import RoleSpec, parse_role
@@ -358,6 +359,18 @@ def test_contract_action_table_has_params_column() -> None:
 
     dispatch_line = next(line for line in lines if line.startswith("| `staff.dispatch`"))
     assert "role" in dispatch_line and "prompt" in dispatch_line
+
+
+@pytest.mark.unit
+def test_barb_can_propose_registered_dashboard_navigation() -> None:
+    from staff.reply_contract import generate_chat_contract_text
+
+    barb = RoleSpec(name="barb", title="Barb")
+    assert is_action_allowed_for_role("dashboard.navigate", barb)
+
+    contract = generate_chat_contract_text()
+    row = next(line for line in contract.splitlines() if line.startswith("| `dashboard.navigate`"))
+    assert "| low | `staff.chat` | tab_id: string |" in row
 
 
 @pytest.mark.unit

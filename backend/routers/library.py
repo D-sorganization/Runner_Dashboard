@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import os
 import re
@@ -523,12 +524,7 @@ async def library_verify_route(
             from staff.store import get_run_store
 
             authorize_run_owner(get_run_store(), run_id=run_id, principal_id=_principal.id)
-        return verify_content(
-            _db(),
-            content,
-            run_id=run_id,
-            repo_root=Path.cwd(),
-        )
+        return await asyncio.to_thread(verify_content, _db(), content, run_id=run_id, repo_root=Path.cwd())
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except LookupError as exc:

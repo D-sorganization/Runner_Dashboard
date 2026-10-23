@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ThreadMessage } from "./threadTypes";
+import { dispatchDashboardNavigation } from "./dashboardNavigation";
 
 export interface UseThreadStreamOptions {
   threadId: string;
@@ -172,6 +173,7 @@ export function useThreadStream({
           try {
             const incoming = messageFromFrame(JSON.parse(ev.data));
             if (!incoming) return;
+            dispatchDashboardNavigation(incoming);
             if (incoming.seq && incoming.seq > lastEventIdRef.current) {
               lastEventIdRef.current = incoming.seq;
             }

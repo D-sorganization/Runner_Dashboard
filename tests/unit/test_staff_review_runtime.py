@@ -304,8 +304,10 @@ def test_concurrent_auto_reviews_of_one_pr_queue_a_single_review(store: RunStore
 _REVIEW_START_BARRIER: Any = None
 
 
-def _review_in_subprocess(db_path: str) -> int:
-    """Child process: one auto-review attempt against the shared runs DB; returns submits."""
+def _review_in_subprocess(db_path: str) -> dict[str, Any]:
+    """Child process: attempt one auto-review and return storage/lock diagnostics."""
+    import fcntl
+    import multiprocessing
     import os
     import time
 
@@ -323,10 +325,53 @@ def _review_in_subprocess(db_path: str) -> int:
             )
 
     runner = _SlowChildRunner(child_store, _roster("gemini"))
+    lock_path = Path(f"{child_store.path}.auto-review.lock")
+    checks: list[dict[str, Any]] = []
+    original_already_reviewed = review._already_reviewed
+
+    def traced_already_reviewed(store: Any, repo: str, pr_number: int, role: str = review.REVIEWER_ROLE) -> bool:
+        already_reviewed = original_already_reviewed(store, repo, pr_number, role)
+        with store._lock:
+            rows = store._conn.execute(
+                "SELECT id, status, retry_of FROM runs WHERE role = ? AND repo = ? AND target_ref = ? ORDER BY id",
+                (role, repo, f"PR #{pr_number}"),
+            ).fetchall()
+        checks.append(
+            {
+                "module": review._already_reviewed.__module__,
+                "db_path": str(store.path),
+                "already_reviewed": already_reviewed,
+                "rows": [(str(row[0]), str(row[1]), str(row[2])) for row in rows],
+            }
+        )
+        return already_reviewed
+
+    review._already_reviewed = traced_already_reviewed
     if _REVIEW_START_BARRIER is not None:
         _REVIEW_START_BARRIER.wait(timeout=10)
-    auto_review_if_eligible(author, _verified(42), store=child_store, runner=runner, gh_probe=_Trailers([]))
-    return len(runner.submitted)
+    queued = auto_review_if_eligible(author, _verified(42), store=child_store, runner=runner, gh_probe=_Trailers([]))
+    with child_store._lock:
+        database_path = str(child_store._conn.execute("PRAGMA database_list").fetchone()[2])
+        reviews = child_store._conn.execute(
+            "SELECT id, status FROM runs WHERE role = ? AND repo = ? AND target_ref = ? ORDER BY id",
+            ("code-reviewer", "Runner_Dashboard", "PR #42"),
+        ).fetchall()
+    lock_stat = lock_path.stat()
+    return {
+        "pid": os.getpid(),
+        "db_path": str(child_store.path),
+        "sqlite_path": database_path,
+        "lock_identity": (lock_stat.st_dev, lock_stat.st_ino),
+        "queued": queued,
+        "submit_count": len(runner.submitted),
+        "reviews": [(str(row[0]), str(row[1])) for row in reviews],
+        "checks": checks,
+        "fcntl_module": getattr(fcntl, "__file__", None),
+        "flock_type": f"{type(fcntl.flock).__module__}.{type(fcntl.flock).__qualname__}",
+        "flock_module": getattr(fcntl.flock, "__module__", None),
+        "start_method": multiprocessing.get_start_method(),
+        "os_name": os.name,
+    }
 
 
 @pytest.mark.unit
@@ -341,7 +386,91 @@ def test_auto_review_dedupe_holds_across_worker_processes(tmp_path: Path) -> Non
     _REVIEW_START_BARRIER = context.Barrier(2)
     try:
         with context.Pool(2) as pool:
-            submits = pool.map(_review_in_subprocess, [str(db), str(db)])
+            attempts = pool.map(_review_in_subprocess, [str(db), str(db)])
     finally:
         _REVIEW_START_BARRIER = None
-    assert sum(submits) == 1
+    assert sum(attempt["submit_count"] for attempt in attempts) == 1, attempts
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="fork context and fcntl cross-process locks are POSIX-only")
+def test_auto_review_dedupe_uses_database_identity_across_path_aliases(tmp_path: Path) -> None:
+    import multiprocessing
+
+    db = tmp_path / "runs.sqlite3"
+    _add(RunStore(db), _run("run-author"), pr_number=42)
+    alias = tmp_path / "runs-alias.sqlite3"
+    alias.symlink_to(db)
+    context = multiprocessing.get_context("fork")
+    global _REVIEW_START_BARRIER
+    _REVIEW_START_BARRIER = context.Barrier(2)
+    try:
+        with context.Pool(2) as pool:
+            attempts = pool.map(_review_in_subprocess, [str(db), str(alias)])
+    finally:
+        _REVIEW_START_BARRIER = None
+    assert sum(attempt["submit_count"] for attempt in attempts) == 1, attempts
+    assert len({attempt["pid"] for attempt in attempts}) == 2, attempts
+    assert len({attempt["lock_identity"] for attempt in attempts}) == 1, attempts
+    assert len({attempt["sqlite_path"] for attempt in attempts}) == 1, attempts
+    assert len({attempt["db_path"] for attempt in attempts}) == 1, attempts
+    assert all(attempt["flock_module"] == "fcntl" for attempt in attempts), attempts
+    assert all(attempt["flock_type"] == "builtins.builtin_function_or_method" for attempt in attempts), attempts
+    assert all(attempt["start_method"] == "fork" and attempt["os_name"] == "posix" for attempt in attempts), attempts
+    assert sorted(attempt["queued"] for attempt in attempts) == [False, True], attempts
+    assert all(len(attempt["reviews"]) == 1 for attempt in attempts), attempts
+    assert attempts[0]["reviews"] == attempts[1]["reviews"], attempts
+    assert all(len(attempt["checks"]) == 1 for attempt in attempts), attempts
+    assert sorted(attempt["checks"][0]["already_reviewed"] for attempt in attempts) == [False, True], attempts
+    assert all(attempt["checks"][0]["db_path"] == attempt["db_path"] for attempt in attempts), attempts
+
+
+@pytest.mark.unit
+def test_run_store_canonicalizes_alias_to_not_yet_created_database(tmp_path: Path) -> None:
+    target = tmp_path / "nested" / "runs.sqlite3"
+    target.parent.mkdir()
+    alias = tmp_path / "runs-alias.sqlite3"
+    alias.symlink_to(target)
+
+    store = RunStore(alias)
+    try:
+        assert store.path == target.resolve()
+        assert target.is_file()
+    finally:
+        store.close()
+
+
+@pytest.mark.unit
+def test_auto_review_fails_closed_when_runner_persists_to_another_store(
+    tmp_path: Path, auto_on: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    author_store = RunStore(tmp_path / "verification.sqlite3")
+    runner_store = RunStore(tmp_path / "runner.sqlite3")
+    author = _add(author_store, _run("run-author"), pr_number=42)
+    runner = _Runner(runner_store, _roster("gemini"))
+
+    with caplog.at_level(logging.WARNING, logger="dashboard.staff.review"):
+        queued = auto_review_if_eligible(
+            author, _verified(42), store=author_store, runner=runner, gh_probe=_Trailers([])
+        )
+
+    assert queued is False
+    assert runner.submitted == []
+    assert "store identity mismatch" in caplog.text
+
+
+@pytest.mark.unit
+def test_auto_review_allows_distinct_store_handles_for_same_database(tmp_path: Path, auto_on: None) -> None:
+    db = tmp_path / "runs.sqlite3"
+    alias = tmp_path / "runs-alias.sqlite3"
+    alias.symlink_to(db)
+    verification_store = RunStore(db)
+    runner_store = RunStore(alias)
+    author = _add(verification_store, _run("run-author"), pr_number=42)
+    runner = _Runner(runner_store, _roster("gemini"))
+
+    assert (
+        auto_review_if_eligible(author, _verified(42), store=verification_store, runner=runner, gh_probe=_Trailers([]))
+        is True
+    )
+    assert len(runner.submitted) == 1

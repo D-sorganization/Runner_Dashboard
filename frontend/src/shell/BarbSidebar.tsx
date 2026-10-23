@@ -36,28 +36,78 @@ export interface BarbSidebarProps {
 }
 
 export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbSidebarProps): React.ReactElement {
-  const sc = useStaffConsole({ initialRole: "barb" });
+  const sc = useStaffConsole({ initialRole: "barb", restoreInitialRoleThread: true });
   const [composerPrefill, setComposerPrefill] = useState("");
+  const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    if (mobile && document.activeElement instanceof HTMLElement) {
+      restoreFocusRef.current = document.activeElement;
+    }
     closeButtonRef.current?.focus();
+    const siblings = mobile && sidebarRef.current?.parentElement
+      ? Array.from(sidebarRef.current.parentElement.children)
+          .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== sidebarRef.current)
+          .map((element) => ({ element, wasInert: element.inert || element.hasAttribute("inert") }))
+      : [];
+    siblings.forEach(({ element }) => {
+      element.inert = true;
+      element.setAttribute("inert", "");
+    });
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      siblings.forEach(({ element, wasInert }) => {
+        element.inert = wasInert;
+        if (wasInert) element.setAttribute("inert", "");
+        else element.removeAttribute("inert");
+      });
+      if (mobile && restoreFocusRef.current?.isConnected) {
+        restoreFocusRef.current.focus();
+      }
+      restoreFocusRef.current = null;
+    };
+  }, [open, onClose, mobile]);
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!mobile || !open || event.key !== "Tab") return;
+    const panel = sidebarRef.current;
+    if (!panel) return;
+    const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
+    if (focusable.length === 0) {
+      event.preventDefault();
+      panel.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
 
   return (
     <aside
+      ref={sidebarRef}
       id="barb-sidebar"
       className={`barb-sidebar${open ? " barb-sidebar--open" : ""}${mobile ? " barb-sidebar--mobile" : ""}`}
       role={mobile ? "dialog" : undefined}
       aria-modal={mobile ? true : undefined}
       aria-label="Ask Barb"
       aria-hidden={!open}
+      onKeyDown={handleKeyDown}
       data-testid="barb-sidebar"
     >
       <header className="barb-sidebar__header">

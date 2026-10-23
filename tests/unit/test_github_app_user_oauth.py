@@ -12,8 +12,9 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
+
+pytestmark = pytest.mark.unit
 
 _BACKEND = Path(__file__).resolve().parents[2] / "backend"
 if str(_BACKEND) not in sys.path:
@@ -29,7 +30,10 @@ from github_app_user_oauth import (  # noqa: E402
     load_credentials,
     save_credentials,
 )
-from oauth_config import EXPECTED_CALLBACK_URL, EXPECTED_GITHUB_ORG, EXPECTED_PUBLIC_ORIGIN  # noqa: E402
+from oauth_config import EXPECTED_GITHUB_ORG, OAUTH_CALLBACK_PATH  # noqa: E402
+
+_HUB_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+_HUB_CALLBACK = f"{_HUB_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 _FAKE_ACCESS = "ghu_" + "A" * 36
 _FAKE_REFRESH = "ghr_" + "B" * 36
@@ -41,8 +45,8 @@ def _oauth_env() -> dict[str, str]:
         "GITHUB_CLIENT_ID": "Iv1.githubAppClient",
         "GITHUB_CLIENT_SECRET": "x" * 40,  # pragma: allowlist secret
         "GITHUB_ORG": EXPECTED_GITHUB_ORG,
-        "DASHBOARD_PUBLIC_ORIGIN": EXPECTED_PUBLIC_ORIGIN,
-        "GITHUB_OAUTH_CALLBACK_URL": EXPECTED_CALLBACK_URL,
+        "DASHBOARD_PUBLIC_ORIGIN": _HUB_ORIGIN,
+        "GITHUB_OAUTH_CALLBACK_URL": _HUB_CALLBACK,
         "SESSION_SECRET": "s" * 64,  # pragma: allowlist secret
         "DASHBOARD_TLS": "1",
     }

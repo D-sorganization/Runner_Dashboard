@@ -15,7 +15,7 @@ def test_fleet_query_mcp_tool_registration() -> None:
     assert cmd.tool == "fleet_query"
     schema = cmd.input_schema()
     props = schema["properties"]
-    assert set(props["source"]["enum"]) == {"context", "library", "knowledge", "memory"}
+    assert set(props["source"]["enum"]) == {"context", "library", "knowledge", "memory", "codebase"}
     assert "fetch" in props["op"]["enum"]
     assert "cite" in props
     assert "run_id" in props
@@ -27,6 +27,37 @@ def test_fleet_query_mcp_tool_registration() -> None:
     assert "fleet_library_search" not in fleet_tools.BY_TOOL
     assert "fleet_knowledge_search" not in fleet_tools.BY_TOOL
     assert "fleet_request_context" not in fleet_tools.BY_TOOL
+
+
+def test_fleet_query_codebase_returns_verified_citations(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FleetClient("http://127.0.0.1:9999", token="svc_test_tok")
+    seen: dict[str, Any] = {}
+
+    def mock_request(method: str, path: str, **kwargs: Any) -> Any:
+        seen.update(method=method, path=path, **kwargs)
+        return {
+            "stale": False,
+            "passages": [
+                {
+                    "repo": "Runner_Dashboard",
+                    "source": "SPEC.md",
+                    "title": "Architecture",
+                    "text": "A verified codebase passage.",
+                    "citation": "[ref:hub:codebase:Runner_Dashboard@11111111:SPEC.md#L3-L4]",
+                    "commit": "111111111111",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(client, "request", mock_request)
+    result = client.fleet_query(source="codebase", query="panel context", k=2)
+
+    assert seen["method"] == "GET"
+    assert seen["path"] == "/api/v1/staff/knowledge/cartographer/search"
+    assert seen["params"] == {"q": "panel context", "k": 2}
+    assert result["source"] == "codebase" and result["stale"] is False
+    assert result["results"][0]["citation"].startswith("[ref:hub:codebase:")
+    assert result["results"][0]["ref"] == result["results"][0]["citation"]
 
 
 def test_fleet_query_compact_snippets_and_result_caps(monkeypatch: pytest.MonkeyPatch) -> None:

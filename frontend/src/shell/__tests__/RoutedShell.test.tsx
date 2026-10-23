@@ -11,7 +11,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { act, render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
@@ -78,8 +78,8 @@ vi.mock("../../pages/Staff/StaffPage", () => ({
 }));
 
 vi.mock("../../pages/StaffConsole/Mobile", () => ({
-  default: () => <div data-testid="mobile-staff">Mobile Staff</div>,
-  StaffConsoleMobile: () => <div data-testid="mobile-staff">Mobile Staff</div>,
+  default: (props: { initialView?: string }) => <div data-testid="mobile-staff" data-initial-view={props.initialView}>Mobile Staff</div>,
+  StaffConsoleMobile: (props: { initialView?: string }) => <div data-testid="mobile-staff" data-initial-view={props.initialView}>Mobile Staff</div>,
 }));
 
 vi.mock("../../pages/FleetCommand/FleetCommandPage", () => ({
@@ -251,6 +251,28 @@ describe("RoutedShell — URL is the source of truth", () => {
     expect(await screen.findByTestId("active-tab")).toHaveTextContent("queue");
   });
 
+  it("accepts assistant navigation only for registered tab ids", async () => {
+    renderAt("/");
+    await screen.findByTestId("active-tab");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "queue" } }));
+    });
+    expect(await screen.findByTestId("pathname")).toHaveTextContent("/work");
+    expect(await screen.findByTestId("native-queue")).toBeInTheDocument();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "https://example.com" } }));
+    });
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "/fleet" } }));
+      window.dispatchEvent(new CustomEvent("runner-dashboard:navigate", { detail: { tabId: "not-a-real-tab" } }));
+    });
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+  });
+
   it("redirects retired /staff/maxwell bookmarks to the Staff Console (#1338)", async () => {
     renderAt("/staff/maxwell", { withToaster: true });
     await waitFor(() =>
@@ -357,6 +379,13 @@ describe("RoutedShell — URL is the source of truth", () => {
       "operations",
     );
     expect(await screen.findByTestId("native-operations")).toBeInTheDocument();
+  });
+
+  it("opens the mobile Staff route on its chat-first home", async () => {
+    breakpointMock.mockReturnValue("md");
+    renderAt("/staff");
+
+    expect(await screen.findByTestId("mobile-staff")).toHaveAttribute("data-initial-view", "home");
   });
 
   it.each([

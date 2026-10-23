@@ -1,8 +1,10 @@
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const { legacyFetchMock } = vi.hoisted(() => ({ legacyFetchMock: vi.fn() }));
 vi.mock("../../../lib/api", () => ({ legacyFetch: legacyFetchMock }));
+vi.mock("../AgentsSyncPanel", () => ({ AgentsSyncPanel: () => <section><h2>Repository AGENTS.md Sync</h2></section> }));
+beforeEach(() => legacyFetchMock.mockReset());
 
 import { ContextPage, type ContextPackInfo, type ContextLesson, type ContextRunRecord } from "../ContextPage";
 
@@ -61,11 +63,19 @@ describe("ContextPage", () => {
     expect(screen.getByText(/builtin fallback warning/i)).toBeInTheDocument();
   });
 
-  it("labels standards-pack comparison honestly and discloses missing AGENTS sync data", () => {
+  it("labels Tier-0 run comparison separately from live AGENTS sync data", () => {
     render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
-    expect(screen.getByText(/AGENTS.md sync versions are not exposed/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Repository AGENTS.md Sync" })).toBeInTheDocument();
+    expect(screen.queryByText(/AGENTS.md sync versions are not exposed/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("repo-status-Runner_Dashboard")).toHaveTextContent(/matches current Tier-0/i);
     expect(screen.getByTestId("repo-status-Repository_Management")).toHaveTextContent(/different Tier-0 version/i);
+  });
+
+  it("renders live managed-block AGENTS sync separately from Tier-0 run comparison", () => {
+    render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
+    expect(screen.getByRole("heading", { name: "Repository AGENTS.md Sync" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Standards Pack Version at Latest Recorded Run" })).toBeInTheDocument();
+    expect(screen.queryByText(/AGENTS.md sync versions are not exposed/i)).not.toBeInTheDocument();
   });
 
   it("renders lesson queue with provenance, expiration, quarantine, and NEVER shows barb-only entries", () => {
@@ -115,7 +125,7 @@ describe("ContextPage", () => {
   });
 
   it("reports failed lesson telemetry as unavailable instead of an empty queue", async () => {
-    legacyFetchMock.mockImplementation((url: string) => Promise.resolve(
+    legacyFetchMock.mockImplementation((url: string = "") => Promise.resolve(
       url.includes("memory")
         ? { ok: false, status: 403, json: async () => ({ detail: "Forbidden" }) }
         : { ok: true, status: 200, json: async () => url.includes("summary")
@@ -130,6 +140,39 @@ describe("ContextPage", () => {
     expect(retry).toBeInTheDocument();
     fireEvent.click(retry);
     await waitFor(() => expect(legacyFetchMock.mock.calls.filter(([url]) => String(url).includes("memory"))).toHaveLength(2));
+  });
+
+  it("distinguishes missing per-run token estimates from recorded zero", () => {
+    const run: ContextRunRecord = {
+      id: "run-legacy", role: "barb", repo: "Runner_Dashboard", status: "succeeded", created_at: "2026-10-23T00:00:00Z",
+      context_stamp: JSON.stringify({ token_estimates: { tier0_standards: 100, tier1_lessons: 0 } }),
+    };
+    render(<ContextPage pack={samplePack} lessons={[]} runs={[run]} />);
+    const row = screen.getByRole("row", { name: /run-legacy/i });
+    expect(row).toHaveTextContent("100 / Not recorded / 0");
+    expect(row).toHaveTextContent("100 known tokens");
+    expect(row).toHaveTextContent("Partial");
+  });
+
+  it("extracts Tier-0 digest from a plus-delimited standards pin", async () => {
+    legacyFetchMock.mockImplementation((url: string = "") => Promise.resolve({
+      ok: true,
+      status: 200,
+      json: async () => url.includes("summary")
+        ? { standards_version: "1.1.0", standards_pin: "fleet-standards@1.1.0+646df67582c6" }
+        : url.includes("skills")
+          ? { skills: sampleSkills }
+          : url.includes("agents-sync")
+            ? { source: "Repository_Management/AGENTS.md", source_ref: "main", status: "current", reason: null, checked_at: "2026-10-23T00:00:00Z", source_digest: "abc", source_blocks: {}, repositories: [] }
+            : url.includes("runs") ? { runs: [] } : { entries: [] },
+    }));
+    render(<ContextPage />);
+    expect(await screen.findByText("646df67582c6")).toBeInTheDocument();
+  });
+
+  it("marks the page for its scoped responsive layout", () => {
+    const { container } = render(<ContextPage pack={samplePack} lessons={[]} runs={[]} />);
+    expect(container.querySelector(".context-page")).toBeInTheDocument();
   });
 
   it("handles empty and error states gracefully", () => {

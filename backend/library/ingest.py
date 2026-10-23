@@ -18,13 +18,16 @@ from library.collections import load_collections, topics_for_rel_path
 from library.db import LibraryStore, init_library_db
 from library.search import estimate_tokens
 from library.sources import get_source, matches_source_globs, seed_default_source
+from library.text_extraction import extract_text_passages as _extract_text_passages
+from library.text_extraction import parse_filename as _parse_filename
+from library.text_extraction import year as _year
 from pypdf import PdfReader
 
 log = logging.getLogger("dashboard.library.ingest")
 _INGEST_INTERVAL_S = float(os.environ.get("LIBRARY_INGEST_INTERVAL_S", "3600"))
+_BACKGROUND_INGEST_MAX_FILES = int(os.environ.get("LIBRARY_BACKGROUND_INGEST_MAX_FILES", "250"))
 _MIN_PAGE_CHARS = 12
 _MIN_PDF_BYTES = 4096
-_YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _MAX_FILE_BYTES = 10 * 1024 * 1024
 _INGEST_SUFFIXES = {".pdf", ".epub", ".md", ".markdown", ".txt"}
 
@@ -35,7 +38,8 @@ def ingest_directory(
     db_path: Path | None = None,
     source_id: str = "default",
     max_files: int | None = None,
-) -> dict[str, int | bool]:
+    start_after: str | None = None,
+) -> dict[str, int | bool | str | None]:
     if max_files is not None and (isinstance(max_files, bool) or not isinstance(max_files, int) or max_files <= 0):
         raise ValueError("max_files must be a positive integer")
     source_root = source_root.resolve()
@@ -48,25 +52,53 @@ def ingest_directory(
         include_globs, exclude_globs = source["include_globs"], source["exclude_globs"]
     except LookupError:
         include_globs, exclude_globs = [], []
-    started = datetime.now(UTC).isoformat()
-    stats = {"files_seen": 0, "files_indexed": 0, "files_skipped": 0, "files_rejected": 0, "files_removed": 0}
-    seen_paths: set[str] = set()
-    with closing(LibraryStore(db).connect()) as conn:
-        run_id = conn.execute(
-            "INSERT INTO ingest_runs (started_at, source_root) VALUES (?, ?)",
-            (started, source_root.as_posix()),
-        ).lastrowid
-        if max_files is None:
-            paths = sorted(
-                _eligible_paths(source_root, include_globs, exclude_globs),
-                key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()),
-            )
-        else:
+    paths: list[Path] = []
+    complete_seen_paths: set[str] | None = None
+    if max_files is None:
+        paths = list(_eligible_paths(source_root, include_globs, exclude_globs))
+        paths.sort(key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()))
+    elif start_after:
+        found_cursor = False
+        for path in _eligible_paths(source_root, include_globs, exclude_globs):
+            if not found_cursor:
+                found_cursor = path.relative_to(source_root).as_posix() == start_after
+                continue
+            paths.append(path)
+            if len(paths) == max_files:
+                break
+        if not found_cursor:
             paths = []
             for path in _eligible_paths(source_root, include_globs, exclude_globs):
                 paths.append(path)
                 if len(paths) == max_files:
                     break
+        elif len(paths) < max_files:
+            # This pass reached the traversal tail. Enumerate the whole source
+            # before opening a write transaction so deletions can be reconciled
+            # safely after all bounded batches have advanced through the source.
+            complete_paths = list(_eligible_paths(source_root, include_globs, exclude_globs))
+            complete_seen_paths = {path.relative_to(source_root).as_posix() for path in complete_paths}
+            if not paths:
+                paths = complete_paths[:max_files]
+    else:
+        for path in _eligible_paths(source_root, include_globs, exclude_globs):
+            paths.append(path)
+            if len(paths) == max_files:
+                break
+    # Only a complete enumeration, including a wrapped bounded pass, can
+    # safely reconcile removals.
+    scan_complete = max_files is None or complete_seen_paths is not None
+    next_cursor = paths[-1].relative_to(source_root).as_posix() if paths else start_after
+    if scan_complete:
+        next_cursor = None
+    started = datetime.now(UTC).isoformat()
+    stats = {"files_seen": 0, "files_indexed": 0, "files_skipped": 0, "files_rejected": 0, "files_removed": 0}
+    seen_paths: set[str] = complete_seen_paths or set()
+    with closing(LibraryStore(db).connect()) as conn:
+        run_id = conn.execute(
+            "INSERT INTO ingest_runs (started_at, source_root) VALUES (?, ?)",
+            (started, source_root.as_posix()),
+        ).lastrowid
         for path in paths:
             stats["files_seen"] += 1
             rel = path.relative_to(source_root).as_posix()
@@ -101,12 +133,10 @@ def ingest_directory(
                     stats["files_rejected"] += 1
                     continue
             stats["files_indexed"] += 1
-        if max_files is None:
+        if scan_complete:
             stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
             _retire_orphan_works(conn)
-        notes = (
-            None if max_files is None else f"bounded incomplete scan (max_files={max_files}); removals not reconciled"
-        )
+        notes = None if scan_complete else f"bounded incomplete scan (max_files={max_files}); removals not reconciled"
         conn.execute(
             "UPDATE ingest_runs SET finished_at=?, files_seen=?, files_indexed=?, files_skipped=?,"
             " files_rejected=?, files_removed=?, notes=? WHERE id=?",
@@ -122,11 +152,11 @@ def ingest_directory(
             ),
         )
         conn.commit()
-    return {**stats, "scan_complete": max_files is None}
+    return {**stats, "scan_complete": scan_complete, "next_cursor": next_cursor}
 
 
 def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: list[str]) -> Iterator[Path]:
-    for current, directories, filenames in os.walk(source_root):
+    for current, directories, filenames in os.walk(source_root, onerror=_raise_walk_error):
         directories.sort()
         for filename in sorted(filenames):
             path = Path(current) / filename
@@ -136,6 +166,10 @@ def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: 
                 and matches_source_globs(path.relative_to(source_root).as_posix(), include_globs, exclude_globs)
             ):
                 yield path
+
+
+def _raise_walk_error(error: OSError) -> None:
+    raise error
 
 
 def _should_skip(conn: sqlite3.Connection, source_id: str, rel: str, mtime: float, size: int) -> bool:
@@ -334,32 +368,6 @@ def _replace_epub_passages(
     _insert_passages(conn, work_id, title_s, [(sec, idx, idx, txt) for idx, (sec, txt) in enumerate(chapters, start=1)])
 
 
-def _extract_text_passages(raw: bytes, fmt: str) -> list[tuple[str | None, int, int, str]]:
-    lines = raw.decode("utf-8", errors="replace").splitlines(keepends=True)
-    if not lines:
-        return []
-    passages: list[tuple[str | None, int, int, str]] = []
-    sec: str | None = None
-    cur: list[str] = []
-    start: int = 1
-    chars: int = 0
-    for idx, line in enumerate(lines, start=1):
-        stripped = line.strip()
-        is_hd = fmt in ("md", "markdown") and stripped.startswith("#")
-        if (is_hd or chars + len(line) > 1500) and cur:
-            txt = "".join(cur).strip()
-            if txt:
-                passages.append((sec, start, idx - 1, txt))
-            cur, chars, start = [], 0, idx
-        if is_hd:
-            sec = stripped.lstrip("#").strip() or None
-        cur.append(line)
-        chars += len(line)
-    if cur and (txt := "".join(cur).strip()):
-        passages.append((sec, start, len(lines), txt))
-    return passages
-
-
 def _index_text(
     conn: sqlite3.Connection,
     path: Path,
@@ -383,16 +391,6 @@ def _index_text(
     return True
 
 
-def _parse_filename(stem: str) -> tuple[str | None, str | None, int | None]:
-    stem = stem.strip()
-    if not stem:
-        return None, None, None
-    if " - " in stem:
-        author, title = (p.strip() or None for p in stem.split(" - ", 1))
-        return author, title, _year(stem)
-    return None, stem, _year(stem)
-
-
 def _merge_pdf_meta(
     author: str | None, title: str | None, year: int | None, pdf_meta: dict[str, Any] | None
 ) -> tuple[str | None, str | None, int | None]:
@@ -406,14 +404,6 @@ def _merge_pdf_meta(
     author = author or _s(pdf_meta.get("/Author"))
     title = title or _s(pdf_meta.get("/Title"))
     return author, title, year or _year(f"{author or ''} {title or ''}")
-
-
-def _year(text: str) -> int | None:
-    match = _YEAR_RE.search(text)
-    if not match:
-        return None
-    year = int(match.group(0))
-    return year if 1800 <= year <= 2100 else None
 
 
 def _page_text(reader: PdfReader, page_index: int) -> str:
@@ -460,34 +450,38 @@ def _extract_epub(raw: bytes) -> tuple[str | None, str | None, list[tuple[str, s
         return _dc("creator"), _dc("title"), chapters
 
 
-def ingest_sources(db_path: Path | None = None) -> dict[str, dict[str, int]]:
+def ingest_sources(
+    db_path: Path | None = None, *, max_files: int | None = None
+) -> dict[str, dict[str, int | bool | str | None]]:
     db = init_library_db(db_path)
     seed_default_source(db)
-    results: dict[str, dict[str, int]] = {}
+    results: dict[str, dict[str, int | bool | str | None]] = {}
     with closing(LibraryStore(db).connect()) as conn:
-        sources = conn.execute("SELECT id, root_path FROM library_sources WHERE status='active' ORDER BY id").fetchall()
-    for source_id, root_path in sources:
+        sources = conn.execute(
+            "SELECT id, root_path, last_ingest_path FROM library_sources WHERE status='active' ORDER BY id"
+        ).fetchall()
+    for source_id, root_path, last_ingest_path in sources:
         p = Path(root_path)
         if not p.is_dir():
             continue
-        stats = ingest_directory(p, db_path=db, source_id=source_id)
+        stats = ingest_directory(p, db_path=db, source_id=source_id, max_files=max_files, start_after=last_ingest_path)
         results[source_id] = stats
         with closing(LibraryStore(db).connect()) as conn:
             conn.execute(
-                "UPDATE library_sources SET last_ingest_at=? WHERE id=?",
-                (datetime.now(UTC).isoformat(), source_id),
+                "UPDATE library_sources SET last_ingest_at=?, last_ingest_path=? WHERE id=?",
+                (datetime.now(UTC).isoformat(), stats["next_cursor"], source_id),
             )
             conn.commit()
     return results
 
 
-def start_library_ingest_loop() -> None:
+def start_library_ingest_loop() -> asyncio.Task[None]:
     async def _loop() -> None:
         while True:
             try:
-                ingest_sources()
+                await asyncio.to_thread(ingest_sources, max_files=_BACKGROUND_INGEST_MAX_FILES)
             except Exception as exc:  # noqa: BLE001
                 log.warning("library ingest failed: %s", exc)
             await asyncio.sleep(_INGEST_INTERVAL_S)
 
-    asyncio.create_task(_loop())
+    return asyncio.create_task(_loop())

@@ -149,7 +149,7 @@ class ChatTurnRunner:
         context_blocks = cap_chat_context(
             (
                 f"## Fleet standards Tier 0 ({st.pin})\n\n{st.body}",
-                build_knowledge_turn_block(role, raw_prompt),
+                await asyncio.to_thread(build_knowledge_turn_block, role, raw_prompt),
                 f"## Handoff digest\n\n{digest[:2400]}" if digest else None,
                 await build_fleet_context_block(role, raw_prompt=raw_prompt),
                 await build_issue_context_block(role, raw_prompt),

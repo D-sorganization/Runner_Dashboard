@@ -727,10 +727,10 @@ class FleetClient:
     ) -> dict[str, Any]:
         """Unified fleet context query tool (#2223).
 
-        Exposes on-request context across sources ('context', 'library', 'knowledge', 'memory').
+        Exposes on-request context across sources ('context', 'library', 'knowledge', 'memory', 'codebase').
         Ceilings enforced: top-k <= 5, library snippets <= 400 UTF-8 bytes, citations included.
         """
-        valid_sources = ("context", "library", "knowledge", "memory")
+        valid_sources = ("context", "library", "knowledge", "memory", "codebase")
         _check(source in valid_sources, f"source must be one of {valid_sources}")
         valid_ops = ("search", "get", "request", "fetch")
         _check(op in valid_ops, f"op must be one of {valid_ops}")
@@ -740,6 +740,7 @@ class FleetClient:
             run_id is None or (source == "library" and op in ("search", "fetch")),
             "run_id is only supported for library search or fetch",
         )
+        _check(source != "codebase" or op == "search", "codebase only supports search")
         effective_run_id = run_id
         if effective_run_id is None and source == "library" and op in ("search", "fetch"):
             effective_run_id = os.environ.get("STAFF_RUN_ID")
@@ -895,6 +896,38 @@ class FleetClient:
             return {
                 "status": "ok",
                 "source": "library",
+                "results": results,
+                "has_more": len(items) > (offset + effective_k),
+            }
+
+        elif source == "codebase":
+            if not query or not query.strip():
+                raise FleetArgumentError("query is required for codebase search")
+            params = {"q": query, "k": min(100, effective_k + offset)}
+            data = self.request("GET", "/api/v1/staff/knowledge/cartographer/search", params=params)
+            items = data.get("passages", []) if isinstance(data, dict) else []
+            if not isinstance(items, list):
+                items = []
+            page = items[offset : offset + effective_k]
+            results = [
+                {
+                    "id": f"{item.get('repo', '')}:{item.get('source', '')}",
+                    "title": item.get("title") or item.get("source") or "Codebase passage",
+                    "snippet": str(item.get("text", ""))[:400],
+                    "ref": item.get("citation"),
+                    "citation": item.get("citation"),
+                    "repo": item.get("repo"),
+                    "source": item.get("source"),
+                    "commit": item.get("commit"),
+                    "content_hash": item.get("content_hash"),
+                }
+                for item in page
+                if isinstance(item, dict) and item.get("citation")
+            ]
+            return {
+                "status": "ok",
+                "source": "codebase",
+                "stale": bool(data.get("stale", True)) if isinstance(data, dict) else True,
                 "results": results,
                 "has_more": len(items) > (offset + effective_k),
             }

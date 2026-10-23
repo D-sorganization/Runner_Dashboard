@@ -794,6 +794,17 @@
         "title": "Body_get_prs_api_prs_get",
         "type": "object"
       },
+      "BrowserCsrfRequest": {
+        "properties": {
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["thread_id"],
+        "title": "BrowserCsrfRequest",
+        "type": "object"
+      },
       "BudgetSummary": {
         "description": "Budget burn for the tab. ``limit_usd <= 0`` means \"no limit configured\".",
         "properties": {
@@ -1283,6 +1294,61 @@
         },
         "required": ["page", "message"],
         "title": "ClientErrorPayload",
+        "type": "object"
+      },
+      "CodebaseRunReference": {
+        "additionalProperties": false,
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "commit_sha": {
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "kind": {
+            "const": "codebase",
+            "title": "Kind",
+            "type": "string"
+          },
+          "line_end": {
+            "title": "Line End",
+            "type": "integer"
+          },
+          "line_start": {
+            "title": "Line Start",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "node",
+          "repo",
+          "commit_sha",
+          "relative_path",
+          "line_start",
+          "line_end",
+          "content_hash",
+          "citation"
+        ],
+        "title": "CodebaseRunReference",
         "type": "object"
       },
       "CreateActionProposalRequest": {
@@ -2277,6 +2343,61 @@
         },
         "required": ["granted", "ttl_seconds", "idle_runners", "free_slots"],
         "title": "LeaseResponse",
+        "type": "object"
+      },
+      "LibraryRunReference": {
+        "additionalProperties": false,
+        "properties": {
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "file_sha256": {
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "kind": {
+            "const": "library",
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "page_end": {
+            "title": "Page End",
+            "type": "integer"
+          },
+          "page_start": {
+            "title": "Page Start",
+            "type": "integer"
+          },
+          "passage_id": {
+            "title": "Passage Id",
+            "type": "integer"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "work_id": {
+            "title": "Work Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "node",
+          "source_id",
+          "work_id",
+          "passage_id",
+          "file_sha256",
+          "page_start",
+          "page_end",
+          "citation"
+        ],
+        "title": "LibraryRunReference",
         "type": "object"
       },
       "MaxwellChatBody": {
@@ -5355,6 +5476,28 @@
           "query": {
             "title": "Query",
             "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale"
           }
         },
         "required": ["pack_id", "query", "count"],
@@ -6527,6 +6670,39 @@
         },
         "required": ["id"],
         "title": "StaffRunRecord",
+        "type": "object"
+      },
+      "StaffRunReferencesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "references": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "codebase": "#/components/schemas/CodebaseRunReference",
+                  "library": "#/components/schemas/LibraryRunReference"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/LibraryRunReference"
+                },
+                {
+                  "$ref": "#/components/schemas/CodebaseRunReference"
+                }
+              ]
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": ["run_id", "references"],
+        "title": "StaffRunReferencesResponse",
         "type": "object"
       },
       "StaffRunsResponse": {
@@ -8553,6 +8729,58 @@
         ],
         "summary": "Get Node Audit Log",
         "tags": ["orchestration", "orchestration", "fleet"]
+      }
+    },
+    "/api/auth/browser-csrf": {
+      "post": {
+        "description": "Issue a session/thread proof for a same-origin browser mutation.",
+        "operationId": "browser_csrf_token_api_auth_browser_csrf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserCsrfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Browser Csrf Token Api Auth Browser Csrf Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Browser Csrf Token",
+        "tags": ["auth"]
       }
     },
     "/api/auth/callback": {
@@ -21589,7 +21817,7 @@
     },
     "/api/v1/staff/knowledge/{pack_id}/search": {
       "get": {
-        "description": "Search knowledge pack by BM25 query (Issue #1479).",
+        "description": "Search knowledge packs; optional run_id records emitted Cartographer citations for that run owner.",
         "operationId": "search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get",
         "parameters": [
           {
@@ -21637,6 +21865,24 @@
               "description": "Include superseded passages",
               "title": "Include Superseded",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
             }
           }
         ],
@@ -23430,6 +23676,55 @@
         ],
         "summary": "Cancel Run V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/runs/{run_id}/references": {
+      "get": {
+        "description": "Return text-free reference identities for a run owned by the caller.",
+        "operationId": "run_references_v1_api_v1_staff_runs__run_id__references_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffRunReferencesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Run References V1",
+        "tags": ["staff-v1", "staff-run-references"]
       }
     },
     "/api/v1/staff/runs/{run_id}/stream": {

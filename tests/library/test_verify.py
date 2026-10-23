@@ -105,3 +105,28 @@ def test_verify_requires_run_ledger_membership(tmp_path: Path) -> None:
         ],
     )
     assert verify_content(db, cite, run_id="run-1")["citations"][0]["verified"] is True
+
+
+def test_verify_requires_exact_node_in_run_ledger(tmp_path: Path) -> None:
+    db, digest = _indexed(tmp_path)
+    record_retrievals(
+        db,
+        run_id="run-1",
+        references=[
+            {
+                "node": "desk",
+                "source_id": "shared",
+                "work_id": 1,
+                "passage_id": 19,
+                "file_sha256": digest,
+                "page_start": 7,
+                "page_end": 8,
+            }
+        ],
+    )
+    cite = f"[ref:other-node:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+
+    result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}", run_id="run-1")
+
+    assert result["citations"][0]["status"] == "node_mismatch"
+    assert result["citations"][0]["verified"] is False

@@ -486,7 +486,8 @@ def test_anti_phantom_guard_recognizes_dashboard_code_roots() -> None:
     for text in (workflow, action):
         assert "backend/" in text
         assert "frontend/src/" in text
-    assert "^(backend/|frontend/src/|src/|rust_core/|api/)" in workflow
+    assert "clients/" in workflow
+    assert "^(backend/|clients/|frontend/src/|src/|rust_core/|api/)" in workflow
     assert "phantom_guard_issue_paths.py" in workflow
     assert "phantom_guard_issue_paths.py" in action
 

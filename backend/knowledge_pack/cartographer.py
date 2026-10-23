@@ -94,6 +94,11 @@ def build_cartographer_pack(repos: Mapping[str, Path], output: Path | None = Non
     return build_pack(manifest, clean, pack_path)
 
 
+def cartographer_manifest(repos: Mapping[str, Path]) -> PackManifest:
+    """Return the authoritative fixed-source manifest for configured checkout roots."""
+    return _manifest(repos)[1]
+
+
 def estimate_context_tokens(text: str) -> int:
     """Use UTF-8 bytes as a conservative upper bound for byte-token models."""
     if not isinstance(text, str):
@@ -152,6 +157,11 @@ def _format_reference(passage: Passage, root: Path) -> str | None:
     )
 
 
+def format_codebase_reference(passage: Passage, root: Path) -> str | None:
+    """Return a canonical reference only for an excerpt proven against committed lines."""
+    return _format_reference(passage, root)
+
+
 def _is_map(passage: Passage) -> bool:
     return passage.source == "docs/codemap.md" or passage.source.startswith("docs/architecture/")
 
@@ -200,8 +210,14 @@ def _recent_adr_passages(repos: Mapping[str, Path], pack: KnowledgePack) -> list
     return passages
 
 
-def _select_passages(pack: KnowledgePack, topic: str, repos: Mapping[str, Path]) -> list[Passage]:
+def _select_passages(
+    pack: KnowledgePack, topic: str, repos: Mapping[str, Path], topic_only: bool = False
+) -> list[Passage]:
     """Prioritize maps, contracts and invariants before topic hits and recent ADRs."""
+    if topic_only:
+        # A chat answer should prioritize its question. Three matches leave room
+        # for full citation locators on hosts with long node names.
+        return pack.search(topic, k=3)
     selected: list[Passage] = []
     seen: set[tuple[str, str, str]] = set()
 
@@ -254,7 +270,30 @@ def _render_context(passages: list[Passage], max_tokens: int, repos: Mapping[str
         if not excerpt:
             continue
         result += block
-    return result.rstrip()
+    return result.rstrip() if result != _REFERENCE else ""
+
+
+def render_codebase_context(passages: list[Passage], repos: Mapping[str, Path], max_tokens: int = 800) -> str:
+    """Render indexed, in-scope hits with committed proof and a UTF-8 byte bound.
+
+    This read-only path never builds a pack or scans checkout directories.
+    """
+    if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 1:
+        raise ValueError("max_tokens must be a positive integer")
+    if not repos:
+        return ""
+    from .sources import matches
+
+    clean, manifest = _manifest(repos)
+    allowed = [
+        passage
+        for passage in passages
+        if passage.repo in clean
+        and any(spec.repo == passage.repo and matches(spec, passage.source) for spec in manifest.sources)
+        and not (clean[passage.repo] / passage.source).is_symlink()
+        and (clean[passage.repo] / passage.source).resolve().is_relative_to(clean[passage.repo])
+    ]
+    return _render_context(allowed, max_tokens, clean)
 
 
 def preload_panel_context(
@@ -263,17 +302,22 @@ def preload_panel_context(
     max_tokens: int = 800,
     *,
     knowledge_dir: Path | None = None,
+    topic_only: bool = False,
 ) -> str:
     """Return cited, topic-matched context for panel prompts, capped at max_tokens.
 
     Preconditions: repos maps repository names to local checkouts, topic is
     non-blank, and max_tokens is a positive integer. Source text is treated as
     untrusted reference material. Missing or unreadable packs return an empty string.
+    topic_only selects compact question-matched excerpts for role chat; panels
+    retain architecture maps and invariants alongside topic matches.
     """
     if not isinstance(topic, str) or not topic.strip():
         raise ValueError("topic must be a non-empty string")
     if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 1:
         raise ValueError("max_tokens must be a positive integer")
+    if not isinstance(topic_only, bool):
+        raise ValueError("topic_only must be boolean")
     clean, _ = _manifest(repos)
     pack_path = (knowledge_dir or get_knowledge_dir()) / f"{_PACK_ID}.sqlite"
     try:
@@ -292,7 +336,7 @@ def preload_panel_context(
             if pack is None:
                 build_cartographer_pack(clean, pack_path)
                 pack = KnowledgePack.open(pack_path)
-            passages = _select_passages(pack, topic.strip(), clean)
+            passages = _select_passages(pack, topic.strip(), clean, topic_only=topic_only)
         return _render_context(passages, max_tokens, clean)
     except Exception as exc:  # noqa: BLE001
         log.warning("Codebase context preload failed: %s", exc)

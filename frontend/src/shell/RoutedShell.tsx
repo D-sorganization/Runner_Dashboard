@@ -216,6 +216,16 @@ export function RoutedShell({
     [navigate],
   );
 
+  React.useEffect(() => {
+    const onAssistantNavigate = (event: Event) => {
+      const tabId = (event as CustomEvent<{ tabId?: unknown }>).detail?.tabId;
+      // The shell is the navigation authority; ignore paths, URLs, and retired ids.
+      if (typeof tabId === "string" && navItemById(tabId)) onSelectTab(tabId);
+    };
+    window.addEventListener("runner-dashboard:navigate", onAssistantNavigate);
+    return () => window.removeEventListener("runner-dashboard:navigate", onAssistantNavigate);
+  }, [onSelectTab]);
+
   // Anonymous local page usage telemetry (issue #1302 / SC-G1)
   React.useEffect(() => {
     if (!activeTab || isNotFound) return;
@@ -311,7 +321,7 @@ export function AppShell({
       insights: <ReportsMobile />,
       staff: (
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
-          <LazyStaffMobile />
+          <LazyStaffMobile initialView="home" />
         </React.Suspense>
       ),
       "fleet-command": (
