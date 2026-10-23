@@ -7,6 +7,7 @@ import os
 import uuid
 from urllib.parse import urlsplit
 
+from browser_origin import external_browser_request
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from request_context import request_id_ctx
@@ -14,10 +15,7 @@ from request_context import request_id_ctx
 
 def _is_external_ingress(request: Request) -> bool:
     """Recognize edge-marked ingress without trusting it to grant identity."""
-    if any(
-        request.headers.get(header)
-        for header in ("cf-ray", "cf-connecting-ip", "cf-access-jwt-assertion", "cf-visitor")
-    ):
+    if external_browser_request(request):
         return True
     origin = request.headers.get("origin")
     if not origin:

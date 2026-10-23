@@ -607,7 +607,9 @@ COMMANDS: tuple[Command, ...] = (
             "cite": {"type": "string", "description": "Canonical citation for a library fetch."},
             "run_id": {
                 **RUN_ID,
-                "description": "Associate library search or fetch with this staff run for retrieval recording.",
+                "description": (
+                    "Associate library search/fetch or codebase search with this staff run for retrieval recording."
+                ),
             },
             "repo": REPO,
             "topic": {"type": "string", "description": "Optional topic filter for library queries."},
@@ -646,6 +648,18 @@ COMMANDS: tuple[Command, ...] = (
             "offset": {"type": "integer", "minimum": 0},
             "full": {"type": "boolean"},
         },
+    ),
+    Command(
+        "query-codebase",
+        "query_codebase",
+        "Search indexed committed code with bounded snippets and citation provenance.",
+        {
+            "query": {"type": "string", "description": "Search query."},
+            "k": {"type": "integer", "minimum": 1, "maximum": 5},
+            "offset": {"type": "integer", "minimum": 0},
+            "run_id": {**RUN_ID, "description": "Owned staff run; defaults to STAFF_RUN_ID when set."},
+        },
+        required=("query",),
     ),
     Command(
         "query-knowledge",

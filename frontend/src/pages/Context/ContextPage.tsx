@@ -229,7 +229,7 @@ export function ContextPage({
 
       <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 shadow-sm space-y-4">
         <div><h2 className="text-lg font-semibold">Current Tier-1 Skill Packs</h2><p className="text-xs text-neutral-400">Registry versions and content pins from the staff skills API.</p></div>
-        {skillsState === "loading" ? <p className="text-sm text-neutral-400">Loading skill registry &</p> : skillsState === "unavailable" ? <div className="text-sm text-amber-300" role="status">Tier-1 skill registry unavailable{skillsError ? ` (${skillsError})` : ""}.<button onClick={fetchSkills} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry skills</button></div> : skills.length === 0 ? <p className="text-sm text-neutral-400">No Tier-1 skills are currently registered.</p> : (
+        {skillsState === "loading" ? <p className="text-sm text-neutral-400" role="status">Loading Tier-1 skill registry…</p> : skillsState === "unavailable" ? <div className="text-sm text-amber-300" role="status">Tier-1 skill registry unavailable{skillsError ? ` (${skillsError})` : ""}.<button onClick={fetchSkills} className="ml-3 rounded bg-neutral-800 px-3 py-1 text-xs">Retry skills</button></div> : skills.length === 0 ? <p className="text-sm text-neutral-400">No Tier-1 skills are currently registered.</p> : (
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {skills.map((skill) => <li key={skill.pin} className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-950/60 p-3">
               <div className="font-medium text-neutral-200">{skill.name} <span className="font-mono text-xs text-neutral-400">v{skill.version}</span></div>

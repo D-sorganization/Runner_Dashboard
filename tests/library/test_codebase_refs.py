@@ -59,7 +59,12 @@ def test_current_codebase_citation_is_verified_without_returning_source(evidence
 
 def test_claim_cannot_borrow_unrelated_or_invented_source(evidence: tuple) -> None:
     db, cite, _, _ = evidence
-    for claim in ('"Fabricated quotation"', "Bananas orbit quantum oceans"):
+    for claim in (
+        '"Fabricated quotation"',
+        "Bananas orbit quantum oceans",
+        "Rotational power does not improve turbine efficiency.",
+        "Bananas improve turbine efficiency.",
+    ):
         result = verify_content(db, f"{claim} {cite}")
         assert not result["verified"]
         assert result["citations"][0]["status"] == "misappropriated_reference"
