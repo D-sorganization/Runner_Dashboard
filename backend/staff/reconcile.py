@@ -342,7 +342,7 @@ def reconcile_orphaned_runs(
                     )
                 else:
                     checkout = workspace.find_repo_checkout(rec.repo) if rec.repo else None
-                    workspace.remove_worktree(wt_path, checkout=checkout)
+                    workspace.remove_worktree(wt_path, checkout=checkout, branch=rec.branch)
                     store.append_event(rec.id, "worktree", f"clean worktree removed at {rec.workdir}")
 
         # 3. Release RM lease (with background retry if unreachable)
