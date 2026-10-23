@@ -41,6 +41,15 @@ ACTION_POLICY: Final[frozenset[str]] = frozenset(FLEET_ACTION_SCOPES.keys())
 _active_run_tokens: dict[str, str] = {}  # run_id -> principal_id
 
 
+def is_active_run_principal(*, run_id: str, role: str, principal_id: str) -> bool:
+    """Match an already authenticated caller to its exact active run binding.
+
+    Authentication must verify the token and its TTL before this ownership check.
+    A staff-shaped ID alone never establishes a run binding or grants any scope.
+    """
+    return bool(role) and principal_id == f"staff:{role}:{run_id}" and _active_run_tokens.get(run_id) == principal_id
+
+
 def resolve_run_scopes(fleet_actions: Iterable[str]) -> list[str]:
     """Calculate granted API scopes as the intersection of role actions and ACTION_POLICY."""
     granted_actions = set(fleet_actions) & ACTION_POLICY

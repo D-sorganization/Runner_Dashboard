@@ -202,7 +202,7 @@ def references_for_run(db: Path, run_id: str) -> list[dict[str, Any]]:
 
 
 def authorize_run_owner(run_store: Any, *, run_id: str, principal_id: str) -> None:
-    """Resolve a run through the current RunStore and require its authenticated owner."""
+    """Require the authenticated requester or the exact active run identity."""
     if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id):
         raise ValueError("invalid run_id")
     if not isinstance(principal_id, str) or not principal_id:
@@ -211,5 +211,9 @@ def authorize_run_owner(run_store: Any, *, run_id: str, principal_id: str) -> No
     if run is None:
         raise LookupError("run not found")
     requested_by = getattr(run, "requested_by", "")
-    if requested_by not in (principal_id, f"principal:{principal_id}"):
+    if requested_by in (principal_id, f"principal:{principal_id}"):
+        return
+    from staff.tokens import is_active_run_principal
+
+    if not is_active_run_principal(run_id=run_id, role=getattr(run, "role", ""), principal_id=principal_id):
         raise PermissionError("run belongs to another principal")
