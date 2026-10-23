@@ -16,6 +16,7 @@ import jwt
 _CERTS_PATH = "/cdn-cgi/access/certs"
 _MAX_TOKEN_LENGTH = 16_384
 _MAX_JWKS_BYTES = 256 * 1024
+_UNKNOWN_KID_REFRESH_COOLDOWN_SECONDS = 30.0
 
 
 class CloudflareAccessValidationError(ValueError):
@@ -45,6 +46,7 @@ class CloudflareAccessValidator:
         self._jwks_url = f"{issuer}{_CERTS_PATH}" if _valid_issuer(issuer) else ""
         self._keys: dict[str, Any] = {}
         self._keys_expires_at = 0.0
+        self._keys_fetched_at = 0.0
         self._cache_lock = threading.Lock()
 
     def validate(self, token: str) -> Mapping[str, Any]:
@@ -94,13 +96,16 @@ class CloudflareAccessValidator:
         now = time.monotonic()
         with self._cache_lock:
             if now >= self._keys_expires_at:
-                self._refresh_keys(now)
+                self._refresh_keys()
             key = self._keys.get(kid)
+            if key is None and now - self._keys_fetched_at >= _UNKNOWN_KID_REFRESH_COOLDOWN_SECONDS:
+                self._refresh_keys()
+                key = self._keys.get(kid)
             if key is None:
                 raise CloudflareAccessValidationError("Cloudflare Access JWT validation failed")
             return key
 
-    def _refresh_keys(self, now: float) -> None:
+    def _refresh_keys(self) -> None:
         with self._http_client.stream(
             "GET",
             self._jwks_url,
@@ -141,7 +146,8 @@ class CloudflareAccessValidator:
         if not keys:
             raise CloudflareAccessValidationError("Cloudflare Access signing keys are unavailable")
         self._keys = keys
-        self._keys_expires_at = now + self._cache_ttl_seconds
+        self._keys_fetched_at = time.monotonic()
+        self._keys_expires_at = self._keys_fetched_at + self._cache_ttl_seconds
 
 
 def _valid_issuer(issuer: str | None) -> bool:

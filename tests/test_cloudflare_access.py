@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import time
 from typing import Any
 
@@ -93,7 +94,10 @@ def test_invalid_claims_fail_closed(signing_pair, claims) -> None:
 def test_bad_signature_fails_closed(signing_pair) -> None:
     validator, private_key, _calls = validator_for(signing_pair)
     token = make_token(private_key)
-    altered = token[:-1] + ("A" if token[-1] != "A" else "B")
+    header, payload, signature_segment = token.split(".")
+    signature = bytearray(base64.urlsafe_b64decode(signature_segment + "=" * (-len(signature_segment) % 4)))
+    signature[0] ^= 1
+    altered = ".".join((header, payload, base64.urlsafe_b64encode(signature).rstrip(b"=").decode("ascii")))
 
     with pytest.raises(CloudflareAccessValidationError):
         validator.validate(altered)
@@ -115,6 +119,16 @@ def test_cached_key_set_avoids_repeat_network_requests(signing_pair) -> None:
 
     validator.validate(token)
     validator.validate(token)
+
+    assert len(calls) == 1
+
+
+def test_cached_unknown_kid_does_not_force_repeated_key_fetches(signing_pair) -> None:
+    validator, private_key, calls = validator_for(signing_pair)
+    validator.validate(make_token(private_key))
+
+    with pytest.raises(CloudflareAccessValidationError):
+        validator.validate(make_token(private_key, kid="attacker-selected-kid"))
 
     assert len(calls) == 1
 
@@ -243,3 +257,31 @@ def test_validator_is_disabled_by_default_without_network(signing_pair) -> None:
         validator.validate(make_token(private_key))
 
     assert calls == []
+
+
+def test_cached_unknown_kid_refreshes_once_after_cooldown(signing_pair, monkeypatch) -> None:
+    old_private_key, old_public_jwk = signing_pair
+    new_private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    new_public_jwk = jwt.algorithms.RSAAlgorithm.to_jwk(new_private_key.public_key(), as_dict=True)
+    new_public_jwk.update({"kid": "rotated-key", "alg": "RS256", "use": "sig"})
+    responses = [{"keys": [old_public_jwk]}, {"keys": [new_public_jwk]}]
+    calls: list[httpx.Request] = []
+    now = [100.0]
+    monkeypatch.setattr(cloudflare_access.time, "monotonic", lambda: now[0])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=responses.pop(0), request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    validator = CloudflareAccessValidator(
+        issuer=ISSUER, audience=AUDIENCE, enabled=True, http_client=client, cache_ttl_seconds=300
+    )
+    validator.validate(make_token(old_private_key))
+    now[0] = 131.0
+
+    claims = validator.validate(make_token(new_private_key, kid="rotated-key"))
+
+    assert claims["sub"] == "human-subject"
+    assert len(calls) == 2
+    assert all(request.url == JWKS_URL for request in calls)
