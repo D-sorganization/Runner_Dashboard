@@ -60,6 +60,28 @@ describe("DesktopShell — structure", () => {
     expect(screen.getByRole("button", { name: /open command palette/i })).toBeInTheDocument();
   });
 
+  it("opens a persistent Barb sidebar on every section and keeps it open during navigation", () => {
+    const { onSelect } = renderShell({ activeTabId: "queue" });
+
+    fireEvent.click(screen.getByRole("button", { name: /ask barb/i }));
+    expect(screen.getByRole("complementary", { name: /ask barb/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /open fleet command/i }));
+    expect(onSelect).toHaveBeenCalledWith("fleet-command");
+    expect(screen.getByRole("complementary", { name: /ask barb/i })).toBeInTheDocument();
+  });
+
+  it("keeps the Barb panel mounted when closed so its conversation can resume", () => {
+    renderShell({ activeTabId: "projects" });
+    fireEvent.click(screen.getByRole("button", { name: /ask barb/i }));
+    const panel = screen.getByTestId("barb-sidebar");
+
+    fireEvent.click(screen.getByTestId("ask-barb-toggle"));
+    expect(panel).toHaveAttribute("aria-hidden", "true");
+    fireEvent.click(screen.getByTestId("ask-barb-toggle"));
+    expect(screen.getByTestId("barb-sidebar")).toBe(panel);
+  });
+
   it("renders the page body in a main landmark", () => {
     renderShell();
     const main = screen.getByRole("main");
