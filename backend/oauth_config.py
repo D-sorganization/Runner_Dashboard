@@ -15,7 +15,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TypedDict
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fleet_autoconfig import (
     hub_public_origins_from_registry,
@@ -64,11 +64,31 @@ def _flag_enabled(value: str) -> bool:
 
 
 def _parse_extra_allowed_origins(value: str) -> frozenset[str]:
+    """Return only well-formed HTTPS origins from the explicit allowlist."""
     origins: set[str] = set()
     for item in value.split(","):
-        origin = item.strip().rstrip("/")
-        if origin:
-            origins.add(origin)
+        candidate = item.strip()
+        if not candidate:
+            continue
+        try:
+            parsed = urlsplit(candidate)
+            # Accessing .port validates malformed and out-of-range ports.
+            _ = parsed.port
+        except ValueError:
+            continue
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.netloc.endswith(":")
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or any(char.isspace() for char in candidate)
+        ):
+            continue
+        origins.add(candidate[:-1] if candidate.endswith("/") else candidate)
     return frozenset(origins)
 
 
