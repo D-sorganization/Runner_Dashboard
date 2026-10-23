@@ -29,14 +29,21 @@ def _is_external_ingress(request: Request) -> bool:
     return host not in {"localhost", "127.0.0.1", "::1"}
 
 
-def _log_denial(request: Request, logger: logging.Logger, reason: str, detail: str = "") -> str:
+def _log_denial(
+    request: Request,
+    logger: logging.Logger,
+    reason: str,
+    detail: str = "",
+    *,
+    message: str = "external ingress request denied",
+) -> str:
     client_host = request.client.host if request.client else "unknown"
     request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex[:12]
     request.state.request_id = request_id
     request_id_token = request_id_ctx.set(request_id)
     try:
         logger.warning(
-            "external ingress request denied",
+            message,
             extra={
                 "request_id": request_id,
                 "source_ip": client_host,
@@ -57,7 +64,12 @@ def deny_external_ingress_bearer(request: Request, logger: logging.Logger) -> JS
     authorization = request.headers.get("authorization", "")
     if not _is_external_ingress(request) or authorization.partition(" ")[0].casefold() != "bearer":
         return None
-    request_id = _log_denial(request, logger, "machine_credentials_not_allowed_on_external_ingress")
+    request_id = _log_denial(
+        request,
+        logger,
+        "machine_credentials_not_allowed_on_external_ingress",
+        message="blocked bearer credential on external ingress",
+    )
     return JSONResponse({"error": "Request not permitted"}, status_code=403, headers={"X-Request-ID": request_id})
 
 
