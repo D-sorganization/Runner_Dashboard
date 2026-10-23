@@ -240,11 +240,14 @@ async def list_runs(
 async def get_run(
     run_id: str,
     events: int = Query(default=200, ge=0, le=MAX_LIMIT),
+    local: bool = Query(default=False),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     store = get_runner().store
     rec = store.get_run(run_id)
     if rec is None:
+        if local:
+            raise HTTPException(status_code=404, detail="run not found")
         from staff.remote_runs import find_remote_run, proxy_remote_run  # noqa: PLC0415
 
         remote = await find_remote_run(run_id)

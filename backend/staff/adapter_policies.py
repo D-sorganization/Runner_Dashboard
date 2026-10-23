@@ -200,14 +200,28 @@ def antigravity_permissions(
     """
     allow_commands = READ_ONLY_RUN_SHELL_ALLOW if read_only else UNATTENDED_SHELL_ALLOW
     deny_commands = READ_ONLY_RUN_SHELL_DENY if read_only else UNATTENDED_SHELL_DENY
-    allow = [f"command({prefix}*)" for prefix in allow_commands]
-    deny = [f"command({prefix}*)" for prefix in deny_commands]
+    allow = list(
+        dict.fromkeys(
+            rule
+            for prefix in allow_commands
+            for rule in (f"command({prefix}*)", f"command({prefix})", f"command({prefix} *)")
+        )
+    )
+    deny = list(
+        dict.fromkeys(
+            rule
+            for prefix in deny_commands
+            for rule in (f"command({prefix}*)", f"command({prefix})", f"command({prefix} *)")
+        )
+    )
 
     if workdir is not None:
         from staff.cli_oauth_session import resolve_antigravity_home
 
+        agy_home = resolve_antigravity_home()
         for settings_path in (
-            resolve_antigravity_home() / "settings.json",
+            agy_home / "settings.json",
+            agy_home / "antigravity-cli" / "settings.json",
             workdir / ".gemini" / "settings.json",
         ):
             settings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -227,6 +241,11 @@ def antigravity_permissions(
                 if not isinstance(current, list) or not all(isinstance(item, str) for item in current):
                     raise ValueError(f"Antigravity permissions.{key} must be a string list: {settings_path}")
                 permissions[key] = list(dict.fromkeys([*current, *rules]))
+            trusted = settings.setdefault("trustedWorkspaces", [])
+            if isinstance(trusted, list):
+                for p_str in (str(workdir), str(workdir.parent)):
+                    if p_str not in trusted:
+                        trusted.append(p_str)
             settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
 
         if gitdir is not None:

@@ -175,12 +175,12 @@ class ProviderAdapter:
             if self.provider_id == "antigravity" and "--mode" in out:
                 out[out.index("--mode") + 1] = "plan"
         if session_id:
-            if self.provider_id in ("codex", "ollama") and prompt in out:
-                p_idx = out.index(prompt)
-                out.insert(p_idx, "--session")
-                out.insert(p_idx + 1, session_id)
-            elif self.provider_id in ("codex", "ollama"):
-                out.extend(["--session", session_id])
+            if self.provider_id in ("codex", "ollama"):
+                resumed: list[str] = [self.executable, "exec", "resume", "--skip-git-repo-check", "--json"]
+                if model:
+                    resumed.extend(["-m", model])
+                resumed.extend([session_id, prompt])
+                out = resumed
             elif self.provider_id == "antigravity":
                 out.extend(["--conversation", session_id])
             else:

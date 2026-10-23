@@ -1,4 +1,5 @@
 # ruff: noqa: B008
+import os
 import secrets
 import time
 from typing import Any
@@ -85,6 +86,22 @@ def _clear_oauth_state(request: Request) -> None:
 async def github_login(request: Request):
     """Start GitHub OAuth flow."""
     config = _production_oauth_config()
+    if not config.diagnostic()["ready"] and os.getenv("DASHBOARD_DEV_LOGIN") != "1":
+        from identity import _is_loopback_request, _loopback_auth_enabled
+        from tailnet_identity import tailnet_principal
+
+        t_prin = tailnet_principal(request)
+        if t_prin is not None:
+            request.session.clear()
+            return RedirectResponse(url="/")
+        loopback_fallback = os.getenv("DASHBOARD_LOOPBACK_SESSION_FALLBACK", "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if loopback_fallback and _loopback_auth_enabled() and _is_loopback_request(request):
+            request.session.clear()
+            return RedirectResponse(url="/")
     _require_production_oauth(config)
 
     state = secrets.token_urlsafe(16)
