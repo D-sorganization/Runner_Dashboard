@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -22,6 +23,9 @@ def main() -> int:
     verify = sub.add_parser("verify", help="Verify citations and repository-relative Markdown links")
     verify.add_argument("--file", required=True)
     verify.add_argument("--run-id")
+    verify.add_argument("--library-db", type=Path, help="Explicit read-only Alexandria database")
+    verify.add_argument("--knowledge-dir", type=Path, help="Explicit local knowledge-pack directory")
+    verify.add_argument("--local-only", action="store_true", help="Never contact configured fleet peers")
     verify.add_argument("--repo-root", type=Path)
     embed_p = sub.add_parser("embed", help="Backfill passage embeddings (sqlite-vec)")
     embed_p.add_argument("--batch-size", type=int, default=32)
@@ -45,11 +49,20 @@ def main() -> int:
             sys.stdout.write(f"embedded {count} passage(s)\n")
             return 0
         if args.command == "verify":
+            db = args.library_db or library_db_path()
+            if args.library_db is not None and not db.is_file():
+                raise ValueError("explicit library database does not exist")
+            if args.knowledge_dir is not None and not args.knowledge_dir.is_dir():
+                raise ValueError("explicit knowledge directory does not exist")
+            explicit_inputs = args.library_db is not None or args.knowledge_dir is not None
             result = verify_content(
-                library_db_path(),
+                db,
                 Path(args.file).read_text(encoding="utf-8"),
                 run_id=args.run_id,
                 repo_root=args.repo_root,
+                knowledge_dir=args.knowledge_dir,
+                allow_ambient_knowledge=not explicit_inputs,
+                local_only=args.local_only,
             )
             sys.stdout.write(json.dumps(result, ensure_ascii=False) + "\n")
             return 0 if result["verified"] else 1
@@ -89,7 +102,7 @@ def main() -> int:
             f" scan_complete={str(stats['scan_complete']).lower()}\n"
         )
         return 0
-    except ValueError as exc:
+    except (OSError, ValueError, sqlite3.Error) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
 
