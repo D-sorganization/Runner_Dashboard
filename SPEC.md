@@ -275,7 +275,6 @@
 | 2026-09-23 | #1258 | Refresh the Linux RM clone with a safe throttled systemd user timer; expose source revision and age, and reread role definitions without restart. |
 | 2026-09-23 | #1257 | Add an owner-installed, reboot-safe WSL-only Ollama bridge with dry-run planning, ownership checks, backups and a hidden scheduled task. |
 | 2026-09-23 | #1192 | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths. |
-| 2026-10-23 | #2484 | Staff routing: report-card success now means verified outcomes (no-op/no_change neutral, infra failures reported as availability, excluded from quality n); `STAFF_ROUTING_MODE=shadow` records a `routing_shadow` run event (chosen vs recommended, n>=8 gate) at dispatch admission without changing provider selection. |
 
 <!-- prettier-ignore-end -->
 
