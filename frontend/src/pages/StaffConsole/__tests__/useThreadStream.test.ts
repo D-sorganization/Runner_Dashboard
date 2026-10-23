@@ -85,7 +85,7 @@ describe("useThreadStream", () => {
     await act(async () => {
       MockEventSource.instances[0].emit(
         "message",
-        {
+        { message: {
           id: "action-result-1",
           thread_id: "thread-abc",
           author: "system",
@@ -98,14 +98,14 @@ describe("useThreadStream", () => {
             result: { navigate_to: "fleet-command" },
           },
           seq: 2,
-        },
+        } },
         "2",
       );
     });
     await act(async () => {
       MockEventSource.instances[0].emit(
         "message",
-        {
+        { message: {
           id: "action-result-1",
           thread_id: "thread-abc",
           author: "system",
@@ -118,13 +118,37 @@ describe("useThreadStream", () => {
             result: { navigate_to: "fleet-command" },
           },
           seq: 2,
-        },
+        } },
         "2",
       );
     });
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener.mock.calls[0][0]).toMatchObject({ detail: { tabId: "fleet-command" } });
+    unmount();
+    window.removeEventListener("runner-dashboard:navigate", listener);
+  });
+
+  it("shows historical replayed navigation results without navigating again", async () => {
+    const listener = vi.fn();
+    window.addEventListener("runner-dashboard:navigate", listener);
+    const { result, unmount } = renderHook(() => useThreadStream({ threadId: "thread-abc" }));
+
+    await act(async () => {
+      MockEventSource.instances[0].emit("message", {
+        id: "historical-action-result",
+        thread_id: "thread-abc",
+        author: "system",
+        author_kind: "system",
+        kind: "action_result",
+        body_md: "Navigating",
+        meta: { action: "dashboard.navigate", success: true, result: { navigate_to: "context" } },
+        seq: 2,
+      }, "2");
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(listener).not.toHaveBeenCalled();
     unmount();
     window.removeEventListener("runner-dashboard:navigate", listener);
   });

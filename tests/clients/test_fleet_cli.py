@@ -164,6 +164,9 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "fleet_friction_report",
         "fleet_owner_question_ask",
         "fleet_owner_questions_list",
+        "fleet_exclusions_list",
+        "fleet_exclusion_add",
+        "fleet_exclusion_remove",
     }
 
 

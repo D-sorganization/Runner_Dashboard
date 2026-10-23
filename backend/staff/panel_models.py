@@ -7,11 +7,12 @@ synthesis. The request model is the single boundary check for the API and the en
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
 import provider_switch
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 from staff.adapter_policies import _CHAT_READ_ONLY_FLAGS
 
 MODERATOR_NAME = "Moderator"
@@ -36,6 +37,24 @@ def enabled_panel_providers() -> tuple[str, ...]:
     return tuple(p for p in PANEL_PROVIDERS if not provider_switch.is_disabled(p))
 
 
+# A model id is appended to the provider CLI argv (``--model <id>``); this shape can never be a flag
+# (no leading '-'), a shell fragment or whitespace, so it cannot inject arguments.
+MODEL_ID_RE = re.compile(r"^[A-Za-z0-9._:/][A-Za-z0-9._:/-]{0,79}$")
+
+
+def _check_model(model: str | None, seat: str) -> str | None:
+    if model is not None and not MODEL_ID_RE.fullmatch(model):
+        raise ValueError(
+            f"seat {seat!r}: model id must match [A-Za-z0-9._:/-]{{1,80}} and not start with '-' (got {model[:40]!r})"
+        )
+    return model
+
+
+def default_quorum(seats: int) -> int:
+    """A majority of ``seats``."""
+    return seats // 2 + 1
+
+
 def _check_provider(provider: str) -> str:
     if provider not in PANEL_PROVIDERS:
         raise ValueError(f"provider {provider!r} has no read-only chat mode; use one of {', '.join(PANEL_PROVIDERS)}")
@@ -52,12 +71,20 @@ class PanelExpert(BaseModel):
     name: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z][\w .-]*$")
     perspective: str = Field(min_length=1, max_length=600)
     provider: str = "claude"
-    model: str | None = Field(default=None, max_length=80)
+    model: str | None = None  # shape + length checked by _safe_model
 
     @field_validator("provider")
     @classmethod
-    def _read_only_provider(cls, v: str) -> str:
-        return _check_provider(v)
+    def _read_only_provider(cls, v: str, info: ValidationInfo) -> str:
+        try:
+            return _check_provider(v)
+        except ValueError as exc:
+            raise ValueError(f"seat {info.data.get('name', '?')!r}: {exc}") from exc
+
+    @field_validator("model")
+    @classmethod
+    def _safe_model(cls, v: str | None, info: ValidationInfo) -> str | None:
+        return _check_model(v, str(info.data.get("name", "?")))
 
 
 class PanelCreateRequest(BaseModel):
@@ -76,7 +103,9 @@ class PanelCreateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     confirm_cost: bool = False
     moderator_provider: str = "claude"
-    moderator_model: str | None = Field(default=None, max_length=80)
+    moderator_model: str | None = None  # shape + length checked by _safe_model
+    # Seats that must take part for the panel to count as quorate; default is a majority of the seats.
+    quorum: int | None = Field(default=None, ge=1, le=4)
     pack_id: Literal["cartographer"] | None = "cartographer"
     repos: list[str] | None = Field(default=None, min_length=1, max_length=6)
     preload_codebase: bool = True
@@ -93,6 +122,11 @@ class PanelCreateRequest(BaseModel):
     def _read_only_moderator(cls, v: str) -> str:
         return _check_provider(v)
 
+    @field_validator("moderator_model")
+    @classmethod
+    def _safe_moderator_model(cls, v: str | None) -> str | None:
+        return _check_model(v, MODERATOR_NAME)
+
     @field_validator("topic")
     @classmethod
     def _topic_not_blank(cls, v: str) -> str:
@@ -107,6 +141,8 @@ class PanelCreateRequest(BaseModel):
             raise ValueError("expert names must be unique (case-insensitive)")
         if MODERATOR_NAME.lower() in names:
             raise ValueError(f"{MODERATOR_NAME!r} is reserved for the synthesis turn")
+        if self.quorum is not None and self.quorum > len(self.experts):
+            raise ValueError(f"quorum {self.quorum} exceeds the {len(self.experts)} seats")
         return self
 
 

@@ -67,11 +67,63 @@ def test_source_api_register_update_and_unregister(tmp_path: Path) -> None:
         headers=_XHR,
     )
     assert post.status_code == 200
+    assert post.json()["backend_type"] == "local_folder"
+    assert post.json()["priority"] == 3
     assert client.patch("/api/v1/library/sources/docs", json={"shared": True}, headers=_XHR).json()["shared"]
     sources_payload = client.get("/api/v1/library/sources", headers=_XHR).json()
     assert sources_payload["sources"][0]["id"] == "docs" and sources_payload["sources"][0]["file_count"] == 0
     assert {"is_hub", "current_node", "nodes"}.issubset(sources_payload)
     assert client.delete("/api/v1/library/sources/docs", headers=_XHR).status_code == 200
+
+
+def test_connector_source_can_be_registered_from_drive_url_on_hub(tmp_path: Path) -> None:
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
+    client = _client(tmp_path / "library.sqlite", principal)
+    folder_id = "1AbCdEfGhIjKlMnOpQrStUvWxYz_012"
+
+    response = client.post(
+        "/api/v1/library/sources",
+        json={
+            "id": "shared-drive",
+            "label": "Shared Drive",
+            "backend_type": "google_drive_connector",
+            "drive_folder_url": f"https://drive.google.com/drive/folders/{folder_id}",
+            "preferential": True,
+            "repos": ["Runner_Dashboard"],
+        },
+        headers=_XHR,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["drive_folder_id"] == folder_id
+    assert response.json()["backend_type"] == "google_drive_connector"
+    assert response.json()["preferential"] is True
+    assert response.json()["priority"] == 1
+    updated = client.patch(
+        "/api/v1/library/sources/shared-drive",
+        json={"preferential": False, "priority": 5, "repos": ["Repository_Management"]},
+        headers=_XHR,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["preferential"] is False
+    assert updated.json()["priority"] == 5
+    assert updated.json()["repos"] == ["Repository_Management"]
+
+
+def test_source_api_rejects_non_string_backend_as_validation_error(tmp_path: Path) -> None:
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
+    client = _client(tmp_path / "library.sqlite", principal)
+    response = client.post(
+        "/api/v1/library/sources",
+        json={"id": "bad", "label": "Bad", "backend_type": [], "root_path": str(tmp_path)},
+        headers=_XHR,
+    )
+
+    assert response.status_code == 422
 
 
 def test_source_api_rejects_overlapping_roots_with_422(tmp_path: Path) -> None:
@@ -190,6 +242,23 @@ def test_google_drive_connector_api_lifecycle(tmp_path: Path) -> None:
     assert patched.json()["preferential"] is False
     assert patched.json()["priority"] == 2
     assert patched.json()["repos"] == ["Runner_Dashboard", "AffineDrift"]
+
+
+def test_connector_api_rejects_malformed_or_conflicting_folder_references(tmp_path: Path) -> None:
+    principal = Principal(
+        id="operator", type="user", name="Operator", roles=["operator"], scopes=["fleet.control", "fleet.read"]
+    )
+    client = _client(tmp_path / "library.sqlite", principal)
+    base = {"id": "bad-drive", "label": "Bad Drive", "backend_type": "google_drive_connector"}
+    for fields in (
+        {"drive_folder_id": 123},
+        {
+            "drive_folder_id": "test-folder-1111",
+            "drive_folder_url": "https://drive.google.com/drive/folders/test-folder-2222",
+        },
+    ):
+        response = client.post("/api/v1/library/sources", json={**base, **fields}, headers=_XHR)
+        assert response.status_code == 422
 
 
 def test_verify_sources_reports_backend_health_and_restrictive_sharing(tmp_path: Path) -> None:
