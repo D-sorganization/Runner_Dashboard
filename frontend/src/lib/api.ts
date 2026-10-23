@@ -47,6 +47,7 @@ export type {
   UsageResponse,
 } from "./api-types";
 import type { EventsResponse } from "./fleetEvents";
+import { fetchWithBrowserCsrf } from "./browserCsrf";
 import {
   emitSessionExpired,
   shouldIgnoreUnauthorizedResponse,
@@ -97,12 +98,12 @@ async function request<T>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   };
 
-  let resp = await fetch(url, init);
+  let resp = await fetchWithBrowserCsrf(url, init);
 
   if (resp.status === 401 && !shouldIgnoreUnauthorizedResponse(url)) {
     const refreshed = await tryRefreshSession();
     if (refreshed) {
-      resp = await fetch(url, init);
+      resp = await fetchWithBrowserCsrf(url, init);
     } else {
       emitSessionExpired();
     }
@@ -163,7 +164,7 @@ export function legacyFetch(url: string, init: RequestInit = {}): Promise<Respon
   if (!headers.has("X-Requested-With")) {
     headers.set("X-Requested-With", DEFAULT_HEADERS["X-Requested-With"]);
   }
-  return fetch(url, { ...init, headers });
+  return fetchWithBrowserCsrf(url, { ...init, headers });
 }
 
 // ── API surface ───────────────────────────────────────────────────────────────
