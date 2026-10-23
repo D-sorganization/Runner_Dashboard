@@ -37,20 +37,31 @@ class PooledCatalog:
 
     def update_node_sources(self, node: str, sources: list[dict[str, Any]]) -> None:
         now_iso = datetime.now(UTC).isoformat()
+        updates = {}
         for s in sources:
             sid = str(s.get("id") or "")
             if sid:
-                self._sources[(node, sid)] = dict(
+                updates[(node, sid)] = dict(
                     id=sid,
                     label=str(s.get("label") or sid),
                     node=node,
                     file_count=int(s.get("file_count") or 0),
                     shared=True,
                     last_seen=now_iso,
+                    available=True,
                 )
+        self._sources = {key: value for key, value in self._sources.items() if key[0] != node} | updates
+
+    def retain_nodes(self, nodes: set[str]) -> None:
+        self._sources = {key: value for key, value in self._sources.items() if key[0] in nodes}
+
+    def mark_unavailable(self, node: str) -> None:
+        for (name, _), source in self._sources.items():
+            if name == node:
+                source["available"] = False
 
     def list_sources(self) -> list[dict[str, Any]]:
-        return sorted(self._sources.values(), key=lambda s: (s["node"], s["id"]))
+        return sorted((dict(s) for s in self._sources.values()), key=lambda s: (s["node"], s["id"]))
 
     def clear(self) -> None:
         self._sources.clear()
@@ -79,6 +90,59 @@ def get_fleet_nodes() -> dict[str, str]:
     from dashboard_config import FLEET_NODES
 
     return dict(FLEET_NODES)
+
+
+async def refresh_catalog(
+    *,
+    catalog: PooledCatalog,
+    fleet_nodes: dict[str, str],
+    local_node: str,
+    hub_token: str,
+    client: httpx.AsyncClient | None = None,
+    deadline_s: float = 2.5,
+) -> list[str]:
+    """Refresh registered peers concurrently; retain explicitly stale rows on failure."""
+
+    async def probe(name: str, url: str, cli: httpx.AsyncClient) -> bool:
+        try:
+            target = validate_node_url(url, fleet_nodes)
+            response = await cli.get(
+                f"{target}/api/v1/library/sources",
+                params={"shared": "1"},
+                headers={"Authorization": f"Bearer {hub_token}"},
+                timeout=httpx.Timeout(DEFAULT_PROBE_READ_TIMEOUT_S, connect=DEFAULT_PROBE_CONNECT_TIMEOUT_S),
+            )
+            response.raise_for_status()
+            sources = response.json()["sources"]
+            if not isinstance(sources, list) or any(not isinstance(s, dict) for s in sources):
+                return False
+            catalog.update_node_sources(name, [s for s in sources if s.get("shared") is True])
+            return True
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            return False
+
+    peers = {name: url for name, url in fleet_nodes.items() if name != local_node}
+    catalog.retain_nodes(set(peers) | {local_node})
+    unavailable = []
+    if not hub_token:
+        for name in peers:
+            catalog.mark_unavailable(name)
+        return sorted(peers)
+    async with httpx.AsyncClient() as default_client:
+        tasks = {name: asyncio.create_task(probe(name, url, client or default_client)) for name, url in peers.items()}
+        try:
+            if tasks:
+                await asyncio.wait(tasks.values(), timeout=deadline_s)
+            for name, task in tasks.items():
+                if not task.done() or not task.result():
+                    unavailable.append(name)
+                    catalog.mark_unavailable(name)
+        finally:
+            for task in tasks.values():
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
+    return sorted(unavailable)
 
 
 def _hit_to_dict(h: SearchHit, default_node: str) -> dict[str, Any]:

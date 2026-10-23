@@ -1,13 +1,40 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from identity import Principal, require_principal
 from routers import library as routes
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
+
+
+def test_operator_refreshes_catalog_but_peer_never_federates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from library.pool import PooledCatalog
+
+    catalog = PooledCatalog()
+    catalog.update_node_sources("peer", [{"id": "shared", "label": "Shared"}])
+    refresh = AsyncMock(return_value=["offline"])
+    monkeypatch.setattr(routes, "refresh_catalog", refresh)
+    monkeypatch.setattr(routes, "get_pooled_catalog", lambda: catalog)
+    principal = Principal(id="operator", type="user", name="Operator", roles=["operator"])
+    client = _client(tmp_path / "catalog.sqlite", principal)
+    result = client.get("/api/v1/library/sources").json()
+    assert result["pooled_sources"][0]["node"] == "peer"
+    assert result["unavailable_sources"] == ["offline"]
+    refresh.assert_awaited_once()
+    refresh.reset_mock()
+    for peer in (False, True):
+        if peer:
+            client.app.dependency_overrides[require_principal] = lambda: Principal(
+                id="fleet-peer", type="bot", name="Peer", roles=["fleet-peer"]
+            )
+        result = client.get("/api/v1/library/sources" + ("" if peer else "?shared=1")).json()
+        assert result["pooled_sources"] == []
+    refresh.assert_not_awaited()
 
 
 def _client(db: Path, principal: Principal) -> TestClient:

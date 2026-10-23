@@ -21,6 +21,20 @@ function mockFetch(handler: (url: string, opts?: RequestInit) => unknown) {
 }
 
 describe("LibraryPage", () => {
+  it("shows pooled sources with node and stale availability without mutation controls", async () => {
+    mockFetch((url) => url.endsWith("/sources") ? {
+      sources: [], is_hub: true, current_node: "hub", nodes: [], unavailable_sources: ["desk"],
+      pooled_sources: [{ id: "x9", label: "Research library", node: "desk", file_count: 12,
+        available: false, last_seen: "2026-10-22T12:00:00Z" }],
+    } : null);
+    render(<LibraryPage />);
+    expect(await screen.findByText("Research library")).toBeInTheDocument();
+    expect(screen.getByText(/unavailable nodes: desk/i)).toBeInTheDocument();
+    expect(screen.getByText("Offline · cached")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /remove/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
   it("renders sources, toggles sharing, and removes source with disk warning", async () => {
     const user = userEvent.setup();
     let patched = false;
