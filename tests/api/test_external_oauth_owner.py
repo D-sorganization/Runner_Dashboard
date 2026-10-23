@@ -34,7 +34,7 @@ def flow(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, dict[str, Any], M
     monkeypatch.setattr("github_app_user_oauth.apply_authorization_tokens", persist)
     monkeypatch.setattr(auth.sm, "register_session", register)
     app = FastAPI()
-    app.add_middleware(SessionMiddleware, secret_key="test-session-key", https_only=True)
+    app.add_middleware(SessionMiddleware, secret_key="test-session-key", https_only=True)  # pragma: allowlist secret
     app.include_router(auth.router)
 
     @app.get("/test-start")
