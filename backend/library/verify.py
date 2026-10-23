@@ -10,11 +10,11 @@ import sqlite3
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote
 
 import httpx
 from library.citation_claims import claim_is_supported
 from library.codebase_refs import REFERENCE_TOKEN, verify_codebase_citations
+from library.markdown_links import verify_links
 
 _CITATION = re.compile(
     r"\[ref:(?P<node>[A-Za-z0-9][A-Za-z0-9.-]{0,63}):(?P<source>[a-z0-9][a-z0-9-]{0,62}):"
@@ -22,7 +22,6 @@ _CITATION = re.compile(
     r"|lib://(?P<libsource>[a-z0-9][a-z0-9-]{0,62})/w(?P<libwork>\d+)/p(?P<libpassage>\d+)@"
     r"(?P<libsha>[a-fA-F0-9]{8})#p(?P<libstart>\d+)-(?P<libend>\d+)"
 )
-_LINK = re.compile(r"(?<!!)\[[^\]]*\]\((?P<url>[^)]+)\)")
 _LEGACY = re.compile(r"\(work_id=(?P<work>\d+)\)")
 _MAX_SQLITE_INTEGER = 2**63 - 1
 _MAX_FEDERATED_CITATIONS = 8
@@ -175,11 +174,6 @@ def _verify_peer_citation(
         return result
 
 
-def _anchors(markdown: str) -> set[str]:
-    headings = re.findall(r"^#{1,6}\s+(.+?)\s*#*\s*$", markdown, re.MULTILINE)
-    return {re.sub(r"[^\w-]", "", re.sub(r"\s+", "-", re.sub(r"[`*_]", "", heading.lower()))) for heading in headings}
-
-
 def _verify_citation(
     conn: sqlite3.Connection,
     db_path: Path,
@@ -291,6 +285,7 @@ def verify_content(
     *,
     run_id: str | None = None,
     repo_root: Path | None = None,
+    document_path: Path | None = None,
     knowledge_dir: Path | None = None,
     allow_ambient_knowledge: bool = True,
     local_only: bool = False,
@@ -344,29 +339,5 @@ def verify_content(
         for match in REFERENCE_TOKEN.finditer(content)
         if ":codebase:" not in match[0] and _CITATION.fullmatch(match[0]) is None
     )
-    links: list[dict[str, Any]] = []
-    for match in _LINK.finditer(content):
-        url = match.group("url").strip()
-        if url.startswith(("https://", "http://", "mailto:")):
-            links.append({"url": url, "verified": True, "status": "external_unchecked"})
-            continue
-        path_text, _, anchor = url.partition("#")
-        if not path_text or repo_root is None:
-            links.append({"url": url, "verified": False, "status": "broken_link"})
-            continue
-        root = repo_root.resolve()
-        target = (root / unquote(path_text)).resolve()
-        if root not in target.parents and target != root or not target.is_file():
-            links.append({"url": url, "verified": False, "status": "broken_link"})
-            continue
-        if anchor:
-            try:
-                markdown = target.read_text(encoding="utf-8")
-            except (OSError, UnicodeError):
-                links.append({"url": url, "verified": False, "status": "broken_link"})
-                continue
-            if unquote(anchor) not in _anchors(markdown):
-                links.append({"url": url, "verified": False, "status": "broken_link"})
-                continue
-        links.append({"url": url, "verified": True, "status": "verified"})
+    links = verify_links(content, repo_root=repo_root, document_path=document_path)
     return {"verified": all(item["verified"] for item in citations + links), "citations": citations, "links": links}
