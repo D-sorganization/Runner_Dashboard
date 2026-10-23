@@ -24,6 +24,7 @@ import yaml
 from bash_host import as_bash_path, require_bash
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
+_PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
 _POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
 _PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
 _PR_GROUP_TOKENS = (
@@ -182,7 +183,8 @@ def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> N
         return
 
     block = data["concurrency"]
-    assert block.get("cancel-in-progress") is True, (
+    # Deploy-blocking workflows cancel only superseded PR runs, never main pushes.
+    assert block.get("cancel-in-progress") is True or block.get("cancel-in-progress") == _PR_ONLY_CANCEL, (
         f"{workflow_path.name}: PR-triggered workflows must cancel superseded "
         "runs unless they are documented in _CANCEL_FALSE_ALLOWLIST."
     )

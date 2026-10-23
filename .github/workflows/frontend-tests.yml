@@ -11,14 +11,26 @@ permissions:
   contents: read
   pull-requests: read
 
+# Main-push / merge-group runs are never cancelled by a newer merge: a cancelled
+# required check leaves that commit permanently non-green, so node auto-deploy and
+# main-ci-auto-release would never find a releasable commit. Only superseded
+# pull_request runs are cancelled. Contract: tests/test_main_push_concurrency.py
 concurrency:
-  group: frontend-tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: frontend-tests-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   frontend-required:
     name: frontend-required
-    needs: [frontend-scope, typecheck, vitest, perf-budget, playwright-e2e, staff-console-e2e]
+    needs:
+      [
+        frontend-scope,
+        typecheck,
+        vitest,
+        perf-budget,
+        playwright-e2e,
+        staff-console-e2e,
+      ]
     if: always()
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
