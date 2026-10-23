@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 import threading
 from types import SimpleNamespace
 
@@ -87,7 +88,7 @@ def browser(monkeypatch: pytest.MonkeyPatch):
     )
     app.add_middleware(
         BrowserSessionMiddleware,
-        secret_key="session-signing-fixture",
+        secret_key=secrets.token_urlsafe(32),
         https_only=True,
     )
     client = TestClient(app, base_url=origin, raise_server_exceptions=False)
