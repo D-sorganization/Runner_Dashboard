@@ -16,8 +16,11 @@ import { Tooltip } from "../primitives/Tooltip";
 import { Dropdown } from "../primitives/Dropdown";
 import { CommandPalette, type Command } from "../primitives/CommandPalette";
 import { NAV_ITEMS, NAV_GROUPS } from "./navRegistry";
-import { BarbSidebar } from "./BarbSidebar";
 import { ChatGlyph } from "../pages/decompIcons";
+
+const LazyBarbSidebar = React.lazy(() =>
+  import("./BarbSidebar").then(({ BarbSidebar }) => ({ default: BarbSidebar })),
+);
 
 export interface ShellAction {
   /** Stable identifier. */
@@ -314,11 +317,13 @@ export function DesktopShell({
         onOpenChange={setPaletteOpen}
       />
       {barbMounted ? (
-        <BarbSidebar
-          open={barbOpen}
-          onClose={() => setBarbOpen(false)}
-          onNavigate={onSelect}
-        />
+        <React.Suspense fallback={null}>
+          <LazyBarbSidebar
+            open={barbOpen}
+            onClose={() => setBarbOpen(false)}
+            onNavigate={onSelect}
+          />
+        </React.Suspense>
       ) : null}
     </div>
   );

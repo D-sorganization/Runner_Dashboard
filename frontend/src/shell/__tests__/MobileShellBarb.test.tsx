@@ -29,14 +29,14 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe("MobileShell Barb access", () => {
-  it("keeps Barb available from mobile sections and navigates without closing the conversation", () => {
+  it("keeps Barb available from mobile sections and navigates without closing the conversation", async () => {
     const onTabChange = vi.fn();
     const { rerender } = render(
       <MobileShell currentTab="projects" onTabChange={onTabChange}><div>Projects</div></MobileShell>,
     );
 
     fireEvent.click(screen.getByTestId("mobile-ask-barb"));
-    const panel = screen.getByRole("dialog", { name: "Ask Barb" });
+    const panel = await screen.findByRole("dialog", { name: "Ask Barb" });
 
     fireEvent.click(screen.getByRole("button", { name: /open fleet command/i }));
     expect(onTabChange).toHaveBeenCalledWith("fleet-command");

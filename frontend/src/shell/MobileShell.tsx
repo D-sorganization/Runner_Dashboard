@@ -19,7 +19,10 @@ import React, { useState, ReactNode, useCallback, useEffect, useRef } from 'reac
 import { useBreakpoint } from '../hooks/useBreakpoint'
 import { FloatingActionButton } from '../primitives/FloatingActionButton'
 import { AskSheet } from './AskSheet'
-import { BarbSidebar } from './BarbSidebar'
+
+const LazyBarbSidebar = React.lazy(() =>
+  import('./BarbSidebar').then(({ BarbSidebar }) => ({ default: BarbSidebar })),
+)
 import {
   mobilePrimaryItems,
   mobileDrawerItems,
@@ -244,12 +247,14 @@ export function MobileShell({ children, currentTab, onTabChange, tabContent }: M
         onOpenStaffConsole={() => onTabChange('staff')}
       />
       {barbMounted ? (
-        <BarbSidebar
-          open={barbOpen}
-          mobile
-          onClose={() => setBarbOpen(false)}
-          onNavigate={onTabChange}
-        />
+        <React.Suspense fallback={null}>
+          <LazyBarbSidebar
+            open={barbOpen}
+            mobile
+            onClose={() => setBarbOpen(false)}
+            onNavigate={onTabChange}
+          />
+        </React.Suspense>
       ) : null}
 
       {/* Drawer for additional tabs */}
