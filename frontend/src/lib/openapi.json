@@ -20910,6 +20910,36 @@
         "tags": ["staff-inbox-v1"]
       }
     },
+    "/api/v1/staff/context/agents-sync": {
+      "get": {
+        "description": "Compare published managed AGENTS blocks with the Repository_Management source.",
+        "operationId": "context_agents_sync_v1_api_v1_staff_context_agents_sync_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Context Agents Sync V1 Api V1 Staff Context Agents Sync Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Context Agents Sync V1",
+        "tags": ["staff-v1"]
+      }
+    },
     "/api/v1/staff/followup/digest": {
       "get": {
         "description": "Retrieve the daily digest of follow-up activities and work item states.",
