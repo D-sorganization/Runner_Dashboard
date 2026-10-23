@@ -37,6 +37,8 @@ def make_token(private_key: Any, *, kid: str = "test-key", claims: dict[str, Any
     for key, value in (claims or {}).items():
         if value is None:
             payload.pop(key, None)
+        elif key == "nbf" and value == "future":
+            payload[key] = now + 120
         else:
             payload[key] = value
     return jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": kid})
@@ -74,7 +76,7 @@ def test_valid_human_token_is_verified_against_fixed_cloudflare_keys(signing_pai
         {"iss": "https://attacker.cloudflareaccess.com"},
         {"aud": ["different-audience"]},
         {"exp": int(time.time()) - 1},
-        {"nbf": int(time.time()) + 120},
+        {"nbf": "future"},
         {"iss": None},
         {"aud": None},
         {"exp": None},
