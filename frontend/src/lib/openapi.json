@@ -1887,6 +1887,62 @@
         "title": "EvaluateBoardPayload",
         "type": "object"
       },
+      "ExclusionBody": {
+        "description": "POST body. DbC: the JSON shape of ``staff.exclusions.Exclusion`` minus server-set fields.",
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "owner": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "path_glob": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Path Glob",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "owner", "reason"],
+        "title": "ExclusionBody",
+        "type": "object"
+      },
       "ExecutionConfig": {
         "additionalProperties": false,
         "description": "Tuning and constraints for executor pipeline execution.",
@@ -6965,6 +7021,12 @@
             },
             "title": "Attention",
             "type": "array"
+          },
+          "exclusions_active": {
+            "default": 0,
+            "description": "Active dispatch exclusions (repo/issue lanes)",
+            "title": "Exclusions Active",
+            "type": "integer"
           },
           "generated_at": {
             "description": "ISO-8601 UTC timestamp",
@@ -16912,6 +16974,133 @@
         "tags": ["staff-inbox"]
       }
     },
+    "/api/staff/exclusions": {
+      "get": {
+        "operationId": "list_exclusions_api_staff_exclusions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Exclusions Api Staff Exclusions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Exclusions",
+        "tags": ["staff"]
+      },
+      "post": {
+        "description": "Add (or replace the identical repo/issue/glob) exclusion; the caller is recorded as ``created_by``.",
+        "operationId": "add_exclusion_api_staff_exclusions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExclusionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Exclusion Api Staff Exclusions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Add Exclusion",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/exclusions/{exclusion_id}": {
+      "delete": {
+        "operationId": "delete_exclusion_api_staff_exclusions__exclusion_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exclusion_id",
+            "required": true,
+            "schema": {
+              "title": "Exclusion Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Exclusion Api Staff Exclusions  Exclusion Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Delete Exclusion",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/github-app/preflight": {
       "get": {
         "description": "Compare staff role GitHub App permission needs to the live installation grant (#2038).",
@@ -21419,6 +21608,133 @@
         ],
         "summary": "Context Agents Sync V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/exclusions": {
+      "get": {
+        "operationId": "list_exclusions_api_v1_staff_exclusions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Exclusions Api V1 Staff Exclusions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Exclusions",
+        "tags": ["staff"]
+      },
+      "post": {
+        "description": "Add (or replace the identical repo/issue/glob) exclusion; the caller is recorded as ``created_by``.",
+        "operationId": "add_exclusion_api_v1_staff_exclusions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExclusionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Exclusion Api V1 Staff Exclusions Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Add Exclusion",
+        "tags": ["staff"]
+      }
+    },
+    "/api/v1/staff/exclusions/{exclusion_id}": {
+      "delete": {
+        "operationId": "delete_exclusion_api_v1_staff_exclusions__exclusion_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exclusion_id",
+            "required": true,
+            "schema": {
+              "title": "Exclusion Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Exclusion Api V1 Staff Exclusions  Exclusion Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Delete Exclusion",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/followup/digest": {

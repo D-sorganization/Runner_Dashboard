@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 
 from staff import consolidation, verification
 from staff.budget import BudgetGuard
+from staff.exclusions import ExclusionsList
 from staff.holds import HoldsList
 from staff.roles import RoleSpec
 from staff.runner import RunRequest, StaffRunner, get_runner
@@ -242,6 +243,13 @@ class StaffScheduler:
                 if repo_hold:
                     entry["last_reason"] = f"skipped {due}: hold: {repo_hold.text}"
                     decisions.append({"role": name, "slot": due, "fired": False, "reason": f"hold: {repo_hold.text}"})
+                    continue
+                excluded = ExclusionsList().blocking(repo) if repo else None
+                if excluded:
+                    reason = f"excluded: {excluded.owner}: {excluded.reason}"
+                    entry["last_reason"] = f"skipped {due}: {reason}"
+                    log.info("staff scheduler: %s slot %s skipped - %s (%s)", name, due, reason, excluded.id)
+                    decisions.append({"role": name, "slot": due, "fired": False, "reason": reason})
                     continue
                 decision = self._decider(role, repo)
                 prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
