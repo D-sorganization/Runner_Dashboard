@@ -96,6 +96,21 @@ def _add_library_operations(parser: argparse.ArgumentParser) -> None:
     _add_argument(verify, "run_id", BY_CLI["library-verify"].properties["run_id"], positional=False)
 
 
+def _add_barb_seat(sub: Any) -> None:
+    """``fleetctl barb seat {status,checkout,heartbeat,turnover,release}``."""
+    barb = sub.add_parser("barb", help="Barb seat tools.").add_subparsers(dest="barb_group", required=True)
+    seat = barb.add_parser("seat", help="Take, hold and hand over a Barb seat.").add_subparsers(
+        dest="seat_action", required=True, metavar="ACTION"
+    )
+    for command in COMMANDS:
+        if not command.cli.startswith("barb seat "):
+            continue
+        child = seat.add_parser(command.cli.rsplit(" ", 1)[1], help=command.description)
+        child.set_defaults(command=command.cli)
+        for name, schema in command.properties.items():
+            _add_argument(child, name, schema, positional=name in command.positional)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="fleetctl", description="Runner Dashboard Fleet API client (JSON output).")
     parser.add_argument("--url", help="API base URL (default $FLEET_API_URL or http://127.0.0.1:8321).")
@@ -104,9 +119,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--as-session", dest="default_session", help="Default session (default $FLEET_SESSION).")
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for command in COMMANDS:
+        if " " in command.cli:  # grouped commands (``barb seat ...``) are registered below
+            continue
         cmd_parser = sub.add_parser(command.cli, help=command.description, description=command.description)
         for name, schema in command.properties.items():
             _add_argument(cmd_parser, name, schema, positional=name in command.positional)
+    _add_barb_seat(sub)
     _add_library_operations(sub.add_parser("library", help="Read-only library search, fetch and source discovery."))
     doctor = sub.add_parser(
         "doctor",
