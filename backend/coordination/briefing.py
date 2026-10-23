@@ -18,7 +18,8 @@ from coordination import board
 from coordination.service import now_iso
 from coordination.staff_view import staff_runs
 from staff.scheduler import get_scheduler
-from staff.workspace import FLEET_RULES
+from staff.standards_registry import load_fleet_standards
+from staff.workspace import get_fleet_rules
 
 log = logging.getLogger("dashboard.coordination")
 
@@ -79,6 +80,10 @@ async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
     board_warnings = list(board_view.get("warnings", []))
     if not board_view["available"]:
         board_warnings.append(f"board unavailable: {board_view.get('reason', '')}")
+    standards = load_fleet_standards()
+    standards_warnings: list[str] = []
+    if standards.fallback or standards.source_path == "<builtin>":
+        standards_warnings.append("fleet standards resolved to <builtin>; using fallback baseline")
     return {
         "generated_at": now_iso(),
         "repo": repo,
@@ -89,7 +94,18 @@ async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
         "board_available": board_view["available"],
         "staff_runs": runs,
         "claims_hint": CLAIMS_HINT,
-        "rules": [FLEET_RULES],
+        "standards_pin": standards.pin,
+        "standards_source": standards.source_path,
+        "standards_version": standards.version,
+        "standards": {
+            "pin": standards.pin,
+            "version": standards.version,
+            "source": standards.source_path,
+            "fallback": bool(standards.fallback or standards.source_path == "<builtin>"),
+            "digest": standards.digest,
+            "source_revision": standards.source_revision,
+        },
+        "rules": [get_fleet_rules()],
         "endpoints": ENDPOINTS,
-        "warnings": [*w_priorities, *w_holds, *board_warnings, *w_runs],
+        "warnings": [*w_priorities, *w_holds, *board_warnings, *w_runs, *standards_warnings],
     }

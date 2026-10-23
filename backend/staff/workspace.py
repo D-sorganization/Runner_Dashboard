@@ -32,24 +32,13 @@ RESULT_CONTRACT = (
     "one-sentence summary. A run that ends without that line is recorded as failed, even when the work is done."
 )
 
-FLEET_RULES = (
-    "Fleet rules: work only inside this worktree; TDD, DbC, LoD, DRY; commit with a Conventional Commits "
-    "subject; if docs/development/HANDOFF.md exists update it in the same commit; push the branch, open a "
-    "ready pull request (not draft), arm auto-merge via automerge_guard, and end session (pr_lifecycle: arm_and_exit); "
-    "never merge, never force-push, never touch other worktrees or host configuration; "
-    "never take an issue or PR labelled claim:local or under another agent's live lease; before choosing an "
-    "issue, skip it if an open pull request already references it (gh pr list --state open --search '<number>'); "
-    "never file bulk "
-    "remediation issues (report findings in one issue or the PR instead); "
-    "include the PR URL, if you opened one, in your STAFF_RESULT summary. " + RESULT_CONTRACT
-)
-
 READ_ONLY_FLEET_RULES = (
     "Fleet rules (code-read-only run, #1659): read and report only; do not edit, create or delete files, "
     "do not commit, push branches or open, comment on or merge pull requests or issues; use the local "
     "dashboard API and read-only gh/git commands; never take an issue or PR labelled claim:local or under "
     "another agent's live lease. " + RESULT_CONTRACT
 )
+
 
 PLAYBOOK_MAX_CHARS = 16000
 
@@ -100,6 +89,26 @@ def rm_root() -> Path | None:
             if (cand / "scripts" / "check_agent_claim.py").is_file():
                 return cand
     return None
+
+
+def get_fleet_rules() -> str:
+    """Dynamic resolution of fleet rules from load_fleet_standards() (DRY: one source, #2220)."""
+    from staff.standards_registry import load_fleet_standards
+
+    standards = load_fleet_standards()
+    body = standards.body.strip()
+    return (
+        f"{body}\n"
+        "- never merge, never force-push, never touch other worktrees or host configuration.\n"
+        "- never take an issue or PR labelled claim:local or under another agent's live lease.\n"
+        "- before choosing an issue, skip it if an open pull request already references it.\n"
+        "- never file bulk remediation issues (report findings in one issue or the PR instead).\n"
+        "- include the PR URL, if you opened one, in your STAFF_RESULT summary.\n\n"
+        f"{RESULT_CONTRACT}"
+    )
+
+
+FLEET_RULES: str = get_fleet_rules()
 
 
 def playbook_text(rel: str, limit: int = PLAYBOOK_MAX_CHARS) -> str:
@@ -293,32 +302,61 @@ def remove_worktree(worktree: Path, checkout: Path | None = None) -> None:
 def compose_prompt(
     role: RoleSpec,
     *,
-    repo: str,
-    target_ref: str,
-    operator_prompt: str,
-    branch: str,
+    repo: str = "",
+    target_ref: str = "",
+    operator_prompt: str = "",
+    branch: str = "",
     lease_note: str = "",
     consolidation: str = "",
     focus: str = "",
     chat_turn: bool = False,
     dispatch_bundle: DispatchBundle | None = None,
     library_references: str = "",
+    target_repo_path: Path | None = None,
+    repo_agents_text: str | None = None,
 ) -> str:
-    """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
+    """Assemble the agent prompt in cache-friendly order (standards -> skills -> dynamic state).
 
-    Kept deliberately plain: role instructions (from RM), the playbook path,
-    the target, the PR-consolidation decision when the role has one (#1213),
-    and the non-negotiable fleet rules for an unattended run (or reply contract for chat).
+    Order: FLEET.md -> role skills -> accepted lessons -> dynamic run state/holds/task (#2220).
     """
-    target = target_ref or "free-form task"
-    if chat_turn:
-        parts = [
-            f"You are the fleet staff role '{role.title}' ({role.name}) in a conversation on the Runner Dashboard.",
-        ]
+    from staff.context_tokens import TIER_0_TOKEN_BUDGET, estimate_tokens
+
+    # 1. Resolve standards pin and block
+    if dispatch_bundle is not None:
+        bundle_pin = dispatch_bundle.standards_pin
+        bundle_standards_block = dispatch_bundle.standards_block
     else:
-        parts = [
-            f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard.",
-        ]
+        from staff.standards_registry import load_fleet_standards
+
+        standards = load_fleet_standards()
+        bundle_pin = standards.pin
+        bundle_standards_block = f"Fleet standards ({standards.pin}):\n{standards.body.strip()}"
+
+    # Dedup pin check against repository AGENTS.md
+    agents_text = repo_agents_text
+    if agents_text is None and target_repo_path is not None:
+        agents_file = target_repo_path / "AGENTS.md"
+        if agents_file.is_file():
+            try:
+                agents_text = agents_file.read_text(encoding="utf-8")
+            except OSError:
+                pass
+
+    if agents_text and bundle_pin and bundle_pin in agents_text:
+        standards_section = f"Fleet standards: verified in repository AGENTS.md ({bundle_pin})."
+    else:
+        standards_section = bundle_standards_block
+
+    t0_tokens = estimate_tokens(standards_section)
+    if t0_tokens > TIER_0_TOKEN_BUDGET:
+        raise ValueError(f"Tier 0 token budget exceeded: {t0_tokens} > {TIER_0_TOKEN_BUDGET}")
+
+    parts = [standards_section]
+
+    # 2. Role skills & role instructions (static prefix)
+    if dispatch_bundle is not None and dispatch_bundle.skill_block and not chat_turn:
+        parts.append(dispatch_bundle.skill_block)
+
     if role.playbook:
         text = playbook_text(role.playbook)
         if text:
@@ -330,6 +368,18 @@ def compose_prompt(
             )
     if role.instructions:
         parts.append("Role instructions:\n" + role.instructions.strip())
+
+    if chat_turn:
+        parts.append(
+            f"You are the fleet staff role '{role.title}' ({role.name}) in a conversation on the Runner Dashboard."
+        )
+    else:
+        parts.append(
+            f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard."
+        )
+
+    # 3. Dynamic run state / repo / task
+    target = target_ref or "free-form task"
     if repo:
         if chat_turn:
             parts.append(f"Repository context: {ORG}/{repo}. Target: {target}.")
@@ -341,6 +391,7 @@ def compose_prompt(
             )
     else:
         parts.append(f"Target: {target}.")
+
     if operator_prompt:
         parts.append("Task from the operator:\n" + operator_prompt.strip())
     if lease_note:
@@ -351,10 +402,8 @@ def compose_prompt(
         parts.append(focus)
     if library_references and not chat_turn:
         parts.append(library_references)
-    if dispatch_bundle is not None and not chat_turn:
-        parts.append(dispatch_bundle.standards_block)
-        parts.append(dispatch_bundle.skill_block)
 
+    # 4. Suffix (Dashboard API note & Contract)
     if chat_turn:
         from staff.reply_contract import get_chat_contract_text
 
@@ -366,6 +415,9 @@ def compose_prompt(
         parts.append(get_chat_contract_text(contract_rel))
     else:
         parts.append(dashboard_api_note())
-        parts.append(READ_ONLY_FLEET_RULES if role.code_read_only else FLEET_RULES)
+        if role.code_read_only:
+            parts.append(READ_ONLY_FLEET_RULES)
+        else:
+            parts.append(RESULT_CONTRACT)
 
     return "\n\n".join(parts)

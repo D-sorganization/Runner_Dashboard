@@ -6,7 +6,7 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from staff import consolidation
@@ -87,6 +87,9 @@ class RunPlan:
     model_tier: str = ""
     skill_pin: str = ""
     standards_version: str = ""
+    standards_pin: str = ""
+    standards_token_estimate: int = 0
+    context_metadata: dict[str, Any] = field(default_factory=dict)
     library_work_ids: tuple[int, ...] = ()
     provider_auth_skipped: tuple[dict[str, str], ...] = ()
 
@@ -123,5 +126,14 @@ class RunPlan:
             "consolidation": dict(self.consolidation) if self.consolidation else None,
             "skill_pin": self.skill_pin,
             "skill": None if not self.skill_pin else {"pin": self.skill_pin},
+            "standards_version": self.standards_version,
+            "standards_pin": self.standards_pin,
+            "standards_token_estimate": self.standards_token_estimate,
+            "standards": {
+                "version": self.standards_version,
+                "pin": self.standards_pin,
+                "token_estimate": self.standards_token_estimate,
+            },
+            "context_metadata": dict(self.context_metadata),
             "provider_auth_skipped": [dict(row) for row in self.provider_auth_skipped],
         }

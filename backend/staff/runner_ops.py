@@ -429,5 +429,8 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         origin_node=getattr(req, "origin_node", "") or "",
         skill_pin=getattr(plan, "skill_pin", "") or "",
         standards_version=getattr(plan, "standards_version", "") or "",
+        standards_pin=getattr(plan, "standards_pin", "") or "",
+        standards_token_estimate=getattr(plan, "standards_token_estimate", 0) or 0,
+        context_metadata=json.dumps(getattr(plan, "context_metadata", {}) or {}),
         library_work_ids=json.dumps(list(getattr(plan, "library_work_ids", ()) or ())),
     )

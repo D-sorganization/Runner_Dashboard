@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
+from staff.context_tokens import ESTIMATOR_VERSION, estimate_tokens
 from staff.skills.contract import SkillDetail, semver_sort_key
 from staff.skills.registry import get_skill, list_skills, repo_matches_skill
 from staff.standards_registry import FleetStandards, load_fleet_standards
@@ -20,12 +22,14 @@ class DispatchContractError(ValueError):
 
 @dataclass(frozen=True)
 class DispatchBundle:
-    skill_pin: str
-    skill_version: str
-    standards_version: str
-    standards_pin: str
-    skill_block: str
-    standards_block: str
+    skill_pin: str = ""
+    skill_version: str = ""
+    standards_version: str = ""
+    standards_pin: str = ""
+    skill_block: str = ""
+    standards_block: str = ""
+    standards_token_estimate: int = 0
+    context_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 def _task_matches(skill_tasks: tuple[str, ...], task_type: str) -> bool:
@@ -50,6 +54,20 @@ def _standards_block(standards: FleetStandards, standards_extra: str) -> str:
     return f"Fleet standards ({standards.pin}):\n{standards_body}"
 
 
+def _make_context_metadata(standards: FleetStandards, standards_tokens: int, skill_tokens: int) -> dict[str, Any]:
+    return {
+        "pack_version": standards.version,
+        "content_digest": standards.digest,
+        "source_revision": standards.source_revision,
+        "requested_pack": f"{standards.name}@{standards.version}",
+        "resolved_pack": standards.pin,
+        "fallback_status": bool(standards.fallback or standards.source_path == "<builtin>"),
+        "estimator_version": ESTIMATOR_VERSION,
+        "per_block_tokens": {"standards": standards_tokens, "skills": skill_tokens, "lessons": 0},
+        "aggregate_tokens": standards_tokens + skill_tokens,
+    }
+
+
 def _bundle_from_detail(
     detail: SkillDetail,
     standards: FleetStandards,
@@ -59,24 +77,30 @@ def _bundle_from_detail(
     if detail.attachments:
         names = ", ".join(a.path for a in detail.attachments)
         skill_block += f"\n\n(Attachments bundled in registry: {names})"
+    std_block = _standards_block(standards, standards_extra)
+    standards_tokens = estimate_tokens(std_block)
+    skill_tokens = estimate_tokens(skill_block)
     return DispatchBundle(
         skill_pin=detail.pin,
         skill_version=detail.version,
         standards_version=standards.version,
         standards_pin=standards.pin,
         skill_block=skill_block,
-        standards_block=_standards_block(standards, standards_extra),
+        standards_block=std_block,
+        standards_token_estimate=standards_tokens,
+        context_metadata=_make_context_metadata(standards, standards_tokens, skill_tokens),
     )
 
 
 def _bundle_without_skill(standards: FleetStandards, standards_extra: str) -> DispatchBundle:
+    std_block = _standards_block(standards, standards_extra)
+    standards_tokens = estimate_tokens(std_block)
     return DispatchBundle(
-        skill_pin="",
-        skill_version="",
         standards_version=standards.version,
         standards_pin=standards.pin,
-        skill_block="",
-        standards_block=_standards_block(standards, standards_extra),
+        standards_block=std_block,
+        standards_token_estimate=standards_tokens,
+        context_metadata=_make_context_metadata(standards, standards_tokens, 0),
     )
 
 

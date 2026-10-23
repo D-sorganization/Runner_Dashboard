@@ -106,12 +106,16 @@ class RunRecord:
     model_tier: str = ""
     skill_pin: str = ""
     standards_version: str = ""
+    standards_pin: str = ""
+    standards_token_estimate: int = 0
+    context_metadata: str = "{}"
     library_work_ids: str = "[]"
 
     def __post_init__(self) -> None:
         self.retryable = bool(self.retryable)
         self.attempt = int(self.attempt)
         self.max_attempts = int(self.max_attempts)
+        self.standards_token_estimate = int(self.standards_token_estimate)
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
@@ -119,6 +123,11 @@ class RunRecord:
         d["attempt"] = int(self.attempt)
         d["max_attempts"] = int(self.max_attempts)
         d["skill"] = None if not self.skill_pin else {"pin": self.skill_pin}
+        d["standards"] = {
+            "version": self.standards_version,
+            "pin": self.standards_pin,
+            "token_estimate": self.standards_token_estimate,
+        }
         return d
 
 

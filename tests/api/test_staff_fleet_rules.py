@@ -19,11 +19,11 @@ def test_fleet_rules_carry_all_agent_guardrails() -> None:
     assert "open pull request already references it" in rules  # #1225: no duplicate PRs for linked issues
 
 
-def test_compose_prompt_always_ends_with_fleet_rules() -> None:
+def test_compose_prompt_starts_with_standards_and_ends_with_result_contract() -> None:
     prompt = workspace.compose_prompt(
         _role(), repo="Tools", target_ref="issue #1", operator_prompt="", branch="staff/night-watch-1"
     )
-    assert prompt.endswith(workspace.FLEET_RULES)
+    assert prompt.startswith("Fleet standards") and prompt.endswith(workspace.RESULT_CONTRACT)
     assert "claim:local" in prompt
 
 
@@ -50,7 +50,7 @@ def test_unattended_prompt_points_at_local_dashboard_api(monkeypatch) -> None:  
     )
     assert "curl -s http://127.0.0.1:8321/api/staff/summary" in prompt
     assert "$FLEET_API_TOKEN" in prompt
-    assert prompt.endswith(workspace.FLEET_RULES)
+    assert prompt.startswith("Fleet standards") and prompt.endswith(workspace.RESULT_CONTRACT)
 
 
 def test_dashboard_api_note_follows_dashboard_port(monkeypatch) -> None:  # noqa: ANN001

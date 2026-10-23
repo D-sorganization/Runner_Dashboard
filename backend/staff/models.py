@@ -157,6 +157,10 @@ class StaffRunRecord(BaseModel):
     verification_detail: str = ""
     pr_number: int | None = None
     artifact: str = ""
+    standards_version: str = ""
+    standards_pin: str = ""
+    standards_token_estimate: int = 0
+    context_metadata: str = "{}"
 
     model_config = ConfigDict(extra="allow")
 
@@ -224,6 +228,10 @@ class StaffRunPlan(BaseModel):
     branch: str = ""
     lease_ritual: bool = True
     consolidation: StaffConsolidationDecision | None = None
+    standards_version: str = ""
+    standards_pin: str = ""
+    standards_token_estimate: int = 0
+    context_metadata: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="allow")
 

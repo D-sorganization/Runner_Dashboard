@@ -177,6 +177,9 @@ class StaffRunner:
             head_ref=req.head_ref,
             skill_pin=bundle.skill_pin,
             standards_version=bundle.standards_version,
+            standards_pin=bundle.standards_pin,
+            standards_token_estimate=bundle.standards_token_estimate,
+            context_metadata=bundle.context_metadata,
             library_work_ids=library_work_ids,
             provider_auth_skipped=tuple(auth_skipped),
         )
