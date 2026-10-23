@@ -380,7 +380,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           className="composer-panel-notice"
           style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}
         >
-          Restoring your Barb conversation. File attachments will be available when ready.
+          Opening a conversation. File attachments will be available when ready.
         </div>
       )}
       {isPanel && (

@@ -88,7 +88,7 @@ describe("BarbSidebar", () => {
     const view = render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
     const fileInput = screen.getByTestId("composer-file-input");
 
-    expect(screen.getByRole("status")).toHaveTextContent(/restoring.*attachments.*available/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/conversation.*attachments.*available/i);
     expect(fileInput).toBeDisabled();
     expect(screen.getByTestId("composer-attach-btn")).toBeDisabled();
     fireEvent.change(fileInput, { target: { files: [new File(["notes"], "audit.md", { type: "text/markdown" })] } });
@@ -103,6 +103,46 @@ describe("BarbSidebar", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     const request = fetchMock.mock.calls[0][1];
     expect(JSON.parse(String(request?.body))).toMatchObject({ thread_id: thread.id });
+    fetchMock.mockRestore();
+  });
+
+  it("does not stage attachments against the previous thread during a non-Barb handoff", async () => {
+    const previousThread = {
+      id: "th-barb-before-handoff",
+      title: "Barb conversation",
+      kind: "auto",
+      participants: ["barb"],
+      status: "active",
+    };
+    const maintenanceThread = {
+      id: "th-maintenance-after-handoff",
+      title: "Maintenance conversation",
+      kind: "direct",
+      participants: ["maintenance"],
+      status: "active",
+    };
+    mockUseStaffConsole.mockReturnValue(staffConsoleState({ activeThread: previousThread, openingRole: "maintenance" }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 82, sha256: "fixture" }),
+    } as Response);
+    const view = render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const fileInput = screen.getByTestId("composer-file-input");
+
+    expect(screen.getByRole("status")).toHaveTextContent(/opening a conversation.*attachments.*available/i);
+    expect(fileInput).toBeDisabled();
+    expect(screen.getByTestId("composer-attach-btn")).toBeDisabled();
+    fireEvent.change(fileInput, { target: { files: [new File(["notes"], "handoff.md", { type: "text/markdown" })] } });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    mockUseStaffConsole.mockReturnValue(staffConsoleState({ activeThread: maintenanceThread, openingRole: null }));
+    view.rerender(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["notes"], "handoff.md", { type: "text/markdown" })] },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({ thread_id: maintenanceThread.id });
     fetchMock.mockRestore();
   });
 
