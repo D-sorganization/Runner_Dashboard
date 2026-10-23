@@ -24,6 +24,7 @@ from staff import usage as usage_mod
 from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.execution_result import classify_execution_result
+from staff.failover_dispatch import run_completion_summary
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
@@ -66,9 +67,7 @@ class StaffRunner:
         machine: str | None = None,
         focus_loader: Callable[[], list[dict[str, Any]]] | None = None,
     ) -> None:
-        self._store = store
-        self._focus_loader = focus_loader
-        self._roles_loader = roles_loader
+        self._store, self._focus_loader, self._roles_loader = store, focus_loader, roles_loader
         self._adapters = adapters if adapters is not None else ADAPTERS
         self.machine = machine or os.environ.get("DISPLAY_NAME") or platform.node() or "local"
         self._procs: dict[str, subprocess.Popen[str]] = {}
@@ -235,15 +234,15 @@ class StaffRunner:
             return False
         if proc is not None and proc.poll() is None:
             terminate_process_group(proc.pid, grace_period=1.0)
-            self.store.append_event(run_id, "cancel", "terminate signal sent")
-            handle_run_status_change(rec, "cancelled")
-            return True
-        if rec.status in ("queued", "preparing"):
+            evt = "terminate signal sent"
+        elif rec.status in ("queued", "preparing"):
             self.store.update_run(run_id, status="cancelled", ended_at=_now())
-            self.store.append_event(run_id, "cancel", "cancelled before start")
-            handle_run_status_change(rec, "cancelled")
-            return True
-        return False
+            evt = "cancelled before start"
+        else:
+            return False
+        self.store.append_event(run_id, "cancel", evt)
+        handle_run_status_change(rec, "cancelled")
+        return True
 
     # ── worker ───────────────────────────────────────────────────────────
     def _worker(self, rec: RunRecord, plan: RunPlan) -> None:
@@ -320,13 +319,7 @@ class StaffRunner:
         real_gh = shutil.which("gh") or "gh"
 
         env = apply_staff_run_github_child_env(
-            store,
-            rec,
-            os.environ,
-            role,
-            plan.repo or "",
-            run_id=rec.id,
-            real_gh_path=real_gh,
+            store, rec, os.environ, role, plan.repo or "", run_id=rec.id, real_gh_path=real_gh
         )
         if env is None:
             return
@@ -360,11 +353,7 @@ class StaffRunner:
                 proc.stdin.close()
 
             watchdog = StaffWatchdog(
-                run_id=rec.id,
-                proc=proc,
-                store=store,
-                max_seconds=wall_clock_timeout,
-                idle_seconds=idle_timeout,
+                run_id=rec.id, proc=proc, store=store, max_seconds=wall_clock_timeout, idle_seconds=idle_timeout
             )
             watchdog.start()
             try:
@@ -459,7 +448,6 @@ class StaffRunner:
             if updated_rec is not None:
                 q = question if status == "needs_input" else None
                 if status == "succeeded":
-                    from staff.failover_dispatch import run_completion_summary
                     from staff.lessons import file_staff_lessons
 
                     file_staff_lessons(store=None, rec=updated_rec, plan=plan, transcript_path=transcript)
@@ -491,8 +479,7 @@ _runner_lock = threading.Lock()
 def get_runner() -> StaffRunner:
     global _runner  # noqa: PLW0603
     with _runner_lock:
-        if _runner is None:
-            _runner = StaffRunner()
+        _runner = _runner or StaffRunner()
         return _runner
 
 

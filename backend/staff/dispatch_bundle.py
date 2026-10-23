@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from staff.skills.contract import SkillDetail, semver_sort_key
@@ -108,11 +108,6 @@ def _bundle_from_detail(
     detail: SkillDetail,
     standards: FleetStandards,
     standards_extra: str,
-    *,
-    lessons_block: str = "",
-    lessons_tokens: int = 0,
-    lesson_ids: tuple[str, ...] = (),
-    lessons_skipped: tuple[dict[str, str], ...] = (),
 ) -> DispatchBundle:
     skill_block = f"Skill package ({detail.pin}):\n{detail.body.strip()}"
     if detail.attachments:
@@ -122,31 +117,15 @@ def _bundle_from_detail(
         skill_pin=detail.pin,
         skill_version=detail.version,
         skill_block=skill_block,
-        lessons_block=lessons_block,
-        lessons_tokens=lessons_tokens,
-        lesson_ids=lesson_ids,
-        lessons_skipped=lessons_skipped,
         **_standards_fields(standards, standards_extra),
     )
 
 
-def _bundle_without_skill(
-    standards: FleetStandards,
-    standards_extra: str,
-    *,
-    lessons_block: str = "",
-    lessons_tokens: int = 0,
-    lesson_ids: tuple[str, ...] = (),
-    lessons_skipped: tuple[dict[str, str], ...] = (),
-) -> DispatchBundle:
+def _bundle_without_skill(standards: FleetStandards, standards_extra: str) -> DispatchBundle:
     return DispatchBundle(
         skill_pin="",
         skill_version="",
         skill_block="",
-        lessons_block=lessons_block,
-        lessons_tokens=lessons_tokens,
-        lesson_ids=lesson_ids,
-        lessons_skipped=lessons_skipped,
         **_standards_fields(standards, standards_extra),
     )
 
@@ -177,26 +156,15 @@ def resolve_dispatch_bundle(
 
     from staff.lessons import select_repo_lessons
 
-    selected_lessons, skipped_lessons, lessons_block, lessons_tokens = select_repo_lessons(repo=repo_key)
-    lesson_ids = tuple(e.id for e in selected_lessons)
-    lessons_skipped = tuple(skipped_lessons)
+    selected, skipped, block, tokens = select_repo_lessons(repo=repo_key)
+    lesson_ids = tuple(e.id for e in selected)
+    lessons_skipped = tuple(skipped)
 
-    def _make_bundle(det: SkillDetail | None) -> DispatchBundle:
-        if det is not None:
-            return _bundle_from_detail(
-                det,
-                standards,
-                standards_extra,
-                lessons_block=lessons_block,
-                lessons_tokens=lessons_tokens,
-                lesson_ids=lesson_ids,
-                lessons_skipped=lessons_skipped,
-            )
-        return _bundle_without_skill(
-            standards,
-            standards_extra,
-            lessons_block=lessons_block,
-            lessons_tokens=lessons_tokens,
+    def _with_lessons(b: DispatchBundle) -> DispatchBundle:
+        return replace(
+            b,
+            lessons_block=block,
+            lessons_tokens=tokens,
             lesson_ids=lesson_ids,
             lessons_skipped=lessons_skipped,
         )
@@ -206,7 +174,7 @@ def resolve_dispatch_bundle(
         detail = get_skill(name)
         if detail is None:
             raise DispatchContractError(f"requested skill {name!r} does not exist")
-        return _make_bundle(detail)
+        return _with_lessons(_bundle_from_detail(detail, standards, standards_extra))
 
     matches = match_skills_for_dispatch(role_key, repo_key, task_key)
     if matches:
@@ -214,7 +182,7 @@ def resolve_dispatch_bundle(
         detail = get_skill(best.name, version=best.version)
         if detail is None:
             raise DispatchContractError(f"skill {best.name}@{best.version} is indexed but unreadable")
-        return _make_bundle(detail)
+        return _with_lessons(_bundle_from_detail(detail, standards, standards_extra))
 
     generic = get_skill(DEFAULT_GENERIC_SKILL)
     if generic is not None:
@@ -225,7 +193,7 @@ def resolve_dispatch_bundle(
             task_key,
             DEFAULT_GENERIC_SKILL,
         )
-        return _make_bundle(generic)
+        return _with_lessons(_bundle_from_detail(generic, standards, standards_extra))
 
     log.warning(
         "no skill matches role=%r repo=%r task_type=%r and no generic skill; proceeding without skill package",
@@ -233,4 +201,4 @@ def resolve_dispatch_bundle(
         repo_key,
         task_key,
     )
-    return _make_bundle(None)
+    return _with_lessons(_bundle_without_skill(standards, standards_extra))

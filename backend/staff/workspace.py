@@ -16,7 +16,16 @@ from typing import TYPE_CHECKING, Any
 from platform_utils.wsl_paths import windows_repositories_root
 from staff import cli_projects
 from staff.roles import RoleSpec
-from staff.standards_registry import _BUILTIN
+from staff.standards_registry import (
+    _BUILTIN,
+    LESSONS_TOKEN_CAP,
+    TIER0_TOKEN_CAP,
+    TIER1_TOKEN_CAP,
+    TOTAL_CONTEXT_TOKEN_CAP,
+    ContextBudgetExceededError,
+    estimate_tokens,
+    load_fleet_standards,
+)
 from staff.worktree_hygiene import (
     finalize_run_worktree as finalize_run_worktree,
 )
@@ -341,16 +350,6 @@ def compose_prompt(
     Static prefix: standards -> skills -> accepted lessons.
     Dynamic suffix: role instructions, playbook, repository, target, and task.
     """
-    from staff.standards_registry import (
-        LESSONS_TOKEN_CAP,
-        TIER0_TOKEN_CAP,
-        TIER1_TOKEN_CAP,
-        TOTAL_CONTEXT_TOKEN_CAP,
-        ContextBudgetExceededError,
-        estimate_tokens,
-        load_fleet_standards,
-    )
-
     static_blocks: list[str] = []
     if not chat_turn:
         if custom_standards is not None:
@@ -472,11 +471,7 @@ def compose_prompt(
     if chat_turn:
         from staff.reply_contract import get_chat_contract_text
 
-        contract_rel = (
-            str(role.chat.get("contract") or "staff/prompts/_chat_contract.md")
-            if role.chat
-            else "staff/prompts/_chat_contract.md"
-        )
+        contract_rel = str((role.chat or {}).get("contract") or "staff/prompts/_chat_contract.md")
         parts.append(get_chat_contract_text(contract_rel))
     else:
         parts.append(dashboard_api_note())
