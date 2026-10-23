@@ -24,6 +24,7 @@ import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
+import { pushThreadUrl, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
 import "./mobile.css";
 
 export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
@@ -51,13 +52,6 @@ function parseUrlParams(): { threadId: string | null; roleName: string | null; t
     roleName: p.get("role"),
     tab: tabParam,
   };
-}
-
-
-function pushThreadUrl(roleName: string, threadId: string): void {
-  if (typeof window === "undefined") return;
-  const query = `?role=${encodeURIComponent(roleName)}&thread=${encodeURIComponent(threadId)}`;
-  window.history.pushState(null, "", query);
 }
 
 export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
@@ -103,16 +97,12 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [showContext, setShowContext] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState("");
-  const [showThreadAfterHomeSend, setShowThreadAfterHomeSend] = useState(false);
-
-  useEffect(() => {
-    if (!showThreadAfterHomeSend || !activeThread) return;
-    setShowThreadAfterHomeSend(false);
-    if (viewRef.current !== "home") return;
-    setView("thread");
-    pushThreadUrl("barb", activeThread.id);
-    onOpenThread?.(activeThread.id);
-  }, [activeThread, onOpenThread, showThreadAfterHomeSend]);
+  const revealThreadAfterHomeSend = useMobileHomeSendNavigation({
+    activeThread,
+    isHomeView: () => viewRef.current === "home",
+    onOpenThread,
+    setThreadView: () => setView("thread"),
+  });
 
   // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
   // push link and is real; a ?role= link resolves to the role's backend thread.
@@ -183,10 +173,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const handleSendMessage = useCallback(async (payload: SendMessagePayload) => {
     const result = await sendMessage(payload);
     if (result.ok !== false && viewRef.current === "home" && !onSendMessage) {
-      setShowThreadAfterHomeSend(true);
+      revealThreadAfterHomeSend();
     }
     return result;
-  }, [onSendMessage, sendMessage]);
+  }, [onSendMessage, revealThreadAfterHomeSend, sendMessage]);
   const handleApproveProposal = sc.approveProposal;
   const handleDenyProposal = sc.denyProposal;
 
