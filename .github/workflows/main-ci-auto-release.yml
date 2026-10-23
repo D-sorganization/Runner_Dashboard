@@ -1,4 +1,4 @@
-# Automatic GitHub release for every green main commit (Dieter 2026-10-21).
+# Automatic GitHub release for green commits still on main and not older than the latest auto-release.
 # Re-verifies the node auto-deploy CI gate, packages dashboard artifacts, and
 # publishes an idempotent vYYYY.MM.DD-<shortsha> release with SHA-256 sidecar.
 name: Main CI auto-release
@@ -77,7 +77,7 @@ jobs:
             --committer-date "${COMMITTER_DATE}" \
             --keep 30 \
             --protected-sha "${PROTECTED_RELEASE_SHAS}" \
-            --require-current-main
+            --require-main-ancestor
 
   publish-dispatch:
     name: Publish dashboard release (manual dispatch)
