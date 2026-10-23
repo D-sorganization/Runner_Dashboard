@@ -595,7 +595,7 @@ def test_publisher_normalizes_latest_check_attempt_like_node(tmp_path: Path) -> 
                     "id": 1002,
                     **{
                         **_record("completed", "success"),
-                        "started_at": "2026-10-22T00:01:00Z",
+                        "started_at": "2026-10-21T23:59:00Z",
                     },
                 },
             ],
