@@ -458,8 +458,26 @@ test.describe("approved dashboard navigation", () => {
       route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
     );
     await openThread(requester, BARB);
+    const priorThreadId = new URL(requester.url()).searchParams.get("thread");
+    requester.route("**/api/v1/staff/threads", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      await route.continue({
+        headers: { ...route.request().headers(), ...requesterHeaders },
+      });
+    });
+    const createdThread = requester.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/v1/staff/threads"),
+    );
     await requester.getByRole("button", { name: "New conversation" }).click();
-    await expect(requester.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    const createdThreadResponse = await createdThread;
+    expect(createdThreadResponse.ok()).toBeTruthy();
+    const createdThreadId = (await createdThreadResponse.json()).id as string;
+    await expect(requester).toHaveURL(new RegExp(`thread=${createdThreadId}`));
+    expect(createdThreadId).not.toBe(priorThreadId);
     const threadId = new URL(requester.url()).searchParams.get("thread");
     if (!threadId) throw new Error("new navigation conversation has no thread id");
     const requesterDrawer = await openBarbSidebar(requester, threadId);
