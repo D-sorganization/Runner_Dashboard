@@ -30,12 +30,29 @@ def memory_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str
     grok = "svc_grok_memory_test"  # pragma: allowlist secret
     hands = "svc_hands_memory_test"  # pragma: allowlist secret
     reader = "svc_reader_memory_test"  # pragma: allowlist secret
+    writer = "svc_writer_memory_test"  # pragma: allowlist secret
+    summarizer = "svc_digest_summarizer_test"  # pragma: allowlist secret
     (tok_dir / "agent-grok.token").write_text(grok + "\n", encoding="utf-8")
     (tok_dir / "agent-codex-hands.token").write_text(hands + "\n", encoding="utf-8")
     identity_manager.add_ephemeral_token(
         hashlib.sha256(reader.encode()).hexdigest(),
         Principal(id="memory-reader-test", type="bot", name="Memory Reader", scopes=["memory.read"]),
         name="memory-reader-test",
+    )
+    identity_manager.add_ephemeral_token(
+        hashlib.sha256(writer.encode()).hexdigest(),
+        Principal(id="memory-writer-test", type="bot", name="Memory Writer", scopes=["memory.write"]),
+        name="memory-writer-test",
+    )
+    identity_manager.add_ephemeral_token(
+        hashlib.sha256(summarizer.encode()).hexdigest(),
+        Principal(
+            id="memory-digest-summarizer-test",
+            type="bot",
+            name="Digest Summarizer",
+            scopes=["memory.shared.summarize"],
+        ),
+        name="memory-digest-summarizer-test",
     )
 
     identity_manager.config_dir = id_dir
@@ -53,7 +70,7 @@ def memory_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str
 
     reset_memory_store()
 
-    return {"grok": grok, "hands": hands, "reader": reader}
+    return {"grok": grok, "hands": hands, "reader": reader, "writer": writer, "summarizer": summarizer}
 
 
 @pytest.fixture
@@ -208,7 +225,7 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
         "decisions": ["Keep memory canonical"],
         "open_items": ["Verify replay"],
     }
-    headers = {**_XHR, **_auth(memory_env["hands"])}
+    headers = {**_XHR, **_auth(memory_env["summarizer"])}
 
     first = remote_client.post("/api/v1/memory/session-digest", headers=headers, json=payload)
     replay = remote_client.post("/api/v1/memory/session-digest", headers=headers, json=payload)
@@ -218,7 +235,7 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
     assert replay.json()["replayed"] is True
     assert first.json()["entry"]["id"] == replay.json()["entry"]["id"]
     entry = first.json()["entry"]
-    assert entry["author_principal"].endswith("agent-codex-hands")
+    assert entry["author_principal"].endswith("memory-digest-summarizer-test")
     assert entry["body"]["reported_origin_principal"] == "human:dieterolson"
     assert "[REDACTED_GITHUB_TOKEN]" in entry["body"]["summary"]
     assert secret not in first.text
@@ -235,7 +252,7 @@ def test_session_digest_reuse_with_changed_content_conflicts(
         "user_message_id": "message-9",
         "summary": "Original summary",
     }
-    headers = {**_XHR, **_auth(memory_env["hands"])}
+    headers = {**_XHR, **_auth(memory_env["summarizer"])}
     first = remote_client.post("/api/v1/memory/session-digest", headers=headers, json=payload)
     changed = remote_client.post(
         "/api/v1/memory/session-digest",
@@ -249,15 +266,34 @@ def test_session_digest_reuse_with_changed_content_conflicts(
     assert len(listed.json()["entries"]) == 1
 
 
-def test_session_digest_requires_memory_write(remote_client: TestClient, memory_env: dict[str, str]) -> None:
+@pytest.mark.parametrize("principal", ["reader", "writer"])
+def test_session_digest_requires_dedicated_summarize_scope(
+    remote_client: TestClient, memory_env: dict[str, str], principal: str
+) -> None:
     response = remote_client.post(
         "/api/v1/memory/session-digest",
-        headers={**_XHR, **_auth(memory_env["reader"])},
+        headers={**_XHR, **_auth(memory_env[principal])},
         json={
             "source_product": "codex",
             "conversation_id": "thread-read-only",
             "user_message_id": "message-1",
             "summary": "Must not be accepted",
+        },
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"]["required_scope"] == "memory.shared.summarize"
+
+
+def test_summarize_scope_does_not_authorize_general_memory_writes(
+    remote_client: TestClient, memory_env: dict[str, str]
+) -> None:
+    response = remote_client.post(
+        "/api/v1/memory",
+        headers={**_XHR, **_auth(memory_env["summarizer"])},
+        json={
+            "entry_type": "session_digest",
+            "source_product": "codex",
+            "body": {"summary": "Only the dedicated summary route is allowed"},
         },
     )
     assert response.status_code == 403
@@ -286,7 +322,7 @@ def test_session_digest_rejects_out_of_contract_fields(
     }
     response = remote_client.post(
         "/api/v1/memory/session-digest",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["summarizer"])},
         json={**payload, **patch},
     )
     assert response.status_code == 422
