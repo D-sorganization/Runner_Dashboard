@@ -124,3 +124,4 @@ def test_install_template_records_dashboard_python() -> None:
 def test_node_auto_deploy_modules_import_under_current_python() -> None:
     sys.path.insert(0, str(DEPLOY))
     import node_auto_deploy.state  # noqa: F401, PLC0415
+

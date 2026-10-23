@@ -60,7 +60,11 @@ def test_every_workflow_is_classified_or_explicitly_exempt() -> None:
     adding a workflow forces a tier decision or a written exemption.
     """
     policy = json.loads(POLICY.read_text(encoding="utf-8"))
-    classified = {name for class_policy in policy["workflow_classes"].values() for name in class_policy["workflows"]}
+    classified = {
+        name
+        for class_policy in policy["workflow_classes"].values()
+        for name in class_policy["workflows"]
+    }
     on_disk = {path.name for path in WORKFLOW_DIR.glob("*.yml")}
 
     unaccounted = sorted(on_disk - classified - set(_UNCLASSIFIED))
@@ -70,7 +74,9 @@ def test_every_workflow_is_classified_or_explicitly_exempt() -> None:
     )
 
     stale_exemptions = sorted(set(_UNCLASSIFIED) - on_disk)
-    assert not stale_exemptions, f"Exemption named a workflow that no longer exists: {stale_exemptions}"
+    assert (
+        not stale_exemptions
+    ), f"Exemption named a workflow that no longer exists: {stale_exemptions}"
 
     overlap = sorted(classified & set(_UNCLASSIFIED))
     assert not overlap, f"Workflow is both classified and exempt: {overlap}"
@@ -86,7 +92,9 @@ def test_repo_audit_is_green_but_reports_migration_recommendations() -> None:
     payload = json.loads(result.stdout)
     assert payload["policy_errors"] == []
     assert payload["violations"] == []
-    assert payload["recommendations"], "Expected neutral-label migration recommendations for current workflows"
+    assert payload[
+        "recommendations"
+    ], "Expected neutral-label migration recommendations for current workflows"
 
 
 def test_audit_flags_docker_workflow_pinned_only_to_bulk(tmp_path: Path) -> None:

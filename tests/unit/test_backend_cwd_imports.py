@@ -57,5 +57,6 @@ def test_disk_guard_modules_import_with_backend_cwd_only() -> None:
         timeout=60,
     )
     assert proc.returncode == 0, (
-        f"backend-only import failed (rc={proc.returncode})\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        f"backend-only import failed (rc={proc.returncode})\n"
+        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     )

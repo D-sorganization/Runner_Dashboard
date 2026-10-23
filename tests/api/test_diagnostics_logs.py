@@ -36,7 +36,8 @@ def test_log_ring_buffer_redaction_and_caps() -> None:
     buf = LogRingBuffer(max_records=10, max_bytes=2048)
     fake_token = "ghp_" + "A" * 36
     secret_msg = (
-        f"Token: {fake_token} Bearer sample-bearer-token" + " Authorization: Bearer secret-token " + ("x" * 3000)
+        f"Token: {fake_token} Bearer sample-bearer-token"
+        + " Authorization: Bearer secret-token " + ("x" * 3000)
     )
     buf.add_record("2026-10-22T20:00:00Z", "INFO", "test.logger", secret_msg, "run-1", "req-1")
     records, _ = buf.query(limit=10)

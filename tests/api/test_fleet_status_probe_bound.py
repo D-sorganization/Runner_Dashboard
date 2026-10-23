@@ -42,9 +42,7 @@ async def test_slow_peer_does_not_exceed_probe_wall_clock(monkeypatch: pytest.Mo
         async def get(self, *_a: object, **kwargs: object) -> object:
             started.append(time.monotonic())
             timeout = kwargs.get("timeout")
-            read_s = float(
-                getattr(timeout, "read", HttpTimeout.FLEET_NODE_PROBE_READ_S) or HttpTimeout.FLEET_NODE_PROBE_READ_S
-            )
+            read_s = float(getattr(timeout, "read", HttpTimeout.FLEET_NODE_PROBE_READ_S) or HttpTimeout.FLEET_NODE_PROBE_READ_S)
             await asyncio.sleep(read_s + 0.15)
             raise httpx.ReadTimeout("simulated slow peer")
 

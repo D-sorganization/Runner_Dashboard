@@ -27,7 +27,9 @@ _SAMPLE = SkillDetail(
     source_path="fleet/open-pr/SKILL.md",
     package_dir="",
     body="Use fragments.",
-    attachments=(SkillAttachment(path="templates/pr.md", kind="template", content="# PR", content_hash="def"),),
+    attachments=(
+        SkillAttachment(path="templates/pr.md", kind="template", content="# PR", content_hash="def"),
+    ),
 )
 
 
