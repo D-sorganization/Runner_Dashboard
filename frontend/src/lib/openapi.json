@@ -27936,6 +27936,64 @@
         "tags": ["vault"]
       }
     },
+    "/api/v1/voice/status": {
+      "get": {
+        "operationId": "get_voice_status_api_v1_voice_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Voice Status Api V1 Voice Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Voice Status",
+        "tags": ["voice"]
+      }
+    },
+    "/api/v1/voice/transcribe": {
+      "post": {
+        "operationId": "transcribe_voice_api_v1_voice_transcribe_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Transcribe Voice Api V1 Voice Transcribe Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Transcribe Voice",
+        "tags": ["voice"]
+      }
+    },
     "/api/version": {
       "get": {
         "description": "Return dashboard and dispatch-envelope version compatibilities.",
