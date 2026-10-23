@@ -155,6 +155,7 @@ def test_dashboard_navigation_is_allowlisted_read_only_action() -> None:
     assert action.risk_class == ActionRiskClass.LOW
     assert action.required_scope == "staff.chat"
     assert action.executor({"tab_id": "fleet-command"}, ActionContext()).result == {"navigate_to": "fleet-command"}
+    assert action.executor({"tab_id": "context"}, ActionContext()).result == {"navigate_to": "context"}
     rejected = action.executor({"tab_id": "/fleet-command"}, ActionContext())
     assert rejected.success is False
     assert rejected.failure_class == "invalid_params"
