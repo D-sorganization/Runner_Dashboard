@@ -311,6 +311,85 @@ describe("Composer Component", () => {
     fetchMock.mockRestore();
   });
 
+  it("clears an attached file when the composer switches conversations", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 42, sha256: "sha256-stub-digest" }),
+    } as Response);
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+    const view = render(<Composer threadId="thread-original" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["private notes"], "original.md", { type: "text/markdown" })] },
+    });
+    await waitFor(() => expect(screen.getByTestId("composer-attachment-original.md")).toHaveTextContent("attached"));
+
+    view.rerender(<Composer threadId="thread-next" roles={MOCK_ROLES} onSendMessage={onSend} />);
+    expect(screen.queryByTestId("composer-attachment-original.md")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review the next conversation" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(onSend.mock.calls[0][0].meta).toBeUndefined();
+    fetchMock.mockRestore();
+  });
+
+  it("keeps the first new-thread send payload when its thread id appears", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 44, sha256: "new-thread-digest" }),
+    } as Response);
+    let resolveSend!: (result: { ok: true }) => void;
+    const onSend = vi.fn(() => new Promise<{ ok: true }>((resolve) => { resolveSend = resolve; }));
+    const view = render(<Composer threadId="new" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["notes"], "first-message.md", { type: "text/markdown" })] },
+    });
+    await waitFor(() => expect(screen.getByTestId("composer-attachment-first-message.md")).toHaveTextContent("attached"));
+    fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review this file" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    expect(onSend).toHaveBeenCalledOnce();
+    expect(onSend.mock.calls[0][0].meta).toMatchObject({
+      attachments: [expect.objectContaining({ filename: "first-message.md", intake_id: 44 })],
+    });
+
+    view.rerender(<Composer threadId="thread-created-by-first-send" roles={MOCK_ROLES} onSendMessage={onSend} />);
+    expect(screen.queryByTestId("composer-attachment-first-message.md")).not.toBeInTheDocument();
+    resolveSend({ ok: true });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    fetchMock.mockRestore();
+  });
+
+  it("does not restore an upload chip when its upload finishes after a thread switch", async () => {
+    let resolveUpload!: (response: Response) => void;
+    const upload = new Promise<Response>((resolve) => { resolveUpload = resolve; });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockReturnValueOnce(upload);
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+    const view = render(<Composer threadId="thread-original-pending" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    try {
+      fireEvent.change(screen.getByTestId("composer-file-input"), {
+        target: { files: [new File(["private notes"], "pending-original.md", { type: "text/markdown" })] },
+      });
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      expect(await screen.findByTestId("composer-attachment-pending-original.md")).toBeInTheDocument();
+
+      view.rerender(<Composer threadId="thread-next-pending" roles={MOCK_ROLES} onSendMessage={onSend} />);
+      expect(screen.queryByTestId("composer-attachment-pending-original.md")).not.toBeInTheDocument();
+      resolveUpload({ ok: true, status: 200, json: async () => ({ id: 43, sha256: "late-digest" }) } as Response);
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+      expect(screen.queryByTestId("composer-attachment-pending-original.md")).not.toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review the next conversation" } });
+      fireEvent.click(screen.getByRole("button", { name: /send/i }));
+      await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+      expect(onSend.mock.calls[0][0].meta).toBeUndefined();
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("shows a pending upload and blocks both button and Enter sends until it settles", async () => {
     let resolveUpload!: (response: Response) => void;
     const upload = new Promise<Response>((resolve) => { resolveUpload = resolve; });

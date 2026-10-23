@@ -88,10 +88,12 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
   // Restore draft when threadId changes without wiping in-flight typing from "new"
   useEffect(() => {
+    const previousThreadId = prevThreadIdRef.current;
     const saved = getDraft(threadId);
-    const keepNew = prevThreadIdRef.current === "new" && threadId !== "new" && !saved && latestTextRef.current.trim().length > 0;
+    const keepNew = previousThreadId === "new" && threadId !== "new" && !saved && latestTextRef.current.trim().length > 0;
     const nextText = keepNew ? latestTextRef.current : saved;
     if (keepNew) { saveDraft(threadId, nextText); clearDraft("new"); }
+    if (previousThreadId !== threadId) setAttachments([]);
     prevThreadIdRef.current = threadId;
     setText(nextText);
     setSendState("idle");
