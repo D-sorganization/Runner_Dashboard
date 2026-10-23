@@ -13,6 +13,7 @@ from typing import Any
 
 from memory.contract import MAX_STORE_BYTES
 from memory.models import MemoryEntry
+from staff.store import _now  # noqa: PLC2701
 
 _STORE: AssistantMemoryStore | None = None
 
@@ -35,6 +36,12 @@ class _Row:
     expires_at: str | None
     supersedes_id: str | None
     superseded_by: str | None
+    repo: str | None = None
+    review_status: str | None = None
+    source_run: str | None = None
+    visibility: str | None = None
+    reviewed_by: str | None = None
+    accepted_at: str | None = None
 
     def to_entry(self) -> MemoryEntry:
         return MemoryEntry(
@@ -48,6 +55,12 @@ class _Row:
             expires_at=self.expires_at,
             supersedes_id=self.supersedes_id,
             superseded_by=self.superseded_by,
+            repo=self.repo,
+            review_status=self.review_status,  # type: ignore[arg-type]
+            source_run=self.source_run,
+            visibility=self.visibility,  # type: ignore[arg-type]
+            reviewed_by=self.reviewed_by,
+            accepted_at=self.accepted_at,
         )
 
 
@@ -78,6 +91,7 @@ class AssistantMemoryStore:
         self._db.execute("CREATE INDEX IF NOT EXISTS memory_created_idx ON memory_entries(created_at)")
         self._db.execute("CREATE INDEX IF NOT EXISTS memory_type_idx ON memory_entries(entry_type)")
         self._db.execute("CREATE INDEX IF NOT EXISTS memory_author_idx ON memory_entries(author_principal)")
+        self._migrate_schema()
         self._db.execute(
             """
             CREATE TABLE IF NOT EXISTS memory_idempotency (
@@ -87,6 +101,14 @@ class AssistantMemoryStore:
             )
             """
         )
+
+    def _migrate_schema(self) -> None:
+        cols = {r[1] for r in self._db.execute("PRAGMA table_info(memory_entries)").fetchall()}
+        for c in ("repo", "review_status", "source_run", "visibility", "reviewed_by", "accepted_at"):
+            if c not in cols:
+                self._db.execute(f"ALTER TABLE memory_entries ADD COLUMN {c} TEXT")
+        self._db.execute("CREATE INDEX IF NOT EXISTS memory_repo_idx ON memory_entries(repo)")
+        self._db.execute("CREATE INDEX IF NOT EXISTS memory_review_status_idx ON memory_entries(review_status)")
 
     def total_payload_bytes(self) -> int:
         row = self._db.execute(
@@ -103,8 +125,9 @@ class AssistantMemoryStore:
                 """
                 INSERT INTO memory_entries (
                   id, entry_type, author_principal, source_product, tags_json, body_json,
-                  created_at, expires_at, supersedes_id, superseded_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  created_at, expires_at, supersedes_id, superseded_by,
+                  repo, review_status, source_run, visibility, reviewed_by, accepted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry.id,
@@ -117,6 +140,12 @@ class AssistantMemoryStore:
                     entry.expires_at,
                     entry.supersedes_id,
                     entry.superseded_by,
+                    entry.repo,
+                    entry.review_status,
+                    entry.source_run,
+                    entry.visibility,
+                    entry.reviewed_by,
+                    entry.accepted_at,
                 ),
             )
             if entry.supersedes_id:
@@ -154,8 +183,9 @@ class AssistantMemoryStore:
                     """
                     INSERT INTO memory_entries (
                       id, entry_type, author_principal, source_product, tags_json, body_json,
-                      created_at, expires_at, supersedes_id, superseded_by
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      created_at, expires_at, supersedes_id, superseded_by,
+                      repo, review_status, source_run, visibility, reviewed_by, accepted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         entry.id,
@@ -168,6 +198,12 @@ class AssistantMemoryStore:
                         entry.expires_at,
                         entry.supersedes_id,
                         entry.superseded_by,
+                        entry.repo,
+                        entry.review_status,
+                        entry.source_run,
+                        entry.visibility,
+                        entry.reviewed_by,
+                        entry.accepted_at,
                     ),
                 )
                 self._db.execute(
@@ -187,14 +223,38 @@ class AssistantMemoryStore:
             return None
         return _Row(*row).to_entry()
 
+    def update_review(
+        self,
+        entry_id: str,
+        *,
+        review_status: str,
+        reviewed_by: str,
+        accepted_at: str | None = None,
+        expires_at: str | None = None,
+    ) -> MemoryEntry:
+        with self._lock:
+            q = (
+                "UPDATE memory_entries SET review_status = ?, reviewed_by = ?, accepted_at = ?"
+                f"{', expires_at = ?' if expires_at else ''} WHERE id = ?"
+            )
+            v = (review_status, reviewed_by, accepted_at, *((expires_at,) if expires_at else ()), entry_id)
+            self._db.execute(q, v)
+        if not (updated := self.get(entry_id)):
+            raise KeyError(f"memory entry {entry_id} not found")
+        return updated
+
     def list_entries(
         self,
         *,
         since: str | None = None,
         entry_type: str | None = None,
+        repo: str | None = None,
+        review_status: str | None = None,
         tag: str | None = None,
         author: str | None = None,
         include_superseded: bool = False,
+        include_barb_only: bool = False,
+        active_only: bool = False,
         limit: int = 100,
     ) -> list[MemoryEntry]:
         clauses: list[str] = []
@@ -205,11 +265,20 @@ class AssistantMemoryStore:
         if entry_type:
             clauses.append("entry_type = ?")
             params.append(entry_type)
+        for c, v in (("repo", repo), ("review_status", review_status)):
+            if v:
+                clauses.append(f"{c} = ?")
+                params.append(v)
         if author:
             clauses.append("author_principal = ?")
             params.append(author)
         if not include_superseded:
             clauses.append("superseded_by IS NULL")
+        if not include_barb_only:
+            clauses.append("(visibility IS NULL OR visibility != 'barb-only')")
+        if active_only:
+            clauses.append("(expires_at IS NULL OR expires_at >= ?)")
+            params.append(_now())
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = f"SELECT * FROM memory_entries {where} ORDER BY created_at DESC LIMIT ?"  # noqa: S608
         params.append(limit)
