@@ -13,6 +13,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from identity import Principal
 from itsdangerous import BadSignature, URLSafeTimedSerializer
+from request_context import request_id_ctx
 
 _SCOPE = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 _THREAD = re.compile(r"/api/v1/staff/(?:threads|panels)/([A-Za-z0-9_-]{1,128})(?:/.*)?\Z")
@@ -22,17 +23,21 @@ _TTL_SECONDS = 15 * 60
 
 def _audit_denial(request: Request, reason: str) -> str:
     request_id = getattr(request.state, "request_id", None) or uuid.uuid4().hex[:12]
-    logging.getLogger(__name__).warning(
-        "browser CSRF request denied",
-        extra={
-            "request_id": request_id,
-            "source_ip": request.client.host if request.client else "unknown",
-            "cf_ray": request.headers.get("cf-ray"),
-            "path": request.url.path,
-            "method": request.method,
-            "reason": reason,
-        },
-    )
+    token = request_id_ctx.set(request_id)
+    try:
+        logging.getLogger(__name__).warning(
+            "browser CSRF request denied",
+            extra={
+                "request_id": request_id,
+                "source_ip": request.client.host if request.client else "unknown",
+                "cf_ray": request.headers.get("cf-ray"),
+                "path": request.url.path,
+                "method": request.method,
+                "reason": reason,
+            },
+        )
+    finally:
+        request_id_ctx.reset(token)
     return request_id
 
 

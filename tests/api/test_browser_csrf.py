@@ -1,5 +1,6 @@
 """External chat writes require a session- and thread-bound browser proof."""
 
+import logging
 import time
 
 import pytest
@@ -127,3 +128,18 @@ def test_production_perimeter_rejects_before_handler(client: TestClient, monkeyp
     headers = {**_HEADERS, "X-CSRF-Token": _token(client)}
     assert browser.post("/api/v1/staff/threads/th_one/messages", headers=headers).status_code == 200
     assert calls == ["executed"]
+
+
+def test_denial_audit_keeps_request_correlation(client: TestClient, caplog: pytest.LogCaptureFixture) -> None:
+    from request_context import RequestIdLogFilter
+
+    correlation = RequestIdLogFilter()
+    caplog.handler.addFilter(correlation)
+    try:
+        with caplog.at_level(logging.WARNING):
+            response = client.post("/api/v1/staff/threads/th_one/messages", headers=_HEADERS)
+        record = next(record for record in caplog.records if getattr(record, "reason", "") == "browser_csrf_denied")
+        assert record.request_id == response.headers["X-Request-ID"]
+        assert record.cf_ray == "test-edge" and record.source_ip
+    finally:
+        caplog.handler.removeFilter(correlation)
