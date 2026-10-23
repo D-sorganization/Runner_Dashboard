@@ -475,7 +475,7 @@ async def library_verify_route(
     request: Request,
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
-    return await verify_library_request(request, _principal.id, _db())
+    return await verify_library_request(request, _principal, _db())
 
 
 @router.get("/verify")

@@ -10,11 +10,27 @@ from fastapi import HTTPException, Request
 from identity import Principal
 
 
-def requested_run_id(request: Request, principal: Principal) -> str | None:
-    """Validate an optional caller run identity before retrieval work."""
-    run_id = request.headers.get("X-Staff-Run-ID") or os.environ.get("STAFF_RUN_ID")
+def requested_run_id(
+    request: Request,
+    principal: Principal,
+    *,
+    body_run_id: str | None = None,
+) -> str | None:
+    """Resolve and authorize an explicit or authenticated active-run identity."""
+    header_run_id = request.headers.get("X-Staff-Run-ID") or None
+    if header_run_id is not None and body_run_id is not None and header_run_id != body_run_id:
+        raise HTTPException(status_code=422, detail="run identity sources conflict")
+    run_id: str | None
+    if body_run_id is not None:
+        run_id = body_run_id
+    else:
+        run_id = header_run_id or os.environ.get("STAFF_RUN_ID")
     if run_id is None:
-        return None
+        from staff.tokens import active_run_id_for_principal
+
+        run_id = active_run_id_for_principal(principal.id)
+        if run_id is None:
+            return None
     from library.retrieval_ledger import authorize_run_owner
     from staff.store import get_run_store
 

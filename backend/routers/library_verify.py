@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, Request
+from identity import Principal
+from library.run_reference_recording import requested_run_id
 from library.verify import verification_repo_root, verify_content
 
 
-async def verify_library_request(request: Request, principal_id: str, db_path: Path) -> dict[str, Any]:
+async def verify_library_request(request: Request, principal: Principal, db_path: Path) -> dict[str, Any]:
     try:
         payload = await request.json()
     except (ValueError, TypeError) as exc:
@@ -27,12 +29,7 @@ async def verify_library_request(request: Request, principal_id: str, db_path: P
     if payload.get("repo") is not None and not isinstance(payload["repo"], str):
         raise HTTPException(status_code=422, detail="repo must be a repository name")
     try:
-        run_id = payload.get("run_id")
-        if run_id is not None:
-            from library.retrieval_ledger import authorize_run_owner
-            from staff.store import get_run_store
-
-            authorize_run_owner(get_run_store(), run_id=run_id, principal_id=principal_id)
+        run_id = requested_run_id(request, principal, body_run_id=payload.get("run_id"))
         repo_root = verification_repo_root(payload.get("repo"))
         return await asyncio.to_thread(
             verify_content,
