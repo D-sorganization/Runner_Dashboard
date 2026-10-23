@@ -191,6 +191,7 @@ function LocationProbe() {
   return (
     <>
       <span data-testid="pathname">{loc.pathname}</span>
+      <span data-testid="search">{loc.search}</span>
       <span data-testid="hash">{loc.hash}</span>
     </>
   );
@@ -223,9 +224,22 @@ function renderAt(path: string, { withToaster = false } = {}) {
 describe("RoutedShell — URL is the source of truth", () => {
   beforeEach(() => {
     cleanup();
+    window.history.replaceState({}, "", "/");
     localStorage.clear();
     breakpointMock.mockReturnValue("lg");
     sessionMock.mockReturnValue({ loggedIn: false, refresh: vi.fn() });
+  });
+
+  it("preserves the selected conversation when navigating between dashboard tabs", async () => {
+    window.history.replaceState({}, "", "/?thread=th-selected-not-latest&role=reviewer&token=not-forwarded");
+    renderAt("/?thread=th-selected-not-latest&role=reviewer&token=not-forwarded");
+
+    await userEvent.click(screen.getByRole("button", { name: "go-queue" }));
+
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/work");
+    expect(screen.getByTestId("search")).toHaveTextContent("thread=th-selected-not-latest");
+    expect(screen.getByTestId("search")).not.toHaveTextContent("role=");
+    expect(screen.getByTestId("search")).not.toHaveTextContent("token=");
   });
 
   it("derives the default tab from the root path", async () => {

@@ -171,3 +171,75 @@ describe('useVoiceInput — error handling', () => {
     );
   });
 });
+
+describe('useVoiceInput — Local Whisper MediaRecorder', () => {
+  afterEach(() => {
+    removeMock();
+    vi.restoreAllMocks();
+    Object.defineProperty(window, 'MediaRecorder', { value: undefined, configurable: true, writable: true });
+  });
+
+  it('records via MediaRecorder and posts audio to /api/v1/voice/transcribe', async () => {
+    const stopTrack = vi.fn();
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }) },
+      configurable: true,
+    });
+
+    let recorderInstance: {
+      state: string;
+      mimeType: string;
+      ondataavailable: ((e: { data: Blob }) => void) | null;
+      onstop: (() => Promise<void>) | null;
+      start: () => void;
+      stop: () => void;
+    } | null = null;
+
+    const FakeMediaRecorder = vi.fn(function () {
+      recorderInstance = {
+        state: 'inactive',
+        mimeType: 'audio/webm',
+        ondataavailable: null,
+        onstop: null,
+        start() {
+          this.state = 'recording';
+        },
+        stop() {
+          this.state = 'inactive';
+          this.ondataavailable?.({ data: new Blob(['audio-bytes'], { type: 'audio/webm' }) });
+          void this.onstop?.();
+        },
+      };
+      return recorderInstance;
+    });
+    Object.defineProperty(window, 'MediaRecorder', { value: FakeMediaRecorder, configurable: true, writable: true });
+
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ text: 'check gasification reactor' }), { status: 200 })
+    );
+
+    const onTranscript = vi.fn();
+    const { result } = renderHook(() => useVoiceInput({ onTranscript }));
+    expect(result.current.available).toBe(true);
+    expect(result.current.engine).toBe('local-whisper');
+
+    await act(async () => {
+      result.current.start();
+    });
+    expect(result.current.recording).toBe(true);
+
+    await act(async () => {
+      result.current.stop();
+    });
+
+    expect(stopTrack).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/voice/transcribe',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-Requested-With': 'XMLHttpRequest' }),
+      })
+    );
+    expect(onTranscript).toHaveBeenCalledWith('check gasification reactor');
+  });
+});

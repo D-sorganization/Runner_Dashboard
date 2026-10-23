@@ -1,21 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
- * Voice input hook using the Web Speech API (SpeechRecognition).
- *
- * - Starts/stops continuous recognition.
- * - Calls `onTranscript` with the final, trimmed text when speech ends.
- * - Calls `onError` with a human-readable message on failure.
- * - Degrades gracefully: `available` is false on unsupported browsers.
- *
- * Runner_Dashboard issue #623.
+ * Voice input hook preferring local Whisper (/api/v1/voice/transcribe via MediaRecorder)
+ * with opt-in Web Speech API (cloud) fallback (Epic #2591, #2594, Panel th_8820201930a3).
  */
 
-// Minimal module-local typings for the Web Speech API. These interfaces are not
-// part of the standard TS DOM lib, so we declare just the surface this hook
-// uses. They are intentionally NOT global to avoid clashing with the similar
-// local declarations in components/VoiceInputButton.tsx.
-// (Web Speech API is non-standard; supported in Chrome/Edge.)
 interface SpeechRecognitionAlternative {
   readonly transcript: string;
   readonly confidence: number;
@@ -51,8 +40,12 @@ interface SpeechRecognitionCtor {
   new (): SpeechRecognition;
 }
 
+export type VoiceEngineMode = 'local-whisper' | 'web-speech-cloud' | 'none';
+
 export interface UseVoiceInputOptions {
   lang?: string;
+  mode?: 'local' | 'cloud';
+  endpoint?: string;
   onTranscript: (text: string) => void;
   onError?: (message: string) => void;
 }
@@ -60,6 +53,8 @@ export interface UseVoiceInputOptions {
 export interface UseVoiceInputResult {
   available: boolean;
   recording: boolean;
+  transcribing: boolean;
+  engine: VoiceEngineMode;
   start: () => void;
   stop: () => void;
   toggle: () => void;
@@ -67,9 +62,6 @@ export interface UseVoiceInputResult {
 
 function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
   if (typeof window === 'undefined') return undefined;
-  // `SpeechRecognition` is non-standard and absent from lib.dom; read it via a
-  // narrow local cast rather than a global Window augmentation (which would
-  // collide with the local declarations in components/VoiceInputButton.tsx).
   const w = window as unknown as {
     SpeechRecognition?: SpeechRecognitionCtor;
     webkitSpeechRecognition?: SpeechRecognitionCtor;
@@ -77,25 +69,57 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
+function hasLocalMediaRecorder(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return (
+    typeof window.MediaRecorder !== 'undefined' &&
+    typeof navigator.mediaDevices?.getUserMedia === 'function'
+  );
+}
+
 export function useVoiceInput({
   lang = 'en-US',
+  mode = 'local',
+  endpoint = '/api/v1/voice/transcribe',
   onTranscript,
   onError,
 }: UseVoiceInputOptions): UseVoiceInputResult {
-  const SpeechRecognitionCtor: SpeechRecognitionCtor | undefined =
-    getSpeechRecognitionCtor();
-  const available = SpeechRecognitionCtor !== undefined;
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor();
+  const canRecordLocal = mode !== 'cloud' && hasLocalMediaRecorder();
+  const canUseCloud = SpeechRecognitionCtor !== undefined;
+  const engine: VoiceEngineMode = canRecordLocal
+    ? 'local-whisper'
+    : canUseCloud
+      ? 'web-speech-cloud'
+      : 'none';
+  const available = engine !== 'none';
 
   const recognizerRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
   const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
 
-  // Keep callbacks stable so the recognizer event handlers don't go stale.
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
 
+  const releaseStream = useCallback(() => {
+    if (streamRef.current) {
+      for (const track of streamRef.current.getTracks()) {
+        track.stop();
+      }
+      streamRef.current = null;
+    }
+  }, []);
+
   const stop = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
     if (recognizerRef.current) {
       recognizerRef.current.stop();
       recognizerRef.current = null;
@@ -103,14 +127,82 @@ export function useVoiceInput({
     setRecording(false);
   }, []);
 
+  const startLocalWhisper = useCallback(async () => {
+    if (mediaRecorderRef.current) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mimeType =
+        typeof MediaRecorder.isTypeSupported === 'function' &&
+        MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm';
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (ev: BlobEvent) => {
+        if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+
+      recorder.onstop = async () => {
+        releaseStream();
+        mediaRecorderRef.current = null;
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || mimeType });
+        chunksRef.current = [];
+        if (blob.size === 0) return;
+
+        setTranscribing(true);
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': (blob.type || 'audio/webm').split(';')[0],
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: blob,
+          });
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            const detail =
+              errBody?.detail?.detail ||
+              errBody?.detail ||
+              `Local Whisper error (${res.status})`;
+            onErrorRef.current?.(String(detail));
+            return;
+          }
+          const data = (await res.json()) as { text?: string };
+          const text = (data.text ?? '').trim();
+          if (text) onTranscriptRef.current(text);
+        } catch (err) {
+          onErrorRef.current?.(
+            err instanceof Error ? err.message : 'Local Whisper transcription failed.'
+          );
+        } finally {
+          setTranscribing(false);
+        }
+      };
+
+      recorder.start();
+      setRecording(true);
+    } catch {
+      releaseStream();
+      setRecording(false);
+      onErrorRef.current?.('Microphone permission denied or unavailable.');
+    }
+  }, [endpoint, releaseStream]);
+
   const start = useCallback(() => {
-    if (SpeechRecognitionCtor === undefined) {
-      onErrorRef.current?.(
-        'Voice input is not supported in this browser. Try Chrome or Edge.'
-      );
+    if (canRecordLocal) {
+      void startLocalWhisper();
       return;
     }
-    if (recognizerRef.current) return; // already recording
+    if (SpeechRecognitionCtor === undefined) {
+      onErrorRef.current?.('Voice input is not supported in this browser.');
+      return;
+    }
+    if (recognizerRef.current) return;
 
     const rec = new SpeechRecognitionCtor();
     rec.continuous = false;
@@ -122,9 +214,7 @@ export function useVoiceInput({
         .map((r) => r[0].transcript)
         .join(' ')
         .trim();
-      if (transcript) {
-        onTranscriptRef.current(transcript);
-      }
+      if (transcript) onTranscriptRef.current(transcript);
     };
 
     rec.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -147,25 +237,22 @@ export function useVoiceInput({
     recognizerRef.current = rec;
     rec.start();
     setRecording(true);
-  }, [SpeechRecognitionCtor, lang]);
+  }, [SpeechRecognitionCtor, canRecordLocal, lang, startLocalWhisper]);
 
   const toggle = useCallback(() => {
-    if (recording) {
-      stop();
-    } else {
-      start();
-    }
+    if (recording) stop();
+    else start();
   }, [recording, start, stop]);
 
-  // Clean up on unmount.
   useEffect(() => {
     return () => {
-      if (recognizerRef.current) {
-        recognizerRef.current.stop();
-        recognizerRef.current = null;
+      recognizerRef.current?.stop();
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
       }
+      releaseStream();
     };
-  }, []);
+  }, [releaseStream]);
 
-  return { available, recording, start, stop, toggle };
+  return { available, recording, transcribing, engine, start, stop, toggle };
 }

@@ -20,7 +20,7 @@ import {
   fetchThreads,
   postThreadMessage,
 } from "../Staff/staffApi";
-import { AUTO_ROUTE_ROLE, createFreshRoleThread, pickRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
+import { AUTO_ROUTE_ROLE, createFreshRoleThread, listRoleThreads, pickRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
 import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
@@ -42,6 +42,8 @@ export interface UseStaffConsoleOptions {
   initialRole?: string;
   /** Restore the latest existing thread for initialRole without creating or messaging. */
   restoreInitialRoleThread?: boolean;
+  /** Prefer this thread only when it is present in the initial role's authorized thread list. */
+  preferredRoleThreadId?: string | null;
   initialThread?: ThreadInfo;
   /** Open this backend thread on mount, e.g. the thread a request response names (#1504). */
   initialThreadId?: string | null;
@@ -100,6 +102,7 @@ export function useStaffConsole({
   roles: suppliedRoles,
   initialRole,
   restoreInitialRoleThread = false,
+  preferredRoleThreadId,
   initialThread,
   initialThreadId,
   initialMessages = NO_MESSAGES,
@@ -113,6 +116,7 @@ export function useStaffConsole({
   const [rosterLoading, setRosterLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(initialRole ?? null);
   const [activeThread, setActiveThread] = useState<ThreadInfo | null>(initialThread ?? null);
+  const newThreadFromThisConsole = useRef<string | null>(null);
   const [openingRole, setOpeningRole] = useState<string | null>(null);
   const [history, setHistory] = useState<ThreadMessage[]>(initialMessages);
   const [error, setError] = useState<ConsoleError | null>(null);
@@ -164,6 +168,11 @@ export function useStaffConsole({
   const initialRoleThreads = useRef(new Map<string, Promise<ThreadInfo[]>>());
   useEffect(() => {
     if (!restoreInitialRoleThread || !initialRole || initialThread || initialThreadId) return;
+    if (preferredRoleThreadId && newThreadFromThisConsole.current === preferredRoleThreadId) {
+      newThreadFromThisConsole.current = null;
+      return;
+    }
+    newThreadFromThisConsole.current = null;
     let cancelled = false;
     let request = initialRoleThreads.current.get(initialRole);
     if (!request) {
@@ -174,7 +183,9 @@ export function useStaffConsole({
     request
       .then((threads) => {
         if (cancelled) return;
-        const thread = pickRoleThread(threads, initialRole);
+        const roleThreads = listRoleThreads(threads, initialRole);
+        const thread = roleThreads.find((candidate) => candidate.id === preferredRoleThreadId)
+          ?? pickRoleThread(roleThreads, initialRole);
         if (thread) {
           setHistory(NO_MESSAGES);
           setActiveThread(thread);
@@ -190,7 +201,7 @@ export function useStaffConsole({
     return () => {
       cancelled = true;
     };
-  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, threadApi, report]);
+  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, preferredRoleThreadId, threadApi, report]);
 
   // History for the open thread. The seeded thread keeps its seeded messages.
   const threadId = activeThread?.id ?? "";
@@ -250,6 +261,7 @@ export function useStaffConsole({
     try {
       const title = roleByName(roleName)?.title || roleName;
       const thread = await createFreshRoleThread(roleName, title, threadApi);
+      newThreadFromThisConsole.current = thread.id;
       setHistory(NO_MESSAGES);
       setActiveThread(thread);
       setSelectedRole(roleName);

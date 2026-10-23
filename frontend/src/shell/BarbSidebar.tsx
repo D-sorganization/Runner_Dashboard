@@ -14,15 +14,26 @@ const QUICK_ROUTES = [
   { label: "Queue", tabId: "queue" },
 ];
 
+function selectedThreadFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("thread");
+}
 export interface BarbSidebarProps {
   open: boolean;
   onClose: () => void;
   onNavigate: (tabId: string) => void;
   mobile?: boolean;
+  restoreFocusTargetRef?: React.RefObject<HTMLElement | null>;
+  onThreadSelected?: (threadId: string, role: string) => void;
 }
 
-export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbSidebarProps): React.ReactElement {
-  const sc = useStaffConsole({ initialRole: "barb", restoreInitialRoleThread: true });
+export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef, onThreadSelected }: BarbSidebarProps): React.ReactElement {
+  const preferredRoleThreadId = selectedThreadFromUrl();
+  const sc = useStaffConsole({
+    initialRole: "barb",
+    preferredRoleThreadId,
+    restoreInitialRoleThread: true,
+  });
   const [composerPrefill, setComposerPrefill] = useState("");
   const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -33,9 +44,8 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
   useEffect(() => {
     if (!open) return;
     const sidebarEl = sidebarRef.current;
-    if (document.activeElement instanceof HTMLElement) {
-      restoreFocusRef.current = document.activeElement;
-    }
+    const focusTarget = restoreFocusTargetRef?.current ?? document.activeElement;
+    restoreFocusRef.current = focusTarget instanceof HTMLElement ? focusTarget : null;
     if (mobile) {
       closeButtonRef.current?.focus();
     } else {
@@ -78,7 +88,13 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
       restoreEl?.focus();
       restoreFocusRef.current = null;
     };
-  }, [open, mobile]);
+  }, [open, mobile, restoreFocusTargetRef]);
+
+  const startNewConversation = async () => {
+    if (sc.selectedRole !== "barb" && !(await sc.openRole("barb"))) return;
+    const thread = await sc.newConversation();
+    if (thread?.participants.includes("barb")) onThreadSelected?.(thread.id, "barb");
+  };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!mobile || !open || event.key !== "Tab") return;
@@ -130,7 +146,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false }: BarbS
             <button
               type="button"
               className="barb-sidebar__new"
-              onClick={() => void sc.newConversation()}
+              onClick={() => void startNewConversation()}
             >
               New chat
             </button>

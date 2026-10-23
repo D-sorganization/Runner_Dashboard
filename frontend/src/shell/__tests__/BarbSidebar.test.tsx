@@ -50,6 +50,15 @@ afterEach(() => {
 });
 
 describe("BarbSidebar", () => {
+  it("continues the selected Barb conversation instead of restoring another recent thread", () => {
+    window.history.replaceState({}, "", "/?thread=th-selected");
+    render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+
+    expect(mockUseStaffConsole).toHaveBeenCalledWith(
+      expect.objectContaining({ initialRole: "barb", preferredRoleThreadId: "th-selected", restoreInitialRoleThread: true }),
+    );
+  });
+
   it("auto-focuses the composer textarea immediately when opened on desktop", () => {
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
     const composer = screen.getByRole("textbox", { name: /staff conversation input/i });
@@ -57,12 +66,36 @@ describe("BarbSidebar", () => {
   });
 
   it("restores Barb history without sending a message when the sidebar opens", () => {
+    window.history.replaceState({}, "", "/");
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
 
     expect(mockUseStaffConsole).toHaveBeenCalledWith(
       expect.objectContaining({ initialRole: "barb", restoreInitialRoleThread: true }),
     );
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("restores focus to its launcher if focus moved while the lazy drawer mounted", async () => {
+    const originalFocus = document.createElement("button");
+    const launcher = document.createElement("button");
+    document.body.append(originalFocus, launcher);
+    originalFocus.focus();
+    const restoreFocusTargetRef = { current: launcher };
+    const onClose = vi.fn();
+    const view = render(
+      <BarbSidebar open onClose={onClose} onNavigate={vi.fn()} restoreFocusTargetRef={restoreFocusTargetRef} />,
+    );
+    await waitFor(() => expect(screen.getByRole("textbox", { name: /staff conversation input/i })).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+    view.rerender(
+      <BarbSidebar open={false} onClose={onClose} onNavigate={vi.fn()} restoreFocusTargetRef={restoreFocusTargetRef} />,
+    );
+
+    await waitFor(() => expect(launcher).toHaveFocus());
+    originalFocus.remove();
+    launcher.remove();
   });
 
   it("navigates directly to fleet pages from the persistent panel", () => {
