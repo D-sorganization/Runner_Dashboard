@@ -23,6 +23,7 @@ import { isPanelThread } from "./panelTurn";
 import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
+import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import "./mobile.css";
 
 export type MobileView = "roster" | "thread" | "inbox" | "runs";
@@ -93,6 +94,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   }, [view]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showContext, setShowContext] = useState(false);
+  const [composerPrefill, setComposerPrefill] = useState("");
 
   // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
   // push link and is real; a ?role= link resolves to the role's backend thread.
@@ -139,9 +141,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
 
   // Open a specific role conversation on its backend thread.
   const handleSelectRole = useCallback(
-    async (roleName: string) => {
+    async (roleName: string, prefill = "") => {
       const thread = await sc.openRole(roleName);
       if (!thread) return;
+      setComposerPrefill(prefill);
       setView("thread");
       onOpenThread?.(thread.id);
 
@@ -280,6 +283,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               onSendMessage={handleSendMessage}
               placeholder={`Message ${currentRoleObj.title || "staff"}…`}
               isPanel={isPanelThread(activeThread)}
+              prefilledText={composerPrefill}
             />
           </div>
 
@@ -350,6 +354,15 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                       Ask anything — Barb routes to the right specialist
                     </div>
                   </div>
+                </div>
+
+                <div className="staff-mobile__project-starters" aria-label="Project starters">
+                  {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
+                    <button key={project} type="button" className="staff-mobile__project-starter" aria-label={`Start ${project}`} onClick={() => void handleSelectRole("barb", prompt)}>
+                      <span>Start {project}</span>
+                      <span>Prepare a test-first triage</span>
+                    </button>
+                  ))}
                 </div>
 
                 <div className="staff-mobile__roles-list">

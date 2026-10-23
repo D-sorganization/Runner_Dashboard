@@ -18,6 +18,7 @@ import type { StaffRoleItem } from "./types";
 import { useRoleContext, useRosterReadiness } from "./useRoleContext";
 import { useStaffConsole } from "./useStaffConsole";
 import { Dropdown } from "../../primitives/Dropdown";
+import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import "./desktop.css";
 
 export interface StaffConsoleDesktopProps {
@@ -295,6 +296,16 @@ export function StaffConsoleDesktop({
                       </button>
                     ))}
                   </div>
+                  {chatFirst && (
+                    <div className="staff-console__project-starters" aria-label="Project starters">
+                      {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
+                        <button key={project} type="button" className="staff-console__project-starter" aria-label={`Start ${project}`} onClick={() => setComposerPrefill(prompt)}>
+                          <span>Start with {project}</span>
+                          <span>Prepare a test-first triage</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>
