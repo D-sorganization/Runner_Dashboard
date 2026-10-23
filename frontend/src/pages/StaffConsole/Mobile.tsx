@@ -98,10 +98,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const [showContext, setShowContext] = useState(false);
   const [composerPrefill, setComposerPrefill] = useState("");
   const [prefillSeq, setPrefillSeq] = useState(0);
-  const applyComposerPrefill = (nextText: string) => {
-    setComposerPrefill(nextText);
-    setPrefillSeq((n) => n + 1);
-  };
+  const applyComposerPrefill = (nextText: string) => { setComposerPrefill(nextText); setPrefillSeq((n) => n + 1); };
   const revealThreadAfterHomeSend = useMobileHomeSendNavigation({
     activeThread,
     isHomeView: () => viewRef.current === "home",
