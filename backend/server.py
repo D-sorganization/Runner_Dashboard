@@ -821,6 +821,9 @@ app.include_router(_security_scan_router.router)  # fleet security scanner (epic
 from routers import voice as _voice_router  # noqa: E402
 
 app.include_router(_voice_router.router)  # local Whisper voice-to-text (epic #2591)
+from routers import metrics as _fleet_prometheus_router  # noqa: E402
+
+app.include_router(_fleet_prometheus_router.router)  # lightweight Prometheus exporter (#2611)
 
 # Issue #924 — structural auth perimeter. Registered BEFORE the session selector so
 # that, in Starlette's outer→inner stack, session handling wraps this gate and
