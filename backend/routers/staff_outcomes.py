@@ -1,10 +1,9 @@
-"""Agent outcome scorecard API (WP-1.2, #1517), mounted under ``/api/v1/staff``.
+"""Agent outcome scorecard, report cards, leaderboard & bean-counter API (/api/v1/staff).
 
-  GET /outcomes?since=<ISO date>&group_by=role|provider|repo
-
-Merge rate, verified rate, CI first-pass rate, fix-within-48h rate and cost per merged
-PR for this node's staff runs (``staff.outcomes``). GitHub is read only for PRs the
-runs recorded.
+GET /outcomes?since=<ISO date>&group_by=role|provider|repo
+GET /report-cards?since=<ISO date>&role=<role>&provider=<provider>&include_pr_facts=bool
+GET /leaderboard?since=<ISO date>&role=<role>&provider=<provider>&include_pr_facts=bool
+GET /bean-counter?since=<ISO date>&role=<role>&provider=<provider>
 """
 
 # ruff: noqa: B008
@@ -16,8 +15,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
-from staff import outcomes
-from staff.models_insights import StaffOutcomesResponse
+from staff import outcomes, report_cards
+from staff.adapters import available_providers
+from staff.models_insights import (
+    StaffBeanCounterResponse,
+    StaffOutcomesResponse,
+    StaffReportCardsResponse,
+)
 from staff.runner import get_runner
 
 log = logging.getLogger("dashboard.staff.outcomes")
@@ -37,6 +41,38 @@ def _checked_since(since: str | None) -> str:
     return since
 
 
+async def compute_report_cards_payload(
+    *,
+    since: str | None = None,
+    role: str | None = None,
+    provider: str | None = None,
+    include_pr_facts: bool = False,
+) -> dict[str, Any]:
+    """Shared zero-LLM-cost report cards & leaderboard builder for v1 and legacy routes."""
+    start = _checked_since(since)
+    runner = get_runner()
+    runs = runner.store.list_runs(limit=RUN_LIMIT, since=start)
+    facts: dict[Any, Any] = {}
+    truncated = False
+    if include_pr_facts:
+        wanted, truncated = outcomes.prs_to_read(runs)
+        facts = await outcomes.read_pr_facts(wanted)
+    avail = [k for k, v in available_providers().items() if v] or ["claude", "codex", "antigravity"]
+    payload = report_cards.build_report_cards(
+        runs,
+        facts,
+        available_providers=avail,
+        role_filter=role or None,
+        provider_filter=provider or None,
+    )
+    return {
+        **payload,
+        "since": start,
+        "machine": runner.machine,
+        "prs_truncated": truncated,
+    }
+
+
 @router.get("/outcomes", response_model=StaffOutcomesResponse)
 async def get_outcomes(
     since: str | None = Query(default=None, max_length=40),
@@ -53,3 +89,61 @@ async def get_outcomes(
     facts = await outcomes.read_pr_facts(wanted)
     body = outcomes.aggregate(runs, facts, group_by=group_by)
     return {**body, "since": start, "machine": runner.machine, "prs_truncated": truncated}
+
+
+@router.get("/report-cards", response_model=StaffReportCardsResponse)
+async def get_report_cards(
+    since: str | None = Query(default=None, max_length=40),
+    role: str | None = Query(default=None, max_length=64),
+    provider: str | None = Query(default=None, max_length=32),
+    include_pr_facts: bool = Query(default=False),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Zero-LLM-cost Agent Report Cards, Bean-Counter Ledger & Empirical Routing Leaderboard."""
+    return await compute_report_cards_payload(
+        since=since,
+        role=role,
+        provider=provider,
+        include_pr_facts=include_pr_facts,
+    )
+
+
+@router.get("/leaderboard", response_model=StaffReportCardsResponse)
+async def get_leaderboard(
+    since: str | None = Query(default=None, max_length=40),
+    role: str | None = Query(default=None, max_length=64),
+    provider: str | None = Query(default=None, max_length=32),
+    include_pr_facts: bool = Query(default=False),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Empirical model/provider routing leaderboard and task-complexity suitability matrix."""
+    return await compute_report_cards_payload(
+        since=since,
+        role=role,
+        provider=provider,
+        include_pr_facts=include_pr_facts,
+    )
+
+
+@router.get("/bean-counter", response_model=StaffBeanCounterResponse)
+async def get_bean_counter(
+    since: str | None = Query(default=None, max_length=40),
+    role: str | None = Query(default=None, max_length=64),
+    provider: str | None = Query(default=None, max_length=32),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Zero-LLM-cost Bean-Counter token economy & waste ledger."""
+    payload = await compute_report_cards_payload(
+        since=since,
+        role=role,
+        provider=provider,
+        include_pr_facts=False,
+    )
+    return {
+        "machine": payload["machine"],
+        "since": payload["since"],
+        "total_runs_analyzed": payload["total_runs_analyzed"],
+        "bean_counter_ledger": payload["bean_counter_ledger"],
+        "routing_recommendations": payload["routing_recommendations"],
+        "leaderboard": payload["leaderboard"],
+    }
