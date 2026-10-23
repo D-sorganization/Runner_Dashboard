@@ -78,6 +78,57 @@ describe("useThreadStream", () => {
     expect(MockEventSource.instances[0].url).toContain("/api/v1/staff/threads/thread-abc/stream?since_seq=1&follow=true");
   });
 
+  it("dispatches each approved dashboard navigation result once", async () => {
+    const listener = vi.fn();
+    window.addEventListener("runner-dashboard:navigate", listener);
+    const { unmount } = renderHook(() => useThreadStream({ threadId: "thread-abc", initialMessages: INITIAL_MESSAGES }));
+    await act(async () => {
+      MockEventSource.instances[0].emit(
+        "message",
+        {
+          id: "action-result-1",
+          thread_id: "thread-abc",
+          author: "system",
+          author_kind: "system",
+          kind: "action_result",
+          body_md: "Navigating",
+          meta: {
+            action: "dashboard.navigate",
+            success: true,
+            result: { navigate_to: "fleet-command" },
+          },
+          seq: 2,
+        },
+        "2",
+      );
+    });
+    await act(async () => {
+      MockEventSource.instances[0].emit(
+        "message",
+        {
+          id: "action-result-1",
+          thread_id: "thread-abc",
+          author: "system",
+          author_kind: "system",
+          kind: "action_result",
+          body_md: "Navigating",
+          meta: {
+            action: "dashboard.navigate",
+            success: true,
+            result: { navigate_to: "fleet-command" },
+          },
+          seq: 2,
+        },
+        "2",
+      );
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]).toMatchObject({ detail: { tabId: "fleet-command" } });
+    unmount();
+    window.removeEventListener("runner-dashboard:navigate", listener);
+  });
+
   it("appends optimistic message and updates message", () => {
     const { result } = renderHook(() =>
       useThreadStream({ threadId: "thread-abc", initialMessages: INITIAL_MESSAGES })

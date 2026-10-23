@@ -47,6 +47,7 @@ _MUTATING_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _AUTH_DEP_NAMES = {
     "require_principal",
     "require_fleet_peer",
+    "require_library_peer",
     "require_scope",
     "checker",
 }

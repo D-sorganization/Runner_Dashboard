@@ -21,6 +21,7 @@ from knowledge_pack import (
     load_manifest,
     manifest_from_dict,
 )
+from knowledge_pack.sources import head_commit
 from staff.workspace import find_repo_checkout, repos_roots
 from staff.workspace import rm_root as get_default_rm_root
 
@@ -95,6 +96,12 @@ def resolve_manifest_roots(
     return roots
 
 
+def resolve_pack_roots(pack: KnowledgePack) -> dict[str, Path] | None:
+    """Resolve the stored manifest through configured checkouts, never paths supplied by chat."""
+    raw_manifest = pack._meta().get("manifest")
+    return resolve_manifest_roots(manifest_from_dict(json.loads(raw_manifest))) if raw_manifest else None
+
+
 def pack_is_stale(pack: KnowledgePack) -> bool:
     """Check whether an already-open pack's source manifest reports it stale.
 
@@ -103,12 +110,7 @@ def pack_is_stale(pack: KnowledgePack) -> bool:
     unparseable, or its repository checkouts cannot be resolved locally.
     """
     try:
-        meta = pack._meta()
-        raw_manifest = meta.get("manifest")
-        if not raw_manifest:
-            return False
-        manifest = manifest_from_dict(json.loads(raw_manifest))
-        roots = resolve_manifest_roots(manifest)
+        roots = resolve_pack_roots(pack)
         if roots is None:
             return False
         return pack.is_stale(roots)
@@ -145,7 +147,14 @@ def refresh_pack(
     if out_file.is_file() and not force:
         try:
             pack = KnowledgePack.open(out_file)
-            if not pack.is_stale(resolved_roots):
+            source_matches = True
+            if manifest.id == "cartographer":
+                from knowledge_pack.cartographer import cartographer_manifest
+
+                source_matches = manifest_from_dict(json.loads(pack._meta()["manifest"])) == cartographer_manifest(
+                    resolved_roots
+                ) and pack.info().commits == {name: head_commit(root) for name, root in resolved_roots.items()}
+            if source_matches and not pack.is_stale(resolved_roots):
                 log.info("Knowledge pack '%s' is up-to-date; skipping build", manifest.id)
                 return False, pack.info()
             log.info("Knowledge pack '%s' is stale; rebuilding", manifest.id)
@@ -153,7 +162,12 @@ def refresh_pack(
             log.warning("Failed opening knowledge pack '%s' (%s); rebuilding", manifest.id, exc)
 
     log.info("Building knowledge pack '%s' -> %s", manifest.id, out_file)
-    info = build_pack(manifest, resolved_roots, out_file)
+    if manifest.id == "cartographer":
+        from knowledge_pack.cartographer import build_cartographer_pack
+
+        info = build_cartographer_pack(resolved_roots, out_file)
+    else:
+        info = build_pack(manifest, resolved_roots, out_file)
     log.info(
         "Built knowledge pack '%s': %d passages from %d files",
         info.pack_id,

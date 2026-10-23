@@ -345,3 +345,74 @@ def test_auto_review_dedupe_holds_across_worker_processes(tmp_path: Path) -> Non
     finally:
         _REVIEW_START_BARRIER = None
     assert sum(submits) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(sys.platform == "win32", reason="fork context and fcntl cross-process locks are POSIX-only")
+def test_auto_review_dedupe_uses_database_identity_across_path_aliases(tmp_path: Path) -> None:
+    import multiprocessing
+
+    db = tmp_path / "runs.sqlite3"
+    _add(RunStore(db), _run("run-author"), pr_number=42)
+    alias = tmp_path / "runs-alias.sqlite3"
+    alias.symlink_to(db)
+    context = multiprocessing.get_context("fork")
+    global _REVIEW_START_BARRIER
+    _REVIEW_START_BARRIER = context.Barrier(2)
+    try:
+        with context.Pool(2) as pool:
+            submits = pool.map(_review_in_subprocess, [str(db), str(alias)])
+    finally:
+        _REVIEW_START_BARRIER = None
+    assert sum(submits) == 1
+
+
+@pytest.mark.unit
+def test_run_store_canonicalizes_alias_to_not_yet_created_database(tmp_path: Path) -> None:
+    target = tmp_path / "nested" / "runs.sqlite3"
+    target.parent.mkdir()
+    alias = tmp_path / "runs-alias.sqlite3"
+    alias.symlink_to(target)
+
+    store = RunStore(alias)
+    try:
+        assert store.path == target.resolve()
+        assert target.is_file()
+    finally:
+        store.close()
+
+
+@pytest.mark.unit
+def test_auto_review_fails_closed_when_runner_persists_to_another_store(
+    tmp_path: Path, auto_on: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    author_store = RunStore(tmp_path / "verification.sqlite3")
+    runner_store = RunStore(tmp_path / "runner.sqlite3")
+    author = _add(author_store, _run("run-author"), pr_number=42)
+    runner = _Runner(runner_store, _roster("gemini"))
+
+    with caplog.at_level(logging.WARNING, logger="dashboard.staff.review"):
+        queued = auto_review_if_eligible(
+            author, _verified(42), store=author_store, runner=runner, gh_probe=_Trailers([])
+        )
+
+    assert queued is False
+    assert runner.submitted == []
+    assert "store identity mismatch" in caplog.text
+
+
+@pytest.mark.unit
+def test_auto_review_allows_distinct_store_handles_for_same_database(tmp_path: Path, auto_on: None) -> None:
+    db = tmp_path / "runs.sqlite3"
+    alias = tmp_path / "runs-alias.sqlite3"
+    alias.symlink_to(db)
+    verification_store = RunStore(db)
+    runner_store = RunStore(alias)
+    author = _add(verification_store, _run("run-author"), pr_number=42)
+    runner = _Runner(runner_store, _roster("gemini"))
+
+    assert (
+        auto_review_if_eligible(author, _verified(42), store=verification_store, runner=runner, gh_probe=_Trailers([]))
+        is True
+    )
+    assert len(runner.submitted) == 1

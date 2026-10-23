@@ -6,8 +6,9 @@ from typing import Any
 
 import httpx
 import session_management as sm
+from browser_csrf import issue_browser_csrf
 from external_ingress import validated_browser_owner_id
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from identity import (
     Principal,
@@ -20,6 +21,21 @@ from oauth_config import OAuthConfig, OAuthConfigurationError
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+class BrowserCsrfRequest(BaseModel):
+    thread_id: str
+
+
+@router.post("/browser-csrf")
+async def browser_csrf_token(
+    body: BrowserCsrfRequest, request: Request, response: Response, principal: Principal = Depends(require_principal)
+) -> dict[str, str]:
+    """Issue a session/thread proof for a same-origin browser mutation."""
+    token = issue_browser_csrf(request, principal, body.thread_id)
+    response.headers["Cache-Control"] = "no-store"
+    return {"token": token}
+
 
 _OAUTH_STATE_TTL_SECONDS = 10 * 60
 _OAUTH_BLOCKED_HINT_BASE = (

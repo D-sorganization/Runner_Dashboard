@@ -794,6 +794,17 @@
         "title": "Body_get_prs_api_prs_get",
         "type": "object"
       },
+      "BrowserCsrfRequest": {
+        "properties": {
+          "thread_id": {
+            "title": "Thread Id",
+            "type": "string"
+          }
+        },
+        "required": ["thread_id"],
+        "title": "BrowserCsrfRequest",
+        "type": "object"
+      },
       "BudgetSummary": {
         "description": "Budget burn for the tab. ``limit_usd <= 0`` means \"no limit configured\".",
         "properties": {
@@ -5355,6 +5366,17 @@
           "query": {
             "title": "Query",
             "type": "string"
+          },
+          "stale": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale"
           }
         },
         "required": ["pack_id", "query", "count"],
@@ -8553,6 +8575,58 @@
         ],
         "summary": "Get Node Audit Log",
         "tags": ["orchestration", "orchestration", "fleet"]
+      }
+    },
+    "/api/auth/browser-csrf": {
+      "post": {
+        "description": "Issue a session/thread proof for a same-origin browser mutation.",
+        "operationId": "browser_csrf_token_api_auth_browser_csrf_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserCsrfRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Browser Csrf Token Api Auth Browser Csrf Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Browser Csrf Token",
+        "tags": ["auth"]
       }
     },
     "/api/auth/callback": {
@@ -19468,6 +19542,85 @@
         "tags": ["library"]
       }
     },
+    "/api/v1/library/verify": {
+      "get": {
+        "operationId": "library_verify_citation_route_api_v1_library_verify_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cite",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Cite",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Verify Citation Route Api V1 Library Verify Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Verify Citation Route",
+        "tags": ["library"]
+      },
+      "post": {
+        "operationId": "library_verify_route_api_v1_library_verify_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Verify Route Api V1 Library Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Library Verify Route",
+        "tags": ["library"]
+      }
+    },
     "/api/v1/library/works/{work_id}": {
       "get": {
         "operationId": "library_work_api_v1_library_works__work_id__get",
@@ -21008,6 +21161,36 @@
         "tags": ["staff-inbox-v1"]
       }
     },
+    "/api/v1/staff/context/agents-sync": {
+      "get": {
+        "description": "Compare published managed AGENTS blocks with the Repository_Management source.",
+        "operationId": "context_agents_sync_v1_api_v1_staff_context_agents_sync_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Context Agents Sync V1 Api V1 Staff Context Agents Sync Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Context Agents Sync V1",
+        "tags": ["staff-v1"]
+      }
+    },
     "/api/v1/staff/followup/digest": {
       "get": {
         "description": "Retrieve the daily digest of follow-up activities and work item states.",
@@ -21480,7 +21663,7 @@
     },
     "/api/v1/staff/knowledge/{pack_id}/search": {
       "get": {
-        "description": "Search knowledge pack by BM25 query (Issue #1479).",
+        "description": "Search knowledge packs. Cartographer returns committed-line citations and <=400 UTF-8 byte snippets.",
         "operationId": "search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get",
         "parameters": [
           {

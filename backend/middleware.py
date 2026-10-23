@@ -364,6 +364,11 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
         )
 
     request.state.perimeter_principal = principal
+    from browser_csrf import browser_csrf_denial
+
+    denial = browser_csrf_denial(request, principal)
+    if denial is not None:
+        return denial
     return await call_next(request)
 
 

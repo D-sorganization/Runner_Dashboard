@@ -556,6 +556,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/browser-csrf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Browser Csrf Token
+         * @description Issue a session/thread proof for a same-origin browser mutation.
+         */
+        post: operations["browser_csrf_token_api_auth_browser_csrf_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/callback": {
         parameters: {
             query?: never;
@@ -5648,6 +5668,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/library/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Library Verify Citation Route */
+        get: operations["library_verify_citation_route_api_v1_library_verify_get"];
+        put?: never;
+        /** Library Verify Route */
+        post: operations["library_verify_route_api_v1_library_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/works/{work_id}": {
         parameters: {
             query?: never;
@@ -6052,6 +6090,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/context/agents-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Context Agents Sync V1
+         * @description Compare published managed AGENTS blocks with the Repository_Management source.
+         */
+        get: operations["context_agents_sync_v1_api_v1_staff_context_agents_sync_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/followup/digest": {
         parameters: {
             query?: never;
@@ -6262,7 +6320,7 @@ export interface paths {
         };
         /**
          * Search Knowledge V1
-         * @description Search knowledge pack by BM25 query (Issue #1479).
+         * @description Search knowledge packs. Cartographer returns committed-line citations and <=400 UTF-8 byte snippets.
          */
         get: operations["search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get"];
         put?: never;
@@ -8008,6 +8066,11 @@ export interface components {
             label?: string[] | null;
             /** Repo */
             repo?: string[] | null;
+        };
+        /** BrowserCsrfRequest */
+        BrowserCsrfRequest: {
+            /** Thread Id */
+            thread_id: string;
         };
         /**
          * BudgetSummary
@@ -10144,6 +10207,8 @@ export interface components {
             passages?: components["schemas"]["StaffKnowledgePassage"][];
             /** Query */
             query: string;
+            /** Stale */
+            stale?: boolean | null;
         } & {
             [key: string]: unknown;
         };
@@ -12068,6 +12133,41 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    browser_csrf_token_api_auth_browser_csrf_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrowserCsrfRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -19320,6 +19420,61 @@ export interface operations {
             };
         };
     };
+    library_verify_citation_route_api_v1_library_verify_get: {
+        parameters: {
+            query: {
+                cite: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    library_verify_route_api_v1_library_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     library_work_api_v1_library_works__work_id__get: {
         parameters: {
             query?: never;
@@ -20143,6 +20298,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    context_agents_sync_v1_api_v1_staff_context_agents_sync_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

@@ -327,6 +327,13 @@ def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWE
     return len(attempts) >= MAX_AUTO_REVIEW_ATTEMPTS
 
 
+def _store_path(store: Any) -> Path | None:
+    path = getattr(store, "path", None)
+    if not isinstance(path, str | Path):
+        return None
+    return Path(path).expanduser().resolve()
+
+
 def auto_review_if_eligible(
     rec: Any,
     verdict: Any,
@@ -366,7 +373,23 @@ def auto_review_if_eligible(
             from staff.runner import get_runner
 
             runner = get_runner()
-        store = store if store is not None else runner.store
+        runner_store = getattr(runner, "store", None)
+        if store is None:
+            store = runner_store
+        elif runner_store is not None:
+            review_store_path = _store_path(store)
+            runner_store_path = _store_path(runner_store)
+            if (
+                review_store_path is not None
+                and runner_store_path is not None
+                and review_store_path != runner_store_path
+            ):
+                log.warning(
+                    "auto-review: refusing PR #%s on %s because verification and runner store identity mismatch",
+                    pr_number,
+                    repo,
+                )
+                return False
         params = prepare_review_params(
             {"repo": repo, "pr": int(pr_number)},
             roster=runner.roles(),

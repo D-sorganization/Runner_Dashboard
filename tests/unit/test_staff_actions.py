@@ -90,6 +90,7 @@ def test_action_registry_contains_initial_actions() -> None:
     actions = ACTION_REGISTRY.list_actions()
     names = {a.name for a in actions}
     expected = {
+        "dashboard.navigate",
         "staff.dispatch",
         "staff.review_pr",
         "staff.hold",
@@ -117,6 +118,53 @@ def test_action_registry_contains_initial_actions() -> None:
     assert hold_act is not None
     assert hold_act.risk_class == ActionRiskClass.HIGH
     assert hold_act.required_scope == "staff.holds.write"
+
+
+def test_approved_dashboard_navigation_publishes_the_registered_tab_result() -> None:
+    store = get_conversation_store()
+    thread = store.create_thread(title="Barb", kind="auto", participants=["barb", "user"])
+    proposal = store.create_proposal(
+        message_id="msg_nav",
+        thread_id=thread.id,
+        action="dashboard.navigate",
+        params={"tab_id": "projects"},
+        risk="low",
+        principal="barb",
+    )
+
+    result = execute_proposal(
+        proposal.id,
+        approver=TEST_APPROVER,
+        store=store,
+        approve=True,
+        params_hash=reviewed_hash(proposal.id),
+    )
+
+    assert result.success is True
+    messages = store.list_messages(thread.id)
+    action_result = messages[-1]
+    assert action_result.kind == "action_result"
+    assert action_result.meta["action"] == "dashboard.navigate"
+    assert action_result.meta["success"] is True
+    assert action_result.meta["result"] == {"navigate_to": "projects"}
+
+
+def test_dashboard_navigation_is_allowlisted_read_only_action() -> None:
+    action = ACTION_REGISTRY.get("dashboard.navigate")
+    assert action is not None
+    assert action.risk_class == ActionRiskClass.LOW
+    assert action.required_scope == "staff.chat"
+    assert action.executor({"tab_id": "fleet-command"}, ActionContext()).result == {"navigate_to": "fleet-command"}
+    assert action.executor({"tab_id": "context"}, ActionContext()).result == {"navigate_to": "context"}
+    rejected = action.executor({"tab_id": "/fleet-command"}, ActionContext())
+    assert rejected.success is False
+    assert rejected.failure_class == "invalid_params"
+    external = action.executor({"tab_id": "https://example.com"}, ActionContext())
+    assert external.success is False
+    assert external.failure_class == "invalid_params"
+    unregistered = action.executor({"tab_id": "owner-console"}, ActionContext())
+    assert unregistered.success is False
+    assert unregistered.failure_class == "invalid_params"
 
 
 def test_approval_policy_matrix() -> None:

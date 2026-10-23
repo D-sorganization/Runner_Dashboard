@@ -1,8 +1,10 @@
 import React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const { legacyFetchMock } = vi.hoisted(() => ({ legacyFetchMock: vi.fn() }));
 vi.mock("../../../lib/api", () => ({ legacyFetch: legacyFetchMock }));
+vi.mock("../AgentsSyncPanel", () => ({ AgentsSyncPanel: () => <section><h2>Repository AGENTS.md Sync</h2></section> }));
+beforeEach(() => legacyFetchMock.mockReset());
 
 import { ContextPage, type ContextPackInfo, type ContextLesson, type ContextRunRecord } from "../ContextPage";
 
@@ -13,6 +15,8 @@ const samplePack: ContextPackInfo = {
   source_path: "staff/standards/FLEET.md",
   is_fallback: false,
 };
+
+const sampleSkills = [{ name: "fleet-meaningful-tests", version: "1.0.0", pin: "fleet-meaningful-tests@1.0.0+87ba571a0adb", content_hash: "87ba571a0adb", source_path: "skills/fleet-meaningful-tests/SKILL.md" }];
 
 const sampleLessons: ContextLesson[] = [
   { id: "mem_01", repo: "Runner_Dashboard", review_status: "proposed", author_principal: "staff:fleet-swe:run-101", source_run: "run-101", created_at: "2026-10-22T20:00:00Z", expires_at: "2026-11-21T20:00:00Z", body: { summary: "Use pytest fixtures for db isolation" } },
@@ -25,7 +29,7 @@ const sampleLessons: ContextLesson[] = [
 const sampleRuns: ContextRunRecord[] = [
   {
     id: "run-201", role: "fleet-swe", repo: "Runner_Dashboard", status: "succeeded", created_at: "2026-10-22T21:00:00Z",
-    standards_version: "1.1.0", standards_tokens: 720, lessons_tokens: 240, input_tokens: 4500, output_tokens: 800, cost_usd: 0.045,
+    standards_version: "1.1.0", skill_pin: "fleet-meaningful-tests@1.0.0+87ba571a0adb", standards_tokens: 720, lessons_tokens: 240, input_tokens: 4500, output_tokens: 800, cost_usd: 0.045,
     context_stamp: JSON.stringify({
       pack_version: "1.1.0", content_digest: "mock-digest-bcc29c1", requested_pack: "fleet-standards@1.1.0", resolved_pack: "fleet-standards@1.1.0#mock-digest-bcc29c1",
       fallback_status: "ok", token_estimates: { tier0_standards: 720, tier1_skills: 350, tier1_lessons: 240, total_injected: 3733 },
@@ -59,11 +63,19 @@ describe("ContextPage", () => {
     expect(screen.getByText(/builtin fallback warning/i)).toBeInTheDocument();
   });
 
-  it("labels standards-pack comparison honestly and discloses missing AGENTS sync data", () => {
+  it("labels Tier-0 run comparison separately from live AGENTS sync data", () => {
     render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
-    expect(screen.getByText(/AGENTS.md sync versions are not exposed/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Repository AGENTS.md Sync" })).toBeInTheDocument();
+    expect(screen.queryByText(/AGENTS.md sync versions are not exposed/i)).not.toBeInTheDocument();
     expect(screen.getByTestId("repo-status-Runner_Dashboard")).toHaveTextContent(/matches current Tier-0/i);
     expect(screen.getByTestId("repo-status-Repository_Management")).toHaveTextContent(/different Tier-0 version/i);
+  });
+
+  it("renders live managed-block AGENTS sync separately from Tier-0 run comparison", () => {
+    render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
+    expect(screen.getByRole("heading", { name: "Repository AGENTS.md Sync" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Standards Pack Version at Latest Recorded Run" })).toBeInTheDocument();
+    expect(screen.queryByText(/AGENTS.md sync versions are not exposed/i)).not.toBeInTheDocument();
   });
 
   it("renders lesson queue with provenance, expiration, quarantine, and NEVER shows barb-only entries", () => {
@@ -92,8 +104,28 @@ describe("ContextPage", () => {
     expect(screen.getAllByText(/\(estimate\)/i).length).toBeGreaterThan(0);
   });
 
+  it("shows current Tier-1 registry pins and each run recorded skill pin", () => {
+    render(<ContextPage pack={samplePack} skills={sampleSkills} lessons={sampleLessons} runs={sampleRuns} />);
+    expect(screen.getByText("Current Tier-1 Skill Packs")).toBeInTheDocument();
+    expect(screen.getByText(/current Tier-1 skill registry/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Tier-1 pack versions are not reported/i)).not.toBeInTheDocument();
+    expect(screen.getByText("fleet-meaningful-tests@1.0.0+87ba571a0adb")).toBeInTheDocument();
+    expect(screen.getByText(/Tier-1 skill: fleet-meaningful-tests@1.0.0\+87ba571a0adb/i)).toBeInTheDocument();
+  });
+
+  it("reports skill registry failures as unavailable and retries the source", async () => {
+    legacyFetchMock.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ detail: "Forbidden" }) });
+    legacyFetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ skills: sampleSkills }) });
+    render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
+    const retry = await screen.findByRole("button", { name: /retry skills/i });
+    expect(screen.getByRole("status")).toHaveTextContent(/unavailable.*403/i);
+    fireEvent.click(retry);
+    expect(await screen.findByText("fleet-meaningful-tests@1.0.0+87ba571a0adb")).toBeInTheDocument();
+    expect(legacyFetchMock).toHaveBeenCalledWith("/api/v1/staff/skills");
+  });
+
   it("reports failed lesson telemetry as unavailable instead of an empty queue", async () => {
-    legacyFetchMock.mockImplementation((url: string) => Promise.resolve(
+    legacyFetchMock.mockImplementation((url: string = "") => Promise.resolve(
       url.includes("memory")
         ? { ok: false, status: 403, json: async () => ({ detail: "Forbidden" }) }
         : { ok: true, status: 200, json: async () => url.includes("summary")

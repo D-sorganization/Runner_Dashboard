@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 
 from knowledge_pack import KnowledgePack
-from staff.knowledge_refresh import get_knowledge_dir, pack_is_stale
+from staff.knowledge_refresh import get_knowledge_dir, pack_is_stale, resolve_pack_roots
 from staff.roles import RoleSpec
 
 __all__ = ["build_knowledge_turn_block"]
@@ -49,6 +49,16 @@ def build_knowledge_turn_block(role: RoleSpec | None, query: str) -> str | None:
         return f"## Knowledge\n\nNotice: Knowledge pack '{pack_id}' could not be opened."
 
     stale = pack_is_stale(pack)
+
+    if pack_id == "cartographer":
+        from knowledge_pack.cartographer import preload_panel_context
+
+        try:
+            roots = resolve_pack_roots(pack)
+            context = preload_panel_context(roots, query, max_tokens=800, topic_only=True) if roots else ""
+        except (OSError, ValueError, KeyError):
+            context = ""
+        return "## Knowledge\n\n" + (context or "Notice: No verifiable codebase passages are available.")
 
     try:
         passages = pack.search(query, k=8)
