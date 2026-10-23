@@ -17,9 +17,10 @@ import os
 import sqlite3
 import threading
 from contextlib import closing
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from staff.store import _now
 
 FRICTION_STATUSES = ("open", "in_progress", "waiting", "closed")
 QUESTION_STATUSES = ("open", "answered", "withdrawn")
@@ -68,10 +69,6 @@ def db_path() -> Path:
     base = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
     root = Path(base).expanduser() if base else Path("~/.config/runner-dashboard").expanduser()
     return root / "fleet_friction.sqlite3"
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _connect() -> sqlite3.Connection:
