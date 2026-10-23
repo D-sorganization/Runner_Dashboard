@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sqlite3
+from collections.abc import Sequence
 from contextlib import closing
 from datetime import UTC, datetime
 from io import BytesIO
@@ -271,11 +272,13 @@ def _ensure_work_simple(
         "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,?,'active',0)",
         (digest, author, title, year, fmt),
     )
+    if cur.lastrowid is None:
+        raise RuntimeError("insert work failed")
     return int(cur.lastrowid)
 
 
 def _insert_passages(
-    conn: sqlite3.Connection, work_id: int, title_s: str, passages: list[tuple[str | None, int, int, str]]
+    conn: sqlite3.Connection, work_id: int, title_s: str, passages: Sequence[tuple[str | None, int, int, str]]
 ) -> None:
     conn.execute("DELETE FROM passages WHERE work_id = ?", (work_id,))
     for section, start, end, text in passages:
@@ -292,7 +295,9 @@ def _insert_passages(
 
 def _replace_passages(conn: sqlite3.Connection, work_id: int, reader: PdfReader) -> None:
     title = conn.execute("SELECT title FROM works WHERE id = ?", (work_id,)).fetchone()
-    passages = [(None, i + 1, i + 1, txt) for i in range(len(reader.pages)) if (txt := _page_text(reader, i).strip())]
+    passages: list[tuple[str | None, int, int, str]] = [
+        (None, i + 1, i + 1, txt) for i in range(len(reader.pages)) if (txt := _page_text(reader, i).strip())
+    ]
     _insert_passages(conn, work_id, (title[0] if title else None) or "", passages)
 
 
@@ -307,7 +312,10 @@ def _extract_text_passages(raw: bytes, fmt: str) -> list[tuple[str | None, int, 
     if not lines:
         return []
     passages: list[tuple[str | None, int, int, str]] = []
-    sec, cur, start, chars = None, [], 1, 0
+    sec: str | None = None
+    cur: list[str] = []
+    start: int = 1
+    chars: int = 0
     for idx, line in enumerate(lines, start=1):
         stripped = line.strip()
         is_hd = fmt in ("md", "markdown") and stripped.startswith("#")
