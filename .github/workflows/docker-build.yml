@@ -125,6 +125,8 @@ jobs:
 
   docker-image:
     name: Build and scan image
+    env:
+      BUILDX_BUILDER: rd-ci-${{ github.run_id }}-${{ github.run_attempt }}
     needs: decide-docker-scope
     if: >-
       needs.decide-docker-scope.outputs.run_docker == 'true' &&
@@ -135,11 +137,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Isolate Docker configuration for this job
+        id: docker-config
+        run: |
+          config_dir="${RUNNER_TEMP}/rd-docker-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$config_dir"
+          printf 'DOCKER_CONFIG=%s\n' "$config_dir" >> "$GITHUB_ENV"
+
       - name: Recover stale ephemeral buildx state
         run: bash scripts/ci/docker_buildx_recover.sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4 # v3.10.0
+        with:
+          name: ${{ env.BUILDX_BUILDER }}
 
       - name: Build Docker image
         id: build
@@ -166,7 +177,7 @@ jobs:
             fi
             echo "::endgroup::"
             echo "::warning::Docker build attempt ${attempt} failed; recovering buildx before retry"
-            bash scripts/ci/docker_buildx_recover.sh
+            bash scripts/ci/docker_buildx_recover.sh --recreate
             if [ "$attempt" -eq "$max" ]; then
               echo "::error::Docker build failed after ${max} attempts"
               exit 1
