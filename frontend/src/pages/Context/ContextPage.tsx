@@ -42,9 +42,9 @@ export interface ContextRunRecord {
   standards_version?: string;
   standards_tokens?: number;
   lessons_tokens?: number;
-  input_tokens?: number;
-  output_tokens?: number;
-  cost_usd?: number;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cost_usd?: number | null;
   context_stamp?: string;
 }
 
@@ -354,8 +354,8 @@ export function ContextPage({
                         {skippedItems.length > 0 && <div className="text-neutral-500 text-xs mt-0.5">Skipped: {skippedItems.map((s) => `${s.id} (${s.reason})`).join(", ")}</div>}
                       </td>
                       <td className="py-2.5 px-3 text-xs text-neutral-400 font-mono">
-                        <div>In: {r.input_tokens || 0} / Out: {r.output_tokens || 0}</div>
-                        <div>Cost: ~${(r.cost_usd || 0).toFixed(3)} <span className="text-neutral-500">(estimate)</span></div>
+                        <div>In: {r.input_tokens ?? "Not recorded"} / Out: {r.output_tokens ?? "Not recorded"}</div>
+                        <div>{typeof r.cost_usd === "number" ? <>Cost: ~${r.cost_usd.toFixed(3)} <span className="text-neutral-500">(estimate)</span></> : "Cost: Not recorded"}</div>
                       </td>
                     </tr>
                   );

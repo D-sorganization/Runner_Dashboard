@@ -163,6 +163,25 @@ describe("ContextPage", () => {
     expect(row).toHaveTextContent("Partial");
   });
 
+  it("distinguishes missing usage telemetry from recorded zero values", () => {
+    const unknown: ContextRunRecord = {
+      id: "run-usage-unknown", role: "barb", repo: "Runner_Dashboard", status: "succeeded", created_at: "2026-10-23T00:00:00Z",
+    };
+    const recordedZero: ContextRunRecord = {
+      ...unknown, id: "run-usage-zero", input_tokens: 0, output_tokens: 0, cost_usd: 0,
+    };
+    const nullTelemetry: ContextRunRecord = {
+      ...unknown, id: "run-usage-null", input_tokens: null, output_tokens: null, cost_usd: null,
+    };
+    render(<ContextPage pack={samplePack} lessons={[]} runs={[unknown, recordedZero, nullTelemetry]} />);
+    expect(screen.getByRole("row", { name: /run-usage-unknown/i })).toHaveTextContent("In: Not recorded / Out: Not recorded");
+    expect(screen.getByRole("row", { name: /run-usage-unknown/i })).toHaveTextContent("Cost: Not recorded");
+    expect(screen.getByRole("row", { name: /run-usage-zero/i })).toHaveTextContent("In: 0 / Out: 0");
+    expect(screen.getByRole("row", { name: /run-usage-zero/i })).toHaveTextContent("Cost: ~$0.000");
+    expect(screen.getByRole("row", { name: /run-usage-null/i })).toHaveTextContent("In: Not recorded / Out: Not recorded");
+    expect(screen.getByRole("row", { name: /run-usage-null/i })).toHaveTextContent("Cost: Not recorded");
+  });
+
   it("extracts Tier-0 digest from a plus-delimited standards pin", async () => {
     legacyFetchMock.mockImplementation((url: string = "") => Promise.resolve({
       ok: true,
