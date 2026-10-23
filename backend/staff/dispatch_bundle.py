@@ -180,19 +180,33 @@ def resolve_dispatch_bundle(
     selected_lessons, skipped_lessons, lessons_block, lessons_tokens = select_repo_lessons(repo=repo_key)
     lesson_ids = tuple(e.id for e in selected_lessons)
     lessons_skipped = tuple(skipped_lessons)
-    lesson_kwargs = {
-        "lessons_block": lessons_block,
-        "lessons_tokens": lessons_tokens,
-        "lesson_ids": lesson_ids,
-        "lessons_skipped": lessons_skipped,
-    }
+
+    def _make_bundle(det: SkillDetail | None) -> DispatchBundle:
+        if det is not None:
+            return _bundle_from_detail(
+                det,
+                standards,
+                standards_extra,
+                lessons_block=lessons_block,
+                lessons_tokens=lessons_tokens,
+                lesson_ids=lesson_ids,
+                lessons_skipped=lessons_skipped,
+            )
+        return _bundle_without_skill(
+            standards,
+            standards_extra,
+            lessons_block=lessons_block,
+            lessons_tokens=lessons_tokens,
+            lesson_ids=lesson_ids,
+            lessons_skipped=lessons_skipped,
+        )
 
     if requested_skill and requested_skill.strip():
         name = requested_skill.strip()
         detail = get_skill(name)
         if detail is None:
             raise DispatchContractError(f"requested skill {name!r} does not exist")
-        return _bundle_from_detail(detail, standards, standards_extra, **lesson_kwargs)
+        return _make_bundle(detail)
 
     matches = match_skills_for_dispatch(role_key, repo_key, task_key)
     if matches:
@@ -200,7 +214,7 @@ def resolve_dispatch_bundle(
         detail = get_skill(best.name, version=best.version)
         if detail is None:
             raise DispatchContractError(f"skill {best.name}@{best.version} is indexed but unreadable")
-        return _bundle_from_detail(detail, standards, standards_extra, **lesson_kwargs)
+        return _make_bundle(detail)
 
     generic = get_skill(DEFAULT_GENERIC_SKILL)
     if generic is not None:
@@ -211,7 +225,7 @@ def resolve_dispatch_bundle(
             task_key,
             DEFAULT_GENERIC_SKILL,
         )
-        return _bundle_from_detail(generic, standards, standards_extra, **lesson_kwargs)
+        return _make_bundle(generic)
 
     log.warning(
         "no skill matches role=%r repo=%r task_type=%r and no generic skill; proceeding without skill package",
@@ -219,4 +233,4 @@ def resolve_dispatch_bundle(
         repo_key,
         task_key,
     )
-    return _bundle_without_skill(standards, standards_extra, **lesson_kwargs)
+    return _make_bundle(None)
