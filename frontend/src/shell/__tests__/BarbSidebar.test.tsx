@@ -64,7 +64,6 @@ describe("BarbSidebar", () => {
     const composer = screen.getByRole("textbox", { name: /staff conversation input/i });
     expect(composer).toHaveFocus();
   });
-  });
 
   it("restores Barb history without sending a message when the sidebar opens", () => {
     window.history.replaceState({}, "", "/");
@@ -86,7 +85,7 @@ describe("BarbSidebar", () => {
     const view = render(
       <BarbSidebar open onClose={onClose} onNavigate={vi.fn()} restoreFocusTargetRef={restoreFocusTargetRef} />,
     );
-    await waitFor(() => expect(screen.getByRole("button", { name: "Close Ask Barb" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("textbox", { name: /staff conversation input/i })).toHaveFocus());
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledOnce();
