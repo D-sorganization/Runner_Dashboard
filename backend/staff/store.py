@@ -101,6 +101,8 @@ class RunRecord:
     injected_lesson_ids: str = "[]"
     skipped_lesson_ids: str = "{}"
     lessons_tokens: int = 0
+    execution_mode: str = "local"
+    remote_session_url: str = ""
 
     def __post_init__(self) -> None:
         self.retryable, self.attempt, self.max_attempts = (

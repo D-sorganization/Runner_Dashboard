@@ -38,4 +38,6 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("injected_lesson_ids", "TEXT NOT NULL DEFAULT '[]'"),
     ("skipped_lesson_ids", "TEXT NOT NULL DEFAULT '{}'"),
     ("lessons_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    ("execution_mode", "TEXT NOT NULL DEFAULT 'local'"),
+    ("remote_session_url", "TEXT NOT NULL DEFAULT ''"),
 )

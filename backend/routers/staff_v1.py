@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import shutil
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -37,6 +38,7 @@ from staff.audit import (
     record_audit,
 )
 from staff.cli_version import provider_versions
+from staff.cloud_dispatch import cloud_capabilities_payload
 from staff.dispatch_auth import require_staff_run_dispatch
 from staff.idempotency import (
     IdempotencyStoreError,
@@ -216,6 +218,15 @@ async def providers_v1(
         "unattended_providers": unattended_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
     }
+
+
+@router.get("/cloud-capabilities")
+async def cloud_capabilities_v1(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Which staff providers support ``execution_mode: cloud`` on this node (#2627)."""
+    installed = {**available_providers(), "gh": bool(shutil.which("gh"))}
+    return cloud_capabilities_payload(installed)
 
 
 @router.get("/board", response_model=StaffBoardResponse, response_model_exclude_none=True)

@@ -43,6 +43,7 @@ class RunRequest:
     standards_extra: str = ""
     # When set, must exist in the skills registry (#2157); omit to use role/repo matching + fallback.
     requested_skill: str | None = None
+    execution_mode: str = "local"
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
@@ -94,6 +95,8 @@ class RunPlan:
     injected_lesson_ids: tuple[str, ...] = ()
     skipped_lesson_ids: dict[str, str] = field(default_factory=dict)
     lessons_tokens: int = 0
+    execution_mode: str = "local"
+    cloud_stdin: str = ""
 
     @property
     def strategy_mode(self) -> str:
@@ -132,4 +135,5 @@ class RunPlan:
             "injected_lesson_ids": list(self.injected_lesson_ids),
             "skipped_lesson_ids": dict(self.skipped_lesson_ids),
             "lessons_tokens": self.lessons_tokens,
+            "execution_mode": self.execution_mode,
         }

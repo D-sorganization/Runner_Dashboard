@@ -150,7 +150,24 @@ class StaffRunner:
             step=step,
             active_tier=role_base_tier(role),
         )
-        argv = adapter.build_command(prompt, "<workdir>", effective_model, **ops.read_only_kwargs(role))
+        execution_mode = (getattr(req, "execution_mode", "local") or "local").strip().lower()
+        cloud_stdin = ""
+        if execution_mode == "cloud":
+            from staff.cloud_dispatch import build_cloud_dispatch
+
+            cloud = build_cloud_dispatch(
+                provider,
+                req.prompt,
+                model=effective_model,
+                repo=req.repo,
+                issue=req.issue,
+                pr=req.pr,
+            )
+            argv = cloud.argv
+            cloud_stdin = cloud.stdin or ""
+            lease = False
+        else:
+            argv = adapter.build_command(prompt, "<workdir>", effective_model, **ops.read_only_kwargs(role))
         return RunPlan(
             role=role.name,
             provider=provider,
@@ -177,6 +194,8 @@ class StaffRunner:
             skipped_lesson_ids=repo_lessons.skipped_ids,
             lessons_tokens=repo_lessons.tokens,
             provider_auth_skipped=tuple(auth_skipped),
+            execution_mode=execution_mode,
+            cloud_stdin=cloud_stdin,
         )
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
@@ -249,9 +268,14 @@ class StaffRunner:
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
                 handle_run_status_change(rec, "preparing")
-                if ops.fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
+                cloud_run = plan.execution_mode == "cloud"
+                if not cloud_run and ops.fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
                     return  # below the CLI floor: no worktree, no lease (#1680)
-                workdir = ops.prepare_run_workdir(store, rec, plan)
+                workdir = (
+                    ops.prepare_cloud_workdir(store, rec)
+                    if cloud_run
+                    else ops.prepare_run_workdir(store, rec, plan)
+                )
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
@@ -304,7 +328,10 @@ class StaffRunner:
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
             antigravity_permissions(read_only=role.code_read_only, workdir=workdir, gitdir=gitdir)
-        argv = adapter.build_command(prompt, str(workdir), plan.model, **ops.read_only_kwargs(role), **launch_paths)
+        if plan.execution_mode == "cloud":
+            argv = list(plan.argv)
+        else:
+            argv = adapter.build_command(prompt, str(workdir), plan.model, **ops.read_only_kwargs(role), **launch_paths)
         transcript = workdir / ".staff" / "transcript.log"
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
@@ -322,18 +349,31 @@ class StaffRunner:
         )
         if env is None:
             return
+        if plan.execution_mode == "cloud":
+            from staff.cloud_dispatch import scrub_api_key_env
+
+            env = scrub_api_key_env(env)
         env = ops.apply_staff_run_fleet_token(
             store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
         )
         if env is None:
             return
         try:
-            exe = shutil.which(adapter.executable) or adapter.executable
+            stdin_payload = plan.cloud_stdin if plan.execution_mode == "cloud" and plan.cloud_stdin else None
+            if plan.execution_mode == "cloud" and argv and argv[0] == "gh":
+                launch_argv = argv
+                launch_label = "gh (cloud workflow)"
+            else:
+                exe = shutil.which(adapter.executable) or adapter.executable
+                launch_argv = [exe, *argv[1:]]
+                launch_label = f"{adapter.executable} ({plan.provider})"
             proc = subprocess.Popen(  # noqa: S603
-                [exe, *argv[1:]],
+                launch_argv,
                 cwd=str(workdir),
                 env=env,
-                stdin=subprocess.PIPE if adapter.prompt_via_stdin else subprocess.DEVNULL,
+                stdin=subprocess.PIPE
+                if stdin_payload is not None or adapter.prompt_via_stdin
+                else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -345,12 +385,15 @@ class StaffRunner:
                 self._procs[rec.id] = proc
                 cancelled = rec.id in self._cancel_flags
             store.update_run(rec.id, status="running", transcript_path=str(transcript), prompt=prompt, pid=proc.pid)
-            store.append_event(rec.id, "start", f"{adapter.executable} ({plan.provider}) in {workdir}")
+            store.append_event(rec.id, "start", f"{launch_label} in {workdir}")
             handle_run_status_change(rec, "running")
             if cancelled:
                 terminate_process_group(proc.pid, grace_period=1.0)
-            if adapter.prompt_via_stdin and proc.stdin is not None:
-                proc.stdin.write(prompt + "\n")
+            if proc.stdin is not None:
+                if stdin_payload is not None:
+                    proc.stdin.write(stdin_payload)
+                elif adapter.prompt_via_stdin:
+                    proc.stdin.write(prompt + "\n")
                 proc.stdin.close()
 
             watchdog = StaffWatchdog(
@@ -375,6 +418,16 @@ class StaffRunner:
             with self._lock:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
+            if plan.execution_mode == "cloud":
+                from staff.cloud_dispatch import parse_remote_session_url
+
+                remote_url = parse_remote_session_url(
+                    plan.provider,
+                    transcript.read_text(encoding="utf-8", errors="replace"),
+                )
+                if remote_url:
+                    store.update_run(rec.id, remote_session_url=remote_url)
+                    store.append_event(rec.id, "cloud", f"remote session {remote_url}")
             question = ops.extract_transcript_question(transcript)
 
             if not cancelled and rc == 0 and not result_line and not question:

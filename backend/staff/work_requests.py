@@ -98,6 +98,7 @@ class WorkRequest(BaseModel):
     effort: str | None = None
     standards: list[str] | None = None
     budget: dict[str, Any] | None = None
+    execution_mode: str = "local"
 
 
 class RequestRejectedError(ValueError):
@@ -143,6 +144,7 @@ def _staff_dispatch_params(req: WorkRequest) -> dict[str, Any]:
         "issue": t.issue,
         "pr": t.pr,
         "prompt": req.prompt,
+        "execution_mode": req.execution_mode,
     }
     return {k: v for k, v in params.items() if v not in (None, "")}
 
