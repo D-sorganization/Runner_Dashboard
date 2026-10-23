@@ -22,6 +22,7 @@ from pypdf import PdfReader
 
 log = logging.getLogger("dashboard.library.ingest")
 _INGEST_INTERVAL_S = float(os.environ.get("LIBRARY_INGEST_INTERVAL_S", "3600"))
+_BACKGROUND_INGEST_MAX_FILES = int(os.environ.get("LIBRARY_BACKGROUND_INGEST_MAX_FILES", "250"))
 _MIN_PAGE_CHARS = 12
 _MIN_PDF_BYTES = 4096
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
@@ -48,6 +49,16 @@ def ingest_directory(
         include_globs, exclude_globs = source["include_globs"], source["exclude_globs"]
     except LookupError:
         include_globs, exclude_globs = [], []
+    paths: list[Path] = []
+    for path in _eligible_paths(source_root, include_globs, exclude_globs):
+        paths.append(path)
+        if max_files is not None and len(paths) == max_files:
+            break
+    # If the limit was reached, treat the pass as incomplete conservatively:
+    # a limited traversal must never infer that unseen files were removed.
+    scan_complete = max_files is None or len(paths) < max_files
+    if max_files is None:
+        paths.sort(key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()))
     started = datetime.now(UTC).isoformat()
     stats = {"files_seen": 0, "files_indexed": 0, "files_skipped": 0, "files_rejected": 0, "files_removed": 0}
     seen_paths: set[str] = set()
@@ -56,17 +67,6 @@ def ingest_directory(
             "INSERT INTO ingest_runs (started_at, source_root) VALUES (?, ?)",
             (started, source_root.as_posix()),
         ).lastrowid
-        if max_files is None:
-            paths = sorted(
-                _eligible_paths(source_root, include_globs, exclude_globs),
-                key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()),
-            )
-        else:
-            paths = []
-            for path in _eligible_paths(source_root, include_globs, exclude_globs):
-                paths.append(path)
-                if len(paths) == max_files:
-                    break
         for path in paths:
             stats["files_seen"] += 1
             rel = path.relative_to(source_root).as_posix()
@@ -101,12 +101,10 @@ def ingest_directory(
                     stats["files_rejected"] += 1
                     continue
             stats["files_indexed"] += 1
-        if max_files is None:
+        if scan_complete:
             stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
             _retire_orphan_works(conn)
-        notes = (
-            None if max_files is None else f"bounded incomplete scan (max_files={max_files}); removals not reconciled"
-        )
+        notes = None if scan_complete else f"bounded incomplete scan (max_files={max_files}); removals not reconciled"
         conn.execute(
             "UPDATE ingest_runs SET finished_at=?, files_seen=?, files_indexed=?, files_skipped=?,"
             " files_rejected=?, files_removed=?, notes=? WHERE id=?",
@@ -122,7 +120,7 @@ def ingest_directory(
             ),
         )
         conn.commit()
-    return {**stats, "scan_complete": max_files is None}
+    return {**stats, "scan_complete": scan_complete}
 
 
 def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: list[str]) -> Iterator[Path]:
@@ -460,17 +458,17 @@ def _extract_epub(raw: bytes) -> tuple[str | None, str | None, list[tuple[str, s
         return _dc("creator"), _dc("title"), chapters
 
 
-def ingest_sources(db_path: Path | None = None) -> dict[str, dict[str, int]]:
+def ingest_sources(db_path: Path | None = None, *, max_files: int | None = None) -> dict[str, dict[str, int | bool]]:
     db = init_library_db(db_path)
     seed_default_source(db)
-    results: dict[str, dict[str, int]] = {}
+    results: dict[str, dict[str, int | bool]] = {}
     with closing(LibraryStore(db).connect()) as conn:
         sources = conn.execute("SELECT id, root_path FROM library_sources WHERE status='active' ORDER BY id").fetchall()
     for source_id, root_path in sources:
         p = Path(root_path)
         if not p.is_dir():
             continue
-        stats = ingest_directory(p, db_path=db, source_id=source_id)
+        stats = ingest_directory(p, db_path=db, source_id=source_id, max_files=max_files)
         results[source_id] = stats
         with closing(LibraryStore(db).connect()) as conn:
             conn.execute(
@@ -481,13 +479,13 @@ def ingest_sources(db_path: Path | None = None) -> dict[str, dict[str, int]]:
     return results
 
 
-def start_library_ingest_loop() -> None:
+def start_library_ingest_loop() -> asyncio.Task[None]:
     async def _loop() -> None:
         while True:
             try:
-                ingest_sources()
+                await asyncio.to_thread(ingest_sources, max_files=_BACKGROUND_INGEST_MAX_FILES)
             except Exception as exc:  # noqa: BLE001
                 log.warning("library ingest failed: %s", exc)
             await asyncio.sleep(_INGEST_INTERVAL_S)
 
-    asyncio.create_task(_loop())
+    return asyncio.create_task(_loop())
