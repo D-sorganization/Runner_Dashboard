@@ -130,6 +130,57 @@ async def test_spoke_hub_failure_does_not_retry_local_org_access(spoke: tuple[As
 
 
 @pytest.mark.asyncio
+async def test_spoke_failure_logs_safe_probe_context(
+    spoke: tuple[AsyncMock, AsyncMock], caplog: pytest.LogCaptureFixture
+) -> None:
+    direct, upstream = spoke
+    secret = "token=do-not-log"
+    upstream.side_effect = HTTPException(status_code=503, detail=secret)
+    body = await health.health_check(request())
+    assert body["github_api"] == "unreachable"
+    record = next(record for record in caplog.records if record.message.startswith("github_health_probe_failed"))
+    assert record.getMessage() == "github_health_probe_failed stage=hub_proxy error_type=HTTPException"
+    assert secret not in record.getMessage()
+    direct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_invalid_hub_summary_logs_safe_validation_context(
+    spoke: tuple[AsyncMock, AsyncMock], caplog: pytest.LogCaptureFixture
+) -> None:
+    _direct, upstream = spoke
+    upstream.return_value = {"status": "healthy", "github_api": "connected", "runners_registered": "secret"}
+    await health.health_check(request())
+    assert any(
+        record.getMessage() == "github_health_probe_failed stage=hub_summary error_type=ValueError"
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_successful_hub_probe_emits_no_failure_warning(
+    spoke: tuple[AsyncMock, AsyncMock], caplog: pytest.LogCaptureFixture
+) -> None:
+    await health.health_check(request())
+    assert not any(record.message.startswith("github_health_probe_failed") for record in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_local_probe_failure_logs_safe_context(
+    spoke: tuple[AsyncMock, AsyncMock], caplog: pytest.LogCaptureFixture
+) -> None:
+    direct, upstream = spoke
+    direct.side_effect = RuntimeError("token=do-not-log")
+    await health.health_check(request(b"local=1"))
+    assert any(
+        record.getMessage() == "github_health_probe_failed stage=local_probe error_type=RuntimeError"
+        for record in caplog.records
+    )
+    assert all("token=do-not-log" not in record.getMessage() for record in caplog.records)
+    upstream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_spoke_cancellation_propagates(spoke: tuple[AsyncMock, AsyncMock]) -> None:
     direct, upstream = spoke
     upstream.side_effect = asyncio.CancelledError
