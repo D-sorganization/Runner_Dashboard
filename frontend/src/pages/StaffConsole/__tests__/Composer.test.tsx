@@ -310,4 +310,45 @@ describe("Composer Component", () => {
     });
     fetchMock.mockRestore();
   });
+
+  it("shows HTTP intake rejection and prevents sending an omitted attachment", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({ ok: false, status: 503 } as Response);
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+    render(<Composer threadId="thread-http-upload-failure" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Please review this file" } });
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["notes"], "offline.md", { type: "text/markdown" })] },
+    });
+
+    const attachment = await screen.findByTestId("composer-attachment-offline.md");
+    expect(attachment).toHaveClass("staff-composer__chip--rejected");
+    expect(attachment).toHaveTextContent("Upload failed (503)");
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+    expect(onSend).not.toHaveBeenCalled();
+    fetchMock.mockRestore();
+  });
+
+  it("keeps a failed intake upload visible and blocks a send that would omit the file", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const onSend = vi.fn().mockResolvedValue({ ok: true });
+    render(<Composer threadId="thread-upload-failure" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/message barb/i), { target: { value: "Review this attachment" } });
+    fireEvent.change(screen.getByTestId("composer-file-input"), {
+      target: { files: [new File(["notes"], "notes.md", { type: "text/markdown" })] },
+    });
+
+    const attachment = await screen.findByTestId("composer-attachment-notes.md");
+    await waitFor(() => expect(attachment).toHaveClass("staff-composer__chip--rejected"));
+    expect(attachment).toHaveTextContent(/failed/i);
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /remove notes.md/i }));
+    expect(screen.getByRole("button", { name: /send/i })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][0].meta).toBeUndefined();
+    fetchMock.mockRestore();
+  });
 });

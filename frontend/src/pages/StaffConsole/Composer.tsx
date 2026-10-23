@@ -207,7 +207,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
   const executeSend = async (retryKey?: string) => {
     const trimmed = text.trim();
-    if ((!trimmed && !attachedItems.length) || sendState === "sending" || disabled || isPanel) return;
+    if ((!trimmed && !attachedItems.length) || attachments.some((item) => item.status === "rejected") || sendState === "sending" || disabled || isPanel) return;
 
     const key = retryKey || idempotencyKey || generateIdempotencyKey(threadId);
     setIdempotencyKey(key);
@@ -313,7 +313,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   // Auto-grow rows from 1 to 10
   const lineCount = (text.match(/\n/g) || []).length + 1;
   const rows = Math.min(10, Math.max(1, lineCount));
-  const isSendDisabled = disabled || isPanel || sendState === "sending" || (!text.trim() && !attachedItems.length);
+  const isSendDisabled = disabled || isPanel || sendState === "sending" || attachments.some((item) => item.status === "rejected") || (!text.trim() && !attachedItems.length);
 
   return (
     <div className={`staff-composer ${className}`} role="region" aria-label="Message composer">
@@ -360,6 +360,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
               <span key={att.id} className={`staff-composer__chip staff-composer__chip--${att.status}`} data-testid={`composer-attachment-${att.filename}`}>
                 <span>{att.filename}</span>
                 <span className="staff-composer__chip-badge">{att.sensitivity}</span><span className="staff-composer__chip-status">{att.status}</span>
+                {att.error && <span className="staff-composer__chip-error" role="status">{att.error}</span>}
                 <button type="button" className="staff-composer__chip-remove" aria-label={`Remove ${att.filename}`} onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}>×</button>
               </span>
             ))}
