@@ -135,3 +135,15 @@ def test_verify_requires_exact_node_in_run_ledger(tmp_path: Path) -> None:
 
     assert result["citations"][0]["status"] == "node_mismatch"
     assert result["citations"][0]["verified"] is False
+
+
+def test_valid_reference_cannot_hide_a_malformed_reference(tmp_path: Path) -> None:
+    db, digest = _indexed(tmp_path)
+    cite = f"[ref:desk:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+    invalid = "[ref:desk:shared:w1:p19#sha256=typo:p.7-8]"
+
+    result = verify_content(db, f"Rotational power improves turbine efficiency. {cite}\n{invalid}")
+
+    assert result["verified"] is False
+    assert [item["verified"] for item in result["citations"]] == [True, False]
+    assert result["citations"][1]["status"] == "invalid_citation"

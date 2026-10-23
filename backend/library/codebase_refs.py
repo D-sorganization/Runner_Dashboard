@@ -25,7 +25,7 @@ _REF = re.compile(
     r"(?P<repo>[A-Za-z0-9][A-Za-z0-9_.-]{0,127})@(?P<commit>[a-f0-9]{8}):"
     r"(?P<path>[^\[\]#@\r\n]+)#L(?P<start>\d+)-L(?P<end>\d+)\]"
 )
-_TOKEN = re.compile(r"\[ref:[^\]\r\n]*(?:\]|$)", re.MULTILINE)
+REFERENCE_TOKEN = re.compile(r"\[ref:[^\]\r\n]*(?:\]|(?=[\r\n]|\Z))")
 MAX_BLOB_BYTES = 1_000_000
 MAX_SPAN_LINES = 400
 _VERIFY_SECONDS = 10
@@ -123,7 +123,7 @@ def verify_codebase_citations(db: Path, content: str, run_id: str | None) -> lis
     or Git transport is allowed. Historical chunks unavailable under the current
     chunking manifest fail closed rather than trusting their stored digest alone.
     """
-    tokens = [m for m in _TOKEN.finditer(content) if ":codebase:" in m[0]]
+    tokens = [m for m in REFERENCE_TOKEN.finditer(content) if ":codebase:" in m[0]]
     if not tokens:
         return []
     if len(tokens) > 100:
