@@ -34,10 +34,6 @@ _SECRET_CONTENT_PATTERNS = (
 )
 
 
-def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
-
-
 def _sanitize_filename(filename: str) -> str:
     cleaned = Path(filename.strip()).name
     if not cleaned or cleaned in {".", ".."}:
@@ -139,7 +135,7 @@ def stage_intake_item(
         storage_path = str(_write_cas_blob(db_path, digest, content))
         status = "staged"
     init_library_db(db_path)
-    now = _now_iso()
+    now = datetime.now(UTC).isoformat()
     with closing(LibraryStore(db_path).connect()) as conn:
         cur = conn.execute(
             "INSERT INTO library_intake(sha256,filename,size_bytes,mime_type,sensitivity,"
@@ -193,7 +189,7 @@ def _index_promoted_work(conn: sqlite3.Connection, row: sqlite3.Row, text_body: 
     conn.execute(
         "INSERT OR IGNORE INTO library_sources(id,label,root_path,shared,created_at,status) "
         "VALUES('chat-intake','Promoted Chat Intake','chat-intake://promoted',1,?, 'active')",
-        (_now_iso(),),
+        (datetime.now(UTC).isoformat(),),
     )
     sha256 = str(row["sha256"])
     filename = str(row["filename"])
@@ -240,7 +236,7 @@ def promote_intake_item(db_path: Path, intake_id: int, *, promoted_by: str) -> d
         raw_bytes = storage_path.read_bytes()
         text_body = raw_bytes.decode("utf-8", errors="replace")
         work_id = _index_promoted_work(conn, row, text_body)
-        now = _now_iso()
+        now = datetime.now(UTC).isoformat()
         conn.execute(
             "UPDATE library_intake SET status = 'promoted', work_id = ?, promoted_at = ?, promoted_by = ? WHERE id = ?",
             (work_id, now, promoted_by, intake_id),

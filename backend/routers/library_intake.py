@@ -24,7 +24,7 @@ def _db() -> Path:
     return lib_router._db()
 
 
-def _require_peer(request: Request) -> Principal:
+def require_library_peer(request: Request) -> Principal:
     import routers.library as lib_router
 
     return lib_router.require_library_peer(
@@ -46,7 +46,7 @@ class LibraryIntakeCreateRequest(BaseModel):
 @intake_router.post("/intake")
 def library_intake_stage_route(
     payload: LibraryIntakeCreateRequest,
-    principal: Principal = Depends(_require_peer),  # noqa: B008
+    principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
     try:
         raw = decode_base64_payload(payload.content_base64)
@@ -67,7 +67,7 @@ def library_intake_stage_route(
 def library_intake_list_route(
     status: str | None = Query(None, max_length=64),
     sensitivity: str | None = Query(None, max_length=64),
-    _principal: Principal = Depends(_require_peer),  # noqa: B008
+    _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
     items = list_intake_items(_db(), status=status, sensitivity=sensitivity)
     return {"items": items, "count": len(items)}
@@ -76,7 +76,7 @@ def library_intake_list_route(
 @intake_router.post("/intake/{intake_id}/promote")
 def library_intake_promote_route(
     intake_id: int,
-    principal: Principal = Depends(_require_peer),  # noqa: B008
+    principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
     try:
         return promote_intake_item(_db(), intake_id, promoted_by=principal.id)
