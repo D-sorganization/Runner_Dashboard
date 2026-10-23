@@ -61,7 +61,8 @@ export function LibraryPage(): React.ReactElement {
   }, []);
 
   const loadBrowse = useCallback((path?: string) => {
-    legacyFetch(`/api/v1/library/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`)
+    const query = path ? `?path=${encodeURIComponent(path)}` : "";
+    legacyFetch("/api/v1/library/browse" + query)
       .then((r) => (r.ok ? (r.json() as Promise<BrowseData>) : Promise.reject(`browse ${r.status}`)))
       .then(setBrowseData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
@@ -180,7 +181,7 @@ export function LibraryPage(): React.ReactElement {
                 </div>
                 <div style={{ maxHeight: "200px", overflowY: "auto", border: "1px solid var(--border-subtle)", padding: "4px" }}>
                   {browseData.entries.length === 0 ? <p>No subdirectories</p> : browseData.entries.map((e) => (
-                    <div key={e.path} onClick={() => loadBrowse(e.path)} style={{ padding: "4px 8px", cursor: "pointer" }}>📁 <strong>{e.name}</strong> ({e.file_count} files, {e.child_dirs} dirs)</div>
+                    <div key={e.path} onClick={() => loadBrowse(e.path)} style={{ padding: "4px 8px", cursor: "pointer" }}><strong>{e.name}</strong> ({e.file_count} files, {e.child_dirs} dirs)</div>
                   ))}
                 </div>
                 {selectedPath && (
