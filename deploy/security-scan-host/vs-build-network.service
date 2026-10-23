@@ -1,0 +1,22 @@
+# Re-apply the filtered phase-A build network at every boot (#2603, panel q5).
+#
+# iptables rules and the /run/vs-build marker do not survive a reboot. Until this
+# unit has run, the dashboard refuses real scans on this VM. Install on the scan
+# VM only:
+#
+#   sudo install -m 0755 setup-build-network.sh /usr/local/sbin/
+#   sudo install -m 0644 vs-build-network.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now vs-build-network
+[Unit]
+Description=Filtered build network for fleet security scans
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/setup-build-network.sh --apply
+
+[Install]
+WantedBy=multi-user.target

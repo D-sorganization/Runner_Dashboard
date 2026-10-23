@@ -9,9 +9,11 @@ rechecked.
 A real scan needs:
 
 - a scan host declared ``isolation: "vm"``, reached by ``DOCKER_HOST``, with a
-  filtered build network. ControlTower is never a scan host.
-- an enabled repository, a valid ``.oss-scanner/`` contract, and the
-  default-branch head SHA
+  filtered build network whose filter is live (the boot-time marker written by
+  ``setup-build-network.sh`` matches the network). ControlTower is never a scan
+  host.
+- an enabled repository, a valid ``.oss-scanner/`` contract that does not set
+  ``disabled: true``, and the default-branch head SHA
 - at least ``min_free_gb`` free disk and an idle CI queue
 - the night window, the single fleet-wide slot, and budget left today
 - a pinned CLI version and a live subscription login
@@ -37,8 +39,10 @@ class Facts:
     now: datetime
     host: ScanHost | None = None
     contract_valid: bool = False
+    contract_disabled: bool = False
     default_branch_sha: str | None = None
     free_gb: float | None = None
+    build_filter_ok: bool = False
     queued_jobs: int | None = None
     slot_free: bool = False
     spent_usd_today: float = 0.0
@@ -82,9 +86,17 @@ def admit(config: OperatorConfig, repo: str, sha: str, facts: Facts) -> list[str
         reasons.append(f"{repo} is not enabled in config/security_scan.json")
     if not facts.contract_valid:
         reasons.append(f"{repo} has no valid .oss-scanner/ contract")
+    if facts.contract_disabled:
+        reasons.append(f"{repo}'s contract sets disabled: true")
     if not facts.default_branch_sha or sha != facts.default_branch_sha:
         reasons.append("only the default-branch head SHA may be scanned")
-    reasons.extend(host_problems(facts.host))
+    problems = host_problems(facts.host)
+    reasons.extend(problems)
+    if facts.host is not None and not problems and not facts.build_filter_ok:
+        reasons.append(
+            f"{facts.host.name}'s build filter is not live; run "
+            "setup-build-network.sh --apply (or vs-build-network.service) on it"
+        )
     if facts.free_gb is None or facts.free_gb < config.min_free_gb:
         reasons.append(
             f"scan host free disk {facts.free_gb} GB < {config.min_free_gb} GB"
@@ -117,6 +129,6 @@ def runtime_problems(config: OperatorConfig, facts: Facts) -> list[str]:
     problems: list[str] = []
     if facts.queued_jobs is None or facts.queued_jobs > 0:
         problems.append(f"CI jobs queued ({facts.queued_jobs}); yielding to CI")
-    if facts.free_gb is not None and facts.free_gb < config.min_free_gb:
+    if facts.free_gb is None or facts.free_gb < config.min_free_gb:
         problems.append(f"scan host free disk fell to {facts.free_gb} GB")
     return problems

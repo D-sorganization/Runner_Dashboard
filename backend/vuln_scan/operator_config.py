@@ -61,9 +61,15 @@ class ScheduleSettings:
 
     enabled: bool = False
     check_minutes: int = 30
+    # A repository whose last real scan failed or aborted waits this long (q5).
+    retry_hours: int = 20
 
     def to_dict(self) -> dict[str, Any]:
-        return {"enabled": self.enabled, "check_minutes": self.check_minutes}
+        return {
+            "enabled": self.enabled,
+            "check_minutes": self.check_minutes,
+            "retry_hours": self.retry_hours,
+        }
 
 
 @dataclass(frozen=True)
@@ -168,6 +174,9 @@ def _schedule(raw: Any, errors: list[str]) -> ScheduleSettings:
         enabled=_bool(raw.get("enabled"), "schedule.enabled", errors),
         check_minutes=_int(
             raw.get("check_minutes"), "schedule.check_minutes", 5, 1440, 30, errors
+        ),
+        retry_hours=_int(
+            raw.get("retry_hours"), "schedule.retry_hours", 1, 24 * 14, 20, errors
         ),
     )
 

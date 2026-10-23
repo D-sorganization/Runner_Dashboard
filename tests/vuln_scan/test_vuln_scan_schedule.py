@@ -90,11 +90,20 @@ class Recorder:
         return self.reasons, start
 
 
-def _tick(config: Any, rec: Recorder, *, slot: bool = True, rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _tick(
+    config: Any,
+    rec: Recorder,
+    *,
+    slot: bool = True,
+    rows: list[dict[str, Any]] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
     async def coverage() -> list[dict[str, Any]]:
         return rows if rows is not None else schedule.coverage_rows(config, list(CONTRACTS), CONTRACTS, {}, NOW)
 
-    return asyncio.run(schedule.tick(config=config, slot_free=lambda: slot, coverage=coverage, plan=rec.plan))
+    return asyncio.run(
+        schedule.tick(config=config, slot_free=lambda: slot, coverage=coverage, plan=rec.plan, now=now or NOW)
+    )
 
 
 def test_tick_does_nothing_while_disabled_by_default() -> None:
@@ -149,9 +158,46 @@ def test_loop_survives_a_failing_tick_and_rereads_the_config() -> None:
 
 
 def test_schedule_config_validation() -> None:
-    bad = parse_operator_config({"schedule": {"enabled": "yes", "check_minutes": 1}})
+    bad = parse_operator_config({"schedule": {"enabled": "yes", "check_minutes": 1, "retry_hours": 0}})
     assert bad.schedule.enabled is False and bad.schedule.check_minutes == 30
-    assert len([e for e in bad.errors if e.startswith("schedule.")]) == 2
+    assert bad.schedule.retry_hours == 20
+    assert len([e for e in bad.errors if e.startswith("schedule.")]) == 3
+
+
+def test_tick_outside_the_window_reads_no_coverage() -> None:
+    rec = Recorder()
+    calls: list[int] = []
+
+    async def coverage() -> list[dict[str, Any]]:
+        calls.append(1)
+        return []
+
+    noon = datetime(2026, 10, 23, 19, 0, tzinfo=UTC)  # 12:00 in Los Angeles
+    result = asyncio.run(
+        schedule.tick(config=_config(), slot_free=lambda: True, coverage=coverage, plan=rec.plan, now=noon)
+    )
+    assert result == {"started": False, "reason": "outside the scan window"} and calls == []
+
+
+@pytest.mark.parametrize("state", ["failed", "aborted"])
+def test_a_failing_repo_backs_off_so_others_get_the_slot(state: str) -> None:
+    latest = {"UpstreamDrift": {"last_scan_at": _iso(NOW - timedelta(hours=3)), "last_state": state}}
+    rows = schedule.coverage_rows(_config(), list(CONTRACTS), CONTRACTS, latest, NOW)
+    assert [r["repo"] for r in rows if r["due"]] == ["Tools"]
+    later = schedule.coverage_rows(_config(), list(CONTRACTS), CONTRACTS, latest, NOW + timedelta(hours=18))
+    assert [r["repo"] for r in later if r["due"]] == ["UpstreamDrift", "Tools"]
+
+
+def test_a_refused_attempt_does_not_back_off() -> None:
+    latest = {"UpstreamDrift": {"last_scan_at": _iso(NOW), "last_state": "refused"}}
+    rows = schedule.coverage_rows(_config(), list(CONTRACTS), CONTRACTS, latest, NOW)
+    assert rows[0]["repo"] == "UpstreamDrift" and rows[0]["due"] is True
+
+
+def test_a_disabled_contract_is_never_due() -> None:
+    contracts = {**CONTRACTS, "Tools": {"present": True, "valid": True, "disabled": True}}
+    rows = schedule.coverage_rows(_config(), ["Tools"], contracts, {}, NOW)
+    assert rows[0]["due"] is False and rows[0]["contract_disabled"] is True
 
 
 def test_scheduled_tick_is_inert_off_the_hub(monkeypatch: pytest.MonkeyPatch) -> None:
