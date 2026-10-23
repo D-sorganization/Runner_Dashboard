@@ -59,6 +59,11 @@ def test_verify_rejects_hash_page_and_claim_mismatches(tmp_path: Path) -> None:
     assert verify_content(db, content)["citations"][0]["status"] == "page_range_mismatch"
     content = f"Dinosaurs live on Mars. [ref:desk:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
     assert verify_content(db, content)["citations"][0]["status"] == "misappropriated_reference"
+    content = f"This function is not safe. [ref:desk:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+    assert verify_content(db, content)["citations"][0]["status"] == "misappropriated_reference"
+    claim = "Rotational power does not improve turbine efficiency."
+    content = f"{claim} [ref:desk:shared:w1:p19#sha256={digest[:8]}:p.7-8]"
+    assert verify_content(db, content)["citations"][0]["status"] == "misappropriated_reference"
 
 
 def test_verify_reports_broken_relative_links(tmp_path: Path) -> None:
