@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import sqlite3
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from contextlib import closing
 from datetime import UTC, datetime
 from io import BytesIO
@@ -16,8 +16,9 @@ from typing import Any
 
 from library.collections import load_collections, topics_for_rel_path
 from library.db import LibraryStore, init_library_db
+from library.ingest_paths import eligible_paths as _eligible_paths
 from library.search import estimate_tokens
-from library.sources import get_source, matches_source_globs, seed_default_source
+from library.sources import get_source, seed_default_source
 from library.text_extraction import extract_text_passages as _extract_text_passages
 from library.text_extraction import parse_filename as _parse_filename
 from library.text_extraction import year as _year
@@ -29,7 +30,6 @@ _BACKGROUND_INGEST_MAX_FILES = int(os.environ.get("LIBRARY_BACKGROUND_INGEST_MAX
 _MIN_PAGE_CHARS = 12
 _MIN_PDF_BYTES = 4096
 _MAX_FILE_BYTES = 10 * 1024 * 1024
-_INGEST_SUFFIXES = {".pdf", ".epub", ".md", ".markdown", ".txt"}
 
 
 def ingest_directory(
@@ -99,77 +99,73 @@ def ingest_directory(
             "INSERT INTO ingest_runs (started_at, source_root) VALUES (?, ?)",
             (started, source_root.as_posix()),
         ).lastrowid
-        for path in paths:
-            stats["files_seen"] += 1
-            rel = path.relative_to(source_root).as_posix()
-            seen_paths.add(rel)
-            stat = path.stat()
-            if _should_skip(conn, source_id, rel, stat.st_mtime, stat.st_size):
-                stats["files_skipped"] += 1
-                continue
-            raw = path.read_bytes()
-            reason = _reject_reason(path, raw)
-            if reason:
-                _record_rejection(conn, source_root, rel, reason, started)
-                stats["files_rejected"] += 1
-                continue
-            conn.execute(
-                "DELETE FROM ingest_rejections WHERE source_root=? AND rel_path=?",
-                (source_root.as_posix(), rel),
-            )
-            digest = hashlib.sha256(raw).hexdigest()
-            ext = path.suffix.lower()
-            if ext == ".pdf":
-                if not _index_pdf(conn, path, rel, source_root, stat, raw, digest, source_id):
-                    stats["files_rejected"] += 1
-                    continue
-            elif ext == ".epub":
-                if not _index_epub(conn, path, rel, source_root, stat, raw, digest, source_id):
-                    stats["files_rejected"] += 1
-                    continue
-            elif ext in (".md", ".markdown", ".txt"):
-                fmt = "txt" if ext == ".txt" else "md"
-                if not _index_text(conn, path, rel, source_root, stat, raw, digest, source_id, fmt=fmt):
-                    stats["files_rejected"] += 1
-                    continue
-            stats["files_indexed"] += 1
-        if scan_complete:
-            stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
-            _retire_orphan_works(conn)
-        notes = None if scan_complete else f"bounded incomplete scan (max_files={max_files}); removals not reconciled"
-        conn.execute(
-            "UPDATE ingest_runs SET finished_at=?, files_seen=?, files_indexed=?, files_skipped=?,"
-            " files_rejected=?, files_removed=?, notes=? WHERE id=?",
-            (
-                datetime.now(UTC).isoformat(),
-                stats["files_seen"],
-                stats["files_indexed"],
-                stats["files_skipped"],
-                stats["files_rejected"],
-                stats["files_removed"],
-                notes,
-                run_id,
-            ),
-        )
         conn.commit()
+        completed = False
+        try:
+            for path in paths:
+                with conn:
+                    stats["files_seen"] += 1
+                    rel = path.relative_to(source_root).as_posix()
+                    seen_paths.add(rel)
+                    stat = path.stat()
+                    if _should_skip(conn, source_id, rel, stat.st_mtime, stat.st_size):
+                        stats["files_skipped"] += 1
+                        continue
+                    raw = path.read_bytes()
+                    reason = _reject_reason(path, raw)
+                    if reason:
+                        _record_rejection(conn, source_root, rel, reason, started)
+                        stats["files_rejected"] += 1
+                        continue
+                    digest = hashlib.sha256(raw).hexdigest()
+                    ext = path.suffix.lower()
+                    if ext == ".pdf":
+                        if not _index_pdf(conn, path, rel, source_root, stat, raw, digest, source_id):
+                            stats["files_rejected"] += 1
+                            continue
+                    elif ext == ".epub":
+                        if not _index_epub(conn, path, rel, source_root, stat, raw, digest, source_id):
+                            stats["files_rejected"] += 1
+                            continue
+                    elif ext in (".md", ".markdown", ".txt"):
+                        fmt = "txt" if ext == ".txt" else "md"
+                        if not _index_text(conn, path, rel, source_root, stat, raw, digest, source_id, fmt=fmt):
+                            stats["files_rejected"] += 1
+                            continue
+                    conn.execute(
+                        "DELETE FROM ingest_rejections WHERE source_root=? AND rel_path=?",
+                        (source_root.as_posix(), rel),
+                    )
+                stats["files_indexed"] += 1
+            if scan_complete:
+                stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
+                _retire_orphan_works(conn)
+            completed = True
+        finally:
+            if not completed:
+                conn.rollback()
+                stats["files_removed"] = 0
+            notes = (
+                None if scan_complete else f"bounded incomplete scan (max_files={max_files}); removals not reconciled"
+            )
+            if not completed:
+                notes = "ingest interrupted; completed files preserved; removals not reconciled"
+            conn.execute(
+                "UPDATE ingest_runs SET finished_at=?, files_seen=?, files_indexed=?, files_skipped=?,"
+                " files_rejected=?, files_removed=?, notes=? WHERE id=?",
+                (
+                    datetime.now(UTC).isoformat(),
+                    stats["files_seen"],
+                    stats["files_indexed"],
+                    stats["files_skipped"],
+                    stats["files_rejected"],
+                    stats["files_removed"],
+                    notes,
+                    run_id,
+                ),
+            )
+            conn.commit()
     return {**stats, "scan_complete": scan_complete, "next_cursor": next_cursor}
-
-
-def _eligible_paths(source_root: Path, include_globs: list[str], exclude_globs: list[str]) -> Iterator[Path]:
-    for current, directories, filenames in os.walk(source_root, onerror=_raise_walk_error):
-        directories.sort()
-        for filename in sorted(filenames):
-            path = Path(current) / filename
-            if (
-                path.is_file()
-                and path.suffix.lower() in _INGEST_SUFFIXES
-                and matches_source_globs(path.relative_to(source_root).as_posix(), include_globs, exclude_globs)
-            ):
-                yield path
-
-
-def _raise_walk_error(error: OSError) -> None:
-    raise error
 
 
 def _should_skip(conn: sqlite3.Connection, source_id: str, rel: str, mtime: float, size: int) -> bool:
@@ -220,10 +216,11 @@ def _index_pdf(
     if not reader.pages:
         _record_rejection(conn, source_root, rel, "zero_pages", datetime.now(UTC).isoformat())
         return False
-    work_id = _ensure_work(conn, digest, reader, path, fmt="pdf")
+    page_texts = [_page_text(reader, index) for index in range(len(reader.pages))]
+    work_id = _ensure_work(conn, digest, reader, path, fmt="pdf", page_texts=page_texts)
     _upsert_file(conn, work_id, rel, source_root, stat, digest, source_id)
     _merge_work_topics(conn, work_id, rel)
-    _replace_passages(conn, work_id, reader)
+    _replace_passages(conn, work_id, reader, page_texts=page_texts)
     return True
 
 
@@ -307,13 +304,22 @@ def _retire_orphan_works(conn: sqlite3.Connection) -> None:
     )
 
 
-def _ensure_work(conn: sqlite3.Connection, digest: str, reader: PdfReader, path: Path, *, fmt: str) -> int:
+def _ensure_work(
+    conn: sqlite3.Connection,
+    digest: str,
+    reader: PdfReader,
+    path: Path,
+    *,
+    fmt: str,
+    page_texts: Sequence[str] | None = None,
+) -> int:
     row = conn.execute("SELECT id FROM works WHERE sha256 = ?", (digest,)).fetchone()
     if row:
         return int(row[0])
     author, title, year = _parse_filename(path.stem)
     author, title, year = _merge_pdf_meta(author, title, year, reader.metadata)
-    needs_ocr = int(any(len(_page_text(reader, i).strip()) < _MIN_PAGE_CHARS for i in range(len(reader.pages))))
+    texts = page_texts if page_texts is not None else [_page_text(reader, i) for i in range(len(reader.pages))]
+    needs_ocr = int(any(len(text.strip()) < _MIN_PAGE_CHARS for text in texts))
     cur = conn.execute(
         "INSERT INTO works (sha256, author, title, year, format, status, needs_ocr) VALUES (?,?,?,?,?,'active',?)",
         (digest, author, title, year, fmt, needs_ocr),
@@ -354,10 +360,16 @@ def _insert_passages(
         )
 
 
-def _replace_passages(conn: sqlite3.Connection, work_id: int, reader: PdfReader) -> None:
+def _replace_passages(
+    conn: sqlite3.Connection, work_id: int, reader: PdfReader, *, page_texts: Sequence[str] | None = None
+) -> None:
     title = conn.execute("SELECT title FROM works WHERE id = ?", (work_id,)).fetchone()
     passages: list[tuple[str | None, int, int, str]] = [
-        (None, i + 1, i + 1, txt) for i in range(len(reader.pages)) if (txt := _page_text(reader, i).strip())
+        (None, i + 1, i + 1, txt)
+        for i, raw_text in enumerate(
+            page_texts if page_texts is not None else [_page_text(reader, j) for j in range(len(reader.pages))]
+        )
+        if (txt := raw_text.strip())
     ]
     _insert_passages(conn, work_id, (title[0] if title else None) or "", passages)
 
