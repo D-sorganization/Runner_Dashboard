@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from identity import Principal, require_principal, require_scope
 from knowledge_pack.cartographer import build_cartographer_pack
 from knowledge_pack.pack import Passage
+from library.codebase_retrieval_ledger import codebase_references_for_run
 from routers import staff_knowledge
 
 SearchFixture = tuple[TestClient, Path, Path]
@@ -131,3 +132,133 @@ async def test_slow_commit_verification_does_not_block_other_requests(
         finally:
             release.set()
             await task
+
+
+def test_search_records_only_emitted_canonical_references_for_authenticated_run_owner(
+    fixture: SearchFixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, root, _ = fixture
+    db = tmp_path / "library.sqlite"
+    monkeypatch.setattr("library.db.library_db_path", lambda: db)
+
+    class Runs:
+        @staticmethod
+        def get_run(run_id: str) -> object:
+            assert run_id == "run-123"
+            return type("Run", (), {"requested_by": "reader"})()
+
+    monkeypatch.setattr("staff.store.get_run_store", lambda: Runs())
+    response = client.get("/api/v1/staff/knowledge/cartographer/search", params={"q": "energy", "run_id": "run-123"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["run_id"] == "run-123"
+    assert data["count"] == len(data["passages"]) > 0
+    rows = codebase_references_for_run(db, "run-123")
+    assert len(rows) == len(data["passages"])
+    for row, passage in zip(rows, sorted(data["passages"], key=lambda hit: hit["citation"]), strict=True):
+        assert row["citation"] == passage["citation"]
+        assert row["commit_sha"] == git(root, "rev-parse", "HEAD")
+        assert row["content_hash"] == passage["content_hash"]
+        assert row["relative_path"] == "SPEC.md"
+        assert row["line_start"] > 0 and row["line_end"] >= row["line_start"]
+        assert "text" not in row
+    repeated = client.get("/api/v1/staff/knowledge/cartographer/search", params={"q": "energy", "run_id": "run-123"})
+    assert repeated.status_code == 200
+    assert len(codebase_references_for_run(db, "run-123")) == len(rows)
+
+
+def test_run_scoped_empty_search_records_no_reference(
+    fixture: SearchFixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, _ = fixture
+    db = tmp_path / "library.sqlite"
+    monkeypatch.setattr("library.db.library_db_path", lambda: db)
+
+    class Runs:
+        @staticmethod
+        def get_run(_run_id: str) -> object:
+            return type("Run", (), {"requested_by": "reader"})()
+
+    monkeypatch.setattr("staff.store.get_run_store", lambda: Runs())
+    response = client.get(
+        "/api/v1/staff/knowledge/cartographer/search", params={"q": "not-in-index", "run_id": "run-123"}
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 0
+    assert response.json()["run_id"] == "run-123"
+    assert codebase_references_for_run(db, "run-123") == []
+
+
+@pytest.mark.parametrize(
+    ("run", "status"),
+    [(None, 404), (type("Run", (), {"requested_by": "someone-else"})(), 403)],
+)
+def test_run_scoped_search_requires_existing_owned_run(
+    fixture: SearchFixture,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    run: object,
+    status: int,
+) -> None:
+    client, _, _ = fixture
+    db = tmp_path / "library.sqlite"
+    monkeypatch.setattr("library.db.library_db_path", lambda: db)
+
+    class Runs:
+        @staticmethod
+        def get_run(_run_id: str) -> object:
+            return run
+
+    monkeypatch.setattr("staff.store.get_run_store", lambda: Runs())
+    response = client.get("/api/v1/staff/knowledge/cartographer/search", params={"q": "energy", "run_id": "run-123"})
+    assert response.status_code == status
+    assert codebase_references_for_run(db, "run-123") == []
+
+
+def test_run_id_is_rejected_for_non_cartographer_search(fixture: SearchFixture) -> None:
+    client, _, _ = fixture
+    assert client.get("/api/v1/staff/knowledge/other/search?q=energy&run_id=run-123").status_code == 422
+
+
+def test_run_scoped_search_fails_closed_if_cited_passage_cannot_be_recorded(
+    fixture: SearchFixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _, _ = fixture
+    db = tmp_path / "library.sqlite"
+    monkeypatch.setattr("library.db.library_db_path", lambda: db)
+
+    class Runs:
+        @staticmethod
+        def get_run(_run_id: str) -> object:
+            return type("Run", (), {"requested_by": "reader"})()
+
+    monkeypatch.setattr("staff.store.get_run_store", lambda: Runs())
+    monkeypatch.setattr(
+        staff_knowledge,
+        "_search_codebase",
+        lambda *_args: {
+            "pack_id": "cartographer",
+            "query": "energy",
+            "count": 1,
+            "passages": [
+                {
+                    "repo": "UpstreamDrift",
+                    "source": "SPEC.md",
+                    "anchor": "contracts",
+                    "title": "Contracts",
+                    "text": "text",
+                    "commit": "1" * 40,
+                    "content_hash": "2" * 64,
+                    "status": "current",
+                    "authority": "published",
+                    "score": 1.0,
+                    "citation": "forged",
+                }
+            ],
+            "stale": False,
+        },
+    )
+    response = client.get("/api/v1/staff/knowledge/cartographer/search", params={"q": "energy", "run_id": "run-123"})
+    assert response.status_code == 500
+    assert "forged" not in response.text
+    assert codebase_references_for_run(db, "run-123") == []

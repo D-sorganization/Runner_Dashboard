@@ -6320,7 +6320,7 @@ export interface paths {
         };
         /**
          * Search Knowledge V1
-         * @description Search knowledge packs. Cartographer returns committed-line citations and <=400 UTF-8 byte snippets.
+         * @description Search knowledge packs; optional run_id records emitted Cartographer citations for that run owner.
          */
         get: operations["search_knowledge_v1_api_v1_staff_knowledge__pack_id__search_get"];
         put?: never;
@@ -10207,6 +10207,8 @@ export interface components {
             passages?: components["schemas"]["StaffKnowledgePassage"][];
             /** Query */
             query: string;
+            /** Run Id */
+            run_id?: string | null;
             /** Stale */
             stale?: boolean | null;
         } & {
@@ -20633,6 +20635,7 @@ export interface operations {
                 k?: number;
                 /** @description Include superseded passages */
                 include_superseded?: boolean;
+                run_id?: string | null;
             };
             header?: never;
             path: {
