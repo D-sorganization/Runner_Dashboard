@@ -8,6 +8,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Any
 
+from external_ingress import deny_external_ingress_bearer
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -335,6 +336,10 @@ async def auth_perimeter_check(request: Request, call_next: Any) -> Any:
     """
     if not _requires_perimeter_auth(request):
         return await call_next(request)
+
+    ingress_denial = deny_external_ingress_bearer(request, log)
+    if ingress_denial is not None:
+        return ingress_denial
 
     # Defer to the route dependency when a test/explicit override is installed.
     app = request.scope.get("app")
