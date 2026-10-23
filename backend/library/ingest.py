@@ -136,7 +136,7 @@ def ingest_directory(
                         "DELETE FROM ingest_rejections WHERE source_root=? AND rel_path=?",
                         (source_root.as_posix(), rel),
                     )
-                    stats["files_indexed"] += 1
+                stats["files_indexed"] += 1
             if scan_complete:
                 stats["files_removed"] = _mark_removals(conn, source_root, seen_paths, source_id)
                 _retire_orphan_works(conn)

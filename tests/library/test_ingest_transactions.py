@@ -124,3 +124,43 @@ def test_failed_file_replacement_preserves_previous_digest_and_passages(
         assert reader.execute("SELECT id,work_id,text FROM passages ORDER BY id").fetchall() == original_passages
         assert reader.execute("SELECT COUNT(*) FROM works").fetchone()[0] == 1
         assert reader.execute("SELECT COUNT(*) FROM ingest_runs WHERE finished_at IS NULL").fetchone()[0] == 0
+
+
+def test_busy_commit_does_not_count_a_rolled_back_file(
+    source: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, db = source
+    pdf(root / "book.pdf", "Good")
+    observer: sqlite3.Connection | None = None
+
+    class BusyCommit(sqlite3.Connection):
+        def __exit__(self, *args: Any) -> Any:
+            nonlocal observer
+            try:
+                return super().__exit__(*args)
+            finally:
+                if observer is not None:
+                    observer.close()
+                    observer = None
+
+    def connection(store: ingest.LibraryStore) -> sqlite3.Connection:
+        conn = sqlite3.connect(store.path, timeout=0, factory=BusyCommit)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def page_text(reader: PdfReader, page: int) -> str:
+        nonlocal observer
+        if observer is None:
+            observer = sqlite3.connect(db)
+            observer.execute("BEGIN")
+            observer.execute("SELECT COUNT(*) FROM works").fetchone()
+        return "A verifiable energy transfer passage."
+
+    monkeypatch.setattr(ingest.LibraryStore, "connect", connection)
+    monkeypatch.setattr(ingest, "_page_text", page_text)
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        ingest.ingest_directory(root, db_path=db, source_id="books", max_files=1)
+    with sqlite3.connect(db) as reader:
+        assert reader.execute("SELECT COUNT(*) FROM files").fetchone()[0] == 0
+        indexed, finished = reader.execute("SELECT files_indexed,finished_at FROM ingest_runs").fetchone()
+        assert indexed == 0 and finished
