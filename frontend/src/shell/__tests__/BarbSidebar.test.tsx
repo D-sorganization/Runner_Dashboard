@@ -146,6 +146,48 @@ describe("BarbSidebar", () => {
     fetchMock.mockRestore();
   });
 
+  it("holds drafts without sending into the old thread during a role handoff", async () => {
+    const previousThread = {
+      id: "th-before-send-handoff",
+      title: "Previous Barb conversation",
+      kind: "auto",
+      participants: ["barb"],
+      status: "active",
+    };
+    const nextThread = {
+      id: "th-after-send-handoff",
+      title: "Maintenance conversation",
+      kind: "direct",
+      participants: ["maintenance"],
+      status: "active",
+    };
+    const handoffSend = vi.fn().mockResolvedValue({ ok: true });
+    mockUseStaffConsole.mockReturnValue(staffConsoleState({
+      activeThread: previousThread,
+      openingRole: "maintenance",
+      sendMessage: handoffSend,
+    }));
+    const view = render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const textarea = screen.getByRole("textbox", { name: /staff conversation input/i });
+    fireEvent.change(textarea, { target: { value: "Send this only to the new conversation" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(handoffSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /send/i })).toBeDisabled();
+
+    mockUseStaffConsole.mockReturnValue(staffConsoleState({
+      activeThread: nextThread,
+      openingRole: null,
+      sendMessage: handoffSend,
+    }));
+    view.rerender(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
+    expect(textarea).toHaveValue("Send this only to the new conversation");
+    expect(screen.getByRole("button", { name: /send/i })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() => expect(handoffSend).toHaveBeenCalledOnce());
+    expect(handoffSend.mock.calls[0][0]).toMatchObject({ body: "Send this only to the new conversation" });
+  });
+
   it("keeps the new-chat attachment action available after an empty Barb restore", () => {
     mockUseStaffConsole.mockReturnValue(staffConsoleState({ openingRole: null }));
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
