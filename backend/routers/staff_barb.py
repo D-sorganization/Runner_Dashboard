@@ -113,6 +113,24 @@ async def get_barb_continuity(
     return {"machine": get_runner().machine, "authority": barb_status(), **snap}
 
 
+@router.get("/barb/leases", summary="List scoped Barb sub-role leases", include_in_schema=False)
+async def get_barb_leases(
+    include_released: bool = Query(default=False),
+    _caller: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    store = get_barb_continuity_store()
+    leases = store.list_leases(include_expired=include_released)
+    return {"machine": get_runner().machine, "count": len(leases), "leases": leases}
+
+
+@router.post("/barb/leases", summary="Check out a scoped Barb sub-role lease", include_in_schema=False)
+async def post_barb_leases(
+    req: BarbLeaseCheckoutRequest,
+    _caller: Principal = Depends(require_scope("staff.dispatch")),
+) -> dict[str, Any]:
+    return await post_barb_lease_checkout(req=req, _caller=_caller)
+
+
 @router.post("/barb/leases/checkout", summary="Check out a scoped Barb sub-role lease")
 async def post_barb_lease_checkout(
     req: BarbLeaseCheckoutRequest,

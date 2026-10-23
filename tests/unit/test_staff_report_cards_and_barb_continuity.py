@@ -335,3 +335,62 @@ def test_api_routes_for_report_cards_and_barb_continuity(tmp_path: Path, monkeyp
     snap = client.get("/api/v1/staff/barb/continuity")
     assert snap.status_code == 200
     assert len(snap.json()["active_leases"]) == 1
+
+
+def test_leaderboard_recommend_agent_and_barb_leases_route(tmp_path: Path, monkeypatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from identity import Principal
+    from routers import staff_barb
+    from staff.barb_continuity import BarbContinuityStore
+    from staff.leaderboard import recommend_agent
+
+    runs = [
+        _make_run(
+            "r1", provider="claude", model="default", role="implementer", repo="Runner_Dashboard", status="succeeded"
+        ),
+        _make_run(
+            "r2", provider="claude", model="default", role="implementer", repo="Runner_Dashboard", status="succeeded"
+        ),
+        _make_run(
+            "r3", provider="claude", model="default", role="implementer", repo="Runner_Dashboard", status="succeeded"
+        ),
+        _make_run(
+            "r4",
+            provider="antigravity",
+            model="gemini-3.8-flash-high",
+            role="implementer",
+            repo="Runner_Dashboard",
+            status="failed",
+        ),
+    ]
+    rec = recommend_agent("implementer", "Runner_Dashboard", "medium", runs=runs)
+    assert rec["recommended_provider"] == "claude"
+    assert rec["repo"] == "Runner_Dashboard"
+    assert rec["complexity_tier"] == "medium"
+
+    fallback_rec = recommend_agent("tooling-scout", "Repository_Management", "high", runs=[])
+    assert fallback_rec["recommended_provider"] == "claude"
+    assert fallback_rec["confidence"] == "heuristic_fallback"
+
+    from types import SimpleNamespace
+
+    store = BarbContinuityStore(tmp_path / "barb_leases.db")
+    monkeypatch.setattr(staff_barb, "get_barb_continuity_store", lambda: store)
+    monkeypatch.setattr(staff_barb, "get_runner", lambda: SimpleNamespace(machine="DeskComputer"))
+    app = FastAPI()
+    app.include_router(staff_barb.router, prefix="/api/v1/staff")
+    principal = Principal(id="test", type="human", name="Test", roles=["admin"], scopes=["staff:read", "staff:write"])
+    for route in staff_barb.router.routes:
+        for dep in getattr(route, "dependant", SimpleNamespace(dependencies=[])).dependencies:
+            app.dependency_overrides[dep.call] = lambda: principal
+    client = TestClient(app)
+    post_res = client.post(
+        "/api/v1/staff/barb/leases",
+        json={"scope": "barb:front-door", "holder": "grok-barb", "persona": "grok-barb"},
+    )
+    assert post_res.status_code == 200
+    get_res = client.get("/api/v1/staff/barb/leases")
+    assert get_res.status_code == 200
+    assert get_res.json()["count"] == 1
+    assert get_res.json()["leases"][0]["scope"] == "barb:front-door"
