@@ -15,6 +15,8 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,6 +28,10 @@ log = logging.getLogger("dashboard.staff.rate_limit")
 
 DEFAULT_MESSAGES_PER_MIN = 30.0
 DEFAULT_DISPATCHES_PER_HOUR = 10.0
+_BROWSER_MAX_BUCKETS = 4096
+_BROWSER_RETRY_SECONDS = 60.0
+_BROWSER_OWNER = re.compile(r"[1-9][0-9]{0,19}\Z")
+_BROWSER_THREAD = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
 
 class RateLimitExceededError(Exception):
@@ -172,6 +178,70 @@ class TokenBucketLimiter:
                 exc,
             )
             return False, 60.0
+
+
+class BrowserRateLimiter:
+    """Atomic, bounded, fail-closed external owner/thread budgets.
+
+    Unlike the private operator policy, external humans receive no privileged
+    burst or fail-open exemption. Keys contain immutable numeric GitHub owner
+    IDs, canonical thread IDs (or `_new` for creation), and a fixed action.
+    One instance must be shared by the ingress guard in this server process.
+    """
+
+    def __init__(self, clock: Callable[[], float] | None = None, max_buckets: int = _BROWSER_MAX_BUCKETS) -> None:
+        if type(max_buckets) is not int or not 1 <= max_buckets <= _BROWSER_MAX_BUCKETS:
+            raise ValueError("invalid browser rate bucket capacity")
+        self._clock = clock or time.monotonic
+        self._max_buckets = max_buckets
+        self._lock = threading.Lock()
+        self._buckets: dict[tuple[str, str, str], BucketState] = {}
+        self._limits = {
+            "messages": (DEFAULT_MESSAGES_PER_MIN, DEFAULT_MESSAGES_PER_MIN / 60.0),
+            "dispatches": (DEFAULT_DISPATCHES_PER_HOUR, DEFAULT_DISPATCHES_PER_HOUR / 3600.0),
+        }
+
+    def _discard_replenished(self, now: float) -> None:
+        """Discard only fully replenished entries; churn cannot reset a budget."""
+        for key, bucket in list(self._buckets.items()):
+            replenished = bucket.tokens + max(0.0, now - bucket.last_updated) * bucket.rate_per_sec
+            if replenished >= bucket.capacity:
+                del self._buckets[key]
+
+    def acquire(self, owner_github_id: str, thread_id: str, action: str) -> tuple[bool, float]:
+        """Consume one token, or deny invalid identity/storage/capacity failures.
+
+        Post: concurrent requests share an atomic budget; a failure never grants
+        admission. This in-process policy supplements edge limits and existing
+        aggregate staff limits; it is not a distributed quota across replicas.
+        """
+        if (
+            not isinstance(owner_github_id, str)
+            or not _BROWSER_OWNER.fullmatch(owner_github_id)
+            or not isinstance(thread_id, str)
+            or not _BROWSER_THREAD.fullmatch(thread_id)
+            or action not in self._limits
+        ):
+            return False, _BROWSER_RETRY_SECONDS
+        try:
+            with self._lock:
+                now = self._clock()
+                if not math.isfinite(now) or now < 0:
+                    return False, _BROWSER_RETRY_SECONDS
+                key = (owner_github_id, thread_id, action)
+                bucket = self._buckets.get(key)
+                if bucket is None:
+                    if len(self._buckets) >= self._max_buckets:
+                        self._discard_replenished(now)
+                    if len(self._buckets) >= self._max_buckets:
+                        return False, _BROWSER_RETRY_SECONDS
+                    capacity, rate = self._limits[action]
+                    bucket = BucketState(capacity, now, capacity, rate)
+                    self._buckets[key] = bucket
+                return bucket.consume(max(now, bucket.last_updated))
+        except Exception:  # noqa: BLE001 — external admission must fail closed.
+            log.error("External browser rate limiter unavailable; admission denied")
+            return False, _BROWSER_RETRY_SECONDS
 
 
 _GLOBAL_LIMITER: TokenBucketLimiter | None = None
