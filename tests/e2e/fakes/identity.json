@@ -2,6 +2,13 @@
   "_comment": "Fixture principals for the Staff Console e2e suite (#1341). The tokens are fixed test values, valid only against the throwaway state directory start_staff_backend.py creates.",
   "principals": [
     {
+      "id": "e2e-dispatch-requester",
+      "name": "E2E Dispatch Requester",
+      "roles": ["viewer"],
+      "scopes": ["staff.dispatch"],
+      "token": "e2e-dispatch-requester-fixture"
+    },
+    {
       "id": "e2e-operator",
       "name": "E2E Operator",
       "roles": ["operator"],
