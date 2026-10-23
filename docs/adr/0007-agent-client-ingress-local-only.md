@@ -49,6 +49,61 @@ Stay local-only: option (c). No Funnel and no outbound relay are enabled by
 this issue or this ADR. Agent clients reach the dashboard only from fleet
 machines that already have tailnet access.
 
+### Owner Browser Exception
+
+The owner-authorized design in [#2252](https://github.com/D-sorganization/Runner_Dashboard/issues/2252)
+permits a separate human browser plane at `https://ops.d-sorganization.org`.
+This exception does not authorize public machine or agent credentials. It is
+an activation contract, not evidence that a tunnel or any control is deployed.
+The original local-only decision continues to apply to cloud-hosted agents.
+
+The two planes have the following boundaries:
+
+| Plane | Identity | Permitted Operations |
+| --- | --- | --- |
+| Private fleet | Existing loopback/tailnet principal and scoped credential policy | Existing authorized fleet operations |
+| External owner browser | Verified Cloudflare Access JWT and GitHub OAuth session bound to the configured numeric owner ID | Explicit UI read allowlist and scoped thread/panel conversation actions |
+
+The external boundary must reject machine bearer credentials before route
+exemptions, including auth-exempt telemetry, callbacks and static paths.
+Forwarded identity headers alone never establish identity. Machine mutation,
+administration, credential-management and arbitrary dispatch routes remain
+private even when the browser has a valid owner session.
+
+Public activation requires all of the following evidence:
+
+1. An outbound Cloudflare Tunnel targets only `127.0.0.1:8321`; its configured
+   hostname is protected by an owner-only Access application. No router port
+   forwarding or general-purpose Funnel is part of this exception.
+2. The origin validates the Access signature, fixed issuer, application audience,
+   expiry, not-before time and human subject. Service-token assertions are denied.
+   GitHub OAuth separately matches the configured immutable numeric owner ID.
+3. The browser uses the isolated `__Host-rd_session` cookie with Secure,
+   HttpOnly, SameSite=Lax and a short expiry. Private cookies cannot be renamed
+   or replayed into this plane. `DASHBOARD_BROWSER_PUBLIC_ORIGIN` selects the
+   external host independently of the private OAuth `DASHBOARD_PUBLIC_ORIGIN`.
+4. Conversation writes validate exact Origin, XMLHttpRequest marker and a
+   session/thread-bound CSRF proof before any side effect. Atomic owner/thread
+   rate budgets supplement edge and aggregate staff limits and fail closed.
+5. Hardware-key or passkey step-up is demonstrated with the actual configured
+   Access policy and authenticated session. A generic MFA flag or an unverified
+   `amr` header is insufficient. Cloudflare can propagate supported IdP methods
+   into signed JWTs; independent MFA also supports WebAuthn. These are separate
+   mechanisms, so do not assume independent MFA emits a particular JWT claim.
+   See [MFA enforcement](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/mfa-requirements/)
+   and [independent MFA](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/independent-mfa/).
+6. Every denial has a generic response and correlated server-side audit record
+   without credential material. Verified SSE responses disable transformation
+   and buffering. A default-off kill switch can close the external plane without
+   granting an alternative credential path or affecting private fleet access.
+7. Runtime tests prove allowed owner chat/panels, denied non-owner and machine
+   access, replay/origin/CSRF rejection, rate exhaustion, SSE streaming and the
+   kill switch. Rollback closes public ingress first and preserves private access.
+
+Until these checks pass against the deployed release and real account
+configuration, public browser ingress stays disabled. The implementation and
+its remaining acceptance evidence are tracked in #2252.
+
 ## Consequences
 
 - Cloud-hosted agent clients (Grok's servers, claude.ai connectors) cannot
