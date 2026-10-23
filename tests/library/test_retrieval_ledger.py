@@ -40,6 +40,17 @@ def test_retrieval_ledger_records_canonical_tuple_once(tmp_path: Path) -> None:
     ]
 
 
+def test_retrieval_ledger_read_of_missing_database_is_empty(tmp_path: Path) -> None:
+    assert references_for_run(tmp_path / "not-created.sqlite", "run-1") == []
+
+
+def test_retrieval_ledger_read_does_not_hide_corrupt_database(tmp_path: Path) -> None:
+    db = tmp_path / "corrupt.sqlite"
+    db.write_text("not a sqlite database")
+    with pytest.raises(sqlite3.DatabaseError):
+        references_for_run(db, "run-1")
+
+
 @pytest.mark.parametrize(
     "reference",
     [

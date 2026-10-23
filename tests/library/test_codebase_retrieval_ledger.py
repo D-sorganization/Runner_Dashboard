@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -87,6 +88,17 @@ def test_codebase_ledger_preserves_existing_library_retrievals(tmp_path: Path) -
 
     assert len(references_for_run(db, "run-1")) == 1
     assert len(codebase_references_for_run(db, "run-1")) == 1
+
+
+def test_codebase_run_reference_read_of_missing_database_is_empty(tmp_path: Path) -> None:
+    assert codebase_references_for_run(tmp_path / "not-created.sqlite", "run-1") == []
+
+
+def test_codebase_run_reference_read_does_not_hide_corrupt_database(tmp_path: Path) -> None:
+    db = tmp_path / "corrupt.sqlite"
+    db.write_text("not a sqlite database")
+    with pytest.raises(sqlite3.DatabaseError):
+        codebase_references_for_run(db, "run-1")
 
 
 def test_codebase_run_reference_limits_are_enforced(tmp_path: Path) -> None:

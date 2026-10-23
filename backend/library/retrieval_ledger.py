@@ -145,7 +145,12 @@ def references_for_run(db: Path, run_id: str) -> list[dict[str, Any]]:
     """Return canonical identities in stable order for citation verification."""
     if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id):
         raise ValueError("invalid run_id")
-    uri = f"{Path(db).resolve().as_uri()}?mode=ro"
+    db_path = Path(db)
+    try:
+        db_path.stat()
+    except FileNotFoundError:
+        return []
+    uri = f"{db_path.resolve().as_uri()}?mode=ro"
     try:
         with closing(sqlite3.connect(uri, uri=True)) as conn:
             conn.row_factory = sqlite3.Row
