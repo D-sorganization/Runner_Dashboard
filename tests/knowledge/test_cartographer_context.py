@@ -132,7 +132,7 @@ def test_missing_promised_blob_never_runs_remote_helper(tmp_path: Path, monkeypa
 def test_all_six_repositories_are_queryable_and_dirty_text_is_not_cited(tmp_path: Path) -> None:
     from knowledge_pack.pack import KnowledgePack
 
-    names = ("UpstreamDrift", "AffineDrift", "Golf_Model", "Tools", "Repository_Management", "Runner_Dashboard")
+    names = ("UpstreamDrift", "AffineDrift", "Gasification_Model", "Tools", "Repository_Management", "Runner_Dashboard")
     repos = {name: _repo(tmp_path / name) for name in names}
     output = tmp_path / "knowledge" / "cartographer.sqlite"
     build_cartographer_pack(repos, output)
