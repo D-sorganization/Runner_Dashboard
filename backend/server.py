@@ -848,7 +848,13 @@ async def _max_body_size(request, call_next):
 
 @app.middleware("http")
 async def _csrf_check(request, call_next):
-    return await csrf_check(request, call_next)
+    response = await csrf_check(request, call_next)
+    if response.status_code == 403:
+        from browser_origin import external_browser_request
+
+        if external_browser_request(request):
+            return JSONResponse({"error": "Request not permitted"}, status_code=403)
+    return response
 
 
 @app.middleware("http")

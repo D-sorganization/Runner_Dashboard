@@ -247,6 +247,9 @@ def test_real_server_guard_rejects_protected_api_without_owner_cookie(real_serve
         headers=edge_headers(Origin="https://ops.example.invalid", **{"X-Requested-With": "XMLHttpRequest"}),
     )
     assert response.status_code == 401
+    response = real_server_browser.post("/api/v1/staff/threads/th_one/messages", headers=edge_headers())
+    assert response.status_code == 403
+    assert response.json()["error"]["message"] == "Request not permitted"
 
 
 def test_real_server_auth_handshake_requires_access_but_no_dashboard_session(real_server_browser) -> None:
