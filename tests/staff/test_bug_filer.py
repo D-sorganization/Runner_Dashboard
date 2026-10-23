@@ -94,7 +94,7 @@ def test_daily_cap_and_digest(tmp_path: Path, mock_gh: MagicMock, monkeypatch: p
 
 
 def test_redaction_in_issue_body(filer: BugFiler, mock_gh: MagicMock) -> None:
-    secret = "ghp_VerySecretGitHubToken1234567890"
+    secret = "ghp_" + "TestTokenForBugFilerRedaction1234567"  # pragma: allowlist secret
     filer.process_failure("workspace_error", "coder", "RD", f"Auth {secret}", f"Token {secret}", "run-sec")
     call_args = mock_gh.create_issue.call_args[1]
     assert secret not in call_args["body"] and secret not in call_args["title"]
