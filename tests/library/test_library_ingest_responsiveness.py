@@ -106,3 +106,32 @@ def test_bounded_source_batches_advance_until_the_entire_source_is_indexed(
             row[0] for row in conn.execute("SELECT rel_path FROM files WHERE source_id='source' AND status='present'")
         }
     assert indexed == expected_names
+
+
+def test_bounded_source_reconciles_removals_only_after_full_cycle(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    for index in range(5):
+        (source_root / f"{index}.txt").write_text(
+            f"Distinct searchable source content number {index}.", encoding="utf-8"
+        )
+    database = tmp_path / "library.sqlite"
+    add_source(database, source_id="source", label="Source", root_path=source_root)
+
+    first = ingest.ingest_sources(database, max_files=2)["source"]
+    assert first["files_indexed"] == 2
+    (source_root / "0.txt").unlink()
+    middle = ingest.ingest_sources(database, max_files=2)["source"]
+    assert middle["files_removed"] == 0
+    final = ingest.ingest_sources(database, max_files=2)["source"]
+    assert final["scan_complete"] is True
+    assert final["files_removed"] == 1
+
+    with sqlite3.connect(database) as conn:
+        status = conn.execute("SELECT status FROM files WHERE source_id='source' AND rel_path='0.txt'").fetchone()[0]
+        work_status = conn.execute(
+            "SELECT status FROM works WHERE id=(SELECT work_id FROM files "
+            "WHERE source_id='source' AND rel_path='0.txt')"
+        ).fetchone()[0]
+    assert status == "removed"
+    assert work_status == "retired"

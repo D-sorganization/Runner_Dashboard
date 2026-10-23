@@ -51,6 +51,7 @@ def ingest_directory(
     except LookupError:
         include_globs, exclude_globs = [], []
     paths: list[Path] = []
+    complete_seen_paths: set[str] | None = None
     if max_files is None:
         paths = list(_eligible_paths(source_root, include_globs, exclude_globs))
         paths.sort(key=lambda p: (0 if " - " in p.stem else 1, p.as_posix()))
@@ -63,25 +64,34 @@ def ingest_directory(
             paths.append(path)
             if len(paths) == max_files:
                 break
-        if not found_cursor or not paths:
+        if not found_cursor:
             paths = []
             for path in _eligible_paths(source_root, include_globs, exclude_globs):
                 paths.append(path)
                 if len(paths) == max_files:
                     break
+        elif len(paths) < max_files:
+            # This pass reached the traversal tail. Enumerate the whole source
+            # before opening a write transaction so deletions can be reconciled
+            # safely after all bounded batches have advanced through the source.
+            complete_paths = list(_eligible_paths(source_root, include_globs, exclude_globs))
+            complete_seen_paths = {path.relative_to(source_root).as_posix() for path in complete_paths}
+            if not paths:
+                paths = complete_paths[:max_files]
     else:
         for path in _eligible_paths(source_root, include_globs, exclude_globs):
             paths.append(path)
             if len(paths) == max_files:
                 break
-    # A bounded pass never has enough evidence to reconcile removals.
-    scan_complete = max_files is None
+    # Only a complete enumeration, including a wrapped bounded pass, can
+    # safely reconcile removals.
+    scan_complete = max_files is None or complete_seen_paths is not None
     next_cursor = paths[-1].relative_to(source_root).as_posix() if paths else start_after
     if scan_complete:
         next_cursor = None
     started = datetime.now(UTC).isoformat()
     stats = {"files_seen": 0, "files_indexed": 0, "files_skipped": 0, "files_rejected": 0, "files_removed": 0}
-    seen_paths: set[str] = set()
+    seen_paths: set[str] = complete_seen_paths or set()
     with closing(LibraryStore(db).connect()) as conn:
         run_id = conn.execute(
             "INSERT INTO ingest_runs (started_at, source_root) VALUES (?, ?)",
