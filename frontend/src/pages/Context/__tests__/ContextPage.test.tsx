@@ -48,6 +48,15 @@ const sampleRuns: ContextRunRecord[] = [
 ];
 
 describe("ContextPage", () => {
+  it("announces the Tier-1 registry loading state with clear copy", () => {
+    legacyFetchMock.mockImplementation(() => new Promise((resolve) => { setTimeout(() => resolve({ ok: true, status: 200, json: async () => ({ skills: [] }) }), 100); }));
+    render(<ContextPage />);
+
+    const loading = screen.getByText(/loading.*skill registry/i);
+    expect(loading).toHaveAttribute("role", "status");
+    expect(loading).toHaveTextContent(/^Loading Tier-1 skill registry…$/);
+  });
+
   it("renders current pack pin, digest, and normal/fallback indicators", () => {
     render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
     expect(screen.getByText("fleet-standards@1.1.0#mock-digest-bcc29c1")).toBeInTheDocument();
