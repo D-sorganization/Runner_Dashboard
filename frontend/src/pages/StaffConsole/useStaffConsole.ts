@@ -7,7 +7,7 @@
  * decision) so the layout shows it; nothing is dropped silently and no thread
  * id is invented client-side (see consoleThreads.ts).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   answerThreadRun,
   cancelRun as cancelStaffRun,
@@ -20,7 +20,7 @@ import {
   fetchThreads,
   postThreadMessage,
 } from "../Staff/staffApi";
-import { AUTO_ROUTE_ROLE, createFreshRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
+import { AUTO_ROUTE_ROLE, createFreshRoleThread, pickRoleThread, resolveRoleThread, type ThreadApi } from "./consoleThreads";
 import type { ProposalApproveHandler, ProposalDenyHandler } from "./cards/cardTypes";
 import type { SendMessagePayload, ThreadInfo, ThreadMessage } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
@@ -40,6 +40,8 @@ export interface UseStaffConsoleOptions {
   /** Roster supplied by the page; fetched when absent or empty. */
   roles?: StaffRoleItem[];
   initialRole?: string;
+  /** Restore the latest existing thread for initialRole without creating or messaging. */
+  restoreInitialRoleThread?: boolean;
   initialThread?: ThreadInfo;
   /** Open this backend thread on mount, e.g. the thread a request response names (#1504). */
   initialThreadId?: string | null;
@@ -97,6 +99,7 @@ const NO_MESSAGES: ThreadMessage[] = [];
 export function useStaffConsole({
   roles: suppliedRoles,
   initialRole,
+  restoreInitialRoleThread = false,
   initialThread,
   initialThreadId,
   initialMessages = NO_MESSAGES,
@@ -155,6 +158,39 @@ export function useStaffConsole({
       });
     return () => controller.abort();
   }, [initialThreadId, initialThread, report]);
+
+  // Optional entry points such as the global assistant can restore an existing
+  // role conversation after navigation or reload. Never create a thread here.
+  const initialRoleThreads = useRef(new Map<string, Promise<ThreadInfo[]>>());
+  useEffect(() => {
+    if (!restoreInitialRoleThread || !initialRole || initialThread || initialThreadId) return;
+    let cancelled = false;
+    let request = initialRoleThreads.current.get(initialRole);
+    if (!request) {
+      request = threadApi.listThreads(initialRole);
+      initialRoleThreads.current.set(initialRole, request);
+    }
+    setOpeningRole(initialRole);
+    request
+      .then((threads) => {
+        if (cancelled) return;
+        const thread = pickRoleThread(threads, initialRole);
+        if (thread) {
+          setHistory(NO_MESSAGES);
+          setActiveThread(thread);
+          setError(null);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) report("thread", err);
+      })
+      .finally(() => {
+        if (!cancelled) setOpeningRole(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, threadApi, report]);
 
   // History for the open thread. The seeded thread keeps its seeded messages.
   const threadId = activeThread?.id ?? "";
