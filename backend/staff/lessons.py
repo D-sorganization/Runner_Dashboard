@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from memory.expiry import expiry_is_future
 from memory.models import MemoryEntry
 from memory.redact import contains_secret
 from memory.store import get_memory_store, new_entry_id
@@ -161,7 +162,7 @@ def select_repo_lessons(
             continue
         if e.review_status != "accepted":
             continue
-        if e.expires_at and e.expires_at < now_iso:
+        if not expiry_is_future(e.expires_at, now_iso):
             skipped_ids[e.id] = "expired"
             continue
         eligible.append(e)
