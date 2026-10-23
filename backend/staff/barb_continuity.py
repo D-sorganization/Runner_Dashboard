@@ -155,7 +155,10 @@ class BarbContinuityStore:
                     return {"acquired": False, "conflict": True, "lease": self._row_to_lease(cur, now_s)}
                 next_epoch = int(cur["epoch"]) + (0 if same_holder and not is_expired else 1)
                 acquired_at = str(cur["acquired_at"]) if (same_holder and not is_expired) else now_s
-                last_to = str(cur["last_turnover_id"]) if (same_holder and not is_expired) else ""
+                # Same live holder renews; an explicit takeover inherits the previous seat's
+                # last turnover so the new seat sees its next_actions (seat continuity).
+                keep_turnover = (same_holder and not is_expired) or force
+                last_to = str(cur["last_turnover_id"]) if keep_turnover else ""
                 self._conn.execute(
                     "UPDATE barb_scoped_leases SET holder=?, persona=?, machine=?, epoch=?, "
                     "acquired_at=?, heartbeat_at=?, expires_at=?, summary=?, last_turnover_id=? WHERE scope=?",
@@ -170,6 +173,37 @@ class BarbContinuityStore:
                 )
             row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
         return {"acquired": True, "conflict": False, "lease": self._row_to_lease(row, now_s)}
+
+    def heartbeat_lease(
+        self,
+        *,
+        scope: str,
+        holder: str,
+        epoch: int,
+        ttl_seconds: int = DEFAULT_LEASE_TTL_SECONDS,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Extend a live lease owned by ``holder`` at ``epoch`` (no epoch bump)."""
+        dt = now if now is not None else datetime.now(UTC)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        now_s = _now_iso(dt)
+        exp_s = _now_iso(datetime.fromtimestamp(dt.timestamp() + max(60, min(ttl_seconds, 14400)), tz=UTC))
+        with self._lock, self._conn:
+            cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (scope,)).fetchone()
+            if cur is None:
+                return {"renewed": False, "reason": "not_found"}
+            if str(cur["holder"]) != holder:
+                return {"renewed": False, "reason": "holder_mismatch", "lease": self._row_to_lease(cur, now_s)}
+            if str(cur["expires_at"]) <= now_s:
+                return {"renewed": False, "reason": "expired", "lease": self._row_to_lease(cur, now_s)}
+            if int(cur["epoch"]) != epoch:
+                return {"renewed": False, "reason": "stale_epoch", "lease": self._row_to_lease(cur, now_s)}
+            self._conn.execute(
+                "UPDATE barb_scoped_leases SET heartbeat_at=?, expires_at=? WHERE scope=?", (now_s, exp_s, scope)
+            )
+            row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (scope,)).fetchone()
+        return {"renewed": True, "lease": self._row_to_lease(row, now_s)}
 
     def release_lease(
         self, *, scope: str, holder: str, require_turnover: bool = True, now: datetime | None = None

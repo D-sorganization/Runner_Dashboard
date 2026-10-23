@@ -227,15 +227,9 @@
             "type": "string"
           },
           "expected_epoch": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Epoch"
+            "minimum": 0.0,
+            "title": "Expected Epoch",
+            "type": "integer"
           },
           "machine": {
             "default": "",
@@ -268,17 +262,23 @@
             "type": "string"
           }
         },
-        "required": ["task_id", "action", "actor"],
+        "required": ["task_id", "action", "actor", "expected_epoch"],
         "title": "BarbHandoffTransitionRequest",
         "type": "object"
       },
       "BarbLeaseCheckoutRequest": {
         "properties": {
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "machine": {
             "default": "",
@@ -290,6 +290,12 @@
             "default": "rd-barb",
             "maxLength": 64,
             "title": "Persona",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
             "type": "string"
           },
           "scope": {
@@ -311,14 +317,50 @@
           },
           "ttl_sec": {
             "default": 3600,
-            "maximum": 86400.0,
+            "maximum": 14400.0,
             "minimum": 60.0,
             "title": "Ttl Sec",
             "type": "integer"
           }
         },
-        "required": ["holder"],
         "title": "BarbLeaseCheckoutRequest",
+        "type": "object"
+      },
+      "BarbLeaseHeartbeatRequest": {
+        "properties": {
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "scope": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 14400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["scope", "epoch"],
+        "title": "BarbLeaseHeartbeatRequest",
         "type": "object"
       },
       "BarbLeaseReleaseRequest": {
@@ -343,10 +385,16 @@
             "type": "boolean"
           },
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "in_progress_items": {
             "items": {
@@ -375,7 +423,7 @@
             "type": "string"
           }
         },
-        "required": ["scope", "holder"],
+        "required": ["scope"],
         "title": "BarbLeaseReleaseRequest",
         "type": "object"
       },
@@ -530,10 +578,16 @@
             "type": "array"
           },
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "in_progress_items": {
             "items": {
@@ -574,7 +628,7 @@
             "type": "string"
           }
         },
-        "required": ["holder", "summary"],
+        "required": ["summary"],
         "title": "BarbTurnoverCreateRequest",
         "type": "object"
       },
@@ -22439,6 +22493,55 @@
           }
         ],
         "summary": "Check out a scoped Barb sub-role lease",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/leases/heartbeat": {
+      "post": {
+        "operationId": "post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Heartbeat Api V1 Staff Barb Leases Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Extend the caller's own live Barb lease",
         "tags": ["staff-barb"]
       }
     },
