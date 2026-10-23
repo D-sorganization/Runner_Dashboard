@@ -923,6 +923,15 @@ table, .tabular {
   margin-left: auto;
 }
 
+/* Wrapped utility actions need room to grow without escaping the fixed desktop header. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .desktop-shell__topbar {
+    height: auto;
+    min-height: 52px;
+    flex: 0 0 auto;
+  }
+}
+
 .desktop-shell__main {
   flex: 1;
   min-width: 0;
