@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-  Central runner-fleet health monitor. Runs on DeskComputer (interactive
-  session, launched hidden via run-hidden.vbs), manages DeskComputer and
-  ControlTower over Tailscale. One cycle per invocation; cadence comes from
+  Central runner-fleet health monitor. Runs on hub-a (interactive
+  session, launched hidden via run-hidden.vbs), manages hub-a and
+  node-a over Tailscale. One cycle per invocation; cadence comes from
   the scheduled-task repetition trigger (every 5 min).
 
   What it does each cycle:
-    1. Ensure DeskComputer's own WSL-Runner-KeepAlive task is Running.
-    2. ControlTower WMI-handle guard: kill any WmiPrvSE leaking > threshold
-       handles (root cause of the 2026-06-11 ControlTower outage).
+    1. Ensure hub-a's own WSL-Runner-KeepAlive task is Running.
+    2. node-a WMI-handle guard: kill any WmiPrvSE leaking > threshold
+       handles (root cause of the 2026-06-11 node-a outage).
     3. Query the dashboard /api/runners (GitHub App auth, authoritative):
-       a. per-pool online floors for Desktop / ControlTower-Runner / Oglaptop —
+       a. per-pool online floors for Desktop / node-a-Runner / NodeB —
           the 2026-07-30 outage went unseen for weeks because only the
           CT-SSD count was watched, and GitHub auto-purged the silent pools'
           registrations after ~14 days offline;
@@ -19,20 +19,20 @@
        c. purge alarm: zero Desktop runners online while local units run is
           the registration-purge signature -> ERROR pointing at
           docs/runbooks/runner-registration-purge-recovery.md;
-       d. restart the ControlTower-Runner keepalive task when its pool is low.
+       d. restart the node-a-Runner keepalive task when its pool is low.
     4. Log + write state JSON.
 
-  ControlTower remote ops go over SSH (key auth, host alias 'controltower').
+  node-a remote ops go over SSH (key auth, host alias 'node-a').
   Never invokes wsl.exe over SSH (it hangs in the network-logon session and
   exhausts the desktop heap) -- all CT WSL work stays inside CT's own
   keepalive tasks.
 #>
 param(
   [string]$DashboardUrl          = "http://127.0.0.1:8321",
-  [string]$CtSsh                 = "controltower",
+  [string]$CtSsh                 = "node-a",
   [int]   $WmiHandleKillThreshold = 120000,
-  # The ControlTower-SSD / -NVMe pools were retired; since 2026-08-28 the only
-  # Linux pool on ControlTower is the single `ControlTower-Runner` distro with
+  # The node-a-SSD / -NVMe pools were retired; since 2026-08-28 the only
+  # Linux pool on node-a is the single `node-a-Runner` distro with
   # runner-1..4 (scheduler-managed, 3 by day / 4 overnight).
   [int]   $CtRunnerMinOnline      = 2,
   [int]   $CtRunnerTotal          = 4,
@@ -41,8 +41,8 @@ param(
   # see 2026-05-29 postmortem), so a tight floor would false-alarm on any
   # idle fleet. What the floors must catch is silent pool decay toward the
   # ~14-day registration purge, where counts sit at/near zero for days.
-  [hashtable]$PoolFloors          = @{ 'Desktop' = 2; 'ControlTower-Runner' = 2; 'Oglaptop' = 2 },
-  # Host free-space floors (GB) for the ControlTower drives. A WSL2 vhdx that
+  [hashtable]$PoolFloors          = @{ 'Desktop' = 2; 'node-a-Runner' = 2; 'NodeB' = 2 },
+  # Host free-space floors (GB) for the node-a drives. A WSL2 vhdx that
   # exhausts host disk mid-write corrupts the distro (null-byte files, corrupt
   # package DB) — the probable origin of the #1071 NVMe corruption, which on
   # 2026-07-31 came within minutes of repeating on the LIVE SSD pool. F: holds
@@ -51,9 +51,9 @@ param(
   [string]$DeskWslDistro          = "Ubuntu-22.04",
   [string]$RunnerSchedulerState   = "/var/lib/runner-scheduler/state.json",
   [string]$LocalKeepAliveTask     = "WSL-Runner-KeepAlive",
-  [string]$DrainMarker            = (Join-Path ([Environment]::GetFolderPath('UserProfile')) "runner_fleet_monitor\deskcomputer-runner-drained.flag"),
-  [string]$EnableMarker           = (Join-Path ([Environment]::GetFolderPath('UserProfile')) "runner_fleet_monitor\deskcomputer-runner-enabled.flag"),
-  [string]$LogDir                 = "C:\Users\diete\runner_fleet_monitor",
+  [string]$DrainMarker            = (Join-Path ([Environment]::GetFolderPath('UserProfile')) "runner_fleet_monitor\hub-a-runner-drained.flag"),
+  [string]$EnableMarker           = (Join-Path ([Environment]::GetFolderPath('UserProfile')) "runner_fleet_monitor\hub-a-runner-enabled.flag"),
+  [string]$LogDir                 = "C:\Users\fleet\runner_fleet_monitor",
   # Dot-source with -FunctionsOnly to expose the pure helpers for tests.
   [switch]$FunctionsOnly
 )
@@ -64,10 +64,10 @@ param(
 
 $script:PoolPrefixes = @{
   'Desktop'          = 'd-sorg-local-Desktop-'
-  # Matches d-sorg-local-ControlTower-1..4; the Windows MATLAB runner shares the
-  # prefix (d-sorg-local-ControlTower-windows-matlab-1) and is excluded below.
-  'ControlTower-Runner' = 'd-sorg-local-ControlTower-'
-  'Oglaptop'         = 'd-sorg-local-Oglaptop-'
+  # Matches d-sorg-local-node-a-1..4; the Windows MATLAB runner shares the
+  # prefix (d-sorg-local-node-a-windows-matlab-1) and is excluded below.
+  'node-a-Runner' = 'd-sorg-local-node-a-'
+  'NodeB'         = 'd-sorg-local-node-b-'
 }
 
 function Get-RunnerPoolCounts {
@@ -182,7 +182,7 @@ function Write-Log([string]$msg, [string]$level = "INFO") {
 }
 
 function Invoke-CtPowerShell([string]$Script, [int]$TimeoutSec = 45) {
-  <# Run a PowerShell snippet on ControlTower over SSH with a HARD deadline.
+  <# Run a PowerShell snippet on node-a over SSH with a HARD deadline.
      Regression guard: on 2026-07-31 an un-deadlined ssh call hung a cycle
      for >100 minutes and MultipleInstances=IgnoreNew silently swallowed
      every later firing. A cycle must never hang. #>
@@ -196,7 +196,7 @@ function Invoke-CtPowerShell([string]$Script, [int]$TimeoutSec = 45) {
       -NoNewWindow -PassThru -RedirectStandardOutput $outFile
     if (-not $p.WaitForExit($TimeoutSec * 1000)) {
       try { $p.Kill() } catch {}
-      Write-Log "ct_ssh_timeout: ControlTower ssh exceeded ${TimeoutSec}s and was killed" "WARN"
+      Write-Log "ct_ssh_timeout: node-a ssh exceeded ${TimeoutSec}s and was killed" "WARN"
       return ''
     }
     $out = Get-Content $outFile -ErrorAction SilentlyContinue
@@ -226,7 +226,7 @@ function Get-GitHubPoolCounts {
 
 function Get-DeskActiveUnitCount {
   <# Count active local Desktop runner units inside the WSL distro. #>
-  $out = & wsl -d $DeskWslDistro -u dieterolson -e bash -c 'systemctl list-units --state=active --no-legend "actions.runner.*Desktop*" | wc -l' 2>$null
+  $out = & wsl -d $DeskWslDistro -u fleet-operator -e bash -c 'systemctl list-units --state=active --no-legend "actions.runner.*Desktop*" | wc -l' 2>$null
   $n = 0
   [void][int]::TryParse(([string]$out).Trim(), [ref]$n)
   return $n
@@ -260,21 +260,21 @@ $state = [ordered]@{
 # stall is indistinguishable from healthy silence.
 Write-Log "cycle start"
 
-# -- 1. DeskComputer local keepalive -----------------------------------------
+# -- 1. hub-a local keepalive -----------------------------------------
 try {
   $t = Get-ScheduledTask -TaskName $LocalKeepAliveTask -ErrorAction Stop
   $state.desk_keepalive = "$($t.State)"
   if ($t.State -ne "Running") {
     Start-ScheduledTask -TaskName $LocalKeepAliveTask
-    Write-Log "DeskComputer keepalive '$LocalKeepAliveTask' was $($t.State); started it." "WARN"
+    Write-Log "hub-a keepalive '$LocalKeepAliveTask' was $($t.State); started it." "WARN"
     $state.actions += "started-desk-keepalive"
   }
 } catch {
-  Write-Log "Failed to check/start DeskComputer keepalive: $($_.Exception.Message)" "ERROR"
+  Write-Log "Failed to check/start hub-a keepalive: $($_.Exception.Message)" "ERROR"
   $state.errors += "desk-keepalive: $($_.Exception.Message)"
 }
 
-# -- 2. ControlTower WMI-handle guard ----------------------------------------
+# -- 2. node-a WMI-handle guard ----------------------------------------
 try {
   $guard = @"
 `$killed = @()
@@ -302,7 +302,7 @@ foreach (`$dl in 'C', 'F', 'D') {
   $state.ct_wmi_max_handles = if ($maxLine.Count -gt 0) { ([string]$maxLine[0]).Trim() } else { $null }
   if ($killLine.Count -gt 0 -and ([string]$killLine[0]).Trim()) {
     $killed = ([string]$killLine[0]).Trim()
-    Write-Log "ControlTower WMI guard KILLED leaking WmiPrvSE: $killed (threshold $WmiHandleKillThreshold)" "WARN"
+    Write-Log "node-a WMI guard KILLED leaking WmiPrvSE: $killed (threshold $WmiHandleKillThreshold)" "WARN"
     $state.actions += "killed-ct-wmiprvse:$killed"
   }
 
@@ -315,14 +315,14 @@ foreach (`$dl in 'C', 'F', 'D') {
   $state.ct_disk_free_gb = $disk
   foreach ($dl in $DiskFloorsGb.Keys) {
     if ($disk.ContainsKey($dl) -and (Test-DiskBelowFloor -FreeGb $disk[$dl] -FloorGb $DiskFloorsGb[$dl])) {
-      Write-Log ("ControlTower ${dl}: only $($disk[$dl])GB free (floor $($DiskFloorsGb[$dl])GB) - " +
+      Write-Log ("node-a ${dl}: only $($disk[$dl])GB free (floor $($DiskFloorsGb[$dl])GB) - " +
         "vhdx corruption risk: a WSL2 distro that exhausts host disk mid-write corrupts itself (see #1071). " +
         "Reclaim space now; do not wait.") "ERROR"
       $state.actions += "alarm-ct-disk-$dl"
     }
   }
 } catch {
-  Write-Log "ControlTower WMI guard failed: $($_.Exception.Message)" "ERROR"
+  Write-Log "node-a WMI guard failed: $($_.Exception.Message)" "ERROR"
   $state.errors += "ct-wmi: $($_.Exception.Message)"
 }
 
@@ -398,13 +398,13 @@ try {
     }
   }
 
-  # 3c. ControlTower-Runner keepalive restart when its pool is low.
-  $ctOnline = [int]$poolCounts['ControlTower-Runner'].online
+  # 3c. node-a-Runner keepalive restart when its pool is low.
+  $ctOnline = [int]$poolCounts['node-a-Runner'].online
   if ($ctOnline -lt $CtRunnerMinOnline) {
-    Write-Log "ControlTower-Runner online ($ctOnline/$CtRunnerTotal) below min ($CtRunnerMinOnline); restarting ControlTower-Runner keepalive task." "WARN"
+    Write-Log "node-a-Runner online ($ctOnline/$CtRunnerTotal) below min ($CtRunnerMinOnline); restarting node-a-Runner keepalive task." "WARN"
     $restart = @'
-$quarantined = @("ControlTower-NVMe-KeepAlive", "ControlTower-NVMe-WSL-KeepAlive", "ControlTower-SSD-KeepAlive")
-foreach ($tn in @("ControlTower-Runner-KeepAlive")) {
+$quarantined = @("node-a-NVMe-KeepAlive", "node-a-NVMe-WSL-KeepAlive", "node-a-SSD-KeepAlive")
+foreach ($tn in @("node-a-Runner-KeepAlive")) {
   if ($quarantined -contains $tn) {
     "skipping quarantined task $tn (#1071 / #1078)"
     continue

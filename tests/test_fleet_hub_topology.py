@@ -13,19 +13,19 @@ from fleet_autoconfig import (
 _REGISTRY_HUB_DESK = {
     "machines": [
         {
-            "name": "DeskComputer",
+            "name": "hub-a",
             "role": "hub",
-            "dashboard_url": "http://deskcomputer.tail2bbcc7.ts.net:8321",
+            "dashboard_url": "http://hub-a.fleet-example.ts.net:8321",
         },
         {
-            "name": "ControlTower",
+            "name": "node-a",
             "role": "node",
-            "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+            "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
         },
         {
-            "name": "Brick",
+            "name": "node-c",
             "role": "node",
-            "dashboard_url": "http://brick.tail2bbcc7.ts.net:8321",
+            "dashboard_url": "http://node-c.fleet-example.ts.net:8321",
         },
     ]
 }
@@ -34,15 +34,15 @@ _REGISTRY_HUB_DESK = {
 def test_resolve_hub_url_from_registry() -> None:
     assert (
         resolve_hub_url_from_registry(_REGISTRY_HUB_DESK)
-        == "http://deskcomputer.tail2bbcc7.ts.net:8321"
+        == "http://hub-a.fleet-example.ts.net:8321"
     )
 
 
 def test_assert_unique_hub_role_rejects_dual_hub() -> None:
     dual = {
         "machines": [
-            {"name": "DeskComputer", "role": "hub", "dashboard_url": "http://desk:8321"},
-            {"name": "ControlTower", "role": "hub", "dashboard_url": "http://ct:8321"},
+            {"name": "hub-a", "role": "hub", "dashboard_url": "http://desk:8321"},
+            {"name": "node-a", "role": "hub", "dashboard_url": "http://ct:8321"},
         ]
     }
     with pytest.raises(RuntimeError, match="machines declare role=hub"):
@@ -54,13 +54,13 @@ def test_apply_fleet_identity_node_derives_hub_from_registry() -> None:
         _REGISTRY_HUB_DESK,
         hub_url_env=None,
         machine_role_env=None,
-        display_name="ControlTower",
-        platform_node="controltower",
+        display_name="node-a",
+        platform_node="node-a",
         runner_aliases=None,
     )
     assert identity.machine_role == "node"
     assert identity.machine_role_source == "registry"
-    assert identity.hub_url == "http://deskcomputer.tail2bbcc7.ts.net:8321"
+    assert identity.hub_url == "http://hub-a.fleet-example.ts.net:8321"
     assert identity.hub_url_source == "registry"
 
 
@@ -69,8 +69,8 @@ def test_apply_fleet_identity_hub_has_no_hub_url() -> None:
         _REGISTRY_HUB_DESK,
         hub_url_env=None,
         machine_role_env=None,
-        display_name="DeskComputer",
-        platform_node="deskcomputer",
+        display_name="hub-a",
+        platform_node="hub-a",
         runner_aliases=None,
     )
     assert identity.machine_role == "hub"
@@ -82,25 +82,25 @@ def test_apply_fleet_identity_env_overrides_hub_url() -> None:
         _REGISTRY_HUB_DESK,
         hub_url_env="http://override.example:8321",
         machine_role_env=None,
-        display_name="ControlTower",
-        platform_node="controltower",
+        display_name="node-a",
+        platform_node="node-a",
         runner_aliases=None,
     )
     assert identity.hub_url == "http://override.example:8321"
     assert identity.hub_url_source == "env"
 
 
-def test_apply_fleet_identity_brick_node_points_at_desk_hub() -> None:
+def test_apply_fleet_identity_node-c_node_points_at_desk_hub() -> None:
     identity = apply_fleet_identity_from_registry(
         _REGISTRY_HUB_DESK,
         hub_url_env=None,
         machine_role_env=None,
-        display_name="Brick",
-        platform_node="brick",
+        display_name="node-c",
+        platform_node="node-c",
         runner_aliases=None,
     )
     assert identity.machine_role == "node"
-    assert identity.hub_url == "http://deskcomputer.tail2bbcc7.ts.net:8321"
+    assert identity.hub_url == "http://hub-a.fleet-example.ts.net:8321"
 
 
 def test_apply_fleet_identity_env_override_machine_role() -> None:
@@ -108,8 +108,8 @@ def test_apply_fleet_identity_env_override_machine_role() -> None:
         _REGISTRY_HUB_DESK,
         hub_url_env=None,
         machine_role_env="node",
-        display_name="DeskComputer",
-        platform_node="deskcomputer",
+        display_name="hub-a",
+        platform_node="hub-a",
         runner_aliases=None,
     )
     assert identity.machine_role == "node"
@@ -121,16 +121,16 @@ def test_assert_fleet_identity_no_self_loop_rejects_hub_host_as_node() -> None:
         _REGISTRY_HUB_DESK,
         hub_url_env=None,
         machine_role_env="node",
-        display_name="DeskComputer",
-        platform_node="deskcomputer",
+        display_name="hub-a",
+        platform_node="hub-a",
         runner_aliases=None,
     )
     with pytest.raises(RuntimeError, match="registered hub"):
         assert_fleet_identity_no_self_loop(
             identity,
             _REGISTRY_HUB_DESK,
-            display_name="DeskComputer",
-            platform_node="deskcomputer",
+            display_name="hub-a",
+            platform_node="hub-a",
         )
 
 
@@ -139,14 +139,14 @@ def test_assert_fleet_identity_no_self_loop_rejects_hub_url_to_localhost() -> No
         _REGISTRY_HUB_DESK,
         hub_url_env="http://127.0.0.1:8321",
         machine_role_env=None,
-        display_name="ControlTower",
-        platform_node="controltower",
+        display_name="node-a",
+        platform_node="node-a",
         runner_aliases=None,
     )
     with pytest.raises(RuntimeError, match="HUB_URL points at this dashboard"):
         assert_fleet_identity_no_self_loop(
             identity,
             _REGISTRY_HUB_DESK,
-            display_name="ControlTower",
-            platform_node="controltower",
+            display_name="node-a",
+            platform_node="node-a",
         )
