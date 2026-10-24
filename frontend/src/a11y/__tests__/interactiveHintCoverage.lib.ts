@@ -319,6 +319,7 @@ export const HINT_COVERAGE_ENFORCED_SUFFIXES: readonly string[] = [
   "/shell/TopToolstrip.tsx",
   "/shell/HelpAbout.tsx",
   "/shell/BarbSidebar.tsx",
+  "pages/FleetOrchestration.tsx",
 ];
 
 /** Path prefixes that must be violation-free (grows one dashboard area per PR). */
@@ -326,6 +327,7 @@ export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = [
   "pages/Staff/",
   "pages/StaffConsole/",
   "pages/Operations/",
+  "pages/Queue/",
 ];
 
 /** When true, the audit test requires zero violations across all scanned TSX. */
