@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import pytest
 from staff.classifier import classify_run_failure
+from staff.adapters import ADAPTERS
+from staff.model_tiers import allowed_models_for_provider
 from staff.provider_fallback import (
     IMMEDIATE_FALLBACK_CLASSES,
     ProviderFallbackRule,
     ProviderFallbackTarget,
     match_provider_fallback,
     parse_provider_fallback_rules,
+    resolve_fallback_target_model,
     validate_provider_fallback_rules,
     validate_provider_fallback_rules_data,
 )
@@ -133,6 +136,27 @@ def test_no_fallback_on_real_task_failure_class() -> None:
     rules = parse_provider_fallback_rules(_pr_remediator_role_data())
     assert match_provider_fallback(rules, "unknown", "codex", retries_exhausted=True) is None
     assert match_provider_fallback(rules, "no_result", "codex", retries_exhausted=True) is None
+
+
+@pytest.mark.unit
+def test_fallback_default_target_model_resolves_for_target_provider() -> None:
+    """Codex gpt-6-luna must not carry to antigravity when rule omits an explicit model (#2499)."""
+    role = RoleSpec(
+        name="pr-remediator",
+        title="PR Remediator",
+        providers=("codex", "antigravity"),
+        model="gpt-6-luna",
+    )
+    resolved = resolve_fallback_target_model(
+        target=ProviderFallbackTarget("antigravity", None),
+        role=role,
+        source_provider="codex",
+        target_provider="antigravity",
+        adapter=ADAPTERS["antigravity"],
+    )
+    assert resolved is not None
+    assert resolved != "gpt-6-luna"
+    assert resolved in allowed_models_for_provider("antigravity", ADAPTERS["antigravity"])
 
 
 @pytest.mark.unit
