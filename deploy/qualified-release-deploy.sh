@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Root-owned, no-argument OGLaptop deployment transaction (issue #1138).
+# Root-owned, no-argument node-b deployment transaction (issue #1138).
 set -euo pipefail
 umask 0077
 # The bootstrap copies this library to a root-owned immutable authority path.
@@ -48,7 +48,7 @@ if not re.fullmatch(r"[1-9][0-9]*", run_id) or not re.fullmatch(r"[1-9][0-9]*", 
     raise SystemExit("workflow identity is invalid")
 if transaction_id != f"run-{run_id}-attempt-{attempt}":
     raise SystemExit("transaction identity does not match workflow identity")
-if payload["runner_name"] != "d-sorg-local-Oglaptop-1":
+if payload["runner_name"] != "d-sorg-local-node-b-1":
     raise SystemExit("request did not originate from the allowlisted runner")
 worker_pid = str(payload["worker_pid"])
 if not re.fullmatch(r"[1-9][0-9]*", worker_pid):
@@ -69,9 +69,9 @@ PY
 }
 
 scan_local_legacy_runner_metadata() {
-    local helper="/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py"
-    if [[ -f "${STAGE_DIR}/deploy/oglaptop_github_inventory.py" ]]; then
-        helper="${STAGE_DIR}/deploy/oglaptop_github_inventory.py"
+    local helper="/usr/local/lib/runner-dashboard/node-b_github_inventory.py"
+    if [[ -f "${STAGE_DIR}/deploy/node-b_github_inventory.py" ]]; then
+        helper="${STAGE_DIR}/deploy/node-b_github_inventory.py"
     fi
     [[ -f "${helper}" ]] || fail "qualified inventory helper is absent"
     /usr/bin/python3 "${helper}" scan-local "${QUALIFIED_RUNNER_ROOT}"
@@ -90,12 +90,12 @@ from pathlib import Path
 
 state = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 if state.get("installed") != 8:
-    raise SystemExit("OGLaptop local runner inventory is incomplete")
+    raise SystemExit("node-b local runner inventory is incomplete")
 if state.get("desired") != 4 or state.get("reason") not in {"weekday-day", "weekend-day"}:
     raise SystemExit("qualified deployment is limited to the four-runner daytime window")
 runners = state.get("runners")
 if not isinstance(runners, list) or [item.get("num") for item in runners] != list(range(1, 9)):
-    raise SystemExit("OGLaptop runner numbering is not exactly 1 through 8")
+    raise SystemExit("node-b runner numbering is not exactly 1 through 8")
 busy = [item.get("num") for item in runners if item.get("busy")]
 active = [item.get("num") for item in runners if item.get("active")]
 if busy != [1]:
@@ -122,7 +122,7 @@ EOF
 
     cat > /etc/systemd/system/runner-scheduler.service <<EOF
 [Unit]
-Description=Apply the qualified OGLaptop runner schedule
+Description=Apply the qualified node-b runner schedule
 After=network-online.target
 Wants=network-online.target
 
@@ -137,7 +137,7 @@ EOF
 
     cat > /etc/systemd/system/runner-scheduler.timer <<'EOF'
 [Unit]
-Description=Apply the qualified OGLaptop schedule every five minutes
+Description=Apply the qualified node-b schedule every five minutes
 
 [Timer]
 OnBootSec=2m
@@ -264,9 +264,9 @@ payload = {
     "status": sys.argv[2],
     "result": sys.argv[3],
     "transaction_id": sys.argv[4],
-    "target": "OGLaptop",
+    "target": "node-b",
     "release": {"version": sys.argv[5], "tag": sys.argv[6], "commit": sys.argv[7], "sha256": sys.argv[8]},
-    "worker_exception": {"runner": "d-sorg-local-Oglaptop-1", "busy_workers": [1]},
+    "worker_exception": {"runner": "d-sorg-local-node-b-1", "busy_workers": [1]},
     "mutable_manifest": {"before_sha256": sys.argv[9], "after_sha256": sys.argv[10]},
     "rollback": sys.argv[11],
     "scheduler": {"desired": 4, "active": [1, 2, 3, 4], "actions": [], "cycle_seconds": int(sys.argv[12])},
@@ -300,7 +300,7 @@ transaction_exit() {
 }
 
 [[ "${EUID}" -eq 0 ]] || fail "qualified deployment helper must run as root"
-[[ "${SUDO_USER:-}" == "${QUALIFIED_RUNNER_USER}" ]] || fail "qualified helper requires the OGLaptop runner user"
+[[ "${SUDO_USER:-}" == "${QUALIFIED_RUNNER_USER}" ]] || fail "qualified helper requires the node-b runner user"
 [[ -x "${COSIGN_BIN}" && "$(stat -c '%U:%G' "${COSIGN_BIN}")" == "root:root" ]] \
     || fail "root-owned cosign authority is unavailable"
 verify_root_authority_file "${QUALIFIED_SCHEDULE_SOURCE}"

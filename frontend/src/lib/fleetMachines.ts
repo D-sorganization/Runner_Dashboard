@@ -14,17 +14,17 @@ export function canonicalMachineName(name: unknown): string {
   const raw = String(name || "").trim();
   const key = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
   const aliases: Record<string, string> = {
-    desktop: "DeskComputer",
-    deskcomputer: "DeskComputer",
-    desk: "DeskComputer",
-    oglaptop: "OGLaptop",
-    og: "OGLaptop",
-    controltower: "ControlTower",
-    controltowernvme: "ControlTower",
-    controltowerssd: "ControlTower",
-    controltowermatlab: "ControlTower",
-    controltowermatlabssd: "ControlTower",
-    controltowerrunnermonitoring: "ControlTower",
+    desktop: "hub-a",
+    hub-a: "hub-a",
+    desk: "hub-a",
+    node-b: "node-b",
+    og: "node-b",
+    node-a: "node-a",
+    node-anvme: "node-a",
+    node-assd: "node-a",
+    node-amatlab: "node-a",
+    node-amatlabssd: "node-a",
+    node-arunnermonitoring: "node-a",
   };
   return aliases[key] || raw || "Unknown";
 }
@@ -48,7 +48,7 @@ export function parseRunnerName(name: unknown): ParsedRunnerName {
   return { machine: "Unknown", number: 999999 };
 }
 
-/** Sort comparator for runners: ControlTower first, then by machine + number. */
+/** Sort comparator for runners: node-a first, then by machine + number. */
 export function runnerSort(
   a: { name?: unknown },
   b: { name?: unknown },
@@ -56,8 +56,8 @@ export function runnerSort(
   const pa = parseRunnerName(a.name);
   const pb = parseRunnerName(b.name);
   if (pa.machine !== pb.machine) {
-    if (pa.machine === "ControlTower") return -1;
-    if (pb.machine === "ControlTower") return 1;
+    if (pa.machine === "node-a") return -1;
+    if (pb.machine === "node-a") return 1;
     return pa.machine.localeCompare(pb.machine);
   }
   return pa.number - pb.number;

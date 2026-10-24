@@ -25,18 +25,18 @@ def infer_machine_from_runner_name(runner_name: str | None) -> str | None:
         return None
     if "github" in token or "hosted" in token or token.startswith("ubuntu"):
         return "GitHub Hosted"
-    if "controltowernvme" in token or "nvme" in token:
-        return "ControlTower-NVMe"
-    if "controltowerssd" in token or token.endswith("ssd") or "ssd" in token:
-        return "ControlTower-SSD"
-    if "controltower" in token:
-        return "ControlTower"
-    if "deskcomputer" in token or token.startswith("desk") or "desktop" in token:
-        return "DeskComputer"
-    if "oglaptop" in token or "oglap" in token:
-        return "OGLaptop"
-    if "brick" in token:
-        return "Brick"
+    if "node-anvme" in token or "nvme" in token:
+        return "node-a-NVMe"
+    if "node-assd" in token or token.endswith("ssd") or "ssd" in token:
+        return "node-a-SSD"
+    if "node-a" in token:
+        return "node-a"
+    if "hub-a" in token or token.startswith("desk") or "desktop" in token:
+        return "hub-a"
+    if "node-b" in token or "oglap" in token:
+        return "node-b"
+    if "node-c" in token:
+        return "node-c"
     return value
 
 
