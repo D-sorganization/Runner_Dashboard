@@ -208,8 +208,25 @@ def _validate_collections(data: dict[str, Any]) -> list[str]:
             problems.extend(_string_list_problems(key, data[key]))
 
     holds = data.get("holds")
-    if not isinstance(holds, list) or any(not isinstance(h, str) or not h.strip() for h in holds):
-        problems.append("holds must be a list of non-empty strings")
+    if holds is not None:
+        if not isinstance(holds, list):
+            problems.append("holds must be a list of non-empty strings or hold mappings")
+        else:
+            for index, item in enumerate(holds):
+                if isinstance(item, str):
+                    if not item.strip():
+                        problems.append(f"holds[{index}] must be a non-empty string")
+                elif isinstance(item, dict):
+                    text = str(item.get("text") or "").strip()
+                    if not text:
+                        problems.append(f"holds[{index}].text is required")
+                    applies = item.get("applies_to")
+                    if applies is not None and (
+                        not isinstance(applies, list) or any(not isinstance(t, str) or not t.strip() for t in applies)
+                    ):
+                        problems.append(f"holds[{index}].applies_to must be a list of non-empty strings")
+                else:
+                    problems.append(f"holds[{index}] must be a string or mapping")
     return problems
 
 

@@ -37,6 +37,17 @@ _LOCAL_SCHEMA_PATH = Path(__file__).parent / "schema.json"
 
 
 @dataclass(frozen=True)
+class ParsedHold:
+    """One standing policy from a role's ``holds:`` list (string or structured mapping)."""
+
+    text: str
+    set_by: str = ""
+    created: str = ""
+    lifted_when: str = ""
+    applies_to: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RoleSpec:
     """Flat, typed view of one role file (LoD: handlers only see this)."""
 
@@ -63,6 +74,7 @@ class RoleSpec:
     permissions: dict[str, Any] = field(default_factory=dict)
     reports_to: str = ""
     holds: tuple[str, ...] = ()
+    parsed_holds: tuple[ParsedHold, ...] = ()
     surface: str = "dashboard"
     retired: bool = False
     retired_reason: str = ""
@@ -195,6 +207,9 @@ def roles_dir() -> Path | None:
     candidates.append(home / "Repositories" / "Repository_Management-worktrees" / "main" / "staff" / "roles")
     candidates.append(home / "actions-runners" / "Repository_Management" / "staff" / "roles")
     candidates.append(home / ".config" / "runner-dashboard" / "staff" / "roles")
+    repo_roles = here.parents[2] / "staff" / "roles"
+    if repo_roles.is_dir():
+        candidates.append(repo_roles)
     for c in candidates:
         if c.is_dir():
             return c
@@ -226,6 +241,36 @@ def schema_path() -> Path:
         if c.is_file():
             return c
     return _LOCAL_SCHEMA_PATH
+
+
+def _parse_holds(raw: Any) -> tuple[ParsedHold, ...]:
+    if not isinstance(raw, list):
+        return ()
+    out: list[ParsedHold] = []
+    for item in raw:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                out.append(ParsedHold(text=text))
+        elif isinstance(item, dict):
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            applies_raw = item.get("applies_to")
+            applies: tuple[str, ...] = ()
+            if isinstance(applies_raw, list):
+                applies = tuple(str(t).strip() for t in applies_raw if str(t).strip())
+            lifted = str(item.get("lifted_when") or item.get("lift_condition") or "")
+            out.append(
+                ParsedHold(
+                    text=text,
+                    set_by=str(item.get("set_by") or ""),
+                    created=str(item.get("created") or ""),
+                    lifted_when=lifted,
+                    applies_to=applies,
+                )
+            )
+    return tuple(out)
 
 
 def _as_tuple(value: Any) -> tuple[str, ...]:
@@ -351,7 +396,8 @@ def parse_role(
         idle_minutes=idle_m,
         permissions=_parse_permissions(perms),
         reports_to=str(data.get("reports_to") or ""),
-        holds=_as_tuple(data.get("holds")),
+        holds=tuple(h.text for h in _parse_holds(data.get("holds"))),
+        parsed_holds=_parse_holds(data.get("holds")),
         surface=str(data.get("surface") or "dashboard"),
         retired=bool(data.get("retired", False)),
         retired_reason=retired_reason,

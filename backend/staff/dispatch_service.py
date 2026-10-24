@@ -181,6 +181,18 @@ async def _forward(target: str, cmd: DispatchCommand, on_behalf_of: str) -> dict
     return {**data, "machine": data.get("machine", target), "forwarded_to": target}
 
 
+def _refuse_if_hold(cmd: DispatchCommand) -> None:
+    """409 when an active fleet hold blocks this dispatch slice (issue #2657)."""
+    if not cmd.repo:
+        return
+    from staff.holds import refuse_dispatch_if_held, refusal_detail  # noqa: PLC0415
+
+    hit = refuse_dispatch_if_held(cmd.role, cmd.repo, cmd.prompt)
+    if hit is not None:
+        log.info("staff: dispatch of %s on %s refused by hold %s", cmd.role, cmd.repo, hit.id)
+        raise HTTPException(status_code=409, detail=refusal_detail(hit))
+
+
 def _refuse_if_excluded(cmd: DispatchCommand) -> None:
     """409 when (repo, issue, declared paths) fall in an active dispatch exclusion.
 
@@ -210,6 +222,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
     _refuse_if_excluded(cmd)
+    _refuse_if_hold(cmd)
 
     if not cmd.dry_run and not cmd.force_duplicate and cmd.issue and cmd.repo:
         from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
