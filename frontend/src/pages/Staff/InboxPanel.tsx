@@ -282,7 +282,13 @@ export function InboxPanel({
         </div>
         <div className="staff-inbox-bar__actions">
           {briefingStatus ? (
-            <span className="staff-inbox-panel__briefing-status" data-testid="briefing-status">{briefingStatus}</span>
+            <span
+              className="staff-inbox-panel__briefing-status"
+              data-testid="briefing-status"
+              title={`Briefing status: ${briefingStatus}`}
+            >
+              {briefingStatus}
+            </span>
           ) : null}
           <button
             type="button"
@@ -290,6 +296,7 @@ export function InboxPanel({
             onClick={() => handleRequestBriefing("on_demand")}
             disabled={briefingLoading}
             data-testid="request-briefing-btn"
+            title="Request an on-demand coordination briefing for the inbox"
           >
             <ClipboardIcon />
             <span>{briefingLoading ? "Briefing..." : "Request Briefing"}</span>
@@ -447,6 +454,7 @@ export function InboxPanel({
                         className="staff-inbox-group__toggle"
                         onClick={() => setSignInsExpanded((v) => !v)}
                         aria-expanded={signInsExpanded}
+                        title="Show or hide provider sign-in reminders grouped in the inbox"
                       >
                         <ChevronDownIcon className={signInsExpanded ? "" : "staff-inbox-chevron--collapsed"} />
                         <span>Providers need sign-in</span>
@@ -471,6 +479,7 @@ export function InboxPanel({
                           className="staff-inbox-group__toggle"
                           onClick={() => setExpandedRepos((prev) => ({ ...prev, [repo]: !isExp }))}
                           aria-expanded={isExp}
+                          title={`Show or hide ${items.length} project decisions for ${repo}`}
                         >
                           <ChevronDownIcon className={isExp ? "" : "staff-inbox-chevron--collapsed"} />
                           <span>{repo}</span>
