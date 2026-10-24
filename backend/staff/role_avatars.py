@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -175,3 +176,29 @@ def normalize_role_id(role: str) -> str | None:
     if not ROLE_ID_RE.fullmatch(role):
         return None
     return role
+
+
+def delete_custom_avatar(role: str) -> None:
+    for path in _custom_avatar_paths(role):
+        path.unlink(missing_ok=True)
+
+
+def store_custom_avatar(role: str, data: bytes, ext: str) -> Path:
+    """Atomically store one custom avatar file per role (mode 0600)."""
+    delete_custom_avatar(role)
+    base = avatar_upload_dir()
+    dest = base / f"{role}.{ext}"
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{role}.", suffix=f".{ext}.tmp", dir=base)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.chmod(tmp_name, 0o600)
+        os.replace(tmp_name, dest)
+        os.chmod(dest, 0o600)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+    return dest

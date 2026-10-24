@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -214,3 +215,124 @@ def test_schema_accepts_avatar_and_rejects_unknown_key() -> None:
     role["bogus"] = True
     errs = validate_role_data(role)
     assert any("unknown field" in e for e in errs)
+
+
+@pytest.fixture
+def operator_client(avatar_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    id_dir = tmp_path / "identity-op"
+    id_dir.mkdir(parents=True)
+    monkeypatch.setenv("DASHBOARD_IDENTITY_DIR", str(id_dir))
+    from identity import Principal, TokenRecord, identity_manager  # noqa: PLC0415
+
+    identity_manager.config_dir = id_dir
+    identity_manager.principals_path = id_dir / "principals.yml"
+    identity_manager.tokens_path = id_dir / "tokens.yml"
+    identity_manager.principals = {
+        "operator-user": Principal(id="operator-user", type="human", name="Operator", roles=["operator"]),
+    }
+    token = "operator_avatar_write_token"  # pragma: allowlist secret
+    thash = hashlib.sha256(token.encode()).hexdigest()
+    now = time.time()
+    identity_manager.tokens = [
+        TokenRecord(
+            token_hash=thash,
+            principal_id="operator-user",
+            name="operator-test",
+            created_at=now,
+            expires_at=now + 86400,
+        ),
+    ]
+    avatar_client.headers.update({**_XHR, "Authorization": f"Bearer {token}"})
+    return avatar_client
+
+
+def _png_128() -> bytes:
+    from tests.staff.test_role_avatar_image import _png_with_dims
+
+    return _png_with_dims(128, 128)
+
+
+@pytest.mark.unit
+def test_put_stores_custom_avatar_and_roster_shows_custom(operator_client: TestClient) -> None:
+    body = _png_128()
+    res = operator_client.put("/api/v1/staff/roles/cartographer/avatar", content=body)
+    assert res.status_code == 200, res.text
+    payload = res.json()
+    assert payload["source"] == "custom"
+    assert payload["width"] == 128
+    get_res = operator_client.get("/api/v1/staff/roles/cartographer/avatar")
+    assert get_res.content == body
+    roster = operator_client.get("/api/v1/staff/roster").json()
+    row = next(r for r in roster["roles"] if r["name"] == "cartographer")
+    assert row.get("avatar_source") == "custom"
+
+
+@pytest.mark.unit
+def test_delete_restores_default_and_is_idempotent(operator_client: TestClient) -> None:
+    operator_client.put("/api/v1/staff/roles/cartographer/avatar", content=_png_128())
+    assert operator_client.delete("/api/v1/staff/roles/cartographer/avatar", headers=_XHR).status_code == 204
+    get_res = operator_client.get("/api/v1/staff/roles/cartographer/avatar")
+    assert get_res.content == MINIMAL_WEBP
+    assert operator_client.delete("/api/v1/staff/roles/cartographer/avatar", headers=_XHR).status_code == 204
+
+
+@pytest.mark.unit
+def test_put_without_csrf_is_403(operator_client: TestClient) -> None:
+    auth = operator_client.headers.get("Authorization")
+    bare = TestClient(
+        operator_client.app,
+        raise_server_exceptions=False,
+        client=_REMOTE,
+        headers={"Authorization": auth},
+    )
+    res = bare.put("/api/v1/staff/roles/cartographer/avatar", content=_png_128())
+    assert res.status_code == 403
+
+
+@pytest.mark.unit
+def test_agent_put_is_403(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    id_dir = tmp_path / "identity"
+    tok_dir = id_dir / "agent-tokens"
+    tok_dir.mkdir(parents=True)
+    token = "grok_avatar_write_test"  # pragma: allowlist secret
+    (tok_dir / "agent-grok.token").write_text(token + "\n", encoding="utf-8")
+    monkeypatch.setenv("DASHBOARD_IDENTITY_DIR", str(id_dir))
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "0")
+    roles_dir = _staff_tree(tmp_path / "rm", avatar_rel="cartographer.webp")
+    monkeypatch.setenv("STAFF_ROLES_DIR", str(roles_dir))
+    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
+    monkeypatch.setenv("RD_AVATAR_DIR", str(tmp_path / "avatars"))
+    from identity import identity_manager  # noqa: PLC0415
+    from staff import roles as roles_mod  # noqa: PLC0415
+    from staff import runner as runner_mod  # noqa: PLC0415
+    from staff import store as store_mod  # noqa: PLC0415
+
+    identity_manager.config_dir = id_dir
+    identity_manager.load_principals()
+    identity_manager.load_tokens()
+    from agent_principal_defaults import merge_agent_principal_defaults  # noqa: PLC0415
+
+    merge_agent_principal_defaults(identity_manager)
+    roles_mod.clear_roles_cache()
+    store_mod.reset_store()
+    runner_mod.reset_runner()
+    from server import app  # noqa: PLC0415
+
+    client = TestClient(app, raise_server_exceptions=False, client=_REMOTE)
+    res = client.put(
+        "/api/v1/staff/roles/cartographer/avatar",
+        content=_png_128(),
+        headers={**_XHR, "Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 403
+
+
+@pytest.mark.unit
+def test_atomic_replace_leaves_one_custom_file(operator_client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    avdir = tmp_path / "hub-avatars"
+    monkeypatch.setenv("RD_AVATAR_DIR", str(avdir))
+    operator_client.put("/api/v1/staff/roles/cartographer/avatar", content=_png_128())
+    operator_client.put("/api/v1/staff/roles/cartographer/avatar", content=_png_128())
+    files = list(avdir.glob("cartographer.*"))
+    assert len(files) == 1
+    assert files[0].suffix == ".png"

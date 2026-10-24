@@ -25916,6 +25916,45 @@
       }
     },
     "/api/v1/staff/roles/{role_id}/avatar": {
+      "delete": {
+        "operationId": "delete_role_avatar_api_v1_staff_roles__role_id__avatar_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Delete Role Avatar",
+        "tags": ["staff-v1", "staff-avatars"]
+      },
       "get": {
         "operationId": "get_role_avatar_api_v1_staff_roles__role_id__avatar_get",
         "parameters": [
@@ -25958,6 +25997,54 @@
           }
         ],
         "summary": "Get Role Avatar",
+        "tags": ["staff-v1", "staff-avatars"]
+      },
+      "put": {
+        "operationId": "put_role_avatar_api_v1_staff_roles__role_id__avatar_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Avatar Api V1 Staff Roles  Role Id  Avatar Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Avatar",
         "tags": ["staff-v1", "staff-avatars"]
       }
     },
