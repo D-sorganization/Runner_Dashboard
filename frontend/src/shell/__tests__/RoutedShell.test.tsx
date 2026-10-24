@@ -351,14 +351,14 @@ describe("RoutedShell — URL is the source of truth", () => {
   });
 
   it.each(["/t/local-apps", "/settings/local-apps"])(
-    "redirects retired %s to the Local Tools section of Settings (#1338)",
+    "redirects retired %s to the Local Tools section of Operations (#1338)",
     async (path) => {
       renderAt(path);
       expect(await screen.findByTestId("active-tab")).toHaveTextContent(
-        "settings",
+        "operations",
       );
-      expect(await screen.findByTestId("native-settings")).toBeInTheDocument();
-      expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/settings$/);
+      expect(await screen.findByTestId("native-operations")).toBeInTheDocument();
+      expect(screen.getByTestId("pathname")).toHaveTextContent(/^\/fleet\/operations$/);
     },
   );
 
