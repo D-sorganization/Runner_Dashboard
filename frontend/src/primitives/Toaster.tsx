@@ -226,6 +226,8 @@ export function Toaster({ children }: ToasterProps = {}) {
           aria-live="polite"
           aria-atomic="false"
           role="status"
+          aria-label="Non-critical notifications"
+          title="Non-critical notifications"
           className="toaster-live toaster-live-polite"
           style={toasterStackStyle}
         >
@@ -291,6 +293,8 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
       {toast.actionLabel && toast.onAction ? (
         <button
           className="toaster-toast-action"
+          aria-label={toast.actionLabel}
+          title={toast.actionLabel}
           onClick={toast.onAction}
           style={actionButtonStyle}
           type="button"

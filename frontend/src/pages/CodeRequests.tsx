@@ -193,6 +193,7 @@ export function CodeRequestsTab({
                 Branch
               </label>
               <input
+                aria-label="Target branch"
                 value={selBranch}
                 onChange={(e) => {
                   setSelBranch(e.target.value);
@@ -324,6 +325,8 @@ export function CodeRequestsTab({
                 return (
                   <button
                     key={s}
+                    title={active ? `Remove ${s} from injected standards` : `Include ${s} in injected standards`}
+                    aria-label={`Toggle ${s} coding standard`}
                     onClick={() => {
                       toggleStd(s);
                     }}
@@ -344,6 +347,7 @@ export function CodeRequestsTab({
             </div>
           </div>
           <textarea
+            aria-label="Code request prompt"
             value={promptText}
             onChange={(e) => {
               setPromptText(e.target.value);
@@ -372,6 +376,7 @@ export function CodeRequestsTab({
             </button>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input
+                aria-label="Prompt template name"
                 value={templateName}
                 onChange={(e) => {
                   setTemplateName(e.target.value);
