@@ -84,6 +84,21 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.mark.parametrize("metadata", [{"repo": 12}, {"source_run": ["run"]}, {"visibility": "public"}])
+def test_memory_write_rejects_malformed_metadata(
+    remote_client: TestClient, memory_env: dict[str, str], metadata: dict[str, object]
+) -> None:
+    from memory.store import get_memory_store
+
+    response = remote_client.post(
+        "/api/v1/memory",
+        headers={**_XHR, **_auth(memory_env["writer"])},
+        json={"entry_type": "lesson", "source_product": "test", "body": {"text": "bounded"}, **metadata},
+    )
+    assert response.status_code == 422, response.text
+    assert get_memory_store().list_entries() == []
+
+
 def test_grok_writes_session_digest(remote_client: TestClient, memory_env: dict[str, str]) -> None:
     read = remote_client.get("/api/v1/memory/context-pack", headers=_auth(memory_env["grok"]))
     assert read.status_code == 200
