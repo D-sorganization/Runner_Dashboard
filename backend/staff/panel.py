@@ -23,6 +23,7 @@ import provider_switch
 from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
+from staff.barb_continuity import get_barb_continuity_store
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
 from staff.cli_projects import PANEL_SCRATCH_PREFIX
 from staff.conversation_models import ThreadRecord
@@ -53,6 +54,7 @@ __all__ = [
     "panel_result",
     "parse_stance",
     "run_panel",
+    "record_panel_turnover",
     "start_panel_thread",
 ]
 
@@ -336,6 +338,24 @@ async def _speak(
     return {"message_id": placeholder.id, "status": status, "text": text, "stance": stance, "error": error}
 
 
+def record_panel_turnover(thread_id: str, topic: str, consensus: bool, rounds_used: int, ok: bool) -> None:
+    """Append a Barb turnover note (scope ``panel``) for a finished panel. Never raises."""
+    try:
+        outcome = "consensus reached" if consensus else "no consensus"
+        get_barb_continuity_store().append_turnover(
+            scope="panel",
+            author="panel-engine",
+            summary=(
+                f"Panel {'complete' if ok else 'failed'} ({outcome}, {rounds_used} round(s)) on: "
+                f"{topic[:200]}. Thread {thread_id}."
+            ),
+            completed=[f"panel thread {thread_id}"] if ok else [],
+            next_actions=[f"Read the synthesis at /api/v1/staff/panels/{thread_id}"],
+        )
+    except Exception as exc:  # noqa: BLE001 — a turnover problem must never fail a panel
+        log.warning("panel %s turnover note not recorded: %s", thread_id, exc)
+
+
 async def run_panel(
     thread_id: str,
     request: PanelCreateRequest,
@@ -386,6 +406,7 @@ async def run_panel(
             status="complete" if ok else "failed",
             synthesis_message_id=synthesis["message_id"] if ok else None,
         )
+        record_panel_turnover(thread_id, request.topic, consensus, rounds_used, ok)
     except Exception as exc:  # noqa: BLE001 — record the failure on the thread, never leave it "running"
         log.exception("panel %s failed", thread_id)
         _set_panel_state(store, thread_id, status="failed", error=str(exc))

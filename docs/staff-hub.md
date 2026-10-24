@@ -701,6 +701,27 @@ External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) int
 - [**Codex CLI Guide**](agents/codex.md) — `config.toml` MCP configuration, bot principals, and work-item tracking.
 - [**Grok Bot Guide**](agents/grok.md) — Local-exec `curl` recipes, active Barb/Orchestrator roles, and remote connector notes.
 
+## Fleet decision panel (#2511)
+
+The owner's decision panel (previously `panel.sh` outside the dashboard) is the `fleet-decision` preset, "Fleet decision panel (Argon / Astra / Fable)", of the expert panel engine (`backend/staff/panel.py`, `/api/v1/staff/panels`).
+
+| Seat  | Provider / model                                  | Perspective                                                   |
+| ----- | ------------------------------------------------- | ------------------------------------------------------------- |
+| Argon | `antigravity` / `gemini-4-argon-high` (plan mode) | Systems efficiency, cost and latency, algorithmic rigor       |
+| Astra | `codex` / `gpt-6-astra` (read-only sandbox)       | Architecture, contracts, security boundaries, testability     |
+| Fable | `claude` / `claude-fable-5-1`                     | Skeptic: failure modes, edge cases, long-term maintainability |
+
+- **Presets carry the seats.** `GET /api/v1/staff/panels/presets` returns `provider`, `model` and `available` for every preset seat. `available` is false when the seat's provider is switched off on this node (`STAFF_DISABLED_PROVIDERS`, #1597). The API never swaps a seat; the Staff console's New panel form prefills the pinned provider and model when you pick the preset, and for an unavailable seat shows a visible note and falls back to the node's first enabled provider. `POST /panels` itself keeps its defaults and still rejects a disabled provider with 422.
+- **Barb turnover.** When a panel ends, a turnover note (scope `panel`: topic, consensus or not, rounds, thread id) is appended to the Barb continuity log (`GET /api/v1/staff/barb/turnover?scope=panel`). A failure to write it never fails the panel.
+
+Example (cost guard confirmed; seats exactly as the preset defines them):
+
+```bash
+curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Bearer $DASHBOARD_TOKEN" -H "Content-Type: application/json" -H "X-Requested-With: XMLHttpRequest" -d '{"topic": "Should the fleet share one BuildKit cache per machine?", "rounds": 2, "mode": "debate", "confirm_cost": true, "experts": [{"name": "Argon", "perspective": "Systems efficiency, cost and latency, algorithmic rigor.", "provider": "antigravity", "model": "gemini-4-argon-high"}, {"name": "Astra", "perspective": "Architecture, contracts, security boundaries and testability.", "provider": "codex", "model": "gpt-6-astra"}, {"name": "Fable", "perspective": "Skeptic: failure modes, edge cases and long-term maintainability.", "provider": "claude", "model": "claude-fable-5-1"}]}'
+```
+
+Ask each seat for `RECOMMENDATION / RATIONALE / RISKS / CONDITIONS that would change the vote` in the topic text to get the `panel.sh` answer format.
+
 ## Not yet here (tracked in the epic)
 
 The fleet deploy (#1201).
