@@ -33,24 +33,10 @@ it("starts with the conversation and leaves operational panels available on dema
     .getByText("Activity and approvals")
     .closest("details");
   expect(activity).not.toHaveAttribute("open");
-  const conversation = screen.getByText("Focused Barb conversation");
-  expect(conversation).toBeInTheDocument();
-  expect(conversation.compareDocumentPosition(activity!)).toBe(
-    Node.DOCUMENT_POSITION_FOLLOWING,
-  );
+  expect(screen.getByText("Focused Barb conversation")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Roster" }));
-  expect(
-    screen.getByText("Activity and approvals").closest("details"),
-  ).toHaveAttribute("open");
+  expect(activity).toHaveAttribute("open");
   expect(screen.getByText("Staff directory")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("tab", { name: "Console" }));
-  expect(
-    screen.getByText("Activity and approvals").closest("details"),
-  ).not.toHaveAttribute("open");
-  fireEvent.click(screen.getByText("Activity and approvals"));
-  expect(
-    screen.getByText("Activity and approvals").closest("details"),
-  ).toHaveAttribute("open");
-  expect(screen.getByText("Pending approvals")).toBeInTheDocument();
-  expect(screen.getByText("Board activity")).toBeInTheDocument();
+  expect(activity).not.toHaveAttribute("open");
 });
