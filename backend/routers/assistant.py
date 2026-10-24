@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from gh_utils import gh_api
 from identity import Principal, require_scope
 from security import validate_owner_repo_format, validate_repo_slug
+from retired_route_sunset import RETIRED_ROUTE_HTTP_SUNSET
 from staff.actions import (
     ActionError,
     ParamsHashMismatchError,
@@ -75,6 +76,7 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
     tags=["assistant"],
     response_model=assistant_contract.AssistantChatResponse,
     status_code=410,
+    include_in_schema=False,
 )
 async def assistant_chat(
     request: Request,
@@ -85,6 +87,9 @@ async def assistant_chat(
 
     Returns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console
     conversation API at /api/v1/staff/threads.
+
+    Sunset: removed after ``RETIRED_ROUTE_REMOVAL_AFTER`` in ``retired_route_sunset``
+    (see ``tests/test_retired_route_sunset.py``).
     """
     detail = (
         "The legacy assistant chat endpoint has been retired (SC-D11, issue #1330). "
@@ -92,7 +97,7 @@ async def assistant_chat(
     )
     headers = {
         "Link": '</api/v1/staff/threads>; rel="successor-version"',
-        "Sunset": "Wed, 25 Sep 2026 00:00:00 GMT",
+        "Sunset": RETIRED_ROUTE_HTTP_SUNSET,
     }
     return JSONResponse(
         status_code=410,
