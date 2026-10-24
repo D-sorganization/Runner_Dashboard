@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 test("Staff loading skeleton fills the content area in both themes", async ({ browser, baseURL }) => {
-  const appBaseURL = baseURL ?? "http://localhost:5174";
+  if (!baseURL) {
+    throw new Error("Staff loading fallback test requires Playwright config use.baseURL.");
+  }
+  const appBaseURL = baseURL;
   const appOrigin = new URL(appBaseURL).origin;
   const staffRoute = new URL("/staff", appBaseURL).toString();
 
