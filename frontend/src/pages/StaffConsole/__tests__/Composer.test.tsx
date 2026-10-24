@@ -168,7 +168,7 @@ describe("Composer Component", () => {
       .mockRejectedValueOnce(new Error("Network error"))
       .mockResolvedValueOnce({ ok: true });
 
-    render(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={onSend} />);
+    const view = render(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={onSend} />);
 
     const textarea = screen.getByPlaceholderText(/message barb/i);
     fireEvent.change(textarea, { target: { value: "Important request" } });
@@ -185,6 +185,11 @@ describe("Composer Component", () => {
     expect(textarea).toHaveValue("Important request");
     const firstCallKey = onSend.mock.calls[0][0].idempotencyKey;
     expect(firstCallKey).toBeDefined();
+
+    view.rerender(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={onSend} disabled />);
+    expect(screen.getByRole("button", { name: /retry/i })).toBeDisabled();
+    expect(textarea).toHaveValue("Important request");
+    view.rerender(<Composer threadId="thread-1" roles={MOCK_ROLES} onSendMessage={onSend} />);
 
     // Click retry
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));

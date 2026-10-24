@@ -361,7 +361,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       {errorMessage && (
         <div role="alert" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--badge-danger-bg)", border: "1px solid var(--accent-red)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--accent-red)" }}>
           <span>Failed to send message: {errorMessage}</span>
-          <button type="button" onClick={() => executeSend(idempotencyKey || undefined)} disabled={hasUnsettledAttachments || sendState === "sending" || conversationOpening} style={{ background: "var(--accent-red)", color: "var(--text-on-accent)", border: "none", borderRadius: 4, padding: "2px 10px", cursor: hasUnsettledAttachments || sendState === "sending" || conversationOpening ? "not-allowed" : "pointer", opacity: hasUnsettledAttachments || sendState === "sending" || conversationOpening ? 0.6 : 1, fontSize: 11, fontWeight: 600 }}>Retry</button>
+          <button type="button" onClick={() => executeSend(idempotencyKey || undefined)} disabled={disabled || hasUnsettledAttachments || sendState === "sending" || conversationOpening} style={{ background: "var(--accent-red)", color: "var(--text-on-accent)", border: "none", borderRadius: 4, padding: "2px 10px", cursor: disabled || hasUnsettledAttachments || sendState === "sending" || conversationOpening ? "not-allowed" : "pointer", opacity: disabled || hasUnsettledAttachments || sendState === "sending" || conversationOpening ? 0.6 : 1, fontSize: 11, fontWeight: 600 }}>Retry</button>
         </div>
       )}
       {voiceError && (
