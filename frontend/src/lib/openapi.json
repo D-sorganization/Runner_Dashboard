@@ -6737,6 +6737,40 @@
             "title": "Active Runs",
             "type": "integer"
           },
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar"
+          },
+          "avatar_source": {
+            "anyOf": [
+              {
+                "enum": ["custom", "default", "none"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Source"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
           "budget": {
             "$ref": "#/components/schemas/StaffRoleBudget"
           },
@@ -25890,6 +25924,52 @@
         ],
         "summary": "Roster V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roles/{role_id}/avatar": {
+      "get": {
+        "operationId": "get_role_avatar_api_v1_staff_roles__role_id__avatar_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Role Avatar",
+        "tags": ["staff-v1", "staff-avatars"]
       }
     },
     "/api/v1/staff/roles/{role}/schedule": {

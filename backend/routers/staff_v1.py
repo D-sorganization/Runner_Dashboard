@@ -62,6 +62,7 @@ from staff.models import (
 )
 from staff.pagination import CursorPage, paginate_items
 from staff.pricing import price_table_rows
+from routers.staff_avatars import enrich_roster_role, router as staff_avatars_router
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
 
@@ -71,6 +72,7 @@ router.include_router(staff_knowledge_router)
 router.include_router(staff_skills_router)
 router.include_router(staff_projects_router)
 router.include_router(staff_references_router)
+router.include_router(staff_avatars_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:
@@ -199,7 +201,9 @@ async def roster_v1(
     per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
     return {
         "machine": runner.machine,
-        "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
+        "roles": [
+            enrich_roster_role(name, spec, per_role.get(name, 0)) for name, spec in sorted(roles.items())
+        ],
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "chat_only_providers": chat_only_providers(),
