@@ -122,7 +122,7 @@ def test_no_pr_and_no_branch_explain_themselves() -> None:
     assert "no branch" in v.decide(claimed="succeeded", opens_pr=True, branch="", pr=None).detail
 
 
-def test_no_op_pr_remediator_run_with_unpushed_branch_is_no_change() -> None:
+def test_no_op_pr_remediator_run_with_unpushed_branch_is_not_applicable() -> None:
     """Regression: run-2c7153637624 (2026-10-22) on AffineDrift #5117 — PR already merged, agent made no changes."""
     rec = _rec(
         id="run-2c7153637624",
@@ -132,14 +132,16 @@ def test_no_op_pr_remediator_run_with_unpushed_branch_is_no_change() -> None:
         target_ref="5117",
         branch="staff/pr-remediator-5117-78e20c",
     )
-    probe = FakeProbe(pr=None, remote_ahead_by=0)
+    merged = v.PullRequest(5117, "merged", "green")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=merged)
 
     verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW)
 
-    assert verdict.verification == "no_change"
-    assert "staff/pr-remediator-5117-78e20c" in verdict.detail
+    assert verdict.verification == "not_applicable"
+    assert "5117" in verdict.detail and "merged" in verdict.detail
     assert probe.ahead_calls == [("AffineDrift", "staff/pr-remediator-5117-78e20c")]
-    assert probe.get_calls == []
+    assert probe.get_calls == [("AffineDrift", 5117)]
+    assert v.deliverable_failure_updates(rec, verdict, opens_pr=True) == {}
 
 
 def test_pr_remediator_verifies_via_target_pr_when_branch_lookup_misses() -> None:

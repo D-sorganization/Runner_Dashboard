@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import consolidation, verification
+from staff import claim_guard, consolidation, verification
 from staff.budget import BudgetGuard
 from staff.exclusions import ExclusionsList
 from staff.holds import HoldsList
@@ -274,6 +274,12 @@ class StaffScheduler:
                 decision = self._decider(role, repo)
                 prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
                 req = RunRequest(role=name, repo=repo, prompt=prompt, requested_by=REQUESTED_BY, consolidation=decision)
+                claimed = claim_guard.scheduler_blocker(repo, req.issue, req.pr, name) if repo else ""
+                if claimed:  # fail closed: a claimed (or unreadable) target is skipped with the reason recorded (#2562)
+                    entry["last_reason"] = f"skipped {due}: {claimed}"
+                    log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
+                    decisions.append({"role": name, "slot": due, "fired": False, "reason": claimed})
+                    continue
                 try:
                     rec = self.runner.submit(req)
                 except ValueError as exc:

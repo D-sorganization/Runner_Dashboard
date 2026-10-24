@@ -232,13 +232,21 @@ def evaluate(
             except GitHubLookupError as exc:
                 return Verdict("unverified", f"GitHub lookup failed: {exc}")
         get_pr = getattr(probe, "get", None)
-        if pr is None and rec.target_kind == "pr" and remote_ahead_by > 0 and callable(get_pr):
-            target_pr = _target_pr_number(rec)
-            if target_pr is not None:
-                try:
-                    pr = get_pr(rec.repo, target_pr)
-                except GitHubLookupError as exc:
-                    return Verdict("unverified", f"GitHub lookup failed: {exc}")
+        target_pr = _target_pr_number(rec) if rec.target_kind == "pr" else None
+        if pr is None and target_pr is not None and callable(get_pr):
+            try:
+                target = get_pr(rec.repo, target_pr)
+            except GitHubLookupError as exc:
+                return Verdict("unverified", f"GitHub lookup failed: {exc}")
+            if remote_ahead_by == 0 and target.state == "merged":
+                return Verdict(
+                    "not_applicable",
+                    f"PR #{target_pr} already merged; no commits pushed",
+                    target_pr,
+                    ARTIFACT_PR_MERGED,
+                )
+            if remote_ahead_by > 0:
+                pr = target
     verdict = decide(
         claimed=claimed,
         opens_pr=opens_pr,

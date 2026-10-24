@@ -11,6 +11,7 @@ import json
 import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 
@@ -70,10 +71,43 @@ def _fresh_debounce() -> Iterator[None]:
 
 # ── pure function ────────────────────────────────────────────────────────
 @pytest.mark.unit
-def test_expected_interval_is_gap_between_next_two_fires() -> None:
+def test_expected_interval_uses_max_gap_between_consecutive_fires() -> None:
     assert liveness_mod.expected_interval_seconds("0 22 * * *", NOW) == DAY
     assert liveness_mod.expected_interval_seconds("0 * * * *", NOW) == 3600
+    la = ZoneInfo("America/Los_Angeles")
+    evening = datetime(2026, 10, 23, 18, 10, tzinfo=la)
+    assert liveness_mod.expected_interval_seconds("0 6,23 * * *", evening, "America/Los_Angeles") == 17 * 3600
     assert liveness_mod.expected_interval_seconds("not a cron", NOW) is None
+
+
+@pytest.mark.unit
+def test_barb_schedule_does_not_false_late_after_morning_success(store: store_mod.RunStore) -> None:
+    """Regression: Barb 6:02 AM success must stay ``ok`` at 6:10 PM (#2671)."""
+    la = ZoneInfo("America/Los_Angeles")
+    now = datetime(2026, 10, 23, 18, 10, tzinfo=la)
+    roles = {
+        "barb": roles_mod.parse_role({"name": "barb", "providers": ["claude"], "schedule": "0 6,23 * * *"}),
+    }
+    success_at = datetime(2026, 10, 23, 6, 2, tzinfo=la)
+    age = int((now - success_at).total_seconds())
+    rec = store_mod.RunRecord(
+        id="b1",
+        role="barb",
+        provider="claude",
+        model=None,
+        machine="Desk",
+        repo="",
+        target_kind="prompt",
+        target_ref="",
+        prompt="x",
+        status="succeeded",
+        created_at=success_at.isoformat(),
+        ended_at=success_at.isoformat(),
+    )
+    store.create_run(rec)
+    row = liveness_mod.compute_liveness(roles, store, {}, now, "America/Los_Angeles")[0]
+    assert row["status"] == "ok"
+    assert row["age_seconds"] == age
 
 
 @pytest.mark.unit

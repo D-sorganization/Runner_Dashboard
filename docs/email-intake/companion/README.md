@@ -1,10 +1,10 @@
 # Repository_Management companion (#2093)
 
-This agent token cannot open PRs in `D-sorganization/Repository_Management`. Apply
-the companion change manually:
+Shipped in [Repository_Management#2284](https://github.com/D-sorganization/Repository_Management/pull/2284)
+(merge `e524c89`). This directory is an offline mirror only.
 
-1. Add `staff/mail_policy.yml` (copy from `staff-mail_policy.yml` in this directory).
-2. Add a validator alongside existing `staff/directives.yml` checks (same CI job
+1. `staff/mail_policy.yml` (copy from `staff-mail_policy.yml` here if diffing).
+2. Validator alongside existing `staff/directives.yml` checks (same CI job
    that validates role YAML). Minimum rules:
    - `allowed_senders` is a list of mappings with `address` (email) and `enabled` (bool).
    - Optional comment keys are ignored.

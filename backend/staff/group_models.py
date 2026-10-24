@@ -27,6 +27,9 @@ class SeatSpec:
     provider: str
     model: str
     mandate: str = ""
+    # True when ``model`` is a CLI model id verified on the nodes, so the seat runs on it;
+    # False keeps the #1637 behaviour (``model`` is a pricing label, run on the provider default).
+    pin_model: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -116,39 +119,64 @@ class ConsensusResult:
     total_cost_usd: float = 0.0
 
 
-BOARD_SEATS: tuple[SeatSpec, ...] = (
-    SeatSpec(
-        name="alpha",
-        title="Alpha (Architecture)",
-        role="board-seat-alpha",
-        provider="claude",
-        model="opus-5",
-        mandate="Cross-repo architectural review",
-    ),
-    SeatSpec(
-        name="bravo",
-        title="Bravo (Science)",
-        role="board-seat-bravo",
-        provider="gemini",
-        model="gemini-2.5-pro",
-        mandate="Scientific validity, measurement rigor",
-    ),
-    SeatSpec(
-        name="charlie",
-        title="Charlie (Cadence)",
-        role="board-seat-charlie",
-        provider="codex",
-        model="gpt-5",
-        mandate="Execution cadence, CI/CD health",
-    ),
-    SeatSpec(
-        name="delta",
-        title="Delta (Docs & UX)",
-        role="board-seat-delta",
-        provider="claude",
-        model="sonnet-5",
-        mandate="Documentation, user experience, API surface",
-    ),
+# Providers retired fleet-wide (RM #2408); no group seat may be pinned to one.
+DEPRECATED_SEAT_PROVIDERS: frozenset[str] = frozenset({"gemini", "grok-chat"})
+
+
+def validate_seat_providers(seats: tuple[SeatSpec, ...]) -> tuple[SeatSpec, ...]:
+    """Return ``seats`` unchanged after checking none uses a deprecated provider.
+
+    Postcondition: no seat's provider is in DEPRECATED_SEAT_PROVIDERS; otherwise
+    ValueError names the seat and provider.
+    """
+    for seat in seats:
+        if seat.provider in DEPRECATED_SEAT_PROVIDERS:
+            raise ValueError(f"seat {seat.name!r} uses deprecated provider {seat.provider!r}")
+    return seats
+
+
+# Board personas (owner request 2026-10-23): Fable, Astra, top Grok, Argon. Every model id
+# was checked on DeskComputer and Brick against the subscription CLI's own model list and a
+# one-line turn; none is a pay-per-use API. Grok runs through the Cursor subscription.
+BOARD_SEATS: tuple[SeatSpec, ...] = validate_seat_providers(
+    (
+        SeatSpec(
+            name="alpha",
+            title="Alpha (Architecture) - Fable",
+            role="board-seat-alpha",
+            provider="claude",
+            model="claude-fable-5-1",
+            mandate="Cross-repo architectural review",
+            pin_model=True,
+        ),
+        SeatSpec(
+            name="bravo",
+            title="Bravo (Science) - Astra",
+            role="board-seat-bravo",
+            provider="codex",
+            model="gpt-6-astra",
+            mandate="Scientific validity, measurement rigor",
+            pin_model=True,
+        ),
+        SeatSpec(
+            name="charlie",
+            title="Charlie (Cadence) - Grok",
+            role="board-seat-charlie",
+            provider="cursor-agent",
+            model="grok-4.7-xhigh",
+            mandate="Execution cadence, CI/CD health",
+            pin_model=True,
+        ),
+        SeatSpec(
+            name="delta",
+            title="Delta (Docs & UX) - Argon",
+            role="board-seat-delta",
+            provider="antigravity",
+            model="gemini-4-argon-high",
+            mandate="Documentation, user experience, API surface",
+            pin_model=True,
+        ),
+    )
 )
 
 
@@ -175,11 +203,12 @@ def seat_on_node(seat: SeatSpec) -> SeatSpec:
 
     Postconditions:
         a seat on a provider switched off here (#1597) comes back on
-        SEAT_STAND_IN_PROVIDER / SEAT_STAND_IN_MODEL; any other seat is returned as is.
+        SEAT_STAND_IN_PROVIDER / SEAT_STAND_IN_MODEL with the model pin dropped (the pinned id
+        belongs to the switched-off provider); any other seat is returned as is.
         name, title, role and mandate are always kept, so the seat argues the same brief.
     """
     if provider_switch.is_disabled(seat.provider):
-        return replace(seat, provider=SEAT_STAND_IN_PROVIDER, model=SEAT_STAND_IN_MODEL)
+        return replace(seat, provider=SEAT_STAND_IN_PROVIDER, model=SEAT_STAND_IN_MODEL, pin_model=False)
     return seat
 
 
