@@ -58,4 +58,8 @@ regexes = [
 
 # Commits that have been audited and are known to contain only test fixtures
 # or placeholders. Add SHAs here only after manual review.
-commits = []
+commits = [
+  # #2656 (closed, superseded by #2659): tests/test_verify_merge_gates.py fixture
+  # lines hold public SHA-1 digests from detect-secrets run 39994915171, not secrets.
+  "593e755571cbc027b4d6d85e8deceb88b7444e5c",
+]
