@@ -5104,16 +5104,16 @@
             "title": "Dry Run",
             "type": "boolean"
           },
-          "force_claim_override": {
-            "default": false,
-            "title": "Force Claim Override",
-            "type": "boolean"
-          },
           "execution_mode": {
             "default": "local",
             "enum": ["local", "cloud"],
             "title": "Execution Mode",
             "type": "string"
+          },
+          "force_claim_override": {
+            "default": false,
+            "title": "Force Claim Override",
+            "type": "boolean"
           },
           "ignore_budget": {
             "default": false,
