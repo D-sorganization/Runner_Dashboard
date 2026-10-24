@@ -342,7 +342,12 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
       {/* Actions */}
       <div className="panel-form__actions">
         {onCancel && (
-          <TouchButton type="button" onClick={onCancel} disabled={isSubmitting}>
+          <TouchButton
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            title="Close the panel form without starting a panel"
+          >
             Cancel
           </TouchButton>
         )}

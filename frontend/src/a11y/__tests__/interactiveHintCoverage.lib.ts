@@ -44,7 +44,7 @@ const INTERACTIVE_ROLES = new Set([
   "radio",
 ]);
 
-const STATUS_BADGE_HINT = /\b(status|badge|pill)\b/i;
+const STATUS_BADGE_CLASS = /\b(badge|pill)\b/i;
 
 function isDeprecatedFile(source: string): boolean {
   const head = source.slice(0, 800);
@@ -161,15 +161,8 @@ function classifyInteractive(
   const cls = typeof className === "string" ? className : "";
   if (
     (tag === "span" || tag === "div") &&
-    STATUS_BADGE_HINT.test(cls) &&
-    (hasNonEmptyAttr(map, "role") || map.has("aria-label") || map.has("title"))
-  ) {
-    return "status-badge";
-  }
-  if (
-    (tag === "span" || tag === "div") &&
-    STATUS_BADGE_HINT.test(cls) &&
-    !map.has("aria-hidden")
+    !map.has("aria-hidden") &&
+    (roleStr === "status" || STATUS_BADGE_CLASS.test(cls))
   ) {
     return "status-badge";
   }
@@ -321,7 +314,10 @@ export const HINT_COVERAGE_ENFORCED_SUFFIXES: readonly string[] = [
 ];
 
 /** Path prefixes that must be violation-free (grows one dashboard area per PR). */
-export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = ["pages/Staff/"];
+export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = [
+  "pages/Staff/",
+  "pages/StaffConsole/",
+];
 
 export function violationsInEnforcedAreas(report: HintCoverageReport): HintViolation[] {
   return report.violations.filter((v) => {

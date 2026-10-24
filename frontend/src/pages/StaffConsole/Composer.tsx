@@ -374,13 +374,19 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           role="status"
           aria-live="polite"
           className="composer-panel-notice"
+          title="The thread is still being created on the server"
           style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}
         >
           Opening a conversation. You can keep typing; sending and file attachments will be available when ready.
         </div>
       )}
       {isPanel && (
-        <div role="status" className="composer-panel-notice" style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}>
+        <div
+          role="status"
+          className="composer-panel-notice"
+          title="Why the composer is limited for this panel thread"
+          style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}
+        >
           {panelDisabledMessage}
         </div>
       )}
