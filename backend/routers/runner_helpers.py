@@ -13,6 +13,7 @@ from typing import Any
 
 from dashboard_config import RUNNER_BASE_DIR
 from models.github_payloads import GhRunner
+from runners.service_control import runner_num_from_id
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
@@ -54,27 +55,6 @@ async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tup
     # Use sudo if required, or run directly if permissions allow
     cmd = ["sudo", "-n", str(svc_path), action]
     return await run_cmd(cmd, timeout=timeout)
-
-
-def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
-    """Extract local 1-based runner index from a GitHub runner dict's name.
-
-    Args:
-        runner_id: GitHub runner ID.
-        runners: List of runner dicts from GitHub API.
-
-    Returns:
-        Local runner number (1-based), or None if not found.
-    """
-    for r in runners:
-        if r.get("id") == runner_id:
-            name = r.get("name", "")
-            # Accept both legacy names like "d-sorg-fleet-runner-1" and
-            # current fleet names like "d-sorg-local-ControlTower-nvme-1".
-            suffix = name.rsplit("-", 1)[-1]
-            if suffix.isdigit():
-                return int(suffix)
-    return None
 
 
 def count_runner_capacity(runners: list[dict]) -> dict[str, int]:
