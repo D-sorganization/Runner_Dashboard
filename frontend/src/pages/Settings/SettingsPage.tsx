@@ -67,6 +67,8 @@ export function SettingsPage(): React.ReactElement {
             key={section.id}
             href={`#${section.id}`}
             style={{ color: "var(--text-link, #58a6ff)", fontSize: "0.875rem" }}
+            title={`Jump to ${section.title} settings`}
+            aria-label={`Jump to ${section.title} settings`}
           >
             {section.title}
           </a>

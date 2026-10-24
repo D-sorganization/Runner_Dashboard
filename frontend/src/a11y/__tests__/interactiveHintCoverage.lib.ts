@@ -334,7 +334,7 @@ export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = [
 ];
 
 /** When true, the audit test requires zero violations across all scanned TSX. */
-export const HINT_COVERAGE_ENFORCE_FLEET_WIDE = false;
+export const HINT_COVERAGE_ENFORCE_FLEET_WIDE = true;
 
 export function violationsInEnforcedAreas(report: HintCoverageReport): HintViolation[] {
   if (HINT_COVERAGE_ENFORCE_FLEET_WIDE) return report.violations;

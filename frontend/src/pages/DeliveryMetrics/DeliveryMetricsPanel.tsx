@@ -165,7 +165,15 @@ export function DeliveryMetricsPanel(): React.ReactElement {
             <ul>
               {pullDetail.check_runs.map((run) => (
                 <li key={run.name}>
-                  <a href={run.details_url} target="_blank" rel="noreferrer">{run.name}</a>
+                  <a
+                    href={run.details_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`Open check run ${run.name} on GitHub`}
+                    aria-label={`Open check run ${run.name} on GitHub`}
+                  >
+                    {run.name}
+                  </a>
                   {" — "}
                   {run.conclusion ?? run.status}
                 </li>
