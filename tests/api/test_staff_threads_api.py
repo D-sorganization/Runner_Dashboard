@@ -137,6 +137,54 @@ def test_list_threads_filtering(client: TestClient):
     assert items[0]["title"] == "T1"
 
 
+def test_role_filter_finds_older_thread_past_global_cap(client: TestClient, clean_conversations) -> None:
+    """Role filter applies in SQL before the 200-row cap (#2662)."""
+    store = clean_conversations
+    store.create_thread(
+        title="Older Barb",
+        kind="direct",
+        participants=["barb", "operator-user"],
+        created_by="operator-user",
+        role="barb",
+    )
+    for i in range(205):
+        store.create_thread(
+            title=f"NW-{i}",
+            kind="direct",
+            participants=["night-watch", "operator-user"],
+            created_by="operator-user",
+            role="night-watch",
+        )
+
+    resp = client.get("/api/v1/staff/threads?role=barb")
+    assert resp.status_code == 200
+    items = resp.json().get("items", resp.json().get("threads", []))
+    assert [t["title"] for t in items] == ["Older Barb"]
+
+
+def test_role_filter_uses_exact_participant_match(client: TestClient, clean_conversations) -> None:
+    store = clean_conversations
+    store.create_thread(
+        title="Barb thread",
+        kind="direct",
+        participants=["barb", "operator-user"],
+        created_by="operator-user",
+        role="barb",
+    )
+    store.create_thread(
+        title="Substring trap",
+        kind="direct",
+        participants=["barb-turnover", "operator-user"],
+        created_by="operator-user",
+        role="barb-turnover",
+    )
+
+    resp = client.get("/api/v1/staff/threads?role=barb")
+    assert resp.status_code == 200
+    items = resp.json().get("items", resp.json().get("threads", []))
+    assert [t["title"] for t in items] == ["Barb thread"]
+
+
 def test_patch_thread_rename_and_archive(client: TestClient):
     """PATCH /threads/{id} renames or archives thread."""
     created = client.post("/api/v1/staff/threads", json={"title": "Initial", "role": "barb"}).json()

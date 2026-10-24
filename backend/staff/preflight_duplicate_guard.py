@@ -40,6 +40,7 @@ async def check_duplicate_pr_or_run(
     *,
     current_run_id: str = "",
     gh_get_fn: Any = None,
+    check_open_pr: bool = True,
 ) -> None:
     """Refuse dispatch if an active staff run or open PR already targets (repo, issue)."""
     # 1. Active staff runs in local runner store
@@ -66,6 +67,9 @@ async def check_duplicate_pr_or_run(
         raise
     except Exception as exc:  # noqa: BLE001
         log.warning("Could not query active runs for duplicate guard: %s", exc)
+
+    if not check_open_pr:  # an audited claim override covers the open-PR refusal (#2562)
+        return
 
     # 2. Open PRs referencing this issue
     from dispatch_premise import _normalize_repo

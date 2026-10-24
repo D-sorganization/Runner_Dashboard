@@ -145,13 +145,15 @@ def query_threads(
     if status:
         clauses.append("status = ?")
         params.append(status)
+    if participant:
+        clauses.append("EXISTS (SELECT 1 FROM json_each(participants) je WHERE je.value = ?)")
+        params.append(participant)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    query = f"SELECT * FROM threads {where} ORDER BY updated_at DESC LIMIT ?"  # noqa: S608
+    query = f"SELECT * FROM threads {where} ORDER BY updated_at DESC, id DESC LIMIT ?"  # noqa: S608
     params.append(limit)
     with lock:
         rows = conn.execute(query, tuple(params)).fetchall()
-    threads = [ThreadRecord.from_row(r) for r in rows]
-    return [t for t in threads if participant in t.participants] if participant else threads
+    return [ThreadRecord.from_row(r) for r in rows]
 
 
 def mutate_thread(conn: sqlite3.Connection, lock: Any, cur: Any, thread_id: str, **fields: Any) -> Any:
