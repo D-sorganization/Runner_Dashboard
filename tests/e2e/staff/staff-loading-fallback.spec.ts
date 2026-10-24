@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("Staff loading skeleton fills the content area in both themes", async ({ browser, baseURL }) => {
   if (!baseURL) {
@@ -70,5 +70,66 @@ test("Staff loading skeleton fills the content area in both themes", async ({ br
       releaseStaffChunk();
       await context.close();
     }
+  }
+});
+
+test("a failed Barb chunk stays local while closed and recovers after reload", async ({ page, baseURL }) => {
+  if (!baseURL) throw new Error("Barb failure test requires Playwright config use.baseURL.");
+  const appOrigin = new URL(baseURL).origin;
+  const apiOrigin = new URL(
+    process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${process.env.STAFF_E2E_BACKEND_PORT ?? "5092"}`,
+  ).origin;
+  let releaseChunk!: () => void;
+  let chunkAborted = false;
+  const chunkGate = new Promise<void>((resolve) => { releaseChunk = resolve; });
+
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== appOrigin && url.origin !== apiOrigin) return route.abort();
+    if (!chunkAborted && /\/(?:src\/shell\/BarbSidebar\.tsx|assets\/BarbSidebar-[^/]+\.js)$/.test(url.pathname)) {
+      chunkAborted = true;
+      await chunkGate;
+      return route.abort("failed");
+    }
+    return route.fallback();
+  });
+
+  try {
+    await page.goto("/");
+    const heading = page.getByRole("heading", { name: "What would you like to get done?" });
+    const toggle = page.getByRole("button", { name: "Ask Barb" });
+    await expect(heading).toBeVisible();
+    await expect(toggle).toBeVisible();
+
+    const failedRequest = page.waitForEvent("requestfailed", (request) => /BarbSidebar/.test(request.url()));
+    const chunkRequested = page.waitForRequest((request) => /BarbSidebar/.test(request.url()));
+    await toggle.hover();
+    await chunkRequested;
+    await toggle.click();
+    const panel = page.locator("#barb-sidebar");
+    await page.getByRole("button", { name: "Close Ask Barb" }).click();
+    releaseChunk();
+    await failedRequest;
+
+    await expect(heading).toBeVisible();
+    await expect(panel).toHaveAttribute("aria-hidden", "true");
+    await expect(panel).toHaveAttribute("inert");
+    await toggle.click();
+    await expect(panel.getByRole("alert")).toContainText("Ask Barb could not load");
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveAttribute("aria-hidden", "true");
+    await expect(panel).toHaveAttribute("inert");
+    await expect(heading).toBeVisible();
+    await toggle.click();
+    await expect(panel.getByRole("alert")).toContainText("Ask Barb could not load");
+
+    await page.getByRole("button", { name: "Reload dashboard" }).click();
+    await page.getByRole("button", { name: "Ask Barb" }).click();
+    const composer = page.locator("#barb-sidebar").getByRole("textbox", { name: "Staff conversation input" });
+    await expect(composer).toBeVisible();
+    await composer.fill("Recovered conversation");
+    await expect(composer).toHaveValue("Recovered conversation");
+  } finally {
+    releaseChunk();
   }
 });

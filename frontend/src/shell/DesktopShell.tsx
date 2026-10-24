@@ -32,9 +32,11 @@ function warmBarbSidebar(): void {
 function BarbSidebarLoading({
   open,
   onClose,
+  failed = false,
 }: {
   open: boolean;
   onClose: () => void;
+  failed?: boolean;
 }): React.ReactElement {
   const panelRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
@@ -72,10 +74,49 @@ function BarbSidebarLoading({
         </div>
       </header>
       <div className="barb-sidebar__conversation">
-        <div className="barb-sidebar__welcome" role="status">Loading your Barb conversation…</div>
+        {failed ? (
+          <div className="barb-sidebar__welcome" role="alert">
+            <h3>Ask Barb could not load</h3>
+            <p>Reload the dashboard to try again.</p>
+            <button type="button" className="barb-sidebar__new" onClick={() => window.location.reload()}>
+              Reload dashboard
+            </button>
+          </div>
+        ) : (
+          <div className="barb-sidebar__welcome" role="status">Loading your Barb conversation…</div>
+        )}
       </div>
     </aside>
   );
+}
+
+class BarbSidebarErrorBoundary extends React.Component<
+  { open: boolean; onClose: () => void; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error): void {
+    // eslint-disable-next-line no-console
+    console.error("Ask Barb sidebar failed to load", error);
+  }
+
+  render(): React.ReactNode {
+    if (this.state.failed) {
+      return <BarbSidebarLoading open={this.props.open} onClose={this.props.onClose} failed />;
+    }
+    return (
+      <React.Suspense
+        fallback={<BarbSidebarLoading open={this.props.open} onClose={this.props.onClose} />}
+      >
+        {this.props.children}
+      </React.Suspense>
+    );
+  }
 }
 
 export interface ShellAction {
@@ -383,14 +424,7 @@ export function DesktopShell({
         onOpenChange={setPaletteOpen}
       />
       {barbMounted ? (
-        <React.Suspense
-          fallback={
-            <BarbSidebarLoading
-              open={barbOpen}
-              onClose={closeBarb}
-            />
-          }
-        >
+        <BarbSidebarErrorBoundary open={barbOpen} onClose={closeBarb}>
           <LazyBarbSidebar
             open={barbOpen}
             onClose={closeBarb}
@@ -398,7 +432,7 @@ export function DesktopShell({
             onThreadSelected={onThreadSelected}
             restoreFocusTargetRef={barbToggleRef}
           />
-        </React.Suspense>
+        </BarbSidebarErrorBoundary>
       ) : null}
     </div>
   );
