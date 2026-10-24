@@ -164,6 +164,31 @@ def validate_provider_fallback_rules_data(data: dict[str, Any]) -> list[str]:
     return validate_provider_fallback_rules(rules, providers)
 
 
+def resolve_fallback_target_model(
+    *,
+    target: ProviderFallbackTarget,
+    role: Any,
+    source_provider: str,
+    target_provider: str,
+    adapter: Any,
+) -> str | None:
+    """Pick a model for a cross-provider fallback without inheriting the source CLI model (#2499)."""
+    from staff.failover_model import role_base_tier  # noqa: PLC0415
+    from staff.model_resolution import resolve_staff_run_model_detail  # noqa: PLC0415
+
+    requested = target.model
+    if requested is not None and str(requested).strip().lower() in {"", "default"}:
+        requested = None
+    role_model = role.model if target_provider == source_provider else None
+    return resolve_staff_run_model_detail(
+        requested=requested,
+        role_model=role_model,
+        provider_id=target_provider,
+        adapter=adapter,
+        role_tier=role_base_tier(role),
+    ).model
+
+
 def try_declarative_fallback(
     runner: Any,
     latest: Any,
@@ -211,7 +236,13 @@ def try_declarative_fallback(
     next_attempt = latest.attempt + 1
     attempt_id = attempt_run_id(root_id, next_attempt)
     next_branch = f"{plan.branch}-fallback-{next_attempt}"
-    fallback_model = rule.target.model or plan.model
+    fallback_model = resolve_fallback_target_model(
+        target=rule.target,
+        role=role,
+        source_provider=plan.provider,
+        target_provider=target,
+        adapter=runner._adapters[target],
+    )
     argv = runner._adapters[target].build_command(plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role))
     fallback_plan = RunPlan(
         role=plan.role,
