@@ -11,14 +11,16 @@ on:
         required: false
         type: string
   workflow_run:
+    # One trigger per main push: Frontend Tests also completes on main, but the gate
+    # polls commit check-runs until every required context is green.
     workflows:
       - CI Standard
-      - Frontend Tests
     types: [completed]
     branches:
       - main
 
 permissions:
+  actions: read
   contents: write
 
 concurrency:

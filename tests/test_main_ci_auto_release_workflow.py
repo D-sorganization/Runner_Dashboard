@@ -29,14 +29,14 @@ def test_workflow_exists() -> None:
 def test_workflow_run_triggers_on_main_ci_completion() -> None:
     cfg = _load(WORKFLOW)
     wr = cfg["on"]["workflow_run"]
-    assert "CI Standard" in wr["workflows"]
+    assert wr["workflows"] == ["CI Standard"]
     assert wr["branches"] == ["main"]
     assert wr["types"] == ["completed"]
 
 
-def test_permissions_are_contents_write_only() -> None:
+def test_permissions_allow_check_run_reads_for_gate_wait() -> None:
     perms = _load(WORKFLOW)["permissions"]
-    assert perms == {"contents": "write"}
+    assert perms == {"actions": "read", "contents": "write"}
 
 
 def test_same_repo_guard_on_publish_job() -> None:
