@@ -383,7 +383,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       {warnings.length > 0 && <ActionWarnings warnings={warnings} />}
       {!isUser && typeof message.meta?.shared_memory_summary === "string" &&
         SUMMARY_LABELS[message.meta.shared_memory_summary] && (
-          <div className="thread-message-item__warnings" role="status">
+          <div
+            className="thread-message-item__warnings"
+            role="status"
+            title={`Shared memory notice: ${SUMMARY_LABELS[message.meta.shared_memory_summary]}`}
+          >
             {SUMMARY_LABELS[message.meta.shared_memory_summary]}
           </div>
         )}
