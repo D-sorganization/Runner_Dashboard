@@ -6737,6 +6737,17 @@
             "title": "Active Runs",
             "type": "integer"
           },
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar"
+          },
           "budget": {
             "$ref": "#/components/schemas/StaffRoleBudget"
           },
