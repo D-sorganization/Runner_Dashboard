@@ -15,6 +15,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -60,15 +61,40 @@ describe("DesktopShell — structure", () => {
     expect(screen.getByRole("button", { name: /open command palette/i })).toBeInTheDocument();
   });
 
-  it("opens a persistent Barb sidebar on every section and keeps it open during navigation", async () => {
+  it("shows the cold-open state and then an interactive Barb composer on every section", async () => {
     const { onSelect } = renderShell({ activeTabId: "queue" });
 
     fireEvent.click(screen.getByRole("button", { name: /ask barb/i }));
-    expect(await screen.findByRole("complementary", { name: /ask barb/i })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/loading your barb conversation/i);
+    const loadingPanel = document.getElementById("barb-sidebar");
+    expect(loadingPanel).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /close ask barb/i }));
+    expect(loadingPanel).toHaveAttribute("aria-hidden", "true");
+    expect(loadingPanel).toHaveAttribute("inert");
+    fireEvent.click(screen.getByTestId("ask-barb-toggle"));
+    expect(screen.getByRole("status")).toHaveTextContent(/loading your barb conversation/i);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(loadingPanel).toHaveAttribute("aria-hidden", "true");
+    expect(loadingPanel).toHaveAttribute("inert");
+    expect(document.activeElement).toBe(screen.getByTestId("ask-barb-toggle"));
+    fireEvent.click(screen.getByTestId("ask-barb-toggle"));
+    expect(screen.getByRole("status")).toHaveTextContent(/loading your barb conversation/i);
+    await act(async () => { await import("../BarbSidebar"); });
+    const panel = screen.getByRole("complementary", { name: /ask barb/i });
+    expect(panel).toBeInTheDocument();
+    const composer = screen.getByRole("textbox", { name: /staff conversation input/i });
+    expect(composer).toBeEnabled();
+    fireEvent.change(composer, { target: { value: "Help me plan this" } });
+    expect(composer).toHaveValue("Help me plan this");
 
     fireEvent.click(screen.getByRole("button", { name: /open fleet command/i }));
     expect(onSelect).toHaveBeenCalledWith("fleet-command");
-    expect(screen.getByRole("complementary", { name: /ask barb/i })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: /ask barb/i })).toBe(panel);
+    fireEvent.click(screen.getByTestId("ask-barb-toggle"));
+    expect(panel).toHaveAttribute("aria-hidden", "true");
+    expect(panel).toHaveAttribute("inert");
+    fireEvent.click(screen.getByTestId("ask-barb-toggle"));
+    expect(screen.getByRole("textbox", { name: /staff conversation input/i })).toHaveValue("Help me plan this");
   });
 
   it("keeps the Barb panel mounted when closed so its conversation can resume", async () => {
