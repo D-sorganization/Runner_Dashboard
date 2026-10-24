@@ -13,7 +13,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fleet_client import LIMITS, MAX_VERIFICATION_CHARACTERS, FleetArgumentError, FleetClient
-from fleet_validators import MEMORY_ENTRY_TYPES
+from fleet_exclusion_tools import exclusion_commands
+from fleet_friction_tools import friction_commands
+from fleet_validators import MEMORY_ENTRY_TYPES, MEMORY_VISIBILITIES
 
 REPO = {"type": "string", "description": "Repository name, e.g. Runner_Dashboard (owner/ prefix optional)."}
 BARE_REPO = {"type": "string", "description": "Bare repository name, e.g. Runner_Dashboard."}
@@ -128,9 +130,37 @@ COMMANDS: tuple[Command, ...] = (
                 "maxLength": 128,
                 "description": "Optional ID of the entry this replaces.",
             },
+            "repo": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "lesson only (required): repository the lesson applies to.",
+            },
+            "source_run": {
+                "type": "string",
+                "maxLength": 128,
+                "description": "lesson only: run/session that produced it (defaults to your session id).",
+            },
+            "visibility": {
+                "type": "string",
+                "enum": list(MEMORY_VISIBILITIES),
+                "description": "lesson only: 'barb-only' hides it from non-Barb readers (default fleet).",
+            },
         },
         required=("entry_type", "source_product", "body"),
         tool="fleet_memory_append",
+    ),
+    Command(
+        "memory brief",
+        "memory_brief",
+        "START of a Barb session: promoted/accepted lessons, recent Barb turnover and latest memory entries "
+        "for a scope, as one compact size-capped text block. Lessons are proposed with memory-append "
+        "(entry_type=lesson, needs repo); the librarian promotes them.",
+        {
+            "scope": BARB_SCOPE,
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50, "description": "Items per section (default 10)."},
+        },
+        tool="fleet_memory_brief",
+        untrusted=True,
     ),
     Command(
         "memory-append-session-digest",
@@ -817,6 +847,7 @@ COMMANDS: tuple[Command, ...] = (
         positional=("scope",),
     ),
 )
+COMMANDS = (*COMMANDS, *friction_commands(Command), *exclusion_commands(Command))
 
 BY_CLI: dict[str, Command] = {c.cli: c for c in COMMANDS}
 BY_TOOL: dict[str, Command] = {c.tool: c for c in COMMANDS if c.tool}

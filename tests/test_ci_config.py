@@ -18,7 +18,9 @@ pyproject.toml satisfy the non-blocking/blocking policy introduced in #400:
 from __future__ import annotations
 
 import ast
+import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -198,15 +200,32 @@ def test_test_matrix_fanout_is_bounded() -> None:
     assert workflow["jobs"]["tests"]["strategy"]["max-parallel"] <= 3
 
 
-def test_docker_build_uses_docker_runners() -> None:
-    """Docker builds require Docker-capable runner labels."""
+def test_docker_build_routes_public_repo_to_hosted_with_self_hosted_fallback() -> None:
+    """Public repos build the image on hosted runners; private/local mode keeps the Docker pool.
+
+    The 4-runner self-hosted docker pool starved the blocking "Build and scan image"
+    deploy check once the repo went public, so the job mirrors its sibling jobs' routing.
+    """
     workflow = _workflow_yaml(DOCKER_WORKFLOW)
-    labels = _runs_on_labels(workflow["jobs"]["docker-image"])
-    assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker"}.issubset(labels)
+    job = workflow["jobs"]["docker-image"]
+    runs_on = str(job["runs-on"])
+    assert runs_on.startswith("${{ fromJSON(") and runs_on.endswith(") }}")
+    assert "!github.event.repository.private" in runs_on
+    assert "vars.CI_RUNNER_MODE != 'local'" in runs_on
+    hosted, fallback = re.search(r"&& '(\[[^']*\])' \|\| '(\[[^']*\])'", runs_on).groups()
+    assert json.loads(hosted) == ["ubuntu-latest"]
+    assert {"self-hosted", "Linux", "X64", "d-sorg-fleet-docker"} == set(json.loads(fallback))
+    # Fork PRs still never reach any runner.
+    assert "head.repo.full_name == github.repository" in str(job["if"])
     text = DOCKER_WORKFLOW.read_text(encoding="utf-8")
     assert "cache-from" in text and "type=gha" in text
     assert "cache-to" in text and "type=gha,mode=max" in text
-    assert "github/codeql-action/upload-sarif" not in str(workflow["jobs"]["docker-image"])
+    assert "github/codeql-action/upload-sarif" not in str(job)
+    # Trivy severity gate unchanged.
+    trivy = next(step for step in job["steps"] if step.get("name") == "Run Trivy vulnerability scan")
+    assert trivy["with"]["severity"] == "HIGH,CRITICAL" and trivy["with"]["exit-code"] == "1"
+    # Nothing in the job may prune a shared daemon (harmless on hosted, dangerous on the pool).
+    assert "prune" not in str(job)
 
 
 def test_docker_workflow_runs_in_merge_queue() -> None:

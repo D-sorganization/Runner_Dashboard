@@ -297,6 +297,7 @@ describe("ProjectsPage", () => {
       "href",
       url,
     );
+    fireEvent.click(card.getByText("View 1 decision"));
     expect(
       card.getByText("DV-24: approve resources and experimental access?"),
     ).toBeVisible();

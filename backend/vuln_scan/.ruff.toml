@@ -1,0 +1,3 @@
+# Match the Repository_Management formatter so the vendored contract stays byte-identical.
+extend = "../../pyproject.toml"
+line-length = 88

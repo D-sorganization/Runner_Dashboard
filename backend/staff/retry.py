@@ -453,6 +453,12 @@ def launch_retry(
     if hold is not None:
         return RetryDecision(False, reason=f"hold: {hold.text}")
 
+    from staff.exclusions import ExclusionsList  # noqa: PLC0415
+
+    excluded = ExclusionsList().blocking(latest.repo) if latest.repo else None
+    if excluded is not None:
+        return RetryDecision(False, reason=f"excluded: {excluded.owner}: {excluded.reason}")
+
     root_id = latest.retry_of or latest.id
     attempt = latest.attempt + 1
     plan = retry_plan(runner, latest, role)

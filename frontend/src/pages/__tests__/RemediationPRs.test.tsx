@@ -183,7 +183,7 @@ describe("RemediationPRsSubTab", () => {
       ]);
       expect(bodies.every((b) => b.kind === "pr.act")).toBe(true);
       expect(bodies.every((b) => b.approved_by === "dieter")).toBe(true);
-      expect(bodies.every((b) => b.provider === "jules_api")).toBe(true);
+      expect(bodies.every((b) => b.provider === "codex_cli")).toBe(true);
     });
   });
 

@@ -110,7 +110,7 @@ export function RemediationIssuesSubTab({
 
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
-  const [dispatchProvider, setDispatchProvider] = useState("jules_api");
+  const [dispatchProvider, setDispatchProvider] = useState("codex_cli");
   const [dispatchPrompt, setDispatchPrompt] = useState("");
 
   const [showModal, setShowModal] = useState(false);

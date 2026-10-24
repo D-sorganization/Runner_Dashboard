@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from identity import Principal, require_scope
+from identity import Principal
+from routers.library_read import require_run_reference_reader
 from staff.run_references import StaffRunReferencesResponse, load_run_references
 from staff.store import get_run_store
 
@@ -14,7 +15,7 @@ router = APIRouter(tags=["staff-run-references"])
 @router.get("/runs/{run_id}/references", response_model=StaffRunReferencesResponse)
 def run_references_v1(
     run_id: str,
-    peer: Principal = Depends(require_scope("staff.read")),
+    peer: Principal = Depends(require_run_reference_reader),
 ) -> StaffRunReferencesResponse:
     """Return text-free reference identities for a run owned by the caller."""
     try:

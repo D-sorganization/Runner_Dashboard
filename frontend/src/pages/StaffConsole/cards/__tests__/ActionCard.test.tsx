@@ -76,6 +76,34 @@ describe("ActionCard", () => {
     expect(screen.getByRole("button", { name: /executing/i })).toBeDisabled();
   });
 
+  it("releases the executing lock when an approved action transitions to failed", async () => {
+    const handleApprove = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const { rerender } = render(<ActionCard proposal={MOCK_PROPOSAL} onApprove={handleApprove} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /approve/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /executing/i })).toBeDisabled());
+
+    rerender(
+      <ActionCard
+        proposal={{ ...MOCK_PROPOSAL, status: "approved" }}
+        onApprove={handleApprove}
+      />,
+    );
+    rerender(
+      <ActionCard
+        proposal={{ ...MOCK_PROPOSAL, status: "failed" }}
+        onApprove={handleApprove}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^approve$/i })).toBeEnabled());
+    expect(screen.getByRole("status")).toHaveTextContent(/action failed.*retry/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    await waitFor(() => expect(handleApprove).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^approve$/i })).toBeEnabled());
+  });
+
   it("calls onDeny when Deny button is clicked", () => {
     const handleDeny = vi.fn();
     render(

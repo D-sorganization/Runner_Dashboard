@@ -1,6 +1,6 @@
 """Tests for vendored knowledge-pack engine and drift against Tools source.
 
-Vendored from Tools commit 09ff428af314969363f8908dcebafb84ddd7a3ef.
+Vendored modules use the immutable Tools revisions declared below.
 Path in Tools: src/shared/python/ai/knowledge/
 (Tools#5345, Repository_Management#1772, Runner_Dashboard#1479).
 """
@@ -35,6 +35,8 @@ _CANDIDATE_REPOS = [
     _REPO_ROOT.parent.parent / "Tools",
 ]
 PINNED_TOOLS_SHA = "09ff428af314969363f8908dcebafb84ddd7a3ef"  # pragma: allowlist secret
+
+MODULE_PINS = {"manifest.py": "6f064e6091b8fc0f0e5390913602a747ac544fb1"}  # pragma: allowlist secret
 
 MODULE_FILES = (
     "__init__.py",
@@ -86,7 +88,7 @@ def test_passage_citation_property() -> None:
 
 
 def test_knowledge_pack_drift_against_pinned_tools_sha() -> None:
-    """Drift guard: vendored modules must match Tools commit 09ff428af314969363f8908dcebafb84ddd7a3ef."""
+    """Each vendored module must match its declared immutable Tools revision."""
     repo = _tools_repo()
     if repo is None:
         pytest.skip("no Tools repository found beside this worktree")
@@ -95,6 +97,7 @@ def test_knowledge_pack_drift_against_pinned_tools_sha() -> None:
     assert vendored_dir.is_dir(), "backend/knowledge_pack directory missing"
 
     for filename in MODULE_FILES:
+        revision = MODULE_PINS.get(filename, PINNED_TOOLS_SHA)
         vendored_file = vendored_dir / filename
         assert vendored_file.is_file(), f"Vendored file {filename} is missing"
 
@@ -102,7 +105,7 @@ def test_knowledge_pack_drift_against_pinned_tools_sha() -> None:
         src_path = f"src/shared/python/ai/knowledge/{filename}"
         try:
             res = subprocess.run(
-                ["git", "-C", str(repo), "show", f"{PINNED_TOOLS_SHA}:{src_path}"],
+                ["git", "-C", str(repo), "show", f"{revision}:{src_path}"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -114,7 +117,7 @@ def test_knowledge_pack_drift_against_pinned_tools_sha() -> None:
             if disk_file.is_file():
                 source_raw = disk_file.read_text(encoding="utf-8")
             else:
-                pytest.fail(f"Could not read {src_path} from Tools at {PINNED_TOOLS_SHA}")
+                pytest.fail(f"Could not read {src_path} from Tools at {revision}")
 
         # Strip header comment lines (added during vendoring) and the local
         # `# fmt: off` / `# fmt: on` formatter directives (added so `ruff format`
@@ -131,6 +134,4 @@ def test_knowledge_pack_drift_against_pinned_tools_sha() -> None:
                 or line.strip() in ("# fmt: off", "# fmt: on")
             )
         )
-        assert vendored_body.strip() == source_raw.strip(), (
-            f"Drift detected in {filename} against Tools {PINNED_TOOLS_SHA}"
-        )
+        assert vendored_body.strip() == source_raw.strip(), f"Drift detected in {filename} against Tools {revision}"

@@ -27,10 +27,15 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fleet_barb_seat import BarbSeatMixin
+from fleet_exclusion_tools import ExclusionClientMixin
+from fleet_friction_tools import FrictionClientMixin
+from fleet_memory_brief import MemoryBriefMixin
 from fleet_validators import (
     BROADCAST,
+    LESSON_MAX_CHARS,
     LIMITS,
     MEMORY_ENTRY_TYPES,
+    MEMORY_VISIBILITIES,
     PATTERNS,
     PROPOSAL_DECISIONS,
     PROPOSAL_ESTIMATED_EFFORTS,
@@ -88,7 +93,7 @@ DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
-class FleetClient(BarbSeatMixin):
+class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""
 
@@ -463,10 +468,23 @@ class FleetClient(BarbSeatMixin):
         tags: list[str] | None = None,
         expires_at: str | None = None,
         supersedes_id: str | None = None,
+        repo: str | None = None,
+        source_run: str | None = None,
+        visibility: str | None = None,
     ) -> Any:
-        """Append one memory entry. Writes are never automatically replayed."""
+        """Append one memory entry. Writes are never automatically replayed.
+
+        ``lesson`` entries are always filed as ``proposed`` (the librarian promotes them) and need
+        provenance: ``repo`` plus ``source_run`` (defaults to this client's session id). The text
+        fields of a lesson body total at most 400 characters; the hub also rejects secrets.
+        """
         kind = _text(entry_type, "entry_type", 32)
         _check(kind in MEMORY_ENTRY_TYPES, "invalid entry_type")
+        extras = {"repo": repo, "source_run": source_run, "visibility": visibility}
+        _check(
+            kind == "lesson" or all(v is None for v in extras.values()),
+            "repo, source_run and visibility apply to lesson entries only",
+        )
         source = _text(source_product, "source_product", 64)
         _check(isinstance(body, dict), "body must be an object")
         tag_values = [] if tags is None else tags
@@ -482,6 +500,15 @@ class FleetClient(BarbSeatMixin):
             payload["expires_at"] = _text(expires_at, "expires_at", 64)
         if supersedes_id is not None:
             payload["supersedes_id"] = _text(supersedes_id, "supersedes_id", 128)
+        if kind == "lesson":
+            _check(repo is not None, "lesson entries require repo (provenance)")
+            chars = sum(len(v) for v in body.values() if isinstance(v, str))
+            _check(chars <= LESSON_MAX_CHARS, f"lesson body text exceeds {LESSON_MAX_CHARS} characters")
+            payload["repo"] = _text(repo, "repo", 128, form="line")
+            payload["source_run"] = _text(source_run or self._session(None), "source_run", 128, form="line")
+            if visibility is not None:
+                _check(visibility in MEMORY_VISIBILITIES, f"visibility must be one of {MEMORY_VISIBILITIES}")
+                payload["visibility"] = visibility
         return self.request("POST", "/api/v1/memory", body=payload)
 
     def memory_append_session_digest(

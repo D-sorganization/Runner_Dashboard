@@ -61,6 +61,7 @@ def _run_publisher(
     release_payloads: list[list[dict[str, object]]] | None = None,
     release_compare_payloads: list[dict[str, object]] | None = None,
     fail_check_api: bool = False,
+    extra_args: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     if os.name == "nt":
         wsl = shutil.which("wsl.exe")
@@ -179,6 +180,7 @@ def _run_publisher(
             "GATE_ATTEMPTS": "3",
             "GATE_SLEEP_SECS": "1",
             "RUNNER_TEMP": _posix_path(tmp_path),
+            "GITHUB_OUTPUT": _posix_path(tmp_path / "github-output.txt"),
         }
     )
     wsl_variables = [
@@ -199,6 +201,7 @@ def _run_publisher(
         "GATE_ATTEMPTS",
         "GATE_SLEEP_SECS",
         "RUNNER_TEMP",
+        "GITHUB_OUTPUT",
     ]
     existing_wsl_env = env.get("WSLENV", "")
     env["WSLENV"] = ":".join(filter(None, [existing_wsl_env, *wsl_variables]))
@@ -216,6 +219,7 @@ def _run_publisher(
                 "2026-10-22T00:00:00Z",
                 "--dry-run",
                 *mode_args,
+                *extra_args,
             )
         )
     )
@@ -816,11 +820,149 @@ def test_automatic_release_rechecks_newer_release_before_publication(tmp_path: P
     assert int((tmp_path / "release-compare-count.txt").read_text(encoding="utf-8")) == 1
 
 
-def test_workflow_run_publisher_requires_successful_trigger_and_ancestor_main() -> None:
+def _gate_output(tmp_path: Path) -> str:
+    return (tmp_path / "github-output.txt").read_text(encoding="utf-8").strip()
+
+
+def test_gate_only_reports_ok_true_without_publishing(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("in_progress", None)), _runs(_record("completed", "success"))],
+        require_main_ancestor=True,
+        compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
+        extra_args=("--gate-only",),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "handing off to the publish job" in result.stdout
+    assert "DRY RUN" not in result.stdout
+    assert _gate_output(tmp_path).splitlines() == [f"sha={SHA}", "ok=true"]
+
+
+def test_gate_only_reports_ok_false_on_exhausted_wait_and_terminal_failure(tmp_path: Path) -> None:
+    pending = _run_publisher(
+        tmp_path,
+        [_runs(_record("in_progress", None))],
+        require_main_ancestor=True,
+        compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
+        extra_args=("--gate-only",),
+    )
+    assert pending.returncode == 0, pending.stderr
+    assert "after 3 attempts" in pending.stdout
+    assert _gate_output(tmp_path) == "ok=false"
+
+    failed_dir = tmp_path / "failed"
+    failed_dir.mkdir()
+    failed = _run_publisher(
+        failed_dir,
+        [_runs(_record("completed", "failure"))],
+        require_main_ancestor=True,
+        compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
+        extra_args=("--gate-only",),
+    )
+    assert failed.returncode == 0, failed.stderr
+    assert _gate_output(failed_dir) == "ok=false"
+
+
+def test_gate_wait_exits_early_when_newer_commit_is_released_mid_wait(tmp_path: Path) -> None:
+    newer_release = "d" * 40
+    latest = {"draft": False, "tag_name": "v2026.10.23-ddddddd", "target_commitish": newer_release}
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("in_progress", None))],
+        require_main_ancestor=True,
+        compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
+        release_payloads=[[], [latest]],
+        release_compare_payloads=[_compare_payload(base=SHA, head=newer_release, merge_base=SHA)],
+        extra_args=("--gate-only",),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "newer auto-release" in result.stdout.lower()
+    # Exited on the second iteration instead of burning the remaining attempts.
+    assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "1"
+    assert len((tmp_path / "sleep.log").read_text(encoding="utf-8").splitlines()) == 1
+    assert _gate_output(tmp_path) == "ok=false"
+
+
+def test_publish_only_takes_one_gate_look_and_rechecks_order(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("in_progress", None))],
+        require_main_ancestor=True,
+        compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
+        extra_args=("--publish-only",),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "after 1 attempts" in result.stdout
+    assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "1"
+    assert not (tmp_path / "sleep.log").exists()
+
+
+def test_publish_only_refuses_when_newer_release_landed_after_gate(tmp_path: Path) -> None:
+    newer_release = "d" * 40
+    latest = {"draft": False, "tag_name": "v2026.10.23-ddddddd", "target_commitish": newer_release}
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("completed", "success"))],
+        require_main_ancestor=True,
+        compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
+        release_payloads=[[latest]],
+        release_compare_payloads=[_compare_payload(base=SHA, head=newer_release, merge_base=SHA)],
+        extra_args=("--publish-only",),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "newer auto-release" in result.stdout.lower()
+    assert "DRY RUN" not in result.stdout
+
+
+def test_gate_only_and_publish_only_are_mutually_exclusive(tmp_path: Path) -> None:
+    result = _run_publisher(
+        tmp_path,
+        [_runs(_record("completed", "success"))],
+        extra_args=("--gate-only", "--publish-only"),
+    )
+    assert result.returncode == 1
+    assert "choose either --gate-only or --publish-only" in result.stderr
+
+
+def test_gate_job_is_cancellable_and_publish_job_is_not() -> None:
     config = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    condition = str(config["jobs"]["publish"]["if"])
+    jobs = config["jobs"]
+    gate, publish, dispatch = (
+        jobs["gate"]["concurrency"],
+        jobs["publish"]["concurrency"],
+        jobs["publish-dispatch"]["concurrency"],
+    )
+    assert gate["cancel-in-progress"] is True
+    assert publish["cancel-in-progress"] is False
+    assert dispatch["cancel-in-progress"] is False
+    # Uploads from both paths share one never-cancelled lane; the gate has its own.
+    assert publish["group"] == dispatch["group"]
+    assert gate["group"] != publish["group"]
+    # No workflow-wide shared lane: a waiting candidate must not block newer ones.
+    assert config["concurrency"]["group"] != "main-ci-auto-release"
+    assert "run_id" in config["concurrency"]["group"]
+    assert jobs["publish"]["needs"] == "gate"
+    assert "needs.gate.outputs.ok == 'true'" in str(jobs["publish"]["if"])
+    assert jobs["gate"]["outputs"]["ok"] == "${{ steps.gate.outputs.ok }}"
+    # Publish checks out the gate-verified main-ancestor SHA, never the raw workflow_run head ref.
+    assert "github.event.workflow_run.head_repository.full_name == github.repository" in str(jobs["publish"]["if"])
+    assert jobs["publish"]["env"]["HEAD_SHA"] == "${{ needs.gate.outputs.sha }}"
+    assert jobs["publish"]["steps"][0]["with"]["ref"] == "${{ needs.gate.outputs.sha }}"
+
+
+def test_workflow_run_gate_and_publisher_require_successful_trigger_and_ancestor_main() -> None:
+    config = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    condition = str(config["jobs"]["gate"]["if"])
     assert "github.event.workflow_run.conclusion == 'success'" in condition
+    gate_run = config["jobs"]["gate"]["steps"][-1]["run"]
+    assert "--gate-only" in gate_run
+    assert config["jobs"]["gate"]["steps"][-1]["env"]["GATE_ATTEMPTS"] == "45"
     auto_run = config["jobs"]["publish"]["steps"][-1]["run"]
+    assert "--publish-only" in auto_run
     dispatch_run = config["jobs"]["publish-dispatch"]["steps"][-1]["run"]
     assert "--require-main-ancestor" in auto_run
     assert "--require-current-main" not in auto_run

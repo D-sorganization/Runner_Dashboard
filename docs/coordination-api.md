@@ -1,5 +1,7 @@
 # Fleet Coordination API
 
+> Operator and agent playbook: [Operating the Fleet Through the Dashboard](operating-the-fleet-through-the-dashboard.md).
+
 Issues #1229 and #1244 (hardening), epic #1192. One HTTP surface on every dashboard node through which any agent — Claude Code,
 Codex, Gemini CLI, Grok Bot, staff runs, humans — sees who is working on what, exchanges messages, claims
 issues and gets a pre-work briefing. Priorities (`/api/priorities`) are a sibling surface.

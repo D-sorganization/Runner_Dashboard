@@ -338,3 +338,29 @@ def test_board_and_summary_satisfy_pydantic_response_models(
     ]["schema"]
     assert "StaffBoardResponse" in str(board_schema_ref)
     assert "StaffSummaryResponse" in str(summary_schema_ref)
+
+
+@pytest.mark.unit
+async def test_fetch_peer_board_serves_cached_board_on_transient_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    fleet_mod._LAST_GOOD_PEER_BOARD.clear()
+    calls = 0
+
+    async def fake_get(url: str, headers: dict[str, str]) -> dict[str, Any]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _board("ControlTower-Runner", running=1)
+        raise TimeoutError("peer sqlite read stalled during CI")
+
+    monkeypatch.setattr(fleet_mod, "get_json", fake_get)
+    name1, board1 = await fleet_mod.fetch_peer_board("ControlTower-Runner", "http://ct-grace:8321")
+    assert name1 == "ControlTower-Runner"
+    assert board1["status"] == "online"
+    assert not board1.get("stale")
+
+    name2, board2 = await fleet_mod.fetch_peer_board("ControlTower-Runner", "http://ct-grace:8321")
+    assert name2 == "ControlTower-Runner"
+    assert board2["status"] == "online"
+    assert board2["stale"] is True
+    assert len(board2["running"]) == 1
+    fleet_mod._LAST_GOOD_PEER_BOARD.clear()

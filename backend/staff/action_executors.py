@@ -167,6 +167,7 @@ def execute_staff_dispatch(params: dict[str, Any], ctx: ActionContext) -> Action
             task_type=str(params.get("task_type") or ""),
             standards_extra=str(params.get("standards_extra") or ""),
             requested_skill=params.get("skill") or params.get("requested_skill"),
+            execution_mode=str(params.get("execution_mode") or "local"),
         )
     except ValueError as exc:
         return ActionResult(success=False, error=str(exc), failure_class="invalid_params")

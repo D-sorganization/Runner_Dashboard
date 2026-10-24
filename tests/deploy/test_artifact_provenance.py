@@ -165,3 +165,67 @@ def test_metadata_cli_preserves_sha_flags(tmp_path: Path) -> None:
     )
     assert validated.returncode == 0, validated.stderr
     assert validated.stdout == f"{sha}\n"
+
+
+def test_static_asset_manifest_hashes_and_sorts_deployed_paths(tmp_path: Path) -> None:
+    import hashlib
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_bytes(b"<main>dashboard</main>")
+    (dist / "assets" / "app.js").write_bytes(b"console.log('dashboard')")
+
+    manifest = artifact_metadata.build_static_asset_manifest(dist)
+
+    assert manifest == {
+        "schema": "runner-dashboard-static-assets-v1",
+        "entries": [
+            {
+                "path": "assets/app.js",
+                "size_bytes": 24,
+                "sha256": hashlib.sha256(b"console.log('dashboard')").hexdigest(),
+            },
+            {
+                "path": "index.html",
+                "size_bytes": 22,
+                "sha256": hashlib.sha256(b"<main>dashboard</main>").hexdigest(),
+            },
+        ],
+    }
+
+
+def test_static_asset_manifest_rejects_symlink_entries(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    target = tmp_path / "outside.js"
+    target.write_text("outside", encoding="utf-8")
+    (dist / "app.js").symlink_to(target)
+
+    with pytest.raises(ValueError, match="symlink"):
+        artifact_metadata.build_static_asset_manifest(dist)
+
+
+def test_static_asset_manifest_bounds_entry_count(tmp_path: Path) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    for index in range(513):
+        (dist / f"asset-{index:03}.js").write_bytes(b"x")
+
+    with pytest.raises(ValueError, match="512"):
+        artifact_metadata.build_static_asset_manifest(dist)
+
+
+def test_static_asset_manifest_is_added_only_when_requested(tmp_path: Path) -> None:
+    repo, _ = _repo(tmp_path)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<main>ready</main>", encoding="utf-8")
+
+    legacy = artifact_metadata.build_metadata(_build_inputs(repo), environ={})
+    with_manifest = artifact_metadata.build_metadata(
+        artifact_metadata.ArtifactBuildInputs(repo, "1.2.3", "3.12", static_assets_dir=dist),
+        environ={},
+    )
+
+    assert "static_asset_manifest" not in legacy
+    assert with_manifest["static_asset_manifest"]["entries"][0]["path"] == "index.html"

@@ -11,7 +11,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from staff import fleet as staff_fleet
+from staff import friction_store
 from staff.classifier import format_attention_items
+from staff.exclusions import active_exclusions
 from staff.github_app_preflight import (
     attention_items_from_preflight,
     preflight_cache_snapshot,
@@ -91,6 +93,7 @@ async def build_staff_summary() -> dict[str, Any]:
         "providers": board_view["providers"],
         "providers_cooldown": board_view.get("providers_cooldown", {}),
         "holds": staff_fleet.holds_snapshot(),
+        "exclusions_active": len(active_exclusions()),
         "liveness_alerts": board_view.get("liveness_alerts", []),
         "provider_auth": provider_auth,
         "standards_pin": standards.pin,
@@ -109,4 +112,5 @@ async def build_staff_summary() -> dict[str, Any]:
             for s in sorted(roles.values(), key=lambda s: s.name)
         ],
         "operator_auth": _operator_auth_health(),
+        **friction_store.open_counts(),
     }

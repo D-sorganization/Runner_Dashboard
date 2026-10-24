@@ -328,22 +328,13 @@ def reconcile_orphaned_runs(
         if rec.pid is not None:
             terminate_pid(rec.pid)
 
-        # 2. Check worktree for unpushed commits
+        # 2. Preserve recovery evidence without inspecting an orphan's Git or linked paths.
         preserved_path: str | None = None
         if rec.workdir:
             wt_path = Path(rec.workdir)
             if wt_path.exists() and wt_path.is_dir():
-                if workspace.worktree_has_unpushed_commits(wt_path):
-                    preserved_path = str(wt_path)
-                    store.append_event(
-                        rec.id,
-                        "worktree",
-                        f"unpushed worktree preserved at {rec.workdir}",
-                    )
-                else:
-                    checkout = workspace.find_repo_checkout(rec.repo) if rec.repo else None
-                    workspace.remove_worktree(wt_path, checkout=checkout, branch=rec.branch)
-                    store.append_event(rec.id, "worktree", f"clean worktree removed at {rec.workdir}")
+                preserved_path = str(wt_path)
+                store.append_event(rec.id, "worktree", f"orphaned worktree preserved pending recovery at {rec.workdir}")
 
         # 3. Release RM lease (with background retry if unreachable)
         _release_lease_with_retry(store, rec)
@@ -353,7 +344,7 @@ def reconcile_orphaned_runs(
 
         # 4. Update run record
         err_msg = (
-            f"orphaned by dashboard restart; unpushed worktree preserved at {preserved_path}"
+            f"orphaned by dashboard restart; recovery worktree preserved at {preserved_path}"
             if preserved_path
             else "orphaned by dashboard restart"
         )
@@ -390,6 +381,11 @@ def reconcile_orphaned_runs(
             )
 
         reconciled_ids.append(rec.id)
+
+    try:
+        workspace.sweep_stale_worktrees(store)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to sweep stale worktrees: %s", exc, exc_info=True)
 
     if reconciled_ids:
         log.info("Reconciled %d orphaned staff runs: %s", len(reconciled_ids), reconciled_ids)

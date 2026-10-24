@@ -167,7 +167,11 @@ async def _fetch_peer_pool(peer: dict, *, local_dashboard_urls: frozenset[str]) 
                 payload = resp.json()
                 if single_key and isinstance(payload, dict):
                     return {peer_pool_name: payload}
-                return dict(payload) if isinstance(payload, dict) else {}
+                return (
+                    {k: v for k, v in payload.items() if not str(k).startswith("_")}
+                    if isinstance(payload, dict)
+                    else {}
+                )
             reason = classify_node_offline(status_code=resp.status_code)
             return {
                 peer_pool_name: {
@@ -251,7 +255,7 @@ async def _collect_fleet_status(*, exclude_pools: bool) -> dict[str, Any]:
             }
 
     tasks: list[Awaitable[Any]] = [get_system_metrics_snapshot()]
-    node_items = list(nodes_to_query.items())
+    node_items = list(nodes_to_query.items()) if not exclude_pools else []
     tasks.extend(fetch_node(name, url) for name, url in node_items)
     peer_list = peer_pools if not exclude_pools else []
     tasks.extend(_fetch_peer_pool(peer, local_dashboard_urls=local_dashboard_urls) for peer in peer_list)
@@ -287,7 +291,7 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
     callers must present a valid principal or the fleet bearer token; otherwise
     (no token configured) fleet reads remain tailnet-public.
     """
-    if should_proxy_fleet_to_hub(request):
+    if not exclude_pools and should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     degraded_by_hub_circuit = should_mark_hub_circuit_degraded(request)
 

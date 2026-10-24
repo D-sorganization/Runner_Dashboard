@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "repository": "Runner_Dashboard",
+  "updated": "2026-10-23",
+  "records": [
+    {
+      "id": "DV-#2613",
+      "title": "Security scanner: real scan-VM end-to-end validation",
+      "origin_issue_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/2613",
+      "origin_state": "open",
+      "disposition": "migrate",
+      "retained_issue_url": null,
+      "blocked_on": ["specialized_hardware"],
+      "validation_state": "blocked_external",
+      "justification": "The remaining acceptance must be measured on a dedicated security-scan VM (Docker, a buildx builder on the filtered vs-build network, vs-build-network.service, the claude CLI and an ssh docker_host) that the owner has not provisioned. No coding agent can provision it or run a real scan end to end, and no unit test or synthetic fixture substitutes for the reboot, network-isolation and cleanup observations.",
+      "evidence": [
+        "https://github.com/D-sorganization/Runner_Dashboard/issues/2613",
+        "https://github.com/D-sorganization/Runner_Dashboard/issues/2566",
+        "https://github.com/D-sorganization/Runner_Dashboard/pull/2612",
+        "https://github.com/D-sorganization/Runner_Dashboard/pull/2607"
+      ],
+      "resource_prerequisites": [
+        "A dedicated scan VM provisioned by the owner",
+        "Docker on the scan VM",
+        "A buildx builder on the filtered vs-build network",
+        "vs-build-network.service installed and enabled",
+        "The claude CLI installed on the scan VM",
+        "An ssh docker_host reachable from the dashboard"
+      ],
+      "acceptance_criteria": [
+        "`setup-build-network.sh --apply` plus the boot unit leave `/run/vs-build/vs-build.ok` matching the live network id after a reboot.",
+        "From the build network, RFC1918, CGNAT, link-local and the host's INPUT are unreachable, and public DNS and registries work.",
+        "A real scan of one pilot repo (Tools, UpstreamDrift or AffineDrift) completes. Its record must show: phase A built with a digest recorded; phase B ran in a `--network=none` container; findings were stored as `new`; the verifier ran with a different model.",
+        "Queued CI jobs abort a running scan within one `poll_s`.",
+        "After success, abort and cancel, no `fleet.security.scan=1` containers or images remain.",
+        "The Security page shows the pilot contracts as valid."
+      ],
+      "reopen_criteria": [
+        "The owner has provisioned the scan VM with every resource prerequisite and applied the host setup in docs/operations/security-scanning.md."
+      ],
+      "discovery": "manual_review",
+      "reviewed_by": null,
+      "reviewed_on": null,
+      "record_url": null,
+      "notes": "Part of epic #2566 (fleet security scanner). The q5 panel verdict listed a VM e2e launch test as a should-fix follow-up. Runbook: docs/operations/security-scanning.md (lands with PR #2612). No measurement has been taken."
+    }
+  ]
+}

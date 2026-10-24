@@ -40,6 +40,7 @@ from staff.conversations import (
 from staff.loop_guard import enforce_loop_guard_or_raise
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
+from staff.request_cards import request_message_card
 from staff.thread_bus import get_thread_bus
 from staff.thread_helpers import find_idempotent_reply, shape_new_thread
 
@@ -179,7 +180,7 @@ async def get_thread_detail(
 
     return {
         "thread": thread.to_dict(),
-        "messages": [m.to_dict() for m in messages],
+        "messages": [request_message_card(store, m) for m in messages],
     }
 
 

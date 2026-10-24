@@ -402,6 +402,24 @@ describe("useStaffConsole", () => {
     expect(result.current.error).toEqual({ kind: "decision", message: "403 missing staff.approve" });
   });
 
+  it("returns a retryable failure when an accepted approval executes unsuccessfully", async () => {
+    api.decideActionProposal.mockResolvedValue({
+      state: "failed",
+      execution_result: { success: false, error: "unknown dashboard section" },
+    });
+    const { result } = renderHook(() =>
+      useStaffConsole({ roles: ROLES, threadApi: threadApi(), streamEnabled: false }),
+    );
+
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.approveProposal("prop-failed", undefined, "h".repeat(64));
+    });
+
+    expect(ok).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
   it("clears the error on dismiss", async () => {
     api.fetchRoster.mockRejectedValue(new Error("boom"));
     const { result } = renderHook(() => useStaffConsole({ threadApi: threadApi(), streamEnabled: false }));

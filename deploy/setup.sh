@@ -41,7 +41,7 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail()  { echo -e "${RED}[FAIL]${NC} $*"; exit 1; }
 header(){ echo -e "\n${BOLD}═══ $* ═══${NC}"; }
 
-SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"; source "${SCRIPT_DIR}/deploy/source-deploy-guard.sh"
 RUNNER_BASE_DIR="${RUNNER_BASE_DIR:-$HOME/actions-runners}"
 DEPLOY_DIR="${RUNNER_DASHBOARD_DEPLOY_DIR:-$HOME/actions-runners/dashboard}"
 PORT="${DASHBOARD_PORT:-8321}"
@@ -123,7 +123,7 @@ while [[ $# -gt 0 ]]; do
         --force)        FORCE_RESTART=1;      shift ;;
         *) shift ;;
     esac
-done
+done; if [[ -z "${ARTIFACT_SOURCE}" ]]; then source_deploy_guard "${DEPLOY_DIR}" || fail "Source deployment is unsafe for this artifact-backed release. Use --artifact with a verified artifact."; fi
 
 # Run preflight before any mutation. --check-only and --dry-run both exit
 # here so the host is never mutated; --dry-run additionally prints the

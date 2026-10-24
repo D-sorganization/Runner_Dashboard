@@ -34,6 +34,7 @@
         "ci-secrets.yml",
         "ci-spec-check.yml",
         "ci-auto-deploy-regression.yml",
+        "codex-review-request.yml",
         "collate-changes.yml",
         "conflict-disarm.yml",
         "arm-cap-reconcile.yml",

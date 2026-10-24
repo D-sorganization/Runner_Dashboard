@@ -67,11 +67,13 @@ install_node_auto_deploy() {
   TIMER_SRC="${SCRIPT_DIR}/systemd/runner-dashboard-auto-deploy.timer"
 
   install -d -m 0755 "${DEPLOY_DIR}/deploy"
-  install -m 0644 "${SCRIPT_DIR}/auto-deploy-env.sh" "${DEPLOY_DIR}/deploy/auto-deploy-env.sh"
-  install -m 0644 "${SCRIPT_DIR}/resolve-auto-deploy-python.sh" "${DEPLOY_DIR}/deploy/resolve-auto-deploy-python.sh"
-  install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.sh" "${DEPLOY_DIR}/deploy/node-auto-deploy.sh"
-  install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.py" "${DEPLOY_DIR}/deploy/node-auto-deploy.py"
-  rsync -a --delete "${SCRIPT_DIR}/node_auto_deploy/" "${DEPLOY_DIR}/deploy/node_auto_deploy/"
+  if [[ "$(realpath "${SCRIPT_DIR}")" != "$(realpath "${DEPLOY_DIR}/deploy")" ]]; then
+    install -m 0644 "${SCRIPT_DIR}/auto-deploy-env.sh" "${DEPLOY_DIR}/deploy/auto-deploy-env.sh"
+    install -m 0644 "${SCRIPT_DIR}/resolve-auto-deploy-python.sh" "${DEPLOY_DIR}/deploy/resolve-auto-deploy-python.sh"
+    install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.sh" "${DEPLOY_DIR}/deploy/node-auto-deploy.sh"
+    install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.py" "${DEPLOY_DIR}/deploy/node-auto-deploy.py"
+    rsync -a --delete "${SCRIPT_DIR}/node_auto_deploy/" "${DEPLOY_DIR}/deploy/node_auto_deploy/"
+  fi
 
   if [[ "${SCOPE}" == user ]]; then
     UNIT_DIR="${DASHBOARD_HOME}/.config/systemd/user"

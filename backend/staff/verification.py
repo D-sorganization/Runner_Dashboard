@@ -9,7 +9,11 @@ Verdicts: ``verified`` | ``unverified`` (CI pending, or GitHub unreachable) |
 ``failed`` (commits were pushed but no PR, PR closed unmerged, head CI red, or CI
 still pending after :data:`PENDING_LIMIT`) | ``no_change`` (the run claimed success but
 pushed no commits to its staff branch on the remote) | ``not_applicable`` (the run
-claimed nothing, or its role does not open PRs). ``STAFF_VERIFY_MODE``: ``report``
+claimed nothing, its role does not open PRs, or it reported an explicit skip / "no work" result
+with nothing pushed). Red head CI within ``STAFF_VERIFY_CI_GRACE_SECONDS`` (default 1800) of the
+run ending is ``unverified``, not ``failed``: CI starts seconds after the push, so a verdict taken at
+exit races it. A ``failed`` CI verdict is rechecked while the run is younger than
+:data:`RECHECK_WINDOW`, and a later green flips it to ``verified``. ``STAFF_VERIFY_MODE``: ``report``
 (default) records only; ``enforce`` also fails a ``succeeded`` run whose verdict is
 ``failed``; ``off`` skips the check.
 """
@@ -41,6 +45,13 @@ MODES = ("off", "report", "enforce")
 UNVERIFIED_OUTPUT = "unverified_output"
 PENDING_LIMIT = timedelta(hours=6)
 RECHECK_WINDOW = timedelta(hours=24)
+CI_GRACE_ENV = "STAFF_VERIFY_CI_GRACE_SECONDS"
+DEFAULT_CI_GRACE_SECONDS = 1800
+# A STAFF_RESULT summary that starts with one of these (case-insensitive) is a deliberate
+# skip / no-op, not a failed deliverable. Matched at the start only, to stay conservative.
+SKIP_MARKERS = ("staff_skip", "skip", "no work", "nothing to do", "no-op", "noop", "no action", "no change")
+RESULT_PREFIX = "STAFF_RESULT:"
+CI_RED_DETAIL = "head CI is failing"
 RECHECK_BATCH = 20
 GH_TIMEOUT_SECONDS = 30
 
@@ -69,11 +80,15 @@ class Verdict:
     detail: str
     pr_number: int | None = None
     artifact: str = ""  # typed completion evidence (#1808): pr_open | pr_merged | ""
+    ci_red: bool = False  # failed because head CI is red (the run's work may still be good)
 
 
 class PrProbe(Protocol):
     def find(self, repo: str, branch: str) -> PullRequest | None:
         """The newest PR whose head is ``branch`` in ``repo``, or None. Raises GitHubLookupError."""
+
+    def get(self, repo: str, number: int) -> PullRequest:
+        """PR ``number`` in ``repo`` with head CI state. Raises GitHubLookupError."""
 
     def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
         """Commits ``branch`` is ahead of ``base`` on the remote (0 if absent). Raises GitHubLookupError."""
@@ -85,6 +100,26 @@ def verify_mode() -> str:
     if raw and raw not in MODES:
         log.warning("unknown %s=%r; using report", MODE_ENV, raw)
     return raw if raw in MODES else "report"
+
+
+def ci_grace() -> timedelta:
+    """``STAFF_VERIFY_CI_GRACE_SECONDS`` as a timedelta (default 1800s; invalid or negative uses the default)."""
+    raw = os.environ.get(CI_GRACE_ENV, "").strip()
+    try:
+        seconds = float(raw) if raw else float(DEFAULT_CI_GRACE_SECONDS)
+    except ValueError:
+        seconds = float(DEFAULT_CI_GRACE_SECONDS)
+    return timedelta(seconds=seconds if seconds >= 0 else DEFAULT_CI_GRACE_SECONDS)
+
+
+def is_skip_result(result_text: str) -> bool:
+    """True when the run's final ``STAFF_RESULT:`` summary is an explicit skip / no-work report."""
+    _, sep, rest = (result_text or "").rpartition(RESULT_PREFIX)
+    if not sep:
+        return False
+    lines = rest.strip().splitlines()
+    summary = lines[0].strip().lower().lstrip("[(*_ ") if lines else ""
+    return bool(summary) and summary.startswith(SKIP_MARKERS)
 
 
 def ci_state(check_runs: Iterable[Mapping[str, Any]]) -> str:
@@ -104,13 +139,21 @@ def decide(
     branch: str,
     pr: PullRequest | None,
     remote_ahead_by: int = 1,
+    skipped: bool = False,
+    ci_grace_active: bool = False,
 ) -> Verdict:
-    """The verdict for one run. Pure: every input is a plain value."""
+    """The verdict for one run. Pure: every input is a plain value.
+
+    ``skipped``: the run reported an explicit skip. With no PR and nothing pushed that is neutral.
+    ``ci_grace_active``: the run ended within the CI grace window, so red CI is still ``unverified``.
+    """
     if claimed != "succeeded":
         return Verdict("not_applicable", f"run ended {claimed}; nothing claimed to verify")
     if not opens_pr:
         return Verdict("not_applicable", "role does not open pull requests")
     if pr is None:
+        if skipped and (not branch or remote_ahead_by == 0):
+            return Verdict("not_applicable", "run reported it skipped (no work requested); nothing pushed")
         if branch and remote_ahead_by == 0:
             return Verdict("no_change", f"no commits pushed to remote branch {branch}")
         reason = f"no pull request found for branch {branch}" if branch else "run recorded no branch"
@@ -119,7 +162,10 @@ def decide(
         return Verdict("failed", f"PR #{pr.number} was closed without merging", pr.number)
     artifact = ARTIFACT_PR_MERGED if pr.state == "merged" else ARTIFACT_PR_OPEN
     if pr.ci == "red":
-        return Verdict("failed", f"PR #{pr.number} head CI is failing", pr.number, artifact)
+        if ci_grace_active:
+            detail = f"PR #{pr.number} head CI is failing; rechecking within the grace window"
+            return Verdict("unverified", detail, pr.number, artifact)
+        return Verdict("failed", f"PR #{pr.number} {CI_RED_DETAIL}", pr.number, artifact, ci_red=True)
     if pr.ci == "pending":
         return Verdict("unverified", f"PR #{pr.number} head CI is still pending", pr.number, artifact)
     return Verdict("verified", f"PR #{pr.number} is {pr.state} with head CI green", pr.number, artifact)
@@ -131,17 +177,51 @@ def _age(rec: RunRecord, now: datetime) -> timedelta:
     return now - datetime.fromisoformat(rec.ended_at.replace("Z", "+00:00"))
 
 
-def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -> Verdict:
+def _claimed_status(rec: RunRecord) -> str:
+    """The status the run claimed: a run failed by verification alone still claimed ``succeeded``."""
+    if rec.status == "failed" and rec.failure_class == UNVERIFIED_OUTPUT and rec.verification == "failed":
+        return "succeeded"
+    return rec.status
+
+
+def _target_pr_number(rec: RunRecord) -> int | None:
+    """PR number for a ``target_kind=pr`` run from ``pr_number`` or ``target_ref``."""
+    if rec.pr_number is not None:
+        return int(rec.pr_number)
+    if rec.target_kind != "pr":
+        return None
+    ref = rec.target_ref.strip()
+    if ref.isdigit():
+        return int(ref)
+    upper = ref.upper()
+    if upper.startswith("PR #"):
+        digits = ref[4:].strip()
+        return int(digits) if digits.isdigit() else None
+    return None
+
+
+def evaluate(
+    rec: RunRecord,
+    *,
+    opens_pr: bool,
+    probe: PrProbe,
+    now: datetime,
+    result_text: str = "",
+    grace: timedelta | None = None,
+) -> Verdict:
     """Look up the run's PR (only when one is expected) and decide.
 
     Post: a GitHub error yields ``unverified``; CI still pending after PENDING_LIMIT yields ``failed``;
-    an ad-hoc run with no repository is ``not_applicable`` and GitHub is not asked.
+    an ad-hoc run with no repository is ``not_applicable`` and GitHub is not asked. Red CI within
+    the grace window of ``ended_at`` is ``unverified``; a skip ``result_text`` with nothing pushed is
+    ``not_applicable``.
     """
     if rec.role == AD_HOC_ROLE and not rec.repo:
         return Verdict("not_applicable", "ad-hoc run had no repository, so no pull request was expected")
     pr: PullRequest | None = None
     remote_ahead_by = 1
-    if rec.status == "succeeded" and opens_pr and rec.branch:
+    claimed = _claimed_status(rec)
+    if claimed == "succeeded" and opens_pr and rec.branch:
         try:
             pr = probe.find(rec.repo, rec.branch)
         except GitHubLookupError as exc:
@@ -151,12 +231,22 @@ def evaluate(rec: RunRecord, *, opens_pr: bool, probe: PrProbe, now: datetime) -
                 remote_ahead_by = probe.remote_ahead_by(rec.repo, rec.branch)
             except GitHubLookupError as exc:
                 return Verdict("unverified", f"GitHub lookup failed: {exc}")
+        get_pr = getattr(probe, "get", None)
+        if pr is None and rec.target_kind == "pr" and remote_ahead_by > 0 and callable(get_pr):
+            target_pr = _target_pr_number(rec)
+            if target_pr is not None:
+                try:
+                    pr = get_pr(rec.repo, target_pr)
+                except GitHubLookupError as exc:
+                    return Verdict("unverified", f"GitHub lookup failed: {exc}")
     verdict = decide(
-        claimed=rec.status,
+        claimed=claimed,
         opens_pr=opens_pr,
         branch=rec.branch,
         pr=pr,
         remote_ahead_by=remote_ahead_by,
+        skipped=is_skip_result(result_text),
+        ci_grace_active=_age(rec, now) <= (ci_grace() if grace is None else grace),
     )
     if verdict.verification == "unverified" and _age(rec, now) > PENDING_LIMIT:
         hours = int(PENDING_LIMIT.total_seconds() // 3600)
@@ -197,15 +287,22 @@ def deliverable_failure_updates(
         return {}
     if verdict is None or verdict.verification not in ("no_change", "failed"):
         return {}
+    if verdict.ci_red:
+        remediation = (
+            "The run opened a pull request but its head CI is failing past the grace window; "
+            "fix the failing checks (a later green recheck restores this run)."
+        )
+    else:
+        remediation = (
+            "Run targeted an issue or pull request but produced no commits or open PR; "
+            "inspect the transcript before re-dispatching."
+        )
     return {
         "status": "failed",
         "failure_class": UNVERIFIED_OUTPUT,
         "retryable": False,
         "error": verdict.detail,
-        "remediation": (
-            "Run targeted an issue or pull request but produced no commits or open PR; "
-            "inspect the transcript before re-dispatching."
-        ),
+        "remediation": remediation,
     }
 
 
@@ -219,6 +316,9 @@ def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
     }
     if mode == "enforce" and verdict.verification == "failed" and rec.status == "succeeded":
         updates.update(status="failed", failure_class=UNVERIFIED_OUTPUT, error=verdict.detail)
+    elif verdict.verification == "verified" and rec.status == "failed" and rec.failure_class == UNVERIFIED_OUTPUT:
+        # The failure was verification alone (CI raced the check); CI is green now, so restore the run.
+        updates.update(status="succeeded", failure_class="", error="", remediation="", retryable=False)
     return updates
 
 
@@ -246,7 +346,13 @@ def verify_and_record(
             return None
         try:
             is_opens_pr = opens_pr() if callable(opens_pr) else bool(opens_pr)
-            verdict = evaluate(rec, opens_pr=is_opens_pr, probe=probe or GhCliPrProbe(), now=now or datetime.now(UTC))
+            verdict = evaluate(
+                rec,
+                opens_pr=is_opens_pr,
+                probe=probe or GhCliPrProbe(),
+                now=now or datetime.now(UTC),
+                result_text=store.last_result_line(run_id),
+            )
         except Exception as exc:  # noqa: BLE001 - verification must never break a run
             log.exception("verification of run %s failed", run_id)
             verdict = Verdict("unverified", f"verification error: {exc}")
@@ -274,9 +380,10 @@ def recheck_runs(
     mode: str | None = None,
     now: datetime | None = None,
 ) -> list[str]:
-    """Verify this node's finished runs that are unchecked or ``unverified``.
+    """Verify this node's finished runs that are unchecked, ``unverified``, or failed on CI.
 
-    Bounded: runs that ended within RECHECK_WINDOW, at most RECHECK_BATCH per pass.
+    Bounded: runs that ended within RECHECK_WINDOW, at most RECHECK_BATCH per pass. Older rows are
+    never touched, so the first scheduler tick cannot mass-fail historic ``unverified`` rows.
     Returns the ids checked.
     """
     mode = mode or verify_mode()

@@ -20,7 +20,7 @@ export interface AssessmentHistoryProps {
 }
 
 const PROVIDERS: { id: string; label: string }[] = [
-  { id: "jules_api", label: "Jules" },
+  { id: "antigravity", label: "Antigravity" },
   { id: "codex", label: "Codex" },
   { id: "claude", label: "Claude" },
 ];
@@ -56,7 +56,7 @@ export function AssessmentHistory({
   notice,
   onRequest,
 }: AssessmentHistoryProps): React.ReactElement {
-  const [provider, setProvider] = React.useState("jules_api");
+  const [provider, setProvider] = React.useState("codex");
   const sorted = [...entries].sort((a, b) => dateKey(b) - dateKey(a));
   return (
     <div className="projects-assessments" style={{ marginTop: 8, fontSize: 13 }}>
