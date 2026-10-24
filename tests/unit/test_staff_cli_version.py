@@ -48,7 +48,7 @@ def _rec(run_id: str, status: str) -> RunRecord:
         role="barb",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="issue",
         target_ref="7",
@@ -331,7 +331,7 @@ def test_roster_models_accept_provider_versions() -> None:
     from staff.models import StaffRosterResponse
 
     body = StaffRosterResponse(
-        machine="DeskComputer",
+        machine="hub-a",
         roles=[],
         providers={"claude": True},
         provider_versions={

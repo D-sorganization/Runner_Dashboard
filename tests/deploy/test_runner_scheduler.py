@@ -1085,8 +1085,8 @@ def test_validate_config_rejects_bad_resource_floor() -> None:
             runner_scheduler.validate_config(_floor_config(bad))  # type: ignore[arg-type]
 
 
-def test_oglaptop_schedule_carries_conservative_resource_floor() -> None:
-    config = json.loads((REPO_ROOT / "config" / "runner-schedule-oglaptop.json").read_text(encoding="utf-8"))
+def test_node-b_schedule_carries_conservative_resource_floor() -> None:
+    config = json.loads((REPO_ROOT / "config" / "runner-schedule-node-b.json").read_text(encoding="utf-8"))
     runner_scheduler.validate_config(config)
     floor = config["resource_floor"]
     assert floor["disk_path"] == "/mnt/c"

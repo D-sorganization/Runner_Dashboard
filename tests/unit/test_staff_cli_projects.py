@@ -28,7 +28,7 @@ from staff.cli_projects import (
 def test_encode_project_name_replaces_non_alphanumeric_characters() -> None:
     """encode_project_name replaces any character outside [A-Za-z0-9] with '-'."""
     assert encode_project_name("/tmp/staff_panel_ab12") == "-tmp-staff-panel-ab12"
-    assert encode_project_name("/home/dieterolson/staff-worktrees/run-1") == "-home-dieterolson-staff-worktrees-run-1"
+    assert encode_project_name("/home/fleet-operator/staff-worktrees/run-1") == "-home-fleet-operator-staff-worktrees-run-1"
 
 
 @pytest.mark.unit

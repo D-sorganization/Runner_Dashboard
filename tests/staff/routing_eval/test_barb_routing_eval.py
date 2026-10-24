@@ -96,7 +96,7 @@ def test_load_candidate_cases_from_feedback() -> None:
             override_role="pragmatic-programmer",
             prompt="Refactor the markdown parser to use typed AST nodes",
             reason="Contained code refactoring",
-            overridden_by="dieter",
+            overridden_by="operator",
             created_at="2026-09-25T12:00:00Z",
         ),
         RoutingFeedbackRecord(
@@ -105,7 +105,7 @@ def test_load_candidate_cases_from_feedback() -> None:
             override_role="maintenance",
             prompt="Restart runner runner-9 on host-0",
             reason="Runner management",
-            overridden_by="dieter",
+            overridden_by="operator",
             created_at="2026-09-25T12:05:00Z",
         ),
     ]

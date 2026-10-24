@@ -146,7 +146,7 @@ class TestAuditLog(unittest.TestCase):
             inputs={"repository": "foo/bar", "number": 42},
             outcome="ok",
             success=True,
-            approved_by="dieter",
+            approved_by="operator",
             note="Approved via UI",
         )
         for field in (
@@ -361,7 +361,7 @@ class TestExecuteTool(unittest.IsolatedAsyncioTestCase):
                 "provider": "p",
                 "prompt": "x",
             },
-            confirmation={"approved_by": "dieter", "note": "confirmed in UI"},
+            confirmation={"approved_by": "operator", "note": "confirmed in UI"},
             gh_api_fn=AsyncMock(),
             run_cmd_fn=dispatch_fn,
             normalize_repository_fn=lambda x: x,

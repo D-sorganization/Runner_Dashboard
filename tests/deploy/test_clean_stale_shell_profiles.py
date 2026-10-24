@@ -30,7 +30,7 @@ def test_clean_stale_profiles_removes_missing_cargo_env(tmp_path: Path) -> None:
         "export FATHER=1  \n"
         f"source {as_bash_path(missing_env)}\n"
         f". '{as_bash_path(valid_env)}'\n"
-        "source /home/dieterolson/actions-runners/runner-2/_work/Tools_Private/_ci/tools-private-cargo/env\n"
+        "source /home/fleet-operator/actions-runners/runner-2/_work/Tools_Private/_ci/tools-private-cargo/env\n"
         "alias lll='ls -la'\n"
     )
     profile.write_text(profile_content, encoding="utf-8")

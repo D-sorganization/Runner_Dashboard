@@ -18,7 +18,7 @@ from staff.work_items import WorkItemStore
 def _waiting(store: WorkItemStore, title: str, runs: list[str]) -> str:
     wi = store.create_work_item(
         title=title,
-        requested_by="dieter",
+        requested_by="operator",
         links={"runs": runs, "issues": [], "prs": [], "code_requests": []},
     )
     store.transition_state(wi.id, "in_progress")

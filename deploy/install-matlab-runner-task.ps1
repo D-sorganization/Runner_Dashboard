@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Registers the \D-sorganization\matlab-runner scheduled task on Windows runner
-    hosts (such as ControlTower). Configures a repeating 10-minute trigger on
+    hosts (such as node-a). Configures a repeating 10-minute trigger on
     startup/logon with an execution limit to ensure automatic recovery if the
     runner listener exits on broker socket disconnections (exit code 3), matching
     the production hot-fix under issue #1078.

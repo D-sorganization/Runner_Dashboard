@@ -145,7 +145,7 @@ def test_provider_oauth_session_alive_unknown_provider_is_ok() -> None:
 def test_claude_setup_token_env_counts_as_alive_without_credentials_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """DeskComputer durable seat: CLAUDE_CODE_OAUTH_TOKEN only (no .credentials.json)."""
+    """hub-a durable seat: CLAUDE_CODE_OAUTH_TOKEN only (no .credentials.json)."""
     cfg = tmp_path / "empty-claude-seat"
     cfg.mkdir()
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))

@@ -42,7 +42,7 @@ def node_a_env(tmp_path: Path) -> dict[str, Any]:
         title="Investigation",
         kind="direct",
         role="librarian",
-        created_by="user:dieter",
+        created_by="user:operator",
     )
 
     app = FastAPI()

@@ -55,7 +55,7 @@ Edit your Codex configuration file located at `~/.codex/config.toml` (on Windows
 [mcp_servers.fleet]
 command = "python3"
 args = ["/path/to/Runner_Dashboard/clients/fleet/fleet_mcp.py"]
-env = { FLEET_API_URL = "http://deskcomputer:8321", FLEET_API_TOKEN = "svc_YOUR_TOKEN_HERE", FLEET_AGENT = "codex" }
+env = { FLEET_API_URL = "http://hub-a:8321", FLEET_API_TOKEN = "svc_YOUR_TOKEN_HERE", FLEET_AGENT = "codex" }
 ```
 
 _Notes:_

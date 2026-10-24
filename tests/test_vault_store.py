@@ -21,7 +21,7 @@ def vault_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClie
     monkeypatch.setenv("RUNNER_DASHBOARD_VAULT_DB_PATH", str(db_path))
     app = FastAPI()
     app.include_router(vault_router.router)
-    operator = Principal(id="dieter", type="human", name="Dieter", roles=["admin"], scopes=["*"])
+    operator = Principal(id="operator", type="human", name="Dieter", roles=["admin"], scopes=["*"])
     app.dependency_overrides[vault_router._require_vault_operator] = lambda: operator
     return TestClient(app), key_path, db_path
 

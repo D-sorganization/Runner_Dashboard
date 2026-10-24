@@ -57,7 +57,7 @@ RESTART_UNITS="${RESTART_UNITS:-0}"
 # with a per-runner-name dir under a custom root (e.g. a dedicated NVMe path).
 RUNNER_TOOL_CACHE_ROOT="${RUNNER_TOOL_CACHE_ROOT:-}"
 
-# Cap pytest-xdist `-n auto` workers per job. The ControlTower utility VM has
+# Cap pytest-xdist `-n auto` workers per job. The node-a utility VM has
 # 16 cores shared by up to 8 concurrent runners; uncapped `-n auto` spawns ~one
 # worker per core (~16) per job, so 8 busy runners = ~128 workers on 16 cores
 # (~8x oversubscription) — the measured load-40 that caused fleet-wide pytest

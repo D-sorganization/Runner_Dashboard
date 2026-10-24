@@ -40,7 +40,7 @@ def _job(job_id: int = 31, *, attempt: int | None = 1, labels: list[str] | None 
         "created_at": "2026-10-21T10:00:00Z",
         "started_at": "2026-10-21T10:00:10Z",
         "completed_at": "2026-10-21T10:01:10Z",
-        "runner_name": "d-sorg-fleet-DeskComputer-1",
+        "runner_name": "d-sorg-fleet-hub-a-1",
         "labels": labels or ["self-hosted", "linux"],
     }
 

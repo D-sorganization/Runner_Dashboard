@@ -135,7 +135,7 @@ GET /api/runners/label-guidance
 
 ## Current Status
 
-Until ControlTower exposes distinct NVMe and HDD pools, all labels resolve to
+Until node-a exposes distinct NVMe and HDD pools, all labels resolve to
 the same physical runners. The taxonomy labels are registered but not yet
 enforced by GitHub Actions runner groups. The audit is intentionally
 conservative: it only fails on explicit misrouting, not on neutral-label usage.

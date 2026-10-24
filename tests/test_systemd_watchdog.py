@@ -145,7 +145,7 @@ def test_autoscaler_watchdog_swallows_notifier_failure(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Dependency-free $NOTIFY_SOCKET fallback (issue #707 / OGLaptop 2026-06-09)
+# Dependency-free $NOTIFY_SOCKET fallback (issue #707 / node-b 2026-06-09)
 #
 # The crash-loop root cause: the `systemd` python binding is not a declared
 # dependency, so on the deployed host `_sd_notify is None` and the old watchdog
@@ -190,7 +190,7 @@ def test_notify_systemd_falls_back_to_socket_when_binding_raises(monkeypatch) ->
 def test_autoscaler_watchdog_delivers_over_notify_socket(monkeypatch, tmp_path) -> None:
     """End-to-end crash-loop fix: with the systemd binding absent
     (_sd_notify=None), _send_watchdog must still deliver WATCHDOG=1 by writing
-    $NOTIFY_SOCKET — exactly the OGLaptop deployment condition."""
+    $NOTIFY_SOCKET — exactly the node-b deployment condition."""
     import runner_autoscaler as ra
 
     sock_path = str(tmp_path / "notify.sock")

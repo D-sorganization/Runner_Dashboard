@@ -36,7 +36,7 @@ def setup_test_env(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     reset_maintenance_cooldowns()
 
 
-TEST_CALLER = Principal(id="dieter", name="Dieter", type="human", roles=["admin"])
+TEST_CALLER = Principal(id="operator", name="Dieter", type="human", roles=["admin"])
 
 
 def test_maintenance_actions_registered_in_action_registry() -> None:

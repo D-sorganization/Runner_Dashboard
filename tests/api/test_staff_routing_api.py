@@ -13,7 +13,7 @@ from staff.conversations import get_conversation_store, reset_conversation_store
 from staff.thread_bus import reset_thread_bus
 
 TEST_USER = Principal(
-    id="dieter",
+    id="operator",
     type="human",
     name="Dieter",
     roles=["owner", "operator"],

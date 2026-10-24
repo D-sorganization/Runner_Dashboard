@@ -452,7 +452,7 @@ def test_classify_failure_rustc_vanished_returns_runner_state() -> None:
         branch="main",
         failure_reason=(
             "could not execute process "
-            "`/home/dieterolson/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc` (never executed)"
+            "`/home/fleet-operator/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc` (never executed)"
         ),
         log_excerpt="Caused by: No such file or directory (os error 2)\nerror: could not parse/generate dep info",
     )

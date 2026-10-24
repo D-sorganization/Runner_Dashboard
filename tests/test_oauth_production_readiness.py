@@ -21,7 +21,7 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _CALLBACK = f"{_ORIGIN}/api/auth/callback"
 _CLIENT_ID = "Ov23liProductionClient"
 _CLIENT_SECRET = "s" * 40  # pragma: allowlist secret
@@ -73,7 +73,7 @@ def test_exact_production_configuration_is_ready_and_redacted() -> None:
     ("updates", "reason"),
     [
         ({"GITHUB_CLIENT_SECRET": "short"}, "github_client_secret_invalid"),  # pragma: allowlist secret
-        ({"DASHBOARD_PUBLIC_ORIGIN": "https://100.125.64.108"}, "public_origin_mismatch"),
+        ({"DASHBOARD_PUBLIC_ORIGIN": "https://100.64.254.12"}, "public_origin_mismatch"),
         (
             {"GITHUB_OAUTH_CALLBACK_URL": "https://evil.example/api/auth/callback"},
             "callback_url_mismatch",

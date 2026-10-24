@@ -22,10 +22,10 @@ def test_runner_base_dir() -> None:
 
 def test_runner_base_dir_env_override(monkeypatch) -> None:
     env = os.environ.copy()
-    env["RUNNER_BASE_DIR"] = "/tmp/controltower-nvme-runners"
+    env["RUNNER_BASE_DIR"] = "/tmp/node-a-nvme-runners"
     monkeypatch.setattr(os, "environ", env)
     importlib.reload(dashboard_config)
-    assert dashboard_config.RUNNER_BASE_DIR == Path("/tmp/controltower-nvme-runners")
+    assert dashboard_config.RUNNER_BASE_DIR == Path("/tmp/node-a-nvme-runners")
 
 
 # ---------------------------------------------------------------------------

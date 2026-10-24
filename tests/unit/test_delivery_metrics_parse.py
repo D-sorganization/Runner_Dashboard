@@ -20,7 +20,7 @@ def test_parse_pr_from_recorded_pull() -> None:
     assert pr.number == 2111
     assert pr.merged is True
     assert pr.head_sha == payload["head"]["sha"]
-    assert pr.author_login == "dieterolson"
+    assert pr.author_login == "fleet-operator"
     assert pr.changed_files == 13
 
 

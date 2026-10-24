@@ -53,7 +53,7 @@ def test_session_start_registers_and_persists_token(state_file: Path) -> None:
         raise AssertionError(path)
 
     with mock.patch.object(client, "request", side_effect=fake_request):
-        summary = hooks.session_start(client, role="local", provider="cursor", node="Brick")
+        summary = hooks.session_start(client, role="local", provider="cursor", node="node-c")
 
     assert summary["registered"] is True
     assert summary["inbox_count"] == 1

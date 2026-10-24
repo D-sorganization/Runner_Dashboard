@@ -10,7 +10,7 @@ from oauth_config import (
     OAuthConfigurationError,
 )
 
-_DESK_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+_DESK_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _DESK_CALLBACK = f"{_DESK_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 

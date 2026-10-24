@@ -15,7 +15,7 @@ from oauth_config import OAuthConfig
 from routers import auth
 from starlette.middleware.sessions import SessionMiddleware
 
-PRIVATE = "https://deskcomputer.tail2bbcc7.ts.net"
+PRIVATE = "https://hub-a.fleet-example.ts.net"
 PUBLIC = "https://ops.example.invalid"
 OTHER = "https://other.example.invalid"
 EDGE = {"CF-Ray": "test-ray"}

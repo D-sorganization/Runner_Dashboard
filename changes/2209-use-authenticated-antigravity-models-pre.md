@@ -6,7 +6,7 @@ next_step: "Merge through the protected queue and deploy the provider fixes."
 branch: "fix/provider-oauth-e2e-20261022"
 ---
 
-DeskComputer dashboard smoke tests (subscription OAuth, no repository target):
+hub-a dashboard smoke tests (subscription OAuth, no repository target):
 
 - Antigravity `run-e95d1a44e39a`: succeeded, exit 0, `STAFF_RESULT: ANTIGRAVITY_E2E_OK 323`.
 - Codex `run-3189019ba09c`: succeeded, exit 0, `STAFF_RESULT: CODEX_E2E_OK 323`.

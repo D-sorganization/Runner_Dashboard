@@ -266,7 +266,7 @@ def test_record_dispatch_routing_audit() -> None:
             decision=decision,
             status="dispatched",
             declared_paths=["src/glass_models/explorer/tests/test_session_snapshots.py"],
-            principal="dieterolson",
+            principal="fleet-operator",
         )
 
         assert audit_file.exists()

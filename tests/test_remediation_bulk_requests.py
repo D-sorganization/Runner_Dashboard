@@ -101,7 +101,7 @@ def test_bulk_issue_act_creates_single_work_item_listing_all_targets(client: Tes
         "prompt": "Fix issues",
         "target": {"repo": "D-sorganization/Tools", "issues": [10, 20, 30]},
         "force": True,
-        "approved_by": "dieter",
+        "approved_by": "operator",
     }
 
     async def side_effect(_repo: str, num: int, *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -129,7 +129,7 @@ def test_bulk_pr_act_creates_single_work_item_listing_all_targets(client: TestCl
         "provider": "claude",
         "prompt": "Review and fix PRs",
         "target": {"repo": "D-sorganization/Tools", "prs": [42, 43]},
-        "approved_by": "dieter",
+        "approved_by": "operator",
     }
 
     async def side_effect(_repo: str, num: int, *args: Any, **kwargs: Any) -> dict[str, Any]:

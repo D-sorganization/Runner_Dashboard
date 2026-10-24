@@ -1,6 +1,6 @@
 """Backend must import cleanly when the process cwd is ``backend/`` (#2215 follow-up).
 
-Production DeskComputer runs ``cd backend && python server.py``. Only ``backend/``
+Production hub-a runs ``cd backend && python server.py``. Only ``backend/``
 is on ``sys.path`` (via ``server.py``); the repo-root ``shared_scripts/`` package
 must not be required for disk-guard imports.
 """

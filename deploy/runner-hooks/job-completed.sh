@@ -22,7 +22,7 @@ LOCK_FILE="${LOCK_DIR}/${RUNNER_NAME}.lock"
 rm -f "$LOCK_FILE" 2>/dev/null || true
 
 # -- Runner temp cleanup (2026-10-17, supersedes runner-post-job.sh) ---------
-# DeskComputer runners carried a legacy ACTIONS_RUNNER_HOOK_JOB_COMPLETED in
+# hub-a runners carried a legacy ACTIONS_RUNNER_HOOK_JOB_COMPLETED in
 # <runner>/.env pointing at ~/actions-runners/fleet/runner-post-job.sh.  The
 # runner .env wins over the systemd unit's Environment=, so the canonical hook
 # never ran there; the legacy script's only job was clearing _work/_temp/*.

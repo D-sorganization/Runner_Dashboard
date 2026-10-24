@@ -45,7 +45,7 @@ def test_repo_policy_references_real_workflows() -> None:
 # a job pinned to one host or routed by an expression.
 _UNCLASSIFIED: dict[str, str] = {
     "deploy-qualified-release.yml": (
-        "Pinned to a single named host (d-sorg-local-Oglaptop-1); tier labels do not apply."
+        "Pinned to a single named host (d-sorg-local-node-b-1); tier labels do not apply."
     ),
     "local-only-runner-guard.yml": "runs-on is an expression that falls back to ubuntu-latest on public forks.",
     "maxwell-contract-drift.yml": "Neutral d-sorg-fleet placement; no tier preference has been decided.",
