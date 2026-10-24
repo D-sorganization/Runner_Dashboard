@@ -80,6 +80,42 @@ def test_missing_avatar_file_marks_role_invalid(tmp_path: Path, monkeypatch: pyt
 
 
 @pytest.mark.unit
+def test_load_roles_uses_avatars_from_loaded_directory_not_global(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``load_roles(directory)`` must validate avatars under that tree (Codex P2)."""
+    tree_a = _staff_tree(tmp_path / "a", "guest", avatar_rel=None)
+    role_path = tree_a / "guest.yml"
+    data = yaml.safe_load(role_path.read_text(encoding="utf-8"))
+    data["avatar"] = "only-in-b.webp"
+    role_path.write_text(yaml.dump(data), encoding="utf-8")
+
+    tree_b = _staff_tree(tmp_path / "b", "guest", avatar_rel="only-in-b.webp")
+    monkeypatch.setenv("STAFF_ROLES_DIR", str(tree_a))
+    from staff import roles as roles_mod  # noqa: PLC0415
+
+    roles_mod.clear_roles_cache()
+    assert roles_mod.load_roles(tree_a)["guest"].valid is False
+    roles_mod.clear_roles_cache()
+    assert roles_mod.load_roles(tree_b)["guest"].valid is True
+
+
+@pytest.mark.unit
+def test_avatar_file_added_without_yaml_change_refreshes_validation(tmp_path: Path) -> None:
+    roles_dir = _staff_tree(tmp_path, "ghost", avatar_rel=None)
+    role_path = roles_dir / "ghost.yml"
+    data = yaml.safe_load(role_path.read_text(encoding="utf-8"))
+    data["avatar"] = "appears.webp"
+    role_path.write_text(yaml.dump(data), encoding="utf-8")
+    from staff import roles as roles_mod  # noqa: PLC0415
+
+    roles_mod.clear_roles_cache()
+    assert roles_mod.load_roles(roles_dir)["ghost"].valid is False
+    (roles_dir.parent / "avatars" / "appears.webp").write_bytes(MINIMAL_WEBP)
+    assert roles_mod.load_roles(roles_dir)["ghost"].valid is True
+
+
+@pytest.mark.unit
 def test_schema_accepts_avatar_and_rejects_unknown_key() -> None:
     from staff.validator import validate_role_data  # noqa: PLC0415
 

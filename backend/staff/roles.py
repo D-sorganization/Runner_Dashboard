@@ -259,6 +259,7 @@ def parse_role(
     source_path: str = "",
     *,
     errors: tuple[str, ...] = (),
+    avatars_dir: Path | None = None,
 ) -> RoleSpec:
     """Build a RoleSpec from a parsed YAML mapping.
 
@@ -328,9 +329,17 @@ def parse_role(
 
     merged_errors = list(errors)
     if avatar is not None:
-        from staff.role_avatar_paths import validate_avatar_yaml_path
+        from staff.role_avatar_paths import staff_avatars_dir_for_roles, validate_avatar_yaml_path
 
-        avatar_err = validate_avatar_yaml_path(avatar)
+        resolved_avatars = avatars_dir
+        if resolved_avatars is None and source_path not in ("", "<builtin>", "<inline>"):
+            try:
+                role_path = Path(source_path)
+                if role_path.suffix in (".yml", ".yaml"):
+                    resolved_avatars = staff_avatars_dir_for_roles(role_path.parent)
+            except OSError:
+                resolved_avatars = None
+        avatar_err = validate_avatar_yaml_path(avatar, avatars_dir=resolved_avatars)
         if avatar_err:
             merged_errors.append(avatar_err)
     merged_errors.extend(validate_provider_fallback_rules(provider_fallback_rules, _as_tuple(data.get("providers"))))
@@ -453,7 +462,14 @@ def _read_and_parse_role_file(path: Path) -> RoleSpec:
             source_path=str(path),
         )
     errs = validate_role_data(data)
-    return parse_role(data, str(path), errors=tuple(errs))
+    from staff.role_avatar_paths import staff_avatars_dir_for_roles
+
+    return parse_role(
+        data,
+        str(path),
+        errors=tuple(errs),
+        avatars_dir=staff_avatars_dir_for_roles(path.parent),
+    )
 
 
 def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
@@ -477,7 +493,11 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
             file_stats.append((p.name, p.stat().st_mtime_ns))
         except OSError:
             file_stats.append((p.name, -1))
-    dir_sig = (str(directory.resolve()), tuple(file_stats))
+    from staff.role_avatar_paths import avatars_dir_mtime_sig, staff_avatars_dir_for_roles
+
+    avatars_dir = staff_avatars_dir_for_roles(directory)
+    avatars_sig = avatars_dir_mtime_sig(avatars_dir)
+    dir_sig = (str(directory.resolve()), tuple(file_stats), avatars_sig)
 
     global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_ERRORS
     with _CACHE_LOCK:
@@ -488,12 +508,13 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
         new_errors: dict[str, list[str]] = {}
 
         for path, (_, mtime) in zip(files, file_stats, strict=True):
+            file_sig = (mtime, avatars_sig)
             cached = _CACHE_FILE_ENTRIES.get(str(path))
-            if cached is not None and cached[0] == mtime:
+            if cached is not None and cached[0] == file_sig:
                 spec = cached[1]
             else:
                 spec = _read_and_parse_role_file(path)
-                _CACHE_FILE_ENTRIES[str(path)] = (mtime, spec)
+                _CACHE_FILE_ENTRIES[str(path)] = (file_sig, spec)
             new_roles[spec.name] = spec
             if not spec.valid and spec.errors:
                 new_errors[path.name] = list(spec.errors)
