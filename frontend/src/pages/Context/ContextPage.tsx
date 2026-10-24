@@ -212,7 +212,7 @@ export function ContextPage({
             </h2>
             <span className="text-xs text-neutral-400 bg-neutral-800/80 px-2.5 py-1 rounded-md">2,200 token hard cap (Tier 0: ≤ 1,500, Tier 1 lessons: ≤ 600)</span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm pt-2">
+          <div className="context-pack-grid text-sm pt-2">
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Pack Pin</span><span className="font-mono font-medium text-blue-400 text-xs break-all">{pack.pin}</span></div>
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Version</span><span className="font-mono font-medium text-neutral-200">{pack.version}</span></div>
             <div className="bg-neutral-950/60 p-3 rounded-lg border border-neutral-800/80"><span className="text-xs text-neutral-400 block">Content Digest</span><span className="font-mono text-xs text-neutral-300 break-all">{pack.digest}</span></div>

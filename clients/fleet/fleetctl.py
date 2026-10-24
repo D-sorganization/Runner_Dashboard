@@ -94,6 +94,50 @@ def _add_library_operations(parser: argparse.ArgumentParser) -> None:
     verify.set_defaults(command="library-verify", content=None)
     verify.add_argument("--file", dest="verification_file", required=True, type=Path)
     _add_argument(verify, "run_id", BY_CLI["library-verify"].properties["run_id"], positional=False)
+    _add_argument(verify, "repo", BY_CLI["library-verify"].properties["repo"], positional=False)
+
+
+def _add_barb_seat(sub: Any) -> None:
+    """``fleetctl barb seat {status,checkout,heartbeat,turnover,release}``."""
+    barb = sub.add_parser("barb", help="Barb seat tools.").add_subparsers(dest="barb_group", required=True)
+    seat = barb.add_parser("seat", help="Take, hold and hand over a Barb seat.").add_subparsers(
+        dest="seat_action", required=True, metavar="ACTION"
+    )
+    for command in COMMANDS:
+        if not command.cli.startswith("barb seat "):
+            continue
+        child = seat.add_parser(command.cli.rsplit(" ", 1)[1], help=command.description)
+        child.set_defaults(command=command.cli)
+        for name, schema in command.properties.items():
+            _add_argument(child, name, schema, positional=name in command.positional)
+
+
+def _add_exclusions(sub: Any) -> None:
+    """``fleetctl exclusions {list,add,remove}``."""
+    group = sub.add_parser("exclusions", help="Dispatch exclusions.").add_subparsers(
+        dest="exclusion_action", required=True, metavar="ACTION"
+    )
+    for command in COMMANDS:
+        if not command.cli.startswith("exclusions "):
+            continue
+        child = group.add_parser(command.cli.split(" ", 1)[1], help=command.description)
+        child.set_defaults(command=command.cli)
+        for name, schema in command.properties.items():
+            _add_argument(child, name, schema, positional=name in command.positional)
+
+
+def _add_memory_group(sub: Any) -> None:
+    """``fleetctl memory brief`` (grouped commands whose cli name starts with ``memory ``)."""
+    memory = sub.add_parser("memory", help="Shared memory helpers.").add_subparsers(
+        dest="memory_action", required=True, metavar="ACTION"
+    )
+    for command in COMMANDS:
+        if not command.cli.startswith("memory "):
+            continue
+        child = memory.add_parser(command.cli.split(" ", 1)[1], help=command.description)
+        child.set_defaults(command=command.cli)
+        for name, schema in command.properties.items():
+            _add_argument(child, name, schema, positional=name in command.positional)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -104,9 +148,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--as-session", dest="default_session", help="Default session (default $FLEET_SESSION).")
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for command in COMMANDS:
+        if " " in command.cli:  # grouped commands (``barb seat ...``) are registered below
+            continue
         cmd_parser = sub.add_parser(command.cli, help=command.description, description=command.description)
         for name, schema in command.properties.items():
             _add_argument(cmd_parser, name, schema, positional=name in command.positional)
+    _add_barb_seat(sub)
+    _add_exclusions(sub)
+    _add_memory_group(sub)
     _add_library_operations(sub.add_parser("library", help="Read-only library search, fetch and source discovery."))
     doctor = sub.add_parser(
         "doctor",

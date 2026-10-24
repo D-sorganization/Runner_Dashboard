@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -165,8 +166,16 @@ def test_unqualified_federation_uses_one_global_deadline(tmp_path: Path, monkeyp
 
     requested = _mock_nodes(monkeypatch, handler)
     monkeypatch.setattr("routers.library_fetch.PAGE_FETCH_DEADLINE_S", 0.05)
+    create_client = _client
+
+    def slow_client_startup(path: Path) -> TestClient:
+        time.sleep(0.3)
+        return create_client(path)
+
+    monkeypatch.setattr(sys.modules[__name__], "_client", slow_client_startup)
+    client = _client(tmp_path)
     started = time.monotonic()
-    response = _client(tmp_path).get("/api/v1/library/fetch", params={"source_id": "shared", "work_id": 1, "page": 5})
+    response = client.get("/api/v1/library/fetch", params={"source_id": "shared", "work_id": 1, "page": 5})
 
     assert response.status_code == 503
     assert time.monotonic() - started < 0.25
@@ -215,3 +224,77 @@ def test_unowned_run_is_rejected_before_targeted_peer_request(tmp_path: Path, mo
 
     assert response.status_code == 404
     assert requested == []
+
+
+def test_unowned_run_is_rejected_before_unqualified_federation(tmp_path: Path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    requested = _mock_nodes(monkeypatch, lambda _request: httpx.Response(200, json=_peer_payload("laptop")))
+    monkeypatch.setattr("staff.store.get_run_store", lambda: SimpleNamespace(get_run=lambda _run_id: None))
+    response = _client(tmp_path).get(
+        "/api/v1/library/fetch",
+        params={"source_id": "shared", "work_id": 1, "page": 5},
+        headers={"X-Staff-Run-ID": "unowned"},
+    )
+
+    assert response.status_code == 404
+    assert requested == []
+
+
+def test_federated_conflict_does_not_record_run_reference(tmp_path: Path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    runner = SimpleNamespace(
+        store=SimpleNamespace(get_run=lambda _run_id: SimpleNamespace(requested_by="principal:r"))
+    )
+    monkeypatch.setattr("staff.store.get_run_store", lambda: runner.store)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        node = request.url.host or ""
+        digest = "b" * 64 if node == "laptop" else "c" * 64
+        return httpx.Response(200, json=_peer_payload(node, digest))
+
+    _mock_nodes(monkeypatch, handler)
+    response = _client(tmp_path).get(
+        "/api/v1/library/fetch",
+        params={"source_id": "shared", "work_id": 1, "page": 5},
+        headers={"X-Staff-Run-ID": "run-fed-conflict"},
+    )
+
+    assert response.status_code == 409
+    from library.retrieval_ledger import references_for_run
+
+    assert references_for_run(library_routes._db(), "run-fed-conflict") == []
+
+
+def test_federated_page_locator_records_owned_run_reference(tmp_path: Path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    runner = SimpleNamespace(
+        store=SimpleNamespace(get_run=lambda _run_id: SimpleNamespace(requested_by="principal:r"))
+    )
+    monkeypatch.setattr("staff.store.get_run_store", lambda: runner.store)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = _peer_payload(request.url.host or "")
+        payload["text"] = "identical shared passage"
+        return httpx.Response(200, json=payload)
+
+    _mock_nodes(monkeypatch, handler)
+    client = _client(tmp_path)
+    with sqlite3.connect(library_routes._db()) as conn:
+        conn.execute("UPDATE passages SET text='identical shared passage' WHERE id=7")
+    response = client.get(
+        "/api/v1/library/fetch",
+        params={"source_id": "shared", "work_id": 1, "page": 5},
+        headers={"X-Staff-Run-ID": "run-fed-ok"},
+    )
+
+    assert response.status_code == 200
+    from library.retrieval_ledger import references_for_run
+
+    rows = references_for_run(library_routes._db(), "run-fed-ok")
+    assert len(rows) == 1
+    assert rows[0]["source_id"] == "shared" and rows[0]["work_id"] == 1
+    assert rows[0]["passage_id"] == 7 and rows[0]["file_sha256"] == "b" * 64
+    assert rows[0]["node"] == response.json()["node"]

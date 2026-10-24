@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -17,9 +18,13 @@ from staff.reconcile import reconcile_executing_proposals, reconcile_orphaned_ru
 from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def temp_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> RunStore:
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     db_path = tmp_path / "staff_runs.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_path))
     store_mod.reset_store()
@@ -131,7 +136,7 @@ def test_unpushed_worktree_preserved(
     subprocess.run(["git", "-C", str(repo_dir), "config", "user.name", "Test"], check=True)
     (repo_dir / "README.md").write_text("hello", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo_dir), "commit", "--no-verify", "-m", "init"], check=True)
+    subprocess.run(["git", "-C", str(repo_dir), "commit", "-m", "init"], check=True)
 
     # Create worktree
     wt_dir = tmp_path / "worktree-dirty"
@@ -165,8 +170,10 @@ def test_unpushed_worktree_preserved(
     assert str(wt_dir) in rec.error
 
 
-def test_clean_worktree_removed(temp_store: RunStore, staff_runner: runner_mod.StaffRunner, tmp_path: Path) -> None:
-    """A worktree with no unpushed commits or dirty files is removed on reconciliation."""
+def test_clean_orphaned_worktree_preserved(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner, tmp_path: Path
+) -> None:
+    """Clean Git state does not prove an orphan's process group or evidence is safe to delete."""
     repo_dir = tmp_path / "origin"
     repo_dir.mkdir()
     subprocess.run(["git", "init", "-b", "main", str(repo_dir)], check=True, capture_output=True)
@@ -177,7 +184,7 @@ def test_clean_worktree_removed(temp_store: RunStore, staff_runner: runner_mod.S
     subprocess.run(["git", "-C", str(repo_dir), "config", "user.name", "Test"], check=True)
     (repo_dir / "README.md").write_text("hello", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True)
-    subprocess.run(["git", "-C", str(repo_dir), "commit", "--no-verify", "-m", "init"], check=True)
+    subprocess.run(["git", "-C", str(repo_dir), "commit", "-m", "init"], check=True)
 
     wt_dir = tmp_path / "worktree-clean"
     subprocess.run(
@@ -194,12 +201,18 @@ def test_clean_worktree_removed(temp_store: RunStore, staff_runner: runner_mod.S
         check=True,
     )
 
+    (wt_dir / ".staff").mkdir()
+    (wt_dir / ".staff" / "transcript.log").write_text("recovery evidence")
     _make_run(temp_store, "run-clean", "running", workdir=str(wt_dir), repo="Tools")
 
-    with patch("staff.workspace.find_repo_checkout", return_value=repo_dir):
+    with (
+        patch("staff.workspace.find_repo_checkout", return_value=repo_dir),
+        patch("staff.workspace.worktree_has_unpushed_commits", side_effect=AssertionError("orphan Git inspection")),
+    ):
         reconcile_orphaned_runs(staff_runner, event_store=EventStore())
 
-    assert not wt_dir.exists()
+    assert (wt_dir / ".staff" / "transcript.log").read_text() == "recovery evidence"
+    assert str(wt_dir) in temp_store.get_run("run-clean").error
 
 
 def test_lease_release_failure_retried_in_background_never_blocks(

@@ -48,6 +48,7 @@ class TestAggressiveDockerUnderPressure:
         DOCKER_AGGRESSIVE on, not just lower the _work retention windows."""
         assert "DISK_PRESSURE_PERCENT" in cleanup_text
         assert "DOCKER_AGGRESSIVE=1" in cleanup_text, "disk-pressure path must enable aggressive docker pruning"
+        assert 'host_mnt="${WSL_HOST_MOUNT:-/mnt/c}"' in cleanup_text
 
     def test_aggressive_branch_prunes_everything(self, cleanup_text: str) -> None:
         """Aggressive mode must reclaim ALL build cache, unused images, and

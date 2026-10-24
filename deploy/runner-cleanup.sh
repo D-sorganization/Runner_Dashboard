@@ -248,7 +248,17 @@ bytes_human() {
 }
 
 root_used_percent() {
-    df -P / | awk 'NR == 2 {gsub("%", "", $5); print $5}'
+    local root_pct host_pct host_mnt
+    root_pct="$(df -P / | awk 'NR == 2 {gsub("%", "", $5); print $5}')"
+    host_mnt="${WSL_HOST_MOUNT:-/mnt/c}"
+    if [[ -d "$host_mnt" ]]; then
+        host_pct="$(df -P "$host_mnt" 2>/dev/null | awk 'NR == 2 {gsub("%", "", $5); print $5}' || true)"
+        if [[ "$host_pct" =~ ^[0-9]+$ ]] && (( host_pct > root_pct )); then
+            printf '%s\n' "$host_pct"
+            return 0
+        fi
+    fi
+    printf '%s\n' "$root_pct"
 }
 
 root_used_bytes() {

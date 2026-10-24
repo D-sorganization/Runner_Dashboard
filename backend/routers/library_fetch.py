@@ -16,6 +16,7 @@ from library.fetch_locator import fetch_locator
 from library.pool import validate_node_url
 from library.run_reference_recording import record_run_references, requested_run_id
 from library.search import AmbiguousPassageError
+from routers.library_read import requires_shared_content
 
 PAGE_FETCH_DEADLINE_S = 4.0
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -164,7 +165,7 @@ async def fetch_page_locator(
             source_id=source_id,
             work_id=work_id,
             page=page,
-            shared_only=principal.id == "fleet-peer" or scope == "federated",
+            shared_only=requires_shared_content(principal) or scope == "federated",
         )
         if result is None:
             raise HTTPException(status_code=404, detail="page locator not found")
@@ -175,15 +176,10 @@ async def fetch_page_locator(
         record_run_references(run_id, [result], db_path)
         return result
 
-    targets = (
-        [(node, nodes[node])]
-        if node is not None
-        else sorted((name, url) for name, url in nodes.items() if name != local_node)
-    )
-    if node is None and scope == "federated":
+    if node is not None:
+        targets = [(node, nodes[node])]
+    else:
         targets = sorted((name, url) for name, url in nodes.items() if name != local_node)
-    elif node is None:
-        targets = []
     token = os.environ.get("HUB_FLEET_TOKEN", "")
     if targets and not token:
         raise HTTPException(status_code=503, detail="fleet token is not configured")

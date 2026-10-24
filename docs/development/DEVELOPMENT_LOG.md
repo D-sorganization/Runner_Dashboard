@@ -11,6 +11,7 @@ feature, from proposal to ship. See the `development-logs` section of
 - **Last audited:** 2026-09-28 by claude (merged-PR reconciliation; shipped entries archived)
 
 <!-- #1873: No material development-log change — main merged and the generated API snapshot regenerated; DL-#1871 is unchanged. -->
+<!-- #2485: No material development-log change — staff run env and scheduler cursor bug fix; no feature state changes. -->
 
 ## States
 

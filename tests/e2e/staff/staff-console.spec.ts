@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
-import { requesterHeaders, viewerHeaders } from "./identity";
+import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
 // The console banner, not an error card from an earlier turn.
@@ -71,6 +71,40 @@ async function occurrences(page: Page, needle: string): Promise<number> {
 }
 
 test.describe("chat", () => {
+  test("the persistent Barb panel follows the selected conversation across tab navigation", async ({ page, request }) => {
+    await page.goto("/staff");
+    const backendPort = process.env.STAFF_E2E_BACKEND_PORT ?? "5092";
+    const backendUrl = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${backendPort}`;
+    const createThread = async (role: string, kind: "auto" | "direct", title: string) => {
+      const response = await request.post(`${backendUrl}/api/v1/staff/threads`, {
+        headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
+        data: { role, kind, title },
+      });
+      if (!response.ok()) throw new Error(`Thread creation failed: ${response.status()}`);
+      return response.json() as Promise<{ id: string }>;
+    };
+    const selected = await createThread("barb", "auto", "Selected operator conversation");
+    await createThread("barb", "auto", "Newer operator conversation");
+
+    await page.goto(`/staff?role=barb&thread=${encodeURIComponent(selected.id)}`);
+    await expect(page.getByRole("region", { name: "Conversation thread with Selected operator conversation" })).toBeVisible();
+    await page.getByRole("navigation", { name: /dashboard sections/i }).getByRole("button", { name: /^Context/i }).click();
+    await expect(page).toHaveURL(new RegExp(`thread=${selected.id}`));
+
+    await page.getByTestId("ask-barb-toggle").click();
+    const panel = page.getByRole("complementary", { name: "Ask Barb" });
+    await expect(panel.getByRole("region", { name: "Conversation thread with Selected operator conversation" })).toBeVisible();
+    await expect(panel.getByRole("region", { name: "Conversation thread with Newer operator conversation" })).toHaveCount(0);
+
+    const specialist = await createThread("reviewer", "direct", "Reviewer conversation");
+    await page.goto(`/staff?role=reviewer&thread=${encodeURIComponent(specialist.id)}`);
+    await expect(page.getByRole("region", { name: "Conversation thread with Reviewer conversation" })).toBeVisible();
+    await page.getByTestId("ask-barb-toggle").click();
+    const resumedBarb = page.getByRole("complementary", { name: "Ask Barb" });
+    await expect(resumedBarb.getByRole("region", { name: "Conversation thread with Reviewer conversation" })).toHaveCount(0);
+    await expect(resumedBarb.getByRole("region", { name: "Conversation thread with Newer operator conversation" })).toBeVisible();
+  });
+
   test("chat-first home shows the composer and can reveal staff choices", async ({ page }) => {
     await page.goto("/staff");
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
@@ -79,6 +113,32 @@ test.describe("chat", () => {
     await expect(chooseStaff).toBeVisible();
     await chooseStaff.click();
     await expect(page.getByRole("button", { name: /^E2E Analyst, Status:/ })).toBeVisible();
+  });
+
+  test("project starters keep the named repository context and wait for explicit send", async ({ page }) => {
+    let messagePosts = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && /\/threads\/[^/]+\/messages$/.test(new URL(request.url()).pathname)) {
+        messagePosts += 1;
+      }
+    });
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await page.setViewportSize(viewport);
+      await page.goto("/staff");
+      const composer = page.getByRole("textbox", { name: COMPOSER });
+      await expect(composer).toBeVisible();
+
+      await page.getByRole("button", { name: "Start UpstreamDrift" }).click();
+      await expect(composer).toHaveValue(/open issues and pull requests in the UpstreamDrift repository/);
+      await expect(composer).toHaveValue(/wait for my approval before dispatching/);
+
+      await page.getByRole("button", { name: "Start AffineDrift" }).click();
+      await expect(composer).toHaveValue(/open issues and pull requests in the AffineDrift repository/);
+      await expect(composer).toHaveValue(/wait for my approval before dispatching/);
+    }
+
+    expect(messagePosts).toBe(0);
   });
 
   test("sending from the mobile chat-first home reveals Barb's conversation", async ({ page }) => {
@@ -92,7 +152,7 @@ test.describe("chat", () => {
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
     await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
-    await expect(page).toHaveURL(/\/staff\?role=barb&thread=[^&]+/);
+    await expect(page).toHaveURL(/\/staff[?]role=barb&thread=[^&]+/);
 
     await page.reload();
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
@@ -214,6 +274,25 @@ test.describe("send failures keep the draft", () => {
 });
 
 test.describe("Ask Barb drawer keyboard access", () => {
+  test("returns focus to the launcher after focus moves during lazy drawer loading", async ({ page }) => {
+    await page.route("**/src/shell/BarbSidebar.tsx*", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.continue();
+    });
+    await page.goto("/staff");
+    const trigger = page.getByRole("button", { name: "Ask Barb" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("main").focus();
+
+    const drawer = page.getByTestId("barb-sidebar");
+    await expect(drawer).toBeVisible();
+    await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveAttribute("aria-hidden", "true");
+    await expect(trigger).toBeFocused();
+  });
+
   test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }) => {
     for (const viewport of [
       { width: 1440, height: 900 },
@@ -347,5 +426,195 @@ test.describe("runs", () => {
     await run.getByRole("button", { name: "Cancel run" }).click();
 
     await expect(run).toContainText("cancelled", { timeout: 30_000 });
+  });
+});
+
+test.describe("approved dashboard navigation", () => {
+  async function openBarbSidebar(page: Page, threadId?: string): Promise<Locator> {
+    await page.goto(threadId ? `/staff?role=barb&thread=${threadId}` : "/staff");
+    const askBarb = page.getByRole("button", { name: "Ask Barb" });
+    if (!(await page.getByTestId("barb-sidebar").isVisible())) await askBarb.click();
+    const drawer = page.getByTestId("barb-sidebar");
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole("textbox", { name: COMPOSER })).toBeVisible();
+    return drawer;
+  }
+
+  async function proposeFromSidebar(drawer: Locator, scenario: string): Promise<string> {
+    const cards = drawer.locator(".staff-action-card");
+    const before = await cards.count();
+    await drawer.getByRole("textbox", { name: COMPOSER }).fill(`open Context [[e2e:${scenario}]]`);
+    await drawer.getByRole("button", { name: "Send message" }).click();
+    await expect(cards).toHaveCount(before + 1);
+    const id = await cards.last().getAttribute("data-proposal-id");
+    if (!id) throw new Error("navigation proposal has no id");
+    return id;
+  }
+
+  test("approved navigation changes the route, preserves Barb's conversation on desktop and mobile, and rejects unknown sections", async ({ page, browser }) => {
+    const requesterContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const requester = await requesterContext.newPage();
+    await requester.route("**/api/**", (route) =>
+      route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+    );
+    await openThread(requester, BARB);
+    const priorThreadId = new URL(requester.url()).searchParams.get("thread");
+    requester.route("**/api/v1/staff/threads", async (route) => {
+      if (route.request().method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      await route.continue({
+        headers: { ...route.request().headers(), ...requesterHeaders },
+      });
+    });
+    const createdThread = requester.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/v1/staff/threads"),
+    );
+    await requester.getByRole("button", { name: "New conversation" }).click();
+    const createdThreadResponse = await createdThread;
+    expect(createdThreadResponse.ok()).toBeTruthy();
+    const createdThreadId = (await createdThreadResponse.json()).id as string;
+    await expect(requester).toHaveURL(new RegExp(`thread=${createdThreadId}`));
+    expect(createdThreadId).not.toBe(priorThreadId);
+    const threadId = new URL(requester.url()).searchParams.get("thread");
+    if (!threadId) throw new Error("new navigation conversation has no thread id");
+    const requesterDrawer = await openBarbSidebar(requester, threadId);
+
+    const desktopProposalId = await proposeFromSidebar(requesterDrawer, "navigate");
+    const desktopDrawer = await openBarbSidebar(page, threadId);
+    const desktopCard = desktopDrawer.locator(`[data-proposal-id="${desktopProposalId}"]`);
+    await expect(desktopCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await desktopCard.getByRole("button", { name: /^Approve$/ }).click();
+    await expect(page).toHaveURL(/\/context(?:[?]|$)/);
+    await expect(desktopDrawer).toContainText("open Context");
+    await expect(desktopDrawer).toContainText("Action Executed");
+
+    await desktopDrawer.getByRole("button", { name: "Open Projects" }).click();
+    await expect(page).toHaveURL(/\/projects(?:[?]|$)/);
+
+    const replayContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const replayPage = await replayContext.newPage();
+    await replayPage.route("**/api/**", (route) =>
+      route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+    );
+    await replayPage.goto(`/projects?role=barb&thread=${encodeURIComponent(threadId)}`);
+    await replayPage.getByRole("button", { name: "Ask Barb" }).click();
+    await expect(replayPage.getByTestId("barb-sidebar")).toBeVisible();
+    await expect(replayPage).toHaveURL(/\/projects(?:[?]|$)/);
+    await replayContext.close();
+
+    const restoredContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const restoredPage = await restoredContext.newPage();
+    await restoredPage.route("**/api/**", (route) =>
+      route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
+    );
+    await restoredPage.goto("/projects");
+    await restoredPage.getByRole("button", { name: "Ask Barb" }).click();
+    const restoredDrawer = restoredPage.getByTestId("barb-sidebar");
+    await expect(restoredDrawer).toBeVisible();
+    await expect(restoredDrawer).toContainText("open Context");
+    await expect(restoredDrawer).toContainText("Action Executed");
+    await expect(restoredPage).toHaveURL(/\/projects(?:[?]|$)/);
+    await restoredContext.close();
+
+    if (!(await desktopDrawer.isVisible())) await page.getByRole("button", { name: "Ask Barb" }).click();
+    const mobileProposalId = await proposeFromSidebar(requesterDrawer, "navigate");
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileDrawer = page.getByTestId("barb-sidebar");
+    if (!(await mobileDrawer.isVisible())) await page.getByRole("button", { name: "Ask Barb" }).click();
+    await expect(mobileDrawer).toBeVisible();
+    const mobileCard = mobileDrawer.locator(`[data-proposal-id="${mobileProposalId}"]`);
+    await expect(mobileCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await mobileCard.getByRole("button", { name: /^Approve$/ }).click();
+    await expect(page).toHaveURL(/\/context(?:[?]|$)/);
+    await expect(mobileDrawer).toHaveAttribute("aria-hidden", "true");
+    await page.getByRole("button", { name: "Ask Barb" }).click();
+    const reopenedDrawer = page.getByTestId("barb-sidebar");
+    await expect(reopenedDrawer).toBeVisible();
+    await expect(reopenedDrawer).toContainText("open Context");
+    await expect(reopenedDrawer).toContainText("Action Executed");
+
+    const routeBeforeInvalidAction = page.url();
+    const invalidProposalId = await proposeFromSidebar(requesterDrawer, "navigate-invalid");
+    const invalidCard = reopenedDrawer.locator(`[data-proposal-id="${invalidProposalId}"]`);
+    await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await invalidCard.getByRole("button", { name: /^Approve$/ }).click();
+    await expect(page).toHaveURL(routeBeforeInvalidAction);
+    await expect(reopenedDrawer).toContainText("Action Failed", { timeout: 30_000 });
+    await expect(invalidCard).toContainText("Action failed. You can review the failure below and retry approval.");
+    await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await expect(reopenedDrawer).toContainText("registered dashboard section");
+    const retryResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith(`/proposals/${invalidProposalId}/decide`),
+    );
+    await invalidCard.getByRole("button", { name: /^Approve$/ }).click();
+    expect((await retryResponse).status()).toBe(200);
+    await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Staff Console", exact: true }).click();
+    expect(new URL(page.url()).pathname).toBe("/");
+    expect(new URL(page.url()).searchParams.get("thread")).toBe(threadId);
+    await requesterContext.close();
+  });
+});
+
+
+test.describe("persistent Barb conversation selection", () => {
+  test("keeps a new sidebar conversation selected through navigation and mobile remount", async ({ page, request }) => {
+    const backendPort = process.env.STAFF_E2E_BACKEND_PORT ?? "5092";
+    const backendUrl = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${backendPort}`;
+    const created = await request.post(`${backendUrl}/api/v1/staff/threads`, {
+      headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
+      data: { role: "barb", kind: "auto", title: "Original Barb conversation A" },
+    });
+    expect(created.ok()).toBeTruthy();
+    const originalThreadId = (await created.json()).id as string;
+
+    await page.goto(`/staff?role=barb&thread=${encodeURIComponent(originalThreadId)}`);
+    await page.getByTestId("ask-barb-toggle").click();
+    const sidebar = page.getByTestId("barb-sidebar");
+    await expect(sidebar.getByRole("region", {
+      name: "Conversation thread with Original Barb conversation A",
+    })).toBeVisible();
+
+    const createdThreadResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/v1/staff/threads"),
+    );
+    await sidebar.getByRole("button", { name: "New chat" }).click();
+    const createdThreadBody = await (await createdThreadResponse).json();
+    const newThreadId = createdThreadBody.id as string;
+    expect(newThreadId).not.toBe(originalThreadId);
+    await expect(page).toHaveURL(new RegExp(`thread=${newThreadId}`));
+    await expect(sidebar.getByRole("region", {
+      name: "Conversation thread with Conversation with Barb",
+    })).toBeVisible();
+
+    await sidebar.getByRole("button", { name: "Open Projects" }).click();
+    await expect(page).toHaveURL(new RegExp(`/projects[?][^#]*thread=${newThreadId}`));
+    await sidebar.getByRole("button", { name: "Close Ask Barb" }).click();
+    await page.getByTestId("ask-barb-toggle").click();
+    await expect(sidebar.getByRole("region", {
+      name: "Conversation thread with Conversation with Barb",
+    })).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const askBarb = page.getByTestId("mobile-ask-barb");
+    const mobileSidebar = page.getByTestId("barb-sidebar");
+    await expect(askBarb).toBeVisible();
+    if (await mobileSidebar.isVisible()) {
+      await mobileSidebar.getByRole("button", { name: "Close Ask Barb" }).click();
+    }
+    await askBarb.click();
+    await expect(mobileSidebar).toBeVisible();
+    await expect(mobileSidebar.getByRole("region", {
+      name: "Conversation thread with Conversation with Barb",
+    })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/projects[?][^#]*thread=${newThreadId}`));
   });
 });

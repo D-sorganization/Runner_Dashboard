@@ -191,3 +191,27 @@ def test_posting_into_a_panel_is_409_and_panels_are_not_made_through_threads(cli
     )
     assert res.status_code == 409 and "panel" in res.text
     assert client.post("/api/v1/staff/threads", json={"kind": "panel"}).status_code == 422
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("model", ["--dangerously-skip-permissions", "x; rm -rf /", "a b"])
+def test_a_hostile_seat_model_is_422_naming_the_seat(client: TestClient, model: str) -> None:
+    experts = [{**BODY["experts"][0], "model": model}, *BODY["experts"][1:]]
+    res = client.post("/api/v1/staff/panels", json={**BODY, "experts": experts})
+    assert res.status_code == 422, res.text
+    assert "Ada" in res.text and get_conversation_store().list_threads() == []
+
+
+@pytest.mark.unit
+def test_the_panel_state_exposes_tally_and_quorum(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def flaky(speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str) -> TurnOutcome:
+        if speaker.name == "Cy":
+            return TurnOutcome(ok=False, error="boom")
+        return await agreeing_runner(speaker, prompt, thread_id, message_id)
+
+    monkeypatch.setattr(staff_panels, "_turn_runner", lambda: flaky)
+    res = client.post("/api/v1/staff/panels", json=BODY)
+    result = _wait_done(client, res.json()["thread"]["id"])
+    assert result["tally"] == {"participated": 2, "abstained": 1}
+    assert result["abstentions"] == [{"expert": "Cy", "reason": "boom"}]
+    assert result["quorum_met"] is True and result["status"] == "complete"

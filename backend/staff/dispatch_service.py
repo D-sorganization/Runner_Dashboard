@@ -85,6 +85,7 @@ class DispatchCommand:
     requested_skill: str | None = None
     # Force duplicate run/PR: bypasses pre-dispatch open-PR and active-run guards (#2254).
     force_duplicate: bool = False
+    execution_mode: str = "local"
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -180,6 +181,23 @@ async def _forward(target: str, cmd: DispatchCommand, on_behalf_of: str) -> dict
     return {**data, "machine": data.get("machine", target), "forwarded_to": target}
 
 
+def _refuse_if_excluded(cmd: DispatchCommand) -> None:
+    """409 when (repo, issue, declared paths) fall in an active dispatch exclusion.
+
+    Runs before any forward/plan/audit so no run row exists for a refused lane. It
+    applies to dry runs too, so a preview tells the caller the lane is owned.
+    """
+    if not cmd.repo:
+        return
+    from dispatch_routing import extract_declared_paths  # noqa: PLC0415
+    from staff.exclusions import ExclusionsList, refusal_detail  # noqa: PLC0415
+
+    hit = ExclusionsList().blocking(cmd.repo, cmd.issue, extract_declared_paths(cmd.prompt))
+    if hit is not None:
+        log.info("staff: dispatch of %s on %s#%s refused by exclusion %s", cmd.role, cmd.repo, cmd.issue, hit.id)
+        raise HTTPException(status_code=409, detail=refusal_detail(hit))
+
+
 async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[str, Any]:
     """Dispatch (or preview) one staff run under the shared policy.
 
@@ -191,6 +209,8 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     outage starts nothing. Any refusal is an ``HTTPException`` raised before a run row
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
+    _refuse_if_excluded(cmd)
+
     if not cmd.dry_run and not cmd.force_duplicate and cmd.issue and cmd.repo:
         from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
 
@@ -302,6 +322,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         task_type=cmd.task_type,
         standards_extra=cmd.standards_extra,
         requested_skill=cmd.requested_skill,
+        execution_mode=cmd.execution_mode or "local",
     )
     try:
         plan = runner.plan(req)
@@ -406,6 +427,9 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 outcome=str(row.get("outcome") or "auth_expired"),
             )
     if created:
+        from staff.routing_shadow import record_for_run  # noqa: PLC0415
+
+        record_for_run(runner.store, rec)  # shadow advice only (STAFF_ROUTING_MODE=shadow); never reroutes
         try:
             runner.launch(rec, plan)
         except Exception as exc:

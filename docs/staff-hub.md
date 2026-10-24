@@ -1,5 +1,7 @@
 # Staff Hub
 
+> Operator and agent playbook: [Operating the Fleet Through the Dashboard](operating-the-fleet-through-the-dashboard.md).
+
 Epic [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192).
 The Staff Hub runs named AI "staff" roles (Night Watch, Issue Remediator,
 Project Steward, …) as local CLI subprocesses on a dashboard node, records
@@ -35,6 +37,9 @@ missing binary is classified `cli_missing`, an expired Google session `auth_expi
 | GET    | `/api/staff/schedule`         | fleet peer                | Per role: next fire, in window now, blocking hold, budget, last fired                                                                                                                                     |
 | GET    | `/api/staff/holds`            | fleet peer                | The holds list                                                                                                                                                                                            |
 | PUT    | `/api/staff/holds`            | orchestrator peer         | Replace the holds list                                                                                                                                                                                    |
+| GET    | `/api/staff/exclusions`       | fleet peer                | Dispatch exclusions (repo/issue lanes), each flagged `active`                                                                                                                                             |
+| POST   | `/api/staff/exclusions`       | orchestrator peer         | Add an exclusion; `repo`, `owner`, `reason` required; optional `issue`, `path_glob`, `expires_at`                                                                                                         |
+| DELETE | `/api/staff/exclusions/{id}`  | orchestrator peer         | Lift an exclusion                                                                                                                                                                                         |
 | GET    | `/api/staff/usage`            | fleet peer                | Cost and token usage grouped by `provider`, `role` or `day` (`?group=`, `?since=`), with totals and the daily budget percent                                                                              |
 | GET    | `/api/staff/usage/pricing`    | fleet peer                | The price table used for estimates                                                                                                                                                                        |
 | POST   | `/api/staff/usage/export`     | orchestrator peer         | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout)                                                    |
@@ -118,12 +123,37 @@ A handled slot moves the role's cursor to _now_ whether it fired or was
 skipped, so a node that was asleep fires at most once when it wakes and a slot
 skipped for a hold is not retried until the next slot. Cursor, last fire time
 and last reason persist in `<config dir>/staff_schedule_state.json`.
+If the cursor is stale by two or more slots (for example the scheduler was
+disabled for weeks), it is reseeded to _now_ on the next evaluation, so
+`next_fire` is always a future slot and the node does not replay old ones;
+a single missed slot still fires once on wake.
 
 The **holds list** (`staff/holds.py`) is `<config dir>/staff_holds.json`,
 seeded on first load from the `holds:` lists of the role YAML (same text on
 several roles merges into one hold). Each hold is `{id, text, set_on,
 lifted_when, applies_to, active}`; `PUT /api/staff/holds` replaces the whole
 list. Lifting a hold means `active: false` (or removing it).
+
+## Dispatch exclusions (#2503)
+
+An exclusion marks a repo (or one issue in it) as owned by a peer session or lane, so
+the hub refuses to dispatch onto it. It replaces the orchestrator's `DO_NOT_DISPATCH.txt`.
+Entries (`staff/exclusions.py`, `<config dir>/staff_exclusions.json`, override
+`STAFF_EXCLUSIONS_FILE`): `{id, repo, issue, path_glob, owner, reason, created_by,
+created_at, expires_at}`. `issue: null` excludes the whole repo; `repo` matches by name,
+case-insensitively, ignoring any `org/` prefix; `path_glob` narrows the entry to prompts that
+declare a matching path (backticked paths); an expired entry never blocks. Re-posting the same
+repo/issue/glob replaces the entry. Routes also exist under `/api/v1/staff`; writes use the
+`staff.holds.write` scope and are audited (`hold_set` / `hold_clear`, target `exclusion:<id>`).
+
+Enforcement: `POST /api/staff/{role}/run` (including dry runs, and every caller of
+`dispatch_service.dispatch_staff_run`) returns **409** with `detail.code = dispatch_excluded`,
+`owner`, `reason` and `expires_at` before any run row exists. The scheduler skips an excluded
+repo's slot (`last_reason`: `excluded: <owner>: <reason>`) and auto-retry declines. The
+scheduler and retry have no issue, so they honour whole-repo entries only. `GET
+/api/staff/summary` reports `exclusions_active`. Import an existing list with
+`python scripts/import_dispatch_exclusions.py DO_NOT_DISPATCH.txt` (dry run; `--apply` posts
+using `$RUNNER_DASHBOARD_URL` / `$RUNNER_DASHBOARD_TOKEN`).
 
 ## Liveness (#1209)
 
@@ -212,6 +242,7 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | ----------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `STAFF_SCHEDULER_ENABLED`     | `1`                                                                             | `0`/`false` keeps the scheduler thread from starting                                                              |
 | `STAFF_HOLDS_FILE`            | `<config dir>/staff_holds.json`                                                 | Holds list                                                                                                        |
+| `STAFF_EXCLUSIONS_FILE`       | `<config dir>/staff_exclusions.json`                                            | Dispatch exclusions                                                                                               |
 | `STAFF_SCHEDULE_STATE`        | `<config dir>/staff_schedule_state.json`                                        | Per-role cursor / last fired                                                                                      |
 | `STAFF_ROLES_DIR`             | sibling `Repository_Management/staff/roles`                                     | Role YAML directory                                                                                               |
 | `STAFF_RUNS_DB`               | `<config dir>/staff_runs.sqlite3`                                               | Run store                                                                                                         |
@@ -593,7 +624,10 @@ Roles may **tighten** the order with `retry.failover_chain` (each step must stay
 Before launch, the runner and scheduler skip providers that are **cooling down** on this
 node after `provider_capacity`, `quota_exhausted`, or `rate_limited` failures.
 `GET /api/staff/summary` exposes `providers_cooldown` per machine so Barb can see
-when Codex or Claude will be healthy again. With `machine: auto`, placement prefers an
+when Codex or Claude will be healthy again. Cooldowns are durable: they persist to `staff_provider_cooldowns.json` in the dashboard
+config dir (`STAFF_PROVIDER_COOLDOWNS_FILE` overrides) with wall-clock UTC expiry, written
+atomically, so a hub restart does not forget a rate-limited provider. Expired entries are
+pruned on load and read; a missing or corrupt file loads as empty (logged). With `machine: auto`, placement prefers an
 online peer that still has a healthy chain provider.
 
 When the whole chain is exhausted, the run moves to attention state
@@ -634,6 +668,10 @@ Conductor spellings all match (`gemini`, `gemini_cli`, `gemini-cli`). A disabled
 
 Roles keep listing it; removing it from the env re-enables it with no role edits.
 
+## Fleet friction ledger and owner questions (#2502)
+
+See [fleet-friction-ledger.md](fleet-friction-ledger.md): the friction ledger (`/api/v1/fleet/friction`), the owner-questions queue, summary counts and the importer.
+
 ## External Agent Clients (SC-F5, #1334)
 
 External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) interact with the Staff Hub via the Fleet Coordination and Staff v1 API or the fleet MCP server.
@@ -646,3 +684,12 @@ External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) int
 ## Not yet here (tracked in the epic)
 
 The fleet deploy (#1201).
+
+## Routing statistics and shadow advice (#2484)
+
+Observability for a future learning router; nothing here changes provider or machine selection.
+
+- **Success definition** (`backend/staff/run_outcome.py`, used by the report cards): a run is `success` only when it succeeded AND its verification is `verified`. `no_op` (succeeded with `no_change`, `not_applicable` or no verdict) and `cancelled` are neutral and excluded from the quality sample (`terminal_runs`, reported as `neutral_runs`). Infra failures (`rate_limited`, `quota_exhausted`, `auth_expired`, `provider_capacity`, `environment_error`, blocked runs, ...) never lower the quality score; they surface as `infra_failed_runs` and `availability`. `first_pass_*` additionally excludes runs that needed a later pr-remediator rework.
+- **Where to read it**: `GET /api/v1/staff/report-cards`, `/leaderboard` (Wilson 95% CI in `first_pass_ci_95`, cost per success in `effective_cost_per_success_usd`).
+- **Shadow mode**: set `STAFF_ROUTING_MODE=shadow` (default `off`). Each newly admitted run then gets one `routing_shadow` run event `{chosen, recommended, agrees, scores}`, where `recommended` is the best provider for the role and complexity tier from the last 14 days of runs. The router stays in shadow until a provider has n >= 8 scored runs: below that `recommended` is `null`. Advice failures are logged and swallowed; the chosen provider is never altered. The hook sits at the dispatch admission seam in `backend/staff/dispatch_service.py` (the selection itself is `failover_dispatch.select_provider_from_chain`).
+- Override/feedback counts (`routing_feedback`) live in the conversation store and are not joined here yet.

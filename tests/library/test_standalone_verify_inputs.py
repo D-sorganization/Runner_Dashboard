@@ -93,3 +93,43 @@ def test_cli_local_only_never_calls_fleet_peer(
 
     assert library_cli.main() == 1
     assert json.loads(capsys.readouterr().out)["citations"][0]["status"] == "node_mismatch"
+
+
+@pytest.mark.parametrize("inside_root", [True, False])
+def test_cli_uses_document_path_only_for_files_inside_explicit_repo_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    inside_root: bool,
+) -> None:
+    database = init_library_db(tmp_path / "library.sqlite")
+    root = tmp_path / "repo"
+    root.mkdir()
+    document = root / "nested" / "topic.md" if inside_root else tmp_path / "body.md"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_text("[guide](../guide.md)", encoding="utf-8")
+    captured: list[dict[str, object]] = []
+
+    def verify(_db: Path, _content: str, **kwargs: object) -> dict[str, object]:
+        captured.append(kwargs)
+        return {"verified": True, "citations": [], "links": []}
+
+    monkeypatch.setattr(library_cli, "verify_content", verify)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "library",
+            "verify",
+            "--file",
+            str(document),
+            "--library-db",
+            str(database),
+            "--repo-root",
+            str(root),
+        ],
+    )
+
+    assert library_cli.main() == 0
+    capsys.readouterr()
+    assert captured[0]["document_path"] == (document if inside_root else None)

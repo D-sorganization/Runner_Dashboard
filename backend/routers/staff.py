@@ -24,7 +24,7 @@ import asyncio
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
@@ -94,6 +94,7 @@ class RunBody(BaseModel):
         max_length=120,
         description="Explicit skill package name; must exist in the registry or dispatch is rejected.",
     )
+    execution_mode: Literal["local", "cloud"] = "local"
 
     @field_validator("repo")
     @classmethod

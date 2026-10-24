@@ -182,6 +182,8 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     upstream.focus();
     await user.keyboard("{Enter}");
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toContain("UpstreamDrift"));
+    expect((input as HTMLTextAreaElement).value).toContain("review open issues and pull requests in the UpstreamDrift repository");
+    expect((input as HTMLTextAreaElement).value).toContain("wait for my approval before dispatch");
     expect(document.activeElement).toBe(input);
     expect(onSendMessage).not.toHaveBeenCalled();
 
@@ -189,6 +191,7 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     affine.focus();
     await user.keyboard("{Enter}");
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toContain("AffineDrift"));
+    expect((input as HTMLTextAreaElement).value).toContain("review open issues and pull requests in the AffineDrift repository");
     expect(onSendMessage).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Choose staff" }));

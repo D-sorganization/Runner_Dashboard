@@ -1,4 +1,4 @@
-"""End-to-end intake: verify and record (proposal creation lands in #2099)."""
+"""End-to-end intake: verify, record, create work proposal."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from email_intake.models import InboundMessage, IntakeDisposition
 from email_intake.parse_request import parse_dispatch_hints
 from email_intake.policy import MailPolicy
 from email_intake.verify import verify_inbound
+from intake_proposals.store import IntakeProposalStore, default_intake_proposal_store
 from staff.audit import record_audit
 from staff.rm_mail_policy import get_cached_mail_policy, policy_from_rm_root
 
@@ -21,10 +22,12 @@ def process_inbound_message(
     *,
     policy: MailPolicy | None = None,
     intake_store: IntakeStore | None = None,
+    proposal_store: IntakeProposalStore | None = None,
 ) -> dict[str, Any]:
-    """Verify one message and persist intake audit metadata."""
+    """Verify one message and optionally create a pending intake proposal."""
     pol = policy or get_cached_mail_policy() or policy_from_rm_root()
     store = intake_store or default_intake_store()
+    proposals = proposal_store or default_intake_proposal_store()
     seen: set[str] = set()
     if message.message_id and store.has_message_id(message.message_id):
         seen.add(message.message_id)
@@ -49,12 +52,24 @@ def process_inbound_message(
     if outcome.disposition != IntakeDisposition.ACCEPT:
         return {"status": outcome.disposition.value, "reasons": list(outcome.reasons)}
     hints = parse_dispatch_hints(message.body_plain, default_role="")
-    return {
-        "status": "accepted",
-        "dispatch": {
+    proposal = proposals.create_pending(
+        subject=message.subject,
+        body_plain=message.body_plain,
+        sender=message.from_address,
+        message_id=message.message_id,
+        dispatch={
             "role": hints.role,
             "repo": hints.repo,
             "issue": hints.issue,
             "prompt": hints.prompt,
         },
-    }
+    )
+    record_audit(
+        action="intake_proposal_create",
+        target=proposal.id,
+        principal="email-intake",
+        surface="scheduler",
+        outcome="success",
+        detail={"message_id": message.message_id, "sender": message.from_address},
+    )
+    return {"status": "proposal_created", "proposal_id": proposal.id}

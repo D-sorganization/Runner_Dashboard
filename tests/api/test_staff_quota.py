@@ -164,6 +164,22 @@ def test_limit_lifts_at_its_reset_time() -> None:
     assert snap.current(datetime.fromtimestamp(FIVE_H_RESET + 1, UTC)).limited_until is None
 
 
+@pytest.mark.unit
+def test_stale_snapshot_drops_blocking_windows() -> None:
+    snap = quota.QuotaSnapshot(
+        account="codex",
+        observed_at=NOW - timedelta(hours=3),
+        source="test",
+        windows=(
+            quota.QuotaWindow("five_hour", 97.0, datetime.fromtimestamp(FIVE_H_RESET + 3600, UTC)),
+            quota.QuotaWindow("seven_day", 12.0, datetime.fromtimestamp(SEVEN_D_RESET, UTC)),
+        ),
+    )
+    current = snap.current(NOW)
+    assert [w.name for w in current.windows] == ["seven_day"]
+    assert current.peak() is not None and current.peak().used_percent == 12.0
+
+
 # ── codex session logs ───────────────────────────────────────────────────
 @pytest.mark.unit
 def test_codex_reader_takes_the_newest_rate_limits_from_the_newest_session(tmp_path: Path) -> None:

@@ -19,9 +19,10 @@ from typing import TYPE_CHECKING, Any
 
 import deployment_drift
 import proxy_utils
-from dashboard_config import EXPECTED_VERSION_FILE, HOSTNAME
+from dashboard_config import DEPLOYMENT_FILE, EXPECTED_VERSION_FILE, HOSTNAME
 from fastapi import APIRouter, Depends, Request
 from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
+from static_asset_integrity import inspect_static_asset_integrity
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -92,8 +93,15 @@ async def get_expected_deployment_version() -> dict:
 async def get_deployment_drift(deps: DeploymentDeps = Depends(deployment_deps)) -> dict:  # noqa: B008
     """Compare the deployed version against the hub's expected VERSION."""
     expected = await deps.read_expected_dashboard_version()
-    status = deployment_drift.evaluate_drift(deps.deployment_info(), expected)
-    return status.to_dict()
+    deployment = deps.deployment_info()
+    status = deployment_drift.evaluate_drift(deployment, expected)
+    result = status.to_dict()
+    result["static_assets"] = await asyncio.to_thread(
+        inspect_static_asset_integrity,
+        deployment.get("static_asset_manifest"),
+        DEPLOYMENT_FILE.parent / "dist",
+    )
+    return result
 
 
 @router.get("/api/deployment/state", dependencies=[Depends(require_fleet_peer)])

@@ -66,3 +66,12 @@ def test_fleet_token_can_dry_run_dispatch(remote_client: TestClient, staff_cli_i
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["dry_run"] is True
+
+
+@pytest.mark.unit
+def test_remote_read_accepts_hub_bearer_when_spoke_has_no_fleet_token(
+    remote_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+    resp = remote_client.get("/api/staff/board?local=1", headers={"Authorization": "Bearer hub-only-token"})
+    assert resp.status_code == 200

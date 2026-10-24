@@ -27,6 +27,7 @@ import {
   STEWARD_RUN_BODY,
 } from "./Projects";
 import type { AssessmentScore, ProjectsResponse, RepoCiStatus } from "./Projects";
+import "./ProjectsPage.css";
 
 interface RepoCiRow {
   name?: string;
@@ -183,14 +184,7 @@ export function ProjectsPage(): React.ReactElement {
 
   return (
     <div className="projects-page">
-      <div
-        className="section-header"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
+      <div className="projects-page__header">
         <h2 style={{ margin: 0 }}>Projects</h2>
         <button
           type="button"

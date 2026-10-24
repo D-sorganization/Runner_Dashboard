@@ -13,6 +13,8 @@ Chat scenarios:
   dispatch-ask  the same, but the dispatched run asks a question first
   dispatch-hang the same, but the dispatched run hangs until it is cancelled
   handoff       hand the thread to ``e2e-analyst``
+  navigate      propose an allowlisted dashboard section navigation
+  navigate-invalid propose an unknown dashboard section navigation
   crash         exit 1 with a stack-trace style error on stderr
   auth          exit 1 with the CLI's expired-login message
 
@@ -86,6 +88,14 @@ def chat_body(scenario: str, prompt: str) -> list[str]:
             "reason": "The analyst can look at the queue.",
         }
         return ["I can ask the analyst to look.\n\n", actions_block([action])]
+    if scenario in {"navigate", "navigate-invalid"}:
+        tab_id = "context" if scenario == "navigate" else "unknown-section"
+        action = {
+            "action": "dashboard.navigate",
+            "params": {"tab_id": tab_id},
+            "reason": "Open the requested dashboard section.",
+        }
+        return ["I can open that section after approval.\n\n", actions_block([action])]
     if scenario == "handoff":
         return ["That is an analysis question, so I am handing it over.\n\n", "handoff: e2e-analyst\n"]
     return [f"Fake reply: {last_line(prompt)}"]

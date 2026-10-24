@@ -1,0 +1,19 @@
+[Unit]
+Description=Runner Dashboard node self-heal and Windows/WSL credential sync (one shot)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@DASHBOARD_USER@
+Environment=HOME=@DASHBOARD_HOME@
+Environment=RUNNER_DASHBOARD_USER=@DASHBOARD_USER@
+Environment=RUNNER_DASHBOARD_ENV_FILE=@ENV_FILE@
+EnvironmentFile=-@ENV_FILE@
+Environment=RUNNER_DASHBOARD_DEPLOY_DIR=@DEPLOY_DIR@
+Environment=RUNNER_DASHBOARD_PYTHON=@PYTHON_BIN@
+ExecStart=@DASHBOARD_HOME@/.config/runner-dashboard/self-heal/node-self-heal.sh
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

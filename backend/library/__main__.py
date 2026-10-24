@@ -55,11 +55,18 @@ def main() -> int:
             if args.knowledge_dir is not None and not args.knowledge_dir.is_dir():
                 raise ValueError("explicit knowledge directory does not exist")
             explicit_inputs = args.library_db is not None or args.knowledge_dir is not None
+            document_path = None
+            if args.repo_root is not None:
+                candidate = Path(args.file).absolute()
+                root = args.repo_root.resolve()
+                if root in candidate.parents:
+                    document_path = candidate
             result = verify_content(
                 db,
                 Path(args.file).read_text(encoding="utf-8"),
                 run_id=args.run_id,
                 repo_root=args.repo_root,
+                document_path=document_path,
                 knowledge_dir=args.knowledge_dir,
                 allow_ambient_knowledge=not explicit_inputs,
                 local_only=args.local_only,

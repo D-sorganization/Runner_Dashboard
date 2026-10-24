@@ -733,6 +733,7 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_barb as _staff_barb_router  # noqa: E402
 from routers import staff_concerns as _staff_concerns_router  # noqa: E402
+from routers import staff_exclusions as _staff_exclusions_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
@@ -766,11 +767,16 @@ app.include_router(_staff_router.router)
 app.include_router(_staff_local_runs_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
+app.include_router(_staff_exclusions_router.router, prefix="/api/staff")  # dispatch exclusions
+app.include_router(_staff_exclusions_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
 app.include_router(_library_router.router)  # Alexandria library (#2165)
+from routers import vault as _vault_router  # noqa: E402
+
+app.include_router(_vault_router.router)  # Secure storage vault (#2542)
 
 app.include_router(_diagnostics_logs_router.router, prefix="/api/v1/diagnostics")
 
@@ -778,6 +784,10 @@ app.include_router(_diagnostics_logs_router.router, prefix="/api/v1/diagnostics"
 from routers import coordination as _coordination_router  # noqa: E402
 
 app.include_router(_coordination_router.router)
+
+from routers import fleet_friction as _fleet_friction_router  # noqa: E402
+
+app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
 
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
@@ -798,9 +808,22 @@ from routers import priorities as _priorities_router  # noqa: E402
 app.include_router(_priorities_router.router)
 
 # Board Proposals suggestion box (issue #1284, CR-7).
+from routers import intake_proposals as _intake_proposals_router  # noqa: E402
 from routers import proposals as _proposals_router  # noqa: E402
 
 app.include_router(_proposals_router.router)
+app.include_router(_intake_proposals_router.router)
+
+from routers import security_scan as _security_scan_router  # noqa: E402
+
+app.include_router(_security_scan_router.router)  # fleet security scanner (epic #2566)
+
+from routers import voice as _voice_router  # noqa: E402
+
+app.include_router(_voice_router.router)  # local Whisper voice-to-text (epic #2591)
+from routers import metrics as _fleet_prometheus_router  # noqa: E402
+
+app.include_router(_fleet_prometheus_router.router)  # lightweight Prometheus exporter (#2611)
 
 # Issue #924 — structural auth perimeter. Registered BEFORE the session selector so
 # that, in Starlette's outer→inner stack, session handling wraps this gate and
@@ -2773,6 +2796,10 @@ async def _startup() -> None:
 
     asyncio.create_task(warm_fleet_context_snapshots())
 
+    from email_intake.poller import email_intake_poll_loop  # noqa: PLC0415
+
+    asyncio.create_task(email_intake_poll_loop())
+
     from github_app_auth import github_app_auth_configured  # noqa: PLC0415
     from staff.github_app_preflight import periodic_github_app_preflight_loop  # noqa: PLC0415
     from staff.runner import get_runner  # noqa: PLC0415
@@ -2786,6 +2813,13 @@ async def _startup() -> None:
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
+
+    # Security-scan scheduler (#2574). Every tick checks MACHINE_ROLE == "hub" and
+    # schedule.enabled in config/security_scan.json, so nodes and a disabled
+    # schedule never start a scan.
+    from vuln_scan.scan_service import start_schedule_loop  # noqa: PLC0415
+
+    start_schedule_loop()
 
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()
