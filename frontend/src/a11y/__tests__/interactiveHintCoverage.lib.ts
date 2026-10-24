@@ -325,6 +325,7 @@ export const HINT_COVERAGE_ENFORCED_SUFFIXES: readonly string[] = [
 export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = [
   "pages/Staff/",
   "pages/StaffConsole/",
+  "pages/Operations/",
 ];
 
 /** When true, the audit test requires zero violations across all scanned TSX. */
