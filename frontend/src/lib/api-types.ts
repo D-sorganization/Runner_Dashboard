@@ -10698,16 +10698,16 @@ export interface components {
              */
             dry_run: boolean;
             /**
-             * Force Claim Override
-             * @default false
-             */
-            force_claim_override: boolean;
-            /**
              * Execution Mode
              * @default local
              * @enum {string}
              */
             execution_mode: "local" | "cloud";
+            /**
+             * Force Claim Override
+             * @default false
+             */
+            force_claim_override: boolean;
             /**
              * Ignore Budget
              * @default false
