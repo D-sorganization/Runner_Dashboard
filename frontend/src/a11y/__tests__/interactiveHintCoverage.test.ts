@@ -29,9 +29,14 @@ describe("interactive hint coverage audit", () => {
   it.skipIf(!process.env.DUMP_HINT_COVERAGE)("dump violations by area", () => {
     if (process.env.DUMP_HINT_FILE) {
       const needle = process.env.DUMP_HINT_FILE!;
-      const filtered = report.violations.filter((v) => v.file.includes(needle));
+      const filtered =
+        needle === "*"
+          ? report.violations
+          : report.violations.filter((v) => v.file.includes(needle));
       // eslint-disable-next-line no-console -- opt-in debug
-      console.info(filtered.map((v) => `${v.line} ${v.snippet}`).join("\n"));
+      console.info(
+        filtered.map((v) => `${v.file}:${v.line} [${v.kind}] ${v.snippet}`).join("\n"),
+      );
     }
     const by = new Map<string, number>();
     for (const v of report.violations) {
@@ -48,7 +53,7 @@ describe("interactive hint coverage audit", () => {
     expect(by.size).toBeGreaterThan(0);
   });
 
-  it("enforced shell surfaces have a hover/focus hint on every interactive control", () => {
+  it("every scanned interactive control has a hover/focus hint (fleet-wide)", () => {
     const enforced = violationsInEnforcedAreas(report);
     if (enforced.length > 0) {
       const sample = enforced

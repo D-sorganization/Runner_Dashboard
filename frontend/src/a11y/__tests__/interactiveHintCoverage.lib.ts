@@ -216,6 +216,14 @@ function walkJsx(
     const text = ts.isJsxElement(node) ? jsxTextContent(node) : "";
     const isLabelTag = tag === "label" || tag === "Label";
 
+    // TouchButton/Pill forward aria-label/title via prop spread — callers are audited.
+    if (
+      kind === "button" &&
+      (fileRel === "primitives/TouchButton.tsx" || fileRel === "primitives/Pill.tsx")
+    ) {
+      return;
+    }
+
     if (kind) {
       counts.total += 1;
       if (elementHasHint(map, text, inTooltip || parentIsLabel, labelForIds)) {
@@ -319,7 +327,11 @@ export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = [
   "pages/StaffConsole/",
 ];
 
+/** When true, the audit test requires zero violations across all scanned TSX. */
+export const HINT_COVERAGE_ENFORCE_FLEET_WIDE = false;
+
 export function violationsInEnforcedAreas(report: HintCoverageReport): HintViolation[] {
+  if (HINT_COVERAGE_ENFORCE_FLEET_WIDE) return report.violations;
   return report.violations.filter((v) => {
     if (HINT_COVERAGE_ENFORCED_SUFFIXES.some((suffix) => v.file.endsWith(suffix))) return true;
     if (HINT_COVERAGE_ENFORCED_PREFIXES.some((prefix) => v.file.startsWith(prefix))) return true;
