@@ -112,6 +112,24 @@ def _no_real_provider_cli(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _hermetic_provider_login_state(monkeypatch, tmp_path_factory):
+    """Keep the host user's real provider logins out of every test.
+
+    Hosted runners have no ``~/.claude`` login, so credential probes see "not
+    signed in". A self-hosted runner's user *is* signed in, and
+    ``claude_oauth_session_alive`` then shells out to ``claude auth status``
+    (which the no-real-provider-CLI guard rightly refuses) and could rewrite the
+    operator's real credential files. Point the config roots at empty per-test
+    directories and drop token env so results never depend on who runs the suite.
+    Tests that exercise a login pin their own ``CLAUDE_CONFIG_DIR``/
+    ``ANTIGRAVITY_HOME`` after this fixture runs.
+    """
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))
+    monkeypatch.setenv("ANTIGRAVITY_HOME", str(tmp_path_factory.mktemp("antigravity-home")))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_provider_cli_discovery(monkeypatch):
     """Keep host-installed provider CLIs out of staff discovery (#2501).
 
