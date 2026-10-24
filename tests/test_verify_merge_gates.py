@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 import yaml
-from bash_host import find_bash
 
 from scripts import verify_merge_gates as gates
 
@@ -103,9 +102,8 @@ def test_contract_gate_runs_regeneration_check_for_pr_2628() -> None:
         calls.append(command)
         return subprocess.CompletedProcess(command, 1, "", "--- frontend/src/lib/openapi.json")
 
-    shell = find_bash() or "bash"
     problems = gates.check_contract(ROOT, PR_2628_FILES, run=run)
-    assert calls == [[shell, "scripts/gen-api-client.sh", "--check"]]
+    assert calls == [list(gates.CONTRACT_COMMAND)]
     assert problems and "openapi.json" in problems[0] and "npm run generate-api" in problems[0]
     assert gates.check_contract(ROOT, ["docs/operations/readme.md"], run=run) == []
     assert len(calls) == 1
