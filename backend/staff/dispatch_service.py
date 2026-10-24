@@ -22,6 +22,7 @@ from identity import Principal, format_caller
 from staff import claim_guard, consolidation
 from staff import fleet as staff_fleet
 from staff.audit import AuditError, record_audit
+from staff.barb_lease_fence import BarbClaim, barb_write_fence
 from staff.budget import BudgetGuard
 from staff.rate_limit import check_rate_limit
 from staff.runner import RunRequest, StaffRunner, get_runner
@@ -204,7 +205,9 @@ def _refuse_if_excluded(cmd: DispatchCommand) -> None:
         raise HTTPException(status_code=409, detail=refusal_detail(hit))
 
 
-async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[str, Any]:
+async def dispatch_staff_run(
+    cmd: DispatchCommand, caller: Principal, *, barb_claim: BarbClaim | None = None
+) -> dict[str, Any]:
     """Dispatch (or preview) one staff run under the shared policy.
 
     Pre: ``cmd`` is a valid :class:`DispatchCommand`; ``caller`` is the authenticated
@@ -426,7 +429,10 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             status_code=503,
             detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
         ) from exc
-    rec, plan, created = runner.admit(req, run_id=run_id)
+    # Barb-authored dispatch: the lease check and the run admission share one critical section, so a
+    # takeover cannot land between them (#2734). ``admit`` is synchronous; never await inside the fence.
+    with barb_write_fence(barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller)):
+        rec, plan, created = runner.admit(req, run_id=run_id)
     auth_skipped = getattr(plan, "provider_auth_skipped", None)
     if created and auth_skipped:
         from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
