@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from staff import workspace
@@ -92,12 +94,16 @@ def test_finalize_run_worktree_persists_transcript_and_removes_clean_git_worktre
     monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(wt_root))
 
     worktree = wt_root / "Runner_Dashboard-run-abc123"
-    (worktree / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text("gitdir: synthetic-fixture\n")
     (worktree / ".staff").mkdir(parents=True, exist_ok=True)
     (worktree / ".staff" / "transcript.log").write_text("hello transcript\n", encoding="utf-8")
 
     monkeypatch.setattr(workspace, "worktree_has_unpushed_commits", lambda wt: False)
     monkeypatch.setattr(workspace, "find_repo_checkout", lambda repo: None)
+    monkeypatch.setattr(
+        workspace, "remove_worktree", lambda path, **kwargs: shutil.rmtree(path) if path == worktree else None
+    )
 
     updated: dict[str, str] = {}
     events: list[tuple[str, str, str]] = []
@@ -107,6 +113,9 @@ def test_finalize_run_worktree_persists_transcript_and_removes_clean_git_worktre
 
         def update_run(self, run_id: str, **kwargs: str) -> None:
             updated.update(kwargs)
+
+        def get_run(self, run_id: str) -> object:
+            return SimpleNamespace(workdir=str(worktree), status="succeeded", pid=None, failure_class="", **updated)
 
         def append_event(self, run_id: str, kind: str, msg: str) -> None:
             events.append((run_id, kind, msg))
@@ -129,7 +138,8 @@ def test_finalize_run_worktree_preserves_unpushed_worktree(tmp_path: Path, monke
     monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(wt_root))
 
     worktree = wt_root / "Runner_Dashboard-run-dirty1"
-    (worktree / ".git").mkdir(parents=True, exist_ok=True)
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text("gitdir: synthetic-fixture\n")
     (worktree / ".staff").mkdir(parents=True, exist_ok=True)
     (worktree / ".staff" / "transcript.log").write_text("dirty transcript\n", encoding="utf-8")
 
@@ -139,6 +149,9 @@ def test_finalize_run_worktree_preserves_unpushed_worktree(tmp_path: Path, monke
 
     class _DummyStore:
         db_path = tmp_path / "staff_runs.sqlite3"
+
+        def get_run(self, run_id: str) -> object:
+            return SimpleNamespace(workdir=str(worktree), status="succeeded", pid=None, failure_class="")
 
         def update_run(self, run_id: str, **kwargs: str) -> None:
             pass
@@ -150,3 +163,54 @@ def test_finalize_run_worktree_preserves_unpushed_worktree(tmp_path: Path, monke
 
     assert worktree.exists()
     assert any(kind == "worktree" and "unpushed worktree preserved" in msg for _, kind, msg in events)
+
+
+@pytest.mark.unit
+def test_sweep_stale_worktrees_removes_clean_preserves_unpushed_and_skips_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wt_root = tmp_path / "staff-worktrees"
+    wt_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(wt_root))
+
+    clean_wt = wt_root / "Runner_Dashboard-run-clean1"
+    clean_wt.mkdir(parents=True)
+    (clean_wt / ".git").write_text("gitdir: synthetic-fixture\n")
+    (clean_wt / ".staff").mkdir(parents=True)
+    (clean_wt / ".staff" / "transcript.log").write_text("clean log\n", encoding="utf-8")
+
+    dirty_wt = wt_root / "Runner_Dashboard-run-dirty1"
+    (dirty_wt / ".git").mkdir(parents=True)
+
+    active_wt = wt_root / "Runner_Dashboard-run-active1"
+    (active_wt / ".git").mkdir(parents=True)
+
+    monkeypatch.setattr(
+        workspace,
+        "worktree_has_unpushed_commits",
+        lambda wt: Path(wt).name.endswith("dirty1"),
+    )
+    monkeypatch.setattr(workspace, "find_repo_checkout", lambda repo: None)
+    monkeypatch.setattr(
+        workspace, "remove_worktree", lambda path, **kwargs: shutil.rmtree(path) if path == clean_wt else None
+    )
+    updated: dict[str, str] = {}
+
+    class _DummyStore:
+        db_path = tmp_path / "staff_runs.sqlite3"
+
+        def active_runs(self) -> list[object]:
+            return [type("R", (), {"workdir": str(active_wt)})()]
+
+        def update_run(self, run_id: str, **kwargs: str) -> None:
+            updated.update(kwargs)
+
+        def get_run(self, run_id: str) -> object:
+            return SimpleNamespace(workdir=str(clean_wt), status="succeeded", pid=None, failure_class="", **updated)
+
+    stats = workspace.sweep_stale_worktrees(_DummyStore())
+    assert stats == {"removed": 1, "preserved_unpushed": 1, "skipped_active": 1}
+    assert not clean_wt.exists()
+    assert (tmp_path / "transcripts" / "run-clean1.log").is_file()
+    assert dirty_wt.exists()
+    assert active_wt.exists()

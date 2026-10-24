@@ -24,6 +24,8 @@
 set -euo pipefail
 # shellcheck source=deploy/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=deploy/source-deploy-guard.sh
+source "$(dirname "${BASH_SOURCE[0]}")/source-deploy-guard.sh"
 
 DASHBOARD_USER="${DASHBOARD_USER:-$(whoami)}"
 DASHBOARD_HOME="${DASHBOARD_HOME:-$HOME}"
@@ -45,6 +47,10 @@ while [[ $# -gt 0 ]]; do
         *) fail "Unknown option: $1" ;;
     esac
 done
+
+if [[ -z "$ARTIFACT_SOURCE" ]]; then
+    source_deploy_guard "$DEPLOY_DIR" || fail "Source deployment is unsafe for this artifact-backed release. Use --artifact with a verified artifact."
+fi
 
 deployment_scope_validate "$DEPLOY_SCOPE"
 

@@ -39,7 +39,9 @@ from staff.usage import today_iso
 
 log = logging.getLogger("dashboard.staff.fleet")
 
-PEER_TIMEOUT_SECONDS = float(os.environ.get("STAFF_PEER_TIMEOUT_SECONDS", "6"))
+PEER_TIMEOUT_SECONDS = float(os.environ.get("STAFF_PEER_TIMEOUT_SECONDS", "12"))
+PEER_STALE_GRACE_SECONDS = float(os.environ.get("STAFF_PEER_STALE_GRACE_SECONDS", "120"))
+_LAST_GOOD_PEER_BOARD: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 LOCAL_MACHINE_ALIASES = frozenset({"local", "", "self", "here"})
 
 GetJson = Callable[[str, dict[str, str]], Awaitable[dict[str, Any]]]
@@ -114,11 +116,21 @@ def resolve_machine(name: str, local_machine: str, peers: dict[str, str]) -> str
 
 
 async def fetch_peer_board(name: str, url: str) -> tuple[str, dict[str, Any]]:
+    key = (name, url)
     try:
         data = await get_json(f"{url}/api/staff/board?local=1", fleet_headers())
         data["status"] = "online"
+        _LAST_GOOD_PEER_BOARD[key] = (time.monotonic(), dict(data))
         return name, data
     except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+            cached = _LAST_GOOD_PEER_BOARD.get(key)
+            if cached is not None:
+                age = time.monotonic() - cached[0]
+                if 0.0 <= age <= PEER_STALE_GRACE_SECONDS:
+                    log.info("staff.fleet: peer %s timed out (%s); serving %.1fs cached board", name, exc, age)
+                    stale_board = {**cached[1], "status": "online", "stale": True, "stale_age_seconds": round(age, 1)}
+                    return name, stale_board
         log.info("staff.fleet: peer %s board unavailable: %s", name, exc)
         return name, {"machine": name, "status": "offline", "error": str(exc)[:200]}
 

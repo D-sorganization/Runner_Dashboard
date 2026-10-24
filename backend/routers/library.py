@@ -50,6 +50,7 @@ from library.sources import (
 from library.submissions import create_submission, list_submissions
 from library.verify import verify_content
 from routers.library_fetch import fetch_page_locator
+from routers.library_read import library_reader_passages, require_library_reader, requires_shared_content
 from routers.library_verify import verify_library_request
 
 router = APIRouter(prefix="/api/v1/library", tags=["library"])
@@ -309,7 +310,7 @@ async def library_fetch(
     page: int | None = Query(None, gt=0),
     scope: str = Query("federated", pattern="^(local|federated)$"),
     node: str | None = Query(None, min_length=1, max_length=128),
-    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+    _principal: Principal = Depends(require_library_reader),  # noqa: B008
 ) -> dict[str, Any]:
     """Fetch one bounded, digest-verified passage through trusted fleet nodes."""
     import httpx
@@ -336,7 +337,7 @@ async def library_fetch(
     local_missing: HTTPException | None = None
     if scope == "local" or ref["node"] in (None, local_name, "local"):
         try:
-            payload = _fetch_local(ref, shared_only=_principal.id == "fleet-peer")
+            payload = _fetch_local(ref, shared_only=requires_shared_content(_principal))
             record_run_references(run_id, [payload], _db())
             return payload
         except HTTPException as exc:
@@ -419,7 +420,7 @@ async def library_search(
     budget_tokens: int | None = Query(None),
     topic: str | None = Query(None),
     repo: str | None = Query(None),
-    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+    _principal: Principal = Depends(require_library_reader),  # noqa: B008
 ) -> dict[str, Any]:
     from dashboard_config import HOSTNAME
 
@@ -431,7 +432,7 @@ async def library_search(
         raise HTTPException(status_code=422, detail=f"budget must be between 1 and {MAX_BUDGET}")
 
     if scope == "local":
-        shared_only = shared or _principal.id == "fleet-peer"
+        shared_only = shared or requires_shared_content(_principal)
         try:
             hits = search_passages(
                 _db(),
@@ -442,7 +443,7 @@ async def library_search(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        passages = [_hit_to_dict(h, HOSTNAME or "local") for h in hits]
+        passages = library_reader_passages(_principal, [_hit_to_dict(h, HOSTNAME or "local") for h in hits])
         record_run_references(run_id, passages, _db())
         return {
             "query": q,
@@ -465,7 +466,7 @@ async def library_search(
         "repo": res.repo,
         "budget_tokens": res.budget_tokens,
         "tokens_used": res.tokens_used,
-        "passages": res.passages,
+        "passages": library_reader_passages(_principal, res.passages),
         "unavailable_sources": res.unavailable_sources,
     }
 
@@ -475,7 +476,7 @@ async def library_verify_route(
     request: Request,
     _principal: Principal = Depends(require_library_peer),  # noqa: B008
 ) -> dict[str, Any]:
-    return await verify_library_request(request, _principal.id, _db())
+    return await verify_library_request(request, _principal, _db())
 
 
 @router.get("/verify")
@@ -487,3 +488,8 @@ def library_verify_citation_route(
     if not result["citations"]:
         raise HTTPException(status_code=422, detail="cite must contain a canonical library citation")
     return result
+
+
+from routers.library_intake import intake_router  # noqa: E402
+
+router.include_router(intake_router)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from disk_full_cordon import (
+    PROACTIVE_CLEANUP_COOLDOWN_S,
     CordonActionKind,
     DiskFullCordonState,
     RunnerSnapshot,
@@ -12,7 +13,9 @@ from disk_full_cordon import (
     disk_pressure_trips,
     multi_host_cordon_alert_needed,
     plan_cordon_tick,
+    proactive_cleanup_needed,
 )
+
 from shared_scripts.runner_disk_guard_config import (
     DiskGuardAlerts,
     DiskGuardCleanupCommand,
@@ -153,3 +156,47 @@ def test_multi_host_cordon_alert_fires_at_threshold() -> None:
     assert multi_host_cordon_alert_needed(None, 2, 2) is True
     assert multi_host_cordon_alert_needed(1, 2, 2) is True
     assert multi_host_cordon_alert_needed(2, 2, 2) is False
+
+
+def test_proactive_cleanup_runs_in_normal_phase_with_cooldown() -> None:
+    policy = _cfg()
+    assert proactive_cleanup_needed(90.0, 76.0) is True
+    assert proactive_cleanup_needed(70.0, 50.0) is True
+    assert proactive_cleanup_needed(120.0, 60.0) is False
+
+    first = plan_cordon_tick(
+        DiskFullCordonState(),
+        free_gb=90.0,
+        used_percent=78.0,
+        config=policy,
+        runners=[RunnerSnapshot("u1", active=True, busy=True)],
+        now=1000.0,
+    )
+    assert first.state.phase == "normal"
+    assert first.cordon_active is False
+    assert first.scheduling_inhibited is False
+    assert first.effective_min_online is None
+    assert [a.kind for a in first.actions] == [CordonActionKind.RUN_DISK_CLEANUP]
+    assert first.state.last_proactive_cleanup_at == 1000.0
+
+    # Within cooldown window: no duplicate cleanup
+    within = plan_cordon_tick(
+        first.state,
+        free_gb=90.0,
+        used_percent=78.0,
+        config=policy,
+        runners=[RunnerSnapshot("u1", active=True, busy=True)],
+        now=1000.0 + PROACTIVE_CLEANUP_COOLDOWN_S - 10.0,
+    )
+    assert within.actions == ()
+
+    # After cooldown window: runs proactive cleanup again
+    after = plan_cordon_tick(
+        within.state,
+        free_gb=90.0,
+        used_percent=78.0,
+        config=policy,
+        runners=[RunnerSnapshot("u1", active=True, busy=True)],
+        now=1000.0 + PROACTIVE_CLEANUP_COOLDOWN_S + 1.0,
+    )
+    assert [a.kind for a in after.actions] == [CordonActionKind.RUN_DISK_CLEANUP]

@@ -125,3 +125,52 @@ export function clearDraft(threadId: string): void {
     // ignore
   }
 }
+
+import type { ComposerAttachment, IntakeSensitivity } from "./threadTypes";
+
+export async function uploadIntakeFile(
+  file: File,
+  sensitivity: IntakeSensitivity,
+  threadId: string,
+): Promise<ComposerAttachment> {
+  const id = `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const base: ComposerAttachment = {
+    id,
+    filename: file.name,
+    sizeBytes: file.size,
+    mimeType: file.type || "application/octet-stream",
+    sensitivity,
+    status: "attached",
+  };
+  try {
+    let b64 = "";
+    if (typeof file.arrayBuffer === "function") {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+      b64 = typeof btoa === "function" ? btoa(bin) : "";
+    }
+    const resp = await fetch("/api/v1/library/intake", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({
+        filename: file.name,
+        content_base64: b64,
+        mime_type: base.mimeType,
+        size_bytes: file.size,
+        sensitivity,
+        thread_id: threadId,
+      }),
+    });
+    if (resp && resp.ok) {
+      const data = (await resp.json()) as { id?: number; sha256?: string; sensitivity?: IntakeSensitivity };
+      return { ...base, intakeId: data.id, sha256: data.sha256, sensitivity: data.sensitivity ?? sensitivity };
+    }
+    if (resp && !resp.ok) {
+      return { ...base, status: "rejected", error: `Upload failed (${resp.status})` };
+    }
+  } catch {
+    return { ...base, status: "rejected", error: "Upload failed. Remove this file and choose it again to retry." };
+  }
+  return { ...base, status: "rejected", error: "Upload did not complete. Remove this file and choose it again to retry." };
+}

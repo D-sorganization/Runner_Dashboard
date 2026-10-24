@@ -157,6 +157,8 @@ class StaffRunRecord(BaseModel):
     verification_detail: str = ""
     pr_number: int | None = None
     artifact: str = ""
+    execution_mode: str = "local"
+    remote_session_url: str = ""
 
     model_config = ConfigDict(extra="allow")
 

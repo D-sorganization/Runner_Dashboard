@@ -84,6 +84,8 @@ describe("routing — tabIdToPath", () => {
     expect(tabIdToPath("settings")).toBe("/settings");
     expect(tabIdToPath("insights")).toBe("/fleet/insights");
     expect(tabIdToPath("remediation")).toBe("/work/remediation");
+    expect(tabIdToPath("security")).toBe("/fleet/security");
+    expect(pathnameToTabId("/fleet/security")).toBe("security");
   });
 });
 

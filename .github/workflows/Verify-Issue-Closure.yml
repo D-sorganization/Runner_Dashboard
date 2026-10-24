@@ -50,11 +50,9 @@ jobs:
 
             // 1. Label-based exemption.
             const exemptLabels = new Set([
-              'wontfix',
-              'roadmap',
-              'duplicate',
-              'invalid',
-              'not-planned',
+              'wontfix', 'roadmap', 'duplicate', 'invalid', 'not-planned',
+              'verified', 'verified-closed', 'needs-human-review',
+              'closure-guard-bypass', 'keep-closed', 'archived-backlog',
             ]);
             const issueLabels = (issue.labels || []).map(l => (typeof l === 'string' ? l : l.name));
             const hasExemptLabel = issueLabels.some(name => exemptLabels.has((name || '').toLowerCase()));
@@ -72,8 +70,9 @@ jobs:
             }
 
             // 3. Look for a merged PR with a closing keyword referencing this issue.
-            //    Use the timeline to find cross-referenced PRs, then check each
-            //    PR's merge state and body for closing keywords.
+            //    Wait briefly so `gh issue close --comment` can finish posting its comment.
+            await new Promise(r => setTimeout(r, 4000));
+            const norm = s => (s || '').replace(/\\n/g, '\n');
             const timeline = await github.paginate(
               github.rest.issues.listEventsForTimeline,
               {
@@ -108,17 +107,48 @@ jobs:
             for (const prNumber of candidatePRs) {
               try {
                 const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
-                if (pr.merged === true && closingRegex.test(pr.body || '')) {
+                const prLabels = (pr.labels || []).map(l => (typeof l === 'string' ? l : l.name));
+                if (prLabels.includes('jules-verification-failed')) continue;
+                if (pr.merged === true && (closingRegex.test(norm(pr.body)) || closingRegex.test(norm(pr.title)))) {
                   core.info(`Merged PR #${prNumber} closes #${issueNumber} via closing keyword.`);
-                  return;
-                }
-                if (pr.merged === true && closingRegex.test(pr.title || '')) {
-                  core.info(`Merged PR #${prNumber} title contains closing keyword for #${issueNumber}.`);
                   return;
                 }
               } catch (err) {
                 core.warning(`Failed to load PR #${prNumber}: ${err.message}`);
               }
+            }
+
+            // 3b. Check issue comments for references to a verified merged PR (#NNN or /pull/NNN).
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: issueNumber, per_page: 100,
+            });
+            const prRefPattern = /(?:\bPR\s*#|\bpull\/|#)(\d+)\b/gi;
+            const checkedPrs = new Set();
+            for (const c of [...comments].reverse()) {
+              const cBody = norm(c.body);
+              if (cBody.includes('Verify-Issue-Closure')) continue;
+              for (const m of cBody.matchAll(prRefPattern)) {
+                const refNum = parseInt(m[1], 10);
+                if (!refNum || refNum === issueNumber || checkedPrs.has(refNum)) continue;
+                checkedPrs.add(refNum);
+                try {
+                  const { data: refPr } = await github.rest.pulls.get({ owner, repo, pull_number: refNum });
+                  const prLabels = (refPr.labels || []).map(l => (typeof l === 'string' ? l : l.name));
+                  if (refPr.merged === true && !prLabels.includes('jules-verification-failed')) {
+                    core.info(`Issue #${issueNumber} closure verified via comment citing merged PR #${refNum}.`);
+                    return;
+                  }
+                } catch (_) { /* not a PR */ }
+              }
+            }
+
+            // Reopen-loop protection: cap automated reopens at 2.
+            const MAX_REOPENS = 2;
+            const priorReopens = comments.filter(c => (c.body || '').includes('Verify-Issue-Closure')).length;
+            if (priorReopens >= MAX_REOPENS) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number: issueNumber, labels: ['needs-human-review'] });
+              core.warning(`Issue #${issueNumber} reached reopen cap (${priorReopens}); added needs-human-review.`);
+              return;
             }
 
             // No evidence found — reopen and comment.

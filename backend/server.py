@@ -774,6 +774,9 @@ app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # out
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
 app.include_router(_library_router.router)  # Alexandria library (#2165)
+from routers import vault as _vault_router  # noqa: E402
+
+app.include_router(_vault_router.router)  # Secure storage vault (#2542)
 
 app.include_router(_diagnostics_logs_router.router, prefix="/api/v1/diagnostics")
 
@@ -810,6 +813,17 @@ from routers import proposals as _proposals_router  # noqa: E402
 
 app.include_router(_proposals_router.router)
 app.include_router(_intake_proposals_router.router)
+
+from routers import security_scan as _security_scan_router  # noqa: E402
+
+app.include_router(_security_scan_router.router)  # fleet security scanner (epic #2566)
+
+from routers import voice as _voice_router  # noqa: E402
+
+app.include_router(_voice_router.router)  # local Whisper voice-to-text (epic #2591)
+from routers import metrics as _fleet_prometheus_router  # noqa: E402
+
+app.include_router(_fleet_prometheus_router.router)  # lightweight Prometheus exporter (#2611)
 
 # Issue #924 — structural auth perimeter. Registered BEFORE the session selector so
 # that, in Starlette's outer→inner stack, session handling wraps this gate and
@@ -2787,6 +2801,13 @@ async def _startup() -> None:
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
+
+    # Security-scan scheduler (#2574). Every tick checks MACHINE_ROLE == "hub" and
+    # schedule.enabled in config/security_scan.json, so nodes and a disabled
+    # schedule never start a scan.
+    from vuln_scan.scan_service import start_schedule_loop  # noqa: PLC0415
+
+    start_schedule_loop()
 
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()

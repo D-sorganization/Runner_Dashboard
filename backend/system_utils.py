@@ -42,7 +42,7 @@ UTC = timezone.utc  # noqa: UP017
 log = logging.getLogger("dashboard.system")
 
 # Slow probe caching (Issue #1750)
-_PROBE_CACHE_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_PROBE_CACHE_TTL_S", "30.0"))
+_PROBE_CACHE_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_PROBE_CACHE_TTL_S", "60.0"))
 _gpu_info_cache: tuple[dict, float] | None = None
 _gpu_info_lock = threading.Lock()
 _storage_pools_cache: tuple[list[dict[str, Any]], float] | None = None
@@ -116,7 +116,7 @@ _HW_FACTS_TTL_S = 24 * 3600
 # live enough for a fleet dashboard (CPU is also shown as a 1-minute rolling
 # average) while collapsing the fork rate by an order of magnitude. Tunable via
 # RUNNER_DASHBOARD_HOST_SNAPSHOT_TTL_S.
-_HOST_SNAPSHOT_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_HOST_SNAPSHOT_TTL_S", "10.0"))
+_HOST_SNAPSHOT_TTL_S = float(os.environ.get("RUNNER_DASHBOARD_HOST_SNAPSHOT_TTL_S", "60.0"))
 _host_snapshot_cache: tuple[dict[str, float] | None, float] | None = None
 _host_snapshot_lock = threading.Lock()
 

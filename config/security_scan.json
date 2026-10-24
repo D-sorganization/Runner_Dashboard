@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "_comment": "Operator settings for the fleet security scanner (epic #2566). Repos opt in with .oss-scanner/; these keys are operator-only and rejected in project.yaml. Real scans require a scan host with isolation 'vm'.",
+  "defaults": {
+    "enabled": false,
+    "full_scan_days": 30,
+    "priority": 3
+  },
+  "repos": {
+    "UpstreamDrift": { "enabled": false, "priority": 1 },
+    "AffineDrift": { "enabled": false, "priority": 2 },
+    "Tools": { "enabled": false, "priority": 2 }
+  },
+  "scan_hosts": {},
+  "window": {
+    "start": "01:00",
+    "end": "06:00",
+    "timezone": "America/Los_Angeles"
+  },
+  "min_free_gb": 60,
+  "max_new_findings_per_scan": 10,
+  "usd_per_day": 5.0,
+  "alerts_ttl_seconds": 21600,
+  "executor": {
+    "cli_version": null,
+    "model": "claude-opus-5-5",
+    "max_turns": 200,
+    "exec_timeout_s": 600,
+    "scan_timeout_minutes": 180,
+    "build_timeout_minutes": 30,
+    "verifier_model": "claude-sonnet-5-5",
+    "verify_max_turns": 100
+  },
+  "sarif_export": false,
+  "schedule": {
+    "enabled": false,
+    "check_minutes": 30,
+    "retry_hours": 20
+  }
+}

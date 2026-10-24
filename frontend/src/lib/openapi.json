@@ -227,15 +227,9 @@
             "type": "string"
           },
           "expected_epoch": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Epoch"
+            "minimum": 0.0,
+            "title": "Expected Epoch",
+            "type": "integer"
           },
           "machine": {
             "default": "",
@@ -268,17 +262,23 @@
             "type": "string"
           }
         },
-        "required": ["task_id", "action", "actor"],
+        "required": ["task_id", "action", "actor", "expected_epoch"],
         "title": "BarbHandoffTransitionRequest",
         "type": "object"
       },
       "BarbLeaseCheckoutRequest": {
         "properties": {
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "machine": {
             "default": "",
@@ -290,6 +290,12 @@
             "default": "rd-barb",
             "maxLength": 64,
             "title": "Persona",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
             "type": "string"
           },
           "scope": {
@@ -311,14 +317,50 @@
           },
           "ttl_sec": {
             "default": 3600,
-            "maximum": 86400.0,
+            "maximum": 14400.0,
             "minimum": 60.0,
             "title": "Ttl Sec",
             "type": "integer"
           }
         },
-        "required": ["holder"],
         "title": "BarbLeaseCheckoutRequest",
+        "type": "object"
+      },
+      "BarbLeaseHeartbeatRequest": {
+        "properties": {
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "scope": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 14400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["scope", "epoch"],
+        "title": "BarbLeaseHeartbeatRequest",
         "type": "object"
       },
       "BarbLeaseReleaseRequest": {
@@ -343,10 +385,16 @@
             "type": "boolean"
           },
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "in_progress_items": {
             "items": {
@@ -375,7 +423,7 @@
             "type": "string"
           }
         },
-        "required": ["scope", "holder"],
+        "required": ["scope"],
         "title": "BarbLeaseReleaseRequest",
         "type": "object"
       },
@@ -530,10 +578,16 @@
             "type": "array"
           },
           "holder": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Holder",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
           },
           "in_progress_items": {
             "items": {
@@ -574,7 +628,7 @@
             "type": "string"
           }
         },
-        "required": ["holder", "summary"],
+        "required": ["summary"],
         "title": "BarbTurnoverCreateRequest",
         "type": "object"
       },
@@ -2735,6 +2789,67 @@
         },
         "required": ["granted", "ttl_seconds", "idle_runners", "free_slots"],
         "title": "LeaseResponse",
+        "type": "object"
+      },
+      "LibraryIntakeCreateRequest": {
+        "properties": {
+          "content_base64": {
+            "minLength": 0,
+            "title": "Content Base64",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "mime_type": {
+            "default": "application/octet-stream",
+            "maxLength": 160,
+            "title": "Mime Type",
+            "type": "string"
+          },
+          "sensitivity": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": "confidential_work",
+            "title": "Sensitivity"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          }
+        },
+        "required": ["filename", "content_base64"],
+        "title": "LibraryIntakeCreateRequest",
         "type": "object"
       },
       "LibraryRunReference": {
@@ -4994,6 +5109,12 @@
             "title": "Force Claim Override",
             "type": "boolean"
           },
+          "execution_mode": {
+            "default": "local",
+            "enum": ["local", "cloud"],
+            "title": "Execution Mode",
+            "type": "string"
+          },
           "ignore_budget": {
             "default": false,
             "title": "Ignore Budget",
@@ -5153,6 +5274,24 @@
           }
         },
         "title": "RunBody",
+        "type": "object"
+      },
+      "ScanRequestBody": {
+        "properties": {
+          "dry_run": {
+            "default": true,
+            "description": "evaluate admission only (default)",
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "repo": {
+            "maxLength": 100,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo"],
+        "title": "ScanRequestBody",
         "type": "object"
       },
       "ScheduleToggleBody": {
@@ -7071,6 +7210,11 @@
             "title": "Error",
             "type": "string"
           },
+          "execution_mode": {
+            "default": "local",
+            "title": "Execution Mode",
+            "type": "string"
+          },
           "exit_code": {
             "anyOf": [
               {
@@ -7193,6 +7337,11 @@
           "remediation": {
             "default": "",
             "title": "Remediation",
+            "type": "string"
+          },
+          "remote_session_url": {
+            "default": "",
+            "title": "Remote Session Url",
             "type": "string"
           },
           "repo": {
@@ -7969,6 +8118,24 @@
         "title": "ToolExecuteResponse",
         "type": "object"
       },
+      "TriageRequest": {
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Note",
+            "type": "string"
+          },
+          "state": {
+            "description": "one of new, confirmed, inconclusive, false_positive, accepted_risk, fixed",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": ["state"],
+        "title": "TriageRequest",
+        "type": "object"
+      },
       "UpdateThreadRequest": {
         "properties": {
           "status": {
@@ -8031,6 +8198,37 @@
         },
         "required": ["loc", "msg", "type"],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "VaultSecretWriteRequest": {
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Description",
+            "type": "string"
+          },
+          "key": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Key",
+            "type": "string"
+          },
+          "scope": {
+            "default": "global",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "value": {
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": ["key", "value"],
+        "title": "VaultSecretWriteRequest",
         "type": "object"
       },
       "WebVitalEntry": {
@@ -8162,6 +8360,17 @@
               }
             ],
             "title": "Effort"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
           },
           "force": {
             "anyOf": [
@@ -20525,6 +20734,154 @@
         "tags": ["library"]
       }
     },
+    "/api/v1/library/intake": {
+      "get": {
+        "operationId": "library_intake_list_route_api_v1_library_intake_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sensitivity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sensitivity"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Intake List Route Api V1 Library Intake Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library Intake List Route",
+        "tags": ["library", "library"]
+      },
+      "post": {
+        "operationId": "library_intake_stage_route_api_v1_library_intake_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryIntakeCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Intake Stage Route Api V1 Library Intake Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library Intake Stage Route",
+        "tags": ["library", "library"]
+      }
+    },
+    "/api/v1/library/intake/{intake_id}/promote": {
+      "post": {
+        "operationId": "library_intake_promote_route_api_v1_library_intake__intake_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "intake_id",
+            "required": true,
+            "schema": {
+              "title": "Intake Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Library Intake Promote Route Api V1 Library Intake  Intake Id  Promote Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Library Intake Promote Route",
+        "tags": ["library", "library"]
+      }
+    },
     "/api/v1/library/search": {
       "get": {
         "operationId": "library_search_api_v1_library_search_get",
@@ -21933,6 +22290,713 @@
         "tags": ["intake-proposals"]
       }
     },
+    "/api/v1/security/config": {
+      "get": {
+        "operationId": "get_config_api_v1_security_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Config Api V1 Security Config Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Config",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/contracts": {
+      "get": {
+        "description": "Every tracked repository's contract status. Never 5xx for one repository.",
+        "operationId": "list_contracts_api_v1_security_contracts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Contracts Api V1 Security Contracts Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Contracts",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/contracts/{repo}": {
+      "get": {
+        "operationId": "get_contract_api_v1_security_contracts__repo__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Contract Api V1 Security Contracts  Repo  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Contract",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/coverage": {
+      "get": {
+        "operationId": "get_coverage_api_v1_security_coverage_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Coverage Api V1 Security Coverage Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Coverage",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/export/sarif": {
+      "get": {
+        "description": "Open findings as SARIF 2.1.0; off unless the operator config sets ``sarif_export``.",
+        "operationId": "export_sarif_api_v1_security_export_sarif_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Export Sarif",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/findings": {
+      "get": {
+        "operationId": "list_findings_api_v1_security_findings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Findings Api V1 Security Findings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Findings",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/findings/{finding_id}": {
+      "get": {
+        "operationId": "get_finding_api_v1_security_findings__finding_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Finding Api V1 Security Findings  Finding Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Finding",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/findings/{finding_id}/advisory": {
+      "post": {
+        "description": "Draft a GitHub security advisory (private fork) for one confirmed high/critical finding.",
+        "operationId": "create_advisory_api_v1_security_findings__finding_id__advisory_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Advisory Api V1 Security Findings  Finding Id  Advisory Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Advisory",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/findings/{finding_id}/triage": {
+      "post": {
+        "operationId": "triage_finding_api_v1_security_findings__finding_id__triage_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Triage Finding Api V1 Security Findings  Finding Id  Triage Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Triage Finding",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/posture": {
+      "get": {
+        "operationId": "get_posture_api_v1_security_posture_get",
+        "parameters": [
+          {
+            "description": "include GitHub alert counts (cached)",
+            "in": "query",
+            "name": "alerts",
+            "required": false,
+            "schema": {
+              "default": true,
+              "description": "include GitHub alert counts (cached)",
+              "title": "Alerts",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Posture Api V1 Security Posture Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Posture",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/scans": {
+      "get": {
+        "operationId": "list_scans_api_v1_security_scans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Scans Api V1 Security Scans Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Scans",
+        "tags": ["security"]
+      },
+      "post": {
+        "operationId": "request_scan_api_v1_security_scans_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Request Scan Api V1 Security Scans Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Request Scan",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/scans/{scan_id}": {
+      "get": {
+        "operationId": "get_scan_api_v1_security_scans__scan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Scan Api V1 Security Scans  Scan Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Scan",
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/security/scans/{scan_id}/cancel": {
+      "post": {
+        "operationId": "cancel_scan_api_v1_security_scans__scan_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scan_id",
+            "required": true,
+            "schema": {
+              "title": "Scan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cancel Scan Api V1 Security Scans  Scan Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Cancel Scan",
+        "tags": ["security"]
+      }
+    },
     "/api/v1/staff/actions": {
       "get": {
         "description": "List all allowlisted staff actions, schemas, risk classes, and required scopes.",
@@ -22464,6 +23528,55 @@
         "tags": ["staff-barb"]
       }
     },
+    "/api/v1/staff/barb/leases/heartbeat": {
+      "post": {
+        "operationId": "post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Heartbeat Api V1 Staff Barb Leases Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Extend the caller's own live Barb lease",
+        "tags": ["staff-barb"]
+      }
+    },
     "/api/v1/staff/barb/leases/release": {
       "post": {
         "operationId": "post_barb_lease_release_api_v1_staff_barb_leases_release_post",
@@ -22850,6 +23963,36 @@
         ],
         "summary": "Trigger Briefing",
         "tags": ["staff-inbox-v1"]
+      }
+    },
+    "/api/v1/staff/cloud-capabilities": {
+      "get": {
+        "description": "Which staff providers support ``execution_mode: cloud`` on this node (#2627).",
+        "operationId": "cloud_capabilities_v1_api_v1_staff_cloud_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cloud Capabilities V1 Api V1 Staff Cloud Capabilities Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Cloud Capabilities V1",
+        "tags": ["staff-v1"]
       }
     },
     "/api/v1/staff/context/agents-sync": {
@@ -27034,6 +28177,241 @@
         ],
         "summary": "Dispatch V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/vault/audit": {
+      "get": {
+        "operationId": "get_vault_audit_api_v1_vault_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Vault Audit Api V1 Vault Audit Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Vault Audit",
+        "tags": ["vault"]
+      }
+    },
+    "/api/v1/vault/secrets": {
+      "get": {
+        "operationId": "get_secrets_api_v1_vault_secrets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Secrets Api V1 Vault Secrets Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Secrets",
+        "tags": ["vault"]
+      },
+      "post": {
+        "operationId": "create_or_update_secret_api_v1_vault_secrets_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultSecretWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Or Update Secret Api V1 Vault Secrets Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Create Or Update Secret",
+        "tags": ["vault"]
+      }
+    },
+    "/api/v1/vault/secrets/{key}": {
+      "delete": {
+        "operationId": "remove_secret_api_v1_vault_secrets__key__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Secret Api V1 Vault Secrets  Key  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Remove Secret",
+        "tags": ["vault"]
+      }
+    },
+    "/api/v1/voice/status": {
+      "get": {
+        "operationId": "get_voice_status_api_v1_voice_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Voice Status Api V1 Voice Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Voice Status",
+        "tags": ["voice"]
+      }
+    },
+    "/api/v1/voice/transcribe": {
+      "post": {
+        "operationId": "transcribe_voice_api_v1_voice_transcribe_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Transcribe Voice Api V1 Voice Transcribe Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Transcribe Voice",
+        "tags": ["voice"]
       }
     },
     "/api/version": {

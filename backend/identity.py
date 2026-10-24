@@ -435,13 +435,14 @@ def require_principal(
 
 
 FLEET_PEER_SCOPES = frozenset(
-    {"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain", "fleet.read"}
+    {"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain", "fleet.read", "memory.read"}
 )
 LOOPBACK_SCOPES = frozenset(
     (
         "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write staff.approve "
         "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain fleet.read "
-        "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write"
+        "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write "
+        "memory.read"
     ).split()
 )
 
@@ -460,7 +461,7 @@ SCOPE_PRESETS = {
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
     "bot": (
         "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write proposals.write "
-        "staff.read staff.chat staff.dispatch staff.cancel"
+        "staff.read staff.chat staff.dispatch staff.cancel memory.read memory.shared.summarize"
     ).split(),
     "fleet-peer": sorted(FLEET_PEER_SCOPES),
     "loopback": sorted(LOOPBACK_SCOPES),
@@ -558,10 +559,6 @@ def require_scope(required_scope: str):
         if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
             if hmac.compare_digest(header_token[7:], hub_token):
                 prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
-        if prin is None:
-            _reject_unauthenticated_bearer(header_token)
-        if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
-            prin = _loopback_principal()
         if prin is None and required_scope == "staff.read" and not hub_token:
             prin = Principal(
                 id="anonymous:tailnet",
@@ -569,6 +566,10 @@ def require_scope(required_scope: str):
                 name="Anonymous Tailnet",
                 roles=["viewer"],
             )
+        if prin is None:
+            _reject_unauthenticated_bearer(header_token)
+        if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
+            prin = _loopback_principal()
 
         if prin is None:
             raise HTTPException(status_code=401, detail="Authentication required")
