@@ -55,6 +55,7 @@ from staff.models import (
     StaffSummaryResponse,
 )
 from staff.rm_sync import source_status as source_status  # noqa: F401
+from routers.staff_avatars import enrich_roster_role
 from staff.runner import get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES
 from staff.summary_view import build_staff_summary
@@ -119,7 +120,9 @@ async def roster(
     per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
     return {
         "machine": runner.machine,
-        "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
+        "roles": [
+            enrich_roster_role(name, spec, per_role.get(name, 0)) for name, spec in sorted(roles.items())
+        ],
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "chat_only_providers": chat_only_providers(),

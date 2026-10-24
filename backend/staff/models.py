@@ -72,6 +72,9 @@ class StaffRoleSpec(BaseModel):
     dispatchable: bool = True
     source_path: str = ""
     active_runs: int = 0
+    avatar: str | None = None
+    avatar_url: str | None = None
+    avatar_source: Literal["custom", "default", "none"] | None = None
 
     model_config = ConfigDict(extra="allow")
 

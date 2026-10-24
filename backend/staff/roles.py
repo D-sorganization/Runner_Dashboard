@@ -76,6 +76,7 @@ class RoleSpec:
     max_attempts: int = 2
     fallback_providers: tuple[str, ...] = ()
     provider_fallbacks: tuple[ProviderFallbackRule, ...] = ()
+    avatar: str | None = None
     valid: bool = True
     errors: tuple[str, ...] = ()
     source_path: str = ""
@@ -176,6 +177,7 @@ class RoleSpec:
             "error": self.errors[0] if self.errors else None,
             "dispatchable": self.dispatchable,
             "source_path": self.source_path,
+            "avatar": self.avatar,
         }
 
 
@@ -319,7 +321,18 @@ def parse_role(
         max_att = 2
     fallback_provs = _as_tuple(retry_cfg.get("fallback_providers") or data.get("fallback_providers"))
     provider_fallback_rules = parse_provider_fallback_rules(data)
+    avatar_raw = data.get("avatar")
+    avatar: str | None = None
+    if avatar_raw not in (None, ""):
+        avatar = str(avatar_raw).strip()
+
     merged_errors = list(errors)
+    if avatar is not None:
+        from staff.role_avatars import validate_avatar_yaml_path
+
+        avatar_err = validate_avatar_yaml_path(avatar)
+        if avatar_err:
+            merged_errors.append(avatar_err)
     merged_errors.extend(validate_provider_fallback_rules(provider_fallback_rules, _as_tuple(data.get("providers"))))
     role_tier = str(data.get("tier") or "routine").strip().lower()
     merged_errors.extend(validate_role_tier(role_tier))
@@ -363,6 +376,7 @@ def parse_role(
         max_attempts=max_att,
         fallback_providers=fallback_provs,
         provider_fallbacks=provider_fallback_rules,
+        avatar=avatar,
         valid=len(merged_errors) == 0,
         errors=tuple(merged_errors),
         source_path=source_path,

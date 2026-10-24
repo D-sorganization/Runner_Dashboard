@@ -7277,6 +7277,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/roles/{role_id}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Role Avatar */
+        get: operations["get_role_avatar_api_v1_staff_roles__role_id__avatar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/roles/{role}/schedule": {
         parameters: {
             query?: never;
@@ -11458,6 +11475,12 @@ export interface components {
              * @default 0
              */
             active_runs: number;
+            /** Avatar */
+            avatar?: string | null;
+            /** Avatar Source */
+            avatar_source?: ("custom" | "default" | "none") | null;
+            /** Avatar Url */
+            avatar_url?: string | null;
             budget: components["schemas"]["StaffRoleBudget"];
             /** Chat */
             chat?: {
@@ -23599,6 +23622,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    get_role_avatar_api_v1_staff_roles__role_id__avatar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
