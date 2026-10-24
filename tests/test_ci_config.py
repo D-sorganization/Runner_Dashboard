@@ -767,6 +767,12 @@ def test_docker_scope_detector_skips_docs_only_pr() -> None:
     assert not _docker_detector_selects(["docs/architecture.md", "README.md"])
 
 
+def test_decide_docker_scope_job_has_read_only_pull_request_permission() -> None:
+    """Scope detection calls GET /pulls/{n}/files; job token must include pull-requests: read."""
+    job = _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["decide-docker-scope"]
+    assert job.get("permissions") == {"contents": "read", "pull-requests": "read"}
+
+
 def test_docker_build_scan_gate_is_fail_closed() -> None:
     gate = _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["docker-build-scan"]
     assert "always()" in str(gate.get("if", ""))
