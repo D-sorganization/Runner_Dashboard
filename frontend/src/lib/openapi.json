@@ -3285,6 +3285,11 @@
             "title": "Experts",
             "type": "array"
           },
+          "ground_repos": {
+            "default": true,
+            "title": "Ground Repos",
+            "type": "boolean"
+          },
           "mode": {
             "default": "debate",
             "enum": ["debate", "brainstorm"],

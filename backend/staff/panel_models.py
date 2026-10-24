@@ -109,6 +109,8 @@ class PanelCreateRequest(BaseModel):
     pack_id: Literal["cartographer"] | None = "cartographer"
     repos: list[str] | None = Field(default=None, min_length=1, max_length=6)
     preload_codebase: bool = True
+    # With ``repos``: seats read a read-only snapshot of origin/main for those repos (#2511).
+    ground_repos: bool = True
 
     @field_validator("repos")
     @classmethod
