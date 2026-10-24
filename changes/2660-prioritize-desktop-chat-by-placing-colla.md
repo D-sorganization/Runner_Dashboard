@@ -1,4 +1,4 @@
 ---
 issue: 2660
-summary: "Prioritize desktop chat by placing collapsed activity below the workspace"
+summary: "Prioritize desktop chat with collapsed activity below the workspace and a themed export control"
 ---
