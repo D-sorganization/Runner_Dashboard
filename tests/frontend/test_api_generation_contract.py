@@ -31,6 +31,17 @@ def test_api_generation_formats_openapi_snapshot_before_diff() -> None:
     )
 
 
+def test_api_generation_does_not_append_handwritten_compat_types() -> None:
+    generator = (ROOT / "scripts/gen-api-client.sh").read_text(encoding="utf-8")
+
+    assert "Client compatibility aliases" not in generator
+    assert 'cat >> "$TMP_TYPES"' not in generator
+
+    types = (ROOT / "frontend/src/lib/api-types.ts").read_text(encoding="utf-8")
+    assert "Client compatibility aliases" not in types
+    assert (ROOT / "frontend/src/lib/api-compat.ts").is_file()
+
+
 def test_frontend_ci_checks_generated_api_contract() -> None:
     workflow = (ROOT / ".github/workflows/frontend-tests.yml").read_text(encoding="utf-8")
 
