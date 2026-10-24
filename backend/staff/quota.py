@@ -27,7 +27,7 @@ import os
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -114,9 +114,20 @@ class QuotaSnapshot:
         """The snapshot as of ``now``: windows past their reset time are dropped.
 
         Post: every remaining window resets after ``now`` (or has no known
-        reset); ``limited_until`` is cleared once it has passed.
+        reset); ``limited_until`` is cleared once it has passed. Blocking windows
+        (at or above :data:`DEFAULT_CEILING_PERCENT`) also drop when the snapshot
+        is older than :data:`STALE_SNAPSHOT` so a probe dispatch can refresh quota.
         """
-        windows = tuple(w for w in self.windows if w.resets_at is None or w.resets_at > now)
+        stale = now - self.observed_at > STALE_SNAPSHOT
+
+        def _keep(window: QuotaWindow) -> bool:
+            if window.resets_at is not None and window.resets_at <= now:
+                return False
+            if window.used_percent >= DEFAULT_CEILING_PERCENT and stale:
+                return False
+            return True
+
+        windows = tuple(w for w in self.windows if _keep(w))
         limited = self.limited_until if self.limited_until and self.limited_until > now else None
         return replace(self, windows=windows, limited_until=limited)
 
@@ -358,6 +369,7 @@ def billing(provider: str) -> str:
 
 
 DEFAULT_CEILING_PERCENT = 85.0
+STALE_SNAPSHOT = timedelta(hours=2)
 
 
 def ceiling_percent(role_ceiling: float | None = None) -> float:

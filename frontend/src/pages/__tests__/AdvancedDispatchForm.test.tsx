@@ -235,6 +235,7 @@ describe("AdvancedDispatchForm", () => {
         provider: "claude",
         model: null,
         machine: "local",
+        execution_mode: "local",
         dry_run: true,
         prompt: "",
         target: {

@@ -5098,6 +5098,12 @@
             "title": "Dry Run",
             "type": "boolean"
           },
+          "execution_mode": {
+            "default": "local",
+            "enum": ["local", "cloud"],
+            "title": "Execution Mode",
+            "type": "string"
+          },
           "ignore_budget": {
             "default": false,
             "title": "Ignore Budget",
@@ -7193,6 +7199,11 @@
             "title": "Error",
             "type": "string"
           },
+          "execution_mode": {
+            "default": "local",
+            "title": "Execution Mode",
+            "type": "string"
+          },
           "exit_code": {
             "anyOf": [
               {
@@ -7315,6 +7326,11 @@
           "remediation": {
             "default": "",
             "title": "Remediation",
+            "type": "string"
+          },
+          "remote_session_url": {
+            "default": "",
+            "title": "Remote Session Url",
             "type": "string"
           },
           "repo": {
@@ -8333,6 +8349,17 @@
               }
             ],
             "title": "Effort"
+          },
+          "execution_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Mode"
           },
           "force": {
             "anyOf": [
@@ -23925,6 +23952,36 @@
         ],
         "summary": "Trigger Briefing",
         "tags": ["staff-inbox-v1"]
+      }
+    },
+    "/api/v1/staff/cloud-capabilities": {
+      "get": {
+        "description": "Which staff providers support ``execution_mode: cloud`` on this node (#2627).",
+        "operationId": "cloud_capabilities_v1_api_v1_staff_cloud_capabilities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cloud Capabilities V1 Api V1 Staff Cloud Capabilities Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Cloud Capabilities V1",
+        "tags": ["staff-v1"]
       }
     },
     "/api/v1/staff/context/agents-sync": {

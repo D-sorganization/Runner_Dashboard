@@ -65,5 +65,6 @@ async def run_dispatch(
         standards_extra=body.standards_extra,
         requested_skill=body.skill,
         force_duplicate=is_force,
+        execution_mode=getattr(body, "execution_mode", "local") or "local",
     )
     return await dispatch_staff_run(cmd, caller)

@@ -27,6 +27,7 @@ import { MicGlyph } from "../decompIcons";
 
 interface ComposerComponentProps extends BaseComposerProps {
   prefilledText?: string;
+  prefillSeq?: number;
   conversationOpening?: boolean;
 }
 
@@ -42,6 +43,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   autoFocus = false,
   isPanel = false,
   prefilledText,
+  prefillSeq = 0,
   conversationOpening = false,
 }) => {
   const [text, setText] = useState<string>(() => getDraft(threadId));
@@ -101,7 +103,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       saveDraft(threadId, prefilledText);
       textareaRef.current?.focus();
     }
-  }, [prefilledText, threadId]);
+  }, [prefilledText, prefillSeq, threadId]);
 
   // SC-D9: after a thread switch, keyboard focus follows the conversation.
   const focusedThreadRef = useRef(threadId);

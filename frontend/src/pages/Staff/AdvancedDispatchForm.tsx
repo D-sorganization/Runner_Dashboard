@@ -45,6 +45,9 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
   const [provider, setProvider] = useState(() => initialValues?.provider ?? "");
   const [model, setModel] = useState(() => initialValues?.model ?? "");
   const [machine, setMachine] = useState(() => initialValues?.machine ?? "local");
+  const [executionMode, setExecutionMode] = useState<"local" | "cloud">(
+    () => (initialValues?.execution_mode === "cloud" ? "cloud" : "local"),
+  );
   const [repo, setRepo] = useState(() => initialValues?.target?.repo ?? "");
   const [numbers, setNumbers] = useState<Record<TargetField, string>>(() => ({
     issue: initialValues?.target?.issue != null ? String(initialValues.target.issue) : "",
@@ -68,6 +71,9 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
       if (initialValues.provider) setProvider(initialValues.provider);
       if (initialValues.model) setModel(initialValues.model);
       if (initialValues.machine) setMachine(initialValues.machine);
+      if (initialValues.execution_mode === "cloud" || initialValues.execution_mode === "local") {
+        setExecutionMode(initialValues.execution_mode);
+      }
       if (initialValues.target?.repo) setRepo(initialValues.target.repo);
       if (initialValues.target) {
         setNumbers({
@@ -122,12 +128,13 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
         provider: provider || null,
         model: model.trim() || null,
         machine: machine.trim() || "local",
+        execution_mode: executionMode,
         prompt: prompt.trim(),
         dry_run: dryRun,
         target,
       };
     },
-    [kind, needsRole, role, provider, model, machine, repo, numbers, prompt],
+    [kind, needsRole, role, provider, model, machine, executionMode, repo, numbers, prompt],
   );
 
   const submit = useCallback(
@@ -259,6 +266,31 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
             placeholder="provider default"
             onChange={(e) => setModel(e.target.value)}
           />
+        </div>
+        <div className="form-row">
+          <span className="form-label">Execution target</span>
+          <div className="staff-assign__toggle" role="group" aria-label="Execution target">
+            <TouchButton
+              type="button"
+              variant={executionMode === "local" ? "primary" : "default"}
+              onClick={() => {
+                setExecutionMode("local");
+                clearPreview();
+              }}
+            >
+              Local host
+            </TouchButton>
+            <TouchButton
+              type="button"
+              variant={executionMode === "cloud" ? "primary" : "default"}
+              onClick={() => {
+                setExecutionMode("cloud");
+                clearPreview();
+              }}
+            >
+              Cloud session (zero local CPU)
+            </TouchButton>
+          </div>
         </div>
         <div className="form-row">
           <label className="form-label" htmlFor="staff-assign-machine">

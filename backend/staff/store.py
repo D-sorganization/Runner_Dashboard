@@ -1,9 +1,4 @@
-"""Node-local SQLite store for staff runs and their streamed events.
-
-Design (ADR 0003 "laptop-runnable"): one file under the dashboard config dir,
-WAL mode, a single process-wide connection guarded by a lock. The hub merges
-per-node stores over HTTP; nothing here is shared across machines.
-"""
+"""Node-local SQLite store for staff runs and their streamed events (ADR 0003)."""
 
 from __future__ import annotations
 
@@ -101,6 +96,8 @@ class RunRecord:
     injected_lesson_ids: str = "[]"
     skipped_lesson_ids: str = "{}"
     lessons_tokens: int = 0
+    execution_mode: str = "local"
+    remote_session_url: str = ""
 
     def __post_init__(self) -> None:
         self.retryable, self.attempt, self.max_attempts = (

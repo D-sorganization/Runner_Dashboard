@@ -38,6 +38,15 @@ _GITHUB_AUTH_REMEDIATION = (
 )
 
 
+def prepare_cloud_workdir(store: RunStore, rec: RunRecord) -> Path:
+    """Minimal workdir for cloud-session launches (no clone/worktree)."""
+    workdir = workspace.staff_worktrees_root() / rec.id / "cloud"
+    workdir.mkdir(parents=True, exist_ok=True)
+    store.update_run(rec.id, workdir=str(workdir))
+    store.append_event(rec.id, "cloud", f"cloud session workdir {workdir}")
+    return workdir
+
+
 def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
     """Resolve clone/worktree for ``rec``; persists ``workdir`` on the run row."""
     if not plan.repo:
@@ -442,4 +451,5 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         injected_lesson_ids=json.dumps(list(getattr(plan, "injected_lesson_ids", ()) or ())),
         skipped_lesson_ids=json.dumps(dict(getattr(plan, "skipped_lesson_ids", {}) or {})),
         lessons_tokens=int(getattr(plan, "lessons_tokens", 0) or 0),
+        execution_mode=getattr(req, "execution_mode", "local") or "local",
     )

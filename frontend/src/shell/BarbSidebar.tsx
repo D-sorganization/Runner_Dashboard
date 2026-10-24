@@ -35,6 +35,11 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
     restoreInitialRoleThread: true,
   });
   const [composerPrefill, setComposerPrefill] = useState("");
+  const [prefillSeq, setPrefillSeq] = useState(0);
+  const applyComposerPrefill = (nextText: string) => {
+    setComposerPrefill(nextText);
+    setPrefillSeq((n) => n + 1);
+  };
   const sidebarRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -205,7 +210,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
                   type="button"
                   className="barb-sidebar__project"
                   aria-label={`Triage ${project.project}`}
-                  onClick={() => setComposerPrefill(project.prompt)}
+                  onClick={() => applyComposerPrefill(project.prompt)}
                 >
                   <span className="barb-sidebar__project-name">{project.project}</span>
                   <span className="barb-sidebar__project-summary">{project.summary}</span>
@@ -225,6 +230,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
           focusOnThreadChange={open}
           isPanel={false}
           prefilledText={composerPrefill}
+          prefillSeq={prefillSeq}
           conversationOpening={sc.openingRole !== null}
         />
       </div>

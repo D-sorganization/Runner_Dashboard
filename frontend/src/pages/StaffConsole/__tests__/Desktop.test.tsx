@@ -89,20 +89,32 @@ describe("StaffConsoleDesktop", () => {
     expect(api.postThreadMessage).not.toHaveBeenCalled();
   });
 
-  it("offers project-specific Barb starters that prefill without sending", () => {
+  it("offers project-specific Barb starters that prefill and keep focus in the composer (#2408)", () => {
     render(<StaffConsoleDesktop roles={ROLES} chatFirst />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Start UpstreamDrift" }));
-    const textarea = screen.getByRole("textbox", { name: /staff conversation input/i });
+    const upstreamStarter = screen.getByRole("button", { name: "Start UpstreamDrift" });
+    fireEvent.click(upstreamStarter);
+    const textarea = screen.getByRole("textbox", { name: /staff conversation input/i }) as HTMLTextAreaElement;
     expect(textarea.value).toContain("Triage UpstreamDrift");
     expect(textarea.value).toContain("review open issues and pull requests in the UpstreamDrift repository");
     expect(textarea.value).toContain("wait for my approval before dispatch");
     expect(textarea.value).toContain("registered workflows");
+    expect(textarea).toHaveFocus();
     expect(api.postThreadMessage).not.toHaveBeenCalled();
+
+    // Blur to the starter button, clear the draft, and click the same starter again:
+    // focus and prefilled text must return to the composer even on repeat clicks (#2408).
+    upstreamStarter.focus();
+    expect(upstreamStarter).toHaveFocus();
+    fireEvent.change(textarea, { target: { value: "" } });
+    fireEvent.click(upstreamStarter);
+    expect(textarea.value).toContain("Triage UpstreamDrift");
+    expect(textarea).toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Start AffineDrift" }));
     expect(textarea.value).toContain("Triage AffineDrift");
     expect(textarea.value).toContain("review open issues and pull requests in the AffineDrift repository");
+    expect(textarea).toHaveFocus();
     expect(api.postThreadMessage).not.toHaveBeenCalled();
   });
 
