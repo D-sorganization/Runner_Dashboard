@@ -25,6 +25,20 @@ from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.machine_registry")
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
+LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
+
+
+def _resolve_registry_path(path: str | Path | None) -> Path:
+    """Pick the registry file: env override, local config, then shipped example."""
+
+    if path is not None:
+        return Path(path)
+    env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
+    if env_path:
+        return Path(env_path)
+    if LOCAL_REGISTRY_PATH.is_file():
+        return LOCAL_REGISTRY_PATH
+    return DEFAULT_REGISTRY_PATH
 
 
 def _normalize_token(value: str) -> str:
@@ -336,9 +350,7 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
     config files (issue #355).
     """
 
-    if path is None:
-        path = os.environ.get("MACHINE_REGISTRY_PATH") or DEFAULT_REGISTRY_PATH
-    registry_path = Path(path)
+    registry_path = _resolve_registry_path(path)
     if not registry_path.exists():
         return {"version": 1, "machines": []}
 

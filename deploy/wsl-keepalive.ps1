@@ -71,7 +71,7 @@
 
 .EXAMPLE
     # Production use (scheduled task entry point):
-    powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\diete\wsl-keepalive.ps1
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\fleet\wsl-keepalive.ps1
 
 .EXAMPLE
     # One-shot health check:
@@ -80,7 +80,7 @@
 .NOTES
     Owner: runner-dashboard
     See: runner-dashboard/docs/wsl-keepalive.md
-    Issue origin: recurring DeskComputer dashboard outages, 2026-05-21..22
+    Issue origin: recurring hub-a dashboard outages, 2026-05-21..22
 #>
 
 [CmdletBinding()]
@@ -91,8 +91,8 @@ param(
     [int]$MaxConsecutiveRecoveries = 5,
     [int]$HealthyGapSeconds = 600,
     [string]$LogDir = '',
-    [string]$DrainMarker = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'runner_fleet_monitor\deskcomputer-runner-drained.flag'),
-    [string]$EnableMarker = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'runner_fleet_monitor\deskcomputer-runner-enabled.flag'),
+    [string]$DrainMarker = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'runner_fleet_monitor\hub-a-runner-drained.flag'),
+    [string]$EnableMarker = (Join-Path ([Environment]::GetFolderPath('UserProfile')) 'runner_fleet_monitor\hub-a-runner-enabled.flag'),
     [int]$MaxLogBytes = 5MB,
     [int]$LogBackups = 3,
     [int]$DashboardPort = 8321,
@@ -103,7 +103,7 @@ param(
     # `-Mode Resident` explicitly; this default is the safety net for a host that
     # runs the bare script or a legacy task that omits `-Mode`. Watchdog's
     # nuclear recovery hard-kills every runner + in-flight CI job and, on hard
-    # kill mid-write, corrupts the ext4 root — root-caused on OGLaptop 2026-05-29
+    # kill mid-write, corrupts the ext4 root — root-caused on node-b 2026-05-29
     # (415 shutdowns; e2fsck found 48 errors). #784's runbook migrates every host
     # to Resident; defaulting to it makes that the safe fallback, not a footgun.
     [string]$Mode = 'Resident',
@@ -396,7 +396,7 @@ function Invoke-WslRecovery {
 
     .NOTES
         ``wsl --shutdown`` kills every distro and the WSL2 lightweight VM.
-        For DeskComputer this is acceptable because the dashboard host runs
+        For hub-a this is acceptable because the dashboard host runs
         only one distro. Re-invoking ``wsl -d <distro> -- echo`` starts a
         cold VM and bootstraps systemd; the keepalive systemd unit then
         keeps it warm.
@@ -816,7 +816,7 @@ function Set-DistroPin {
         offline (runners only stay registered while the distro runs). Long jobs
         masked this because a running job holds its own session.
 
-        Confirmed on OGLaptop 2026-05-29: with only the periodic probe, pid 1
+        Confirmed on node-b 2026-05-29: with only the periodic probe, pid 1
         (systemd) uptime stayed ~7-8s across samples 45s apart (the distro
         re-initialised every cycle); a single persistent ``sleep infinity``
         session made uptime climb monotonically and all 8 runners stay online.
