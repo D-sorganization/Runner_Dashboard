@@ -3,7 +3,7 @@
  * `App.tsx` monolith as part of the decomposition epic (#836, pass 10).
  *
  * Renders a per-physical-machine grid: each `MachineCard` folds together its
- * runner-pool entries (e.g. ControlTower-NVMe + ControlTower-SSD) and the best
+ * runner-pool entries (e.g. node-a-NVMe + node-a-SSD) and the best
  * live telemetry node, then embeds the full `SystemResourcesPanel`
  * (CPU/RAM/swap/storage/load/network/GPU + per-runner process table).
  *
@@ -555,9 +555,9 @@ export function MachineCard(p: any): React.ReactElement {
     return hr + "h " + m + "m";
   })();
   const mColors: Record<string, string> = {
-    ControlTower: "var(--accent-purple)",
-    DeskComputer: "var(--accent-blue)",
-    OGLaptop: "var(--accent-orange)",
+    node-a: "var(--accent-purple)",
+    hub-a: "var(--accent-blue)",
+    node-b: "var(--accent-orange)",
   };
   const mColor = mColors[n.name] || "var(--accent-blue)";
   const dotClass = isLive ? (dashboardReachable ? "green" : "yellow") : "red";
@@ -802,7 +802,7 @@ export function MachinesTab(p: any): React.ReactElement {
   });
 
   // Build machine list from both runners and registry/fleet nodes. Runner pool
-  // entries such as ControlTower-NVMe and ControlTower-SSD are folded into the
+  // entries such as node-a-NVMe and node-a-SSD are folded into the
   // same physical machine card, and the best live telemetry node wins.
   const machineNameSet: Record<string, boolean> = {};
   Object.keys(runnersByMachine).forEach(function (name) {
@@ -816,9 +816,9 @@ export function MachinesTab(p: any): React.ReactElement {
     machineNameSet[display] = true;
   });
   const machineNames = Object.keys(machineNameSet).sort(function (a, b) {
-    return a === "ControlTower"
+    return a === "node-a"
       ? -1
-      : b === "ControlTower"
+      : b === "node-a"
         ? 1
         : a.localeCompare(b);
   });

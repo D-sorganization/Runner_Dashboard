@@ -1,7 +1,7 @@
 """Tests for host-neutral and Tailscale-aware GitHub OAuth 503 hints (issue #1764).
 
 Acceptance criteria:
-- The 503 hint no longer names a fixed host (e.g. 'OGLaptop'); it either names the
+- The 503 hint no longer names a fixed host (e.g. 'node-b'); it either names the
   serving node or stays host-neutral.
 - When OAuth is not ready and Tailscale identity sign-in is disabled, the hint
   mentions DASHBOARD_TAILSCALE_AUTH as the tailnet alternative.
@@ -54,8 +54,8 @@ def _make_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     return app
 
 
-def test_oauth_503_hint_contains_no_hardcoded_oglaptop_host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The 503 hint must not contain the hardcoded host 'OGLaptop'."""
+def test_oauth_503_hint_contains_no_hardcoded_node-b_host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The 503 hint must not contain the hardcoded host 'node-b'."""
     monkeypatch.delenv("DASHBOARD_TAILSCALE_AUTH", raising=False)
     app = _make_app(tmp_path, monkeypatch)
     client = TestClient(app)
@@ -65,9 +65,9 @@ def test_oauth_503_hint_contains_no_hardcoded_oglaptop_host(tmp_path: Path, monk
     data = resp.json()
     hint = data["detail"]["hint"]
 
-    # Must NOT name the hard-coded host OGLaptop
-    assert "OGLaptop" not in hint
-    assert "oglaptop" not in hint.lower()
+    # Must NOT name the hard-coded host node-b
+    assert "node-b" not in hint
+    assert "node-b" not in hint.lower()
 
 
 def test_oauth_503_hint_mentions_tailscale_auth_when_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,5 +95,5 @@ def test_oauth_503_hint_when_tailscale_auth_is_enabled(tmp_path: Path, monkeypat
     assert resp.status_code == 503
     hint = resp.json()["detail"]["hint"]
 
-    assert "OGLaptop" not in hint
+    assert "node-b" not in hint
     assert "enable DASHBOARD_TAILSCALE_AUTH" not in hint

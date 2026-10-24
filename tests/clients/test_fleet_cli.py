@@ -216,12 +216,12 @@ def test_library_fetch_accepts_source_work_and_page_locator(capsys: pytest.Captu
         "/api/v1/library/fetch",
         200,
         {
-            "node": "DeskComputer",
+            "node": "hub-a",
             "source_id": "desk-x9-library",
             "work_id": 3,
             "page": 7,
             "citation": "Verified citation",
-            "cite_key": "[ref:DeskComputer:shared:w3:p4#sha256=12345678:p.6-8]",
+            "cite_key": "[ref:hub-a:shared:w3:p4#sha256=12345678:p.6-8]",
             "file_sha256": "1" * 64,
             "work_sha256": "2" * 64,
             "text": "Cited passage",
@@ -242,7 +242,7 @@ def test_library_fetch_accepts_source_work_and_page_locator(capsys: pytest.Captu
     )
 
     assert code == 0
-    assert out["cite_key"].startswith("[ref:DeskComputer:shared:")
+    assert out["cite_key"].startswith("[ref:hub-a:shared:")
     assert (fake_api.last.method, fake_api.last.path, fake_api.last.query) == (
         "GET",
         "/api/v1/library/fetch",
@@ -265,7 +265,7 @@ def test_library_fetch_locator_requires_page_before_network(capsys: pytest.Captu
 
 
 def test_library_fetch_keeps_canonical_citation_mode(capsys: pytest.CaptureFixture[str], fake_api: Any) -> None:
-    citation = "[ref:DeskComputer:shared:w3:p4#sha256=12345678:p.6-8]"
+    citation = "[ref:hub-a:shared:w3:p4#sha256=12345678:p.6-8]"
     fake_api.respond(
         "GET",
         "/api/v1/library/fetch",
@@ -301,7 +301,7 @@ def test_library_fetch_locator_accepts_explicit_node(capsys: pytest.CaptureFixtu
         "--page",
         "7",
         "--node",
-        "OGLaptop",
+        "node-b",
     )
 
     assert code == 0
@@ -310,7 +310,7 @@ def test_library_fetch_locator_accepts_explicit_node(capsys: pytest.CaptureFixtu
         "work_id": "3",
         "page": "7",
         "scope": "local",
-        "node": "OGLaptop",
+        "node": "node-b",
     }
 
 

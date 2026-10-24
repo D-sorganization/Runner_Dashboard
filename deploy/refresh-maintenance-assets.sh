@@ -4,7 +4,7 @@
 # install-runner-maintenance.sh copies deploy/runner-scheduler.py to
 # /usr/local/bin/runner-scheduler, but only deploy-host.sh and setup.sh call it.
 # A host kept current through routine update-deployed.sh runs therefore kept the
-# scheduler it was first provisioned with (ControlTower ran a pre-#1922 build that
+# scheduler it was first provisioned with (node-a ran a pre-#1922 build that
 # stops busy runners mid-job). This script reinstalls an asset whenever its
 # content differs from the repo copy:
 #
@@ -18,8 +18,8 @@
 #
 # The runner hooks are refreshed here, from the deployed repo copy, because
 # runner-hooks-restore.timer deliberately only restores a MISSING hook: its
-# old source (/opt/runner-dashboard) went stale on DeskComputer (a 2026-07-31
-# commit) and was absent on ControlTower and OGLaptop. Hooks are read fresh
+# old source (/opt/runner-dashboard) went stale on hub-a (a 2026-07-31
+# commit) and was absent on node-a and node-b. Hooks are read fresh
 # per job, so no runner restart is needed.
 #
 # It never provisions a host that was not set up by install-runner-maintenance.sh,
@@ -105,8 +105,8 @@ done
 refresh_asset "$SCRIPT_DIR/runner-hooks-restore.sh" "$BIN_DIR/runner-hooks-restore" 0755
 
 # The restore timer's hook source (#1977). Its old HOOK_SRC_DIR was a repo
-# checkout under /opt that nothing kept current (stale on DeskComputer, absent
-# on ControlTower and OGLaptop), so a deleted hook came back old or not at all.
+# checkout under /opt that nothing kept current (stale on hub-a, absent
+# on node-a and node-b), so a deleted hook came back old or not at all.
 # On a host with the restore installed, keep a mirror of the repo hooks and
 # point the unit at it through a drop-in that overrides the installer's value.
 if [[ -f "$BIN_DIR/runner-hooks-restore" ]]; then

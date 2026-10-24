@@ -21,11 +21,11 @@ As of 2026-05-18 the fleet is:
 
 | Host                        | Runners | Platform      | Notes                                            |
 | --------------------------- | ------- | ------------- | ------------------------------------------------ |
-| `d-sorg-local-ControlTower` | 16      | WSL2 (Ubuntu) | Confirmed corruption 2026-05-18, healed manually |
+| `d-sorg-local-node-a` | 16      | WSL2 (Ubuntu) | Confirmed corruption 2026-05-18, healed manually |
 | `d-sorg-local-Desktop`      | 8       | WSL2 (Ubuntu) | Same layout — assume corruption present          |
-| `d-sorg-local-Oglaptop`     | 8       | Linux         | Verify before rollout                            |
-| `d-sorg-local-Brick`        | 1       | Linux         | Verify before rollout                            |
-| `ControlTower-MATLAB`       | 1       | Windows       | NOT AFFECTED — different code path               |
+| `d-sorg-local-node-b`     | 8       | Linux         | Verify before rollout                            |
+| `d-sorg-local-node-c`        | 1       | Linux         | Verify before rollout                            |
+| `node-a-MATLAB`       | 1       | Windows       | NOT AFFECTED — different code path               |
 
 Skip the Windows host; the bug is Linux-specific (`KillMode=process`, journald, `_diag/pages` filesystem layout).
 
@@ -162,7 +162,7 @@ Apply PR [#662](https://github.com/D-sorganization/Runner_Dashboard/pull/662) (i
 ### Symptom: WSL2 host deploys, but `deploy-check.sh` fails health with `github_api=unreachable`
 
 This is a host networking failure, not a dashboard build failure. It was observed on
-DeskComputer during the 2026-05-18 rollout: Windows could reach GitHub, but WSL2
+hub-a during the 2026-05-18 rollout: Windows could reach GitHub, but WSL2
 could not open public TCP connections, so `/api/health` reported `github_api=unreachable`.
 
 First confirm the failure is in WSL2:
@@ -268,14 +268,14 @@ Expected output: each host has `online == total` (all listeners up). Busy count 
 ```bash
 # No more "remains running after unit stopped" events in the last 24h
 # (this is the orphan-Worker telltale that #664 prevents):
-for host in d-sorg-local-ControlTower d-sorg-local-Desktop d-sorg-local-Oglaptop d-sorg-local-Brick; do
+for host in d-sorg-local-node-a d-sorg-local-Desktop d-sorg-local-node-b d-sorg-local-node-c; do
   ssh "$host" "sudo journalctl --since '24 hours ago' \
     | grep -c 'Runner.Worker.*remains running after unit stopped'" 2>/dev/null \
     | xargs -I{} echo "$host: {} orphan events"
 done
 ```
 
-After rollout the expected count is **0** per host (it was 14+/day on `ControlTower` before the fix).
+After rollout the expected count is **0** per host (it was 14+/day on `node-a` before the fix).
 
 ## Per-host agent prompt template
 
