@@ -178,7 +178,17 @@ export default function PushSettings() {
             <TouchButton onClick={unsubscribe} variant="danger">
               Unsubscribe
             </TouchButton>
-            <TouchButton disabled={testStatus === "sending"} onClick={sendTestNotification} variant="default">
+            <TouchButton
+              disabled={testStatus === "sending"}
+              onClick={sendTestNotification}
+              variant="default"
+              aria-label={
+                testStatus === "sending" ? "Sending test notification" : "Send test push notification"
+              }
+              title={
+                testStatus === "sending" ? "Sending test notification" : "Send test push notification"
+              }
+            >
               {testStatus === "sending" ? "Sending…" : "Send test notification"}
             </TouchButton>
           </>
