@@ -1,4 +1,4 @@
 ---
 issue: 2750
-summary: "Preserve the Python runtime loader path in the fake Staff E2E backend"
+summary: "Preserve the Python runtime loader path and allocate collision-free ports for fake Staff E2E"
 ---
