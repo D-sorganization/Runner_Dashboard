@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import runpy
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -27,6 +29,21 @@ def _record(run_id: str, tree: Path) -> RunRecord:
         status="succeeded",
         workdir=str(tree),
     )
+
+
+def test_hygiene_import_does_not_require_process_probe(monkeypatch):
+    monkeypatch.setitem(sys.modules, "psutil", None)
+    namespace = runpy.run_path(hygiene.__file__)
+    assert callable(namespace["finalize_run_worktree"])
+
+
+def test_missing_process_probe_preserves_finished_tree(candidate, monkeypatch):
+    candidate.store.update_run("run-finished", pid=12345)
+    monkeypatch.setitem(sys.modules, "psutil", None)
+    namespace = runpy.run_path(hygiene.__file__)
+    namespace["finalize_run_worktree"](candidate.store, "run-finished", candidate.tree, "Tools")
+    assert candidate.calls == []
+    assert (candidate.tree / ".staff" / "transcript.log").read_bytes() == b"original transcript\n"
 
 
 @pytest.fixture
@@ -83,7 +100,7 @@ def test_uncertain_finished_tree_keeps_original(candidate, monkeypatch, entrypoi
         store.update_run("run-finished", status="running")
     elif hazard == "live-pid":
         store.update_run("run-finished", pid=12345)
-        monkeypatch.setattr(hygiene.psutil, "pid_exists", lambda pid: True)
+        monkeypatch.setattr(hygiene, "_pid_is_running", lambda pid: True)
     elif hazard == "orphaned":
         store.update_run("run-finished", status="failed", failure_class="orphaned")
     elif hazard == "linked":

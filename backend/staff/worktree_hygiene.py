@@ -16,7 +16,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import psutil
 from staff import cli_projects
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
@@ -95,6 +94,12 @@ def _has_links(path: Path) -> bool:
     return False
 
 
+def _pid_is_running(pid: int) -> bool:
+    import psutil  # noqa: PLC0415 — minimal tooling imports must not require runtime probes
+
+    return psutil.pid_exists(pid)
+
+
 def remove_worktree_checked(
     worktree: Path, checkout: Path | None, branch: str, preserved_transcript: Path | None = None
 ) -> bool:
@@ -140,7 +145,7 @@ def _cleanup_finished_worktree(store: Any, rec_id: str, workdir: Path, repo: str
         record = store.get_run(rec_id)
         if record is None or _path_key(record.workdir) != _path_key(workdir):
             return False
-        if record.status not in {"succeeded", "failed", "cancelled"} or (record.pid and psutil.pid_exists(record.pid)):
+        if record.status not in {"succeeded", "failed", "cancelled"} or (record.pid and _pid_is_running(record.pid)):
             return False
         if record.failure_class == "orphaned":
             return False  # Attempted termination is not proof that all descendants stopped.
