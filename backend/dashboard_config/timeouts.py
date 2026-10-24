@@ -21,7 +21,6 @@ class HttpTimeout:
 
     # Maxwell daemon proxy calls run on localhost; 3 s is generous for any
     # healthy daemon and lets us fail fast when it is unresponsive.
-    MAXWELL_PROXY_S: float = 3.0
 
     # Hub VERSION fetch + local systemctl invocations: 5 s is enough for the
     # Tailscale-wrapped HTTP round trip or a systemd unit-file lookup.
