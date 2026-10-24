@@ -9850,6 +9850,11 @@ export interface components {
             /** Experts */
             experts: components["schemas"]["PanelExpert"][];
             /**
+             * Ground Repos
+             * @default true
+             */
+            ground_repos: boolean;
+            /**
              * Mode
              * @default debate
              * @enum {string}
