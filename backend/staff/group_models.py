@@ -116,39 +116,57 @@ class ConsensusResult:
     total_cost_usd: float = 0.0
 
 
-BOARD_SEATS: tuple[SeatSpec, ...] = (
-    SeatSpec(
-        name="alpha",
-        title="Alpha (Architecture)",
-        role="board-seat-alpha",
-        provider="claude",
-        model="opus-5",
-        mandate="Cross-repo architectural review",
-    ),
-    SeatSpec(
-        name="bravo",
-        title="Bravo (Science)",
-        role="board-seat-bravo",
-        provider="gemini",
-        model="gemini-2.5-pro",
-        mandate="Scientific validity, measurement rigor",
-    ),
-    SeatSpec(
-        name="charlie",
-        title="Charlie (Cadence)",
-        role="board-seat-charlie",
-        provider="codex",
-        model="gpt-5",
-        mandate="Execution cadence, CI/CD health",
-    ),
-    SeatSpec(
-        name="delta",
-        title="Delta (Docs & UX)",
-        role="board-seat-delta",
-        provider="claude",
-        model="sonnet-5",
-        mandate="Documentation, user experience, API surface",
-    ),
+# Providers retired fleet-wide (RM #2408); no group seat may be pinned to one.
+DEPRECATED_SEAT_PROVIDERS: frozenset[str] = frozenset({"gemini", "grok-chat"})
+
+
+def validate_seat_providers(seats: tuple[SeatSpec, ...]) -> tuple[SeatSpec, ...]:
+    """Return ``seats`` unchanged after checking none uses a deprecated provider.
+
+    Postcondition: no seat's provider is in DEPRECATED_SEAT_PROVIDERS; otherwise
+    ValueError names the seat and provider.
+    """
+    for seat in seats:
+        if seat.provider in DEPRECATED_SEAT_PROVIDERS:
+            raise ValueError(f"seat {seat.name!r} uses deprecated provider {seat.provider!r}")
+    return seats
+
+
+BOARD_SEATS: tuple[SeatSpec, ...] = validate_seat_providers(
+    (
+        SeatSpec(
+            name="alpha",
+            title="Alpha (Architecture)",
+            role="board-seat-alpha",
+            provider="claude",
+            model="opus-5",
+            mandate="Cross-repo architectural review",
+        ),
+        SeatSpec(
+            name="bravo",
+            title="Bravo (Science)",
+            role="board-seat-bravo",
+            provider="antigravity",
+            model="gemini-3.8-flash-high",
+            mandate="Scientific validity, measurement rigor",
+        ),
+        SeatSpec(
+            name="charlie",
+            title="Charlie (Cadence)",
+            role="board-seat-charlie",
+            provider="codex",
+            model="gpt-5",
+            mandate="Execution cadence, CI/CD health",
+        ),
+        SeatSpec(
+            name="delta",
+            title="Delta (Docs & UX)",
+            role="board-seat-delta",
+            provider="claude",
+            model="sonnet-5",
+            mandate="Documentation, user experience, API surface",
+        ),
+    )
 )
 
 
