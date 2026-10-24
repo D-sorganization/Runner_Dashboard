@@ -13,7 +13,7 @@ from typing import Any
 
 from dashboard_config import RUNNER_BASE_DIR
 from models.github_payloads import GhRunner
-from runners.service_control import runner_num_from_id
+from runners import service_control as _runner_service_control
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
@@ -55,6 +55,11 @@ async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tup
     # Use sudo if required, or run directly if permissions allow
     cmd = ["sudo", "-n", str(svc_path), action]
     return await run_cmd(cmd, timeout=timeout)
+
+
+def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
+    """Map a GitHub runner ID to a local slot only when the name matches this host (#2519)."""
+    return _runner_service_control.runner_num_from_id(runner_id, runners)
 
 
 def count_runner_capacity(runners: list[dict]) -> dict[str, int]:
