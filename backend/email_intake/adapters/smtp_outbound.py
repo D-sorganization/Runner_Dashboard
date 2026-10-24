@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import smtplib
-from email.message import EmailMessage
 
 from email_intake.adapters.base import SmtpAdapter
 from email_intake.config import EmailIntakeConfig

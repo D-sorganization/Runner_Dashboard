@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from email_intake.dispatch_role import UnknownStaffRoleError, normalize_staff_role
 from email_intake.intake_store import IntakeStore, default_intake_store
 from email_intake.models import InboundMessage, IntakeDisposition
-from email_intake.dispatch_role import UnknownStaffRoleError, normalize_staff_role
 from email_intake.parse_request import parse_dispatch_hints
 from email_intake.policy import MailPolicy
 from email_intake.verify import verify_inbound
