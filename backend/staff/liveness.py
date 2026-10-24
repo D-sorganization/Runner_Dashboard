@@ -81,14 +81,26 @@ def _parse_iso(raw: str | None) -> datetime | None:
 
 
 def expected_interval_seconds(schedule: str, now: datetime, tz: str = DEFAULT_TZ) -> int | None:
-    """Gap between the next two fires of ``schedule`` after ``now``; ``None`` for a bad cron."""
+    """Largest gap between consecutive fires after ``now`` (worst-case schedule spacing).
+
+    Using only the next two fires understates multi-fire crons (for example ``0 6,23 * * *``
+    would look like 7h between 11 PM and 6 AM and falsely mark an on-time 6 AM success as
+    ``late`` by evening). ``None`` for a bad cron.
+    """
     try:
         spec = parse_cron(schedule)
-        first = next_fire(spec, now, tz)
-        second = next_fire(spec, first, tz)
+        fires: list[datetime] = []
+        cursor = now
+        for _ in range(8):
+            nxt = next_fire(spec, cursor, tz)
+            fires.append(nxt)
+            cursor = nxt
     except ValueError:
         return None
-    return int((second - first).total_seconds())
+    if len(fires) < 2:
+        return None
+    gaps = [int((fires[i + 1] - fires[i]).total_seconds()) for i in range(len(fires) - 1)]
+    return max(gaps)
 
 
 def _latest(store: RunLookup, role: str, status: str | None = None) -> RunRecord | None:
