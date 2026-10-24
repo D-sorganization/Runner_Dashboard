@@ -5093,6 +5093,12 @@
       "RunBody": {
         "description": "POST body for a dispatch. DbC: exactly the fields the runner understands.",
         "properties": {
+          "claim_override_reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Claim Override Reason",
+            "type": "string"
+          },
           "dry_run": {
             "default": false,
             "title": "Dry Run",
@@ -5103,6 +5109,11 @@
             "enum": ["local", "cloud"],
             "title": "Execution Mode",
             "type": "string"
+          },
+          "force_claim_override": {
+            "default": false,
+            "title": "Force Claim Override",
+            "type": "boolean"
           },
           "ignore_budget": {
             "default": false,

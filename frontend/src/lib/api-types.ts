@@ -10688,6 +10688,11 @@ export interface components {
          */
         RunBody: {
             /**
+             * Claim Override Reason
+             * @default
+             */
+            claim_override_reason: string;
+            /**
              * Dry Run
              * @default false
              */
@@ -10698,6 +10703,11 @@ export interface components {
              * @enum {string}
              */
             execution_mode: "local" | "cloud";
+            /**
+             * Force Claim Override
+             * @default false
+             */
+            force_claim_override: boolean;
             /**
              * Ignore Budget
              * @default false
