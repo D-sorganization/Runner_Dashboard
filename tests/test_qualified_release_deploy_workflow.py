@@ -1,4 +1,4 @@
-"""Contracts for the guarded OGLaptop release deployment (issue #1138)."""
+"""Contracts for the guarded node-b release deployment (issue #1138)."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ BOOTSTRAP = ROOT / "deploy" / "bootstrap-qualified-release-deploy.sh"
 TRANSACTION = ROOT / "deploy" / "qualified-release-deploy.sh"
 LIBRARY = ROOT / "deploy" / "qualified-release-lib.sh"
 RUNTIME_LIBRARY = ROOT / "deploy" / "qualified-release-runtime-lib.sh"
-INVENTORY = ROOT / "deploy" / "oglaptop_github_inventory.py"
-SCHEDULE = ROOT / "config" / "runner-schedule-oglaptop.json"
+INVENTORY = ROOT / "deploy" / "node-b_github_inventory.py"
+SCHEDULE = ROOT / "config" / "runner-schedule-node-b.json"
 RUNBOOK = ROOT / "docs" / "runbooks" / "qualified-release-deploy.md"
 PINNED_ACTION = re.compile(r"^[\w.\-]+/[\w.\-]+(?:/[\w.\-/]+)?@[0-9a-f]{40}$")
 
@@ -46,11 +46,11 @@ def test_workflow_is_manual_exact_host_and_serialized() -> None:
     payload = _workflow()
     assert set(payload["on"]) == {"workflow_dispatch"}
     job = payload["jobs"]["deploy"]
-    assert job["runs-on"] == ["self-hosted", "Linux", "X64", "d-sorg-local-Oglaptop-1"]
-    assert job["environment"] == {"name": "oglaptop-production"}
+    assert job["runs-on"] == ["self-hosted", "Linux", "X64", "d-sorg-local-node-b-1"]
+    assert job["environment"] == {"name": "node-b-production"}
     assert job["timeout-minutes"] >= 12
     assert payload["concurrency"] == {
-        "group": "qualified-release-deploy-oglaptop",
+        "group": "qualified-release-deploy-node-b",
         "cancel-in-progress": False,
     }
 
@@ -66,10 +66,10 @@ def test_workflow_accepts_only_exact_release_identity() -> None:
         "confirm",
     }
     assert inputs["target"]["type"] == "choice"
-    assert inputs["target"]["options"] == ["OGLaptop"]
+    assert inputs["target"]["options"] == ["node-b"]
     assert all(item["required"] is True for item in inputs.values())
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "DEPLOY OGLAPTOP" in text
+    assert "DEPLOY NODE_B" in text
     assert "inputs.command" not in text
     assert "inputs.script" not in text
 
@@ -81,7 +81,7 @@ def test_workflow_permissions_actions_and_supply_chain_are_closed() -> None:
     assert refs
     assert all(PINNED_ACTION.match(ref) for ref in refs)
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}" in text
+    assert "GH_TOKEN: ${{ secrets.NODE_B_DEPLOY_GITHUB_TOKEN }}" in text
     assert "${{ github.token }}" not in text
     assert "orgs/D-sorganization/actions/runners" in text
     for marker in (
@@ -102,11 +102,11 @@ def test_workflow_proves_only_its_exact_worker_is_busy() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     for marker in (
         "RUNNER_NAME",
-        "d-sorg-local-Oglaptop-1",
+        "d-sorg-local-node-b-1",
         "Runner.Worker",
         "WORKER_PID",
         "--paginate",
-        "oglaptop_github_inventory.py",
+        "node-b_github_inventory.py",
         "validate-pre",
         "validate-post",
     ):
@@ -127,7 +127,7 @@ def test_bootstrap_installs_root_authority_and_narrow_sudoers() -> None:
     for marker in (
         "/usr/local/sbin/runner-dashboard-qualified-deploy",
         "/usr/local/lib/runner-dashboard/qualified-release-lib.sh",
-        "/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py",
+        "/usr/local/lib/runner-dashboard/node-b_github_inventory.py",
         "/etc/sudoers.d/runner-dashboard-qualified-deploy",
         "visudo -cf",
         "root:root",
@@ -146,14 +146,14 @@ def test_transaction_has_strict_request_and_host_contracts() -> None:
     text = TRANSACTION.read_text(encoding="utf-8") + LIBRARY.read_text(encoding="utf-8")
     for marker in (
         "qualified-release-request-v1",
-        "d-sorg-local-Oglaptop-1",
+        "d-sorg-local-node-b-1",
         "runner-dashboard-artifact-v2",
         "runner-dashboard.service",
         "Python 3.12",
         "validate_worker_ancestry",
         "validate_local_runner_inventory",
         "scan_local_legacy_runner_metadata",
-        "oglaptop_github_inventory.py",
+        "node-b_github_inventory.py",
         "runner-1",
         "weekday-day",
         "weekend-day",
@@ -234,7 +234,7 @@ def test_partial_snapshot_failure_restores_only_baseline_authority() -> None:
     assert 'install -o root -g root -m 0400 /dev/null "${SNAPSHOT_COMPLETE}"' in library
 
 
-def test_canonical_oglaptop_schedule_is_bounded() -> None:
+def test_canonical_node-b_schedule_is_bounded() -> None:
     schedule = json.loads(SCHEDULE.read_text(encoding="utf-8"))
     assert schedule["enabled"] is True
     assert schedule["timezone"] == "America/Los_Angeles"

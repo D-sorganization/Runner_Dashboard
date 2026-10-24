@@ -63,7 +63,7 @@ def test_classify_execution_result_fails_success_with_bwrap_in_transcript(tmp_pa
         result_line="STAFF_RESULT: ok",
         provider="codex",
         transcript_path=transcript,
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert status == "failed"
     assert failure_class == "environment_error"
@@ -178,7 +178,7 @@ def test_table_driven_classifier_patterns(
         provider=provider,
         exit_code=rc,
         output_text=text,
-        machine="OGLaptop",
+        machine="node-b",
     )
     assert classification.failure_class == expected_class
     assert classification.retryable is expected_retryable
@@ -192,7 +192,7 @@ def test_classify_codex_unsupported_chatgpt_model_as_config() -> None:
         provider="codex",
         exit_code=1,
         output_text=text,
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert classification.failure_class == "config"
     assert classification.retryable is False
@@ -209,7 +209,7 @@ def test_classify_watchdog_timeout() -> None:
         exit_code=-1,
         watchdog_failure_class="timeout",
         watchdog_error="execution wall-clock limit exceeded (4h)",
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert classification.failure_class == "timeout"
     assert classification.retryable is True
@@ -223,7 +223,7 @@ def test_classify_watchdog_stalled() -> None:
         exit_code=-1,
         watchdog_failure_class="stalled",
         watchdog_error="idle timeout (20m without output)",
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert classification.failure_class == "stalled"
     assert classification.retryable is True
@@ -237,7 +237,7 @@ def test_classify_watchdog_unkillable() -> None:
         exit_code=-1,
         watchdog_failure_class="unkillable",
         watchdog_error="process PID 9999 failed to terminate",
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert classification.failure_class == "unkillable"
     assert classification.retryable is False
@@ -249,7 +249,7 @@ def test_classify_orphaned() -> None:
         provider="claude",
         exit_code=-1,
         watchdog_failure_class="orphaned",
-        machine="OGLaptop",
+        machine="node-b",
     )
     assert classification.failure_class == "orphaned"
     assert classification.retryable is False
@@ -263,7 +263,7 @@ def test_classify_needs_input_when_exit_zero_ends_in_question() -> None:
         exit_code=0,
         result_line="",  # No STAFF_RESULT
         output_text=last_output,
-        machine="OGLaptop",
+        machine="node-b",
     )
     assert classification.failure_class == "needs_input"
     assert classification.retryable is False
@@ -280,7 +280,7 @@ def test_classify_exit_zero_without_staff_result_not_a_question() -> None:
         exit_code=0,
         result_line="",
         output_text=last_output,
-        machine="OGLaptop",
+        machine="node-b",
     )
     assert classification.failure_class == "no_result"
     assert classification.retryable is False
@@ -310,7 +310,7 @@ def test_format_attention_items_deduplicates_auth_expired() -> None:
             role="coder",
             provider="claude",
             model="sonnet",
-            machine="OGLaptop",
+            machine="node-b",
             repo="Tools",
             target_kind="issue",
             target_ref="#101",
@@ -319,14 +319,14 @@ def test_format_attention_items_deduplicates_auth_expired() -> None:
             failure_class="auth_expired",
             retryable=False,
             error="401 Unauthorized",
-            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node OGLaptop.",
+            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node node-b.",
         ),
         RunRecord(
             id="run-2",
             role="night-watch",
             provider="claude",
             model="sonnet",
-            machine="OGLaptop",
+            machine="node-b",
             repo="Runner_Dashboard",
             target_kind="issue",
             target_ref="#102",
@@ -335,14 +335,14 @@ def test_format_attention_items_deduplicates_auth_expired() -> None:
             failure_class="auth_expired",
             retryable=False,
             error="401 Unauthorized",
-            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node OGLaptop.",
+            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node node-b.",
         ),
         RunRecord(
             id="run-3",
             role="worker",
             provider="codex",
             model=None,
-            machine="OGLaptop",
+            machine="node-b",
             repo="Tools",
             target_kind="issue",
             target_ref="#103",
@@ -351,14 +351,14 @@ def test_format_attention_items_deduplicates_auth_expired() -> None:
             failure_class="auth_expired",
             retryable=False,
             error="Codex auth expired",
-            remediation="Run `codex login --device-auth` on node OGLaptop.",
+            remediation="Run `codex login --device-auth` on node node-b.",
         ),
         RunRecord(
             id="run-4",
             role="tester",
             provider="claude",
             model="sonnet",
-            machine="OGLaptop",
+            machine="node-b",
             repo="Tools",
             target_kind="issue",
             target_ref="#104",
@@ -372,7 +372,7 @@ def test_format_attention_items_deduplicates_auth_expired() -> None:
     ]
 
     items = format_attention_items(runs)
-    # Expected: 1 for claude auth on OGLaptop, 1 for codex auth on OGLaptop, 1 for timeout on run-4
+    # Expected: 1 for claude auth on node-b, 1 for codex auth on node-b, 1 for timeout on run-4
     assert len(items) == 3
 
     auth_claude = next(
@@ -380,7 +380,7 @@ def test_format_attention_items_deduplicates_auth_expired() -> None:
         None,
     )
     assert auth_claude is not None
-    assert auth_claude["machine"] == "OGLaptop"
+    assert auth_claude["machine"] == "node-b"
     assert "CLAUDE_CONFIG_DIR" in auth_claude["remediation"]
     assert "run-1" in auth_claude.get("affected_runs", [])
     assert "run-2" in auth_claude.get("affected_runs", [])

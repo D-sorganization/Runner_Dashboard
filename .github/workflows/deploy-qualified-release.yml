@@ -1,4 +1,4 @@
-name: Deploy qualified dashboard release to OGLaptop
+name: Deploy qualified dashboard release to node-b
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
         required: true
         type: choice
         options:
-          - OGLaptop
+          - node-b
       version:
         description: Exact published semver without the v prefix
         required: true
@@ -26,7 +26,7 @@ on:
         required: true
         type: string
       confirm:
-        description: Type DEPLOY OGLAPTOP
+        description: Type DEPLOY NODE_B
         required: true
         type: string
 
@@ -36,18 +36,18 @@ permissions:
   id-token: none
 
 concurrency:
-  group: qualified-release-deploy-oglaptop
+  group: qualified-release-deploy-node-b
   cancel-in-progress: false
 
 jobs:
   deploy:
     name: Verify and deploy the exact signed release
-    runs-on: [self-hosted, Linux, X64, d-sorg-local-Oglaptop-1]
+    runs-on: [self-hosted, Linux, X64, d-sorg-local-node-b-1]
     timeout-minutes: 30
     environment:
-      name: oglaptop-production
+      name: node-b-production
     env:
-      EXPECTED_RUNNER: d-sorg-local-Oglaptop-1
+      EXPECTED_RUNNER: d-sorg-local-node-b-1
       QUALIFIED_INBOX_ROOT: /var/lib/runner-dashboard-qualified-deploy/inbox
       VERSION_INPUT: ${{ inputs.version }}
       TAG_INPUT: ${{ inputs.tag }}
@@ -61,12 +61,12 @@ jobs:
         id: identity
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.NODE_B_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           [[ -n "${GH_TOKEN:-}" ]] || { echo "::error::protected deployment token is absent"; exit 1; }
-          [[ "$TARGET_INPUT" == "OGLaptop" ]] || { echo "::error::target is not allowlisted"; exit 1; }
-          [[ "$CONFIRM_INPUT" == "DEPLOY OGLAPTOP" ]] || { echo "::error::confirmation phrase is incorrect"; exit 1; }
+          [[ "$TARGET_INPUT" == "node-b" ]] || { echo "::error::target is not allowlisted"; exit 1; }
+          [[ "$CONFIRM_INPUT" == "DEPLOY NODE_B" ]] || { echo "::error::confirmation phrase is incorrect"; exit 1; }
           [[ "$RUNNER_NAME" == "$EXPECTED_RUNNER" ]] || { echo "::error::job is not on the exact deployment runner"; exit 1; }
           [[ "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version is not strict semver"; exit 1; }
           [[ "$TAG_INPUT" == "v$VERSION_INPUT" ]] || { echo "::error::tag does not match version"; exit 1; }
@@ -104,7 +104,7 @@ jobs:
         id: assets
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.NODE_B_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           INBOX_DIR="$QUALIFIED_INBOX_ROOT/$TRANSACTION_ID"
@@ -169,7 +169,7 @@ jobs:
         id: inventory
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.NODE_B_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           WORKER_PID=$(python3 - <<'PY'
@@ -192,7 +192,7 @@ jobs:
 
           gh api --paginate --slurp "orgs/D-sorganization/actions/runners?per_page=100" \
             > "$RUNNER_TEMP/github-runners-before.json"
-          INVENTORY="/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py"
+          INVENTORY="/usr/local/lib/runner-dashboard/node-b_github_inventory.py"
           [[ -f "$INVENTORY" ]] || { echo "::error::qualified inventory helper missing; re-run bootstrap"; exit 1; }
           python3 "$INVENTORY" validate-pre "$RUNNER_TEMP/github-runners-before.json" "$RUNNER_NAME"
           echo "Complete GitHub inventory accepted the exact current-worker exception."
@@ -230,12 +230,12 @@ jobs:
       - name: Verify post-transaction GitHub steady state
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.OGLAPTOP_DEPLOY_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.NODE_B_DEPLOY_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           gh api --paginate --slurp "orgs/D-sorganization/actions/runners?per_page=100" \
             > "$RUNNER_TEMP/github-runners-after.json"
-          INVENTORY="/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py"
+          INVENTORY="/usr/local/lib/runner-dashboard/node-b_github_inventory.py"
           [[ -f "$INVENTORY" ]] || { echo "::error::qualified inventory helper missing; re-run bootstrap"; exit 1; }
           python3 "$INVENTORY" validate-post "$RUNNER_TEMP/github-runners-after.json" "$RUNNER_NAME"
           echo "Post-transaction GitHub inventory retained the qualified 4/8 posture."
@@ -260,7 +260,7 @@ jobs:
           from datetime import UTC, datetime
           from pathlib import Path
 
-          inventory_module = Path("/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py")
+          inventory_module = Path("/usr/local/lib/runner-dashboard/node-b_github_inventory.py")
 
           def summary(path_value: str):
               path = Path(path_value)
@@ -268,7 +268,7 @@ jobs:
                   return {"available": False}
               pages = json.loads(path.read_text(encoding="utf-8"))
               if inventory_module.is_file():
-                  spec = importlib.util.spec_from_file_location("oglaptop_github_inventory", inventory_module)
+                  spec = importlib.util.spec_from_file_location("node-b_github_inventory", inventory_module)
                   module = importlib.util.module_from_spec(spec)
                   assert spec.loader is not None
                   spec.loader.exec_module(module)
@@ -280,7 +280,7 @@ jobs:
               "generated_at": datetime.now(UTC).isoformat(),
               "status": sys.argv[2],
               "transaction_id": sys.argv[3],
-              "target": "OGLaptop",
+              "target": "node-b",
               "release": {"version": sys.argv[4], "tag": sys.argv[5], "commit": sys.argv[6], "sha256": sys.argv[7]},
               "github_inventory": {"before": summary(sys.argv[8]), "after": summary(sys.argv[9])},
           }
@@ -291,7 +291,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0
         with:
-          name: qualified-oglaptop-deploy-${{ github.run_id }}-${{ github.run_attempt }}
+          name: qualified-node-b-deploy-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/redacted-evidence
           if-no-files-found: error
           retention-days: 30
