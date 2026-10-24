@@ -179,9 +179,9 @@ def test_handoff_affine_drift_5117_between_remediators(client: TestClient, bus_e
 
 
 @pytest.mark.unit
-def test_local_cursor_on_brick_registers_with_fleet_peer(client: TestClient, bus_env: dict[str, str]) -> None:
-    """An unregistered local Cursor session on node Brick can register and heartbeat."""
-    sess = "cursor-brick-20261022-night"
+def test_local_cursor_on_node-c_registers_with_fleet_peer(client: TestClient, bus_env: dict[str, str]) -> None:
+    """An unregistered local Cursor session on node node-c can register and heartbeat."""
+    sess = "cursor-node-c-20261022-night"
     reg = client.post(
         "/api/v1/agent/register",
         headers=_auth(bus_env["fleet"]),
@@ -189,7 +189,7 @@ def test_local_cursor_on_brick_registers_with_fleet_peer(client: TestClient, bus
             "session": sess,
             "role": "local",
             "provider": "cursor",
-            "node": "Brick",
+            "node": "node-c",
             "lease_seconds": 120,
         },
     )

@@ -21,9 +21,9 @@ import { SortTh } from "./decompSortTh";
 const h = React.createElement;
 
 const MACHINE_COLORS: Record<string, string> = {
-  ControlTower: "var(--accent-purple)",
-  DeskComputer: "var(--accent-blue)",
-  Oglaptop: "var(--accent-orange)",
+  node-a: "var(--accent-purple)",
+  hub-a: "var(--accent-blue)",
+  NodeB: "var(--accent-orange)",
   GitHub: "var(--text-muted)",
 };
 

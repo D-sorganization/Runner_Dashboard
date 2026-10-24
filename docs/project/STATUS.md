@@ -20,7 +20,7 @@
 | F9  | Staff Console Shell and Navigation      | in-progress | 90%      | Mobile navigation and context pane shipped (#1320, #1331)                                             |
 | F10 | UI Modernization and Legacy Pruning     | in-progress | 60%      | Insights tab merged; classic layout retirement pending (#1326, #1345)                                 |
 | F11 | Code Requests and Proposals Pipeline    | shipped     | 100%     | Rename, data model, and agent-agnostic dispatch shipped; epic #1279 closed (#1432, #1443, #1456)      |
-| F12 | Multi-Host Node Infrastructure          | shipped     | 100%     | OGLaptop bridge verified and duplicate-address outage guard shipped; epic #1258 closed (#1262, #1272) |
+| F12 | Multi-Host Node Infrastructure          | shipped     | 100%     | node-b bridge verified and duplicate-address outage guard shipped; epic #1258 closed (#1262, #1272) |
 | F13 | Projects and Fleet Stewardship          | shipped     | 100%     | Deferred-plan owner exposure shipped; epic #1248 closed (#1254)                                       |
 | F14 | Staff Hub Reliability and Watchdogs     | in-progress | 95%      | Watchdogs, orphan recovery, and error boundaries active (#1292, #1294)                                |
 | F15 | Maxwell Control Plane Proxy             | shipped     | 100%     | HTTP proxy and contract tests maintained; review pending (#1338)                                      |
@@ -35,7 +35,7 @@
 ## Risks
 
 - GitHub API GraphQL quota exhaustion if automated agents initiate rapid sweeps or polling loops across fleet instances.
-- Windows host and WSL networking port conflicts or duplicate IP allocations on remote worker nodes (e.g. OGLaptop, ControlTower).
+- Windows host and WSL networking port conflicts or duplicate IP allocations on remote worker nodes (e.g. node-b, node-a).
 - CI gate breaks caused by generated OpenAPI contract discrepancies against TypeScript types and strict line length budgets (e.g. `Mobile.tsx`).
 - Mutating maintenance operations (like disk compaction) impacting active runner tasks without rigorous safety checks and locks.
 
@@ -43,7 +43,7 @@
 
 - Shipped Code Requests pipeline: rename, data model/lifecycle store, and agent-agnostic dispatch; epic #1279 closed (#1432, #1443, #1456).
 - Shipped Board Deliberation group threads and the Barb→Board review/routing flow; epic #1339 closed (#1480, #1763, #1772).
-- Closed multi-host node infrastructure epic #1258 (OGLaptop bridge verification, duplicate-address outage guard, #1272).
+- Closed multi-host node infrastructure epic #1258 (node-b bridge verification, duplicate-address outage guard, #1272).
 - Closed Projects/Fleet Stewardship epic #1248 (deferred-plan owner exposure, #1254).
 - Shipped phone sign-in via Tailscale identity headers (#1757) and a host-neutral OAuth 503 hint (#1769).
 - Resolved three prior Decisions Needed items: off-theme work-request consolidation (#1337), VHDX compaction policy (#1332), and remote ingress for cloud agent clients (#1335) — all closed since the last run.
