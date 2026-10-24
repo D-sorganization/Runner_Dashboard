@@ -154,3 +154,18 @@ dashboard_systemctl_active() {
         sudo systemctl is-active --quiet runner-dashboard.service 2>/dev/null
     fi
 }
+
+run_fleet_env_preflight() {
+    local secrets_file="$1"
+    local msg="$2"
+    local -a args=(--repo-root "${SCRIPT_DIR}" --secrets-file "${secrets_file}")
+    [[ -n "${ALLOW_HUB_URL_OVERRIDE:-}" ]] && args+=(--allow-registry-override)
+    "${PYTHON_BIN}" "${SCRIPT_DIR}/deploy/fleet-env-preflight.py" "${args[@]}" || fail "${msg}"
+}
+
+capture_dashboard_service_was_active() {
+    if dashboard_user_unit_installed && systemctl --user is-active --quiet runner-dashboard.service 2>/dev/null; then
+        return 0
+    fi
+    dashboard_system_unit_installed && systemctl is-active --quiet runner-dashboard.service 2>/dev/null
+}

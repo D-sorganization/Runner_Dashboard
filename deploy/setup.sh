@@ -139,11 +139,7 @@ done; if [[ -z "${ARTIFACT_SOURCE}" ]]; then source_deploy_guard "${DEPLOY_DIR}"
 # would-do summary (Codex P1 PR #483: announcing "no mutations" then
 # continuing to install / copy / write secrets is unsafe).
 preflight
-_hub_preflight_args=(--repo-root "${SCRIPT_DIR}" --secrets-file "${HOME}/.config/runner-dashboard/env")
-[[ -n "$ALLOW_HUB_URL_OVERRIDE" ]] && _hub_preflight_args+=(--allow-registry-override)
-if ! "${PYTHON_BIN}" "${SCRIPT_DIR}/deploy/fleet-env-preflight.py" "${_hub_preflight_args[@]}"; then
-    fail "HUB_URL in ~/.config/runner-dashboard/env disagrees with machine_registry.yml (use --allow-hub-url-override if intentional)"
-fi
+run_fleet_env_preflight "${HOME}/.config/runner-dashboard/env" "HUB_URL in ~/.config/runner-dashboard/env disagrees with machine_registry.yml (use --allow-hub-url-override if intentional)"
 if [[ -n "$CHECK_ONLY" ]]; then info "--check-only: preflight passed; exiting before any mutation"; exit 0; fi
 if [[ -n "$DRY_RUN" ]]; then
     info "[dry-run] preflight passed; aborting before any mutation."
@@ -155,11 +151,7 @@ fi
 PREVIOUS_DEPLOYED_SHA=""
 SERVICE_WAS_ACTIVE=""
 [[ -f "${DEPLOY_DIR}/deployment.json" ]] && PREVIOUS_DEPLOYED_SHA=$(python3 -c "import json; print(json.load(open('${DEPLOY_DIR}/deployment.json')).get('git_sha',''))" 2>/dev/null || echo "")
-if dashboard_user_unit_installed; then
-    systemctl --user is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_ACTIVE=1
-elif dashboard_system_unit_installed; then
-    systemctl is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_ACTIVE=1
-fi
+capture_dashboard_service_was_active && SERVICE_WAS_ACTIVE=1
 
 [[ -z "$MACHINE_NAME" ]] && MACHINE_NAME="$(hostname)"
 [[ -z "$DISPLAY_NAME_VAL" ]] && DISPLAY_NAME_VAL="$MACHINE_NAME"
@@ -342,11 +334,7 @@ if [[ -n "$HUB_URL_VAL" ]]; then
     ok "HUB_URL written to secrets file. API Proxying enabled."
 fi
 
-_hub_preflight_args=(--repo-root "${SCRIPT_DIR}" --secrets-file "${SECRETS_FILE}")
-[[ -n "$ALLOW_HUB_URL_OVERRIDE" ]] && _hub_preflight_args+=(--allow-registry-override)
-if ! "${PYTHON_BIN}" "${SCRIPT_DIR}/deploy/fleet-env-preflight.py" "${_hub_preflight_args[@]}"; then
-    fail "HUB_URL disagrees with machine_registry.yml (clear it, fix registry, or use --allow-hub-url-override)"
-fi
+run_fleet_env_preflight "${SECRETS_FILE}" "HUB_URL disagrees with machine_registry.yml (clear it, fix registry, or use --allow-hub-url-override)"
 
 mkdir -p "$(dirname "${SCHEDULE_CONFIG_VAL}")"
 if [[ ! -f "${SCHEDULE_CONFIG_VAL}" ]]; then
@@ -412,8 +400,6 @@ mkdir -p "${HOME}/.config/runner-dashboard" "${HOME}/.local/share/runner-dashboa
 if ! resolve_systemd_dashboard_scope "${FORCE_USER_SERVICE}" "${FORCE_SYSTEM_SERVICE}"; then
     exit 1
 fi
-info "Systemd scope: ${SYSTEMD_DASHBOARD_SCOPE} (user unit=$(user_dashboard_unit_path); system unit=$(system_dashboard_unit_path))"
-
 # Version-skip restart (issue #402): only skip the restart when the
 # *previously*-deployed git_sha (captured before step 2 overwrote
 # deployment.json) matches the current checkout AND the service is already
