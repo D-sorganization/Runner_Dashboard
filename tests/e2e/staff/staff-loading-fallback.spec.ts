@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-const APP_ORIGIN = "http://localhost:5174";
+test("Staff loading skeleton fills the content area in both themes", async ({ browser, baseURL }) => {
+  const appBaseURL = baseURL ?? "http://localhost:5174";
+  const appOrigin = new URL(appBaseURL).origin;
+  const staffRoute = new URL("/staff", appBaseURL).toString();
 
-test("Staff loading skeleton fills the content area in both themes", async ({ browser }) => {
   for (const theme of ["light", "dark"] as const) {
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
@@ -23,7 +25,7 @@ test("Staff loading skeleton fills the content area in both themes", async ({ br
     }, theme);
     await page.route("**/*", async (route) => {
       const url = new URL(route.request().url());
-      if (url.origin !== APP_ORIGIN) return route.abort();
+      if (url.origin !== appOrigin) return route.abort();
       if (url.pathname.startsWith("/api/")) {
         return route.fulfill({
           status: 200,
@@ -31,7 +33,7 @@ test("Staff loading skeleton fills the content area in both themes", async ({ br
           body: JSON.stringify({}),
         });
       }
-      if (/\/assets\/StaffPage-[^/]+\.js$/.test(url.pathname)) {
+      if (/\/(?:src\/pages\/Staff\/StaffPage\.tsx|assets\/StaffPage-[^/]+\.js)$/.test(url.pathname)) {
         markStaffChunkRequested();
         await staffChunkGate;
       }
@@ -39,9 +41,9 @@ test("Staff loading skeleton fills the content area in both themes", async ({ br
     });
 
     try {
-      await page.goto(`${APP_ORIGIN}/staff`);
+      await page.goto(staffRoute);
       await staffChunkRequested;
-      const fallback = page.getByRole("status", { name: "Loading Staff Console…" });
+      const fallback = page.getByRole("status", { name: "Loading Staff Console\u2026" });
       await expect(fallback).toBeVisible();
       await page.getByRole("button", { name: "Ask Barb" }).click();
       await expect(page.locator(".desktop-shell--barb-open")).toBeVisible();
