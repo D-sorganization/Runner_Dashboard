@@ -7286,9 +7286,11 @@ export interface paths {
         };
         /** Get Role Avatar */
         get: operations["get_role_avatar_api_v1_staff_roles__role_id__avatar_get"];
-        put?: never;
+        /** Put Role Avatar */
+        put: operations["put_role_avatar_api_v1_staff_roles__role_id__avatar_put"];
         post?: never;
-        delete?: never;
+        /** Delete Role Avatar */
+        delete: operations["delete_role_avatar_api_v1_staff_roles__role_id__avatar_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -23655,6 +23657,68 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_role_avatar_api_v1_staff_roles__role_id__avatar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_role_avatar_api_v1_staff_roles__role_id__avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
