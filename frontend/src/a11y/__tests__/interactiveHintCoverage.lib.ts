@@ -321,7 +321,7 @@ export const HINT_COVERAGE_ENFORCED_SUFFIXES: readonly string[] = [
 ];
 
 /** Path prefixes that must be violation-free (grows one dashboard area per PR). */
-export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = [];
+export const HINT_COVERAGE_ENFORCED_PREFIXES: readonly string[] = ["pages/Staff/"];
 
 export function violationsInEnforcedAreas(report: HintCoverageReport): HintViolation[] {
   return report.violations.filter((v) => {
