@@ -38,8 +38,8 @@ def _event(
     }
 
 
-def _is_revert(pr: PrSnapshot) -> bool:
-    return bool(_REVERT_TITLE_RE.match(pr.title.strip()))
+def _is_merged_revert(pr: PrSnapshot) -> bool:
+    return pr.merged and bool(_REVERT_TITLE_RE.match(pr.title.strip()))
 
 
 def _failed_rollout_runs(runs: Sequence[CheckRunSnapshot]) -> list[int]:
@@ -53,11 +53,15 @@ def _failed_rollout_runs(runs: Sequence[CheckRunSnapshot]) -> list[int]:
 
 
 def _red_main_run_ids(pr: PrSnapshot, runs: Sequence[CheckRunSnapshot]) -> list[int]:
-    if not pr.merged or pr.base_ref != "main":
+    """Post-merge main CI failures only — not pre-merge PR check retries."""
+    if not pr.merged or pr.base_ref != "main" or pr.merged_at is None:
         return []
+    merged_at = pr.merged_at
     ids: list[int] = []
     for run in runs:
         if run.status != "completed" or run.conclusion != "failure":
+            continue
+        if run.completed_at is None or run.completed_at < merged_at:
             continue
         if _MAINLINE_CI_RE.search(run.name):
             ids.append(run.check_run_id)
@@ -77,7 +81,7 @@ def escape_events_for_pr(pr: PrSnapshot, runs: Sequence[CheckRunSnapshot]) -> tu
     rollout_ids = _failed_rollout_runs(runs)
     if rollout_ids:
         events.append(_event("failed_rollout", _WEIGHT_FAILED_ROLLOUT, pr, check_run_ids=rollout_ids))
-    if _is_revert(pr):
+    if _is_merged_revert(pr):
         events.append(_event("revert", _WEIGHT_REVERT, pr))
     return tuple(events)
 

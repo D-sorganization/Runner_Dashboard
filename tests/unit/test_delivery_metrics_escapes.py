@@ -36,16 +36,24 @@ def _pr(**overrides: object) -> PrSnapshot:
     return PrSnapshot(**base)  # type: ignore[arg-type]
 
 
-def _run(name: str, conclusion: str, check_run_id: int = 1) -> CheckRunSnapshot:
+def _run(
+    name: str,
+    conclusion: str,
+    check_run_id: int = 1,
+    *,
+    completed_at: datetime | None = None,
+    head_sha: str = "abc123",
+) -> CheckRunSnapshot:
+    done = completed_at or NOW
     return CheckRunSnapshot(
         repo_full=REPO,
-        head_sha="abc123",
+        head_sha=head_sha,
         check_run_id=check_run_id,
         name=name,
         status="completed",
         conclusion=conclusion,
-        started_at=NOW,
-        completed_at=NOW,
+        started_at=done,
+        completed_at=done,
         details_url="https://example.invalid/check",
         app_slug="github-actions",
     )
@@ -59,14 +67,30 @@ def test_revert_title_emits_revert_escape() -> None:
     assert events[0]["weight"] >= 10
 
 
-def test_red_main_on_merged_pr_with_failing_main_ci() -> None:
-    pr = _pr(number=10)
-    runs = (_run("CI Standard / tests", "failure", 42),)
+def test_red_main_on_merged_pr_with_post_merge_main_ci_failure() -> None:
+    merged_at = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+    pr = _pr(number=10, merged_at=merged_at)
+    runs = (
+        _run("CI Standard / tests", "failure", 42, completed_at=merged_at),
+        _run("CI Standard / tests", "success", 43, completed_at=datetime(2026, 10, 2, 13, 0, tzinfo=UTC)),
+    )
     events = escape_events_for_pr(pr, runs)
     assert any(e["kind"] == "red_main" for e in events)
     red = next(e for e in events if e["kind"] == "red_main")
     assert red["check_run_ids"] == [42]
     assert red["number"] == 10
+
+
+def test_red_main_ignores_pre_merge_ci_failure() -> None:
+    merged_at = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+    pr = _pr(number=13, merged_at=merged_at)
+    runs = (_run("CI Standard / tests", "failure", 44, completed_at=datetime(2026, 10, 1, tzinfo=UTC)),)
+    assert not any(e["kind"] == "red_main" for e in escape_events_for_pr(pr, runs))
+
+
+def test_unmerged_revert_title_is_not_an_escape() -> None:
+    pr = _pr(title="Revert \"feat\"", number=14, merged=False, state="open", merged_at=None)
+    assert not any(e["kind"] == "revert" for e in escape_events_for_pr(pr, ()))
 
 
 def test_failed_rollout_from_deploy_check_name() -> None:
@@ -81,9 +105,16 @@ def test_weighted_escapes_sorted_heaviest_first() -> None:
         _pr(number=1, title="Revert x", head_sha="h1"),
         _pr(number=2, head_sha="h2"),
     )
+    merged_at = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+    pulls = (
+        _pr(number=1, title="Revert x", head_sha="h1", merged_at=merged_at),
+        _pr(number=2, head_sha="h2", merged_at=merged_at),
+    )
     checks = {
         "h1": (),
-        "h2": (_run("CI Standard", "failure", 2),),
+        "h2": (
+            _run("CI Standard", "failure", 2, head_sha="h2", completed_at=merged_at),
+        ),
     }
     weighted = weighted_escapes(pulls, checks)
     assert weighted[0]["kind"] == "red_main"
