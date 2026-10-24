@@ -1,8 +1,7 @@
 """Board seats must run on supported providers, never a deprecated one.
 
-``gemini`` and ``grok-chat`` are retired fleet-wide (RM #2408); Bravo moved to
-``antigravity`` so the Board keeps a Google model for diversity without the
-deprecated Gemini CLI.
+``gemini`` and ``grok-chat`` are retired fleet-wide (RM #2408); the Board keeps a
+Google model (Argon, Delta) on ``antigravity`` and Grok (Charlie) on ``cursor-agent``.
 """
 
 from __future__ import annotations
@@ -28,10 +27,10 @@ def test_no_board_seat_uses_a_deprecated_provider() -> None:
 
 
 @pytest.mark.unit
-def test_bravo_runs_on_antigravity_gemini_flash_high() -> None:
-    bravo = next(s for s in BOARD_SEATS if s.name == "bravo")
-    assert bravo.provider == "antigravity"
-    assert bravo.model == "gemini-3.8-flash-high"
+def test_delta_runs_on_antigravity_gemini_argon_high() -> None:
+    delta = next(s for s in BOARD_SEATS if s.name == "delta")
+    assert delta.provider == "antigravity"
+    assert delta.model == "gemini-4-argon-high"
 
 
 @pytest.mark.unit

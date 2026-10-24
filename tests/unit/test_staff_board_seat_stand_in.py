@@ -34,27 +34,27 @@ def test_seat_on_node_leaves_enabled_seat_identical(monkeypatch: pytest.MonkeyPa
 def test_seat_on_node_disabled_antigravity_stands_in(monkeypatch: pytest.MonkeyPatch) -> None:
     """An antigravity seat with antigravity disabled becomes provider claude, model sonnet-5, keeping other fields."""
     monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
-    bravo_seat = next(s for s in BOARD_SEATS if s.name == "bravo")
-    result = seat_on_node(bravo_seat)
+    delta_seat = next(s for s in BOARD_SEATS if s.name == "delta")
+    result = seat_on_node(delta_seat)
 
-    assert result is not bravo_seat
+    assert result is not delta_seat
     assert result.provider == SEAT_STAND_IN_PROVIDER
     assert result.provider == "claude"
     assert result.model == SEAT_STAND_IN_MODEL
     assert result.model == "sonnet-5"
-    assert result.name == bravo_seat.name
-    assert result.title == bravo_seat.title
-    assert result.role == bravo_seat.role
-    assert result.mandate == bravo_seat.mandate
+    assert result.name == delta_seat.name
+    assert result.title == delta_seat.title
+    assert result.role == delta_seat.role
+    assert result.mandate == delta_seat.mandate
 
 
 @pytest.mark.unit
 def test_seat_on_node_unset_env_var_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     """With the env var unset, the antigravity seat is unchanged (same object)."""
     monkeypatch.delenv("STAFF_DISABLED_PROVIDERS", raising=False)
-    bravo_seat = next(s for s in BOARD_SEATS if s.name == "bravo")
-    result = seat_on_node(bravo_seat)
-    assert result is bravo_seat
+    delta_seat = next(s for s in BOARD_SEATS if s.name == "delta")
+    result = seat_on_node(delta_seat)
+    assert result is delta_seat
     assert result.provider == "antigravity"
 
 
@@ -62,31 +62,31 @@ def test_seat_on_node_unset_env_var_unchanged(monkeypatch: pytest.MonkeyPatch) -
 def test_seat_on_node_antigravity_cli_spelling_stands_in(monkeypatch: pytest.MonkeyPatch) -> None:
     """'Antigravity-CLI' spelling in the env var also stands the seat in (provider_switch canonicalises)."""
     monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "Antigravity-CLI")
-    bravo_seat = next(s for s in BOARD_SEATS if s.name == "bravo")
-    result = seat_on_node(bravo_seat)
+    delta_seat = next(s for s in BOARD_SEATS if s.name == "delta")
+    result = seat_on_node(delta_seat)
 
     assert result.provider == "claude"
     assert result.model == "sonnet-5"
-    assert result.name == bravo_seat.name
-    assert result.title == bravo_seat.title
-    assert result.role == bravo_seat.role
-    assert result.mandate == bravo_seat.mandate
+    assert result.name == delta_seat.name
+    assert result.title == delta_seat.title
+    assert result.role == delta_seat.role
+    assert result.mandate == delta_seat.mandate
 
 
 @pytest.mark.unit
 def test_estimate_group_turn_cost_with_disabled_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """estimate_group_turn_cost('board') with antigravity disabled prices Bravo at claude/sonnet-5."""
+    """estimate_group_turn_cost('board') with antigravity disabled prices Delta at claude/sonnet-5."""
     prompt = "Review the current architecture and metrics."
     prompt_tokens = max(100, int(len(prompt) / 4))
     estimated_output_tokens = 800
 
     expected_price = lookup_seat_price("claude", "sonnet-5")
-    expected_bravo_cost = expected_price.cost(prompt_tokens, estimated_output_tokens)
+    expected_delta_cost = expected_price.cost(prompt_tokens, estimated_output_tokens)
 
     monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
     estimate = estimate_group_turn_cost("board", prompt=prompt)
 
-    assert estimate.cost_per_seat["bravo"] == expected_bravo_cost
+    assert estimate.cost_per_seat["delta"] == expected_delta_cost
     assert set(estimate.cost_per_seat.keys()) == {"alpha", "bravo", "charlie", "delta"}
     assert len(estimate.cost_per_seat) == 4
 
@@ -118,19 +118,19 @@ async def test_fanout_with_disabled_provider(monkeypatch: pytest.MonkeyPatch) ->
     assert all(s.provider != "antigravity" for s in recorded_seats)
 
     seat_by_name = {s.name: s for s in recorded_seats}
-    assert "bravo" in seat_by_name
-    assert seat_by_name["bravo"].provider == "claude"
-    assert seat_by_name["bravo"].model == "sonnet-5"
+    assert "delta" in seat_by_name
+    assert seat_by_name["delta"].provider == "claude"
+    assert seat_by_name["delta"].model == "sonnet-5"
 
 
 @pytest.mark.unit
 def test_seat_label_names_the_stand_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A stood-in seat says so; Bravo is on antigravity for model diversity, so a silent swap would misattribute."""
-    bravo_seat = next(s for s in BOARD_SEATS if s.name == "bravo")
+    """A stood-in seat says so; Delta (Argon) runs on antigravity, so a silent swap would misattribute."""
+    delta_seat = next(s for s in BOARD_SEATS if s.name == "delta")
     monkeypatch.delenv("STAFF_DISABLED_PROVIDERS", raising=False)
-    assert seat_label(bravo_seat) == bravo_seat.title
+    assert seat_label(delta_seat) == delta_seat.title
     monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
-    assert seat_label(bravo_seat) == f"{bravo_seat.title} (stand-in: claude — antigravity disabled on this node)"
+    assert seat_label(delta_seat) == f"{delta_seat.title} (stand-in: claude — antigravity disabled on this node)"
 
 
 @pytest.mark.unit
@@ -139,7 +139,7 @@ def test_board_summary_marks_the_stand_in_seat(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
     replies = [SeatReply(seat_name=s.name, status="ok", text=f"{s.name} says yes") for s in BOARD_SEATS]
     res = collate_consensus(get_group("board"), "Adopt the plan?", replies)
-    marker = "Bravo (Science) (stand-in: claude — antigravity disabled on this node)"
+    marker = "Delta (Docs & UX) - Argon (stand-in: claude — antigravity disabled on this node)"
     assert f"- **{marker}:**" in res.summary
     assert f"#### {marker}\n" in res.summary
-    assert "Alpha (Architecture) (stand-in" not in res.summary
+    assert "Alpha (Architecture) - Fable (stand-in" not in res.summary
