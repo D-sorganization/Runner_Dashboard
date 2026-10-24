@@ -7,6 +7,7 @@ injecting raw API keys — cloud sessions must use provider subscription logins 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from collections.abc import Mapping
@@ -78,6 +79,29 @@ def _truncate(prompt: str, limit: int = 8000) -> str:
     return text[:limit] if text else "Continue the assigned staff task."
 
 
+def _codex_cloud_environment() -> str:
+    """Codex Cloud ``exec`` requires ``--env`` (id or label); configured per staff node."""
+    env_id = os.environ.get("STAFF_CODEX_CLOUD_ENV", "").strip()
+    if not env_id:
+        raise ValueError(
+            "codex cloud execution requires STAFF_CODEX_CLOUD_ENV (Codex Cloud environment id or label)"
+        )
+    return env_id
+
+
+def targets_from_record(target_kind: str, target_ref: str) -> tuple[int | None, int | None]:
+    """Parse issue/pr numbers from a persisted run target."""
+    if target_kind == "issue" and target_ref.startswith("#"):
+        try:
+            return int(target_ref[1:]), None
+        except ValueError:
+            return None, None
+    if target_kind == "pr":
+        digits = "".join(ch for ch in target_ref if ch.isdigit())
+        return None, (int(digits) if digits else None)
+    return None, None
+
+
 def _workflow_dispatch(provider: str, prompt: str, *, repo: str, issue: int | None, pr: int | None) -> CloudDispatch:
     if not (issue or pr):
         raise ValueError(f"{provider} cloud dispatch requires an issue or pr target")
@@ -120,10 +144,7 @@ def build_cloud_dispatch(
     if pid == "claude":
         return CloudDispatch(argv=["claude", "--remote", text])
     if pid == "codex":
-        argv: list[str] = ["codex", "cloud", "--json"]
-        if model:
-            argv.extend(["--model", model])
-        argv.append(text)
+        argv = ["codex", "cloud", "exec", "--env", _codex_cloud_environment(), text]
         return CloudDispatch(argv=argv)
     return _workflow_dispatch(pid, prompt, repo=repo, issue=issue, pr=pr)
 
@@ -156,7 +177,7 @@ def resolve_plan_execution(
     if execution_mode == "cloud":
         cloud = build_cloud_dispatch(
             provider,
-            req.prompt,
+            prompt,
             model=effective_model,
             repo=req.repo,
             issue=req.issue,

@@ -398,10 +398,31 @@ class RetryDecision:
 
 def retry_plan(runner: Any, rec: RunRecord, role: RoleSpec) -> RunPlan:
     """Re-run ``rec`` as stored: its composed prompt, provider, model and target."""
+    from staff.cloud_dispatch import build_cloud_dispatch, targets_from_record
     from staff.plan import RunPlan
 
     adapter = runner._adapters[rec.provider]
     base_branch = rec.branch or f"staff/{rec.role}-task"
+    execution_mode = (rec.execution_mode or "local").strip().lower()
+    issue, pr = targets_from_record(rec.target_kind, rec.target_ref)
+    if execution_mode == "cloud":
+        cloud = build_cloud_dispatch(
+            rec.provider,
+            rec.prompt,
+            model=rec.model,
+            repo=rec.repo,
+            issue=issue,
+            pr=pr,
+        )
+        argv = cloud.argv
+        cloud_stdin = cloud.stdin or ""
+        lease_ritual = False
+    else:
+        argv = adapter.build_command(rec.prompt, "<workdir>", rec.model, **read_only_kwargs(role))
+        cloud_stdin = ""
+        lease_ritual = (
+            bool(role.permissions.get("lease", True)) and rec.target_kind == "issue" and bool(rec.repo)
+        )
     return RunPlan(
         role=rec.role,
         provider=rec.provider,
@@ -411,9 +432,11 @@ def retry_plan(runner: Any, rec: RunRecord, role: RoleSpec) -> RunPlan:
         target_ref=rec.target_ref,
         operator_prompt="",
         prompt=rec.prompt,
-        argv=adapter.build_command(rec.prompt, "<workdir>", rec.model, **read_only_kwargs(role)),
+        argv=argv,
         branch=f"{base_branch}-retry-{rec.attempt + 1}",
-        lease_ritual=bool(role.permissions.get("lease", True)) and rec.target_kind == "issue" and bool(rec.repo),
+        lease_ritual=lease_ritual,
+        execution_mode=execution_mode,
+        cloud_stdin=cloud_stdin,
         **_provenance(rec),
     )
 
@@ -478,6 +501,7 @@ def launch_retry(
         retry_of=root_id,
         attempt=attempt,
         max_attempts=latest.max_attempts,
+        execution_mode=latest.execution_mode or "local",
         **_provenance(latest),
     )
     if not _claim(store, rec):
