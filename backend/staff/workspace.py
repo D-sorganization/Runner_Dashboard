@@ -8,14 +8,12 @@ from __future__ import annotations
 
 import logging
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import staff.worktree_hygiene as _wh
 from platform_utils.wsl_paths import windows_repositories_root
-from staff import cli_projects
 from staff.git_hooks import install_pre_push_hook
 from staff.roles import RoleSpec
 from staff.standards_registry import _BUILTIN
@@ -239,10 +237,12 @@ def worktree_has_unpushed_commits(worktree: Path, base_ref: str = "origin/main")
             dirty = [
                 ln
                 for ln in status_res.stdout.splitlines()
-                if ln.strip() and not ln.strip().startswith(("?? .staff", "?? .gemini"))
+                if ln.strip() and not ln.strip().startswith(("?? .staff/", "?? .gemini/"))
             ]
             if dirty:
                 return True
+        else:
+            return True
         # Try checking against upstream tracking branch first, then origin/<branch>, then base_ref
         log_res = subprocess.run(  # noqa: S603
             ["git", "rev-list", "@{u}..HEAD", "--count"],
@@ -252,7 +252,7 @@ def worktree_has_unpushed_commits(worktree: Path, base_ref: str = "origin/main")
             timeout=30,
         )
         if log_res.returncode == 0:
-            return int(log_res.stdout.strip() or "0") > 0
+            return log_res.stdout.strip() != "0"
         head_res = subprocess.run(  # noqa: S603
             ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
             cwd=str(worktree),
@@ -270,7 +270,7 @@ def worktree_has_unpushed_commits(worktree: Path, base_ref: str = "origin/main")
                 timeout=30,
             )
             if remote_res.returncode == 0:
-                return int(remote_res.stdout.strip() or "0") > 0
+                return remote_res.stdout.strip() != "0"
 
         fallback_res = subprocess.run(  # noqa: S603
             ["git", "rev-list", f"{base_ref}..HEAD", "--count"],
@@ -280,34 +280,17 @@ def worktree_has_unpushed_commits(worktree: Path, base_ref: str = "origin/main")
             timeout=30,
         )
         if fallback_res.returncode == 0:
-            count = int(fallback_res.stdout.strip() or "0")
-            return count > 0
+            return fallback_res.stdout.strip() != "0"
     except Exception:  # noqa: BLE001
         return True
-    return False
+    return True
 
 
-def remove_worktree(worktree: Path, checkout: Path | None = None, branch: str = "") -> None:
-    """Safely remove a git worktree and prune stale worktree/branch refs."""
-    if checkout is not None and checkout.exists():
-        try:
-            subprocess.run(  # noqa: S603
-                ["git", "worktree", "remove", "--force", str(worktree)],
-                cwd=str(checkout),
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-        except Exception:  # noqa: BLE001
-            pass
-    if worktree.exists():
-        shutil.rmtree(worktree, ignore_errors=True)
-    prune_worktree_branch(checkout, branch)
-    if os.path.normpath(str(worktree.parent)) == os.path.normpath(str(staff_worktrees_root())):
-        try:
-            cli_projects.remove_worktree_project(worktree, staff_worktrees_root(), os.environ)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("failed to remove CLI project for worktree %s: %s", worktree, exc)
+def remove_worktree(
+    worktree: Path, checkout: Path | None = None, branch: str = "", *, preserved_transcript: Path | None = None
+) -> bool:
+    """Remove only when normal Git accepts; preserve nonempty non-Git directories."""
+    return _wh.remove_worktree_checked(worktree, checkout, branch, preserved_transcript)
 
 
 def compose_prompt(
