@@ -23,7 +23,7 @@ def test_tests_required_checks_pr_head_before_neutral_cancel() -> None:
     run = _step_run("tests-required", "Confirm Python test matrix")
     assert "RUN_HEAD_SHA" in run and "PR_HEAD_SHA" in run
     assert "current PR head" in run
-    assert "merge_group must not merge untested" in run
+    assert "cannot merge untested" in run
 
 
 def test_quality_gate_checks_pr_head_before_neutral_cancel() -> None:
