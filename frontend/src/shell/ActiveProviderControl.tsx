@@ -55,7 +55,7 @@ export function ActiveProviderControl({
   registry,
   onRequestLogin,
 }: ActiveProviderControlProps): React.ReactElement {
-  const { active, setActive } = useActiveProvider();
+  const { active, setActive, clear } = useActiveProvider();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +69,15 @@ export function ActiveProviderControl({
       model: active.model,
     };
   }, [active, registry]);
+
+  // Drop a persisted preference that points at a registry-retired provider.
+  useEffect(() => {
+    if (!active.providerId) return;
+    const row = registry.byId(active.providerId);
+    if (row && !row.enabled) {
+      clear();
+    }
+  }, [active.providerId, registry, clear]);
 
   const activeProvider = resolved.providerId ? registry.byId(resolved.providerId) : undefined;
   const selectedProvider = activeProvider
