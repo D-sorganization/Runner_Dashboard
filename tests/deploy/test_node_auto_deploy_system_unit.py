@@ -39,21 +39,21 @@ def _render_system_unit(
 def test_system_unit_sets_user_and_home(tmp_path: Path) -> None:
     text = _render_system_unit(
         tmp_path,
-        user="dieterolson",
-        home="/home/dieterolson",
-        deploy="/home/dieterolson/actions-runners/dashboard",
-        env_file="/home/dieterolson/.config/runner-dashboard/env",
-        python_bin="/home/dieterolson/actions-runners/dashboard/.venv/bin/python",
+        user="fleet-operator",
+        home="/home/fleet-operator",
+        deploy="/home/fleet-operator/actions-runners/dashboard",
+        env_file="/home/fleet-operator/.config/runner-dashboard/env",
+        python_bin="/home/fleet-operator/actions-runners/dashboard/.venv/bin/python",
     )
-    assert "User=dieterolson" in text
-    assert "Environment=HOME=/home/dieterolson" in text
-    assert "Environment=RUNNER_DASHBOARD_ENV_FILE=/home/dieterolson/.config/runner-dashboard/env" in text
-    assert "Environment=RUNNER_DASHBOARD_PYTHON=/home/dieterolson/actions-runners/dashboard/.venv/bin/python" in text
+    assert "User=fleet-operator" in text
+    assert "Environment=HOME=/home/fleet-operator" in text
+    assert "Environment=RUNNER_DASHBOARD_ENV_FILE=/home/fleet-operator/.config/runner-dashboard/env" in text
+    assert "Environment=RUNNER_DASHBOARD_PYTHON=/home/fleet-operator/actions-runners/dashboard/.venv/bin/python" in text
 
 
 @pytest.mark.skipif(not Path(BASH).exists(), reason="bash required")
 def test_entrypoint_runs_with_home_unset(tmp_path: Path) -> None:
-    """Regression: system oneshot services often have no HOME (DeskComputer)."""
+    """Regression: system oneshot services often have no HOME (hub-a)."""
     deploy = tmp_path / "dashboard"
     deploy.mkdir()
     script = deploy / "deploy" / "node-auto-deploy.sh"
