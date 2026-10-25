@@ -938,3 +938,38 @@ def test_line_cap_step_has_no_error_swallowing_on_the_diff() -> None:
     assert diff_lines, "PR path must fetch and diff the base"
     assert not any("|| true" in line for line in diff_lines)
     assert "set -euo pipefail" in run
+
+
+_SELF_HOSTED_RUNNER_MARKERS = ("d-sorg-fleet", "self-hosted", "pick-runner")
+
+
+def _job_can_use_self_hosted(runs_on: object) -> bool:
+    text = str(runs_on)
+    if "ubuntu-latest" in text and not any(marker in text for marker in _SELF_HOSTED_RUNNER_MARKERS):
+        return False
+    return any(marker in text for marker in _SELF_HOSTED_RUNNER_MARKERS) or "github-hosted" not in text
+
+
+def test_self_hosted_jobs_do_not_run_playwright_install_with_deps_or_sudo() -> None:
+    """Playwright browser setup must not invoke sudo on self-hosted fleet runners."""
+    violations: list[str] = []
+    for workflow_path in _workflow_files():
+        data = _load_workflow(workflow_path)
+        jobs = data.get("jobs") or {}
+        for job_name, job in jobs.items():
+            if not _job_can_use_self_hosted((job or {}).get("runs-on")):
+                continue
+            for step in (job or {}).get("steps") or []:
+                run = step.get("run") or ""
+                if "playwright install" not in run and "playwright install-deps" not in run:
+                    continue
+                if "ci_install_playwright_browsers.sh" in run:
+                    continue
+                if "--with-deps" in run or "install-deps" in run or "sudo" in run:
+                    violations.append(f"{workflow_path.name}:{job_name}:{step.get('name', 'run')}")
+
+    assert not violations, (
+        "Self-hosted-capable jobs must not run Playwright install with --with-deps, "
+        "install-deps, or sudo inline. Use scripts/ci_install_playwright_browsers.sh. "
+        f"Violations: {violations}"
+    )
