@@ -36,10 +36,6 @@ _PR_GROUP_TOKENS = (
 )
 
 _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
-    "pr-cap.yml": (
-        "PR-cap caller must await its separately serialized metadata workflow "
-        "without interrupting the one-shot advisory comment."
-    ),
     "reusable-pr-cap.yml": (
         "PR-cap metadata reporting and its one-shot comment must finish "
         "without cancellation during a potentially committed POST."
