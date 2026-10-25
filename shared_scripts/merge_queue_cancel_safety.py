@@ -7,6 +7,8 @@ from typing import Any, Mapping, Sequence
 
 from shared_scripts.ci_workflow_concurrency import normalize_queue_head_ref
 
+_MERGE_QUEUE_OID_OPTIONAL_STATES = frozenset({"QUEUED"})
+
 
 class MergeQueueParseError(RuntimeError):
     """Live queue state could not be read safely (fail closed)."""
@@ -19,7 +21,7 @@ class MergeQueueEntry:
 
 
 def merge_queue_entries_from_graphql(payload: Mapping[str, Any]) -> list[MergeQueueEntry]:
-    """Parse GraphQL ``repository.mergeQueue.entries`` (nodes/headCommit/oid)."""
+    """Parse GraphQL ``repository.mergeQueue.entries`` (nodes/state/headCommit/oid)."""
     repo = payload.get("repository") or {}
     merge_queue = repo.get("mergeQueue") or {}
     entries_block = merge_queue.get("entries")
@@ -32,22 +34,29 @@ def merge_queue_entries_from_graphql(payload: Mapping[str, Any]) -> list[MergeQu
 
     total_count = int(entries_block.get("totalCount") or 0)
     nodes = entries_block.get("nodes") or []
+    if not isinstance(nodes, list):
+        raise MergeQueueParseError("mergeQueue.entries.nodes is not a list")
+
+    if total_count > len(nodes):
+        raise MergeQueueParseError("mergeQueue.entries totalCount exceeds returned nodes")
+
     parsed: list[MergeQueueEntry] = []
     for node in nodes:
         if not isinstance(node, Mapping):
-            continue
+            raise MergeQueueParseError("mergeQueue.entries node is not an object")
+        state = str(node.get("state") or "").upper()
         head_commit = node.get("headCommit") or {}
         oid = str(head_commit.get("oid") or "")
-        if oid:
-            parsed.append(MergeQueueEntry(head_ref="", head_sha=oid))
+        if state in _MERGE_QUEUE_OID_OPTIONAL_STATES:
+            continue
+        if not oid:
+            raise MergeQueueParseError(
+                "mergeQueue entry missing headCommit.oid for non-QUEUED state"
+            )
+        parsed.append(MergeQueueEntry(head_ref="", head_sha=oid))
 
     if total_count > 0 and not parsed:
         raise MergeQueueParseError("mergeQueue.entries totalCount>0 but no headCommit.oid parsed")
-
-    if total_count > len(parsed):
-        raise MergeQueueParseError(
-            "mergeQueue.entries totalCount exceeds parsed headCommit.oid count"
-        )
 
     return parsed
 

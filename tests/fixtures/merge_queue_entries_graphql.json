@@ -10,6 +10,7 @@
           },
           "nodes": [
             {
+              "state": "MERGEABLE",
               "headCommit": {
                 "oid": "0000000000000000000000000000000000000abc"
               }

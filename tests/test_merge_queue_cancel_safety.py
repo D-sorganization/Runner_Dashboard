@@ -80,15 +80,24 @@ def test_graphql_partial_oid_parse_fails_closed() -> None:
                     "totalCount": 2,
                     "pageInfo": {"hasNextPage": False},
                     "nodes": [
-                        {"headCommit": {"oid": LIVE_SHA}},
-                        {"headCommit": {}},
+                        {"state": "MERGEABLE", "headCommit": {"oid": LIVE_SHA}},
+                        {"state": "MERGEABLE", "headCommit": {}},
                     ],
                 }
             }
         }
     }
-    with pytest.raises(MergeQueueParseError, match="totalCount exceeds"):
+    with pytest.raises(MergeQueueParseError, match="non-QUEUED"):
         merge_queue_entries_from_graphql(payload)
+
+
+def test_graphql_queued_entries_without_oid_are_ignored() -> None:
+    fixture = (
+        Path(__file__).parent / "fixtures" / "merge_queue_entries_graphql_mixed_queued.json"
+    )
+    payload = json.loads(fixture.read_text(encoding="utf-8"))["data"]
+    parsed = merge_queue_entries_from_graphql(payload)
+    assert parsed == [MergeQueueEntry(head_ref="", head_sha=LIVE_SHA)]
 
 
 def test_merge_queue_run_without_head_sha_fails_closed_no_cancel() -> None:
