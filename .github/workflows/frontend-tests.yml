@@ -11,19 +11,21 @@ permissions:
   contents: read
   pull-requests: read
 
-# Main-push / merge-group runs are never cancelled by a newer merge: a cancelled
-# required check leaves that commit permanently non-green, so node auto-deploy and
-# main-ci-auto-release would never find a releasable commit. Only superseded
-# pull_request runs are cancelled. Contract: tests/test_main_push_concurrency.py
+# Main-push runs are never cancelled by a newer merge. Superseded pull_request and
+# merge_group (per queue PR) runs cancel. Contract: tests/test_main_push_concurrency.py
 concurrency:
-  group: frontend-tests-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && contains(github.event.merge_group.head_ref, '/pr-') && format('merge_group-pr-{0}', split(split(github.event.merge_group.head_ref, '/pr-')[1], '-')[0]) || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
 jobs:
+  pr-guard:
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
   frontend-required:
     name: frontend-required
     needs:
       [
+        pr-guard,
         frontend-scope,
         typecheck,
         vitest,
@@ -45,6 +47,10 @@ jobs:
           import sys
 
           needs = json.loads(os.environ["NEEDS_JSON"])
+          guard = needs.get("pr-guard", {})
+          if guard.get("outputs", {}).get("skip_heavy") == "true":
+              print("PR early-exit; frontend-required neutral")
+              sys.exit(0)
           scope = needs["frontend-scope"]
           outputs = scope.get("outputs", {})
           flags = [outputs.get(key) for key in ("run_frontend_tests", "run_staff_e2e")]
@@ -61,6 +67,9 @@ jobs:
           failed = []
           for job, applicable in required.items():
               result = needs[job]["result"]
+              if result == "cancelled":
+                  print(f"{job} cancelled (superseded by a newer workflow run)")
+                  continue
               allowed = {"success"} if applicable else {"success", "skipped"}
               if result not in allowed:
                   failed.append(f"{job}={result}")
@@ -70,6 +79,10 @@ jobs:
           PY
 
   frontend-scope:
+    needs: [pr-guard]
+    if: >-
+      github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true'
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}

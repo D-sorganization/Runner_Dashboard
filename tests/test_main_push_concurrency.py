@@ -15,6 +15,14 @@ import yaml
 
 _WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 _PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
+_PR_OR_MQ_CANCEL = "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}"
+_MQ_CANCEL_WORKFLOWS = {
+    "frontend-tests.yml",
+    "docker-build.yml",
+    "ci-standard.yml",
+    "ci-secrets.yml",
+    "ci-auto-deploy-regression.yml",
+}
 
 # Workflows that produce deploy-blocking check-runs on main pushes.
 _MAIN_PUSH_BLOCKING = [
@@ -39,18 +47,19 @@ def test_main_push_runs_are_not_cancel_in_progress(name: str) -> None:
     triggers = data.get(True) or data.get("on")
     assert "push" in triggers, f"{name}: expected a push trigger"
     block = data["concurrency"]
-    assert block["cancel-in-progress"] == _PR_ONLY_CANCEL, (
-        f"{name}: cancel-in-progress must be limited to pull_request so main pushes are never cancelled"
+    expected = _PR_OR_MQ_CANCEL if name in _MQ_CANCEL_WORKFLOWS else _PR_ONLY_CANCEL
+    assert block["cancel-in-progress"] == expected, (
+        f"{name}: cancel-in-progress must not cancel main pushes"
     )
 
 
 @pytest.mark.parametrize("name", _MAIN_PUSH_BLOCKING)
 def test_main_push_groups_are_unique_per_commit(name: str) -> None:
     group = _load(name)["concurrency"]["group"]
-    # PRs share a group per ref (so superseded runs cancel); push/merge_group get one per sha.
+    # PRs share a group per ref; merge_group is keyed per queue PR; push is per sha.
     assert "github.event_name" in group
     assert "github.sha" in group
-    assert "github.ref" in group
+    assert "merge_group-pr-" in group or "github.ref" in group
 
 
 # Workflows that already ran in the merge queue; the queue needs them to keep reporting.
