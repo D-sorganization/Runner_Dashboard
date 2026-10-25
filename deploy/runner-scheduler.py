@@ -10,6 +10,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time as time_module
@@ -53,6 +54,9 @@ STOP_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_STOP_TIMEOUT_SECONDS", "120"
 MAINTENANCE_PATH = Path(os.environ.get("RUNNER_MAINTENANCE_FLAG", "/var/lib/runner-scheduler/maintenance.json"))
 MAINTENANCE_DRAIN_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_MAINTENANCE_DRAIN_TIMEOUT_SECONDS", "3600"))
 PROC_ROOT = Path("/proc")
+CGROUP_ROOT = Path(os.environ.get("RUNNER_CGROUP_ROOT", "/sys/fs/cgroup"))
+# After a stop, survivors of KillMode=process get SIGTERM this long before SIGKILL (#2776).
+LEFTOVER_TERM_WAIT_SECONDS = float(os.environ.get("RUNNER_LEFTOVER_TERM_WAIT_SECONDS", "10"))
 log = logging.getLogger("runner-scheduler")
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
@@ -389,6 +393,47 @@ def _worker_absent(unit: RunnerUnit, *, cleanup_stale: bool = False) -> bool:
     )
 
 
+def _signal_pid(pid: int, sig: str) -> None:
+    try:
+        os.kill(pid, getattr(signal, sig))
+    except OSError:
+        pass  # already gone
+
+
+def _unit_cgroup_pids(unit: str) -> list[int]:
+    """PIDs still in the unit's cgroup (KillMode=process leaves children behind)."""
+    group = run_cmd(["systemctl", "show", unit, "-p", "ControlGroup", "--value"]).stdout.strip()
+    if not group.startswith("/"):
+        return []
+    try:
+        text = (CGROUP_ROOT / group.lstrip("/") / "cgroup.procs").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return [int(item) for item in text.split() if item.isdigit()]
+
+
+def _reap_leftover_processes(unit: str) -> None:
+    """Thaw and terminate children a stopped unit left frozen in its cgroup (#2776)."""
+    pids = _unit_cgroup_pids(unit)
+    if not pids:
+        return
+    log.warning("%s stopped but %d process(es) remain in its cgroup; terminating", unit, len(pids))
+    for sig in ("SIGCONT", "SIGTERM"):
+        for pid in pids:
+            _signal_pid(pid, sig)
+    deadline = time_module.monotonic() + LEFTOVER_TERM_WAIT_SECONDS
+    while time_module.monotonic() < deadline:
+        pids = _unit_cgroup_pids(unit)
+        if not pids:
+            return
+        time_module.sleep(min(0.5, LEFTOVER_TERM_WAIT_SECONDS))
+    pids = _unit_cgroup_pids(unit)
+    for pid in pids:
+        _signal_pid(pid, "SIGKILL")
+    if pids:
+        log.warning("%s: SIGKILLed %d process(es) that ignored SIGTERM", unit, len(pids))
+
+
 def stop_runner_safely(unit: RunnerUnit) -> bool:
     """Stop an idle runner without a window in which a job can be assigned (#1929).
 
@@ -434,6 +479,7 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
             # Every path except a successful stop must leave the unit running.
             run_cmd(["systemctl", "kill", "--kill-who=all", "--signal=SIGCONT", unit.unit])
     if stopped:
+        _reap_leftover_processes(unit.unit)
         run_cmd(["systemctl", "reset-failed", unit.unit])
     return stopped
 
