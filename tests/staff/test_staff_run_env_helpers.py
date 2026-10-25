@@ -11,12 +11,14 @@ from pathlib import Path
 import pytest
 from staff import git_hooks, github_run_env
 
+from tests.loader_env import loader_env
+
 pytestmark = pytest.mark.unit
 
 
 def _env() -> dict[str, str]:
     return github_run_env.build_staff_run_env(
-        {"PATH": os.environ.get("PATH", ""), "PYTHONPATH": "/existing"},
+        {"PATH": os.environ.get("PATH", ""), "PYTHONPATH": "/existing", **loader_env()},
         "tok",
         run_id="run-1",
         real_gh_path="gh",
