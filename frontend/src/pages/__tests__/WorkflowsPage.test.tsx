@@ -1,19 +1,25 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkflowsPage } from "../WorkflowsPage";
 import { WorkflowsTab, type Workflow } from "../Workflows";
+
+beforeEach(() => {
+  sessionStorage.clear();
+});
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   sessionStorage.clear();
 });
 
@@ -28,6 +34,9 @@ const WORKFLOWS: Workflow[] = [
     recent_runs: [{ id: 1, conclusion: "success", created_at: "2026-06-15" }],
   },
 ];
+
+const runWorkflowButton = () =>
+  screen.findByRole("button", { name: /Run workflow CI/i });
 
 describe("WorkflowsPage", () => {
   it("loads workflow data for the native routed page", async () => {
@@ -48,6 +57,7 @@ describe("WorkflowsPage", () => {
   });
 
   it("explains a warming catalogue and retries until workflows arrive", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -60,13 +70,17 @@ describe("WorkflowsPage", () => {
         new Response(JSON.stringify({ workflows: WORKFLOWS }), { status: 200 }),
       );
 
-    // Long enough that the warming notice is observed before the retry replaces it under load.
     render(<WorkflowsPage warmingRetryMs={300} />);
 
     expect(
       await screen.findByText(/Gathering workflows from GitHub/),
     ).toBeInTheDocument();
-    expect(await screen.findByText("CI", undefined, { timeout: 5000 })).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(await runWorkflowButton()).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
@@ -100,7 +114,53 @@ describe("WorkflowsPage", () => {
 
     render(<WorkflowsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Run workflow/i }));
+    fireEvent.click(await runWorkflowButton());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm dispatch" }));
+    fireEvent.click(screen.getByRole("button", { name: /Dispatch workflow now/i }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/workflows/dispatch",
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("posts workflow dispatches after the workflow list finishes loading", async () => {
+    let resolveList!: (response: Response) => void;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(
+      (input, init) => {
+        const url = String(input);
+        if (url === "/api/workflows/list") {
+          return new Promise<Response>((resolve) => {
+            resolveList = resolve;
+          });
+        }
+        if (url === "/api/workflows/dispatch") {
+          expect(init?.method).toBe("POST");
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "queued" }), {
+              status: 200,
+            }),
+          );
+        }
+        return Promise.reject(new Error("unexpected fetch " + url));
+      },
+    );
+
+    render(<WorkflowsPage />);
+
+    expect(
+      screen.queryByRole("button", { name: /Run workflow/i }),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      resolveList(
+        new Response(JSON.stringify({ workflows: WORKFLOWS }), { status: 200 }),
+      );
+    });
+
+    fireEvent.click(await runWorkflowButton());
     fireEvent.click(screen.getByRole("button", { name: "Confirm dispatch" }));
     fireEvent.click(screen.getByRole("button", { name: /Dispatch workflow now/i }));
 
