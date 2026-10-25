@@ -18,7 +18,10 @@ _ROLLOUT_CHECK_RE = re.compile(
     r"(auto[-_]?deploy|deploy[-_]?qualified|qualified[-_]?release|rollout|hub[-_]?gate|release[-_]?wait)",
     re.IGNORECASE,
 )
-_MAINLINE_CI_RE = re.compile(r"(ci[-_\s]standard|quality[-_]?gate|merge[-_\s]?queue|tests\b|main[-_\s]?ci)", re.IGNORECASE)
+_MAINLINE_CI_RE = re.compile(
+    r"(ci[-_\s]standard|quality[-_]?gate|merge[-_\s]?queue|tests\b|main[-_\s]?ci)",
+    re.IGNORECASE,
+)
 
 
 def _event(
