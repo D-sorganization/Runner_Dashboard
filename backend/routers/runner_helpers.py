@@ -70,7 +70,7 @@ def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
         if r.get("id") == runner_id:
             name = r.get("name", "")
             # Accept both legacy names like "d-sorg-fleet-runner-1" and
-            # current fleet names like "d-sorg-local-ControlTower-nvme-1".
+            # current fleet names like "d-sorg-local-node-a-nvme-1".
             suffix = name.rsplit("-", 1)[-1]
             if suffix.isdigit():
                 return int(suffix)

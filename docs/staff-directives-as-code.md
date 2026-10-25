@@ -47,7 +47,7 @@ Reads stay on the fleet peer contract (`GET /api/priorities/directives`).
 `PUT /api/priorities/directives` still replaces the full list but requires a
 principal with `priorities.write` (operator preset or admin). The shared
 `HUB_FLEET_TOKEN` and agent bot tokens cannot steer directives. Production hubs
-should use GitHub OAuth operator sessions (see `docs/runbooks/oglaptop-production-oauth.md`);
+should use GitHub OAuth operator sessions (see `docs/runbooks/node-b-production-oauth.md`);
 loopback-only writes are development-only (issue #2068).
 
 See also `docs/priorities-api.md` for request shapes and optimistic concurrency (`version`).

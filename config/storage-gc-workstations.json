@@ -1,11 +1,11 @@
 {
   "_comment": "Native-Linux fleet hosts that run no CI. deploy/fleet_storage_gc.py installs the storage GC on them with the 'workstation' profile (no /tmp reaping, no container prune). Runner hosts come from backend/machine_registry.yml, not from here. #1925",
   "workstations": [
-    { "name": "brick", "ssh": "brick", "runner_user": "dieterolson" },
+    { "name": "node-c", "ssh": "node-c", "runner_user": "fleet-operator" },
     {
       "name": "raspberrypi",
       "ssh": "raspberrypi",
-      "runner_user": "dieterolson"
+      "runner_user": "fleet-operator"
     }
   ]
 }

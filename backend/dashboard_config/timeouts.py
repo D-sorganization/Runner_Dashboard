@@ -30,7 +30,7 @@ class HttpTimeout:
 
     # Cross-node system probes go through the Tailscale mesh and may queue
     # behind a busy CPU while the remote dashboard enumerates runner processes.
-    # DeskComputer has been observed taking 20-25 s under full CI load, so use
+    # hub-a has been observed taking 20-25 s under full CI load, so use
     # a larger budget here and keep the gather fan-out independent per node.
     PROXY_NODE_SYSTEM_S: float = 30.0
 
@@ -58,7 +58,7 @@ class HttpTimeout:
     # signing the request takes 5-8 s consistently even when curl-direct
     # is sub-second. A 1 s budget killed every health check, surfacing as
     # `github_api=unreachable` on hosts where the network was fine
-    # (observed on d-sorg-local-ControlTower 2026-05-18 evening; the
+    # (observed on d-sorg-local-node-a 2026-05-18 evening; the
     # entire Overview tab rendered 0 % success rate because /api/stats
     # depends on the same path and times out the same way). 10 s leaves
     # enough headroom for tail-latency without holding the worker thread

@@ -14,8 +14,8 @@
 #
 #    Rule (2026-10-17): this timer never rewrites the CONTENT of an installed
 #    hook.  Its old HOOK_SRC_DIR (/opt/runner-dashboard) was not kept current
-#    -- DeskComputer's checkout sat at a 2026-07-31 commit, ControlTower and
-#    OGLaptop had none -- so a "differs from source" rule silently DOWNGRADED
+#    -- hub-a's checkout sat at a 2026-07-31 commit, node-a and
+#    node-b had none -- so a "differs from source" rule silently DOWNGRADED
 #    the newer hooks that refresh-maintenance-assets.sh installs from the
 #    deployed repo copy.  Content drift is refresh-maintenance-assets.sh's job
 #    (it runs on every update-deployed.sh); this timer only guarantees the
@@ -31,7 +31,7 @@
 #      ACTIONS_RUNNER_HOOK_JOB_STARTED=${HOOK_DIR}/job-started.sh
 #      ACTIONS_RUNNER_HOOK_JOB_COMPLETED=${HOOK_DIR}/job-completed.sh
 #    in its effective Environment (`systemctl show --property=Environment`).
-#    ControlTower's 8 units had none -- the hooks were installed but never
+#    node-a's 8 units had none -- the hooks were installed but never
 #    ran.  A unit missing either gets the drop-in
 #    ${SYSTEMD_UNIT_DIR}/<unit>.d/15-runner-hooks.conf, then one
 #    daemon-reload.  The new environment applies at the unit's next restart.
@@ -42,7 +42,7 @@
 #
 # 3. Runner .env hook overrides.  The runner's own <runner>/.env wins over
 #    the unit's Environment=, so a stale ACTIONS_RUNNER_HOOK_JOB_STARTED= /
-#    _COMPLETED= line there (DeskComputer: ~/actions-runners/fleet/
+#    _COMPLETED= line there (hub-a: ~/actions-runners/fleet/
 #    runner-post-job.sh, which only cleared _work/_temp -- job-completed.sh
 #    does that now) means the canonical hooks never run.  Any such line whose
 #    value is not the canonical hook is removed after a timestamped backup of

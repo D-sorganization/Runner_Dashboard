@@ -32,7 +32,7 @@ from github_app_user_oauth import (  # noqa: E402
 )
 from oauth_config import EXPECTED_GITHUB_ORG, OAUTH_CALLBACK_PATH  # noqa: E402
 
-_HUB_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+_HUB_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _HUB_CALLBACK = f"{_HUB_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 _FAKE_ACCESS = "ghu_" + "A" * 36
@@ -64,8 +64,8 @@ def oauth_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_store_encrypts_tokens_at_rest(oauth_store: Path) -> None:
     now = time.time()
     save_credentials(
-        "dieter",
-        github_login="dieter-user",
+        "operator",
+        github_login="operator-user",
         access_token=_FAKE_ACCESS,
         refresh_token=_FAKE_REFRESH,
         access_token_expires_at=now + 3600,
@@ -74,7 +74,7 @@ def test_store_encrypts_tokens_at_rest(oauth_store: Path) -> None:
     raw = oauth_store.read_text(encoding="utf-8")
     assert _FAKE_ACCESS not in raw
     assert _FAKE_REFRESH not in raw
-    loaded = load_credentials("dieter")
+    loaded = load_credentials("operator")
     assert loaded is not None
     assert loaded.access_token == _FAKE_ACCESS
     assert loaded.refresh_token == _FAKE_REFRESH
@@ -83,8 +83,8 @@ def test_store_encrypts_tokens_at_rest(oauth_store: Path) -> None:
 def test_apply_authorization_tokens_persists_expiry_fields(oauth_store: Path) -> None:
     now = time.time()
     apply_authorization_tokens(
-        "dieter",
-        github_login="dieter-user",
+        "operator",
+        github_login="operator-user",
         token_response={
             "access_token": _FAKE_ACCESS,
             "refresh_token": _FAKE_REFRESH,
@@ -93,7 +93,7 @@ def test_apply_authorization_tokens_persists_expiry_fields(oauth_store: Path) ->
         },
         now=now,
     )
-    cred = load_credentials("dieter")
+    cred = load_credentials("operator")
     assert cred is not None
     assert cred.access_token_expires_at == now + 28800
     assert cred.refresh_token_expires_at == now + 15897600
@@ -102,8 +102,8 @@ def test_apply_authorization_tokens_persists_expiry_fields(oauth_store: Path) ->
 def test_ensure_fresh_refreshes_expired_access_token(oauth_store: Path) -> None:
     now = time.time()
     save_credentials(
-        "dieter",
-        github_login="dieter-user",
+        "operator",
+        github_login="operator-user",
         access_token=_FAKE_ACCESS,
         refresh_token=_FAKE_REFRESH,
         access_token_expires_at=now - 10,
@@ -118,12 +118,12 @@ def test_ensure_fresh_refreshes_expired_access_token(oauth_store: Path) -> None:
         "refresh_token_expires_in": 15897600,
     }
     with patch("github_app_user_oauth.httpx.post", return_value=token_resp) as post:
-        ensure_fresh_access_token("dieter", skew_seconds=300)
+        ensure_fresh_access_token("operator", skew_seconds=300)
     post.assert_called_once()
     body = post.call_args.kwargs.get("data") or post.call_args[1].get("data")
     assert body["grant_type"] == "refresh_token"
     assert body["refresh_token"] == _FAKE_REFRESH
-    cred = load_credentials("dieter")
+    cred = load_credentials("operator")
     assert cred is not None
     assert cred.refresh_token == _FAKE_REFRESH2
 
@@ -131,8 +131,8 @@ def test_ensure_fresh_refreshes_expired_access_token(oauth_store: Path) -> None:
 def test_ensure_fresh_raises_when_refresh_revoked(oauth_store: Path) -> None:
     now = time.time()
     save_credentials(
-        "dieter",
-        github_login="dieter-user",
+        "operator",
+        github_login="operator-user",
         access_token=_FAKE_ACCESS,
         refresh_token=_FAKE_REFRESH,
         access_token_expires_at=now - 10,
@@ -143,15 +143,15 @@ def test_ensure_fresh_raises_when_refresh_revoked(oauth_store: Path) -> None:
     token_resp.json.return_value = {"error": "bad_refresh_token"}
     with patch("github_app_user_oauth.httpx.post", return_value=token_resp):
         with pytest.raises(UserOAuthRevokedError):
-            ensure_fresh_access_token("dieter", skew_seconds=300)
-    assert load_credentials("dieter") is None
+            ensure_fresh_access_token("operator", skew_seconds=300)
+    assert load_credentials("operator") is None
 
 
 def test_aggregate_health_surfaces_expiry_without_secrets(oauth_store: Path) -> None:
     now = time.time()
     save_credentials(
-        "dieter",
-        github_login="dieter-user",
+        "operator",
+        github_login="operator-user",
         access_token=_FAKE_ACCESS,
         refresh_token=_FAKE_REFRESH,
         access_token_expires_at=now + 3600,
@@ -160,8 +160,8 @@ def test_aggregate_health_surfaces_expiry_without_secrets(oauth_store: Path) -> 
     health = aggregate_operator_auth_health(now=now)
     assert health["operators"]
     row = health["operators"][0]
-    assert row["principal_id"] == "dieter"
-    assert row["github_login"] == "dieter-user"
+    assert row["principal_id"] == "operator"
+    assert row["github_login"] == "operator-user"
     assert _FAKE_ACCESS not in json.dumps(row)
     assert _FAKE_REFRESH not in json.dumps(row)
     assert row["refresh_token_expires_in_seconds"] == 86400 * 5
@@ -170,8 +170,8 @@ def test_aggregate_health_surfaces_expiry_without_secrets(oauth_store: Path) -> 
 def test_transient_github_error_preserves_refresh_token(oauth_store: Path) -> None:
     now = time.time()
     save_credentials(
-        "dieter",
-        github_login="dieter-user",
+        "operator",
+        github_login="operator-user",
         access_token=_FAKE_ACCESS,
         refresh_token=_FAKE_REFRESH,
         access_token_expires_at=now - 10,
@@ -182,8 +182,8 @@ def test_transient_github_error_preserves_refresh_token(oauth_store: Path) -> No
     token_resp.json.return_value = {"error": "service_unavailable"}
     with patch("github_app_user_oauth.httpx.post", return_value=token_resp):
         with pytest.raises(UserOAuthTransientError):
-            ensure_fresh_access_token("dieter", skew_seconds=300)
-    cred = load_credentials("dieter")
+            ensure_fresh_access_token("operator", skew_seconds=300)
+    cred = load_credentials("operator")
     assert cred is not None
     assert cred.refresh_token == _FAKE_REFRESH
 
@@ -191,12 +191,12 @@ def test_transient_github_error_preserves_refresh_token(oauth_store: Path) -> No
 def test_delete_credentials_on_logout(oauth_store: Path) -> None:
     now = time.time()
     save_credentials(
-        "dieter",
+        "operator",
         github_login="u",
         access_token=_FAKE_ACCESS,
         refresh_token=_FAKE_REFRESH,
         access_token_expires_at=now + 1,
         refresh_token_expires_at=now + 1,
     )
-    delete_credentials("dieter")
-    assert load_credentials("dieter") is None
+    delete_credentials("operator")
+    assert load_credentials("operator") is None

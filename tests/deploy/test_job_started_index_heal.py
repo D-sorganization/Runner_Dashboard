@@ -21,7 +21,7 @@ Two workspace conditions produce that, and the hook clears both:
 2. **A stale index stat cache.** A recursive ``chown -R`` over a runner's
    ``_work`` tree bumps every inode's ctime without touching content, so every
    tracked path reads as stat-dirty while ``git status`` still calls the tree
-   clean. Measured live: 13,220 of 13,224 tracked paths on ControlTower
+   clean. Measured live: 13,220 of 13,224 tracked paths on node-a
    runner-4. This selects *which* paths get the warning above.
 
 Since 2026-10-17 the hook also handles residue a previous job leaves in a
@@ -237,13 +237,13 @@ def test_hook_never_chowns_or_chmods_the_workspace() -> None:
 
 # --- Workspace poisoning: quarantine vs in-place repair (2026-10-17) ---------
 #
-# Diagnosed on DeskComputer (Gasification_Model): a shared ``_work/<repo>/<repo>``
+# Diagnosed on hub-a (Gasification_Model): a shared ``_work/<repo>/<repo>``
 # inherits a previous job's sparse / skip-worktree residue, partial-clone state
 # with *missing* blobs, and stale ``.git/*.lock`` files. A partial clone with
 # missing blobs makes the next checkout's pre-auth ``reset --hard`` lazy-fetch
 # every one of them without credentials (minutes of "Authentication failed").
 # A promisor clone whose index blobs are all present is healthy and must be
-# left alone (ControlTower's slow uplink runs 14 of them).
+# left alone (node-a's slow uplink runs 14 of them).
 
 
 def _blob_missing(repo: Path, oid: str) -> bool:
@@ -478,8 +478,13 @@ def test_poisoned_repo_outside_a_runner_work_tree_is_never_touched(outside_work_
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
 def test_orphaned_fetch_temp_packs_are_removed_and_fresh_ones_kept(outside_work_tree_path: Path) -> None:
     """A cancelled fetch leaves .git/objects/pack/tmp_pack_* behind (#1979): six on
+<<<<<<< HEAD
+    hub-a runner-3, ~2.4 GB. The lock cleanup skips objects/, so nothing reaped them."""
+    repo = _make_repo(tmp_path)
+=======
     DeskComputer runner-3, ~2.4 GB. The lock cleanup skips objects/, so nothing reaped them."""
     repo = _make_repo(outside_work_tree_path)
+>>>>>>> origin/main
     pack = repo / ".git" / "objects" / "pack"
     pack.mkdir(parents=True, exist_ok=True)
     stale_pack, stale_idx = pack / "tmp_pack_aB12cd", pack / "tmp_idx_Ef34gh"
@@ -564,7 +569,7 @@ def test_old_quarantine_entries_are_reaped(outside_work_tree_path: Path) -> None
 
 
 # --- Reseed a quarantined workspace from a healthy local sibling --------------
-# Six DeskComputer GM workspaces quarantined at once turned into six parallel
+# Six hub-a GM workspaces quarantined at once turned into six parallel
 # network clones (43 min, cancelled). Rebuilding from a sibling on local disk
 # took 11-14 s and left actions/checkout only a delta to fetch.
 
