@@ -196,9 +196,12 @@ def test_git_credential_helper_fails_closed_when_fetch_fails(monkeypatch: pytest
         "staff.github_git_credential.fetch_github_token_for_run",
         side_effect=RuntimeError("mint failed"),
     ):
-        code = __import__("staff.github_git_credential", fromlist=["main"]).main()
+        with patch("staff.github_git_credential.sys.stdin", stdin), patch(
+            "staff.github_git_credential.sys.argv", ["git-credential-fleet-gh", "get"]
+        ):
+            code = __import__("staff.github_git_credential", fromlist=["main"]).main()
     assert code == 1
-    assert stdin.read()  # consumed
+    assert stdin.read() == ""  # consumed
 
 
 def test_git_credential_helper_fetches_via_fleet_api(monkeypatch: pytest.MonkeyPatch) -> None:

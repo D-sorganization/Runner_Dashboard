@@ -13,9 +13,9 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from gh_app_credential import (  # noqa: E402
-    FleetGhMintError,
     MINT_FAILURE_EXIT,
     MINT_FAILURE_MESSAGE,
+    FleetGhMintError,
     apply_fleet_app_token,
 )
 

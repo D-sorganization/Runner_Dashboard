@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 MINT_FAILURE_EXIT = 3
 MINT_FAILURE_MESSAGE = "fleet App token mint failed; refusing to fall back to personal auth"

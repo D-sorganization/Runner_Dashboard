@@ -7,7 +7,6 @@ import logging
 import os
 import platform
 import re
-import shutil
 import sqlite3
 import subprocess
 import threading
