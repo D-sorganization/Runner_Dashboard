@@ -118,11 +118,11 @@ describe("SettingsPage (#1338)", () => {
     render(<SettingsPage />);
 
     const nav = screen.getByRole("navigation", { name: /settings sections/i });
-    expect(within(nav).getByRole("link", { name: "Theme" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Jump to Theme settings/i })).toHaveAttribute(
       "href",
       "#theme",
     );
-    expect(within(nav).getByRole("link", { name: "Local Tools" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Jump to Local Tools settings/i })).toHaveAttribute(
       "href",
       "#local-tools",
     );

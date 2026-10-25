@@ -100,9 +100,9 @@ describe("WorkflowsPage", () => {
 
     render(<WorkflowsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Run" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Run workflow CI/i }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm dispatch" }));
-    fireEvent.click(screen.getByRole("button", { name: "Dispatch now" }));
+    fireEvent.click(screen.getByRole("button", { name: /Dispatch workflow now/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -126,7 +126,7 @@ describe("WorkflowsPage", () => {
     );
 
     expect(screen.getAllByText("Runner_Dashboard").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    fireEvent.click(screen.getByRole("button", { name: /Refresh workflows/i }));
     expect(onRefresh).toHaveBeenCalledOnce();
   });
 });

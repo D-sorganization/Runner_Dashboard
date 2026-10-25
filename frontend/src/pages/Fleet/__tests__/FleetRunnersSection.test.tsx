@@ -109,7 +109,7 @@ describe("FleetRunnersSection", () => {
     fireEvent.click(startAll);
     expect(onFleet).toHaveBeenCalledWith("all-up");
 
-    const stopBtn = screen.getAllByRole("button", { name: /^Stop$/i })[0];
+    const stopBtn = screen.getAllByRole("button", { name: /Stop runner/i })[0];
     fireEvent.click(stopBtn);
     expect(onRunner).toHaveBeenCalledWith(1, "stop");
   });

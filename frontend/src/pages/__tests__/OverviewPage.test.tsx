@@ -182,7 +182,7 @@ describe("OverviewPage", () => {
       ),
     );
 
-    const stopRunner = screen.getByRole("button", { name: /^Stop$/ });
+    const stopRunner = screen.getByRole("button", { name: /Stop runner/i });
     await waitFor(() => expect(stopRunner).not.toBeDisabled());
     fireEvent.click(stopRunner);
     await waitFor(() =>
