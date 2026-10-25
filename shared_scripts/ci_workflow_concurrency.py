@@ -1,9 +1,9 @@
 """Shared CI workflow concurrency helpers (issues #2764, #2768).
 
-Pre: merge-queue refs match ``gh-readonly-queue/<base>/pr-<N>-<sha>`` (optional
-``refs/heads/`` prefix) when deriving a PR-scoped merge_group token.
-Post: ``merge_group_concurrency_token`` returns ``merge_group-pr-<N>`` or None
-when the ref is not a merge-queue PR head (callers must fall back to run id).
+merge_group runs use a unique concurrency group per queue entry (head ref), never
+``cancel-in-progress``. Superseded merge_group runs are cancelled only after an
+explicit mergeQueue.entries check (``merge_queue_cancel_safety``), not via
+workflow concurrency.
 """
 
 from __future__ import annotations
@@ -19,23 +19,29 @@ QUEUE_REF_PATTERN = re.compile(
 WORKFLOW_CONCURRENCY_GROUP_EXPR = (
     "${{ github.workflow }}-${{ "
     "github.event_name == 'pull_request' && github.ref || "
-    "github.event_name == 'merge_group' && contains(github.event.merge_group.head_ref, '/pr-') && "
-    "format('merge_group-pr-{0}', split(split(github.event.merge_group.head_ref, '/pr-')[1], '-')[0]) || "
-    "github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.run_id) || "
+    "github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || "
     "format('{0}-{1}', github.event_name, github.sha) "
     "}}"
 )
 
-CANCEL_IN_PROGRESS_EXPR = "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}"
+CANCEL_IN_PROGRESS_EXPR = "${{ github.event_name == 'pull_request' }}"
+
+
+def normalize_queue_head_ref(ref: str) -> str:
+    """Normalize merge-queue head refs for comparison."""
+    value = (ref or "").strip()
+    if value.startswith("refs/heads/"):
+        return value.removeprefix("refs/heads/")
+    return value
 
 
 def pr_number_from_queue_ref(ref: str) -> int | None:
     """PR number from a merge-queue head ref, else None."""
-    match = QUEUE_REF_PATTERN.match(ref or "")
+    match = QUEUE_REF_PATTERN.match(normalize_queue_head_ref(ref))
     return int(match.group("number")) if match else None
 
 
 def merge_group_concurrency_token(head_ref: str) -> str | None:
-    """Concurrency token for one merge-queue PR, or None when unparseable."""
+    """Legacy PR-scoped token (not used for workflow concurrency groups)."""
     number = pr_number_from_queue_ref(head_ref)
     return f"merge_group-pr-{number}" if number is not None else None

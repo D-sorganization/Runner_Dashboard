@@ -10,7 +10,6 @@ import yaml
 from shared_scripts.ci_workflow_concurrency import (
     CANCEL_IN_PROGRESS_EXPR,
     WORKFLOW_CONCURRENCY_GROUP_EXPR,
-    merge_group_concurrency_token,
     pr_number_from_queue_ref,
 )
 
@@ -23,6 +22,8 @@ _MERGE_GROUP_HEAVY = [
     "ci-secrets.yml",
     "ci-auto-deploy-regression.yml",
 ]
+
+_PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
 
 
 def _load(name: str) -> dict:
@@ -45,27 +46,6 @@ def test_pr_number_from_queue_ref(ref: str, expected: int | None) -> None:
     assert pr_number_from_queue_ref(ref) == expected
 
 
-@pytest.mark.parametrize(
-    ("ref", "expected_token"),
-    [
-        ("gh-readonly-queue/main/pr-77-abc1234567890", "merge_group-pr-77"),
-        ("refs/heads/gh-readonly-queue/main/pr-12-deadbeef", "merge_group-pr-12"),
-        ("not-a-queue-ref", None),
-    ],
-)
-def test_merge_group_concurrency_token(ref: str, expected_token: str | None) -> None:
-    assert merge_group_concurrency_token(ref) == expected_token
-
-
-def test_merge_group_tokens_never_collide_across_prs() -> None:
-    refs = [
-        "gh-readonly-queue/main/pr-1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "gh-readonly-queue/main/pr-2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    ]
-    tokens = [merge_group_concurrency_token(r) for r in refs]
-    assert len(set(tokens)) == len(tokens)
-
-
 @pytest.mark.parametrize("name", _MERGE_GROUP_HEAVY)
 def test_heavy_workflows_use_canonical_concurrency_block(name: str) -> None:
     block = _load(name)["concurrency"]
@@ -74,17 +54,24 @@ def test_heavy_workflows_use_canonical_concurrency_block(name: str) -> None:
 
 
 @pytest.mark.parametrize("name", _MERGE_GROUP_HEAVY)
+def test_merge_group_never_uses_cancel_in_progress(name: str) -> None:
+    assert _load(name)["concurrency"]["cancel-in-progress"] == _PR_ONLY_CANCEL
+
+
+@pytest.mark.parametrize("name", _MERGE_GROUP_HEAVY)
+def test_merge_group_concurrency_is_unique_per_queue_entry(name: str) -> None:
+    group = _load(name)["concurrency"]["group"]
+    assert "merge_group.head_ref" in group
+    assert "merge_group-pr-" not in group
+    assert "split(" not in group
+
+
+@pytest.mark.parametrize("name", _MERGE_GROUP_HEAVY)
 def test_main_push_still_unique_per_sha(name: str) -> None:
     group = _load(name)["concurrency"]["group"]
     assert "github.sha" in group
-    assert "merge_group-pr-" in group
 
 
-def test_cancel_in_progress_true_for_merge_group_not_push() -> None:
-    assert "merge_group" in CANCEL_IN_PROGRESS_EXPR
-    assert CANCEL_IN_PROGRESS_EXPR != "${{ github.event_name == 'pull_request' }}"
-
-
-def test_workflow_group_expr_mentions_merge_group_head_ref() -> None:
-    assert "merge_group.head_ref" in WORKFLOW_CONCURRENCY_GROUP_EXPR
-    assert "split(" in WORKFLOW_CONCURRENCY_GROUP_EXPR
+def test_cancel_in_progress_limited_to_pull_request() -> None:
+    assert CANCEL_IN_PROGRESS_EXPR == _PR_ONLY_CANCEL
+    assert "merge_group" not in CANCEL_IN_PROGRESS_EXPR
