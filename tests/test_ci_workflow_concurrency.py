@@ -35,7 +35,7 @@ def _load(name: str) -> dict:
 @pytest.mark.parametrize(
     ("ref", "expected"),
     [
-        ("gh-readonly-queue/main/pr-77-abcdef0123456789abcdef0123456789", 77),
+        ("gh-readonly-queue/main/pr-77-abcdef0123456789abcdef0123456789", 77),  # pragma: allowlist secret
         ("refs/heads/gh-readonly-queue/release/2.0/pr-5-abc1234", 5),
         ("feat/pr-77-abc", None),
         ("gh-readonly-queue/main/pr-x-abc", None),
