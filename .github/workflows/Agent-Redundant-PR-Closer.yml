@@ -50,7 +50,9 @@ permissions:
   issues: write
 
 concurrency:
-  group: jules-redundant-pr-closer-${{ github.workflow }}-${{ github.repository }}
+  # Scope by PR number so one agent's synchronize does not cancel another PR's
+  # close-redundant run (cancelled jobs surface as failed required checks).
+  group: jules-redundant-pr-closer-${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
