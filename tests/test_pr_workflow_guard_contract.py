@@ -41,3 +41,26 @@ def test_pr_guard_job_is_pull_request_only_on_callers() -> None:
         data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
         pr_guard = data["jobs"]["pr-guard"]
         assert pr_guard.get("if") == "github.event_name == 'pull_request'", name
+
+
+def _pr_guard_aggregator_if_allows_skipped(job_if: object) -> bool:
+    text = str(job_if)
+    return "!cancelled()" in text and "needs.pr-guard.result == 'skipped'" in text
+
+
+def test_aggregators_tolerate_pr_guard_skipped_on_merge_group_and_push() -> None:
+    """pr-guard is PR-only; merge_group/push must not fail aggregators when it is skipped."""
+    ci = yaml.safe_load((_WORKFLOWS / "ci-standard.yml").read_text(encoding="utf-8"))
+    for job_name in ("tests-required", "quality-gate"):
+        job = ci["jobs"][job_name]
+        assert "pr-guard" in job.get("needs", []) or "pr-guard" in str(job.get("needs"))
+        assert _pr_guard_aggregator_if_allows_skipped(job.get("if")), job_name
+
+    frontend = yaml.safe_load((_WORKFLOWS / "frontend-tests.yml").read_text(encoding="utf-8"))
+    assert _pr_guard_aggregator_if_allows_skipped(frontend["jobs"]["frontend-required"]["if"])
+
+
+def test_merge_group_event_skips_pr_guard_job() -> None:
+    ci = yaml.safe_load((_WORKFLOWS / "ci-standard.yml").read_text(encoding="utf-8"))
+    assert ci["on"].get("merge_group") is not None or "merge_group" in ci.get("on", {})
+    assert ci["jobs"]["pr-guard"]["if"] == "github.event_name == 'pull_request'"

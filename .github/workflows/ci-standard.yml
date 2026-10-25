@@ -670,7 +670,12 @@ jobs:
       - tests
       - pick-runner
       - pr-guard
-    if: always()
+    if: >-
+      always() &&
+      !cancelled() &&
+      (needs.pr-guard.result == 'success' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -681,6 +686,7 @@ jobs:
       - name: Confirm Python test matrix
         shell: bash
         env:
+          PR_GUARD_RESULT: ${{ needs.pr-guard.result }}
           GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
           GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
           CHANGES: ${{ needs.changes.result }}
@@ -689,7 +695,9 @@ jobs:
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
         run: |
-          if [ "$GUARD_SKIP" = "true" ]; then
+          if [ "$PR_GUARD_RESULT" = "skipped" ]; then
+            echo "::notice::tests-required: pr-guard skipped on $GITHUB_EVENT_NAME"
+          elif [ "$GUARD_SKIP" = "true" ]; then
             echo "::notice::tests-required skipped heavy CI ($GUARD_REASON)"
             exit 0
           fi
@@ -738,7 +746,12 @@ jobs:
         tests-required,
         security-scan,
       ]
-    if: always()
+    if: >-
+      always() &&
+      !cancelled() &&
+      (needs.pr-guard.result == 'success' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -749,6 +762,7 @@ jobs:
       - name: Require every gated job to succeed
         shell: bash
         env:
+          PR_GUARD_RESULT: ${{ needs.pr-guard.result }}
           GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
           GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
           CHANGES: ${{ needs.changes.result }}
@@ -761,7 +775,9 @@ jobs:
           RESULT_SECURITY: ${{ needs.security-scan.result }}
         run: |
           failed=0
-          if [ "$GUARD_SKIP" = "true" ]; then
+          if [ "$PR_GUARD_RESULT" = "skipped" ]; then
+            echo "::notice::quality-gate: pr-guard skipped on $GITHUB_EVENT_NAME"
+          elif [ "$GUARD_SKIP" = "true" ]; then
             echo "::notice::quality-gate skipped heavy CI ($GUARD_REASON)"
             exit 0
           fi
