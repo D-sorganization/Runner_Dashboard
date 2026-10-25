@@ -22,11 +22,10 @@ from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
-from staff.panel_hook_errors import hook_error_reason, is_hook_error_reply
-from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_scratch
 from staff.conversation_models import ThreadRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.group_models import GroupCostEstimate, get_group_threshold, lookup_seat_price
+from staff.panel_hook_errors import hook_error_reason, is_hook_error_reply
 from staff.panel_models import (
     CODEBASE_REPOS,
     DEFAULT_TURN_TIMEOUT_SECONDS,
@@ -37,6 +36,7 @@ from staff.panel_models import (
     TurnOutcome,
     default_quorum,
 )
+from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_scratch
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.panel")
