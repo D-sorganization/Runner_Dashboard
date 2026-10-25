@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.loader_env import loader_env
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -89,6 +91,7 @@ def _run_api_scope_classifier(classifier: str, changed_files: list[str]) -> subp
         child_env = {
             key: value for key, value in os.environ.items() if key in {"PATH", "SYSTEMROOT", "TEMP", "TMP", "WINDIR"}
         }
+        child_env.update(loader_env())  # where the shared-libpython interpreter finds its library
         child_env.update(
             {
                 "GH_TOKEN": "test-token",
