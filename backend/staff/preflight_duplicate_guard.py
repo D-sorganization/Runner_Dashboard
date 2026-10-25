@@ -192,14 +192,14 @@ async def check_duplicate_pr_or_run(
             if isinstance(branch, dict) and pattern.search(str(branch.get("name") or ""))
         ]
         if matching_branches:
-            lane_counts: dict[str, int] = {}
+            lane_counts = {}
             for branch_name in matching_branches:
                 lane_key = _lane_key_for_branch(branch_name, issue)
                 lane_counts[lane_key] = lane_counts.get(lane_key, 0) + 1
             duplicate_lane = next((lane for lane, count in lane_counts.items() if count > 1), "")
             example = matching_branches[0]
             message = f"Existing branch '{example}' already targets {repo}#{issue}; do not launch another issue run."
-            detail: dict[str, Any] = {
+            detail = {
                 "code": "issue_branch_exists",
                 "message": message,
                 "branch": example,
