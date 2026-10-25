@@ -396,6 +396,12 @@ jobs:
           "$RUNNER_TEMP/staff-e2e-venv/bin/python" -m pip install -r requirements.txt
           echo "STAFF_E2E_PYTHON=$RUNNER_TEMP/staff-e2e-venv/bin/python" >> "$GITHUB_ENV"
 
+      - name: Verify Staff E2E port allocation
+        run: python -m unittest discover -s tests/e2e/staff -p 'test_port_allocator.py'
+
+      - name: Allocate Staff E2E ports
+        run: python tests/e2e/staff/port_allocator.py
+
       - name: Run Staff Console e2e suite
         run: npx playwright test -c tests/e2e/staff/playwright.config.ts
 
