@@ -29,7 +29,7 @@ from staff.lessons import file_proposed_lessons, select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
-from staff.standards_registry import estimate_tokens
+from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP, estimate_tokens
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -122,6 +122,7 @@ class StaffRunner:
             raise ValueError(str(exc)) from exc
         repo_lessons = select_repo_lessons(req.repo)
         references_block, library_work_ids = library_references_for_plan(role, req)
+        prompt_token_cap = TOTAL_CONTEXT_TOKEN_CAP if provider == "codex" else None
         prompt = workspace.compose_prompt(
             role,
             repo=req.repo,
@@ -133,6 +134,7 @@ class StaffRunner:
             dispatch_bundle=bundle,
             library_references=references_block,
             repo_lessons_result=repo_lessons,
+            prompt_token_cap=prompt_token_cap,
         )
         adapter = self._adapters[provider]
         chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)
@@ -297,6 +299,7 @@ class StaffRunner:
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
             repo_lessons_result=select_repo_lessons(plan.repo),
+            prompt_token_cap=TOTAL_CONTEXT_TOKEN_CAP if plan.provider == "codex" else None,
         )
         launch_paths = self._launch_paths(adapter, workdir)
         if plan.provider == "antigravity":
