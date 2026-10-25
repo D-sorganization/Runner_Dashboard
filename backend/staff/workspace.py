@@ -10,7 +10,6 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import staff.worktree_hygiene as _wh
 from platform_utils.wsl_paths import windows_repositories_root
@@ -22,10 +21,6 @@ persist_run_transcript = _wh.persist_run_transcript
 prune_merged_branches = _wh.prune_merged_branches
 prune_worktree_branch = _wh.prune_worktree_branch
 sweep_stale_worktrees = _wh.sweep_stale_worktrees
-
-if TYPE_CHECKING:
-    pass
-
 
 log = logging.getLogger("dashboard.staff.workspace")
 
@@ -49,6 +44,7 @@ READ_ONLY_FLEET_RULES = (
 
 PLAYBOOK_MAX_CHARS = 16000
 
+from staff.workspace_prompt import compose_prompt as compose_prompt  # noqa: F401, E402
 
 
 def dashboard_api_note() -> str:
