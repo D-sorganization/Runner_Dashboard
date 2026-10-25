@@ -729,30 +729,10 @@ def _docker_scope_steps() -> list[dict]:
     return _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["decide-docker-scope"]["steps"]
 
 
-def _docker_scope_detector_source() -> str:
-    run = next(step for step in _docker_scope_steps() if step.get("id") == "scope")["run"]
-    lines = run.splitlines()
-    start = next(i for i, line in enumerate(lines) if "<<'EOF'" in line)
-    end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == "EOF")
-    return "\n".join(lines[start + 1 : end])
-
-
-def _docker_detector_literal(name: str) -> object:
-    tree = ast.parse(_docker_scope_detector_source())
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-            return ast.literal_eval(node.value)
-    raise AssertionError(f"docker scope detector does not assign {name!r}")
-
-
 def _docker_detector_selects(files: list[str]) -> bool:
-    prefixes = _docker_detector_literal("prefixes")
-    exact = _docker_detector_literal("exact")
-    assert isinstance(prefixes, tuple)
-    return any(
-        path.startswith(prefixes) or path in exact or (path.startswith("Dockerfile") and path != "Dockerfile.sample")
-        for path in files
-    )
+    from scripts.ci.docker_pr_scope import run_docker_for_paths
+
+    return run_docker_for_paths(files)
 
 
 def test_docker_scope_detector_covers_backend_changes() -> None:
@@ -780,12 +760,13 @@ def test_docker_build_scan_gate_is_fail_closed() -> None:
 
 
 def test_docker_skip_message_and_detector_agree() -> None:
+    from scripts.ci.docker_pr_scope import DOCKER_SCOPE_PREFIXES
+
     message = next(step for step in _docker_scope_steps() if step.get("name") == "Report skipped Docker validation")[
         "run"
     ]
-    prefixes = _docker_detector_literal("prefixes")
     for prefix, noun in DOCKER_SCOPE_PREFIX_NOUNS.items():
-        if prefix in prefixes:
+        if prefix in DOCKER_SCOPE_PREFIXES:
             assert noun in message
 
 
