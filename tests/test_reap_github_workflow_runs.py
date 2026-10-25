@@ -25,7 +25,7 @@ def test_fetch_merge_queue_entries_parses_fixture() -> None:
     ):
         entries = reap_github_workflow_runs.fetch_merge_queue_entries("t", "o", "r")
     assert len(entries) == 1
-    assert entries[0].head_sha == "abc1234567890abcdef0123456789abcdef0123456"
+    assert entries[0].head_sha == "0000000000000000000000000000000000000abc"
 
 
 def test_script_fails_without_token() -> None:
