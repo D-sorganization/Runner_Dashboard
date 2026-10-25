@@ -196,6 +196,87 @@ def test_pr_head_supersession_is_false_for_current_head(monkeypatch) -> None:
     assert result["supersession_reason"] == "current-pr-head"
 
 
+def test_closed_pr_queued_run_is_safe_to_cancel(monkeypatch) -> None:
+    """Closed PRs are dead queue entries and can be reaped once queued."""
+
+    async def fake_gh_json(*_args, **kwargs):  # type: ignore[no-untyped-def]
+        if "status=queued" in _args[1]:
+            return {
+                "workflow_runs": [
+                    {
+                        "id": 51,
+                        "name": "CI",
+                        "head_branch": "feature/x",
+                        "status": "queued",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "event": "pull_request",
+                        "pull_requests": [{"number": 7}],
+                        "head_sha": "old-sha",
+                    }
+                ]
+            }
+        if "status=in_progress" in _args[1]:
+            return {"workflow_runs": []}
+        if "/pulls/7" in _args[1]:
+            return {"state": "closed", "merged": False, "head": {"sha": "old-sha"}}
+        raise AssertionError(f"unexpected GitHub request: {_args}")
+
+    monkeypatch.setattr(qc, "_gh_json", fake_gh_json)
+    stale = asyncio.run(qc._queued_stale_for_repo("org", "repo", _dt.timedelta(0), []))
+
+    assert [(run.run_id, run.reason, run.safe_to_cancel) for run in stale] == [
+        (51, qc.StaleReason.CLOSED_OR_DELETED_REF.value, True)
+    ]
+
+
+def test_superseded_pr_run_is_reported_but_current_head_is_preserved(monkeypatch) -> None:
+    """Only older SHA runs are candidates; the newest current-head run stays queued."""
+
+    async def fake_gh_json(*_args, **kwargs):  # type: ignore[no-untyped-def]
+        if "status=queued" in _args[1]:
+            return {
+                "workflow_runs": [
+                    {
+                        "id": 52,
+                        "name": "CI",
+                        "head_branch": "feature/x",
+                        "status": "queued",
+                        "created_at": "2026-01-01T00:00:00Z",
+                        "event": "pull_request",
+                        "pull_requests": [{"number": 8}],
+                        "head_sha": "old-sha",
+                    },
+                    {
+                        "id": 53,
+                        "name": "CI",
+                        "head_branch": "feature/x",
+                        "status": "queued",
+                        "created_at": "2026-01-02T00:00:00Z",
+                        "event": "pull_request",
+                        "pull_requests": [{"number": 8}],
+                        "head_sha": "current-sha",
+                    },
+                ]
+            }
+        if "status=in_progress" in _args[1]:
+            return {"workflow_runs": []}
+        if "/pulls/8" in _args[1]:
+            return {"state": "open", "head": {"sha": "current-sha"}}
+        raise AssertionError(f"unexpected GitHub request: {_args}")
+
+    monkeypatch.setattr(qc, "_gh_json", fake_gh_json)
+
+    async def branch_exists(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        return True
+
+    monkeypatch.setattr(qc, "branch_exists", branch_exists)
+    stale = asyncio.run(qc._queued_stale_for_repo("org", "repo", _dt.timedelta(0), []))
+
+    assert [run.run_id for run in stale] == [52]
+    assert stale[0].reason == qc.StaleReason.SUPERSEDED_PR_HEAD.value
+    assert stale[0].safe_to_cancel is True
+
+
 def test_pr_head_supersession_rejects_ambiguous_pr_evidence(monkeypatch) -> None:
     async def fake_gh_json(*_args, **_kwargs):  # type: ignore[no-untyped-def]
         raise AssertionError("ambiguous PR evidence must not query PR state")

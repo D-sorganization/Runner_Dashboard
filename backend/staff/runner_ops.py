@@ -278,7 +278,12 @@ def pump_output(
                 quota_mod.observe(rec.provider, event["raw"])  # live plan windows, free (#1587)
             text = event.get("text") or ""
             if text.strip():
-                store.append_event(rec.id, event.get("kind", "text"), text)
+                store.append_event(
+                    rec.id,
+                    event.get("kind", "text"),
+                    text,
+                    lesson_evidence=event.get("lesson_evidence"),
+                )
                 if "STAFF_RESULT:" in text:
                     result_line = text[text.index("STAFF_RESULT:") :]
     return PumpResult(usage, result_line, session_id)
