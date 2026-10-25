@@ -42,6 +42,10 @@ RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 36
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
 
+from staff.runner_registry import get_runner, reset_runner  # noqa: E402
+
+__all__ = ["RunPlan", "RunRequest", "StaffRunner", "get_runner", "reset_runner"]
+
 
 class StaffRunner:
     """Owns run threads and the process table for this node."""
@@ -479,8 +483,3 @@ class StaffRunner:
         self, rec: RunRecord, adapter: ProviderAdapter, proc: Any, transcript: Path, watchdog: Any = None
     ) -> Any:
         return ops.pump_output(rec, adapter, proc, transcript, self.store, watchdog)
-
-
-from staff.runner_registry import get_runner, reset_runner
-
-__all__ = ["RunPlan", "RunRequest", "StaffRunner", "get_runner", "reset_runner"]
