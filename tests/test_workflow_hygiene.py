@@ -443,20 +443,19 @@ def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> No
 
 
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
-    """Issue #688: reaper manual runs need dry-run, reason filtering, and caps."""
+    """Issue #688 / #2768: reaper manual runs need dry-run and cancel caps."""
     data = _load_workflow(_WORKFLOWS_DIR / "util-queued-job-reaper.yml")
     dispatch = _triggers(data)["workflow_dispatch"]
     inputs = dispatch["inputs"]
 
     assert inputs["dry-run"]["default"] == "true"
-    assert inputs["reason-filter"]["default"] == ""
     assert inputs["max-cancel"]["default"] == "10"
 
     text = (_WORKFLOWS_DIR / "util-queued-job-reaper.yml").read_text(encoding="utf-8")
-    assert "unsatisfiable_runner_labels" in text
-    assert "superseded_pr_head" in text
-    assert "skipped (max-cancel reached)" in text
+    assert "may_cancel_merge_group_run" in text
+    assert "mergeQueue.entries" in text
     assert "QUEUED_JOB_REAPER_DISABLED" in text
+    assert "reap_github_workflow_runs.py" in text
 
 
 def test_anti_phantom_guard_uses_rest_file_listing() -> None:
