@@ -143,7 +143,7 @@ def test_merge_group_job_set_matches_allowlist(filename: str) -> None:
     ("filename", "job_id"),
     sorted(
         (fn, jid)
-        for fn, jobs in MERGE_GROUP_EXCLUDED_JOBS.items()
+        for fn, jobs in sorted(MERGE_GROUP_EXCLUDED_JOBS.items())
         for jid in sorted(jobs)
     ),
 )
