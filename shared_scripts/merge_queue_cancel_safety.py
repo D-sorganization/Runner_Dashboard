@@ -44,6 +44,11 @@ def merge_queue_entries_from_graphql(payload: Mapping[str, Any]) -> list[MergeQu
     if total_count > 0 and not parsed:
         raise MergeQueueParseError("mergeQueue.entries totalCount>0 but no headCommit.oid parsed")
 
+    if total_count > len(parsed):
+        raise MergeQueueParseError(
+            "mergeQueue.entries totalCount exceeds parsed headCommit.oid count"
+        )
+
     return parsed
 
 
@@ -71,5 +76,8 @@ def may_cancel_merge_group_run(
     if live_entries is None:
         return False
     if is_live_merge_queue_head(head_ref, head_sha, live_entries):
+        return False
+    # Live queue entries are SHA-only; without run head_sha we cannot prove supersession.
+    if live_entries and not (head_sha or "").strip():
         return False
     return bool(head_ref or head_sha)

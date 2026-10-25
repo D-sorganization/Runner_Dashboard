@@ -72,6 +72,36 @@ def test_graphql_has_next_page_fails_closed() -> None:
         merge_queue_entries_from_graphql(payload)
 
 
+def test_graphql_partial_oid_parse_fails_closed() -> None:
+    payload = {
+        "repository": {
+            "mergeQueue": {
+                "entries": {
+                    "totalCount": 2,
+                    "pageInfo": {"hasNextPage": False},
+                    "nodes": [
+                        {"headCommit": {"oid": LIVE_SHA}},
+                        {"headCommit": {}},
+                    ],
+                }
+            }
+        }
+    }
+    with pytest.raises(MergeQueueParseError, match="totalCount exceeds"):
+        merge_queue_entries_from_graphql(payload)
+
+
+def test_merge_queue_run_without_head_sha_fails_closed_no_cancel() -> None:
+    assert (
+        may_cancel_merge_group_run(
+            head_ref=LIVE_REF,
+            head_sha="",
+            live_entries=_live_entries(),
+        )
+        is False
+    )
+
+
 def test_graphql_total_count_without_nodes_fails_closed() -> None:
     payload = {
         "repository": {
