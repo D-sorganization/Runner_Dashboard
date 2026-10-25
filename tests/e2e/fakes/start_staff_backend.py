@@ -72,7 +72,11 @@ def backend_env(state: Path, port: int) -> dict[str, str]:
     assert state.is_dir(), state  # noqa: S101
     system_path = os.pathsep.join(p for p in ("/usr/local/bin", "/usr/bin", "/bin") if Path(p).is_dir())
     return {
-        **{k: v for k, v in os.environ.items() if k in ("LANG", "LC_ALL", "TZ", "SYSTEMROOT", "TEMP", "TMP")},
+        **{
+            k: v
+            for k, v in os.environ.items()
+            if k in ("LANG", "LC_ALL", "TZ", "SYSTEMROOT", "TEMP", "TMP", "LD_LIBRARY_PATH")
+        },
         "PATH": os.pathsep.join([str(FAKES / "bin"), system_path or os.environ.get("PATH", "")]),
         "HOME": str(state / "home"),
         "XDG_CONFIG_HOME": str(state / "xdg"),

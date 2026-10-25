@@ -4,6 +4,10 @@
 kind both call :func:`run_code_dispatch`, so either path resolves the agent
 profile, injects prompt notes and engineering standards server-side, and
 records the dispatch in the Code Requests history.
+
+Issue-number workflow launches from :mod:`agent_dispatch_router` share the Staff
+duplicate guard (:func:`staff.preflight_duplicate_guard.check_duplicate_pr_or_run`);
+see issue #2765.
 """
 
 from __future__ import annotations
