@@ -19,6 +19,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader_env import loader_env
+
 REPO = Path(__file__).resolve().parents[2]
 DEPLOY = REPO / "deploy"
 BASH = os.environ.get("BASH", "/bin/bash")
@@ -149,6 +151,8 @@ def test_entrypoint_runs_under_systemd_like_env_home_unset(tmp_path: Path) -> No
         "RUNNER_DASHBOARD_DEPLOY_DIR": str(deploy),
         "RUNNER_DASHBOARD_ENV_FILE": str(tmp_path / "missing.env"),
         "RUNNER_DASHBOARD_PYTHON": str(venv_python),
+        # Not scrubbed state: where the shared-libpython interpreter finds its library.
+        **loader_env(),
     }
     proc = subprocess.run([BASH, str(script)], env=env, capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr or proc.stdout
