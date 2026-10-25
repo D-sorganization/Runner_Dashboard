@@ -326,6 +326,30 @@ def test_verify_and_record_never_raises(store: RunStore) -> None:
     assert store.get_run("run_1").status == "succeeded"  # type: ignore[union-attr]
 
 
+def test_verify_and_record_emits_role_diagnostic_when_opens_pr_is_false(
+    store: RunStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store.create_run(_rec(role="issue-remediator"))
+
+    class _Role:
+        permissions = {"open_pr": True}
+        providers = ("codex",)
+        surface = "dashboard"
+
+    monkeypatch.setattr(v, "load_roles", lambda: {"issue-remediator": _Role()})
+    verdict = v.verify_and_record(store, "run_1", opens_pr=False, probe=FakeProbe(), mode="report", now=NOW)
+
+    assert verdict is not None
+    assert verdict.detail == "role does not open pull requests"
+    diag = [e for e in store.events_after("run_1") if e["kind"] == "verify_diag"]
+    assert len(diag) == 1
+    payload = json.loads(diag[0]["text"])
+    assert payload["run_id"] == "run_1"
+    assert payload["role"] == "issue-remediator"
+    assert payload["resolver_path"] == "direct-value"
+    assert payload["role_permissions_open_pr"] is True
+
+
 def test_verify_and_record_returns_without_raising_when_store_update_run_raises(
     store: RunStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -2983,11 +2983,56 @@
             ],
             "title": "Expires At"
           },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "review_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "proposed",
+                  "accepted",
+                  "quarantined",
+                  "retired",
+                  "promoted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Status"
+          },
           "source_product": {
             "maxLength": 64,
             "minLength": 1,
             "title": "Source Product",
             "type": "string"
+          },
+          "source_run": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Run"
           },
           "supersedes_id": {
             "anyOf": [
@@ -3007,6 +3052,18 @@
             "maxItems": 32,
             "title": "Tags",
             "type": "array"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "enum": ["fleet", "barb-only"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
           }
         },
         "required": ["entry_type", "source_product", "body"],
