@@ -251,7 +251,7 @@ export function DesktopShell({
   }, [onSelect]);
 
   return (
-    <div className="desktop-shell">
+    <div className={`desktop-shell${barbOpen ? " desktop-shell--barb-open" : ""}`}>
       <Sidebar activeTabId={activeTabId} onSelect={onSelect} />
       <div className="desktop-shell__body">
         <header className="desktop-shell__topbar" role="banner">

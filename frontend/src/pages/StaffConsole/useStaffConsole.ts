@@ -117,7 +117,9 @@ export function useStaffConsole({
   const [selectedRole, setSelectedRole] = useState<string | null>(initialRole ?? null);
   const [activeThread, setActiveThread] = useState<ThreadInfo | null>(initialThread ?? null);
   const newThreadFromThisConsole = useRef<string | null>(null);
-  const [openingRole, setOpeningRole] = useState<string | null>(null);
+  const [openingRole, setOpeningRole] = useState<string | null>(() =>
+    restoreInitialRoleThread && initialRole && !initialThread && !initialThreadId ? initialRole : null,
+  );
   const [history, setHistory] = useState<ThreadMessage[]>(initialMessages);
   const [error, setError] = useState<ConsoleError | null>(null);
 

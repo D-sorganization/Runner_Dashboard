@@ -257,6 +257,15 @@ rsync -a --delete \
     --exclude='*.ndjson' \
     --exclude='*.jsonl' \
     --exclude='/backend/data/' \
+    --exclude='/code_requests.json' \
+    --exclude='/code_request_plans.json' \
+    --exclude='/agent_profiles.json' \
+    --exclude='/feature_requests.json' \
+    --exclude='/feature_requests.json.migrated' \
+    --exclude='/prompt_notes.json' \
+    --exclude='/prompt_templates.json' \
+    --exclude='/orchestration_audit.json' \
+    --exclude='/processed_envelopes.json' \
     "${stage_dir}/" "${DEPLOY_DIR}/"
 
 install -m 0755 "${stage_dir}/deploy/collect-crash-diagnostics.sh" "${DEPLOY_DIR}/collect-crash-diagnostics.sh"

@@ -1093,3 +1093,114 @@ def test_node-b_schedule_carries_conservative_resource_floor() -> None:
     assert floor["min_disk_free_gb"] >= 40
     assert floor["min_mem_available_gb"] >= 6
     assert floor["runners"] <= 1
+
+
+# --- #2776: a "successful" stop must not leave frozen children in the cgroup ---
+
+
+def _leftover_env(monkeypatch, tmp_path: Path, unit, *, pids: list[int], die_on: str | None = "SIGTERM"):
+    """Mock systemctl plus a fake cgroup; ``die_on`` is the signal that empties it."""
+    cg_root = tmp_path / "cgroup"
+    procs = cg_root / "system.slice" / unit.unit / "cgroup.procs"
+    procs.parent.mkdir(parents=True)
+    procs.write_text("".join(f"{p}\n" for p in pids), encoding="utf-8")
+    commands: list[list[str]] = []
+    signals: list[tuple[int, str]] = []
+
+    def run(cmd, **_k):
+        commands.append(cmd)
+        if cmd[:2] == ["systemctl", "show"] and "ControlGroup" in cmd:
+            return _process_result(stdout=f"/system.slice/{unit.unit}\n")
+        return _process_result()
+
+    def signal_pid(pid: int, sig: str) -> None:
+        signals.append((pid, sig))
+        if sig == die_on:
+            procs.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(runner_scheduler, "CGROUP_ROOT", cg_root)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "_signal_pid", signal_pid)
+    monkeypatch.setattr(runner_scheduler, "LEFTOVER_TERM_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(runner_scheduler.time_module, "sleep", lambda _s: None)
+    monkeypatch.setattr(runner_scheduler, "_worker_absent", lambda *_a, **_k: True)
+    return commands, signals
+
+
+def test_leftover_frozen_children_are_thawed_and_terminated_after_stop(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101, 4102])
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+
+    assert [s for s in signals if s[1] == "SIGCONT"] == [(4101, "SIGCONT"), (4102, "SIGCONT")]
+    assert [s for s in signals if s[1] == "SIGTERM"] == [(4101, "SIGTERM"), (4102, "SIGTERM")]
+    assert not any(s[1] == "SIGKILL" for s in signals)
+    assert commands.index(["systemctl", "stop", unit.unit]) < commands.index(["systemctl", "reset-failed", unit.unit])
+
+
+def test_leftover_children_that_ignore_term_are_killed(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    _commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101], die_on="SIGKILL")
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+
+    order = [sig for _pid, sig in signals]
+    assert order.index("SIGTERM") < order.index("SIGKILL")
+
+
+def test_clean_cgroup_after_stop_signals_nothing(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    _commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[])
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert signals == []
+
+
+def test_timeout_path_reaps_leftovers_instead_of_leaving_them_frozen(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101])
+    inner = runner_scheduler.run_cmd
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["systemctl", "stop"]:
+            commands.append(cmd)
+            raise runner_scheduler.subprocess.TimeoutExpired(cmd, 30)
+        if cmd[:2] == ["systemctl", "is-active"]:
+            return _process_result(returncode=3)
+        return inner(cmd, **kwargs)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert (4101, "SIGCONT") in signals and (4101, "SIGTERM") in signals
+
+
+def test_busy_runner_is_never_reaped_or_stopped(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101])
+    monkeypatch.setattr(runner_scheduler, "_worker_absent", lambda *_a, **_k: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+
+    assert signals == []
+    assert _thaws(commands) == [unit.unit]
+    assert _stops(commands) == []
+
+
+def test_failed_stop_keeps_children_alive(monkeypatch, tmp_path: Path) -> None:
+    """When the unit stays up, its processes are healthy and must not be signalled."""
+    unit = _active_unit(2, tmp_path)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101])
+    inner = runner_scheduler.run_cmd
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["systemctl", "stop"]:
+            return _process_result(returncode=1)
+        return inner(cmd, **kwargs)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+    assert signals == []
+    assert _thaws(commands) == [unit.unit]
