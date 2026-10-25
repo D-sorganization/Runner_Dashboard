@@ -1,0 +1,118 @@
+"""CI queue SLO metrics and stall alarm tests (#2896)."""
+from __future__ import annotations
+
+import json
+import sys
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts import ci_slo_check as slo  # noqa: E402
+
+BASELINE = Path(__file__).resolve().parent / "fixtures" / "ci_slo" / "baseline_2025_10_25.json"
+
+
+def _expand(spec: Mapping[str, Any], base: slo.QueueDataset) -> slo.QueueDataset:
+    total, landed_groups = int(spec["merge_group_runs"]), int(spec["landed_groups"])
+    wait_p90 = float(spec["merge_group_wait_p90_minutes"])
+    runs, jobs, merged = [], {}, list(base.merged_prs)
+    waits = [wait_p90] * max(1, int(total * 0.9)) + [wait_p90 * 0.25] * (total - max(1, int(total * 0.9)))
+    for idx in range(total):
+        run_id, landed = 10_000 + idx, idx < landed_groups
+        sha = f"{idx:040x}" if landed else f"dead{idx:036x}"
+        created = base.as_of - timedelta(minutes=total - idx)
+        runs.append(
+            {
+                "id": run_id,
+                "event": "merge_group",
+                "status": "completed",
+                "conclusion": "success" if landed else "failure",
+                "created_at": created.isoformat().replace("+00:00", "Z"),
+                "head_branch": f"gh-readonly-queue/main/pr-{2700 + idx}-{sha[:12]}",
+                "head_sha": sha,
+            }
+        )
+        jobs[run_id] = [{"started_at": (created + timedelta(minutes=waits[idx])).isoformat().replace("+00:00", "Z")}]
+        if landed:
+            merged.append(
+                {
+                    "number": 2700 + idx,
+                    "merged_at": (created + timedelta(minutes=waits[idx] + 8)).isoformat().replace("+00:00", "Z"),
+                    "merge_commit_sha": sha,
+                    "enqueued_at": (created - timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
+                }
+            )
+    return slo.QueueDataset(
+        base.as_of,
+        base.open_pr_count,
+        base.queue_samples,
+        base.merge_queue_entries,
+        merged,
+        runs,
+        jobs,
+    )
+
+
+def _baseline() -> slo.QueueDataset:
+    raw = json.loads(BASELINE.read_text(encoding="utf-8"))
+    base = slo.QueueDataset(
+        slo._parse_ts(raw["as_of"]),
+        int(raw["open_pr_count"]),
+        list(raw["queue_samples"]),
+        list(raw["merge_queue_entries"]),
+        [],
+        [],
+        {},
+    )
+    return _expand(raw["synthetic_replay"], base)
+
+
+def test_baseline_replay_and_full_report_exit() -> None:
+    metrics = slo.compute_metrics(_baseline())
+    assert metrics.peak_queued_runs == 416
+    assert metrics.landed_built_share == pytest.approx(0.12, abs=0.02)
+    assert metrics.discarded_merge_group_share == pytest.approx(0.88, abs=0.02)
+    assert metrics.merge_group_wait_p90_minutes == pytest.approx(18.4, abs=0.5)
+    assert slo.run_check(_baseline(), mode="full") == 1
+
+
+def test_stall_alarm_windows() -> None:
+    stalled = slo.QueueDataset(
+        datetime(2025, 10, 25, 18, 0, tzinfo=UTC),
+        40,
+        [{"queued_runs": 120}],
+        [{"pr_number": 1}],
+        [
+            {
+                "number": 1,
+                "merged_at": "2025-10-25T16:45:00Z",
+                "merge_commit_sha": "a" * 40,
+                "enqueued_at": "2025-10-25T16:00:00Z",
+            }
+        ],
+        [],
+        {},
+    )
+    healthy = slo.QueueDataset(
+        datetime(2025, 10, 25, 12, 30, tzinfo=UTC),
+        12,
+        [{"queued_runs": 0}],
+        [],
+        [
+            {
+                "number": 1,
+                "merged_at": "2025-10-25T12:05:00Z",
+                "merge_commit_sha": "b" * 40,
+                "enqueued_at": "2025-10-25T11:50:00Z",
+            }
+        ],
+        [],
+        {},
+    )
+    assert slo.stall_alarm(stalled)[0] and slo.run_check(stalled, mode="stall") == 1
+    assert not slo.stall_alarm(healthy)[0] and slo.run_check(healthy, mode="stall") == 0

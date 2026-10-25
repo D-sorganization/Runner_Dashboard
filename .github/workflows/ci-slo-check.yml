@@ -1,0 +1,29 @@
+name: CI Queue SLO Check
+on:
+  schedule:
+    - cron: "0 7 * * *"
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  slo:
+    runs-on: d-sorg-fleet
+    env:
+      PYTHONPATH: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Run ci_slo_check.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mode=full
+          if [ "${{ github.event.schedule }}" = "*/10 * * * *" ]; then mode=stall; fi
+          python scripts/ci_slo_check.py --repo "${{ github.repository }}" --mode "$mode" --publish-hub
