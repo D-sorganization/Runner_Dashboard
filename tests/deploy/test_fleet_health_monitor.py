@@ -161,7 +161,7 @@ def test_ct_ssh_enforces_a_hard_timeout() -> None:
     assert "ct_ssh_timeout" in text or "timed out" in text
 
 
-def test_script_guards_node-a_host_disk_space() -> None:
+def test_script_guards_node_a_host_disk_space() -> None:
     """A WSL2 vhdx that runs out of host disk mid-write corrupts the distro
     (null-byte files, corrupt package DB) — the probable origin of the #1071
     NVMe corruption, which on 2026-07-31 came within minutes of repeating on

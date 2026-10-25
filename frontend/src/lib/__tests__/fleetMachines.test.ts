@@ -21,10 +21,10 @@ import {
 
 describe("canonicalMachineName", () => {
   it("maps known aliases to physical machine names", () => {
-    expect(canonicalMachineName("desktop")).toBe("hub-a");
-    expect(canonicalMachineName("node-a-NVMe")).toBe("node-a");
-    expect(canonicalMachineName("node-a-ssd")).toBe("node-a");
-    expect(canonicalMachineName("OG")).toBe("node-b");
+    expect(canonicalMachineName("desktop")).toBe("DeskComputer");
+    expect(canonicalMachineName("ControlTower-NVMe")).toBe("ControlTower");
+    expect(canonicalMachineName("controltower-ssd")).toBe("ControlTower");
+    expect(canonicalMachineName("OG")).toBe("OGLaptop");
   });
   it("passes through unknown names and defaults empties to Unknown", () => {
     expect(canonicalMachineName("Random-Box")).toBe("Random-Box");
@@ -35,14 +35,14 @@ describe("canonicalMachineName", () => {
 
 describe("parseRunnerName", () => {
   it("parses d-sorg-local runner names", () => {
-    expect(parseRunnerName("d-sorg-local-node-a-3")).toEqual({
-      machine: "node-a",
+    expect(parseRunnerName("d-sorg-local-ControlTower-3")).toEqual({
+      machine: "ControlTower",
       number: 3,
     });
   });
   it("parses MATLAB runner names with sentinel number", () => {
-    expect(parseRunnerName("hub-a-MATLAB")).toEqual({
-      machine: "hub-a",
+    expect(parseRunnerName("DeskComputer-MATLAB")).toEqual({
+      machine: "DeskComputer",
       number: 9998,
     });
   });
@@ -55,26 +55,26 @@ describe("parseRunnerName", () => {
 });
 
 describe("runnerSort", () => {
-  it("sorts node-a first, then machine, then number", () => {
+  it("sorts ControlTower first, then machine, then number", () => {
     const runners = [
-      { name: "d-sorg-local-hub-a-2" },
-      { name: "d-sorg-local-node-a-5" },
-      { name: "d-sorg-local-node-a-1" },
-      { name: "d-sorg-local-hub-a-1" },
+      { name: "d-sorg-local-DeskComputer-2" },
+      { name: "d-sorg-local-ControlTower-5" },
+      { name: "d-sorg-local-ControlTower-1" },
+      { name: "d-sorg-local-DeskComputer-1" },
     ];
     const sorted = runners.slice().sort(runnerSort).map((r) => r.name);
     expect(sorted).toEqual([
-      "d-sorg-local-node-a-1",
-      "d-sorg-local-node-a-5",
-      "d-sorg-local-hub-a-1",
-      "d-sorg-local-hub-a-2",
+      "d-sorg-local-ControlTower-1",
+      "d-sorg-local-ControlTower-5",
+      "d-sorg-local-DeskComputer-1",
+      "d-sorg-local-DeskComputer-2",
     ]);
   });
-  it("keeps node-a ahead when it is the second operand", () => {
+  it("keeps ControlTower ahead when it is the second operand", () => {
     expect(
       runnerSort(
-        { name: "d-sorg-local-hub-a-1" },
-        { name: "d-sorg-local-node-a-1" },
+        { name: "d-sorg-local-DeskComputer-1" },
+        { name: "d-sorg-local-ControlTower-1" },
       ),
     ).toBe(1);
   });
@@ -186,8 +186,8 @@ describe("collectStorageDevices", () => {
   it("includes prefixed devices from related nodes", () => {
     const devices = collectStorageDevices(
       {},
-      [{ name: "hub-a", system: { disk: { percent: 30 } } }],
+      [{ name: "DeskComputer", system: { disk: { percent: 30 } } }],
     );
-    expect(devices[0].label).toBe("hub-a WSL");
+    expect(devices[0].label).toBe("DeskComputer WSL");
   });
 });
