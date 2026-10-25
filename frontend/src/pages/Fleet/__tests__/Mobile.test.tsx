@@ -233,23 +233,23 @@ describe("FleetMobile", () => {
     expect(filterGroup.textContent).toMatch(/1\s*Offline/);
   });
 
-  it("groups node-a pools only when there is more than one (#1718)", async () => {
+  it("groups ControlTower pools only when there is more than one (#1718)", async () => {
     const base = MOCK_FLEET["runner-a"];
-    globalThis.fetch = makeFetch(nodesPayload({ node-a: { ...base, hostname: "ct.local" }, ...MOCK_FLEET }));
+    globalThis.fetch = makeFetch(nodesPayload({ ControlTower: { ...base, hostname: "ct.local" }, ...MOCK_FLEET }));
     const { unmount } = render(<FleetMobile />);
     await screen.findByText(/ct\.local/i);
-    expect(screen.queryByText(/node-a Pools/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ControlTower Pools/i)).not.toBeInTheDocument();
     unmount();
 
     globalThis.fetch = makeFetch(
       nodesPayload({
-        "node-a-NVMe": { ...base, hostname: "ct-nvme.local" },
-        "node-a-SSD": { ...base, hostname: "ct-ssd.local" },
+        "ControlTower-NVMe": { ...base, hostname: "ct-nvme.local" },
+        "ControlTower-SSD": { ...base, hostname: "ct-ssd.local" },
       }),
     );
     render(<FleetMobile />);
     await screen.findByText(/ct-nvme\.local/i);
-    expect(screen.getByText(/node-a Pools/i)).toBeInTheDocument();
+    expect(screen.getByText(/ControlTower Pools/i)).toBeInTheDocument();
   });
 
   it("shows error state when API call fails", async () => {
