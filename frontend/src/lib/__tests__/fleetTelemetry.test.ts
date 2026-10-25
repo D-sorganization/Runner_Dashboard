@@ -104,7 +104,7 @@ describe("machineTelemetryForRunner", () => {
     expect(t.memory).toBe(75);
     expect(t.uptime).toBe("1m 30s");
     expect(t.seen).toBe("1m ago");
-    expect(t.node).toBe(nodesByName.hub-a);
+    expect(t.node).toBe(nodesByName["hub-a"]);
   });
 
   it("falls back gracefully when the node is unknown / has no telemetry", () => {
