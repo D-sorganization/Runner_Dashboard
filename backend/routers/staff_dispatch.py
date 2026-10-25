@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import Request
 from identity import Principal
 from staff import fleet as staff_fleet
+from staff.barb_lease_fence import parse_barb_claim
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 
 
@@ -69,4 +70,5 @@ async def run_dispatch(
         claim_override_reason=body.claim_override_reason,
         execution_mode=getattr(body, "execution_mode", "local") or "local",
     )
-    return await dispatch_staff_run(cmd, caller)
+    # A request that declares Barb authority is fenced on its lease epoch (#2734); others are unaffected.
+    return await dispatch_staff_run(cmd, caller, barb_claim=parse_barb_claim(request.headers, caller.id))

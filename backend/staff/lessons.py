@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from fastapi import HTTPException
+from memory.contract import enforce_entry_size
 from memory.expiry import expiry_is_future
 from memory.models import MemoryEntry
 from memory.redact import contains_secret
@@ -96,6 +98,16 @@ def file_proposed_lessons(
     for text in parsed:
         if contains_secret({"text": text}):
             continue
+        body = {
+            "text": text,
+            "repo": rec.repo,
+            "commit": getattr(rec, "commit", "") or getattr(rec, "head_ref", "") or "",
+            "standards_version": rec.standards_version,
+        }
+        try:
+            enforce_entry_size(body, "lesson")
+        except HTTPException:
+            continue
         entry_id = new_entry_id()
         entry = MemoryEntry(
             id=entry_id,
@@ -103,12 +115,7 @@ def file_proposed_lessons(
             author_principal=rec.requested_by or f"staff-run:{rec.id}",
             source_product="staff-runner",
             tags=[t for t in ("lesson", rec.repo) if t],
-            body={
-                "text": text,
-                "repo": rec.repo,
-                "commit": getattr(rec, "commit", "") or getattr(rec, "head_ref", "") or "",
-                "standards_version": rec.standards_version,
-            },
+            body=body,
             created_at=now_str,
             expires_at=expires_at,
             repo=rec.repo,
