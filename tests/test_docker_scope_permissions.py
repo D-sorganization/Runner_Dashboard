@@ -13,15 +13,11 @@ def _effective_permissions(workflow: dict, job: dict) -> dict:
     return job.get("permissions", workflow.get("permissions", {}))
 
 
-def test_docker_scope_job_has_minimum_pr_files_api_permissions() -> None:
+def test_docker_scope_job_uses_git_diff_not_pr_files_api() -> None:
     workflow = yaml.safe_load(DOCKER_WORKFLOW.read_text(encoding="utf-8"))
     job = workflow["jobs"]["decide-docker-scope"]
-
-    permissions = _effective_permissions(workflow, job)
-
-    assert permissions.get("contents") == "read"
-    assert permissions.get("pull-requests") == "read"
-    assert job.get("permissions") == {
-        "contents": "read",
-        "pull-requests": "read",
-    }
+    steps_blob = yaml.dump(job.get("steps", []))
+    assert "git diff --name-only" in steps_blob
+    assert "docker_pr_scope.py" in steps_blob
+    assert "/pulls/" not in steps_blob
+    assert job.get("permissions") is None

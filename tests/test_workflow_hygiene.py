@@ -836,3 +836,82 @@ def test_tests_required_fails_closed() -> None:
     assert _tests_required(TESTS="failure") == 1
     assert _tests_required(TESTS="skipped") == 1, "a skipped matrix only passes when the lane is off"
     assert _tests_required(TIER="full", RUN_PYTHON_TESTS="true", TESTS="skipped") == 1
+
+
+# --- ci-health-check line cap must fail CLOSED on pull_request (RD#2730) -----
+
+_LINECAP_STEP = "Verify no source file exceeds 500 lines"
+
+
+def _git(cwd: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.strip()
+
+
+def _linecap_pr_checkout(tmp_path: Path, *, pr_file_lines: int) -> tuple[Path, str]:
+    """Build a depth-1 PR checkout like actions/checkout does; return (dir, base_sha)."""
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "-q", "-b", "main")
+    (origin / "backend").mkdir()
+    (origin / "backend" / "ok.py").write_text("x = 1\n", encoding="utf-8")
+    _git(origin, "add", "-A")
+    _git(origin, "commit", "-q", "-m", "base")
+    base_sha = _git(origin, "rev-parse", "HEAD")
+    _git(origin, "checkout", "-q", "-b", "pr")
+    (origin / "backend" / "big.py").write_text("x = 1\n" * pr_file_lines, encoding="utf-8")
+    _git(origin, "add", "-A")
+    _git(origin, "commit", "-q", "-m", "pr")
+    work = tmp_path / "work"
+    _git(tmp_path, "clone", "-q", "--depth=1", "--branch", "pr", origin.as_uri(), str(work))
+    return work, base_sha
+
+
+def _run_linecap(work: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    full_env = {"PATH": os.environ.get("PATH", ""), "HOME": str(work.parent), **env}
+    return subprocess.run(
+        [require_bash(), "--noprofile", "--norc", "-e", "-c", _ci_step("ci-health-check", name=_LINECAP_STEP)["run"]],
+        cwd=work,
+        env=full_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+
+
+def test_line_cap_pr_path_flags_oversized_changed_file_in_shallow_checkout(tmp_path: Path) -> None:
+    work, base_sha = _linecap_pr_checkout(tmp_path, pr_file_lines=501)
+    result = _run_linecap(work, {"EVENT_NAME": "pull_request", "BASE_SHA": base_sha})
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "backend/big.py" in result.stdout, "the changed-file list must be printed and checked"
+
+
+def test_line_cap_pr_path_passes_when_changed_file_is_within_cap(tmp_path: Path) -> None:
+    work, base_sha = _linecap_pr_checkout(tmp_path, pr_file_lines=500)
+    result = _run_linecap(work, {"EVENT_NAME": "pull_request", "BASE_SHA": base_sha})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "backend/big.py" in result.stdout
+
+
+def test_line_cap_pr_path_fails_closed_when_diff_cannot_be_computed(tmp_path: Path) -> None:
+    work, _ = _linecap_pr_checkout(tmp_path, pr_file_lines=10)
+    bogus = "0" * 40
+    result = _run_linecap(work, {"EVENT_NAME": "pull_request", "BASE_SHA": bogus})
+    assert result.returncode != 0, "an unresolvable base must fail the step, not report 'no changed files'"
+    missing = _run_linecap(work, {"EVENT_NAME": "pull_request", "BASE_SHA": ""})
+    assert missing.returncode != 0
+
+
+def test_line_cap_step_has_no_error_swallowing_on_the_diff() -> None:
+    run = _ci_step("ci-health-check", name=_LINECAP_STEP)["run"]
+    diff_lines = [line for line in run.splitlines() if "git diff" in line or "git fetch" in line]
+    assert diff_lines, "PR path must fetch and diff the base"
+    assert not any("|| true" in line for line in diff_lines)
+    assert "set -euo pipefail" in run
