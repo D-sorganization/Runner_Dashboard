@@ -16262,6 +16262,58 @@
         "tags": ["runners"]
       }
     },
+    "/api/runners/slot-health/evaluate": {
+      "post": {
+        "description": "Read-only slot-health analysis; optional publish to hub events and Barb lane.",
+        "operationId": "evaluate_slot_health_api_runners_slot_health_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Slot Health Api Runners Slot Health Evaluate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Evaluate Slot Health",
+        "tags": ["runners"]
+      }
+    },
     "/api/runners/{runner_id}/diagnostics": {
       "post": {
         "description": "Get detailed diagnostics for a specific runner.\n\nIncludes service status, recent activity, and potential troubleshooting info.\n\nArgs:\n    request: HTTP request.\n    runner_id: GitHub runner ID.\n\nReturns:\n    Dict with detailed diagnostics and troubleshooting info.\n\nRaises:\n    HTTPException: If runner not found.",

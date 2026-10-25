@@ -137,7 +137,10 @@ def detect_slot_health_flags(
         if slot_toolcache[key] >= 1:
             reasons.append("toolcache/setup-python signature")
         if total >= min_samples and fleet_rate > 0 and slot_rate >= rate_multiplier * fleet_rate:
-            reasons.append(f"{job_name} bad-outcome rate {slot_rate:.0%} >= {rate_multiplier:.0f}x fleet {fleet_rate:.0%} (n={total})")
+            reasons.append(
+                f"{job_name} bad-outcome rate {slot_rate:.0%} >= {rate_multiplier:.0f}x fleet "
+                f"{fleet_rate:.0%} (n={total})"
+            )
         elif total >= min_samples and fleet_rate == 0 and bad == total:
             reasons.append(f"{job_name} bad-outcome rate 100% with n={total}")
         if reasons:

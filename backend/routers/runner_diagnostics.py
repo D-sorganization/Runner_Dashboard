@@ -16,7 +16,6 @@ from gh_utils import gh_api_admin
 from identity import Principal, require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
-
 from slot_health import analyze_jobs, publish_slot_health_flags
 
 from .runner_helpers import (

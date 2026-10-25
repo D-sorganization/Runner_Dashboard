@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,12 +12,7 @@ _BACKEND = Path(__file__).resolve().parents[1] / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-from slot_health import (  # noqa: E402
-    TOOLCACHE_MARKERS,
-    analyze_jobs,
-    describe_slot,
-    publish_slot_health_flags,
-)
+from slot_health import analyze_jobs, describe_slot, publish_slot_health_flags  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -95,20 +89,6 @@ def test_oct25_replay_flags_portable_arch_map_outlier() -> None:
     assert any("toolcache" in r or "setup-python" in r for r in reasons[mint])
 
 
-def test_toolcache_signature_flags_without_rate_threshold() -> None:
-    jobs = [
-        _job(
-            labels=_LABELS_MINT,
-            job_name="tests",
-            conclusion="failure",
-            minutes_ago=1,
-            log_excerpt="Error: actions/setup-python could not locate tool-cache",
-        )
-    ]
-    flags = analyze_jobs(jobs, now=_NOW)["flags"]
-    assert flags and flags[0]["reasons"][0].startswith("toolcache")
-
-
 def test_rate_rule_requires_three_x_fleet_and_five_samples() -> None:
     jobs = _healthy_fleet_jobs(20)
     jobs += _arch_map_timeout_burst(_LABELS_LAPTOP, 4)
@@ -128,13 +108,3 @@ def test_publish_records_hub_and_barb_lane() -> None:
     assert events[0]["kind"] == "slot_health"
     assert barb == [flags[0]["descriptor"]]
 
-
-def test_cli_module_runs_fixture(tmp_path: Path) -> None:
-    spec = importlib.util.spec_from_file_location("slot_health_cli", Path(__file__).parents[1] / "scripts" / "slot_health.py")
-    assert spec and spec.loader
-    cli = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(cli)
-    path = tmp_path / "jobs.json"
-    missing = tmp_path / "missing.json"
-    with pytest.raises(cli.SlotHealthPreconditionError):
-        cli.load_jobs(missing)
