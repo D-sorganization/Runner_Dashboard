@@ -92,7 +92,11 @@ All endpoints are mounted on `/api/code-requests`:
   {
     "requests": [ ... ],
     "total": 1,
-    "dispatchTarget": { "workflow": "...", "available": true, "detail": "" }
+    "dispatchTarget": {
+      "workflow": "Agent-Quick-Dispatch.yml",
+      "available": true,
+      "detail": ""
+    }
   }
 ````
 
