@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,7 +13,10 @@ pytestmark = pytest.mark.unit
 
 
 def test_backend_env_preserves_loader_path_for_python_child(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    loader_path = str(tmp_path / "python-runtime")
+    # Keep the real loader path after the marker: on self-hosted runners the
+    # toolcache Python links a shared libpython that only loads through it.
+    inherited = os.environ.get("LD_LIBRARY_PATH", "")
+    loader_path = os.pathsep.join(filter(None, [str(tmp_path / "python-runtime"), inherited]))
     monkeypatch.setenv("LD_LIBRARY_PATH", loader_path)
     monkeypatch.setenv("STAFF_E2E_HOST_SECRET", "must-not-be-forwarded")
 

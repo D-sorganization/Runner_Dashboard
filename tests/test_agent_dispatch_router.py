@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
@@ -400,6 +401,39 @@ async def test_dispatch_to_issues_skips_when_premise_rejected() -> None:
         assert len(result.rejected) == 1
         assert "premise_rejected" in result.rejected[0]["reason"]
         assert "already_resolved_on_main" in result.rejected[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_uses_shared_duplicate_guard_before_launch() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=99,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix this issue",
+        force=False,
+    )
+    check = AsyncMock(
+        side_effect=HTTPException(
+            status_code=409,
+            detail={"code": "open_pr_exists", "message": "PR #100 already references issue #99"},
+        )
+    )
+    launch = _make_run_cmd(0)
+    with (
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", check),
+        patch("agent_dispatch_router.evaluate_dispatch_premise") as premise,
+    ):
+        result = await _dispatch_issues(req, run_cmd_fn=launch)
+
+    assert isinstance(result, BulkDispatchResponse)
+    assert result.accepted == 0
+    assert result.rejected[0]["reason"].startswith("open_pr_exists:")
+    check.assert_awaited_once_with("D-sorganization/runner-dashboard", 99)
+    premise.assert_not_awaited()
+    launch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
