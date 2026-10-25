@@ -1,10 +1,10 @@
 """Contracts for ``deploy/fleet-health-monitor.ps1``.
 
 The 2026-07-30 fleet outage went unnoticed for weeks because the deployed
-hub-a health monitor only watched the node-a-SSD pool: the
-hub-a runners sat offline until GitHub's 14-day auto-purge deleted
+DeskComputer health monitor only watched the ControlTower-SSD pool: the
+DeskComputer runners sat offline until GitHub's 14-day auto-purge deleted
 their registrations, and nothing alarmed. This canonical monitor closes the
-blind spot with per-pool online floors, a hub-a unit self-heal, and
+blind spot with per-pool online floors, a DeskComputer unit self-heal, and
 an explicit registration-purge alarm.
 
 Static checks run everywhere; behavioural checks drive the pure helpers via
@@ -65,7 +65,7 @@ def test_script_declares_contract_parameters() -> None:
 @PWSH_REQUIRED
 def test_script_exits_before_side_effects_when_drain_marker_exists(tmp_path: Path) -> None:
     """An operator drain must win over every keepalive and recovery action."""
-    marker = tmp_path / "hub-a-runner-drained.flag"
+    marker = tmp_path / "deskcomputer-runner-drained.flag"
     marker.write_text("drained\n", encoding="utf-8")
     result = run_pwsh_file(
         PWSH,
@@ -102,7 +102,7 @@ def test_script_exits_before_side_effects_when_enable_marker_is_absent(tmp_path:
 
 @PWSH_REQUIRED
 def test_functions_only_remains_available_while_drained(tmp_path: Path) -> None:
-    marker = tmp_path / "hub-a-runner-drained.flag"
+    marker = tmp_path / "deskcomputer-runner-drained.flag"
     marker.write_text("drained\n", encoding="utf-8")
     driver = (
         f". '{SCRIPT.as_posix()}' -FunctionsOnly -DrainMarker '{marker.as_posix()}'; "
@@ -117,12 +117,12 @@ def test_script_watches_all_pools_not_just_ct_ssd() -> None:
     """Regression guard for the 2026-07-30 blind spot."""
     text = SCRIPT.read_text(encoding="utf-8")
     assert "d-sorg-local-Desktop-" in text
-    assert "d-sorg-local-node-a-" in text
+    assert "d-sorg-local-ControlTower-" in text
     # The SSD / NVMe pools were retired 2026-08-28; watching their prefixes
     # again would re-create the 2026-09 blind spot in reverse (always 0/0).
-    assert "d-sorg-local-node-a-SSD-" not in text
-    assert "'node-a-Runner'" in text
-    assert "d-sorg-local-node-b-" in text
+    assert "d-sorg-local-ControlTower-SSD-" not in text
+    assert "'ControlTower-Runner'" in text
+    assert "d-sorg-local-Oglaptop-" in text
 
 
 def test_script_alarms_on_suspected_registration_purge() -> None:
@@ -143,15 +143,15 @@ def test_script_self_heals_desk_units_without_wsl_reset() -> None:
 
 
 def test_script_explicitly_quarantines_nvme_keepalive() -> None:
-    """Issue #1071 / #1078 quarantine guard: node-a-NVMe keepalive must be explicitly quarantined."""
+    """Issue #1071 / #1078 quarantine guard: ControlTower-NVMe keepalive must be explicitly quarantined."""
     text = SCRIPT.read_text(encoding="utf-8")
-    assert "node-a-NVMe-KeepAlive" in text
+    assert "ControlTower-NVMe-KeepAlive" in text
     assert "$quarantined" in text
 
 
 def test_ct_ssh_enforces_a_hard_timeout() -> None:
     """Regression guard: on 2026-07-31 a cycle hung >100 min inside the
-    node-a SSH call (the $TimeoutSec parameter existed but was never
+    ControlTower SSH call (the $TimeoutSec parameter existed but was never
     enforced) and MultipleInstances=IgnoreNew silently rejected every later
     firing. The SSH child must be waited on with a deadline and killed on
     expiry."""
@@ -161,16 +161,16 @@ def test_ct_ssh_enforces_a_hard_timeout() -> None:
     assert "ct_ssh_timeout" in text or "timed out" in text
 
 
-def test_script_guards_node_a_host_disk_space() -> None:
+def test_script_guards_controltower_host_disk_space() -> None:
     """A WSL2 vhdx that runs out of host disk mid-write corrupts the distro
     (null-byte files, corrupt package DB) — the probable origin of the #1071
     NVMe corruption, which on 2026-07-31 came within minutes of repeating on
-    the LIVE node-a-SSD pool (F: hit 2.05 GB free and falling). The
+    the LIVE ControlTower-SSD pool (F: hit 2.05 GB free and falling). The
     monitor must alarm on host free space, not just runner counts."""
     text = SCRIPT.read_text(encoding="utf-8")
     assert "$DiskFloorsGb" in text, "disk floors must be a declared parameter"
     assert "Test-DiskBelowFloor" in text
-    assert "DISKFREE=" in text, "the node-a probe must report free space"
+    assert "DISKFREE=" in text, "the ControlTower probe must report free space"
     assert "vhdx corruption risk" in text.lower()
 
 
@@ -214,15 +214,15 @@ def test_pool_counts_classify_by_prefix() -> None:
         $runners = @(
             @{ name = 'd-sorg-local-Desktop-1'; status = 'online' },
             @{ name = 'd-sorg-local-Desktop-2'; status = 'offline' },
-            @{ name = 'd-sorg-local-node-a-1'; status = 'online' },
-            @{ name = 'd-sorg-local-node-a-3'; status = 'offline' },
-            @{ name = 'd-sorg-local-node-a-windows-matlab-1'; status = 'online' },
-            @{ name = 'd-sorg-local-node-b-8'; status = 'online' }
+            @{ name = 'd-sorg-local-ControlTower-1'; status = 'online' },
+            @{ name = 'd-sorg-local-ControlTower-3'; status = 'offline' },
+            @{ name = 'd-sorg-local-ControlTower-windows-matlab-1'; status = 'online' },
+            @{ name = 'd-sorg-local-Oglaptop-8'; status = 'online' }
         ) | ForEach-Object { [pscustomobject]$_ }
         $c = Get-RunnerPoolCounts -Runners $runners
         Write-Output ("DESK=" + $c['Desktop'].online + "/" + $c['Desktop'].total)
-        Write-Output ("CT=" + $c['node-a-Runner'].online + "/" + $c['node-a-Runner'].total)
-        Write-Output ("OG=" + $c['NodeB'].online + "/" + $c['NodeB'].total)
+        Write-Output ("CT=" + $c['ControlTower-Runner'].online + "/" + $c['ControlTower-Runner'].total)
+        Write-Output ("OG=" + $c['Oglaptop'].online + "/" + $c['Oglaptop'].total)
         """
     )
     result = _run_ps(driver)
@@ -240,10 +240,10 @@ def test_pools_below_floor_detected() -> None:
         """
         $counts = @{
             'Desktop' = @{ online = 2; total = 8 }
-            'node-a-Runner' = @{ online = 3; total = 4 }
-            'NodeB' = @{ online = 8; total = 8 }
+            'ControlTower-Runner' = @{ online = 3; total = 4 }
+            'Oglaptop' = @{ online = 8; total = 8 }
         }
-        $floors = @{ 'Desktop' = 6; 'node-a-Runner' = 2; 'NodeB' = 4 }
+        $floors = @{ 'Desktop' = 6; 'ControlTower-Runner' = 2; 'Oglaptop' = 4 }
         $below = Get-PoolsBelowFloor -Counts $counts -Floors $floors
         Write-Output ("BELOW=" + ($below -join ','))
         """
@@ -259,7 +259,7 @@ def test_github_runner_json_parses_to_pool_counts() -> None:
         '{"total_count": 3, "runners": ['
         '{"name": "d-sorg-local-Desktop-1", "status": "online", "busy": true},'
         '{"name": "d-sorg-local-Desktop-2", "status": "offline", "busy": false},'
-        '{"name": "d-sorg-local-node-b-8", "status": "online", "busy": false}'
+        '{"name": "d-sorg-local-Oglaptop-8", "status": "online", "busy": false}'
         "]}"
     )
     driver = _prefix() + textwrap.dedent(
@@ -267,7 +267,7 @@ def test_github_runner_json_parses_to_pool_counts() -> None:
         $runners = ConvertFrom-GitHubRunnerJson -Json '{sample}'
         $c = Get-RunnerPoolCounts -Runners $runners
         Write-Output ("DESK=" + $c['Desktop'].online + "/" + $c['Desktop'].total)
-        Write-Output ("OG=" + $c['NodeB'].online + "/" + $c['NodeB'].total)
+        Write-Output ("OG=" + $c['Oglaptop'].online + "/" + $c['Oglaptop'].total)
         Write-Output ("BADJSON=" + ($null -eq (ConvertFrom-GitHubRunnerJson -Json 'not json')))
         Write-Output ("EMPTY=" + ($null -eq (ConvertFrom-GitHubRunnerJson -Json '')))
         """

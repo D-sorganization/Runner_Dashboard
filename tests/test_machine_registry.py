@@ -200,7 +200,10 @@ def test_normalize_machine_entry_minimal() -> None:
 
 def test_example_registry_node_c_disables_github_actions_runners() -> None:
     registry_path = (
-        Path(__file__).resolve().parents[1] / "backend" / "machine_registry.example.yml"
+        Path(__file__).resolve().parents[1]
+        / "backend"
+        / "fixtures"
+        / "machine_registry_node_c_documentation.yml"
     )
     registry = mr.load_machine_registry(path=registry_path)
     node_c = next(machine for machine in registry["machines"] if machine["name"] == "node-c")
@@ -355,9 +358,9 @@ def test_build_index_runner_pool_names_and_aliases_included() -> None:
     }
     index = mr.build_machine_registry_index(registry)
 
-    assert index["node-anvme"]["name"] == "node-a-NVMe"
+    assert index["nodeanvme"]["name"] == "node-a-NVMe"
     assert index["ctfast"]["name"] == "node-a-NVMe"
-    assert index["node-anvme"]["parent_machine"] == "node-a"
+    assert index["nodeanvme"]["parent_machine"] == "node-a"
 
 
 def test_build_index_empty_registry() -> None:
