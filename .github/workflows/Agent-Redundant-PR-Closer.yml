@@ -1,28 +1,8 @@
 name: Agent Redundant PR Closer
 
-# Closes redundant PRs across the multi-agent fleet by priority.
-#
-# When two or more open PRs in this repo reference the same issue via a
-# closing keyword (Fixes|Closes|Resolves #N), the PR from the highest-
-# priority agent wins and the rest are closed with a deferral comment.
-# ``Refs #N`` does not pair with a closing PR for the same issue (anti-phantom).
-# ``user``-authored PRs are never closed by automation.
-#
-# Priority order (see shared_scripts/agent_identity.py::PRIORITY_ORDER):
-#   user > maxwell-daemon > claude > codex > jules > local > gaai
-#
-# Triggers:
-# - Every time an **open** PR is opened, reopened, marked ready for review,
-#   or synchronized (fast response to new peer PRs)
-# - Schedule every 3 hours (backstop)
-# - Manual dispatch for ad-hoc runs
-#
-# Missing ``GITHUB_TOKEN`` or closer failures exit non-zero (no silent success).
-#
-# Back-compat: the workflow is named "Agent Redundant PR Closer" but
-# preserves the previous "Jules Redundant PR Closer" identifier by
-# keeping its concurrency group. Teams can still locate it in workflow
-# history.
+# Closes duplicate agent PRs that close the same issue (not ``Refs #N``). See
+# shared_scripts/agent_identity.py::PRIORITY_ORDER. Missing token or closer errors
+# exit non-zero. ``pull_request`` runs only while the PR is open.
 
 on:
   pull_request:
@@ -49,15 +29,11 @@ permissions:
   issues: write
 
 concurrency:
-  # Scope by PR number so one agent's synchronize does not cancel another PR's
-  # close-redundant run (cancelled jobs surface as failed required checks).
   group: jules-redundant-pr-closer-${{ github.workflow }}-${{ github.repository }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   close-redundant:
-    # Fork PRs never run on the self-hosted fleet (RM#1989).
-    # Closed PR events are ignored (no backstop runs on merged/closed PRs).
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -66,25 +42,11 @@ jobs:
     runs-on: d-sorg-fleet
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
           cache: "pip"
-
-      - name: Verify GitHub token
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if [ -z "${GITHUB_TOKEN:-}" ]; then
-            echo "::error::GITHUB_TOKEN is empty; cannot authenticate to GitHub API."
-            exit 1
-          fi
-
       - name: Close redundant agent PRs
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,31 +57,11 @@ jobs:
           AGENT_FILTER: ${{ inputs.agent_filter }}
         run: |
           set -euo pipefail
+          if [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "::error::GITHUB_TOKEN is empty; cannot authenticate to GitHub API."
+            exit 1
+          fi
           args=(--repo "$REPO_NAME")
-          if [ "$DRY_RUN_INPUT" = "true" ]; then
-            args+=(--dry-run)
-          fi
-          if [ -n "$AGENT_FILTER" ]; then
-            args+=(--agent-filter "$AGENT_FILTER")
-          fi
+          [ "$DRY_RUN_INPUT" = "true" ] && args+=(--dry-run)
+          [ -n "$AGENT_FILTER" ] && args+=(--agent-filter "$AGENT_FILTER")
           PYTHONPATH=".github/fleet-pr-cap:${PYTHONPATH:-}" python3 -m scripts.close_redundant_agent_prs "${args[@]}"
-
-      - name: Summary
-        if: always()
-        env:
-          REPO: ${{ github.repository }}
-          TRIGGER: ${{ github.event_name }}
-          DRY_RUN_DISPLAY: ${{ inputs.dry_run || 'false' }}
-          AGENT_FILTER_DISPLAY: ${{ inputs.agent_filter || 'all non-user' }}
-        run: |
-          {
-            echo "## Agent Redundant PR Closer"
-            echo ""
-            echo "- **Repo:** $REPO"
-            echo "- **Trigger:** $TRIGGER"
-            echo "- **Dry run:** $DRY_RUN_DISPLAY"
-            echo "- **Agent filter:** $AGENT_FILTER_DISPLAY"
-            echo "- **Credential:** GITHUB_TOKEN"
-            echo ""
-            echo "Per-run examined / closed / skipped counts are appended by the closer step."
-          } >> "$GITHUB_STEP_SUMMARY"
