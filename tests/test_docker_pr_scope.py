@@ -43,3 +43,11 @@ def test_arm_cap_reconcile_uses_python_311_or_newer() -> None:
     script = run_step["run"]
     assert "python3 scripts/arm_cap_reconcile.py" not in script
     assert "python3.11" in script or "python3.12" in script
+
+
+def test_redundant_pr_closer_concurrency_scoped_per_pull_request() -> None:
+    workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "Agent-Redundant-PR-Closer.yml").read_text(encoding="utf-8")
+    )
+    group = workflow["concurrency"]["group"]
+    assert "pull_request.number" in group or "github.run_id" in group
