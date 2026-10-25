@@ -297,7 +297,7 @@ jobs:
               echo "No changed source files require line-cap enforcement."
               exit 0
             fi
-            OVER=$(printf '%s\n' "$FILES" | xargs -r wc -l | awk '$1 > 500 {print $1, $2}')
+            OVER=$(printf '%s\n' "$FILES" | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           else
             OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "$EXEMPT" | awk '$1 > 500 {print $1, $2}')
           fi
