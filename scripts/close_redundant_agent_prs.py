@@ -25,21 +25,25 @@ _FLEET_CAP = _REPO_ROOT / ".github" / "fleet-pr-cap"
 _DEFERRAL = "Closing as redundant: a higher-priority open PR already closes #{issue}."
 
 
-def _load_fleet_module(rel_path: str, module_name: str) -> ModuleType:
-    cap_path = str(_FLEET_CAP)
-    if cap_path not in sys.path:
-        sys.path.insert(0, cap_path)
-    target = _FLEET_CAP / rel_path
-    spec = importlib.util.spec_from_file_location(module_name, target)
+def _load_module_from_path(qualified_name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(qualified_name, path)
     if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load fleet module from {target}")
+        raise ImportError(f"Cannot load module from {path}")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
+    sys.modules[qualified_name] = module
     spec.loader.exec_module(module)
     return module
 
 
-_ai = _load_fleet_module("shared_scripts/agent_identity.py", "fleet_agent_identity")
+def _load_fleet_agent_identity() -> ModuleType:
+    """Load fleet PR identity even when repo-root ``shared_scripts`` is already imported."""
+    pr_key = "shared_scripts.pr_agent_identity"
+    if pr_key not in sys.modules:
+        _load_module_from_path(pr_key, _FLEET_CAP / "shared_scripts/pr_agent_identity.py")
+    return _load_module_from_path("fleet_agent_identity", _FLEET_CAP / "shared_scripts/agent_identity.py")
+
+
+_ai = _load_fleet_agent_identity()
 identify_agent = _ai.identify_agent
 outranks = _ai.outranks
 resolve_pr_agent = _ai.resolve_pr_agent
