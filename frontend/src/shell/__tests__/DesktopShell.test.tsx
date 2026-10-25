@@ -75,11 +75,14 @@ describe("DesktopShell — structure", () => {
     renderShell({ activeTabId: "projects" });
     fireEvent.click(screen.getByRole("button", { name: /ask barb/i }));
     const panel = await screen.findByTestId("barb-sidebar");
+    expect(document.querySelector(".desktop-shell")).toHaveClass("desktop-shell--barb-open");
 
     fireEvent.click(screen.getByTestId("ask-barb-toggle"));
     expect(panel).toHaveAttribute("aria-hidden", "true");
+    expect(document.querySelector(".desktop-shell")).not.toHaveClass("desktop-shell--barb-open");
     fireEvent.click(screen.getByTestId("ask-barb-toggle"));
     expect(screen.getByTestId("barb-sidebar")).toBe(panel);
+    expect(document.querySelector(".desktop-shell")).toHaveClass("desktop-shell--barb-open");
   });
 
   it("renders the page body in a main landmark", () => {
