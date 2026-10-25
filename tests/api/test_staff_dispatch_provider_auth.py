@@ -41,7 +41,7 @@ async def test_dispatch_refuses_expired_antigravity_oauth() -> None:
                     "to_http_detail": lambda self: {
                         "code": "provider_auth_expired",
                         "message": "Authentication expired for antigravity",
-                        "remediation": "Run `agy auth login` on node DeskComputer.",
+                        "remediation": "Run `agy auth login` on node hub-a.",
                         "failure_class": "auth_expired",
                     }
                 },
@@ -49,7 +49,7 @@ async def test_dispatch_refuses_expired_antigravity_oauth() -> None:
         ),
     ):
         runner = mock_runner.return_value
-        runner.machine = "DeskComputer"
+        runner.machine = "hub-a"
         runner.plan.return_value = type("Plan", (), {"provider": "antigravity", "role": "night-watch"})()
         with pytest.raises(HTTPException) as exc:
             await dispatch_staff_run(cmd, caller)

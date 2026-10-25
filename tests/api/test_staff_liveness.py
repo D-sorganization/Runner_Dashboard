@@ -201,18 +201,18 @@ async def test_aggregate_board_carries_liveness_and_alerts_from_online_nodes(mon
 
     async def fake_get(url: str, headers: dict[str, str]) -> dict[str, Any]:
         if "og:" in url:
-            return _board("OGLaptop", [dead, ok])
+            return _board("node-b", [dead, ok])
         raise ConnectionError("boom")
 
     monkeypatch.setattr(fleet_mod, "get_json", fake_get)
     merged = await fleet_mod.aggregate_board(
         _board("Desk", [{"role": "hourly", "status": "late"}]),
-        {"OGLaptop": "http://og:8321", "ControlTower": "http://ct:8321"},
+        {"node-b": "http://og:8321", "node-a": "http://ct:8321"},
     )
-    assert merged["machines"]["OGLaptop"]["liveness"] == [dead, ok]
+    assert merged["machines"]["node-b"]["liveness"] == [dead, ok]
     assert merged["liveness_alerts"] == [
         {"role": "hourly", "status": "late", "machine": "Desk"},
-        {"role": "night-watch", "status": "dead", "machine": "OGLaptop"},
+        {"role": "night-watch", "status": "dead", "machine": "node-b"},
     ]
 
 

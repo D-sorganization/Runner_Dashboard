@@ -12,7 +12,7 @@ The authority applies each event with an idempotent, version-gated upsert.
 
 ## Defaults (binding)
 
-1. The authority is the machine-registry `hub` (ControlTower), configurable with `BARB_AUTHORITY_NODE`,
+1. The authority is the machine-registry `hub` (node-a), configurable with `BARB_AUTHORITY_NODE`,
    `BARB_AUTHORITY_URL`, `BARB_AUTHORITY_EPOCH` or a `barb_authority` manifest key. Unconfigured means the legacy
    single-node behaviour (this PR changes nothing until an operator opts in).
 2. RPO = 0 is defined against the authority's durable commit (`PRAGMA synchronous=FULL` on the conversation

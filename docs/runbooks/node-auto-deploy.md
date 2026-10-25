@@ -47,7 +47,7 @@ bash deploy/install-node-auto-deploy.sh
 ```
 
 This copies the auto-deploy scripts into the live deploy dir, installs the timer
-(system scope on DeskComputer WSL hub, user scope on Brick), and enables it.
+(system scope on hub-a WSL hub, user scope on node-c), and enables it.
 The generated unit pins `RUNNER_DASHBOARD_PYTHON` to the same interpreter as
 `runner-dashboard` (deploy `.venv` or the dashboard unit’s `ExecStart`).
 

@@ -12,7 +12,7 @@ const PULL_FIXTURE = {
     repo_full: "D-sorganization/Runner_Dashboard",
     number: 2111,
     title: "perf(fleet): bound /api/fleet/status cold path (#2110)",
-    author_login: "dieterolson",
+    author_login: "fleet-operator",
     html_url: "https://github.com/D-sorganization/Runner_Dashboard/pull/2111",
   },
   check_runs: [

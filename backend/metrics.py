@@ -19,7 +19,7 @@ def _resolve_windows_host_disk_path(
     """Return the mounted Windows path that backs this runner pool's WSL VHDX.
 
     Operators can set RUNNER_WINDOWS_HOST_PATH for non-C: WSL installs such as
-    the ControlTower-SSD runner pool on F:. The old hard-coded /mnt/c fallback remains for
+    the node-a-SSD runner pool on F:. The old hard-coded /mnt/c fallback remains for
     existing deployments, but it is no longer treated as universally correct.
     """
     candidates: list[Path] = []

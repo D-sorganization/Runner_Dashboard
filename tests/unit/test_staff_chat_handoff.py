@@ -36,7 +36,7 @@ class _Bus:
 
 def _ask(store: ConversationStore, text: str = "analyse the queue") -> tuple[str, str]:
     th = store.create_thread(title="Ask Barb", kind="auto", participants=["barb", "dieter"])
-    msg = store.add_message(thread_id=th.id, author_kind="user", author="dieter", body_md=text)
+    msg = store.add_message(thread_id=th.id, author_kind="user", author="operator", body_md=text)
     return th.id, msg.id
 
 
@@ -48,7 +48,7 @@ def _handoff(store: ConversationStore, bus: _Bus, **overrides: Any) -> Any:
         "from_role": "barb",
         "to_role": "e2e-analyst",
         "reply": "That is an analysis question, so I am handing it over.",
-        "caller_id": "dieter",
+        "caller_id": "operator",
         "known_roles": KNOWN,
         "store": store,
         "bus": bus,
@@ -137,7 +137,7 @@ def test_the_background_turn_posts_the_handoff_the_reply_named() -> None:
         "from_role": "barb",
         "to_role": "e2e-analyst",
         "reply": "Over to the analyst.",
-        "caller_id": "dieter",
+        "caller_id": "operator",
     }
 
 

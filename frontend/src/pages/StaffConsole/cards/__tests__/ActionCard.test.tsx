@@ -124,7 +124,7 @@ describe("ActionCard", () => {
     const decidedProposal: ActionProposalData = {
       ...MOCK_PROPOSAL,
       status: "approved",
-      decided_by: "dieter",
+      decided_by: "operator",
       decided_at: "2026-09-25T11:00:00.000Z",
     };
 
