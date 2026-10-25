@@ -231,6 +231,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
           isPanel={false}
           prefilledText={composerPrefill}
           prefillSeq={prefillSeq}
+          conversationOpening={sc.openingRole !== null}
         />
       </div>
     </aside>

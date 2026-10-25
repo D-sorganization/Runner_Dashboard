@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller
-from staff import consolidation
+from staff import claim_guard, consolidation
 from staff import fleet as staff_fleet
 from staff.audit import AuditError, record_audit
 from staff.budget import BudgetGuard
@@ -85,6 +85,9 @@ class DispatchCommand:
     requested_skill: str | None = None
     # Force duplicate run/PR: bypasses pre-dispatch open-PR and active-run guards (#2254).
     force_duplicate: bool = False
+    # Operator-only (staff.admin) override of a foreign claim:* label / closing PR; needs a reason, audited (#2562).
+    force_claim_override: bool = False
+    claim_override_reason: str = ""
     execution_mode: str = "local"
 
     def __post_init__(self) -> None:
@@ -108,6 +111,9 @@ class DispatchCommand:
             body.pop("model_tier")
         if not body.get("force_duplicate"):
             body.pop("force_duplicate", None)
+        if not body["force_claim_override"]:
+            body.pop("force_claim_override")
+            body.pop("claim_override_reason")
         return body
 
     def run_id(self) -> str:
@@ -211,10 +217,24 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     """
     _refuse_if_excluded(cmd)
 
+    if not cmd.dry_run and cmd.issue and cmd.repo:
+        attempt_block = claim_guard.issue_attempt_blocker(
+            get_runner().store,
+            role=cmd.role,
+            repo=cmd.repo,
+            issue=cmd.issue,
+        )
+        if attempt_block is not None:
+            raise HTTPException(status_code=409, detail=attempt_block.to_detail())
+
     if not cmd.dry_run and not cmd.force_duplicate and cmd.issue and cmd.repo:
         from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
 
-        await check_duplicate_pr_or_run(cmd.repo, cmd.issue, current_run_id=cmd.run_id())
+        await check_duplicate_pr_or_run(
+            cmd.repo, cmd.issue, current_run_id=cmd.run_id(), check_open_pr=not cmd.force_claim_override
+        )
+
+    claim_info = await claim_guard.enforce_claim_guard(cmd, caller)
 
     if not cmd.dry_run and not cmd.skip_premise_check and (cmd.issue or cmd.prompt):
         from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
@@ -224,6 +244,8 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             repository=cmd.repo,
             issue_number=cmd.issue,
             prompt=cmd.prompt,
+            check_claim_labels=not claim_guard.enabled(),
+            check_open_pr=not cmd.force_claim_override,
         )
         if not premise_res.allowed:
             await log_dispatch_skip(premise_res, cmd.repo, cmd.issue)
@@ -369,7 +391,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
             )
         except AuditError as exc:
             log.warning("staff: dry-run dispatch audit skipped: %s", exc)
-        return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine}
+        return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine, **claim_info}
     budget_ok, budget_reason = BudgetGuard(runner.store).can_dispatch(spec, plan.provider)
     if not budget_ok and not cmd.ignore_budget:
         raise HTTPException(
@@ -404,6 +426,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 "machine": runner.machine,
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
+                **({"claim_check": claim_info["claim_check"]} if claim_info else {}),
                 **({"provider_auth_failover": list(plan.provider_auth_skipped)} if plan.provider_auth_skipped else {}),
             },
             fail_closed=True,
@@ -426,6 +449,10 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
                 model=None,
                 outcome=str(row.get("outcome") or "auth_expired"),
             )
+    if created and cmd.issue and cmd.repo and claim_info.get("claim_check") != "unavailable":
+        applied = await claim_guard.apply_claim(rec.id, cmd.repo, cmd.issue, rec.role)
+        if applied:
+            runner.store.append_event(rec.id, "claim_label", f"{claim_guard.full_repo(cmd.repo)}#{cmd.issue} {applied}")
     if created:
         from staff.routing_shadow import record_for_run  # noqa: PLC0415
 
@@ -447,7 +474,7 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
         rec.target_ref,
         cmd.requested_by,
     )
-    return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine}
+    return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine, **claim_info}
 
 
 def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, audit_ctx: dict[str, Any]) -> None:

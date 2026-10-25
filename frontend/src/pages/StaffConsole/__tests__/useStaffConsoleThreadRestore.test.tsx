@@ -65,6 +65,26 @@ afterEach(() => {
 });
 
 describe("selected role thread restoration", () => {
+  it("marks the initial render as restoring until the role thread list resolves", async () => {
+    let resolveThreads!: (threads: ThreadInfo[]) => void;
+    const deps = threadApi({
+      listThreads: vi.fn(() => new Promise<ThreadInfo[]>((resolve) => { resolveThreads = resolve; })),
+    });
+    const { result } = renderHook(() =>
+      useStaffConsole({
+        roles: ROLES,
+        initialRole: "barb",
+        restoreInitialRoleThread: true,
+        threadApi: deps,
+        streamEnabled: false,
+      }),
+    );
+
+    expect(result.current.openingRole).toBe("barb");
+    await act(async () => resolveThreads([]));
+    await waitFor(() => expect(result.current.openingRole).toBeNull());
+    expect(result.current.activeThread).toBeNull();
+  });
   it("prefers a selected thread only when it belongs to the requested role", async () => {
     const selectedBarbThread: ThreadInfo = {
       ...MAINT_THREAD,
