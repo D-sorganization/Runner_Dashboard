@@ -6,8 +6,8 @@ import pytest
 
 from shared_scripts.ci_pr_supersession_gate import pr_cancel_is_superseded_neutral
 
-SHA_A = "abc1234567890abcdef0123456789abcdef0123456"
-SHA_B = "def0123456789abcdef0123456789abcdef01234567"
+SHA_A = "abc1234567890abcdef0123456789abcdef0123456"  # pragma: allowlist secret
+SHA_B = "def0123456789abcdef0123456789abcdef01234567"  # pragma: allowlist secret
 
 
 @pytest.mark.parametrize(
