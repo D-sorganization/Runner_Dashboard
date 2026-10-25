@@ -664,13 +664,22 @@ jobs:
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
         run: |
+          notice_cancelled() {
+            if [ "$1" = "cancelled" ]; then
+              echo "::notice::$2 cancelled (superseded by a newer workflow run)."
+              return 0
+            fi
+            return 1
+          }
           echo "changes: $CHANGES (tier=$TIER, run_python_tests=$RUN_PYTHON_TESTS)"
           echo "ci-health-check: $HEALTH"
           echo "tests: $TESTS"
+          notice_cancelled "$CHANGES" changes && exit 0
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES'; cannot trust the tier decision."
             exit 1
           fi
+          notice_cancelled "$HEALTH" ci-health-check && exit 0
           if [ "$HEALTH" != "success" ]; then
             echo "::error::ci-health-check reported '$HEALTH'; cannot trust the Python scope decision."
             exit 1
@@ -683,6 +692,7 @@ jobs:
             fi
             exit 0
           fi
+          notice_cancelled "$TESTS" tests && exit 0
           if [ "$TESTS" != "success" ]; then
             echo "::error::Python test matrix reported '$TESTS', expected 'success'."
             exit 1
