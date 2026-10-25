@@ -44,8 +44,10 @@ from dispatch_routing import (
     resolve_model_routing,
 )
 from epic_expansion import expansion_routing, render_expansion_prompt
+from fastapi import HTTPException
 from identity import identity_manager
 from pydantic import BaseModel, Field
+from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
 from time_utils import utc_now_iso
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
@@ -599,6 +601,20 @@ async def dispatch_to_issues(
                         "repository": repo,
                         "number": num,
                         "reason": f"not_pickable: {not_pickable}",
+                    }
+                )
+                continue
+            try:
+                await check_duplicate_pr_or_run(repo, num)
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+                code = str(detail.get("code") or "launch_gate_rejected")
+                message = str(detail.get("message") or detail)
+                pre_rejected.append(
+                    {
+                        "repository": repo,
+                        "number": num,
+                        "reason": f"duplicate_guard: {code} ({message})",
                     }
                 )
                 continue

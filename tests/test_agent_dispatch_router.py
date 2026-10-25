@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
@@ -455,6 +456,34 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             assert "queued_overlapping_paths" in res2.rejected[0]["reason"]
     finally:
         adr._ISSUE_DISPATCH_HISTORY_PATH = original
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_rejects_preflight_duplicates() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=1847,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix issue #1847",
+        force=False,
+    )
+    conflict = HTTPException(
+        status_code=409,
+        detail={"code": "open_pr_exists", "message": "Open PR already targets this issue"},
+    )
+    with (
+        patch("agent_dispatch_router.check_duplicate_pr_or_run", side_effect=conflict),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock) as premise,
+    ):
+        result = await _dispatch_issues(req)
+    assert isinstance(result, BulkDispatchResponse)
+    assert result.accepted == 0
+    assert len(result.rejected) == 1
+    assert "duplicate_guard: open_pr_exists" in result.rejected[0]["reason"]
+    premise.assert_not_called()
 
 
 # ─── USE-1 (#1865): effort per dispatch kind and expand_epic_children ────────
