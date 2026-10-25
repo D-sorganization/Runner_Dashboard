@@ -417,13 +417,13 @@ def test_job_completed_clears_runner_temp_contents(tmp_path: Path) -> None:
     assert not (locks / "r1.lock").exists(), "the busy lockfile is still removed"
 
 
-def test_job_completed_derives_temp_from_the_workspace(tmp_path: Path) -> None:
-    temp = tmp_path / "runner-1" / "_work" / "_temp"
+def test_job_completed_derives_temp_from_the_workspace(outside_work_tree_path: Path) -> None:
+    temp = outside_work_tree_path / "runner-1" / "_work" / "_temp"
     _seed_temp(temp)
-    ws = tmp_path / "runner-1" / "_work" / "Demo" / "Demo"
+    ws = outside_work_tree_path / "runner-1" / "_work" / "Demo" / "Demo"
     ws.mkdir(parents=True)
 
-    assert _run_job_completed(tmp_path, {"GITHUB_WORKSPACE": as_bash_path(ws)}).returncode == 0
+    assert _run_job_completed(outside_work_tree_path, {"GITHUB_WORKSPACE": as_bash_path(ws)}).returncode == 0
     assert sorted(p.name for p in temp.iterdir()) == ["_runner_file_commands"]
 
 
