@@ -163,6 +163,7 @@ export function OperationsDeploySection({
             type="button"
             onClick={load}
             disabled={loading}
+            title="Reload deployment rollout status and version drift"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -407,6 +408,7 @@ export function OperationsDeploySection({
           <button
             type="submit"
             disabled={deployBusy || !deployAction || !deployConfirmed}
+            title="Run the selected deployment action on the chosen targets"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",

@@ -165,12 +165,12 @@ function stubWebAuthnUnavailable() {
 }
 
 async function unlockCredentials() {
-  const unlockBtn = screen.getByRole("button", { name: /unlock with biometrics/i });
+  const unlockBtn = screen.getByRole("button", { name: /unlock credentials with biometrics/i });
   await act(async () => {
     fireEvent.click(unlockBtn);
   });
   await waitFor(() => {
-    expect(screen.queryByRole("button", { name: /unlock with biometrics/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /unlock credentials with biometrics/i })).not.toBeInTheDocument();
   });
 }
 
@@ -196,7 +196,7 @@ describe("CredentialsMobile", () => {
     render(<CredentialsMobile />);
 
     expect(
-      screen.getByRole("button", { name: /unlock with biometrics/i }),
+      screen.getByRole("button", { name: /unlock credentials with biometrics/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("region", { name: /credentials locked/i }),
@@ -278,7 +278,7 @@ describe("CredentialsMobile", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /unlock with biometrics/i }),
+        screen.getByRole("button", { name: /unlock credentials with biometrics/i }),
       ).toBeInTheDocument();
     });
   });

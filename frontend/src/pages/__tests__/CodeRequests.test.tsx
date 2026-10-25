@@ -80,7 +80,7 @@ describe("CodeRequestsTab", () => {
       screen.getByPlaceholderText("Describe the code request to plan and execute…"),
       { target: { value: "Add a widget" } },
     );
-    fireEvent.click(screen.getByRole("button", { name: "TDD" }));
+    fireEvent.click(screen.getByRole("button", { name: /Toggle TDD coding standard/i }));
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
     expect(onDispatch).toHaveBeenCalledTimes(1);
     const payload = onDispatch.mock.calls[0][0];
@@ -166,9 +166,9 @@ describe("CodeRequestsTab", () => {
       screen.getByPlaceholderText("Describe the code request to plan and execute…"),
       { target: { value: "x" } },
     );
-    fireEvent.click(screen.getByRole("button", { name: "DRY" }));
-    fireEvent.click(screen.getByRole("button", { name: "SECURITY" }));
-    fireEvent.click(screen.getByRole("button", { name: "DRY" })); // toggle off
+    fireEvent.click(screen.getByRole("button", { name: /Toggle DRY coding standard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Toggle SECURITY coding standard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Toggle DRY coding standard/i })); // toggle off
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/ }));
     expect(onDispatch.mock.calls[0][0].standards).toEqual(["security"]);
   });

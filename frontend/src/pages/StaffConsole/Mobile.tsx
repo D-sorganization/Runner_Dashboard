@@ -426,6 +426,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                               data-testid={`staff-mobile-role-${role.name}`}
                               role="button"
                               tabIndex={0}
+                              title={`Open a conversation with ${role.title}`}
                               onClick={() => handleSelectRole(role.name)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -442,7 +443,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                                 )}
                               </div>
                               {role.caller_unread_count ? (
-                                <span className="staff-mobile__unread-badge">
+                                <span
+                                  className="staff-mobile__unread-badge"
+                                  title={`${role.caller_unread_count} unread message${role.caller_unread_count === 1 ? "" : "s"}`}
+                                >
                                   {role.caller_unread_count}
                                 </span>
                               ) : null}
