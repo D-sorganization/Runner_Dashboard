@@ -92,6 +92,7 @@ async def check_duplicate_pr_or_run(
     from dispatch_premise import _normalize_repo
 
     full_repo = _normalize_repo(repo)
+
     async def _gh_get(endpoint: str) -> Any:
         if gh_get_fn:
             return await gh_get_fn(endpoint)
@@ -160,16 +161,14 @@ async def check_duplicate_pr_or_run(
         closed_pulls_raw = await _gh_get(f"/repos/{full_repo}/pulls?state=closed&per_page=100")
         closed_pulls = closed_pulls_raw if isinstance(closed_pulls_raw, list) else []
         merged_hit = next(
-            (
-                pr
-                for pr in closed_pulls
-                if pr.get("merged_at") and is_issue_referenced_in_pr(pr, issue)
-            ),
+            (pr for pr in closed_pulls if pr.get("merged_at") and is_issue_referenced_in_pr(pr, issue)),
             None,
         )
         if isinstance(merged_hit, dict):
             pr_num = merged_hit.get("number")
-            pr_url = merged_hit.get("html_url") or merged_hit.get("url") or f"https://github.com/{full_repo}/pull/{pr_num}"
+            pr_url = (
+                merged_hit.get("html_url") or merged_hit.get("url") or f"https://github.com/{full_repo}/pull/{pr_num}"
+            )
             raise HTTPException(
                 status_code=409,
                 detail={
@@ -199,9 +198,7 @@ async def check_duplicate_pr_or_run(
                 lane_counts[lane_key] = lane_counts.get(lane_key, 0) + 1
             duplicate_lane = next((lane for lane, count in lane_counts.items() if count > 1), "")
             example = matching_branches[0]
-            message = (
-                f"Existing branch '{example}' already targets {repo}#{issue}; do not launch another issue run."
-            )
+            message = f"Existing branch '{example}' already targets {repo}#{issue}; do not launch another issue run."
             detail: dict[str, Any] = {
                 "code": "issue_branch_exists",
                 "message": message,
