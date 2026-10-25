@@ -10,9 +10,14 @@
           },
           "nodes": [
             {
+<<<<<<< HEAD
               "state": "MERGEABLE",
               "headCommit": {
                 "oid": "0000000000000000000000000000000000000abc"
+=======
+              "headCommit": {
+                "oid": "abc1234567890abcdef0123456789abcdef0123456"
+>>>>>>> c8b33764 (ci: wire queued-job reaper to GITHUB_TOKEN and fixed mergeQueue GraphQL)
               }
             }
           ]

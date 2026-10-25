@@ -1,52 +1,12 @@
 name: Queued Job Reaper
 
-# Periodically cancels stale queued GitHub Actions jobs. The current
-# self-contained policy cancels only `unsatisfiable_runner_labels`; when the
-# dashboard stale API exposes `safe_to_cancel=true` candidates, the same dry-run,
-# reason-filter, and max-cancel controls should be used for
-# `superseded_pr_head` candidates instead of growing more inline bash.
+# Cancels superseded pull_request workflow runs and dequeued merge_group runs.
+# merge_group cancellations call ``may_cancel_merge_group_run`` against live
+# GraphQL ``mergeQueue.entries`` so live queue heads are never cancelled.
+# Main-branch push runs are never cancelled.
 #
-# Why: when a workflow specifies `runs-on: [self-hosted, <typo>]` and no
-# online runner advertises every requested label, the job sits queued
-# forever (no error, no timeout). This reaper converts that silent hang
-# into a visible cancellation within ~15 minutes.
-#
-# Algorithm (per repo in the org):
-#   1. Pull the set of *online, non-busy-or-not* self-hosted runners and
-#      the labels each advertises (org-level REST API).
-#   2. List workflow runs in status=queued.
-#   3. For each queued run older than --min-age minutes:
-#        a. Fetch each job's requested `labels` via
-#           /repos/{owner}/{repo}/actions/runs/{run_id}/jobs (the `labels`
-#           field on a queued job is the resolved label expression).
-#        b. Skip jobs that target GitHub-hosted runners (ubuntu-*,
-#           windows-*, macos-*) — those are GitHub's queue, not the
-#           fleet's; concurrency/billing hangs are out of scope.
-#        c. Skip jobs whose label set is fully contained in *some* online
-#           runner's label set (i.e. there exists a runner whose labels
-#           are a superset of the requested labels). That job is just
-#           waiting for the runner to free up — leave it alone.
-#        d. Otherwise the job is unsatisfiable. Cancel the run and append
-#           to the $GITHUB_STEP_SUMMARY audit log.
-#
-# Disable: set repo variable QUEUED_JOB_REAPER_DISABLED=true, or disable
-# this workflow in the Actions tab, or set workflow_dispatch input
-# `dry-run: true` to force read-only mode without disabling the schedule.
-#
-# Safety policy:
-#   - Manual runs default to dry-run.
-#   - Scheduled runs are capped by `max-cancel` and only cancel the built-in
-#     safe reason `unsatisfiable_runner_labels` until the stale API classifier
-#     owns richer reasons such as `superseded_pr_head`.
-#   - Current-head required checks, releases, tag workflows, and deploys are
-#     intentionally out of scope for the self-contained fallback.
-#
-# Token scopes required (org-admin to enumerate runners):
-#   - actions: write (cancel runs)
-#   - administration: read on the org (list org runners)
-#   - contents: read
-# Provided here via the existing JULES_APP_* GitHub App credentials,
-# which already carry org-self-hosted-runners:read elsewhere in this repo.
+# Disable: set repo variable QUEUED_JOB_REAPER_DISABLED=true, or disable this
+# workflow in the Actions tab, or run workflow_dispatch with dry-run true.
 
 on:
   schedule:
@@ -60,37 +20,23 @@ on:
         type: choice
         options: ["true", "false"]
       min-age-minutes:
-        description: "Only consider runs queued for at least this many minutes."
+        description: "Only consider runs at least this many minutes old."
         required: false
         default: "20"
         type: string
-      reason-filter:
-        description: "Only consider runs with this stale reason."
-        required: false
-        default: ""
-        type: string
       max-cancel:
-        description: "Cap the maximum number of runs to cancel in a single sweep; remaining runs are skipped (max-cancel reached)."
+        description: "Cap cancellations per sweep."
         required: false
         default: "10"
         type: string
-      safe-to-cancel-only:
-        description: "Only cancel runs with reasons marked safe_to_cancel=true."
-        required: false
-        default: "true"
-        type: choice
-        options: ["true", "false"]
 
 permissions:
   contents: read
   actions: write
+  pull-requests: read
 
 concurrency:
   group: queued-job-reaper
-  # cancel-in-progress: true — if a prior reaper run is somehow still alive
-  # when the next 15-minute cron fires, the newer scan supersedes it; the
-  # cancellation operations themselves are idempotent (cancelling an already
-  # cancelled run is a no-op).
   cancel-in-progress: true
 
 jobs:
@@ -98,52 +44,10 @@ jobs:
     runs-on: [self-hosted, d-sorg-fleet]
     timeout-minutes: 13
     steps:
-      - name: Preflight Jules app credentials
-        id: credential-preflight
-        env:
-          JULES_APP_CLIENT_ID: ${{ secrets.JULES_APP_ID }}
-          JULES_APP_PRIVATE_KEY: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: | # pragma: allowlist secret
-          missing=0
-          if [ -z "$JULES_APP_CLIENT_ID" ]; then
-            echo "::warning title=Missing GitHub App credential::JULES_APP_ID is not configured."
-            missing=1
-          fi
-          if [ -z "$JULES_APP_PRIVATE_KEY" ]; then
-            echo "::warning title=Missing GitHub App credential::JULES_APP_PRIVATE_KEY is not configured."
-            missing=1
-          fi
-          if [ "$missing" -ne 0 ]; then
-            echo "credentials-present=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "## Queued Job Reaper"
-              echo ""
-              echo "- **Status:** skipped"
-              echo "- **Reason:** missing GitHub App credentials"
-            } >> "$GITHUB_STEP_SUMMARY"
-            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-              echo "::error::Configure JULES_APP_ID and JULES_APP_PRIVATE_KEY before manually running this workflow."
-              exit 1
-            fi
-            exit 0
-          fi
-          echo "credentials-present=true" >> "$GITHUB_OUTPUT"
-
-      - name: Generate Jules app token
-        if: steps.credential-preflight.outputs.credentials-present == 'true'
-        id: app-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: ${{ secrets.JULES_APP_ID }}
-          private-key: ${{ secrets.JULES_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          permission-actions: write
-          permission-contents: read
-          permission-organization-self-hosted-runners: read
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Check kill switch
-        if: steps.credential-preflight.outputs.credentials-present == 'true'
         id: kill-switch
         env:
           DISABLED_FLAG: ${{ vars.QUEUED_JOB_REAPER_DISABLED }}
@@ -160,19 +64,17 @@ jobs:
             echo "disabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Reap unsatisfiable queued runs
-        if: steps.credential-preflight.outputs.credentials-present == 'true' && steps.kill-switch.outputs.disabled != 'true'
+      - name: Reap superseded workflow runs
+        if: steps.kill-switch.outputs.disabled != 'true'
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          ORG: D-sorganization
-          DRY_RUN: ${{ inputs.dry-run || 'false' }}
-          MIN_AGE_MINUTES: ${{ inputs.min-age-minutes || '20' }}
-          REASON_FILTER: ${{ inputs.reason-filter || '' }}
-          MAX_CANCEL: ${{ inputs.max-cancel || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 scripts/reap_queued_jobs.py \
+          set -euo pipefail
+          if [ -z "${GITHUB_TOKEN:-}" ]; then
+            echo "::error::GITHUB_TOKEN is empty; cannot authenticate to GitHub API."
+            exit 1
+          fi
+          python3 scripts/reap_github_workflow_runs.py \
             --dry-run "${{ github.event_name == 'schedule' && 'false' || inputs.dry-run || 'true' }}" \
             --min-age-minutes "${{ inputs.min-age-minutes || '20' }}" \
-            --safe-to-cancel-only "${{ github.event_name == 'schedule' && 'true' || inputs.safe-to-cancel-only || 'true' }}" \
-            --reason-filter "${{ inputs.reason-filter || '' }}" \
-            --max-cancel "${{ inputs.max-cancel || '' }}"
+            --max-cancel "${{ inputs.max-cancel || '10' }}"
