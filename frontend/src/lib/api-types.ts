@@ -4993,6 +4993,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/schedule/leader-lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Leader Lease
+         * @description Acquire or renew the scheduler leader lease (fleet peer internal contract).
+         */
+        post: operations["post_leader_lease_api_staff_schedule_leader_lease_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/schedule/toggle": {
         parameters: {
             query?: never;
@@ -9600,6 +9620,13 @@ export interface components {
              * @description Provider id to launch auth for
              */
             provider: string;
+        };
+        /** LeaderLeaseBody */
+        LeaderLeaseBody: {
+            /** Machine */
+            machine: string;
+            /** Ttl Seconds */
+            ttl_seconds?: number | null;
         };
         /**
          * LeaseRequest
@@ -19352,6 +19379,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffScheduleResponse"];
+                };
+            };
+        };
+    };
+    post_leader_lease_api_staff_schedule_leader_lease_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaderLeaseBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
