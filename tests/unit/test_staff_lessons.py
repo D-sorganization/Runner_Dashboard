@@ -18,6 +18,8 @@ from staff.runner_ops import new_run_record
 from staff.store import RunRecord, RunStore
 from staff.workspace import compose_prompt
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def _reset_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,6 +113,40 @@ def test_file_proposed_lessons_clean_run_and_provenance(tmp_path: Path) -> None:
     fake_token = "ghp_" + "A" * 36  # pragma: allowlist secret
     t_sec.write_text(f"STAFF_LESSON: Leak {fake_token}\n", encoding="utf-8")
     assert file_proposed_lessons(run_store, rec, transcript_path=t_sec) == []
+
+
+def test_file_proposed_lessons_skips_oversize_and_files_valid_neighbor_at_limit(tmp_path: Path) -> None:
+    mem_store = get_memory_store()
+    rec = RunRecord(
+        id="run-abc",
+        role="ad-hoc",
+        provider="claude",
+        model="sonnet",
+        machine="host",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="10",
+        prompt="Fix",
+        status="succeeded",
+        exit_code=0,
+        standards_version="1.0.0",
+        requested_by="operator-1",
+    )
+    transcript = tmp_path / "transcript.log"
+    # The filed body also contains repo and standards_version; 390 + 5 + 5 is
+    # exactly the existing aggregate 400-character lesson limit.
+    transcript.write_text(
+        f"STAFF_LESSON: {'x' * 401}\nSTAFF_LESSON: {'y' * 390}\n",
+        encoding="utf-8",
+    )
+
+    filed = file_proposed_lessons(RunStore(tmp_path / "runs.db"), rec, transcript_path=transcript)
+
+    assert len(filed) == 1
+    entry = mem_store.get(filed[0])
+    assert entry is not None
+    assert entry.body["text"] == "y" * 390
+    assert mem_store.list_entries(entry_type="lesson") == [entry]
 
 
 def test_select_repo_lessons_filtering() -> None:
