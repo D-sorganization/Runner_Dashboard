@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 # Hostnames that belonged to a private fleet deployment. Case-insensitive match
 # on tokens bounded by non-alphanumeric characters.
