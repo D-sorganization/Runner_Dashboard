@@ -24,13 +24,6 @@ _MERGE_GROUP_HEAVY = [
     "ci-auto-deploy-regression.yml",
 ]
 
-_HOLD_WORKFLOWS = {
-    "main-ci-auto-release.yml",
-    "release.yml",
-    "deploy-qualified-release.yml",
-}
-
-
 def _load(name: str) -> dict:
     data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
     assert isinstance(data, dict)
@@ -89,6 +82,15 @@ def test_main_push_still_unique_per_sha(name: str) -> None:
 def test_cancel_in_progress_true_for_merge_group_not_push() -> None:
     assert "merge_group" in CANCEL_IN_PROGRESS_EXPR
     assert CANCEL_IN_PROGRESS_EXPR != "${{ github.event_name == 'pull_request' }}"
+
+
+def test_reusable_pr_guard_checks_out_before_local_action() -> None:
+    data = yaml.safe_load(
+        (_WORKFLOWS / "reusable-pr-freshness-guard.yml").read_text(encoding="utf-8")
+    )
+    steps = data["jobs"]["guard"]["steps"]
+    assert steps[0]["uses"].startswith("actions/checkout@")
+    assert steps[1]["uses"] == "./.github/actions/pr-early-exit"
 
 
 def test_workflow_group_expr_mentions_merge_group_head_ref() -> None:
