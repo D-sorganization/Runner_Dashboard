@@ -121,11 +121,26 @@
 .staff-composer__file-input { display: none; }
 .staff-composer__attach-btn { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary); cursor: pointer; font-size: 16px; line-height: 1; }
 .staff-composer__sensitivity { font-size: 11px; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-secondary); }
-.staff-composer__attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
-.staff-composer__chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px; border: 1px solid var(--border-color); background: var(--bg-secondary); }
-.staff-composer__chip-badge { font-size: 10px; opacity: 0.8; }
-.staff-composer__chip-remove { border: none; background: transparent; cursor: pointer; padding: 0 2px; }
-
-.staff-composer__chip-error { color: var(--accent-red); font-size: 11px; }
-
+.staff-composer__attachments { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-bottom: 8px; }
+.staff-composer__chip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "filename remove" "meta meta" "status status";
+  gap: 5px 10px;
+  width: min(100%, 460px);
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border-radius: 12px;
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+.staff-composer__chip-filename { grid-area: filename; min-width: 0; overflow-wrap: anywhere; line-height: 1.4; color: var(--text-primary); }
+.staff-composer__chip-meta { grid-area: meta; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.staff-composer__chip-badge { font-size: 11px; color: var(--text-secondary); }
+.staff-composer__chip-status { grid-area: status; font-size: 12px; line-height: 1.45; color: var(--text-secondary); overflow-wrap: anywhere; }
+.staff-composer__chip-status--error { color: var(--accent-red); }
+.staff-composer__chip-remove { grid-area: remove; align-self: start; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; padding: 3px 8px; font-size: 11px; }
+.staff-composer__chip-remove:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .staff-composer__chip--pending { border-color: var(--accent-blue); color: var(--text-secondary); }

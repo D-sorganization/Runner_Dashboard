@@ -130,9 +130,9 @@ def _run_hook(workspace: Path, env_extra: dict[str, str] | None = None) -> int:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_hook_restores_index_stat_cache_after_ctime_bump(tmp_path: Path) -> None:
+def test_hook_restores_index_stat_cache_after_ctime_bump(outside_work_tree_path: Path) -> None:
     """The exact #9443 failure mode: stat-dirty tree, clean content."""
-    repo = _make_repo(tmp_path)
+    repo = _make_repo(outside_work_tree_path)
     assert _stat_dirty_paths(repo) == [], "fixture must start with a valid stat cache"
 
     _poison_stat_cache(repo)
@@ -148,9 +148,9 @@ def test_hook_restores_index_stat_cache_after_ctime_bump(tmp_path: Path) -> None
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_hook_preserves_real_local_modifications(tmp_path: Path) -> None:
+def test_hook_preserves_real_local_modifications(outside_work_tree_path: Path) -> None:
     """The heal must never masquerade edited content as unchanged."""
-    repo = _make_repo(tmp_path)
+    repo = _make_repo(outside_work_tree_path)
     (repo / "a.py").write_text("# edited\n", encoding="utf-8")
 
     assert _run_hook(repo) == 0
@@ -158,9 +158,9 @@ def test_hook_preserves_real_local_modifications(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_hook_ignores_workspaces_outside_a_runner_work_tree(tmp_path: Path) -> None:
+def test_hook_ignores_workspaces_outside_a_runner_work_tree(outside_work_tree_path: Path) -> None:
     """Guard: the heal is confined to paths under a runner ``_work`` dir."""
-    outside = _init_repo(tmp_path / "not_a_runner" / "Demo")
+    outside = _init_repo(outside_work_tree_path / "not_a_runner" / "Demo")
     _poison_stat_cache(outside)
     assert _stat_dirty_paths(outside), "fixture failed to invalidate the stat cache"
 
@@ -169,20 +169,20 @@ def test_hook_ignores_workspaces_outside_a_runner_work_tree(tmp_path: Path) -> N
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_hook_survives_a_missing_workspace(tmp_path: Path) -> None:
+def test_hook_survives_a_missing_workspace(outside_work_tree_path: Path) -> None:
     """First job on a fresh runner: the workspace does not exist yet."""
-    assert _run_hook(tmp_path / "_work" / "Demo" / "Demo") == 0
+    assert _run_hook(outside_work_tree_path / "_work" / "Demo" / "Demo") == 0
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_hook_clears_sparse_checkout_left_on_with_no_patterns(tmp_path: Path) -> None:
+def test_hook_clears_sparse_checkout_left_on_with_no_patterns(outside_work_tree_path: Path) -> None:
     """``core.sparseCheckout=true`` + empty pattern file empties the tree.
 
     An empty pattern set matches nothing, so unpack-trees treats every path as
     belonging outside the working tree and ``git checkout --force`` deletes it
     all while still exiting 0.
     """
-    repo = _make_repo(tmp_path)
+    repo = _make_repo(outside_work_tree_path)
     _git(repo, "config", "core.sparseCheckout", "true")
     (repo / ".git" / "info").mkdir(parents=True, exist_ok=True)
     (repo / ".git" / "info" / "sparse-checkout").write_text("", encoding="utf-8")
@@ -199,14 +199,14 @@ def test_hook_clears_sparse_checkout_left_on_with_no_patterns(tmp_path: Path) ->
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
 def test_incoherent_sparse_state_empties_the_tree_without_the_hook(
-    tmp_path: Path,
+    outside_work_tree_path: Path,
 ) -> None:
     """Pin the upstream behaviour the hook exists to prevent.
 
     If git ever stops emptying the tree in this state the guard can be
     retired -- but that must be a deliberate decision, not a silent drift.
     """
-    repo = _make_repo(tmp_path)
+    repo = _make_repo(outside_work_tree_path)
     _git(repo, "checkout", "-q", "-b", "other")
     (repo / "added.py").write_text("# added\n", encoding="utf-8")
     _git(repo, "add", "-A")
@@ -330,8 +330,8 @@ def _snapshot(repo: Path) -> dict[str, bytes]:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_clean_full_workspace_is_left_untouched(tmp_path: Path) -> None:
-    repo = _make_repo(tmp_path)
+def test_clean_full_workspace_is_left_untouched(outside_work_tree_path: Path) -> None:
+    repo = _make_repo(outside_work_tree_path)
     inode, before = repo.stat().st_ino, _snapshot(repo)
 
     assert _run_hook(repo) == 0
@@ -342,10 +342,10 @@ def test_clean_full_workspace_is_left_untouched(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_healthy_promisor_clone_is_left_untouched(tmp_path: Path) -> None:
+def test_healthy_promisor_clone_is_left_untouched(outside_work_tree_path: Path) -> None:
     """blob:none clone with every index blob present: a re-clone would only cost bandwidth."""
-    src = _make_source(tmp_path)
-    ws = _clone(src, tmp_path / "_work" / "Demo" / "Demo", "--filter=blob:none")
+    src = _make_source(outside_work_tree_path)
+    ws = _clone(src, outside_work_tree_path / "_work" / "Demo" / "Demo", "--filter=blob:none")
     assert _git(ws, "config", "--get", "remote.origin.promisor").stdout.strip() == "true"
     inode, before = ws.stat().st_ino, _snapshot(ws)
 
@@ -356,9 +356,9 @@ def test_healthy_promisor_clone_is_left_untouched(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_promisor_clone_with_a_missing_blob_is_quarantined(tmp_path: Path) -> None:
-    src = _make_source(tmp_path)
-    ws = _clone(src, tmp_path / "_work" / "Demo" / "Demo", "--filter=blob:none")
+def test_promisor_clone_with_a_missing_blob_is_quarantined(outside_work_tree_path: Path) -> None:
+    src = _make_source(outside_work_tree_path)
+    ws = _clone(src, outside_work_tree_path / "_work" / "Demo" / "Demo", "--filter=blob:none")
     _reference_missing_blob(ws, src)
 
     assert _run_hook(ws) == 0
@@ -366,10 +366,10 @@ def test_promisor_clone_with_a_missing_blob_is_quarantined(tmp_path: Path) -> No
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_sparse_partial_clone_is_quarantined(tmp_path: Path) -> None:
+def test_sparse_partial_clone_is_quarantined(outside_work_tree_path: Path) -> None:
     """The actions/checkout ``sparse-checkout:`` shape: sparse + skip-worktree + unfetched blobs."""
-    src = _make_source(tmp_path)
-    ws = _clone(src, tmp_path / "_work" / "Demo" / "Demo", "--filter=blob:none", "--sparse")
+    src = _make_source(outside_work_tree_path)
+    ws = _clone(src, outside_work_tree_path / "_work" / "Demo" / "Demo", "--filter=blob:none", "--sparse")
     assert _skip_worktree_count(ws) > 0, "fixture must carry skip-worktree bits"
     assert not (ws / "sub" / "d.py").exists()
 
@@ -378,14 +378,14 @@ def test_sparse_partial_clone_is_quarantined(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_blob_check_never_lazy_fetches(tmp_path: Path) -> None:
+def test_blob_check_never_lazy_fetches(outside_work_tree_path: Path) -> None:
     """With quarantine disabled the workspace stays, so prove nothing was fetched.
 
     The remote allows any-SHA1 wants, so a lazy fetch WOULD succeed if the
     check ever triggered one.
     """
-    src = _make_source(tmp_path)
-    ws = _clone(src, tmp_path / "_work" / "Demo" / "Demo", "--filter=blob:none")
+    src = _make_source(outside_work_tree_path)
+    ws = _clone(src, outside_work_tree_path / "_work" / "Demo" / "Demo", "--filter=blob:none")
     oid = _reference_missing_blob(ws, src)
 
     assert _run_hook(ws, {"RUNNER_HOOK_DISABLE_WORKSPACE_QUARANTINE": "1"}) == 0
@@ -393,10 +393,10 @@ def test_blob_check_never_lazy_fetches(tmp_path: Path) -> None:
     assert _blob_missing(ws, oid), "the hook lazy-fetched a blob; it must never touch the network"
 
 
-def _make_sparse_residue(tmp_path: Path) -> Path:
+def _make_sparse_residue(outside_work_tree_path: Path) -> Path:
     """A FULL clone left sparse by a previous job: config, patterns and skip-worktree bits."""
-    src = _make_source(tmp_path)
-    ws = _clone(src, tmp_path / "_work" / "Demo" / "Demo")
+    src = _make_source(outside_work_tree_path)
+    ws = _clone(src, outside_work_tree_path / "_work" / "Demo" / "Demo")
     result = _git(ws, "sparse-checkout", "set", "--no-cone", "/a.py")
     assert result.returncode == 0, result.stderr
     assert _skip_worktree_count(ws) > 0
@@ -405,8 +405,8 @@ def _make_sparse_residue(tmp_path: Path) -> Path:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_sparse_residue_with_all_blobs_is_repaired_in_place(tmp_path: Path) -> None:
-    ws = _make_sparse_residue(tmp_path)
+def test_sparse_residue_with_all_blobs_is_repaired_in_place(outside_work_tree_path: Path) -> None:
+    ws = _make_sparse_residue(outside_work_tree_path)
     inode = ws.stat().st_ino
 
     assert _run_hook(ws) == 0
@@ -420,11 +420,11 @@ def test_sparse_residue_with_all_blobs_is_repaired_in_place(tmp_path: Path) -> N
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_failed_sparse_repair_falls_back_to_quarantine(tmp_path: Path) -> None:
-    ws = _make_sparse_residue(tmp_path)
+def test_failed_sparse_repair_falls_back_to_quarantine(outside_work_tree_path: Path) -> None:
+    ws = _make_sparse_residue(outside_work_tree_path)
     real_git = shutil.which("git")
     assert real_git
-    shim_dir = tmp_path / "shim"
+    shim_dir = outside_work_tree_path / "shim"
     shim_dir.mkdir()
     shim = shim_dir / "git"
     shim.write_text(
@@ -439,8 +439,8 @@ def test_failed_sparse_repair_falls_back_to_quarantine(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_stale_workspace_locks_are_removed_and_fresh_ones_kept(tmp_path: Path) -> None:
-    repo = _make_repo(tmp_path)
+def test_stale_workspace_locks_are_removed_and_fresh_ones_kept(outside_work_tree_path: Path) -> None:
+    repo = _make_repo(outside_work_tree_path)
     stale = repo / ".git" / "index.lock"
     nested = repo / ".git" / "modules" / "lib" / "HEAD.lock"
     fresh = repo / ".git" / "config.lock"
@@ -458,9 +458,9 @@ def test_stale_workspace_locks_are_removed_and_fresh_ones_kept(tmp_path: Path) -
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_poisoned_repo_outside_a_runner_work_tree_is_never_touched(tmp_path: Path) -> None:
-    src = _make_source(tmp_path)
-    outside = _clone(src, tmp_path / "not_a_runner" / "Demo", "--filter=blob:none", "--sparse")
+def test_poisoned_repo_outside_a_runner_work_tree_is_never_touched(outside_work_tree_path: Path) -> None:
+    src = _make_source(outside_work_tree_path)
+    outside = _clone(src, outside_work_tree_path / "not_a_runner" / "Demo", "--filter=blob:none", "--sparse")
     _reference_missing_blob(outside, src)
     lock = outside / ".git" / "index.lock"
     lock.write_text("", encoding="utf-8")
@@ -476,10 +476,10 @@ def test_poisoned_repo_outside_a_runner_work_tree_is_never_touched(tmp_path: Pat
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_orphaned_fetch_temp_packs_are_removed_and_fresh_ones_kept(tmp_path: Path) -> None:
+def test_orphaned_fetch_temp_packs_are_removed_and_fresh_ones_kept(outside_work_tree_path: Path) -> None:
     """A cancelled fetch leaves .git/objects/pack/tmp_pack_* behind (#1979): six on
     DeskComputer runner-3, ~2.4 GB. The lock cleanup skips objects/, so nothing reaped them."""
-    repo = _make_repo(tmp_path)
+    repo = _make_repo(outside_work_tree_path)
     pack = repo / ".git" / "objects" / "pack"
     pack.mkdir(parents=True, exist_ok=True)
     stale_pack, stale_idx = pack / "tmp_pack_aB12cd", pack / "tmp_idx_Ef34gh"
@@ -502,11 +502,11 @@ _NEGOTIATION_REF = "refs/runner-cache/last-checkout"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_previous_head_is_kept_as_a_negotiation_ref(tmp_path: Path) -> None:
+def test_previous_head_is_kept_as_a_negotiation_ref(outside_work_tree_path: Path) -> None:
     """actions/checkout deletes refs/heads and refs/remotes before fetching, and a
     detached HEAD is never offered as a "have", so every fetch received the full
     snapshot (#1979: 4.56 MiB vs 223 KiB with one kept ref)."""
-    repo = _make_repo(tmp_path)
+    repo = _make_repo(outside_work_tree_path)
     head = _git(repo, "rev-parse", "HEAD").stdout.strip()
     _git(repo, "checkout", "-q", "--detach")
     _git(repo, "branch", "-D", "main")
@@ -516,8 +516,8 @@ def test_previous_head_is_kept_as_a_negotiation_ref(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_negotiation_ref_follows_the_latest_head(tmp_path: Path) -> None:
-    repo = _make_repo(tmp_path)
+def test_negotiation_ref_follows_the_latest_head(outside_work_tree_path: Path) -> None:
+    repo = _make_repo(outside_work_tree_path)
     assert _run_hook(repo) == 0
     (repo / "d.py").write_text("# d\n", encoding="utf-8")
     _git(repo, "add", "d.py")
@@ -529,8 +529,8 @@ def test_negotiation_ref_follows_the_latest_head(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_repo_without_a_commit_gets_no_negotiation_ref(tmp_path: Path) -> None:
-    repo = tmp_path / "_work" / "Demo" / "Demo"
+def test_repo_without_a_commit_gets_no_negotiation_ref(outside_work_tree_path: Path) -> None:
+    repo = outside_work_tree_path / "_work" / "Demo" / "Demo"
     repo.mkdir(parents=True)
     _git(repo, "init", "-q")
 
@@ -539,16 +539,16 @@ def test_repo_without_a_commit_gets_no_negotiation_ref(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_repo_outside_a_runner_work_tree_gets_no_negotiation_ref(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path / "not_a_runner" / "Demo")
+def test_repo_outside_a_runner_work_tree_gets_no_negotiation_ref(outside_work_tree_path: Path) -> None:
+    repo = _init_repo(outside_work_tree_path / "not_a_runner" / "Demo")
 
     assert _run_hook(repo) == 0
     assert _git(repo, "rev-parse", "--verify", "-q", _NEGOTIATION_REF).returncode != 0
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_old_quarantine_entries_are_reaped(tmp_path: Path) -> None:
-    repo = _make_repo(tmp_path)
+def test_old_quarantine_entries_are_reaped(outside_work_tree_path: Path) -> None:
+    repo = _make_repo(outside_work_tree_path)
     qdir = _quarantine_dir(repo)
     old = qdir / f"Demo-{int(time.time()) - 7200}-123"
     young = qdir / f"Demo-{int(time.time())}-456"
@@ -584,9 +584,9 @@ def _seed_env(root: Path) -> dict[str, str]:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_quarantined_workspace_is_reseeded_from_a_healthy_sibling(tmp_path: Path) -> None:
-    src = _make_source(tmp_path)
-    root = tmp_path / "runners"
+def test_quarantined_workspace_is_reseeded_from_a_healthy_sibling(outside_work_tree_path: Path) -> None:
+    src = _make_source(outside_work_tree_path)
+    root = outside_work_tree_path / "runners"
     sibling = _clone(src, _runner_ws(root, "runner-2"))
     ws = _poisoned_ws(root, src)
 
@@ -607,12 +607,12 @@ def test_quarantined_workspace_is_reseeded_from_a_healthy_sibling(tmp_path: Path
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_a_sibling_running_a_job_is_not_the_preferred_seed(tmp_path: Path) -> None:
+def test_a_sibling_running_a_job_is_not_the_preferred_seed(outside_work_tree_path: Path) -> None:
     # `bin` is a symlink to `bin.<version>`, so a live worker's argv reads
     # `<runner>/bin.2.337.0/Runner.Worker`; matching `<runner>/bin/Runner.Worker`
     # saw every runner as idle (2026-10-17, two jobs killed by a reseed).
-    src = _make_source(tmp_path)
-    root = tmp_path / "runners"
+    src = _make_source(outside_work_tree_path)
+    root = outside_work_tree_path / "runners"
     busy = _clone(src, _runner_ws(root, "runner-2"))
     idle = _clone(src, _runner_ws(root, "runner-3"))
     _git(
@@ -632,9 +632,9 @@ def test_a_sibling_running_a_job_is_not_the_preferred_seed(tmp_path: Path) -> No
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_quarantine_without_a_sibling_leaves_an_empty_dir(tmp_path: Path) -> None:
-    src = _make_source(tmp_path)
-    root = tmp_path / "runners"
+def test_quarantine_without_a_sibling_leaves_an_empty_dir(outside_work_tree_path: Path) -> None:
+    src = _make_source(outside_work_tree_path)
+    root = outside_work_tree_path / "runners"
     ws = _poisoned_ws(root, src)
 
     assert _run_hook(ws, _seed_env(root)) == 0
@@ -642,19 +642,19 @@ def test_quarantine_without_a_sibling_leaves_an_empty_dir(tmp_path: Path) -> Non
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_reseed_never_clones_into_the_live_workspace(tmp_path: Path) -> None:
+def test_reseed_never_clones_into_the_live_workspace(outside_work_tree_path: Path) -> None:
     # #1982: a reseed clone into the workspace itself hung for 97 min after its
     # timeout's SIGTERM, its clean-up deleting everything the next four jobs'
     # checkouts wrote there. The clone must build aside and be renamed in.
-    src = _make_source(tmp_path)
-    root = tmp_path / "runners"
+    src = _make_source(outside_work_tree_path)
+    root = outside_work_tree_path / "runners"
     _clone(src, _runner_ws(root, "runner-2"))
     ws = _poisoned_ws(root, src)
     real_git = shutil.which("git")
     assert real_git
-    shim_dir = tmp_path / "shim"
+    shim_dir = outside_work_tree_path / "shim"
     shim_dir.mkdir()
-    log = tmp_path / "clone_targets.log"
+    log = outside_work_tree_path / "clone_targets.log"
     shim = shim_dir / "git"
     shim.write_text(
         "#!/usr/bin/env bash\n"
@@ -675,9 +675,9 @@ def test_reseed_never_clones_into_the_live_workspace(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_unhealthy_siblings_are_never_used_as_seeds(tmp_path: Path) -> None:
-    src = _make_source(tmp_path)
-    root = tmp_path / "runners"
+def test_unhealthy_siblings_are_never_used_as_seeds(outside_work_tree_path: Path) -> None:
+    src = _make_source(outside_work_tree_path)
+    root = outside_work_tree_path / "runners"
     _clone(src, _runner_ws(root, "runner-2"), "--filter=blob:none")  # promisor
     _clone(src, _runner_ws(root, "runner-3"), "--filter=blob:none", "--sparse")  # sparse + promisor
     sparse_full = _clone(src, _runner_ws(root, "runner-4"))
@@ -693,9 +693,9 @@ def test_unhealthy_siblings_are_never_used_as_seeds(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
-def test_quarantine_herd_is_logged_loudly(tmp_path: Path) -> None:
-    src = _make_source(tmp_path)
-    root = tmp_path / "runners"
+def test_quarantine_herd_is_logged_loudly(outside_work_tree_path: Path) -> None:
+    src = _make_source(outside_work_tree_path)
+    root = outside_work_tree_path / "runners"
     ws = _poisoned_ws(root, src)
     locks = ws.parent / "_locks"
     locks.mkdir()
