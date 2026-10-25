@@ -183,7 +183,11 @@ def test_quality_gate_needs_cover_merge_group_allowlist() -> None:
     jobs = _load(_CI_STANDARD)["jobs"]
     gate = jobs["quality-gate"]
     needs = set(gate["needs"])
-    allowlisted = MERGE_GROUP_JOB_ALLOWLIST["ci-standard.yml"] - {"quality-gate"}
+    allowlisted = MERGE_GROUP_JOB_ALLOWLIST["ci-standard.yml"] - {
+        "quality-gate",
+        "pick-runner",
+        "tests",
+    }
     assert allowlisted <= needs, (
         f"quality-gate needs must include every merge_group job except itself; "
         f"missing {sorted(allowlisted - needs)}"

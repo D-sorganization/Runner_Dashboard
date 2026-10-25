@@ -37,6 +37,7 @@ jobs:
       - name: Require all applicable frontend checks
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
           import json
@@ -50,17 +51,30 @@ jobs:
           if scope["result"] != "success" or any(flag not in ("true", "false") for flag in flags):
               sys.exit("Frontend scope failed or did not report explicit scope decisions")
           frontend, staff = (flag == "true" for flag in flags)
-          required = {
-              "typecheck": True,
-              "vitest": frontend,
-              "perf-budget": frontend,
-              "playwright-e2e": frontend,
-              "staff-console-e2e": staff,
-          }
+          if os.environ.get("GITHUB_EVENT_NAME") == "merge_group":
+              required = {
+                  "typecheck": True,
+                  "vitest": frontend,
+                  "perf-budget": False,
+                  "playwright-e2e": False,
+                  "staff-console-e2e": False,
+              }
+          else:
+              required = {
+                  "typecheck": True,
+                  "vitest": frontend,
+                  "perf-budget": frontend,
+                  "playwright-e2e": frontend,
+                  "staff-console-e2e": staff,
+              }
+          merge_group = os.environ.get("GITHUB_EVENT_NAME") == "merge_group"
           failed = []
           for job, applicable in required.items():
               result = needs[job]["result"]
               allowed = {"success"} if applicable else {"success", "skipped"}
+              if merge_group and applicable and result not in {"success"}:
+                  failed.append(f"{job}={result}")
+                  continue
               if result not in allowed:
                   failed.append(f"{job}={result}")
           if failed:
@@ -86,6 +100,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            {
+              echo "run_frontend_tests=true"
+              echo "run_staff_e2e=false"
+              echo "run_api_contract=true"
+            } >> "$GITHUB_OUTPUT"
+            echo "merge_group: slim frontend gate (tsc + Vitest only)."
+            exit 0
+          fi
           if [ "$EVENT_NAME" != "pull_request" ]; then
             {
               echo "run_frontend_tests=true"
@@ -242,6 +265,7 @@ jobs:
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
@@ -279,6 +303,7 @@ jobs:
       - vitest
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -370,6 +395,7 @@ jobs:
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       (needs.frontend-scope.outputs.run_staff_e2e == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

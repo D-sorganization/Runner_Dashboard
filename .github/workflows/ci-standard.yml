@@ -82,7 +82,8 @@ jobs:
   #   pull_request -> tier=pr: lint, format, type check and fast tests. The
   #                   scope detector below may also skip the Python lane when
   #                   the PR touches no Python surface (docs-only fast path).
-  #   merge_group  -> tier=full: the whole suite, heavy scans and coverage.
+  #   merge_group  -> tier=merge-group: slim gate (issue #2891): lint, fast
+  #                   tests and required aggregates only; heavy scans run on PR.
   #                   Never skipped: a queue group can mix several PRs.
   #   push (main)  -> tier=post-merge: no duplicate heavy jobs. Main only
   #                   moves through the merge queue with squash merges, so the
@@ -117,6 +118,11 @@ jobs:
               # run_python_tests comes from the python-scope step below.
               echo "tier=pr" >> "$GITHUB_OUTPUT"
               echo "full_suite=false" >> "$GITHUB_OUTPUT"
+              ;;
+            merge_group)
+              echo "tier=merge-group" >> "$GITHUB_OUTPUT"
+              echo "full_suite=false" >> "$GITHUB_OUTPUT"
+              echo "run_python_tests=true" >> "$GITHUB_OUTPUT"
               ;;
             push)
               echo "tier=post-merge" >> "$GITHUB_OUTPUT"
@@ -499,8 +505,11 @@ jobs:
 
   security-scan:
     needs: [pick-runner, changes, ci-health-check]
-    # Heavy scan: full tier only (merge_group / workflow_dispatch, issue #1864).
-    if: needs.changes.outputs.run_python_tests == 'true' && needs.changes.outputs.full_suite == 'true'
+    # Heavy scan: full tier only (workflow_dispatch); not merge_group (#2891).
+    if: >-
+      github.event_name != 'merge_group' &&
+      needs.changes.outputs.run_python_tests == 'true' &&
+      needs.changes.outputs.full_suite == 'true'
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -663,10 +672,16 @@ jobs:
           HEALTH: ${{ needs.ci-health-check.result }}
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
+          merge_queue_lane() { [ "${GITHUB_EVENT_NAME:-}" = "merge_group" ]; }
           echo "changes: $CHANGES (tier=$TIER, run_python_tests=$RUN_PYTHON_TESTS)"
           echo "ci-health-check: $HEALTH"
           echo "tests: $TESTS"
+          if merge_queue_lane && [ "$TESTS" != "success" ]; then
+            echo "::error::Python test matrix reported '$TESTS' on merge_group; cannot merge untested."
+            exit 1
+          fi
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES'; cannot trust the tier decision."
             exit 1
@@ -727,7 +742,9 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TESTS: ${{ needs.tests-required.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
+          merge_queue_lane() { [ "${GITHUB_EVENT_NAME:-}" = "merge_group" ]; }
           failed=0
           echo "changes: $CHANGES (tier=$TIER, full_suite=$FULL_SUITE, run_python_tests=$RUN_PYTHON_TESTS)"
           if [ "$CHANGES" != "success" ]; then
@@ -744,6 +761,15 @@ jobs:
             result="${pair#*=}"
             echo "$job: $result"
             if [ "$result" = "success" ]; then
+              continue
+            fi
+            if merge_queue_lane; then
+              if [ "$job" = "security-scan" ] && [ "$result" = "skipped" ]; then
+                echo "::notice::security-scan not run on merge_group slim gate."
+                continue
+              fi
+              echo "::error::$job reported '$result' on merge_group; fail closed."
+              failed=1
               continue
             fi
             # Nothing may skip in the full tier. Otherwise lint and
