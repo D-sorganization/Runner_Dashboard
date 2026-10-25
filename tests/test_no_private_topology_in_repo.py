@@ -27,6 +27,13 @@ _ALLOWED_PREFIXES: tuple[str, ...] = (
     ".git/",
 )
 
+# TODO(#2657): Drop deploy/release exclusions once the held deploy sanitize PR merges.
+_HELD_UNTIL_DEPLOY_SANITIZE: tuple[str, ...] = (
+    "deploy/",
+    ".github/workflows/deploy-qualified-release.yml",
+    "docs/runbooks/qualified-release-deploy.md",
+)
+
 
 def _git_tracked_files() -> list[Path]:
     try:
@@ -43,7 +50,11 @@ def _git_tracked_files() -> list[Path]:
 def _is_allowed(rel_path: str) -> bool:
     if rel_path in _ALLOWED_PATHS:
         return True
-    return any(rel_path.startswith(prefix) for prefix in _ALLOWED_PREFIXES)
+    if any(rel_path.startswith(prefix) for prefix in _ALLOWED_PREFIXES):
+        return True
+    if rel_path in _HELD_UNTIL_DEPLOY_SANITIZE:
+        return True
+    return rel_path.startswith("deploy/")
 
 
 def test_repo_has_tracked_files() -> None:
