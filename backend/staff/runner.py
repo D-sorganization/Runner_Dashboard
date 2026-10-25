@@ -7,7 +7,6 @@ import logging
 import os
 import platform
 import re
-import shutil
 import sqlite3
 import subprocess
 import threading
@@ -311,7 +310,7 @@ class StaffRunner:
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
         idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
-        real_gh = shutil.which("gh") or "gh"
+        real_gh = os.environ.get("STAFF_REAL_GH", "").strip() or "/usr/bin/gh"
 
         env = ops.apply_staff_run_github_child_env(
             store,
