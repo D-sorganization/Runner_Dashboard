@@ -8,25 +8,25 @@
 
 ## Progress
 
-| ID  | Feature                                 | Status  | Progress | Last change                                                                                           |
-| --- | --------------------------------------- | ------- | -------- | ----------------------------------------------------------------------------------------------------- |
-| F1  | Fleet Monitoring and Machine Inventory  | shipped | 100%     | Epic #1324 (fleet monitoring)                                                                         |
-| F2  | Operations Console and Unified Dispatch | shipped | 100%     | Epic #1325 (operations console)                                                                       |
-| F3  | Queue Health and Automated Job Reaper   | shipped | 100%     | Stale queue detection and periodic reaper scripts on main                                             |
-| F4  | Authentication and RBAC Perimeter       | shipped | 100%     | Scoped staff mutations and reads (#1295)                                                              |
-| F5  | Staff Console Conversation Engine       | shipped | 100%     | Epic SC-B closed 2026-10-14 (#1348)                                                                   |
-| F6  | Barb Routing and Follow-Up Engine       | shipped | 100%     | Epic SC-C closed 2026-10-14 (#1349)                                                                   |
-| F7  | Fleet Maintenance Automation            | shipped | 100%     | Epic SC-E closed 2026-10-14 (#1351)                                                                   |
-| F8  | Staff Agent and Tooling APIs            | shipped | 100%     | Epic SC-F closed 2026-10-14 (#1352)                                                                   |
-| F9  | Staff Console Shell and Navigation      | shipped | 100%     | Epic SC-D closed 2026-10-14 (#1350)                                                                   |
-| F10 | UI Modernization and Legacy Pruning     | shipped | 100%     | Epic SC-G closed 2026-10-14 (#1353)                                                                   |
-| F11 | Code Requests and Proposals Pipeline    | shipped | 100%     | Epic #1279 closed (#1432, #1443, #1456)                                                               |
-| F12 | Multi-Host Node Infrastructure          | shipped | 100%     | Epic #1258 closed (#1262, #1272)                                                                      |
-| F13 | Projects and Fleet Stewardship          | shipped | 100%     | Epic #1248 closed (#1254)                                                                             |
-| F14 | Staff Hub Reliability and Watchdogs     | shipped | 100%     | Epic SC-A closed 2026-10-14 (#1347)                                                                   |
-| F15 | Maxwell Control Plane Proxy             | shipped | 100%     | Maxwell proxy and contract tests (#1338)                                                              |
-| F16 | Fleet Coordination and Priorities       | shipped | 100%     | Fleet Command UI and coordination endpoints (#1233)                                                   |
-| F17 | Board Deliberation and Group Threads    | shipped | 100%     | Epic #1339 closed (#1480, #1763, #1772)                                                               |
+| ID  | Feature                                 | Status  | Progress | Last change                                                                                         |
+| --- | --------------------------------------- | ------- | -------- | --------------------------------------------------------------------------------------------------- |
+| F1  | Fleet Monitoring and Machine Inventory  | shipped | 100%     | Epic #1324 (fleet monitoring)                                                                       |
+| F2  | Operations Console and Unified Dispatch | shipped | 100%     | Epic #1325 (operations console)                                                                     |
+| F3  | Queue Health and Automated Job Reaper   | shipped | 100%     | Stale queue detection and periodic reaper scripts on main                                           |
+| F4  | Authentication and RBAC Perimeter       | shipped | 100%     | Scoped staff mutations and reads (#1295)                                                            |
+| F5  | Staff Console Conversation Engine       | shipped | 100%     | Epic SC-B closed 2026-10-14 (#1348)                                                                 |
+| F6  | Barb Routing and Follow-Up Engine       | shipped | 100%     | Epic SC-C closed 2026-10-14 (#1349)                                                                 |
+| F7  | Fleet Maintenance Automation            | shipped | 100%     | Epic SC-E closed 2026-10-14 (#1351)                                                                 |
+| F8  | Staff Agent and Tooling APIs            | shipped | 100%     | Epic SC-F closed 2026-10-14 (#1352)                                                                 |
+| F9  | Staff Console Shell and Navigation      | shipped | 100%     | Epic SC-D closed 2026-10-14 (#1350)                                                                 |
+| F10 | UI Modernization and Legacy Pruning     | shipped | 100%     | Epic SC-G closed 2026-10-14 (#1353)                                                                 |
+| F11 | Code Requests and Proposals Pipeline    | shipped | 100%     | Epic #1279 closed (#1432, #1443, #1456)                                                             |
+| F12 | Multi-Host Node Infrastructure          | shipped | 100%     | Epic #1258 closed (#1262, #1272)                                                                    |
+| F13 | Projects and Fleet Stewardship          | shipped | 100%     | Epic #1248 closed (#1254)                                                                           |
+| F14 | Staff Hub Reliability and Watchdogs     | shipped | 100%     | Epic SC-A closed 2026-10-14 (#1347)                                                                 |
+| F15 | Maxwell Control Plane Proxy             | shipped | 100%     | Maxwell proxy and contract tests (#1338)                                                            |
+| F16 | Fleet Coordination and Priorities       | shipped | 100%     | Fleet Command UI and coordination endpoints (#1233)                                                 |
+| F17 | Board Deliberation and Group Threads    | shipped | 100%     | Epic #1339 closed (#1480, #1763, #1772)                                                             |
 | F18 | Offline Release Artifact Pipeline       | parked  | 15%      | Parked; tracking #1085 (offline bundle). BR-18 release gate #1811 remains open (`do-not-automate`). |
 
 ## Blockers

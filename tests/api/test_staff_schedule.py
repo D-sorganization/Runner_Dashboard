@@ -140,6 +140,20 @@ def _roles() -> dict[str, roles_mod.RoleSpec]:
     }
 
 
+def _issue_remediator_role(repos: list[str]) -> roles_mod.RoleSpec:
+    return roles_mod.parse_role(
+        {
+            "name": "issue-remediator",
+            "providers": ["fake"],
+            "schedule": "0 22 * * *",
+            "window": {"start": "22:00", "end": "06:00"},
+            "repos": repos,
+            "permissions": {"open_pr": True},
+            "budget": {"usd_per_run": 3, "usd_per_day": 15},
+        }
+    )
+
+
 @pytest.mark.unit
 def test_holds_seed_from_roles_persist_and_replace(tmp_path: Path) -> None:
     path = tmp_path / "cfg" / "staff_holds.json"
@@ -441,6 +455,70 @@ def test_scheduler_fires_once_per_slot_and_persists_state(
     clock["now"] = _la(2026, 9, 23, 23, 0)
     assert [d["fired"] for d in s2.tick()] == [True] and len(runner.submitted) == 2
     assert s2.tick() == []
+
+
+@pytest.mark.unit
+def test_scheduler_issue_remediator_picks_next_repo_with_eligible_issue(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s, runner, clock = sched
+    runner._roles = {"issue-remediator": _issue_remediator_role(["AffineDrift", "Runner_Dashboard"])}
+
+    def _fetch(repo: str) -> tuple[list[dict[str, object]], str | None]:
+        if repo == "AffineDrift":
+            return ([{"number": 11, "labels": [{"name": "do-not-automate"}]}], None)
+        if repo == "Runner_Dashboard":
+            return ([{"number": 42, "labels": [{"name": "high"}]}], None)
+        return ([], None)
+
+    monkeypatch.setattr(scheduler_mod, "fetch_open_issues", _fetch)
+    monkeypatch.setattr(
+        scheduler_mod,
+        "fetch_issue_claim_status",
+        lambda repo, issue: {"available": True, "held": False, "reason": "", "agent": "", "session": ""},
+    )
+    monkeypatch.setattr(scheduler_mod.claim_guard, "scheduler_blocker", lambda *args, **kwargs: "")
+
+    s.tick()  # anchor cursor before due slot
+    clock["now"] = _la(2026, 9, 22, 22, 0, 10)
+    decisions = s.tick()
+    assert decisions == [
+        {"role": "issue-remediator", "slot": _la(2026, 9, 22, 22, 0).isoformat(), "fired": True, "run_id": "run-1"}
+    ]
+    assert len(runner.submitted) == 1
+    req = runner.submitted[0]
+    assert req.repo == "Runner_Dashboard"
+    assert req.issue == 42
+
+
+@pytest.mark.unit
+def test_scheduler_issue_remediator_records_skip_when_no_repo_has_eligible_issue(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s, runner, clock = sched
+    runner._roles = {"issue-remediator": _issue_remediator_role(["AffineDrift", "Runner_Dashboard"])}
+
+    monkeypatch.setattr(
+        scheduler_mod,
+        "fetch_open_issues",
+        lambda repo: ([{"number": 7, "labels": [{"name": "do-not-automate"}]}], None),
+    )
+    monkeypatch.setattr(
+        scheduler_mod,
+        "fetch_issue_claim_status",
+        lambda repo, issue: {"available": True, "held": True, "reason": "open branch", "agent": "", "session": ""},
+    )
+    monkeypatch.setattr(scheduler_mod.claim_guard, "scheduler_blocker", lambda *args, **kwargs: "")
+
+    s.tick()  # anchor cursor before due slot
+    clock["now"] = _la(2026, 9, 22, 22, 0, 10)
+    [decision] = s.tick()
+    assert decision["fired"] is False
+    assert decision["reason"].startswith("no eligible issues")
+    assert runner.submitted == []
+    assert "no eligible issues" in s._load_state()["issue-remediator"]["last_reason"]  # noqa: SLF001
 
 
 @pytest.mark.unit
