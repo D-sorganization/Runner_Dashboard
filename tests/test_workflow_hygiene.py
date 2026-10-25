@@ -900,6 +900,33 @@ def test_line_cap_pr_path_passes_when_changed_file_is_within_cap(tmp_path: Path)
     assert "backend/big.py" in result.stdout
 
 
+def _linecap_pr_checkout_multi(tmp_path: Path, *, file_line_counts: list[int]) -> tuple[Path, str]:
+    """PR checkout with several changed backend files (each under the 500-line cap)."""
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(origin, "init", "-q", "-b", "main")
+    (origin / "backend").mkdir()
+    (origin / "backend" / "ok.py").write_text("x = 1\n", encoding="utf-8")
+    _git(origin, "add", "-A")
+    _git(origin, "commit", "-q", "-m", "base")
+    base_sha = _git(origin, "rev-parse", "HEAD")
+    _git(origin, "checkout", "-q", "-b", "pr")
+    for idx, lines in enumerate(file_line_counts):
+        (origin / "backend" / f"part{idx}.py").write_text("x = 1\n" * lines, encoding="utf-8")
+    _git(origin, "add", "-A")
+    _git(origin, "commit", "-q", "-m", "pr")
+    work = tmp_path / "work"
+    _git(tmp_path, "clone", "-q", "--depth=1", "--branch", "pr", origin.as_uri(), str(work))
+    return work, base_sha
+
+
+def test_line_cap_pr_path_ignores_wc_total_aggregate_line(tmp_path: Path) -> None:
+    """``wc -l`` on multiple files prints a ``total`` row; it must not trip the cap."""
+    work, base_sha = _linecap_pr_checkout_multi(tmp_path, file_line_counts=[300, 300])
+    result = _run_linecap(work, {"EVENT_NAME": "pull_request", "BASE_SHA": base_sha})
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_line_cap_pr_path_fails_closed_when_diff_cannot_be_computed(tmp_path: Path) -> None:
     work, _ = _linecap_pr_checkout(tmp_path, pr_file_lines=10)
     bogus = "0" * 40
