@@ -342,7 +342,7 @@ class TestGetMatlabRunnerHealth:
         data = response.json()
         assert data["total"] == 1
         assert len(data["runners"]) == 1
-        assert data["runners"][0]["name"] == "windows-matlab-runner-1"
+        assert data["runners"][0]["name"] == "d-sorg-local-testhost-3"
         assert "matlab" in [lbl.lower() for lbl in data["runners"][0]["labels"]]
 
     def test_matlab_health_counts_status(
@@ -425,7 +425,7 @@ class TestRunnerStatus:
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == 1
-        assert data["name"] == "d-sorg-fleet-runner-1"
+        assert data["name"] == "d-sorg-local-testhost-1"
         assert data["status"] == "online"
         assert "health" in data
         assert data["health"]["status"] == "healthy"
@@ -470,7 +470,7 @@ class TestRunnerGroups:
         data = response.json()
         assert data["group_label"] == "matlab"
         assert data["total"] == 1
-        assert data["runners"][0]["name"] == "windows-matlab-runner-1"
+        assert data["runners"][0]["name"] == "d-sorg-local-testhost-3"
 
     def test_get_runner_group_empty_group(
         self,
