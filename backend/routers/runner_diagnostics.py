@@ -17,6 +17,8 @@ from identity import Principal, require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
 
+from slot_health import analyze_jobs, publish_slot_health_flags
+
 from .runner_helpers import (
     UTC,
     count_runner_capacity,
@@ -313,6 +315,19 @@ async def schedule_fleet_scale(
     except Exception as exc:
         log.error("schedule_fleet_scale: error: %s", exc)
         raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
+
+
+@router.post("/api/runners/slot-health/evaluate", dependencies=[Depends(require_fleet_peer)])
+async def evaluate_slot_health(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read-only slot-health analysis; optional publish to hub events and Barb lane."""
+    jobs = payload.get("jobs")
+    if not isinstance(jobs, list):
+        raise HTTPException(status_code=400, detail="jobs must be a list")
+    window_hours = int(payload.get("window_hours") or 24)
+    report = analyze_jobs(jobs, window_hours=window_hours)
+    if payload.get("publish"):
+        publish_slot_health_flags(report["flags"])
+    return report
 
 
 @router.post("/api/runners/{runner_id}/troubleshoot")
