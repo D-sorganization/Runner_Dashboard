@@ -111,6 +111,55 @@ def _no_real_provider_cli(monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", guarded_popen)
 
 
+def _inside_runner_work_tree(path: Path) -> bool:
+    return "_work" in path.resolve().parts
+
+
+def _work_tree_free_base() -> Path:
+    """A writable scratch directory that is not inside any runner ``_work`` tree.
+
+    Self-hosted runners point ``TMPDIR`` (and so pytest's ``tmp_path``) at
+    ``<runner>/_work/_tmp``. The runner hooks treat everything below the first
+    ``_work`` component as that runner's tree, so a fixture that models "a path
+    outside a runner work tree", or lays out sibling runners of its own, cannot
+    live under ``tmp_path`` there: the hook correctly resolves the *real*
+    runner instead of the fixture's.
+    """
+    for candidate in (Path(tempfile.gettempdir()), Path("/tmp"), Path("/var/tmp")):  # noqa: S108
+        if candidate.is_dir() and not _inside_runner_work_tree(candidate):
+            return candidate
+    raise RuntimeError("no writable scratch directory outside a runner _work tree is available")
+
+
+@pytest.fixture
+def outside_work_tree_path():
+    """Per-test scratch directory guaranteed to sit outside any ``_work`` tree."""
+    root = Path(tempfile.mkdtemp(prefix="rd-deploy-", dir=_work_tree_free_base())).resolve()
+    assert not _inside_runner_work_tree(root), root
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_provider_login_state(monkeypatch, tmp_path_factory):
+    """Keep the host user's real provider logins out of every test.
+
+    Hosted runners have no ``~/.claude`` login, so credential probes see "not
+    signed in". A self-hosted runner's user *is* signed in, and
+    ``claude_oauth_session_alive`` then shells out to ``claude auth status``
+    (which the no-real-provider-CLI guard rightly refuses) and could rewrite the
+    operator's real credential files. Point the config roots at empty per-test
+    directories and drop token env so results never depend on who runs the suite.
+    Tests that exercise a login pin their own ``CLAUDE_CONFIG_DIR``/
+    ``ANTIGRAVITY_HOME`` after this fixture runs.
+    """
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))
+    monkeypatch.setenv("ANTIGRAVITY_HOME", str(tmp_path_factory.mktemp("antigravity-home")))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+
+
 @pytest.fixture(autouse=True)
 def _hermetic_provider_cli_discovery(monkeypatch):
     """Keep host-installed provider CLIs out of staff discovery (#2501).
