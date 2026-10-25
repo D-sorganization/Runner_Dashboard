@@ -41,6 +41,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  pr-guard:
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
   pick-runner:
     name: Select reversible CI runner
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
@@ -94,7 +97,10 @@ jobs:
   # event; a failed `changes` job fails both (tests/test_workflow_hygiene.py).
   changes:
     name: Decide CI tier
-    needs: [pick-runner]
+    needs: [pick-runner, pr-guard]
+    if: >-
+      github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true'
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -203,7 +209,10 @@ jobs:
 
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
-    needs: [pick-runner, changes]
+    needs: [pick-runner, changes, pr-guard]
+    if: >-
+      github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true'
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -341,8 +350,11 @@ jobs:
           fi
 
   lint:
-    needs: [pick-runner, changes, ci-health-check]
-    if: needs.changes.outputs.run_python_tests == 'true'
+    needs: [pick-runner, changes, ci-health-check, pr-guard]
+    if: >-
+      needs.changes.outputs.run_python_tests == 'true' &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -498,9 +510,13 @@ jobs:
           fi
 
   security-scan:
-    needs: [pick-runner, changes, ci-health-check]
+    needs: [pick-runner, changes, ci-health-check, pr-guard]
     # Heavy scan: full tier only (merge_group / workflow_dispatch, issue #1864).
-    if: needs.changes.outputs.run_python_tests == 'true' && needs.changes.outputs.full_suite == 'true'
+    if: >-
+      needs.changes.outputs.run_python_tests == 'true' &&
+      needs.changes.outputs.full_suite == 'true' &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -549,7 +565,11 @@ jobs:
       - ci-health-check
       - lint
       - pick-runner
-    if: needs.changes.outputs.run_python_tests == 'true'
+      - pr-guard
+    if: >-
+      needs.changes.outputs.run_python_tests == 'true' &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -647,6 +667,7 @@ jobs:
       - ci-health-check
       - tests
       - pick-runner
+      - pr-guard
     if: always()
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
@@ -658,12 +679,18 @@ jobs:
       - name: Confirm Python test matrix
         shell: bash
         env:
+          GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
+          GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
           CHANGES: ${{ needs.changes.result }}
           TIER: ${{ needs.changes.outputs.tier }}
           HEALTH: ${{ needs.ci-health-check.result }}
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
         run: |
+          if [ "$GUARD_SKIP" = "true" ]; then
+            echo "::notice::tests-required skipped heavy CI ($GUARD_REASON)"
+            exit 0
+          fi
           echo "changes: $CHANGES (tier=$TIER, run_python_tests=$RUN_PYTHON_TESTS)"
           echo "ci-health-check: $HEALTH"
           echo "tests: $TESTS"
@@ -702,6 +729,7 @@ jobs:
     needs:
       [
         pick-runner,
+        pr-guard,
         changes,
         ci-health-check,
         lint,
@@ -719,6 +747,8 @@ jobs:
       - name: Require every gated job to succeed
         shell: bash
         env:
+          GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
+          GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
           CHANGES: ${{ needs.changes.result }}
           TIER: ${{ needs.changes.outputs.tier }}
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
@@ -729,6 +759,10 @@ jobs:
           RESULT_SECURITY: ${{ needs.security-scan.result }}
         run: |
           failed=0
+          if [ "$GUARD_SKIP" = "true" ]; then
+            echo "::notice::quality-gate skipped heavy CI ($GUARD_REASON)"
+            exit 0
+          fi
           echo "changes: $CHANGES (tier=$TIER, full_suite=$FULL_SUITE, run_python_tests=$RUN_PYTHON_TESTS)"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES', expected 'success'."

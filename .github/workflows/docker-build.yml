@@ -33,12 +33,18 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  pr-guard:
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
   decide-docker-scope:
     name: Decide Docker validation scope
+    needs: [pr-guard]
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
       (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
     outputs:

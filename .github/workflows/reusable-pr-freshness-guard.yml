@@ -1,0 +1,27 @@
+name: Reusable PR freshness guard
+
+on:
+  workflow_call:
+    outputs:
+      skip_heavy:
+        description: When true, heavy jobs for this pull_request run should no-op.
+        value: ${{ jobs.guard.outputs.skip_heavy }}
+      reason:
+        description: Skip reason when skip_heavy is true.
+        value: ${{ jobs.guard.outputs.reason }}
+
+jobs:
+  guard:
+    name: PR freshness guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      skip_heavy: ${{ steps.guard.outputs.skip }}
+      reason: ${{ steps.guard.outputs.reason }}
+    steps:
+      - name: Checkout local composite action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: guard
+        uses: ./.github/actions/pr-early-exit

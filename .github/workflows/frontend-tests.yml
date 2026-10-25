@@ -19,10 +19,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  pr-guard:
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
   frontend-required:
     name: frontend-required
     needs:
       [
+        pr-guard,
         frontend-scope,
         typecheck,
         vitest,
@@ -44,6 +48,10 @@ jobs:
           import sys
 
           needs = json.loads(os.environ["NEEDS_JSON"])
+          guard = needs.get("pr-guard", {})
+          if guard.get("outputs", {}).get("skip_heavy") == "true":
+              print("PR early-exit; frontend-required neutral")
+              sys.exit(0)
           scope = needs["frontend-scope"]
           outputs = scope.get("outputs", {})
           flags = [outputs.get(key) for key in ("run_frontend_tests", "run_staff_e2e")]
@@ -69,6 +77,10 @@ jobs:
           PY
 
   frontend-scope:
+    needs: [pr-guard]
+    if: >-
+      github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true'
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}

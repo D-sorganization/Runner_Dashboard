@@ -35,11 +35,21 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  auto-deploy-regression:
-    name: Auto-deploy live regression
+  pr-guard:
     if: >-
+      github.event_name == 'pull_request' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
+  auto-deploy-regression:
+    name: Auto-deploy live regression
+    needs: [pr-guard]
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
