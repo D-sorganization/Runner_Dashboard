@@ -617,18 +617,18 @@ def test_should_restore_recovery_floor_only_after_overload_clears(
 
 
 # ---------------------------------------------------------------------------
-# Default-pool overload decision — OGLaptop 2026-06-09 idle-host regression
+# Default-pool overload decision — node-b 2026-06-09 idle-host regression
 #
 # A fully idle host (load 0.23 on 20 cores, 1 GB / 62 GB RAM, 0 swap) was
 # wrongly scaled to the floor and the stop was logged as "(host overloaded)".
 # These tests pin the decision contract: idle metrics must NOT read overloaded
 # (so no overload-driven scale-down) and MUST read recovered (so runners are
-# restored), evaluated against OGLaptop's deployed thresholds.
+# restored), evaluated against node-b's deployed thresholds.
 # ---------------------------------------------------------------------------
 
-# OGLaptop's runner-autoscaler.service tunables, fed explicitly so the test is
+# node-b's runner-autoscaler.service tunables, fed explicitly so the test is
 # independent of the module constants resolved at import time.
-_OGLAPTOP_THRESHOLDS = {
+_NODE_B_THRESHOLDS = {
     "cpu_high": 75.0,
     "mem_high": 60.0,
     "load_per_core": 1.2,
@@ -649,8 +649,8 @@ _IDLE_METRICS = {
 
 def test_default_pool_not_overloaded_when_host_idle() -> None:
     """Idle host must NOT trigger overload → no overload-driven scale-down."""
-    assert ra._default_pool_overloaded(**_IDLE_METRICS, **_OGLAPTOP_THRESHOLDS) is False, (
-        "fully idle host was reported overloaded — the OGLaptop 2026-06-09 false positive"
+    assert ra._default_pool_overloaded(**_IDLE_METRICS, **_NODE_B_THRESHOLDS) is False, (
+        "fully idle host was reported overloaded — the node-b 2026-06-09 false positive"
     )
 
 
@@ -662,11 +662,11 @@ def test_default_pool_recovered_when_host_idle() -> None:
         avg_load=_IDLE_METRICS["avg_load"],
         avg_disk=_IDLE_METRICS["avg_disk"],
         min_disk_free=_IDLE_METRICS["min_disk_free"],
-        cpu_low=35.0,  # OGLaptop AUTOSCALER_CPU_LOW
-        mem_high=_OGLAPTOP_THRESHOLDS["mem_high"],
-        load_per_core=_OGLAPTOP_THRESHOLDS["load_per_core"],
-        disk_high=_OGLAPTOP_THRESHOLDS["disk_high"],
-        disk_min_free_gb=_OGLAPTOP_THRESHOLDS["disk_min_free_gb"],
+        cpu_low=35.0,  # node-b AUTOSCALER_CPU_LOW
+        mem_high=_NODE_B_THRESHOLDS["mem_high"],
+        load_per_core=_NODE_B_THRESHOLDS["load_per_core"],
+        disk_high=_NODE_B_THRESHOLDS["disk_high"],
+        disk_min_free_gb=_NODE_B_THRESHOLDS["disk_min_free_gb"],
     )
     assert recovered is True
 
@@ -685,7 +685,7 @@ def test_default_pool_overloaded_when_any_metric_breaches(overrides: dict) -> No
     """Each individual threshold breach must still trip overload (no regression
     from extracting the decision into a function)."""
     metrics = {**_IDLE_METRICS, **overrides}
-    assert ra._default_pool_overloaded(**metrics, **_OGLAPTOP_THRESHOLDS) is True
+    assert ra._default_pool_overloaded(**metrics, **_NODE_B_THRESHOLDS) is True
 
 
 def test_stop_unit_logs_scheduled_surplus_reason(caplog: pytest.LogCaptureFixture) -> None:
@@ -729,8 +729,8 @@ class TestRunnerNameForUnit:
     """_runner_name_for_unit: extract runner short-name from a systemd unit."""
 
     def test_strips_actions_runner_prefix_and_service_suffix(self) -> None:
-        unit = "actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service"
-        assert ra._runner_name_for_unit(unit) == "d-sorg-local-ControlTower-3"
+        unit = "actions.runner.D-sorganization.d-sorg-local-node-a-3.service"
+        assert ra._runner_name_for_unit(unit) == "d-sorg-local-node-a-3"
 
     def test_handles_arbitrary_org_segment_with_dots(self) -> None:
         unit = "actions.runner.org.with.dots.my-runner.service"
@@ -792,8 +792,8 @@ class TestRunnerBusyViaPickupDir:
 class TestRunnerBusyViaLockfile:
     """_runner_busy_via_lockfile: Worker-alive defense-in-depth signal."""
 
-    UNIT = "actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service"
-    RUNNER_NAME = "d-sorg-local-ControlTower-3"
+    UNIT = "actions.runner.D-sorganization.d-sorg-local-node-a-3.service"
+    RUNNER_NAME = "d-sorg-local-node-a-3"
 
     def test_no_lockfile_returns_false(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", tmp_path)
