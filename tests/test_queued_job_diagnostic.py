@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-_SPEC = importlib.util.spec_from_file_location("queued_job_diagnostic", _SCRIPTS / "queued_job_diagnostic.py")
+_SHARED = Path(__file__).resolve().parents[1] / "shared_scripts"
+_SPEC = importlib.util.spec_from_file_location("queued_job_diagnostic", _SHARED / "queued_job_diagnostic.py")
 assert _SPEC and _SPEC.loader
 diag = importlib.util.module_from_spec(_SPEC)
 sys.modules["queued_job_diagnostic"] = diag
