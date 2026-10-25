@@ -22,9 +22,10 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -41,7 +42,10 @@ log = logging.getLogger("dashboard.staff.fleet")
 
 PEER_TIMEOUT_SECONDS = float(os.environ.get("STAFF_PEER_TIMEOUT_SECONDS", "12"))
 PEER_STALE_GRACE_SECONDS = float(os.environ.get("STAFF_PEER_STALE_GRACE_SECONDS", "120"))
+SCHEDULER_WATCHDOG_DEBOUNCE_SECONDS = float(os.environ.get("STAFF_SCHEDULER_WATCHDOG_DEBOUNCE_SECONDS", "300"))
 _LAST_GOOD_PEER_BOARD: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+_LAST_SCHEDULER_ALERT_AT: dict[str, float] = {}
+_SCHEDULER_ALERT_LOCK = threading.Lock()
 LOCAL_MACHINE_ALIASES = frozenset({"local", "", "self", "here"})
 
 GetJson = Callable[[str, dict[str, str]], Awaitable[dict[str, Any]]]
@@ -135,6 +139,102 @@ async def fetch_peer_board(name: str, url: str) -> tuple[str, dict[str, Any]]:
         return name, {"machine": name, "status": "offline", "error": str(exc)[:200]}
 
 
+def _parse_iso(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=UTC)
+
+
+def scheduler_watchdog_alerts(machines: dict[str, dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """Fleet-level scheduler health alerts: no scheduler runner or stale next-fire slots."""
+    online = {name: board for name, board in machines.items() if board.get("status") == "online"}
+    if not any("scheduler" in board for board in online.values()):
+        return []
+    alerts: list[dict[str, Any]] = []
+    running_hosts = [
+        name
+        for name, board in online.items()
+        if bool((board.get("scheduler") or {}).get("enabled")) and bool((board.get("scheduler") or {}).get("running"))
+    ]
+    if not running_hosts:
+        alerts.append(
+            {
+                "key": "no-running-scheduler",
+                "severity": "warning",
+                "title": "No running staff scheduler host",
+                "detail": "No online node reports scheduler enabled and running.",
+                "node": None,
+            }
+        )
+    for name, board in online.items():
+        scheduler = board.get("scheduler") or {}
+        if not bool(scheduler.get("enabled")):
+            continue
+        tick = float(scheduler.get("tick_seconds") or 30.0)
+        stale_before = now - timedelta(seconds=max(60.0, tick * 2))
+        for row in scheduler.get("roles") or []:
+            if not isinstance(row, dict) or not bool(row.get("enabled", True)):
+                continue
+            role = str(row.get("role") or "")
+            nxt = _parse_iso(str(row.get("next_fire") or ""))
+            if not role or nxt is None or nxt >= stale_before:
+                continue
+            alerts.append(
+                {
+                    "key": f"stale-next-fire:{name}:{role}",
+                    "severity": "warning",
+                    "title": f"Scheduler stale next-fire on {name}",
+                    "detail": f"Role {role} next_fire {nxt.isoformat()} is behind scheduler cadence.",
+                    "node": name,
+                }
+            )
+    return alerts
+
+
+def _emit_scheduler_watchdog_alerts(alerts: list[dict[str, Any]], now: datetime) -> None:
+    if not alerts:
+        return
+    now_s = now.timestamp()
+    fresh: list[dict[str, Any]] = []
+    with _SCHEDULER_ALERT_LOCK:
+        for alert in alerts:
+            key = str(alert.get("key") or "")
+            if not key:
+                continue
+            last = _LAST_SCHEDULER_ALERT_AT.get(key, float("-inf"))
+            if now_s - last < SCHEDULER_WATCHDOG_DEBOUNCE_SECONDS:
+                continue
+            _LAST_SCHEDULER_ALERT_AT[key] = now_s
+            fresh.append(alert)
+    if not fresh:
+        return
+    from fleet_events import FleetEvent, get_event_store  # noqa: PLC0415
+    import push  # noqa: PLC0415
+
+    store = get_event_store()
+    ts = int(now_s * 1000)
+    for alert in fresh:
+        store.record(
+            FleetEvent(
+                ts=ts,
+                severity=str(alert.get("severity") or "warning"),  # type: ignore[arg-type]
+                kind="watchdog",
+                title=str(alert.get("title") or "Scheduler watchdog alert"),
+                detail=str(alert.get("detail") or ""),
+                node=alert.get("node"),
+            )
+        )
+        push.notify(
+            "staff.escalation",
+            str(alert.get("title") or "Scheduler watchdog alert"),
+            str(alert.get("detail") or ""),
+        )
+
+
 async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | None = None) -> dict[str, Any]:
     """Merge this node's board with every peer's board into one fleet view.
 
@@ -167,9 +267,12 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
                 spend[provider] = round(spend.get(provider, 0.0) + float(usd), 6)
         providers[name] = dict(board.get("providers") or {})
         providers_cooldown[name] = list(board.get("providers_cooldown") or [])
+    now = datetime.now(UTC)
+    scheduler_alerts = scheduler_watchdog_alerts(machines, now)
+    _emit_scheduler_watchdog_alerts(scheduler_alerts, now)
     spend["total"] = round(sum(v for k, v in spend.items() if k != "total"), 6)
     return {
-        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
         "hub": local_name,
         "machine": local_name,
         "machines": machines,
@@ -182,6 +285,7 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
         "providers": providers,
         "providers_cooldown": providers_cooldown,
         "liveness_alerts": liveness_alerts,
+        "scheduler_alerts": scheduler_alerts,
     }
 
 
@@ -341,6 +445,7 @@ def local_board(runner: Any) -> dict[str, Any]:
         from staff.provider_auth_preflight import run_preflight_and_cache  # noqa: PLC0415
 
         provider_auth = run_preflight_and_cache(runner.machine)
+    from routers.staff_schedule import schedule_snapshot  # noqa: PLC0415
 
     return {
         "machine": runner.machine,
@@ -354,6 +459,7 @@ def local_board(runner: Any) -> dict[str, Any]:
         "chat_only_providers": chat_only_providers(),
         "availability": avail_stats,
         "liveness": liveness,
+        "scheduler": schedule_snapshot(),
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
         "provider_auth": provider_auth,
     }
