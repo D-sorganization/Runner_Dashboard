@@ -32,7 +32,18 @@ jobs:
           PYTHONPATH: backend
         run: |
           set -euo pipefail
-          args=(python3 scripts/arm_cap_reconcile.py --repo "${{ github.repository }}")
+          PYTHON_BIN=""
+          for py in python3.12 python3.11; do
+            if command -v "$py" >/dev/null 2>&1; then
+              PYTHON_BIN="$py"
+              break
+            fi
+          done
+          if [ -z "$PYTHON_BIN" ]; then
+            echo "::error::Armed PR cap reconcile requires Python 3.11+ (datetime.UTC)."
+            exit 1
+          fi
+          args=("$PYTHON_BIN" scripts/arm_cap_reconcile.py --repo "${{ github.repository }}")
           if [ "${{ inputs.trigger_disarm || 'false' }}" = "true" ]; then
             args+=(--trigger-disarm)
           fi
