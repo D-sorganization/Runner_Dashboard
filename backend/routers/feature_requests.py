@@ -1,4 +1,7 @@
-"""Deprecated module alias: use backend.routers.code_requests instead (CR-1, #1281)."""
+"""Deprecated module alias: use backend.routers.code_requests instead (CR-1, #1281).
+
+List/dispatch-target probing for Code Requests lives in ``code_requests`` (CR-0 / #1280).
+"""
 
 import sys
 
