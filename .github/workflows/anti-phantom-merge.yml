@@ -21,7 +21,7 @@ concurrency:
 jobs:
   guard:
     timeout-minutes: 60
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event.repository.private && github.event_name == 'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet') }}
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
       (github.event.pull_request.base.ref == 'main' && (github.event_name == 'pull_request' || github.event.label.name == 'phantom-guard-override') || github.event.pull_request.base.ref == 'master')
