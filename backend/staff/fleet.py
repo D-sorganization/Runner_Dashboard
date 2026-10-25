@@ -212,8 +212,8 @@ def _emit_scheduler_watchdog_alerts(alerts: list[dict[str, Any]], now: datetime)
             fresh.append(alert)
     if not fresh:
         return
-    from fleet_events import FleetEvent, get_event_store  # noqa: PLC0415
     import push  # noqa: PLC0415
+    from fleet_events import FleetEvent, get_event_store  # noqa: PLC0415
 
     store = get_event_store()
     ts = int(now_s * 1000)
