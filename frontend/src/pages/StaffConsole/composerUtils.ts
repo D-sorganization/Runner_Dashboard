@@ -167,7 +167,10 @@ export async function uploadIntakeFile(
       return { ...base, intakeId: data.id, sha256: data.sha256, sensitivity: data.sensitivity ?? sensitivity };
     }
     if (resp && !resp.ok) {
-      return { ...base, status: "rejected", error: `Upload failed (${resp.status})` };
+      const recovery = resp.status === 503
+        ? " The service may be temporarily unavailable; remove and reattach the file to retry."
+        : " Remove and reattach the file to retry.";
+      return { ...base, status: "rejected", error: `Upload failed (${resp.status}).${recovery}` };
     }
   } catch {
     return { ...base, status: "rejected", error: "Upload failed. Remove this file and choose it again to retry." };
