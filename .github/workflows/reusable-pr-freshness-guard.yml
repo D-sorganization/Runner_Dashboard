@@ -1,5 +1,6 @@
 name: Reusable PR freshness guard
 
+# pull_request-only early exit; never called on merge_group (callers gate the job).
 permissions:
   contents: read
   pull-requests: read
@@ -14,10 +15,14 @@ on:
         description: Skip reason when skip_heavy is true.
         value: ${{ jobs.guard.outputs.reason }}
 
+concurrency:
+  group: pr-freshness-guard-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   guard:
     name: PR freshness guard
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, d-sorg-fleet]
     timeout-minutes: 3
     outputs:
       skip_heavy: ${{ steps.guard.outputs.skip }}

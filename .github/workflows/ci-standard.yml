@@ -42,6 +42,7 @@ concurrency:
 
 jobs:
   pr-guard:
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/reusable-pr-freshness-guard.yml
 
   pick-runner:
@@ -97,10 +98,7 @@ jobs:
   # event; a failed `changes` job fails both (tests/test_workflow_hygiene.py).
   changes:
     name: Decide CI tier
-    needs: [pick-runner, pr-guard]
-    if: >-
-      github.event_name != 'pull_request' ||
-      needs.pr-guard.outputs.skip_heavy != 'true'
+    needs: [pick-runner]
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -212,6 +210,7 @@ jobs:
     needs: [pick-runner, changes, pr-guard]
     if: >-
       github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true'
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
@@ -354,6 +353,7 @@ jobs:
     if: >-
       needs.changes.outputs.run_python_tests == 'true' &&
       (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
@@ -516,6 +516,7 @@ jobs:
       needs.changes.outputs.run_python_tests == 'true' &&
       needs.changes.outputs.full_suite == 'true' &&
       (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
@@ -569,6 +570,7 @@ jobs:
     if: >-
       needs.changes.outputs.run_python_tests == 'true' &&
       (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-

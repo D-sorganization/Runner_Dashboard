@@ -34,6 +34,7 @@ concurrency:
 
 jobs:
   pr-guard:
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/reusable-pr-freshness-guard.yml
 
   decide-docker-scope:
@@ -44,6 +45,7 @@ jobs:
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
       (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5

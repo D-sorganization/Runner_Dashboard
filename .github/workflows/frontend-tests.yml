@@ -20,6 +20,7 @@ concurrency:
 
 jobs:
   pr-guard:
+    if: github.event_name == 'pull_request'
     uses: ./.github/workflows/reusable-pr-freshness-guard.yml
 
   frontend-required:
@@ -49,7 +50,7 @@ jobs:
 
           needs = json.loads(os.environ["NEEDS_JSON"])
           guard = needs.get("pr-guard", {})
-          if guard.get("outputs", {}).get("skip_heavy") == "true":
+          if guard.get("result") != "skipped" and guard.get("outputs", {}).get("skip_heavy") == "true":
               print("PR early-exit; frontend-required neutral")
               sys.exit(0)
           scope = needs["frontend-scope"]
@@ -80,6 +81,7 @@ jobs:
     needs: [pr-guard]
     if: >-
       github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true'
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
