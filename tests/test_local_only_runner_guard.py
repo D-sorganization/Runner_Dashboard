@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 from textwrap import dedent
 
@@ -14,6 +16,18 @@ WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 def test_repo_workflows_pass_hosted_job_guard() -> None:
     violations = guard.audit_workflows(WORKFLOWS)
     assert violations == [], "\n".join(violations)
+
+
+def test_ci_invocation_module_main_exits_zero() -> None:
+    """Guard workflow runs ``python -m scripts.local_only_runner_guard`` (no PYTHONPATH)."""
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.local_only_runner_guard"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_non_allowlisted_job_cannot_use_fast_checks_variable(tmp_path: Path) -> None:

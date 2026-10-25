@@ -39,7 +39,7 @@ _PRIVATE_FAST_CHECKS_TAIL: Final = (
 _WORKFLOW_NAME_TO_FILE: Final[dict[str, str]] = {
     "CI Standard": "ci-standard.yml",
     "Frontend Tests": "frontend-tests.yml",
-    "CI Secrets": "ci-secrets.yml",
+    "CI Secrets": "ci-secrets.yml",  # pragma: allowlist secret
     "Anti-Phantom Merge Guard": "anti-phantom-merge.yml",
 }
 

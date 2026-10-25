@@ -38,4 +38,4 @@ jobs:
         run: pip install --disable-pip-version-check pyyaml==6.0.2
 
       - name: Verify workflow runner routing
-        run: python scripts/local_only_runner_guard.py
+        run: python -m scripts.local_only_runner_guard
