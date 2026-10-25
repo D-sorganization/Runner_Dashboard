@@ -155,6 +155,26 @@ scheduler and retry have no issue, so they honour whole-repo entries only. `GET
 `python scripts/import_dispatch_exclusions.py DO_NOT_DISPATCH.txt` (dry run; `--apply` posts
 using `$RUNNER_DASHBOARD_URL` / `$RUNNER_DASHBOARD_TOKEN`).
 
+## Claim-aware admission (#2562)
+
+Other actors work the same backlog (`claim:codex`, `claim:cursor-agent`, `claim:claude`, shell
+orchestrators). Before a run is admitted on an issue or PR, `staff/claim_guard.py` reads the target's
+GitHub labels (one REST call through `gh_utils.gh_api`) and, for issues, the open PRs (cached 30 s) for a
+closing keyword (`Closes #N`). Any `claim:*` label other than RD's own (`claim:staff`,
+`claim:issue-remediator`, `claim:pr-remediator`) or a closing PR returns **409**
+(`claimed_elsewhere` / `closing_pr_exists`). Dispatch exclusions, active runs and local runner leases keep
+their own checks. A GitHub failure never silently passes: manual dispatch admits with
+`claim_check: "unavailable"` + `claim_warning` in the response, the scheduler skips the slot with the
+reason (fail closed).
+
+Operators (`staff.admin`: operator/admin roles) may send `force_claim_override: true` with a non-empty
+`claim_override_reason`; it also bypasses the open-PR duplicate guard and is audited as
+`dispatch.claim_override`. Config: `STAFF_CLAIM_GUARD=0` disables the whole check;
+`STAFF_CLAIM_LABEL_APPLY=0` stops RD from labelling. An admitted issue run gets `claim:issue-remediator`
+(or `claim:pr-remediator`, else `claim:staff`) and loses it when the run is succeeded/failed/cancelled and
+no other staff run targets the issue (a `claim_label` run event makes the removal survive a hub restart).
+The scheduler's role slots carry no issue today; the gate applies to any scheduled request that does.
+
 ## Liveness (#1209)
 
 The Codex desktop sweeps stopped on 2026-05-27 and nobody noticed for four

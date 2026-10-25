@@ -130,13 +130,11 @@ async def list_threads(
     try:
         all_threads = store.list_threads(
             status=thread_status,
+            participant=role,
             limit=200,
         )
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-    if role:
-        all_threads = [t for t in all_threads if role in t.participants]
     if unread:
         all_threads = [t for t in all_threads if t.unread_counters.get(caller_id, 0) > 0]
 

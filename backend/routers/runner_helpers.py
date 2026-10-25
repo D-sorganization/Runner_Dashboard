@@ -53,7 +53,7 @@ async def run_runner_svc(runner_num: int, action: str, timeout: int = 30) -> tup
         return 1, "", f"Service script not found: {svc_path}"
     # Use sudo if required, or run directly if permissions allow
     cmd = ["sudo", "-n", str(svc_path), action]
-    return await run_cmd(cmd, timeout=timeout)
+    return await run_cmd(cmd, timeout=timeout, cwd=svc_path.parent)
 
 
 def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:

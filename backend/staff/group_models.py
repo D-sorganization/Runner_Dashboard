@@ -27,6 +27,9 @@ class SeatSpec:
     provider: str
     model: str
     mandate: str = ""
+    # True when ``model`` is a CLI model id verified on the nodes, so the seat runs on it;
+    # False keeps the #1637 behaviour (``model`` is a pricing label, run on the provider default).
+    pin_model: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -132,39 +135,46 @@ def validate_seat_providers(seats: tuple[SeatSpec, ...]) -> tuple[SeatSpec, ...]
     return seats
 
 
+# Board personas (owner request 2026-10-23): Fable, Astra, top Grok, Argon. Every model id
+# was checked on DeskComputer and Brick against the subscription CLI's own model list and a
+# one-line turn; none is a pay-per-use API. Grok runs through the Cursor subscription.
 BOARD_SEATS: tuple[SeatSpec, ...] = validate_seat_providers(
     (
         SeatSpec(
             name="alpha",
-            title="Alpha (Architecture)",
+            title="Alpha (Architecture) - Fable",
             role="board-seat-alpha",
             provider="claude",
-            model="opus-5",
+            model="claude-fable-5-1",
             mandate="Cross-repo architectural review",
+            pin_model=True,
         ),
         SeatSpec(
             name="bravo",
-            title="Bravo (Science)",
+            title="Bravo (Science) - Astra",
             role="board-seat-bravo",
-            provider="antigravity",
-            model="gemini-3.8-flash-high",
+            provider="codex",
+            model="gpt-6-astra",
             mandate="Scientific validity, measurement rigor",
+            pin_model=True,
         ),
         SeatSpec(
             name="charlie",
-            title="Charlie (Cadence)",
+            title="Charlie (Cadence) - Grok",
             role="board-seat-charlie",
-            provider="codex",
-            model="gpt-5",
+            provider="cursor-agent",
+            model="grok-4.7-xhigh",
             mandate="Execution cadence, CI/CD health",
+            pin_model=True,
         ),
         SeatSpec(
             name="delta",
-            title="Delta (Docs & UX)",
+            title="Delta (Docs & UX) - Argon",
             role="board-seat-delta",
-            provider="claude",
-            model="sonnet-5",
+            provider="antigravity",
+            model="gemini-4-argon-high",
             mandate="Documentation, user experience, API surface",
+            pin_model=True,
         ),
     )
 )
@@ -193,11 +203,12 @@ def seat_on_node(seat: SeatSpec) -> SeatSpec:
 
     Postconditions:
         a seat on a provider switched off here (#1597) comes back on
-        SEAT_STAND_IN_PROVIDER / SEAT_STAND_IN_MODEL; any other seat is returned as is.
+        SEAT_STAND_IN_PROVIDER / SEAT_STAND_IN_MODEL with the model pin dropped (the pinned id
+        belongs to the switched-off provider); any other seat is returned as is.
         name, title, role and mandate are always kept, so the seat argues the same brief.
     """
     if provider_switch.is_disabled(seat.provider):
-        return replace(seat, provider=SEAT_STAND_IN_PROVIDER, model=SEAT_STAND_IN_MODEL)
+        return replace(seat, provider=SEAT_STAND_IN_PROVIDER, model=SEAT_STAND_IN_MODEL, pin_model=False)
     return seat
 
 
