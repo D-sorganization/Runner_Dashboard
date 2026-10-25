@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-RUNNER_USER="dieterolson"
+RUNNER_USER="fleet-operator"
 EXPECTED_COMMIT=""
 COSIGN_SOURCE=""
 COSIGN_SHA256=""
@@ -14,8 +14,8 @@ HELPER_DEST="/usr/local/sbin/runner-dashboard-qualified-deploy"
 LIB_DEST="/usr/local/lib/runner-dashboard/qualified-release-lib.sh"
 RUNTIME_LIB_DEST="/usr/local/lib/runner-dashboard/qualified-release-runtime-lib.sh"
 SELECTOR_DEST="/usr/local/lib/runner-dashboard/root_python_selector.py"
-INVENTORY_DEST="/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py"
-SCHEDULE_DEST="/usr/local/share/runner-dashboard/runner-schedule-oglaptop.json"
+INVENTORY_DEST="/usr/local/lib/runner-dashboard/node-b_github_inventory.py"
+SCHEDULE_DEST="/usr/local/share/runner-dashboard/runner-schedule-node-b.json"
 SUDOERS_DEST="/etc/sudoers.d/runner-dashboard-qualified-deploy"
 
 usage() {
@@ -29,7 +29,7 @@ Options:
   --project-root PATH      Protected-main checkout root (default: inferred)
   -h, --help               Show this help
 
-The runner account and host paths are intentionally fixed for OGLaptop.
+The runner account and host paths are intentionally fixed for node-b.
 EOF
 }
 
@@ -60,8 +60,8 @@ HELPER_SOURCE="${PROJECT_ROOT}/deploy/qualified-release-deploy.sh"
 LIB_SOURCE="${PROJECT_ROOT}/deploy/qualified-release-lib.sh"
 RUNTIME_LIB_SOURCE="${PROJECT_ROOT}/deploy/qualified-release-runtime-lib.sh"
 SELECTOR_SOURCE="${PROJECT_ROOT}/deploy/root_python_selector.py"
-INVENTORY_SOURCE="${PROJECT_ROOT}/deploy/oglaptop_github_inventory.py"
-SCHEDULE_SOURCE="${PROJECT_ROOT}/config/runner-schedule-oglaptop.json"
+INVENTORY_SOURCE="${PROJECT_ROOT}/deploy/node-b_github_inventory.py"
+SCHEDULE_SOURCE="${PROJECT_ROOT}/config/runner-schedule-node-b.json"
 for source in "${HELPER_SOURCE}" "${LIB_SOURCE}" "${RUNTIME_LIB_SOURCE}" "${SELECTOR_SOURCE}" "${INVENTORY_SOURCE}" "${SCHEDULE_SOURCE}"; do
     [[ -f "${source}" && ! -L "${source}" ]] || fail "bootstrap source is absent or unsafe"
 done
@@ -118,4 +118,4 @@ for installed in "${HELPER_DEST}" "${LIB_DEST}" "${RUNTIME_LIB_DEST}" "${SELECTO
         || fail "installed authority is not root:root"
 done
 
-printf '[OK] qualified OGLaptop deployment authority installed; no service was changed\n'
+printf '[OK] qualified node-b deployment authority installed; no service was changed\n'
