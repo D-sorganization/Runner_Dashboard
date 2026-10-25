@@ -19,5 +19,9 @@ jobs:
       skip_heavy: ${{ steps.guard.outputs.skip }}
       reason: ${{ steps.guard.outputs.reason }}
     steps:
+      - name: Checkout local composite action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - id: guard
         uses: ./.github/actions/pr-early-exit
