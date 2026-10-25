@@ -478,13 +478,8 @@ def test_poisoned_repo_outside_a_runner_work_tree_is_never_touched(outside_work_
 @pytest.mark.skipif(os.name != "posix", reason="hook is a POSIX shell script")
 def test_orphaned_fetch_temp_packs_are_removed_and_fresh_ones_kept(outside_work_tree_path: Path) -> None:
     """A cancelled fetch leaves .git/objects/pack/tmp_pack_* behind (#1979): six on
-<<<<<<< HEAD
     hub-a runner-3, ~2.4 GB. The lock cleanup skips objects/, so nothing reaped them."""
-    repo = _make_repo(tmp_path)
-=======
-    DeskComputer runner-3, ~2.4 GB. The lock cleanup skips objects/, so nothing reaped them."""
     repo = _make_repo(outside_work_tree_path)
->>>>>>> origin/main
     pack = repo / ".git" / "objects" / "pack"
     pack.mkdir(parents=True, exist_ok=True)
     stale_pack, stale_idx = pack / "tmp_pack_aB12cd", pack / "tmp_idx_Ef34gh"
