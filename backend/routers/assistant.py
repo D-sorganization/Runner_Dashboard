@@ -25,8 +25,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from gh_utils import gh_api
 from identity import Principal, require_scope
-from security import validate_owner_repo_format, validate_repo_slug
 from retired_route_sunset import RETIRED_ROUTE_HTTP_SUNSET
+from security import validate_owner_repo_format, validate_repo_slug
 from staff.actions import (
     ActionError,
     ParamsHashMismatchError,
