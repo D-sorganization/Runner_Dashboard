@@ -118,7 +118,7 @@ describe("machineTelemetryForRunner", () => {
   it("uses memory.percent when total_gb is absent", () => {
     const t = machineTelemetryForRunner(
       { name: "d-sorg-local-node-b-1" },
-      { node-b: { system: { memory: { percent: 40 } } } },
+      { "node-b": { system: { memory: { percent: 40 } } } },
     );
     expect(t.memory).toBe(40);
   });
