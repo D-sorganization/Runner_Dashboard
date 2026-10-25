@@ -296,8 +296,11 @@ def pump_nudge_output(
 
     Accepts the result line ONLY on an exact prefix match (``text.startswith('STAFF_RESULT:')``).
     """
+    from staff.chat_history import extract_session_id
+
     usage: dict[str, Any] = {}
     result_line = ""
+    session_id: str | None = None
     assert proc.stdout is not None  # noqa: S101
     with transcript.open("a", encoding="utf-8") as tf:
         tf.write("\n--- [nudge retry for STAFF_RESULT] ---\n")
@@ -306,6 +309,9 @@ def pump_nudge_output(
                 watchdog.record_output()
             tf.write(redact_sensitive_content(line))
             event = adapter.parse_line(line)
+            if not session_id:
+                pid = getattr(adapter, "provider_id", getattr(rec, "provider", ""))
+                session_id = extract_session_id(pid, event, raw_line=line)
             if event.get("usage"):
                 usage.update(event["usage"])
             text = (event.get("text") or "").strip()
@@ -313,7 +319,7 @@ def pump_nudge_output(
                 store.append_event(rec.id, "nudge_reply", text)
                 if text.startswith("STAFF_RESULT:"):
                     result_line = text
-    return PumpResult(usage, result_line)
+    return PumpResult(usage, result_line, session_id)
 
 
 def execute_retry_nudge(
@@ -407,6 +413,15 @@ def execute_retry_nudge(
         watchdog.stop()
         with lock:
             procs.pop(rec.id, None)
+
+    nudge_thread = getattr(nudge_pump, "session_id", None)
+    if adapter.provider_id in ("codex", "ollama") and session_id and nudge_thread and nudge_thread != session_id:
+        store.append_event(
+            rec.id,
+            "nudge",
+            "nudge resumed a different Codex thread; ignoring STAFF_RESULT reply (#2773)",
+        )
+        return "", nudge_pump.usage, rc
 
     return nudge_pump.result_line, nudge_pump.usage, rc
 

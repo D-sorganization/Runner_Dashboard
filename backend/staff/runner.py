@@ -420,6 +420,9 @@ class StaffRunner:
                 watchdog_error=watchdog.error_message or "",
                 machine=self.machine,
                 has_thread=bool(rec.thread_id),
+                run=rec,
+                opens_pr=self.opens_pr(rec.role),
+                probe=verification.GhCliPrProbe(),
             )
 
             same_provider = review.is_same_provider_review(rec.prompt)
