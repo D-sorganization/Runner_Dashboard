@@ -112,7 +112,7 @@ def test_execute_handoff_creates_thread_message_and_work_item() -> None:
     source_msg = store.add_message(
         thread_id=source_th.id,
         author_kind="user",
-        author="dieter",
+        author="operator",
         body_md="Update documentation style guide for docs/",
     )
 
@@ -131,7 +131,7 @@ def test_execute_handoff_creates_thread_message_and_work_item() -> None:
     result = router.execute_handoff(
         decision=decision,
         original_message=source_msg.body_md,
-        caller_id="dieter",
+        caller_id="operator",
         source_thread_id=source_th.id,
         store=store,
         work_item_store=work_item_store,
@@ -179,7 +179,7 @@ def test_override_routing_logs_feedback_and_redirects() -> None:
     res = router.execute_handoff(
         decision=decision,
         original_message="Fix documentation code block",
-        caller_id="dieter",
+        caller_id="operator",
         source_thread_id=source_th.id,
         store=store,
         work_item_store=work_item_store,
@@ -190,7 +190,7 @@ def test_override_routing_logs_feedback_and_redirects() -> None:
         handoff_message_id=res.handoff_message_id,
         new_target_role="pragmatic-programmer",
         reason="This is a code refactoring task, not docs",
-        overridden_by="dieter",
+        overridden_by="operator",
         store=store,
         work_item_store=work_item_store,
     )
@@ -223,7 +223,7 @@ def test_override_routing_reassigns_work_item_owner() -> None:
     res = router.execute_handoff(
         decision=decision,
         original_message="Fix documentation code block",
-        caller_id="dieter",
+        caller_id="operator",
         source_thread_id=source_th.id,
         store=store,
         work_item_store=work_item_store,
@@ -234,7 +234,7 @@ def test_override_routing_reassigns_work_item_owner() -> None:
             handoff_message_id=res.handoff_message_id,
             new_target_role="pragmatic-programmer",
             reason="This is a code refactoring task, not docs",
-            overridden_by="dieter",
+            overridden_by="operator",
             store=store,
             work_item_store=work_item_store,
         )
