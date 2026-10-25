@@ -624,6 +624,7 @@ async def dispatch_to_issues(
                 prompt=req.prompt,
                 run_cmd_fn=run_cmd_fn,
                 repo_root=repo_root,
+                check_open_pr=False,
             )
             if not premise_res.allowed:
                 pre_rejected.append(

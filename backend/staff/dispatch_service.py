@@ -217,6 +217,16 @@ async def dispatch_staff_run(cmd: DispatchCommand, caller: Principal) -> dict[st
     """
     _refuse_if_excluded(cmd)
 
+    if not cmd.dry_run and cmd.issue and cmd.repo:
+        attempt_block = claim_guard.issue_attempt_blocker(
+            get_runner().store,
+            role=cmd.role,
+            repo=cmd.repo,
+            issue=cmd.issue,
+        )
+        if attempt_block is not None:
+            raise HTTPException(status_code=409, detail=attempt_block.to_detail())
+
     if not cmd.dry_run and not cmd.force_duplicate and cmd.issue and cmd.repo:
         from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
 
