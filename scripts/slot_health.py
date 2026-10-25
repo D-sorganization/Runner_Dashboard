@@ -14,12 +14,16 @@ _BACKEND = _REPO_ROOT / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-from slot_health import (  # noqa: E402
-    SlotHealthPreconditionError,
-    analyze_jobs,
-    load_jobs,
-    publish_slot_health_flags,
-)
+from slot_health import SlotHealthPreconditionError, analyze_jobs, publish_slot_health_flags  # noqa: E402
+
+
+def load_jobs(path: Path) -> list[dict]:
+    if not path.is_file():
+        raise SlotHealthPreconditionError(f"missing jobs file: {path}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise SlotHealthPreconditionError("jobs JSON must be an array")
+    return [row for row in data if isinstance(row, dict)]
 
 LOG = logging.getLogger("slot_health")
 
@@ -28,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Detect unhealthy runner slots from job history.")
     parser.add_argument("--jobs", type=Path, required=True, help="JSON array of completed job records")
     parser.add_argument("--window-hours", type=int, default=24)
-    parser.add_argument("--publish", action="store_true", help="Record hub fleet events and Barb operator lane audit")
+    parser.add_argument("--publish", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
     try:

@@ -72,9 +72,7 @@ def _bad_outcome(job: Mapping[str, Any]) -> bool:
 
 
 def _toolcache_hit(job: Mapping[str, Any]) -> bool:
-    blob = " ".join(
-        str(job.get(key) or "") for key in ("log_excerpt", "step_name", "error_message", "message")
-    ).lower()
+    blob = " ".join(str(job.get(key) or "") for key in ("log_excerpt", "step_name", "error_message", "message")).lower()
     return any(marker in blob for marker in TOOLCACHE_MARKERS)
 
 
@@ -207,11 +205,3 @@ def _default_barb_lane(flags: Sequence[Mapping[str, Any]]) -> None:
         detail={"count": len(flags), "descriptors": [f.get("descriptor") for f in flags]},
     )
 
-
-def load_jobs(path: Path) -> list[dict[str, Any]]:
-    if not path.is_file():
-        raise SlotHealthPreconditionError(f"missing jobs file: {path}")
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, list):
-        raise SlotHealthPreconditionError("jobs JSON must be an array")
-    return [row for row in data if isinstance(row, dict)]

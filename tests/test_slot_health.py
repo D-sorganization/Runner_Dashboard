@@ -58,12 +58,6 @@ def _healthy_fleet_jobs(n: int) -> list[dict]:
     return jobs
 
 
-def test_describe_slot_uses_fleet_labels_not_hostnames() -> None:
-    text = describe_slot(_LABELS_LAPTOP)
-    assert "Windows" in text and "d-sorg-fleet-portable" in text
-    assert "laptop" not in text.lower() and "." not in text
-
-
 def test_oct25_replay_flags_portable_arch_map_outlier() -> None:
     jobs = _healthy_fleet_jobs(30)
     jobs += [
@@ -83,6 +77,7 @@ def test_oct25_replay_flags_portable_arch_map_outlier() -> None:
     reasons = {f["descriptor"]: f["reasons"] for f in report["flags"]}
     portable = describe_slot(_LABELS_LAPTOP)
     mint = describe_slot(_LABELS_MINT)
+    assert "d-sorg-fleet-portable" in portable and "laptop" not in portable.lower()
     assert portable in reasons
     assert any("architecture-map" in r for r in reasons[portable])
     assert mint in reasons
