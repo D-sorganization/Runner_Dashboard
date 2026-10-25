@@ -40,6 +40,7 @@ def test_build_staff_run_env_uses_credential_helper_not_static_git_token() -> No
     assert "x-access-token" not in env.get("GIT_CONFIG_VALUE_0", "")
     assert env.get("GIT_CONFIG_KEY_0") == "credential.https://github.com.helper"
     assert env["STAFF_GITHUB_CREDENTIAL_URL"].endswith("/api/staff/runs/run-refresh-01/github-credential")
+    assert env["STAFF_REAL_GH"] == "/usr/bin/gh"
     assert env["STAFF_REAL_GH_PATH"] == "/usr/bin/gh"
     wrapper_path = env["PATH"].split(os.pathsep)[0].replace("\\", "/").rstrip("/")
     assert wrapper_path.endswith("/staff/wrappers")
@@ -185,6 +186,19 @@ def test_github_credential_endpoint_returns_fresh_token(
     body = resp.json()
     assert body["token"] == _FAKE_GHS
     assert body["expires_at"] > 0
+
+
+def test_git_credential_helper_fails_closed_when_fetch_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STAFF_GITHUB_CREDENTIAL_URL", "http://127.0.0.1:8321/api/staff/runs/r1/github-credential")
+    monkeypatch.setenv("FLEET_API_TOKEN", "run_testtoken")
+    stdin = io.StringIO("protocol=https\nhost=github.com\n\n")
+    with patch(
+        "staff.github_git_credential.fetch_github_token_for_run",
+        side_effect=RuntimeError("mint failed"),
+    ):
+        code = __import__("staff.github_git_credential", fromlist=["main"]).main()
+    assert code == 1
+    assert stdin.read()  # consumed
 
 
 def test_git_credential_helper_fetches_via_fleet_api(monkeypatch: pytest.MonkeyPatch) -> None:
