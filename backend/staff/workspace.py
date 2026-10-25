@@ -515,8 +515,8 @@ def compose_prompt(
             overflow = estimate_tokens(full_prompt) - prompt_token_cap
             current = parts[instructions_idx]
             current_tokens = estimate_tokens(current)
-            target = max(40, current_tokens - overflow - 32)
-            parts[instructions_idx] = _truncate_for_budget(current, target)
+            target_tokens = max(40, current_tokens - overflow - 32)
+            parts[instructions_idx] = _truncate_for_budget(current, target_tokens)
             full_prompt = _joined()
 
         if estimate_tokens(full_prompt) > prompt_token_cap:
