@@ -664,22 +664,33 @@ jobs:
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
         run: |
-          notice_cancelled() {
-            if [ "$1" = "cancelled" ]; then
+          pr_supersession_lane() { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; }
+          handle_cancelled_upstream() {
+            if [ "$1" != "cancelled" ]; then
+              return 1
+            fi
+            if pr_supersession_lane; then
               echo "::notice::$2 cancelled (superseded by a newer workflow run)."
               return 0
             fi
-            return 1
+            echo "::error::$2 reported 'cancelled' on ${GITHUB_EVENT_NAME:-unknown}; merge_group must not merge untested."
+            return 0
           }
           echo "changes: $CHANGES (tier=$TIER, run_python_tests=$RUN_PYTHON_TESTS)"
           echo "ci-health-check: $HEALTH"
           echo "tests: $TESTS"
-          notice_cancelled "$CHANGES" changes && exit 0
+          if handle_cancelled_upstream "$CHANGES" changes; then
+            pr_supersession_lane && exit 0
+            exit 1
+          fi
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES'; cannot trust the tier decision."
             exit 1
           fi
-          notice_cancelled "$HEALTH" ci-health-check && exit 0
+          if handle_cancelled_upstream "$HEALTH" ci-health-check; then
+            pr_supersession_lane && exit 0
+            exit 1
+          fi
           if [ "$HEALTH" != "success" ]; then
             echo "::error::ci-health-check reported '$HEALTH'; cannot trust the Python scope decision."
             exit 1
@@ -692,7 +703,10 @@ jobs:
             fi
             exit 0
           fi
-          notice_cancelled "$TESTS" tests && exit 0
+          if handle_cancelled_upstream "$TESTS" tests; then
+            pr_supersession_lane && exit 0
+            exit 1
+          fi
           if [ "$TESTS" != "success" ]; then
             echo "::error::Python test matrix reported '$TESTS', expected 'success'."
             exit 1
@@ -738,13 +752,23 @@ jobs:
           RESULT_TESTS: ${{ needs.tests-required.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
         run: |
+          pr_supersession_lane() { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; }
+          merge_queue_lane() { [ "${GITHUB_EVENT_NAME:-}" = "merge_group" ]; }
           failed=0
           echo "changes: $CHANGES (tier=$TIER, full_suite=$FULL_SUITE, run_python_tests=$RUN_PYTHON_TESTS)"
+          if [ "$CHANGES" = "cancelled" ] && pr_supersession_lane; then
+            echo "::notice::changes cancelled (superseded by a newer workflow run)."
+            exit 0
+          fi
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES', expected 'success'."
             failed=1
           fi
           echo "ci-health-check: $HEALTH"
+          if [ "$HEALTH" = "cancelled" ] && pr_supersession_lane; then
+            echo "::notice::ci-health-check cancelled (superseded by a newer workflow run)."
+            exit 0
+          fi
           if [ "$HEALTH" != "success" ]; then
             echo "::error::ci-health-check reported '$HEALTH', expected 'success'."
             failed=1
@@ -756,10 +780,24 @@ jobs:
             if [ "$result" = "success" ]; then
               continue
             fi
+            if [ "$result" = "cancelled" ] && pr_supersession_lane; then
+              echo "::notice::$job cancelled (superseded by a newer workflow run)."
+              continue
+            fi
+            if merge_queue_lane && { [ "$result" = "cancelled" ] || [ -z "$result" ]; }; then
+              echo "::error::$job reported '$result' on merge_group; cannot merge untested."
+              failed=1
+              continue
+            fi
             # Nothing may skip in the full tier. Otherwise lint and
             # security-scan skip by design when the Python lane is off
             # (docs-only PR, post-merge push); tests-required always runs and
             # encodes that rule itself.
+            if merge_queue_lane && [ "$result" = "skipped" ]; then
+              echo "::error::$job reported 'skipped' on merge_group; cannot merge untested."
+              failed=1
+              continue
+            fi
             if [ "$result" = "skipped" ] && [ "$TIER" != "full" ]; then
               if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$job" != "tests" ]; then
                 echo "::notice::$job skipped: Python lane is off for tier '$TIER'."
