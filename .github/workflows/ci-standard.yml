@@ -273,14 +273,26 @@ jobs:
       - name: Verify no source file exceeds 500 lines
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref || 'main' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
+          set -euo pipefail
           EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|security.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts|api-types.ts|identity.py|machine_registry.py"
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            git fetch --no-tags --depth=1 origin "$BASE_REF"
-            FILES=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- backend/ frontend/src/ \
-              | grep -E '\.(py|ts|tsx|js)$' \
-              | grep -vE "$EXEMPT" || true)
+            # Fail CLOSED (RD#2730): a shallow checkout has no merge base, so
+            # fetch the exact base commit and diff it against HEAD directly
+            # (two-dot, no merge base needed). Any git failure aborts the step
+            # under `set -e`; it must never degrade to an empty file list.
+            if [ -z "${BASE_SHA:-}" ]; then
+              echo "::error::pull_request event has no base SHA; cannot compute changed files."
+              exit 1
+            fi
+            git fetch --no-tags --depth=1 origin "$BASE_SHA"
+            CHANGED=$(git diff --name-only --diff-filter=d "$BASE_SHA" HEAD -- backend/ frontend/src/)
+            echo "Changed source paths vs base ${BASE_SHA}:"
+            printf '%s\n' "$CHANGED"
+            FILES=$(printf '%s\n' "$CHANGED" \
+              | { grep -E '\.(py|ts|tsx|js)$' || true; } \
+              | { grep -vE "$EXEMPT" || true; })
             if [ -z "$FILES" ]; then
               echo "No changed source files require line-cap enforcement."
               exit 0
