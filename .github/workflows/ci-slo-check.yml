@@ -2,12 +2,15 @@ name: CI Queue SLO Check
 on:
   schedule:
     - cron: "0 7 * * *"
-    - cron: "*/10 * * * *"
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 permissions:
   contents: read
   actions: read
   pull-requests: read
+concurrency:
+  group: ci-slo-check
+  cancel-in-progress: false
 jobs:
   slo:
     runs-on: d-sorg-fleet
@@ -25,5 +28,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mode=full
-          if [ "${{ github.event.schedule }}" = "*/10 * * * *" ]; then mode=stall; fi
+          if [ "${{ github.event.schedule }}" = "*/30 * * * *" ]; then mode=stall; fi
           python scripts/ci_slo_check.py --repo "${{ github.repository }}" --mode "$mode" --publish-hub

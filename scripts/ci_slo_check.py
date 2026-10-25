@@ -7,7 +7,7 @@ import json
 import os
 import re
 import sys
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -42,9 +42,6 @@ class SloMetrics:
     landed_built_share: float
     peak_queued_runs: int
     merge_group_runs: int
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
 
 
 @dataclass
@@ -81,14 +78,6 @@ def parse_merge_queue_ref(head_branch: str) -> tuple[int, str] | None:
     return (int(match.group(1)), match.group(2).lower()) if match else None
 
 
-def _merged_sha_by_pr(merged_prs: Iterable[Mapping[str, Any]]) -> dict[int, str]:
-    return {
-        int(row["number"]): str(row["merge_commit_sha"]).lower()
-        for row in merged_prs
-        if row.get("number") and row.get("merge_commit_sha")
-    }
-
-
 def classify_merge_group_run(
     run: Mapping[str, Any],
     merged_sha_by_pr: Mapping[int, str],
@@ -109,7 +98,11 @@ def classify_merge_group_run(
 
 
 def compute_metrics(dataset: QueueDataset) -> SloMetrics:
-    merged_sha_by_pr = _merged_sha_by_pr(dataset.merged_prs)
+    merged_sha_by_pr = {
+        int(row["number"]): str(row["merge_commit_sha"]).lower()
+        for row in dataset.merged_prs
+        if row.get("number") and row.get("merge_commit_sha")
+    }
     merge_runs = [r for r in dataset.workflow_runs if str(r.get("event")) == "merge_group"]
     states = [classify_merge_group_run(r, merged_sha_by_pr) for r in merge_runs]
     completed = [s for s in states if s != "in_flight"]
@@ -149,15 +142,11 @@ def compute_metrics(dataset: QueueDataset) -> SloMetrics:
     )
 
 
-def _queue_non_empty(dataset: QueueDataset) -> bool:
-    if dataset.merge_queue_entries:
-        return True
-    return any(int(sample.get("queued_runs", 0)) > 0 for sample in dataset.queue_samples)
-
-
 def stall_alarm(dataset: QueueDataset, *, targets: SloTargets | None = None) -> tuple[bool, str]:
     t = targets or DEFAULT_TARGETS
-    if not _queue_non_empty(dataset):
+    if not dataset.merge_queue_entries and not any(
+        int(s.get("queued_runs", 0)) > 0 for s in dataset.queue_samples
+    ):
         return False, "merge queue empty"
     if not dataset.merged_prs:
         return True, f"no merges in lookback; queue size {len(dataset.merge_queue_entries)}"
@@ -171,7 +160,7 @@ def stall_alarm(dataset: QueueDataset, *, targets: SloTargets | None = None) -> 
 def publish_hub_snapshot(metrics: SloMetrics, *, ok: bool, detail: Mapping[str, Any]) -> None:
     payload = {
         "ok": ok,
-        "metrics": metrics.to_dict(),
+        "metrics": asdict(metrics),
         "detail": dict(detail),
         "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
@@ -290,7 +279,7 @@ def run_check(
         breaches.append(f"discarded merge_group {share:.1f}% > {cap:.0f}%")
     alarm, alarm_detail = stall_alarm(dataset, targets=t)
     report = {
-        "metrics": metrics.to_dict(),
+        "metrics": asdict(metrics),
         "breaches": breaches,
         "stall_alarm": {"fired": alarm, "detail": alarm_detail},
     }

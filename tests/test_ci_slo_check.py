@@ -1,4 +1,3 @@
-"""CI queue SLO metrics and stall alarm tests (#2896)."""
 from __future__ import annotations
 
 import json
@@ -11,10 +10,9 @@ from typing import Any
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from scripts import ci_slo_check as slo  # noqa: E402
 
-BASELINE = Path(__file__).resolve().parent / "fixtures" / "ci_slo" / "baseline_2025_10_25.json"
+BASELINE = Path(__file__).resolve().parent / "fixtures" / "ci_slo" / "baseline_2026_10_25.json"
 
 
 def _expand(spec: Mapping[str, Any], base: slo.QueueDataset) -> slo.QueueDataset:
@@ -37,24 +35,19 @@ def _expand(spec: Mapping[str, Any], base: slo.QueueDataset) -> slo.QueueDataset
                 "head_sha": sha,
             }
         )
-        jobs[run_id] = [{"started_at": (created + timedelta(minutes=waits[idx])).isoformat().replace("+00:00", "Z")}]
+        wm = waits[idx]
+        jobs[run_id] = [{"started_at": (created + timedelta(minutes=wm)).isoformat().replace("+00:00", "Z")}]
         if landed:
             merged.append(
                 {
                     "number": 2700 + idx,
-                    "merged_at": (created + timedelta(minutes=waits[idx] + 8)).isoformat().replace("+00:00", "Z"),
+                    "merged_at": (created + timedelta(minutes=wm + 8)).isoformat().replace("+00:00", "Z"),
                     "merge_commit_sha": sha,
                     "enqueued_at": (created - timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
                 }
             )
     return slo.QueueDataset(
-        base.as_of,
-        base.open_pr_count,
-        base.queue_samples,
-        base.merge_queue_entries,
-        merged,
-        runs,
-        jobs,
+        base.as_of, base.open_pr_count, base.queue_samples, base.merge_queue_entries, merged, runs, jobs
     )
 
 
@@ -81,36 +74,26 @@ def test_baseline_replay_and_full_report_exit() -> None:
     assert slo.run_check(_baseline(), mode="full") == 1
 
 
+def _merged_row(merged_at: str, enqueued_at: str) -> dict[str, str]:
+    return {"number": 1, "merged_at": merged_at, "merge_commit_sha": "a" * 40, "enqueued_at": enqueued_at}
+
+
 def test_stall_alarm_windows() -> None:
     stalled = slo.QueueDataset(
-        datetime(2025, 10, 25, 18, 0, tzinfo=UTC),
+        datetime(2026, 10, 25, 18, 0, tzinfo=UTC),
         40,
         [{"queued_runs": 120}],
         [{"pr_number": 1}],
-        [
-            {
-                "number": 1,
-                "merged_at": "2025-10-25T16:45:00Z",
-                "merge_commit_sha": "a" * 40,
-                "enqueued_at": "2025-10-25T16:00:00Z",
-            }
-        ],
+        [_merged_row("2026-10-25T16:45:00Z", "2026-10-25T16:00:00Z")],
         [],
         {},
     )
     healthy = slo.QueueDataset(
-        datetime(2025, 10, 25, 12, 30, tzinfo=UTC),
+        datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
         12,
         [{"queued_runs": 0}],
         [],
-        [
-            {
-                "number": 1,
-                "merged_at": "2025-10-25T12:05:00Z",
-                "merge_commit_sha": "b" * 40,
-                "enqueued_at": "2025-10-25T11:50:00Z",
-            }
-        ],
+        [_merged_row("2026-10-25T12:05:00Z", "2026-10-25T11:50:00Z")],
         [],
         {},
     )
