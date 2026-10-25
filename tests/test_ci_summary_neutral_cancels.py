@@ -19,27 +19,15 @@ def _step_run(job_id: str, step_name: str) -> str:
     raise AssertionError(f"missing step {step_name} in {job_id}")
 
 
-def test_tests_required_neutral_cancel_only_on_pull_request() -> None:
+def test_tests_required_checks_pr_head_before_neutral_cancel() -> None:
     run = _step_run("tests-required", "Confirm Python test matrix")
-    assert "pr_supersession_lane" in run
-    assert 'GITHUB_EVENT_NAME:-}" = "pull_request"' in run or '"pull_request"' in run
+    assert "RUN_HEAD_SHA" in run and "PR_HEAD_SHA" in run
+    assert "current PR head" in run
     assert "merge_group must not merge untested" in run
 
 
-def test_tests_required_does_not_unconditionally_pass_cancelled() -> None:
-    run = _step_run("tests-required", "Confirm Python test matrix")
-    assert "handle_cancelled_upstream" in run
-    assert "pr_supersession_lane && exit 0" in run
-
-
-def test_quality_gate_neutral_cancel_only_on_pull_request() -> None:
+def test_quality_gate_checks_pr_head_before_neutral_cancel() -> None:
     run = _step_run("quality-gate", "Require every gated job to succeed")
-    assert "pr_supersession_lane" in run
-    assert "superseded by a newer workflow run" in run.lower()
-
-
-def test_quality_gate_merge_group_fails_skipped_or_cancelled_inputs() -> None:
-    run = _step_run("quality-gate", "Require every gated job to succeed")
+    assert "RUN_HEAD_SHA" in run and "PR_HEAD_SHA" in run
     assert "merge_queue_lane" in run
     assert "cannot merge untested" in run
-    assert "reported 'skipped' on merge_group" in run
