@@ -14,8 +14,6 @@ import contextlib
 import logging
 import os
 import re
-import shutil
-import tempfile
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -24,7 +22,8 @@ from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
-from staff.cli_projects import PANEL_SCRATCH_PREFIX
+from staff.panel_hook_errors import hook_error_reason, is_hook_error_reply
+from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_scratch
 from staff.conversation_models import ThreadRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.group_models import GroupCostEstimate, get_group_threshold, lookup_seat_price
@@ -459,8 +458,8 @@ async def default_turn_runner(
         adapter = get_adapter(speaker.provider)
     except KeyError:
         return TurnOutcome(ok=False, error=f"unknown provider {speaker.provider!r}")
-    scratch_dir = tempfile.mkdtemp(prefix=PANEL_SCRATCH_PREFIX)
-    env: dict[str, str] = {**os.environ}
+    scratch_dir = prepare_panel_turn_scratch()
+    env: dict[str, str] = {**os.environ, "STAFF_PANEL_TURN": "1"}
     proc = None
     try:
         try:
@@ -468,6 +467,7 @@ async def default_turn_runner(
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             return TurnOutcome(ok=False, error=str(exc))
         env.update(adapter.runtime_env())
+        env["STAFF_PANEL_TURN"] = "1"
         proc = spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
         bus = get_thread_bus() if message_id is not None else _NULL_BUS
         out = await stream_turn_output(
@@ -478,6 +478,8 @@ async def default_turn_runner(
             placeholder_id=message_id or "",
         )
         text = out.reply_text.strip()
+        if is_hook_error_reply(text):
+            return TurnOutcome(ok=False, error=hook_error_reason(text))
         if out.returncode != 0 or not text:
             tail = "".join(out.stderr_lines[-5:]).strip()[-400:]
             return TurnOutcome(ok=False, error=f"exit {out.returncode}: {tail or 'empty reply'}")
@@ -486,5 +488,5 @@ async def default_turn_runner(
         if proc is not None and proc.poll() is None:
             with contextlib.suppress(OSError):
                 proc.kill()
-        shutil.rmtree(scratch_dir, ignore_errors=True)
+        remove_panel_turn_scratch(scratch_dir)
         cli_projects.remove_turn_project(scratch_dir, env)
