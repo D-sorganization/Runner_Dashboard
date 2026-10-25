@@ -15,14 +15,6 @@ import yaml
 
 _WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 _PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
-_PR_OR_MQ_CANCEL = "${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}"
-_MQ_CANCEL_WORKFLOWS = {
-    "frontend-tests.yml",
-    "docker-build.yml",
-    "ci-standard.yml",
-    "ci-secrets.yml",
-    "ci-auto-deploy-regression.yml",
-}
 
 # Workflows that produce deploy-blocking check-runs on main pushes.
 _MAIN_PUSH_BLOCKING = [
@@ -47,9 +39,8 @@ def test_main_push_runs_are_not_cancel_in_progress(name: str) -> None:
     triggers = data.get(True) or data.get("on")
     assert "push" in triggers, f"{name}: expected a push trigger"
     block = data["concurrency"]
-    expected = _PR_OR_MQ_CANCEL if name in _MQ_CANCEL_WORKFLOWS else _PR_ONLY_CANCEL
-    assert block["cancel-in-progress"] == expected, (
-        f"{name}: cancel-in-progress must not cancel main pushes"
+    assert block["cancel-in-progress"] == _PR_ONLY_CANCEL, (
+        f"{name}: cancel-in-progress must be limited to pull_request so main pushes are never cancelled"
     )
 
 
