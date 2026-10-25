@@ -14,6 +14,7 @@ concurrency:
 jobs:
   slo:
     runs-on: d-sorg-fleet
+    timeout-minutes: 20
     env:
       PYTHONPATH: backend
     steps:
