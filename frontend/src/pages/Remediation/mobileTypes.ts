@@ -1,6 +1,9 @@
 // Shared types, constants, and small helpers for the Remediation mobile view.
 // Extracted from Mobile.tsx to keep that file under the 500-line cap.
 
+import type { ProviderRegistry } from "../../lib/useProviderRegistry";
+import { pickRecommendedRemediationProvider } from "../../lib/remediationProviders";
+
 export interface AgentProvider {
   provider_id: string;
   label: string;
@@ -144,26 +147,12 @@ export const SUBTAB_OPTIONS = [
   { label: "Issues", value: "issues" },
 ];
 
-export const DEFAULT_PROVIDER_ORDER = [
-  "jules_api",
-  "codex_cli",
-  "claude_code_cli",
-  "gemini_cli",
-  "ollama",
-  "cline",
-];
-
 export function pickRecommendedProvider(
+  registry: ProviderRegistry | null,
   providers: Record<string, AgentProvider>,
   availability: Record<string, ProviderAvailability>,
 ): string {
-  for (const id of DEFAULT_PROVIDER_ORDER) {
-    if (providers[id] && availability[id]?.available) return id;
-  }
-  const first = Object.keys(providers).find(
-    (id) => availability[id]?.available,
-  );
-  return first ?? "claude_code_cli";
+  return pickRecommendedRemediationProvider(registry, providers, availability);
 }
 
 export function getProviderLabel(
