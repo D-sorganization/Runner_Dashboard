@@ -163,7 +163,7 @@ describe("Thread Component", () => {
         body_md: "Failed to dispatch turn.",
         delivery: "failed",
         failure_class: "auth_expired",
-        remediation: "Run claude login on host DeskComputer.",
+        remediation: "Run claude login on host hub-a.",
         created_at: "2026-09-25T08:12:00Z",
         seq: 4,
       },
@@ -172,7 +172,7 @@ describe("Thread Component", () => {
     render(<Thread thread={MOCK_THREAD} messages={errorMessages} />);
 
     expect(screen.getByText(/Authentication Expired|auth_expired/i)).toBeInTheDocument();
-    expect(screen.getByText(/Run claude login on host DeskComputer./i)).toBeInTheDocument();
+    expect(screen.getByText(/Run claude login on host hub-a./i)).toBeInTheDocument();
   });
 
   it("renders embedded action proposal card and handles approval", async () => {

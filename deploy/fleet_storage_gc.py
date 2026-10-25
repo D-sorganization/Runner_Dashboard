@@ -41,7 +41,7 @@ REPO_ROOT = DEPLOY_DIR.parent
 DEFAULT_WORKSTATIONS = REPO_ROOT / "config" / "storage-gc-workstations.json"
 PAYLOAD_FILES = ("install-storage-gc.sh", "runner-cleanup.sh")
 PROFILES = ("runner", "workstation")
-DEFAULT_RUNNER_USER = "dieterolson"
+DEFAULT_RUNNER_USER = "fleet-operator"
 SSH_OPTIONS = ("-o", "BatchMode=yes", "-o", "ConnectTimeout=15")
 HOST_TIMEOUT_S = 1800
 

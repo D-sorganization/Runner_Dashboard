@@ -68,7 +68,7 @@ The clients follow the same rule so a mismatch fails before anything is sent (CL
 
 - With an agent known (`FLEET_AGENT`, `--as-agent`, or a call's `agent`) and no session
   given, the client derives `<agent>-<short host>-<YYYYMMDD>-<6 hex>`, for example
-  `codex-DeskComputer-20260923-4f1a9c`. The random suffix is chosen once per client (one
+  `codex-hub-a-20260923-4f1a9c`. The random suffix is chosen once per client (one
   MCP server process, one `FleetClient`, one `fleetctl` run), so two sessions of the same
   agent on the same host never share an identity. To resume a session, or to share one
   across several `fleetctl` runs, set `FLEET_SESSION` (or `--as-session`) to it; `fleetctl`
@@ -81,7 +81,7 @@ The clients follow the same rule so a mismatch fails before anything is sent (CL
 
 ```bash
 claude mcp add fleet --scope user \
-  --env FLEET_API_URL=http://deskcomputer:8321 \
+  --env FLEET_API_URL=http://hub-a:8321 \
   --env FLEET_API_TOKEN=svc_... \
   --env FLEET_AGENT=claude \
   -- python3 /path/Runner_Dashboard/clients/fleet/fleet_mcp.py
@@ -97,7 +97,7 @@ See [Claude Connection Guide](claude.md) for full Claude Desktop (`claude_deskto
 [mcp_servers.fleet]
 command = "python3"
 args = ["/path/Runner_Dashboard/clients/fleet/fleet_mcp.py"]
-env = { FLEET_API_URL = "http://deskcomputer:8321", FLEET_API_TOKEN = "svc_...", FLEET_AGENT = "codex" }
+env = { FLEET_API_URL = "http://hub-a:8321", FLEET_API_TOKEN = "svc_...", FLEET_AGENT = "codex" }
 ```
 
 See [Codex CLI Guide](codex.md) for complete options and workflow.
@@ -113,7 +113,7 @@ See [Codex CLI Guide](codex.md) for complete options and workflow.
       "command": "python3",
       "args": ["/path/Runner_Dashboard/clients/fleet/fleet_mcp.py"],
       "env": {
-        "FLEET_API_URL": "http://deskcomputer:8321",
+        "FLEET_API_URL": "http://hub-a:8321",
         "FLEET_API_TOKEN": "svc_...",
         "FLEET_AGENT": "gemini"
       }
@@ -136,7 +136,7 @@ configurations.
       "command": "python",
       "args": ["/path/Runner_Dashboard/clients/fleet/fleet_mcp.py"],
       "env": {
-        "FLEET_API_URL": "http://deskcomputer:8321",
+        "FLEET_API_URL": "http://hub-a:8321",
         "FLEET_API_TOKEN": "svc_...",
         "FLEET_AGENT": "agy"
       }
@@ -152,7 +152,7 @@ Each agent connects with its own least-privilege `svc_` principal token (scoped 
 Grok Bot runs the CLI through its local-exec tool or calls `/api/v1/staff` with `curl`:
 
 ```bash
-export FLEET_API_URL=http://deskcomputer:8321 FLEET_API_TOKEN=svc_... FLEET_AGENT=grok
+export FLEET_API_URL=http://hub-a:8321 FLEET_API_TOKEN=svc_... FLEET_AGENT=grok
 python3 /path/Runner_Dashboard/clients/fleet/fleetctl.py briefing --repo Runner_Dashboard
 ```
 
@@ -282,7 +282,7 @@ revoked without affecting the other agents.
    ```bash
    curl -s -X POST http://127.0.0.1:8321/api/admin/principals/agent-codex/token \
      -H "X-Requested-With: XMLHttpRequest" -H "Content-Type: application/json" \
-     -d '{"name": "codex on DeskComputer", "expires_in_days": 90}'
+     -d '{"name": "codex on hub-a", "expires_in_days": 90}'
    ```
 
    The response is `{"principal_id": "agent-codex", "token": "svc_..."}`. Put it in the agent's `FLEET_API_TOKEN`.

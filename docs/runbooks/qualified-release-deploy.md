@@ -1,15 +1,15 @@
-# Qualified OGLaptop Release Deployment
+# Qualified node-b Release Deployment
 
 This runbook governs the unattended production deployment path for the
-OGLaptop Runner Dashboard. It deploys one exact published release through a
+node-b Runner Dashboard. It deploys one exact published release through a
 manual GitHub Actions dispatch, a pre-installed root-owned transaction helper,
 and a redacted evidence artifact. It does not accept a source branch, checkout,
 URL, artifact path, setup script, or arbitrary command.
 
 ## Safety model
 
-The workflow is pinned to `d-sorg-local-Oglaptop-1` and serialized across the
-repository. The deploy job also targets the protected `oglaptop-production`
+The workflow is pinned to `d-sorg-local-node-b-1` and serialized across the
+repository. The deploy job also targets the protected `node-b-production`
 GitHub environment, whose required reviewer and protected-branch policy form a
 human approval boundary. Runner 1 necessarily has a `Runner.Worker` while it executes the
 deployment. That worker is the sole exception to the idle-host precondition:
@@ -20,12 +20,12 @@ deployment. That worker is the sole exception to the idle-host precondition:
 3. A complete, paginated GitHub inventory proves runner 1 is the exact busy
    runner, runners 2-8 are idle, runners 1-4 are online, and runners 5-8 are
    offline. Validation is centralized in
-   `/usr/local/lib/runner-dashboard/oglaptop_github_inventory.py` (installed by
+   `/usr/local/lib/runner-dashboard/node-b_github_inventory.py` (installed by
    bootstrap). Failures name missing slots (for example standby `7`/`8` after a
-   registration purge), legacy `d-sorg-local-OGLaptop-{N}` GitHub names, and
+   registration purge), legacy `d-sorg-local-node-b-{N}` GitHub names, and
    stale local `.runner` metadata so operators follow
    [runner-registration-purge-recovery.md](runner-registration-purge-recovery.md)
-   with the canonical `d-sorg-local-Oglaptop-{N}` names.
+   with the canonical `d-sorg-local-node-b-{N}` names.
 4. The artifact's scheduler independently proves the local inventory contains
    exactly runners 1-8, only runner 1 is busy, and only runners 1-4 are active.
 
@@ -74,7 +74,7 @@ tracked by that commit. It makes no service changes. It installs:
 - `/usr/local/lib/runner-dashboard/qualified-release-runtime-lib.sh`
   (root:root, 0644);
 - `/usr/local/lib/runner-dashboard/root_python_selector.py` (root:root, 0644);
-- the canonical OGLaptop schedule under `/usr/local/share`;
+- the canonical node-b schedule under `/usr/local/share`;
 - a root-only transaction/rollback store and runner-owned 0700 inbox; and
 - one sudoers command with no wildcard arguments.
 
@@ -82,7 +82,7 @@ tracked by that commit. It makes no service changes. It installs:
 only a root-owned, non-group/other-writable `python3.12` (`/usr/bin/python3.12`, then
 `/usr/local/bin/python3.12`, then `/usr/bin/python3` if it is 3.12) whose whole path and realpath are
 root-owned. User-owned runtimes (`~/.local`, pyenv, uv, venvs) and Python 3.14 are rejected and the
-deployment stops before touching the host. On a host without one (for example OGLaptop with only
+deployment stops before touching the host. On a host without one (for example node-b with only
 3.14), an operator must root-install a vetted Python 3.12, then redeploy.
 
 The helper accepts its closed-schema request on stdin. Sudoers does not grant a
@@ -92,9 +92,9 @@ Re-run bootstrap only to install a reviewed protected-main helper revision.
 ## Dispatch qualification
 
 Before the first dispatch, an administrator must configure the protected
-`oglaptop-production` environment with required human review,
+`node-b-production` environment with required human review,
 `prevent_self_review=true`, and protected-branch-only deployment. Provision the
-environment secret `OGLAPTOP_DEPLOY_GITHUB_TOKEN` from a narrowly scoped GitHub
+environment secret `NODE_B_DEPLOY_GITHUB_TOKEN` from a narrowly scoped GitHub
 App installation token or fine-grained credential that can read this private
 repository's contents/attestations and list organization Actions runners. The
 default workflow token is intentionally not a fallback: it cannot reliably
@@ -104,12 +104,12 @@ in the root request.
 
 Collect these values from the published release record before dispatch:
 
-- `target`: `OGLaptop` (the only choice);
+- `target`: `node-b` (the only choice);
 - `version`: exact semver without `v`;
 - `tag`: exact annotated `vX.Y.Z` tag;
 - `release_commit`: exact 40-character commit SHA;
 - `artifact_sha256`: exact lowercase artifact hash; and
-- `confirm`: `DEPLOY OGLAPTOP`.
+- `confirm`: `DEPLOY NODE_B`.
 
 The workflow fails closed unless the tag is annotated and peels to the supplied
 commit, the commit is on protected-main ancestry, and the release is published,
@@ -119,7 +119,7 @@ path safety, schema v2 metadata, exact commit/version, and Python 3.12 wheel ABI
 The root helper repeats the checksum, cosign, archive, metadata, and ABI checks
 against copies in a root-only transaction directory.
 
-Do not dispatch while another OGLaptop job is running, outside the daytime
+Do not dispatch while another node-b job is running, outside the daytime
 window, while a runner inventory is incomplete, or before bootstrap succeeds.
 Never weaken the inventory, signature, attestation, ancestry, or worker checks
 to force a deployment.

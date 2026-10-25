@@ -15,7 +15,6 @@ to the correct runner tier.
 | `d-sorg-fleet-fast-io` | NVMe or SSD  | CI test suites, lockfile refreshes, Jules Auto-Repair / PR-AutoFix, release builds               | Pure documentation or governance                               |
 | `d-sorg-fleet-docker`  | NVMe or SSD  | Docker image builds, Trivy scans, container-layer cache churn                                    | Lightweight maintenance workflows                              |
 | `d-sorg-fleet-bulk`    | HDD          | Governance, issue taxonomy sync, label sync, spec checks, secret scans, lease reaper, verify-tag | Docker builds, native-build CI, lockfile refreshes, Playwright |
-| `d-sorg-fleet-queue`   | Reserved slot | `merge_group` validation only, to keep merge-queue checks from waiting behind PR builds         | Pull-request builds, scheduled and manual jobs                |
 
 ## Neutral Labels (safe during transition)
 
@@ -52,18 +51,6 @@ runs-on: [self-hosted, Linux, X64, d-sorg-fleet-docker]
 ```yaml
 runs-on: [self-hosted, Linux, X64, d-sorg-fleet-bulk]
 ```
-
-### Merge queue reserved slot
-
-```yaml
-runs-on: [self-hosted, Linux, X64, d-sorg-fleet-queue]
-```
-
-This label is reserved for `merge_group` jobs. Each host must advertise it on
-one reserved runner slot before workflows route jobs to it. Do not assign it to
-PR builds or maintenance jobs; the reservation is what protects merge checks
-from the shared PR queue. Keep merge-queue cancellation disabled until the
-owner records approval in the enabling PR.
 
 ## Workflow Classes
 
@@ -148,7 +135,7 @@ GET /api/runners/label-guidance
 
 ## Current Status
 
-Until ControlTower exposes distinct NVMe and HDD pools, all labels resolve to
+Until node-a exposes distinct NVMe and HDD pools, all labels resolve to
 the same physical runners. The taxonomy labels are registered but not yet
 enforced by GitHub Actions runner groups. The audit is intentionally
 conservative: it only fails on explicit misrouting, not on neutral-label usage.

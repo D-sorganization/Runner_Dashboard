@@ -19,12 +19,12 @@ describe("AgentBusPage", () => {
         json: async () => ({
           agents: [
             {
-              session: "local-brick-1",
+              session: "local-node-c-1",
               role: "local",
               provider: "cursor",
-              node: "Brick",
+              node: "node-c",
               lease_expires_at: "2026-10-22T12:00:00Z",
-              inbox_preview: [{ id: "m1", type: "status", from_session: "local-brick-1", body: "hello" }],
+              inbox_preview: [{ id: "m1", type: "status", from_session: "local-node-c-1", body: "hello" }],
             },
           ],
           threads: [],
@@ -34,7 +34,7 @@ describe("AgentBusPage", () => {
       }),
     );
     render(<AgentBusPage />);
-    await waitFor(() => expect(screen.getByText("local-brick-1")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("local-node-c-1")).toBeInTheDocument());
     expect(screen.getByText(/Live agents \(1\)/)).toBeInTheDocument();
   });
 });

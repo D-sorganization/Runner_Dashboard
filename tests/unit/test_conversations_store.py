@@ -114,7 +114,7 @@ def test_migration_on_existing_db_preserves_data_and_creates_backup(
             role="architect",
             provider="claude",
             model="claude-3-5-sonnet",
-            machine="DeskComputer",
+            machine="hub-a",
             repo="D-sorganization/Runner_Dashboard",
             target_kind="prompt",
             target_ref="",
@@ -172,7 +172,7 @@ def test_migration_failure_preserves_old_db_and_sets_degraded_banner(
             role="coder",
             provider="codex",
             model=None,
-            machine="DeskComputer",
+            machine="hub-a",
             repo="D-sorganization/Runner_Dashboard",
             target_kind="prompt",
             target_ref="",
@@ -206,20 +206,20 @@ def test_thread_crud_and_unread_tracking(clean_db: Path) -> None:
     thread = store.create_thread(
         title="CI Diagnostics",
         kind="direct",
-        participants=["user:dieter", "role:architect"],
-        created_by="user:dieter",
+        participants=["user:operator", "role:architect"],
+        created_by="user:operator",
     )
     assert thread.id.startswith("th_") or len(thread.id) > 0
     assert thread.title == "CI Diagnostics"
     assert thread.status == "open"
-    assert thread.unread_counters.get("user:dieter", 0) == 0
+    assert thread.unread_counters.get("user:operator", 0) == 0
     assert thread.unread_counters.get("role:architect", 0) == 0
 
     # Fetch
     fetched = store.get_thread(thread.id)
     assert fetched is not None
     assert fetched.title == thread.title
-    assert fetched.participants == ["user:dieter", "role:architect"]
+    assert fetched.participants == ["user:operator", "role:architect"]
 
     # List threads
     threads = store.list_threads(kind="direct")
@@ -227,7 +227,7 @@ def test_thread_crud_and_unread_tracking(clean_db: Path) -> None:
     assert threads[0].id == thread.id
 
     # Filter by participant
-    assert len(store.list_threads(participant="user:dieter")) == 1
+    assert len(store.list_threads(participant="user:operator")) == 1
     assert len(store.list_threads(participant="user:someone_else")) == 0
 
     # Update thread
@@ -236,7 +236,7 @@ def test_thread_crud_and_unread_tracking(clean_db: Path) -> None:
     assert updated.title == "CI Diagnostics & Fixes"
 
     # Archive thread
-    archived = store.archive_thread(thread.id, principal="user:dieter")
+    archived = store.archive_thread(thread.id, principal="user:operator")
     assert archived is not None
     assert archived.status == "archived"
     assert len(store.list_threads(status="open")) == 0

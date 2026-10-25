@@ -161,7 +161,7 @@ def test_issue_act_preserves_force_and_approved_by(client: TestClient) -> None:
         "provider": "claude",
         "prompt": "Investigate bug",
         "force": True,
-        "approved_by": "dieter",
+        "approved_by": "operator",
         "dry_run": True,
     }
     resp = client.post(URL, json=body, headers=_XHR)

@@ -7,7 +7,7 @@
 # Hub (WSL system service):
 #   Installs system units under /etc/systemd/system/.
 #
-# Brick / user-service nodes:
+# node-c / user-service nodes:
 #   Installs user units under ~/.config/systemd/user/ (no sudo system service).
 set -euo pipefail
 

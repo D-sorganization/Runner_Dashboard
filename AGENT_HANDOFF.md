@@ -9,7 +9,7 @@
 - A separate protected canonical check still rejects inherited five in-progress entries against the declared limit of four and historical verification fields. This source does not establish strict-governance adoption.
 - The original nine-run source cohort is terminal. Only test-fixture teardown and the synthetic credential URL baseline check failed; a single qualified follow-up replaces that source.
 
-## Brick Dashboard Deployment
+## node-c Dashboard Deployment
 
 - Deployed baseline: merged PR #2086, source `b604bd4081d51c78df90144cdb086aace65a2cc1`, Dashboard 4.10.0. The artifact transport above is not deployed or activated.
 - Qualified artifact SHA-256: `340ae8cdd6329f664852335723223930eb11446a63a91985fe3854b26b7ae571`. The reviewed user-scope installer preserved rollback at `dashboard.bak.20261021_152852`.

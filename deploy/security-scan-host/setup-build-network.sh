@@ -3,7 +3,7 @@
 #
 # Panel verdict q4 item 5: image builds for security scans need network access to
 # fetch dependencies, but must not reach the fleet. Run this ON THE SCAN VM, never
-# on ControlTower or a runner host. It creates:
+# on node-a or a runner host. It creates:
 #
 #   * docker network NETWORK (bridge BRIDGE, IPv6 off)
 #   * iptables chain VS_BUILD, hooked from DOCKER-USER and INPUT for that bridge.
@@ -53,7 +53,7 @@ for dns in $DNS_SERVERS; do
   fi
 done
 case "$(hostname | tr '[:upper:]' '[:lower:]')" in
-  *controltower*) echo "refusing: ControlTower never hosts security scans" >&2; exit 3 ;;
+  *node-a*) echo "refusing: node-a never hosts security scans" >&2; exit 3 ;;
 esac
 
 run() {

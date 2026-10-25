@@ -23,7 +23,7 @@ async def test_fleet_nodes_returns_local_node_when_collection_fails(monkeypatch:
 
     async def fake_system() -> dict:
         return {
-            "hostname": "ControlTower-NVMe",
+            "hostname": "node-a-NVMe",
             "hardware_specs": {},
             "workload_capacity": {},
         }

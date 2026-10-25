@@ -31,7 +31,7 @@ from staff.watchdog import StaffWatchdog
 log = logging.getLogger("dashboard.staff.runner_ops")
 
 _GITHUB_AUTH_REMEDIATION = (
-    "On the fleet hub (DeskComputer), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
+    "On the fleet hub (hub-a), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
     "and GITHUB_APP_PRIVATE_KEY_FILE. On spoke nodes, ensure HUB_URL and HUB_FLEET_TOKEN "
     "are set so staff runs can mint tokens via POST /api/fleet/run-token on the hub. "
     "STAFF_ALLOW_OPERATOR_TOKEN=1 is hub-only and does not apply on fleet nodes."
@@ -278,12 +278,7 @@ def pump_output(
                 quota_mod.observe(rec.provider, event["raw"])  # live plan windows, free (#1587)
             text = event.get("text") or ""
             if text.strip():
-                store.append_event(
-                    rec.id,
-                    event.get("kind", "text"),
-                    text,
-                    lesson_evidence=event.get("lesson_evidence"),
-                )
+                store.append_event(rec.id, event.get("kind", "text"), text)
                 if "STAFF_RESULT:" in text:
                     result_line = text[text.index("STAFF_RESULT:") :]
     return PumpResult(usage, result_line, session_id)

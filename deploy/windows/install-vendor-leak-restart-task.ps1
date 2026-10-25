@@ -5,7 +5,7 @@
 .DESCRIPTION
     Fleet memory policy (Repository_Management#2071). Dell ServiceShell
     (service DellClientManagementService) leaks about 2 GB/day and reached
-    19.6 GB on ControlTower. This registers the SYSTEM task
+    19.6 GB on node-a. This registers the SYSTEM task
     Fleet-Dell-ServiceShell-Restart, which restarts the service every 2 days
     at 04:30 and appends to C:\ProgramData\fleet-dell-restart.log.
 
