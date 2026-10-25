@@ -90,7 +90,7 @@ def test_apply_fleet_identity_env_overrides_hub_url() -> None:
     assert identity.hub_url_source == "env"
 
 
-def test_apply_fleet_identity_node-c_node_points_at_desk_hub() -> None:
+def test_apply_fleet_identity_node_c_points_at_desk_hub() -> None:
     identity = apply_fleet_identity_from_registry(
         _REGISTRY_HUB_DESK,
         hub_url_env=None,
