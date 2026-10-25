@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# Root-only primitives for the OGLaptop qualified-release transaction.
+# Root-only primitives for the node-b qualified-release transaction.
 
 set -euo pipefail
 
 QUALIFIED_STATE_ROOT="/var/lib/runner-dashboard-qualified-deploy"
 QUALIFIED_INBOX_ROOT="${QUALIFIED_STATE_ROOT}/inbox"
 QUALIFIED_TRANSACTION_ROOT="${QUALIFIED_STATE_ROOT}/transactions"
-QUALIFIED_RUNNER_USER="dieterolson"
+QUALIFIED_RUNNER_USER="fleet-operator"
 QUALIFIED_RUNNER_HOME="/home/${QUALIFIED_RUNNER_USER}"
 QUALIFIED_DEPLOY_DIR="${QUALIFIED_RUNNER_HOME}/actions-runners/dashboard"
 QUALIFIED_RUNNER_ROOT="${QUALIFIED_RUNNER_HOME}/actions-runners"
 QUALIFIED_CONFIG_DIR="${QUALIFIED_RUNNER_HOME}/.config/runner-dashboard"
 QUALIFIED_SHARE_DIR="${QUALIFIED_RUNNER_HOME}/.local/share/runner-dashboard"
 QUALIFIED_SCHEDULE="${QUALIFIED_CONFIG_DIR}/runner-schedule.json"
-QUALIFIED_SCHEDULE_SOURCE="/usr/local/share/runner-dashboard/runner-schedule-oglaptop.json"
+QUALIFIED_SCHEDULE_SOURCE="/usr/local/share/runner-dashboard/runner-schedule-node-b.json"
 QUALIFIED_RELEASE_ROOT="/opt/runner-dashboard-qualified/releases"
 QUALIFIED_EVIDENCE_NAME="redacted-evidence.json"
 COSIGN_BIN="/usr/local/bin/cosign"
@@ -93,7 +93,7 @@ validate_worker_ancestry() {
                 && grep -Fxq "GITHUB_WORKFLOW_REF=${expected_repository}/.github/workflows/deploy-qualified-release.yml@refs/heads/main" <<< "${environment}" \
                 && grep -Fxq "GITHUB_RUN_ID=${GITHUB_RUN_ID}" <<< "${environment}" \
                 && grep -Fxq "GITHUB_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT}" <<< "${environment}" \
-                && grep -Fxq 'RUNNER_NAME=d-sorg-local-Oglaptop-1' <<< "${environment}"; then
+                && grep -Fxq 'RUNNER_NAME=d-sorg-local-node-b-1' <<< "${environment}"; then
                 workflow_proven=1
             fi
         fi
@@ -161,7 +161,7 @@ if (stage / "VERSION").read_text(encoding="utf-8").strip() != sys.argv[2]:
 if compatibility.get("artifact_schema") != "runner-dashboard-artifact-v2":
     raise SystemExit("artifact schema is not runner-dashboard-artifact-v2")
 if compatibility.get("python_minor") != "3.12":
-    raise SystemExit("qualified OGLaptop deployment requires Python 3.12")
+    raise SystemExit("qualified node-b deployment requires Python 3.12")
 if compatibility.get("service_name") != "runner-dashboard.service":
     raise SystemExit("artifact service identity is not runner-dashboard.service")
 PY

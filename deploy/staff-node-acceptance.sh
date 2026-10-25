@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # staff-node-acceptance.sh — Unified acceptance check for Staff Hub nodes (Runner_Dashboard#1273).
 #
-# Validates node-readiness across DeskComputer (scheduler), OGLaptop (worker), and ControlTower (worker).
+# Validates node-readiness across hub-a (scheduler), node-b (worker), and node-a (worker).
 # Checks:
 #   1. Deployment: Dashboard HTTP health endpoint and service active
 #   2. Sign-ins: GitHub CLI auth status
@@ -27,7 +27,7 @@ Options:
   --port PORT           Dashboard port (default: 8321)
   --host HOST           Dashboard host (default: 127.0.0.1)
   --role ROLE           Expected node role: 'worker' or 'scheduler'
-                        (default: auto-detected from hostname; DeskComputer=scheduler, others=worker)
+                        (default: auto-detected from hostname; hub-a=scheduler, others=worker)
   --env-file PATH       Path to runner-dashboard environment file (default: ~/.config/runner-dashboard/env)
   --dropin-file PATH    Path to systemd drop-in file (default: /etc/systemd/system/runner-dashboard.service.d/staff-hub.conf)
   --skip-service        Skip systemctl service and user timer checks (useful in non-systemd test environments)
@@ -59,7 +59,7 @@ done
 # Auto-detect role if not explicitly provided
 if [[ -z "$ROLE" ]]; then
     HOSTNAME_LOWER="$(hostname 2>/dev/null | tr '[:upper:]' '[:lower:]' || echo "")"
-    if [[ "$HOSTNAME_LOWER" == *"deskcomputer"* ]] || [[ "$HOSTNAME_LOWER" == *"desktop"* ]]; then
+    if [[ "$HOSTNAME_LOWER" == *"hub-a"* ]] || [[ "$HOSTNAME_LOWER" == *"desktop"* ]]; then
         ROLE="scheduler"
     else
         ROLE="worker"
@@ -306,7 +306,7 @@ if [[ "$SKIP_SERVICE" != "1" ]]; then
     if systemctl --user is-active runner-dashboard-rm-sync.timer >/dev/null 2>&1; then
         report_pass "runner-dashboard-rm-sync.timer is active"
     else
-        # `systemctl --user` fails without a user D-Bus socket (OGLaptop from S4U tasks) even while the
+        # `systemctl --user` fails without a user D-Bus socket (node-b from S4U tasks) even while the
         # timer runs; the enable link is the durable signal and rm_source freshness below proves it fires.
         if [[ -L "${HOME}/.config/systemd/user/timers.target.wants/runner-dashboard-rm-sync.timer" ]]; then
             report_pass "runner-dashboard-rm-sync.timer is enabled" "timers.target.wants link"
