@@ -36,9 +36,7 @@ def test_docker_scope_workflow_does_not_call_pull_files_api() -> None:
 
 
 def test_arm_cap_reconcile_uses_python_311_or_newer() -> None:
-    workflow = yaml.safe_load(
-        (ROOT / ".github" / "workflows" / "arm-cap-reconcile.yml").read_text(encoding="utf-8")
-    )
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "arm-cap-reconcile.yml").read_text(encoding="utf-8"))
     run_step = next(s for s in workflow["jobs"]["reconcile"]["steps"] if s.get("name") == "Reconcile armed inventory")
     script = run_step["run"]
     assert "python3 scripts/arm_cap_reconcile.py" not in script
