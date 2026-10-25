@@ -56,10 +56,10 @@ MERGE_GROUP_EXCLUDED_JOBS: dict[str, frozenset[str]] = {
     "ci-auto-deploy-regression.yml": frozenset({"auto-deploy-regression"}),
 }
 
-_REQUIRED_MERGE_GROUP_CONTEXT_JOBS = {
+_REQUIRED_MERGE_GROUP_CONTEXT_JOBS: tuple[tuple[str, str], ...] = (
     ("ci-standard.yml", "quality-gate"),
     ("ci-standard.yml", "tests-required"),
-}
+)
 
 
 def _load(path: Path) -> dict:
@@ -141,7 +141,11 @@ def test_merge_group_job_set_matches_allowlist(filename: str) -> None:
 
 @pytest.mark.parametrize(
     ("filename", "job_id"),
-    [(fn, jid) for fn, jobs in MERGE_GROUP_EXCLUDED_JOBS.items() for jid in jobs],
+    sorted(
+        (fn, jid)
+        for fn, jobs in MERGE_GROUP_EXCLUDED_JOBS.items()
+        for jid in sorted(jobs)
+    ),
 )
 def test_excluded_jobs_still_run_on_pull_request(filename: str, job_id: str) -> None:
     path = _WORKFLOWS / filename
