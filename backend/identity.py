@@ -451,7 +451,7 @@ SCOPE_PRESETS = {
     # Whitespace-separated to keep this module under the 500-line cap.
     "operator": (
         "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
-        "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
+        "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "
         "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin "

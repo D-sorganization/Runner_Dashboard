@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 from fleet_autoconfig import (
-    assert_no_maxwell_port_collision,
     current_identity_names,
     derive_fleet_nodes_from_registry,
     derive_pool_topology,
@@ -13,57 +12,57 @@ from fleet_autoconfig import (
 _SPLIT_POOL_REGISTRY = {
     "machines": [
         {
-            "name": "node-a",
-            "aliases": ["node-a"],
+            "name": "ControlTower",
+            "aliases": ["controltower"],
             "dashboard_url": "http://ct:8321",
             "runner_pools": [
                 {
-                    "name": "node-a-NVMe",
-                    "aliases": ["node-a-nvme"],
+                    "name": "ControlTower-NVMe",
+                    "aliases": ["controltower-nvme"],
                     "dashboard_url": "http://ct:8321",
                 },
                 {
-                    "name": "node-a-SSD",
-                    "aliases": ["node-a-ssd"],
+                    "name": "ControlTower-SSD",
+                    "aliases": ["controltower-ssd"],
                     "dashboard_url": "http://ct:8322",
                 },
             ],
         },
-        {"name": "hub-a", "dashboard_url": "http://desk:8321"},
+        {"name": "DeskComputer", "dashboard_url": "http://desk:8321"},
     ]
 }
 
 
 def test_current_identity_names_includes_display_host_and_aliases() -> None:
     identities = current_identity_names(
-        display_name="node-a-NVMe",
-        platform_node="node-a",
-        runner_aliases="node-a-nvme, node-a-nvme",
+        display_name="ControlTower-NVMe",
+        platform_node="ControlTower",
+        runner_aliases="controltower-nvme, control-tower-nvme",
     )
 
     assert identities == {
-        "node-a-nvme",
-        "node-a",
-        "node-a-nvme",
+        "controltower-nvme",
+        "controltower",
+        "control-tower-nvme",
     }
 
 
 def test_registry_machine_identity_names_includes_runner_pools() -> None:
     machine = {
-        "name": "node-a",
-        "aliases": ["node-a"],
+        "name": "ControlTower",
+        "aliases": ["controltower"],
         "runner_pools": [
             {
-                "name": "node-a-NVMe",
-                "aliases": ["node-a-fast"],
+                "name": "ControlTower-NVMe",
+                "aliases": ["controltower-fast"],
             }
         ],
     }
 
     assert registry_machine_identity_names(machine) == {
-        "node-a",
-        "node-a-nvme",
-        "node-a-fast",
+        "controltower",
+        "controltower-nvme",
+        "controltower-fast",
     }
 
 
@@ -71,44 +70,44 @@ def test_derive_fleet_nodes_skips_parent_when_current_dashboard_is_runner_pool()
     registry = {
         "machines": [
             {
-                "name": "node-a",
-                "aliases": ["node-a"],
-                "dashboard_url": "http://100.64.254.10:8321",
+                "name": "ControlTower",
+                "aliases": ["controltower"],
+                "dashboard_url": "http://100.95.177.68:8321",
                 "runner_pools": [
                     {
-                        "name": "node-a-NVMe",
-                        "aliases": ["node-a-nvme"],
-                        "dashboard_url": "http://100.64.254.10:8321",
+                        "name": "ControlTower-NVMe",
+                        "aliases": ["controltower-nvme"],
+                        "dashboard_url": "http://100.95.177.68:8321",
                     },
                     {
-                        "name": "node-a-SSD",
-                        "aliases": ["node-a-ssd"],
-                        "dashboard_url": "http://100.64.254.10:8321",
+                        "name": "ControlTower-SSD",
+                        "aliases": ["controltower-ssd"],
+                        "dashboard_url": "http://100.95.177.68:8321",
                     },
                 ],
             },
             {
-                "name": "hub-a",
-                "dashboard_url": "http://100.64.254.13:8321",
+                "name": "DeskComputer",
+                "dashboard_url": "http://100.122.254.109:8321",
             },
             {
-                "name": "node-b",
-                "dashboard_url": "http://node-b.fleet-example.ts.net:8321",
-                "tailscale_nodes": [{"ip": "100.64.254.12"}],
+                "name": "OGLaptop",
+                "dashboard_url": "http://oglaptop.tail2bbcc7.ts.net:8321",
+                "tailscale_nodes": [{"ip": "100.125.64.108"}],
             },
         ],
     }
 
     nodes = derive_fleet_nodes_from_registry(
         registry,
-        display_name="node-a-NVMe",
-        platform_node="node-a",
-        runner_aliases="node-a-nvme",
+        display_name="ControlTower-NVMe",
+        platform_node="ControlTower",
+        runner_aliases="controltower-nvme",
     )
 
     assert nodes == {
-        "hub-a": "http://100.64.254.13:8321",
-        "node-b": "http://node-b.fleet-example.ts.net:8321",
+        "DeskComputer": "http://100.122.254.109:8321",
+        "OGLaptop": "http://oglaptop.tail2bbcc7.ts.net:8321",
     }
 
 
@@ -121,11 +120,11 @@ def test_derive_pool_topology_matches_local_pool_by_identity() -> None:
     local, peers = derive_pool_topology(
         _SPLIT_POOL_REGISTRY,
         local_port=8321,
-        display_name="node-a-NVMe",
-        runner_aliases="node-a-nvme",
+        display_name="ControlTower-NVMe",
+        runner_aliases="controltower-nvme",
     )
-    assert local == "node-a-NVMe"
-    assert peers == [{"name": "node-a-SSD", "url": "http://ct:8322", "port": 8322}]
+    assert local == "ControlTower-NVMe"
+    assert peers == [{"name": "ControlTower-SSD", "url": "http://ct:8322", "port": 8322}]
 
 
 def test_derive_pool_topology_falls_back_to_local_port_when_identity_ambiguous() -> None:
@@ -134,20 +133,20 @@ def test_derive_pool_topology_falls_back_to_local_port_when_identity_ambiguous()
     local, peers = derive_pool_topology(
         _SPLIT_POOL_REGISTRY,
         local_port=8322,
-        display_name="node-a",
-        runner_aliases="node-a",
+        display_name="ControlTower",
+        runner_aliases="controltower",
     )
-    assert local == "node-a-SSD"
-    assert peers == [{"name": "node-a-NVMe", "url": "http://ct:8321", "port": 8321}]
+    assert local == "ControlTower-SSD"
+    assert peers == [{"name": "ControlTower-NVMe", "url": "http://ct:8321", "port": 8321}]
 
 
 def test_derive_pool_topology_single_pool_machine_has_no_phantom_peer() -> None:
-    # A non-split machine (hub-a) owns no pools → no peer probing, so no
-    # phantom offline node-a-HDD node is ever emitted (the #942 bug).
+    # A non-split machine (DeskComputer) owns no pools → no peer probing, so no
+    # phantom offline ControlTower-HDD node is ever emitted (the #942 bug).
     local, peers = derive_pool_topology(
         _SPLIT_POOL_REGISTRY,
         local_port=8321,
-        display_name="hub-a",
+        display_name="DeskComputer",
         platform_node="",
     )
     assert local is None
@@ -156,23 +155,6 @@ def test_derive_pool_topology_single_pool_machine_has_no_phantom_peer() -> None:
 
 def test_registry_dashboard_url_ports_collects_machine_and_pool_ports() -> None:
     assert registry_dashboard_url_ports(_SPLIT_POOL_REGISTRY) == {8321, 8322}
-
-
-def test_assert_no_maxwell_port_collision_raises_on_peer_port() -> None:
-    with pytest.raises(RuntimeError, match="MAXWELL_PORT=8322"):
-        assert_no_maxwell_port_collision(
-            _SPLIT_POOL_REGISTRY,
-            maxwell_port=8322,
-            local_port=8321,
-        )
-
-
-def test_assert_no_maxwell_port_collision_allows_local_port_and_distinct_port() -> None:
-    # Maxwell on its real default (8080) never collides.
-    assert_no_maxwell_port_collision(_SPLIT_POOL_REGISTRY, maxwell_port=8080, local_port=8321)
-    # Maxwell sharing *this* dashboard's own port is the co-located reverse-proxy
-    # case, not a peer-pool collision, so it is allowed here.
-    assert_no_maxwell_port_collision(_SPLIT_POOL_REGISTRY, maxwell_port=8321, local_port=8321)
 
 
 # ---------------------------------------------------------------------------
@@ -184,20 +166,20 @@ def test_derive_pool_topology_ignores_retired_pools() -> None:
     registry = {
         "machines": [
             {
-                "name": "node-a",
-                "aliases": ["node-a"],
-                "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                "name": "ControlTower",
+                "aliases": ["controltower"],
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                 "runner_pools": [
                     {
-                        "name": "node-a-NVMe",
-                        "aliases": ["node-a-nvme"],
-                        "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                        "name": "ControlTower-NVMe",
+                        "aliases": ["controltower-nvme"],
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                         "retired": True,
                     },
                     {
-                        "name": "node-a-Runner",
-                        "aliases": ["node-a-runner"],
-                        "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                        "name": "ControlTower-Runner",
+                        "aliases": ["controltower-runner"],
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                     },
                 ],
             },
@@ -207,10 +189,10 @@ def test_derive_pool_topology_ignores_retired_pools() -> None:
     local, peers = derive_pool_topology(
         registry,
         local_port=8321,
-        display_name="node-a",
-        platform_node="node-a",
+        display_name="ControlTower",
+        platform_node="controltower",
     )
-    assert local == "node-a-Runner"
+    assert local == "ControlTower-Runner"
     assert peers == []
 
 
@@ -218,29 +200,29 @@ def test_derive_fleet_nodes_skips_retired_machines() -> None:
     registry = {
         "machines": [
             {
-                "name": "node-a",
-                "aliases": ["node-a"],
+                "name": "ControlTower",
+                "aliases": ["controltower"],
                 "dashboard_url": "http://ct:8321",
             },
             {
-                "name": "node-c",
-                "dashboard_url": "http://node-c:8321",
+                "name": "brick",
+                "dashboard_url": "http://brick:8321",
                 "retired": True,
             },
             {
-                "name": "node-b",
-                "dashboard_url": "http://node-b:8321",
+                "name": "OGLaptop",
+                "dashboard_url": "http://oglaptop:8321",
             },
         ],
     }
 
     nodes = derive_fleet_nodes_from_registry(
         registry,
-        display_name="node-a",
-        platform_node="node-a",
+        display_name="ControlTower",
+        platform_node="controltower",
     )
-    assert nodes == {"node-b": "http://node-b:8321"}
-    assert "node-c" not in nodes
+    assert nodes == {"OGLaptop": "http://oglaptop:8321"}
+    assert "brick" not in nodes
 
 
 def test_assert_valid_active_registry_passes_on_valid_registry() -> None:
@@ -249,27 +231,27 @@ def test_assert_valid_active_registry_passes_on_valid_registry() -> None:
     valid_registry = {
         "machines": [
             {
-                "name": "node-a",
-                "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                 "runner_pools": [
                     {
-                        "name": "node-a-NVMe",
-                        "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                        "name": "ControlTower-NVMe",
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                         "retired": True,
                     },
                     {
-                        "name": "node-a-Runner",
-                        "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                        "name": "ControlTower-Runner",
+                        "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                     },
                 ],
             },
             {
-                "name": "hub-a",
-                "dashboard_url": "http://hub-a.fleet-example.ts.net:8321",
+                "name": "DeskComputer",
+                "dashboard_url": "http://deskcomputer.tail2bbcc7.ts.net:8321",
             },
             {
-                "name": "node-b",
-                "dashboard_url": "http://node-b.fleet-example.ts.net:8321",
+                "name": "OGLaptop",
+                "dashboard_url": "http://oglaptop.tail2bbcc7.ts.net:8321",
             },
         ]
     }
@@ -281,7 +263,7 @@ def test_assert_valid_active_registry_rejects_missing_machine_name() -> None:
 
     bad_registry = {
         "machines": [
-            {"dashboard_url": "http://hub-a:8321"},
+            {"dashboard_url": "http://deskcomputer:8321"},
         ]
     }
     with pytest.raises(RuntimeError, match="Active machine missing name"):
@@ -293,7 +275,7 @@ def test_assert_valid_active_registry_rejects_unresolvable_machine_url() -> None
 
     bad_registry = {
         "machines": [
-            {"name": "hub-a", "dashboard_url": ""},
+            {"name": "DeskComputer", "dashboard_url": ""},
         ]
     }
     with pytest.raises(RuntimeError, match="no resolvable dashboard URL"):
@@ -306,10 +288,10 @@ def test_assert_valid_active_registry_rejects_all_pools_retired() -> None:
     bad_registry = {
         "machines": [
             {
-                "name": "node-a",
-                "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                 "runner_pools": [
-                    {"name": "Pool-1", "dashboard_url": "http://node-a.fleet-example.ts.net:8321", "retired": True},
+                    {"name": "Pool-1", "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321", "retired": True},
                 ],
             }
         ]
@@ -324,8 +306,8 @@ def test_assert_valid_active_registry_rejects_active_pool_without_url() -> None:
     bad_registry = {
         "machines": [
             {
-                "name": "node-a",
-                "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                 "runner_pools": [
                     {"name": "Pool-1", "dashboard_url": ""},
                 ],
@@ -342,11 +324,11 @@ def test_assert_valid_active_registry_rejects_duplicate_ports_on_active_pools() 
     bad_registry = {
         "machines": [
             {
-                "name": "node-a",
-                "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
+                "name": "ControlTower",
+                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
                 "runner_pools": [
-                    {"name": "node-a-NVMe", "dashboard_url": "http://node-a.fleet-example.ts.net:8321"},
-                    {"name": "node-a-Runner", "dashboard_url": "http://node-a.fleet-example.ts.net:8321"},
+                    {"name": "ControlTower-NVMe", "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321"},
+                    {"name": "ControlTower-Runner", "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321"},
                 ],
             }
         ]
