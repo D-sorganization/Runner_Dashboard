@@ -10,12 +10,11 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import staff.worktree_hygiene as _wh
 from platform_utils.wsl_paths import windows_repositories_root
 from staff.git_hooks import install_pre_push_hook
-from staff.roles import RoleSpec
 from staff.standards_registry import _BUILTIN
 
 finalize_run_worktree = _wh.finalize_run_worktree
@@ -25,7 +24,7 @@ prune_worktree_branch = _wh.prune_worktree_branch
 sweep_stale_worktrees = _wh.sweep_stale_worktrees
 
 if TYPE_CHECKING:
-    from staff.dispatch_bundle import DispatchBundle
+    pass
 
 
 log = logging.getLogger("dashboard.staff.workspace")
@@ -49,6 +48,7 @@ READ_ONLY_FLEET_RULES = (
 )
 
 PLAYBOOK_MAX_CHARS = 16000
+
 
 
 def dashboard_api_note() -> str:
@@ -291,5 +291,3 @@ def remove_worktree(
 ) -> bool:
     """Remove only when normal Git accepts; preserve nonempty non-Git directories."""
     return _wh.remove_worktree_checked(worktree, checkout, branch, preserved_transcript)
-
-from staff.workspace_prompt import compose_prompt

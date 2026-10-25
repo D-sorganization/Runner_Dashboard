@@ -36,7 +36,6 @@ def compose_prompt(
     Static prefix: standards -> skills -> accepted lessons.
     Dynamic suffix: role instructions, playbook, repository, target, and task.
     """
-    from staff.workspace import ORG, READ_ONLY_FLEET_RULES, dashboard_api_note, playbook_text
     from staff.standards_registry import (
         LESSONS_TOKEN_CAP,
         TIER0_TOKEN_CAP,
@@ -46,6 +45,7 @@ def compose_prompt(
         estimate_tokens,
         load_fleet_standards,
     )
+    from staff.workspace import ORG, READ_ONLY_FLEET_RULES, dashboard_api_note, playbook_text
 
     static_blocks: list[str] = []
     if not chat_turn:
