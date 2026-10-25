@@ -18,33 +18,37 @@ def _run_install_script(
     tmp_path: Path,
     *,
     runner_environment: str,
-    deps_dry_run_exit: int = 0,
+    chromium_launch_exit: int = 0,
 ) -> subprocess.CompletedProcess[str]:
     log = tmp_path / "npx.log"
-    stub = f"""#!/usr/bin/env bash
+    launch_log = tmp_path / "launch.log"
+    npx_stub = f"""#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\\n' "$*" >> "{log}"
 case "$1" in
   playwright)
-    case "$2" in
-      install)
-        if [[ "$*" == *"--with-deps"* ]]; then
-          echo "with-deps" >> "{log}.mode"
-        else
-          echo "browsers-only" >> "{log}.mode"
-        fi
-        ;;
-      install-deps)
-        exit {deps_dry_run_exit}
-        ;;
-    esac
+    if [[ "$2" == "install" ]]; then
+      if [[ "$*" == *"--with-deps"* ]]; then
+        echo "with-deps" >> "{log}.mode"
+      else
+        echo "browsers-only" >> "{log}.mode"
+      fi
+    fi
     ;;
 esac
 exit 0
 """
+    node_stub = f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "{launch_log}"
+exit {chromium_launch_exit}
+"""
     npx = tmp_path / "npx"
-    npx.write_text(stub, encoding="utf-8")
+    npx.write_text(npx_stub, encoding="utf-8")
     npx.chmod(0o755)
+    node = tmp_path / "node"
+    node.write_text(node_stub, encoding="utf-8")
+    node.chmod(0o755)
     return subprocess.run(
         [require_bash(), str(_SCRIPT), "chromium"],
         cwd=tmp_path,
@@ -64,19 +68,21 @@ def test_install_script_uses_with_deps_only_on_github_hosted(tmp_path: Path) -> 
     assert hosted.returncode == 0, hosted.stderr
     mode = (tmp_path / "npx.log.mode").read_text(encoding="utf-8")
     assert mode.strip() == "with-deps"
+    assert not (tmp_path / "launch.log").exists(), "github-hosted must not launch chromium for preflight"
 
 
-def test_install_script_on_self_hosted_skips_with_deps_and_preflights_deps(tmp_path: Path) -> None:
-    fleet = _run_install_script(tmp_path, runner_environment="self-hosted", deps_dry_run_exit=0)
+def test_install_script_on_self_hosted_skips_with_deps_and_launches_chromium(tmp_path: Path) -> None:
+    fleet = _run_install_script(tmp_path, runner_environment="self-hosted", chromium_launch_exit=0)
     assert fleet.returncode == 0, fleet.stderr
     mode = (tmp_path / "npx.log.mode").read_text(encoding="utf-8")
     assert mode.strip() == "browsers-only"
-    log = (tmp_path / "npx.log").read_text(encoding="utf-8")
-    assert "install-deps chromium --dry-run" in log.replace("\n", " ")
+    launch = (tmp_path / "launch.log").read_text(encoding="utf-8")
+    assert "chromium.launch" in launch
+    assert "install-deps" not in (tmp_path / "npx.log").read_text(encoding="utf-8")
 
 
-def test_install_script_fails_with_action_error_when_deps_missing(tmp_path: Path) -> None:
-    fleet = _run_install_script(tmp_path, runner_environment="self-hosted", deps_dry_run_exit=1)
+def test_install_script_fails_with_action_error_when_chromium_launch_fails(tmp_path: Path) -> None:
+    fleet = _run_install_script(tmp_path, runner_environment="self-hosted", chromium_launch_exit=1)
     assert fleet.returncode == 1
     assert "::error::" in fleet.stdout
     assert "sudo npx playwright install-deps chromium" in fleet.stdout

@@ -12,7 +12,7 @@ fi
 
 npx playwright install "$browser"
 
-if ! npx playwright install-deps "$browser" --dry-run; then
+if ! node -e "require('playwright').chromium.launch().then(b=>b.close()).catch(()=>process.exit(1))"; then
   echo "::error::This self-hosted fleet runner is missing Playwright system dependencies for ${browser}. An admin should run: sudo npx playwright install-deps ${browser}"
   exit 1
 fi
