@@ -39,10 +39,11 @@ MERGE_QUEUE_GRAPHQL = """
 query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
     mergeQueue {
-      entries {
+      entries(first: 100) {
         totalCount
         pageInfo { hasNextPage }
         nodes {
+          state
           headCommit { oid }
         }
       }
