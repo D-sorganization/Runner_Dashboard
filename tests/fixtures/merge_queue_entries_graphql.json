@@ -1,0 +1,22 @@
+{
+  "data": {
+    "repository": {
+      "mergeQueue": {
+        "entries": {
+          "totalCount": 1,
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "MQE1"
+          },
+          "nodes": [
+            {
+              "headCommit": {
+                "oid": "abc1234567890abcdef0123456789abcdef0123456"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
