@@ -301,3 +301,40 @@ async def test_quota_exceeded_returns_403() -> None:
         app.dependency_overrides.update(original_overrides)
 
     assert resp.status_code == 403, f"Expected 403 for quota exceeded, got {resp.status_code}: {resp.text}"
+
+
+@pytest.mark.asyncio
+async def test_do_not_merge_label_blocks_dispatch() -> None:
+    """PRs labeled do-not-merge are refused before workflow dispatch."""
+    import os
+
+    os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
+
+    from fastapi.testclient import TestClient
+    from identity import Principal, require_principal
+    from server import app
+
+    body = {**VALID_MOBILE_DISPATCH_BODY, "pr_labels": ["do-not-merge", "bug"]}
+
+    def _mock_principal():
+        return Principal(id="test-admin", type="bot", name="Test", roles=["admin"])
+
+    original_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[require_principal] = _mock_principal
+    try:
+        with _make_policy_patch(), _make_avail_patch(True):
+            with patch("quota_enforcement.quota_enforcement.check_dispatch_quota", return_value=(True, "")):
+                with patch("routers.remediation.run_cmd", new=_make_run_cmd(0)) as run_cmd_mock:
+                    client = TestClient(app, raise_server_exceptions=False)
+                    resp = client.post(
+                        "/api/agent-remediation/dispatch",
+                        json=body,
+                        headers={"X-Requested-With": "XMLHttpRequest"},
+                    )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(original_overrides)
+
+    assert resp.status_code == 409
+    assert "do-not-merge" in resp.text
+    run_cmd_mock.assert_not_called()

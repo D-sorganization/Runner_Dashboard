@@ -144,6 +144,22 @@ def provider_prompt(provider_id: str, context: FailureContext) -> str:
     )
 
 
+def _matches_branch_prefix(branch: str, prefixes: tuple[str, ...]) -> bool:
+    branch_lower = branch.strip().lower()
+    if not branch_lower:
+        return False
+    return any(branch_lower.startswith(prefix.strip().lower()) for prefix in prefixes if prefix.strip())
+
+
+def _matched_blocked_label(pr_labels: tuple[str, ...], blocked_labels: tuple[str, ...]) -> str | None:
+    blocked_set = {label.strip().lower() for label in blocked_labels if label.strip()}
+    for label in pr_labels:
+        normalized = label.strip().lower()
+        if normalized and normalized in blocked_set:
+            return normalized
+    return None
+
+
 def plan_dispatch(
     context: FailureContext,
     *,
@@ -197,6 +213,19 @@ def plan_dispatch(
             dispatch_mode=workflow_rule.dispatch_mode,
         )
 
+    blocked_label = _matched_blocked_label(context.pr_labels, policy.blocked_pr_labels)
+    if blocked_label is not None:
+        return DispatchDecision(
+            accepted=False,
+            reason=f"Dispatch is disabled for PRs labeled '{blocked_label}'.",
+            fingerprint=fingerprint,
+            attempt_count=attempt_count,
+            remaining_attempts=remaining_attempts,
+            workflow_type=workflow_rule.workflow_type,
+            workflow_label=workflow_rule.label,
+            dispatch_mode=workflow_rule.dispatch_mode,
+        )
+
     if dispatch_origin == "automatic" and workflow_rule.dispatch_mode != "auto":
         return DispatchDecision(
             accepted=False,
@@ -214,6 +243,8 @@ def plan_dispatch(
         candidate_ids = (provider_override,)
     else:
         preferred = [workflow_rule.provider_id] if workflow_rule.provider_id else []
+        if _matches_branch_prefix(context.branch, policy.cursor_branch_prefixes) and policy.cursor_branch_provider:
+            preferred = [policy.cursor_branch_provider, *preferred]
         fallback_chain = list(workflow_rule.fallback_providers) if workflow_rule.fallback_providers else []
         remaining_order = [p for p in policy.provider_order if p not in preferred and p not in fallback_chain]
         candidate_ids = tuple(dict.fromkeys(preferred + fallback_chain + remaining_order).keys())
