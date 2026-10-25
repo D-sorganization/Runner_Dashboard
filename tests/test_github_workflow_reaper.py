@@ -12,9 +12,9 @@ from shared_scripts.github_workflow_reaper import (
 )
 from shared_scripts.merge_queue_cancel_safety import MergeQueueEntry
 
-LIVE_SHA = "abc1234567890abcdef0123456789abcdef0123456"
-OLD_REF = "gh-readonly-queue/main/pr-77-deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-OLD_SHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+LIVE_SHA = "0000000000000000000000000000000000000abc"
+OLD_REF = "gh-readonly-queue/main/pr-77-deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"  # pragma: allowlist secret
+OLD_SHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"  # pragma: allowlist secret
 LIVE = [MergeQueueEntry(head_ref="", head_sha=LIVE_SHA)]
 
 

@@ -15,10 +15,10 @@ from shared_scripts.merge_queue_cancel_safety import (
     merge_queue_entries_from_graphql,
 )
 
-LIVE_REF = "gh-readonly-queue/main/pr-77-abc1234567890abcdef0123456789abcdef01"
-LIVE_SHA = "abc1234567890abcdef0123456789abcdef0123456"
-OLD_REF = "gh-readonly-queue/main/pr-77-deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-OLD_SHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdead"
+LIVE_REF = "gh-readonly-queue/main/pr-77-abc1234567890abcdef0123456789abcdef01"  # pragma: allowlist secret
+LIVE_SHA = "0000000000000000000000000000000000000abc"
+OLD_REF = "gh-readonly-queue/main/pr-77-deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"  # pragma: allowlist secret
+OLD_SHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdead"  # pragma: allowlist secret
 
 
 def _live_entries() -> list[MergeQueueEntry]:
