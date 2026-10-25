@@ -130,7 +130,7 @@ describe("ActionCard", () => {
 
     render(<ActionCard proposal={decidedProposal} />);
 
-    expect(screen.getByText(/approved by dieter/i)).toBeInTheDocument();
+    expect(screen.getByText(/approved by operator/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
   });
 
