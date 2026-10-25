@@ -12,8 +12,11 @@ contract.
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 import socket
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -183,17 +186,36 @@ def test_notify_systemd_falls_back_to_socket_when_binding_raises(monkeypatch) ->
     assert captured["state"] == "WATCHDOG=1"
 
 
+_AF_UNIX_PATH_BUDGET = 100  # sun_path is 108 bytes on Linux including the NUL; keep headroom
+
+
+def _short_socket_dir() -> Path:
+    """Create a directory whose ``notify.sock`` path fits in an AF_UNIX sun_path."""
+    for base in (tempfile.gettempdir(), "/tmp", "/var/tmp"):  # noqa: S108 - short scratch roots
+        if not os.path.isdir(base):
+            continue
+        candidate = Path(tempfile.mkdtemp(prefix="wd-", dir=base))
+        if len(os.fsencode(str(candidate / "notify.sock"))) <= _AF_UNIX_PATH_BUDGET:
+            return candidate
+        shutil.rmtree(candidate, ignore_errors=True)
+    raise RuntimeError("no scratch directory short enough for an AF_UNIX socket path")
+
+
 @pytest.mark.skipif(
     sys.platform == "win32" or not hasattr(socket, "AF_UNIX"),
     reason="AF_UNIX datagram sockets are unavailable on this platform",
 )
-def test_autoscaler_watchdog_delivers_over_notify_socket(monkeypatch, tmp_path) -> None:
+def test_autoscaler_watchdog_delivers_over_notify_socket(monkeypatch) -> None:
     """End-to-end crash-loop fix: with the systemd binding absent
     (_sd_notify=None), _send_watchdog must still deliver WATCHDOG=1 by writing
     $NOTIFY_SOCKET — exactly the OGLaptop deployment condition."""
     import runner_autoscaler as ra
 
-    sock_path = str(tmp_path / "notify.sock")
+    # An AF_UNIX path is capped near 107 bytes. Self-hosted runners put TMPDIR
+    # (so pytest's tmp_path) deep under ``<runner>/_work/_tmp``, which overflows
+    # it, so the socket lives in a short-path directory of its own.
+    sock_dir = _short_socket_dir()
+    sock_path = str(sock_dir / "notify.sock")
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
     listener.bind(sock_path)
     listener.settimeout(2.0)
@@ -207,4 +229,5 @@ def test_autoscaler_watchdog_delivers_over_notify_socket(monkeypatch, tmp_path) 
         data, _addr = listener.recvfrom(64)
     finally:
         listener.close()
+        shutil.rmtree(sock_dir, ignore_errors=True)
     assert data == b"WATCHDOG=1"
