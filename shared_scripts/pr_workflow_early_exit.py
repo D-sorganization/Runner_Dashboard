@@ -54,27 +54,33 @@ def main(argv: list[str] | None = None) -> int:
 
     live_head = args.live_head_sha
     if args.github_api:
-        import subprocess
+        import json
+        import urllib.error
+        import urllib.request
 
         repo = os.environ.get("GITHUB_REPOSITORY", "")
         pr_number = os.environ.get("PR_NUMBER", "")
-        if not repo or not pr_number:
-            print("missing GITHUB_REPOSITORY or PR_NUMBER", file=sys.stderr)
+        token = os.environ.get("GH_TOKEN", "")
+        if not repo or not pr_number or not token:
+            print("missing GITHUB_REPOSITORY, PR_NUMBER, or GH_TOKEN", file=sys.stderr)
             return 2
-        proc = subprocess.run(
-            ["gh", "api", f"repos/{repo}/pulls/{pr_number}", "--jq", ".head.sha,.state"],
-            check=False,
-            capture_output=True,
-            text=True,
+        url = f"https://api.github.com/repos/{repo}/pulls/{pr_number}"
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
         )
-        if proc.returncode != 0:
-            print(proc.stderr or proc.stdout, file=sys.stderr)
-            return proc.returncode
-        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-        if len(lines) < 2:
-            print("unexpected gh api response", file=sys.stderr)
-            return 2
-        live_head, live_state = lines[0], lines[1]
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode())
+        except urllib.error.HTTPError as exc:
+            print(exc.read().decode(), file=sys.stderr)
+            return exc.code if exc.code else 1
+        live_head = str(payload.get("head", {}).get("sha") or "")
+        live_state = str(payload.get("state") or "")
         args.pr_state = live_state
         args.live_head_sha = live_head
 
