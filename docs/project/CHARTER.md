@@ -23,16 +23,16 @@ Provide a unified, secure web control console and AI Staff Console for the D-sor
 | F2  | Operations Console and Unified Dispatch | shipped     | #1325    | Merged view for deployments, runner hours, conductor, and schedules.      |
 | F3  | Queue Health and Automated Job Reaper   | shipped     | -        | Stale queued run detection, bulk cancellation API, and cleanup daemon.    |
 | F4  | Authentication and RBAC Perimeter       | shipped     | #1295    | Session management, OAuth, WebAuthn, and explicit role scopes.            |
-| F5  | Staff Console Conversation Engine       | in-progress | #1348    | Threaded chat turns, session resume, and structured action cards.         |
-| F6  | Barb Routing and Follow-Up Engine       | in-progress | #1349    | Autonomous task routing, work-item ledger, and stalled-job follow-up.     |
-| F7  | Fleet Maintenance Automation            | in-progress | #1351    | Typed maintenance action catalogue, preflight checks, and dry-runs.       |
-| F8  | Staff Agent and Tooling APIs            | in-progress | #1352    | Versioned /api/v1/staff API, MCP tools, and external agent connectors.    |
-| F9  | Staff Console Shell and Navigation      | in-progress | #1350    | Four-area layout, staff roster sidebar, and mobile responsive shell.      |
-| F10 | UI Modernization and Legacy Pruning     | in-progress | #1353    | Retiring classic layout and consolidating off-theme legacy dispatch tabs. |
+| F5  | Staff Console Conversation Engine       | shipped     | #1348    | Epic SC-B closed 2026-10-14.                                               |
+| F6  | Barb Routing and Follow-Up Engine       | shipped     | #1349    | Epic SC-C closed 2026-10-14.                                               |
+| F7  | Fleet Maintenance Automation            | shipped     | #1351    | Epic SC-E closed 2026-10-14.                                               |
+| F8  | Staff Agent and Tooling APIs            | shipped     | #1352    | Epic SC-F closed 2026-10-14.                                               |
+| F9  | Staff Console Shell and Navigation      | shipped     | #1350    | Epic SC-D closed 2026-10-14.                                               |
+| F10 | UI Modernization and Legacy Pruning     | shipped     | #1353    | Epic SC-G closed 2026-10-14.                                               |
 | F11 | Code Requests and Proposals Pipeline    | shipped     | #1279    | Agent-agnostic planner-to-executor pipeline and board suggestion box.     |
 | F12 | Multi-Host Node Infrastructure          | shipped     | #1258    | Node cluster synchronization, self-updating roles, and Ollama bridges.    |
 | F13 | Projects and Fleet Stewardship          | shipped     | #1248    | Per-repo charters, status reporting, and deferred-plan owner tracking.    |
-| F14 | Staff Hub Reliability and Watchdogs     | in-progress | #1347    | Process tree cleanup, orphan run reconciliation, and error boundaries.    |
+| F14 | Staff Hub Reliability and Watchdogs     | shipped     | #1347    | Epic SC-A closed 2026-10-14.                                               |
 | F15 | Maxwell Control Plane Proxy             | shipped     | #1338    | HTTP proxy interface and contract tests for external Maxwell daemon.      |
 | F16 | Fleet Coordination and Priorities       | shipped     | #1233    | Priorities API, board meetings, directives, and lease tracking.           |
 | F17 | Board Deliberation and Group Threads    | shipped     | #1339    | Multi-seat group threads coordinated by Board-Secretary.                  |
