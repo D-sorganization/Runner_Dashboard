@@ -82,6 +82,10 @@ def _env_flag(name: str, default: bool = False) -> bool:
 # unset (default) = HTTP-mode (no Secure cookie, no HSTS); set = TLS-mode.
 TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
 
+# CI/E2E: skip leader election and hub background loops so Playwright can probe
+# /livez without waiting on reconcile_orphaned_runs or fleet sync on a runner host.
+LIGHTWEIGHT_STARTUP = _env_flag("DASHBOARD_LIGHTWEIGHT_STARTUP", default=False)
+
 
 def _resolve_bind_host() -> str:
     """Return the interface uvicorn should bind for incoming HTTP.

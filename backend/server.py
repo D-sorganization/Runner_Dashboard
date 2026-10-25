@@ -2809,6 +2809,13 @@ async def _startup() -> None:
 
     start_schedule_loop()
 
+    if dashboard_config.LIGHTWEIGHT_STARTUP:
+        log.info(
+            "DASHBOARD_LIGHTWEIGHT_STARTUP=1: skipping leader election and background hub tasks",
+        )
+        _runner_audit_router.set_org(ORG)
+        return
+
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236
