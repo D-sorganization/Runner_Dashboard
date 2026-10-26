@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from staff.barb_lease_fence import BarbLeaseFenceMixin
 from staff.barb_task_inventory import (  # noqa: F401 - re-exported for existing importers
     HANDOFF_STATES,
     TASK_SURFACES,
@@ -60,13 +61,13 @@ CREATE INDEX IF NOT EXISTS idx_barb_tasks_status ON barb_task_inventory(status, 
 """
 
 
-class BarbContinuityStore(BarbTaskInventoryMixin):
+class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
     """Thread-safe SQLite store for Multi-Barb leases, turnover log, and task inventory."""
 
     def __init__(self, db_path: Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # re-entrant: a fenced write may call store methods
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         with self._lock, self._conn:

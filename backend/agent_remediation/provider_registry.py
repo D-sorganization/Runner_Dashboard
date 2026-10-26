@@ -387,5 +387,19 @@ def by_dashboard_id() -> dict[str, ProviderEntry]:
     return {e.dashboard_id: e for e in PROVIDER_REGISTRY}
 
 
+def selectable_entries(
+    entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY,
+) -> tuple[ProviderEntry, ...]:
+    """Providers the dashboard UI may offer in pickers (``enabled`` rows only)."""
+    return tuple(e for e in entries if e.enabled)
+
+
+def selectable_conductor_ids(
+    entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY,
+) -> frozenset[str]:
+    """Hyphen ids operators may select; used by UI contract tests."""
+    return frozenset(e.conductor_id for e in selectable_entries(entries))
+
+
 # Fail closed at import time: a malformed edit to the table is a hard error.
 validate_registry()
