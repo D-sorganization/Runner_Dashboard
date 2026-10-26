@@ -136,6 +136,15 @@ async def staff_escalate_merge_queue(
         )
     if result.ok:
         return {"status": "enqueued", "message": result.message, "merge_queue_entry": result.detail}
+    if result.jump_ignored:
+        body: dict[str, Any] = {
+            "status": "jump_ignored",
+            "message": result.message,
+            "merge_queue_entry": result.detail,
+        }
+        if result.manual_command:
+            body["gh_personal_command"] = result.manual_command
+        return body
     if result.manual_command:
         return {
             "status": "manual_required",

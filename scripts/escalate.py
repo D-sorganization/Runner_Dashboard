@@ -40,9 +40,12 @@ def main() -> int:
         print(exc.read().decode(), file=sys.stderr)
         return 1
     print(json.dumps(body, indent=2))
-    if body.get("status") == "manual_required":
+    status = body.get("status")
+    if status == "manual_required":
         print("\nRun on a box with merge-queue jump permission:\n", body.get("gh_personal_command", ""))
-    return 0 if body.get("status") == "enqueued" else 2
+    elif status == "jump_ignored":
+        print("\nJump was ignored by GitHub (check ruleset merge-queue bypass actors).", file=sys.stderr)
+    return 0 if status == "enqueued" else 2
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ def test_staff_escalate_manual_required(remote_client: TestClient, admin_env: di
     with (
         patch("routers.escalation.gh_api", new_callable=AsyncMock, return_value=pr),
         patch(
-            "escalation.merge_jump.enqueue_jump",
+            "routers.escalation.enqueue_jump",
             new_callable=AsyncMock,
             return_value=EscalateResult(
                 ok=False,
@@ -81,3 +81,36 @@ def test_staff_escalate_manual_required(remote_client: TestClient, admin_env: di
     body = res.json()
     assert body["status"] == "manual_required"
     assert "gh-personal" in body["gh_personal_command"]
+
+
+@pytest.mark.integration
+def test_staff_escalate_jump_ignored(remote_client: TestClient, admin_env: dict[str, str]) -> None:
+    pr = {
+        "state": "open",
+        "labels": [],
+        "mergeable_state": "clean",
+        "id": "PR_kwDO",
+        "head": {"sha": "abc123"},
+    }
+    with (
+        patch("routers.escalation.gh_api", new_callable=AsyncMock, return_value=pr),
+        patch(
+            "routers.escalation.enqueue_jump",
+            new_callable=AsyncMock,
+            return_value=EscalateResult(
+                ok=False,
+                jump_ignored=True,
+                message="enqueuePullRequest succeeded but jump did not take effect: merge queue position 27 of 27.",
+                detail={"position": 27, "queue_depth": 27},
+            ),
+        ),
+    ):
+        res = remote_client.post(
+            "/api/staff/escalate",
+            json={"repo": "Runner_Dashboard", "pr": 2908, "reason": "field trial"},
+            headers={"Authorization": f"Bearer {admin_env['token']}", **_XHR},
+        )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "jump_ignored"
+    assert body["merge_queue_entry"]["position"] == 27

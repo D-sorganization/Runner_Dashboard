@@ -15,6 +15,10 @@ _JUMP_MUTATION = (
     "{pullRequestId: $id, expectedHeadOid: $oid, jump: true}) "
     "{ mergeQueueEntry { id position jump } } } }"
 )
+_QUEUE_DEPTH_QUERY = (
+    "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) "
+    "{ mergeQueue { entries(first: 1) { totalCount } } } } }"
+)
 _PERMISSION_MARKERS = (
     "must have admin rights",
     "administrator",
@@ -22,6 +26,11 @@ _PERMISSION_MARKERS = (
     "insufficient",
     "resource not accessible",
     "forbidden",
+)
+_RULESET_BYPASS_NOTE = (
+    "Merge-queue jump requires a ruleset bypass actor with merge-queue permission "
+    "(Runner_Dashboard ruleset 24444089). Without that actor, GitHub may accept "
+    "enqueuePullRequest(jump: true) but leave the PR at the back of the queue."
 )
 
 
@@ -40,6 +49,7 @@ class EscalateResult:
     message: str
     manual_command: str = ""
     detail: dict[str, Any] | None = None
+    jump_ignored: bool = False
 
 
 def split_repo(slug: str) -> tuple[str, str]:
@@ -101,6 +111,104 @@ def interpret_enqueue_error(stderr: str, stdout: str, plan: EscalatePlan) -> Esc
     return EscalateResult(ok=False, message=(stderr or stdout or "enqueuePullRequest failed").strip())
 
 
+def parse_enqueue_success(stdout: str) -> dict[str, Any] | None:
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return None
+    entry = (data.get("enqueuePullRequest") or {}).get("mergeQueueEntry")
+    return entry if isinstance(entry, dict) else None
+
+
+def parse_queue_depth(stdout: str) -> int | None:
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    repo = (payload.get("data") or {}).get("repository") if isinstance(payload, dict) else None
+    if not isinstance(repo, dict):
+        return None
+    entries = (repo.get("mergeQueue") or {}).get("entries")
+    if not isinstance(entries, dict):
+        return None
+    total = entries.get("totalCount")
+    return int(total) if total is not None else None
+
+
+def verify_jump_took_effect(
+    entry: dict[str, Any] | None,
+    *,
+    queue_depth: int | None,
+    plan: EscalatePlan,
+) -> EscalateResult | None:
+    """Return a failure result when the mutation succeeded but jump did not move the PR to the front."""
+    if not entry:
+        return EscalateResult(
+            ok=False,
+            jump_ignored=True,
+            message="enqueuePullRequest succeeded but returned no mergeQueueEntry; cannot verify jump.",
+            detail=None,
+        )
+    position_raw = entry.get("position")
+    if position_raw is None:
+        return EscalateResult(
+            ok=False,
+            jump_ignored=True,
+            message="enqueuePullRequest succeeded but mergeQueueEntry.position is missing; cannot verify jump.",
+            detail=entry,
+        )
+    position = int(position_raw)
+    depth_suffix = f" of {queue_depth}" if queue_depth is not None else ""
+    at_back = queue_depth is not None and queue_depth > 1 and position >= queue_depth
+    if position <= 1 and not at_back:
+        return None
+
+    return EscalateResult(
+        ok=False,
+        jump_ignored=True,
+        message=(
+            f"enqueuePullRequest succeeded but jump did not take effect: merge queue position "
+            f"{position}{depth_suffix}. {_RULESET_BYPASS_NOTE}"
+        ),
+        detail={**entry, "queue_depth": queue_depth},
+        manual_command=personal_jump_command(plan),
+    )
+
+
+def success_message(entry: dict[str, Any], queue_depth: int | None) -> str:
+    position = int(entry.get("position") or 1)
+    depth_suffix = f" of {queue_depth}" if queue_depth is not None else ""
+    return (
+        f"PR enqueued at merge queue position {position}{depth_suffix}. "
+        "Jumping rebuilds in-flight merge queue entries (GitHub merge-queue docs)."
+    )
+
+
+async def fetch_merge_queue_depth(plan: EscalatePlan) -> int | None:
+    from system_utils import run_cmd
+
+    code, stdout, _stderr = await run_cmd(
+        [
+            "gh",
+            "api",
+            "graphql",
+            "-f",
+            f"query={_QUEUE_DEPTH_QUERY}",
+            "-f",
+            f"owner={plan.owner}",
+            "-f",
+            f"name={plan.repo}",
+        ],
+        timeout=60,
+    )
+    if code != 0:
+        return None
+    return parse_queue_depth(stdout)
+
+
 async def enqueue_jump(plan: EscalatePlan) -> EscalateResult:
     from system_utils import run_cmd
 
@@ -118,26 +226,17 @@ async def enqueue_jump(plan: EscalatePlan) -> EscalateResult:
         ],
         timeout=60,
     )
-    if code == 0:
-        entry = parse_enqueue_success(stdout)
-        return EscalateResult(
-            ok=True,
-            message=(
-                "PR enqueued at the front of the merge queue. "
-                "Jumping rebuilds in-flight queue entries (GitHub merge-queue docs)."
-            ),
-            detail=entry,
-        )
-    return interpret_enqueue_error(stderr, stdout, plan)
+    if code != 0:
+        return interpret_enqueue_error(stderr, stdout, plan)
 
-
-def parse_enqueue_success(stdout: str) -> dict[str, Any] | None:
-    try:
-        payload = json.loads(stdout)
-    except json.JSONDecodeError:
-        return None
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(data, dict):
-        return None
-    entry = (data.get("enqueuePullRequest") or {}).get("mergeQueueEntry")
-    return entry if isinstance(entry, dict) else None
+    entry = parse_enqueue_success(stdout)
+    queue_depth = await fetch_merge_queue_depth(plan)
+    ignored = verify_jump_took_effect(entry, queue_depth=queue_depth, plan=plan)
+    if ignored is not None:
+        return ignored
+    assert entry is not None
+    return EscalateResult(
+        ok=True,
+        message=success_message(entry, queue_depth),
+        detail={**entry, "queue_depth": queue_depth},
+    )
