@@ -25,6 +25,16 @@ os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 
+
+def _patch_hermetic_host_identity(monkeypatch: pytest.MonkeyPatch, hostname: str = "ControlTower") -> None:
+    """Pin local runner identity so tests do not depend on the real host (#2519)."""
+    import dashboard_config as dc  # noqa: PLC0415
+
+    monkeypatch.setattr(dc, "HOSTNAME", hostname)
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
+    monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+
+
 import dashboard_config as dc  # noqa: E402
 import gh_utils  # noqa: E402
 import server  # noqa: E402
@@ -759,8 +769,7 @@ class TestHelperFunctions:
 
     def test_runner_num_from_id_finds_correct_runner(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that runner number extraction works for this host's fleet names."""
-        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
-        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+        _patch_hermetic_host_identity(monkeypatch)
         runners = [
             {"id": 1, "name": "d-sorg-local-ControlTower-1"},
             {"id": 2, "name": "d-sorg-local-ControlTower-2"},
@@ -773,15 +782,13 @@ class TestHelperFunctions:
 
     def test_runner_num_from_id_rejects_other_machine(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Cross-node runner IDs must not map to a local slot (#2519)."""
-        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
-        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+        _patch_hermetic_host_identity(monkeypatch)
         runners = [{"id": 1, "name": "d-sorg-local-DeskComputer-1"}]
         assert runners_router.runner_num_from_id(1, runners) is None
 
     def test_runner_num_from_id_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that non-existent runner ID returns None."""
-        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
-        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+        _patch_hermetic_host_identity(monkeypatch)
         runners = [{"id": 1, "name": "d-sorg-local-ControlTower-1"}]
         assert runners_router.runner_num_from_id(999, runners) is None
 
@@ -795,8 +802,7 @@ class TestRunnerControlHostGuard:
         mock_auth,  # noqa: ARG002
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
-        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+        _patch_hermetic_host_identity(monkeypatch)
 
         async def mock_api(endpoint: str) -> dict:  # noqa: ARG001
             return {
