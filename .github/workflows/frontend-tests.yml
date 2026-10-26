@@ -42,7 +42,6 @@ jobs:
     name: frontend-required
     needs:
       [
-        queue-entry-alive,
         frontend-scope,
         typecheck,
         vitest,
