@@ -1604,14 +1604,8 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   minting a valid signature on the caller's behalf. Locally minted,
   server-originated envelopes still auto-sign and round-trip unchanged.
 - **2026-06-12 (2.5.84):** Authenticated the agent-launcher control surface
-  (security, issue #920). Every `/api/agent-launcher/*` route now requires an
-  authenticated principal; the mutating routes (`PUT /config`, `POST /start`,
-  `POST /stop`, `POST /run-once`) additionally require the privileged
-  `system.control` scope. Previously these routes — which spawn code-executing
-  agent processes and write attacker-controllable JSON into the operator's home
-  directory — were completely unauthenticated, so any LAN/Tailscale peer
-  reaching the dashboard port could launch or reconfigure agents (RCE-adjacent).
-  Unauthenticated requests now return 401 and under-scoped principals get 403.
+  (security, issue #920). Those `/api/agent-launcher/*` routes were later removed
+  with the Cline Launcher retirement (#1338); this entry is historical only.
 - **2026-06-10 (2.5.83):** Corrected queue-diagnosis target classification for
   fleet jobs whose GitHub job metadata contains only custom `d-sorg-fleet*`
   labels. These jobs are now counted as self-hosted fleet work instead of
@@ -3330,12 +3324,11 @@ End-to-end acceptance run for the suggestion box and proposal intake pipeline:
 
 ### Launchers
 
-| Method | Path                         | Description                                                                                                                      |
-| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/launchers/generate`    | Generate Windows PowerShell launcher scripts on the Desktop                                                                      |
-| GET    | `/api/agent-launcher/status` | Read cline agent scheduler pidfile and per-agent state                                                                           |
-| POST   | `/api/agent-launcher/start`  | Start the cline agent scheduler; on Linux this detaches `agent_launcher.py` with `subprocess.Popen(..., start_new_session=True)` |
-| POST   | `/api/agent-launcher/stop`   | Stop the cline agent scheduler via the launcher CLI                                                                              |
+| Method | Path                      | Description                                                 |
+| ------ | ------------------------- | ----------------------------------------------------------- |
+| POST   | `/api/launchers/generate` | Generate Windows PowerShell launcher scripts on the Desktop |
+
+The `/api/agent-launcher/*` routes (Cline Launcher scheduler, #920) were retired with SC-G6 (#1338). Cline extension detection remains on `GET /api/cline/status` (Credentials).
 
 ### Static Assets
 

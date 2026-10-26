@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from identity import Principal, format_caller, require_scope
 from memory.models import (
     MemoryAppendRequest,
@@ -24,6 +24,7 @@ from memory.service import (
     review_entry,
 )
 from staff.audit import record_audit
+from staff.barb_lease_fence import barb_write_fence, parse_barb_claim
 
 log = logging.getLogger("dashboard.memory")
 router = APIRouter(prefix="/api/v1/memory", tags=["assistant-memory"])
@@ -56,9 +57,12 @@ async def get_context_pack(
 @router.post("", response_model=MemoryAppendResponse, status_code=201)
 async def post_memory_entry(
     body: MemoryAppendRequest,
+    request: Request,
     writer: Principal = Depends(require_scope("memory.write")),
 ) -> MemoryAppendResponse:
-    entry = append_entry(writer, body)
+    claim = parse_barb_claim(request.headers, writer.id)
+    with barb_write_fence(claim, surface="memory", target="memory:append", principal=format_caller(writer)):
+        entry = append_entry(writer, body)
     record_audit(
         action="memory_append",
         target=entry.id,
@@ -80,9 +84,12 @@ async def post_memory_entry(
 async def post_session_digest(
     body: SessionDigestAppendRequest,
     response: Response,
+    request: Request,
     writer: Principal = Depends(require_scope("memory.shared.summarize")),
 ) -> SessionDigestAppendResponse:
-    entry, replayed = append_session_digest(writer, body)
+    claim = parse_barb_claim(request.headers, writer.id)
+    with barb_write_fence(claim, surface="memory", target="memory:session-digest", principal=format_caller(writer)):
+        entry, replayed = append_session_digest(writer, body)
     if replayed:
         response.status_code = 200
     else:
