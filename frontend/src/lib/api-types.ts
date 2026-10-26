@@ -12147,6 +12147,18 @@ export interface components {
                 [key: string]: unknown;
             }[];
             /**
+             * Board Sessions
+             * @description Agent sessions with live coordination-board presence, incl. desktop CLI agents (#2980)
+             */
+            board_sessions?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Board Sessions Warning
+             * @description Why board_sessions may be empty
+             */
+            board_sessions_warning?: string | null;
+            /**
              * Exclusions Active
              * @description Active dispatch exclusions (repo/issue lanes)
              * @default 0
