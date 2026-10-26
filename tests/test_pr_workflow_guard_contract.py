@@ -17,6 +17,11 @@ _CALLERS = [
 ]
 
 
+def _triggers(data: dict) -> dict | str | list:
+    """PyYAML may load bare ``on:`` as boolean True."""
+    return data.get(True) or data.get("on") or {}
+
+
 def test_reusable_pr_guard_checks_out_before_local_action() -> None:
     data = yaml.safe_load(_GUARD.read_text(encoding="utf-8"))
     steps = data["jobs"]["guard"]["steps"]
@@ -50,7 +55,7 @@ def test_jobs_needing_pr_guard_use_always_when_workflow_has_merge_group() -> Non
     )
     for name in merge_group_workflows:
         data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
-        triggers = data.get("on") or {}
+        triggers = _triggers(data)
         if "merge_group" not in triggers and "merge_group" not in str(triggers):
             continue
         for job_name, job in data.get("jobs", {}).items():
@@ -89,6 +94,8 @@ def test_aggregators_tolerate_pr_guard_skipped_on_merge_group_and_push() -> None
 
 def test_merge_group_event_skips_pr_guard_job() -> None:
     ci = yaml.safe_load((_WORKFLOWS / "ci-standard.yml").read_text(encoding="utf-8"))
-    assert ci["on"].get("merge_group") is not None or "merge_group" in ci.get("on", {})
+    triggers = _triggers(ci)
+    assert isinstance(triggers, dict)
+    assert triggers.get("merge_group") is not None or "merge_group" in triggers
     job_if = str(ci["jobs"]["pr-guard"]["if"])
     assert "github.event_name == 'pull_request'" in job_if

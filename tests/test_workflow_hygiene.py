@@ -762,7 +762,9 @@ def test_required_aggregates_report_on_every_event(job_id: str) -> None:
     from scripts.check_required_checks_drift import check_job_fails_closed
 
     job = _ci_jobs()[job_id]
-    assert job.get("if") == "always()", f"{job_id} must run on every event"
+    condition = str(job.get("if", ""))
+    assert "always()" in condition, f"{job_id} must run on every event"
+    assert "!cancelled()" in condition, f"{job_id} must not run when the workflow is cancelled"
     assert "changes" in job["needs"], f"{job_id} must read the tier decision"
     assert check_job_fails_closed(_CI_STANDARD.read_text(encoding="utf-8"), job_id) == []
 
