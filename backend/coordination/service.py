@@ -13,6 +13,8 @@ a bot can never act for another agent, before any RM script runs.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
@@ -22,6 +24,11 @@ from coordination.models import AckBody, ClaimBody, ClaimReleaseBody, MessageBod
 from coordination.staff_view import staff_runs
 
 __all__ = ["ImpersonationError", "MissingAgentError", "NotRegisteredError", "UnknownAgentError"]
+
+SESSION_RESPONSE_DEADLINE_SECONDS = 5.0
+_SESSION_READ_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="coord-sessions")
+_SESSION_READ_LOCK = threading.Lock()
+_SESSION_READS: dict[str, concurrent.futures.Future[Any]] = {}
 
 
 class UnknownAgentError(MissingAgentError):
@@ -66,9 +73,78 @@ def _require_presence(session: str, repo: str) -> None:
 
 
 async def sessions(repo: str | None) -> dict[str, Any]:
-    data = await asyncio.to_thread(board.read_sessions, repo)
-    runs, warnings = await staff_runs(repo)
-    return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings]})
+    """Read board and staff state in parallel, independently bounded by one response deadline."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + SESSION_RESPONSE_DEADLINE_SECONDS
+    board_future = _shared_session_read("board", lambda: board.read_sessions())
+    staff_future = _shared_session_read("staff", lambda: asyncio.run(staff_runs()))
+    pending = {"board": board_future, "staff": staff_future}
+    while pending and loop.time() < deadline:
+        pending = {name: future for name, future in pending.items() if not future.done()}
+        if pending:
+            await asyncio.sleep(min(0.01, max(0.0, deadline - loop.time())))
+
+    warnings: list[str] = []
+    if board_future.done():
+        try:
+            data = board_future.result()
+        except Exception:  # noqa: BLE001 — independent upstream failure must not fail this endpoint
+            data = _unavailable_sessions("board sessions read failed")
+            warnings.append("board sessions read failed")
+    else:
+        data = _unavailable_sessions("board sessions read timed out")
+        warnings.append("board sessions read timed out")
+
+    if staff_future.done():
+        try:
+            runs, staff_warnings = staff_future.result()
+        except Exception:  # noqa: BLE001 — independent upstream failure must not fail this endpoint
+            runs, staff_warnings = [], ["staff runs unavailable: read failed"]
+    else:
+        runs, staff_warnings = [], ["staff runs read timed out"]
+    if repo:
+        wanted = repo.casefold()
+        if data.get("available"):
+            data = {
+                **data,
+                "sessions": [s for s in data.get("sessions", []) if str(s.get("repo") or "").casefold() == wanted],
+            }
+        runs = [run for run in runs if str(run.get("repo") or "").casefold() == wanted]
+    return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings, *staff_warnings]})
+
+
+def _shared_session_read(key: str, read: Any) -> concurrent.futures.Future[Any]:
+    """Share a pending board or staff read so timed-out callers cannot queue duplicates."""
+    with _SESSION_READ_LOCK:
+        future = _SESSION_READS.get(key)
+        if future is not None and not future.done():
+            return future
+        future = _SESSION_READ_POOL.submit(read)
+        _SESSION_READS[key] = future
+
+    def finished(completed: concurrent.futures.Future[Any]) -> None:
+        try:
+            completed.exception()  # consume late failures even when every waiter timed out or cancelled
+        except concurrent.futures.CancelledError:
+            pass
+        with _SESSION_READ_LOCK:
+            if _SESSION_READS.get(key) is completed:
+                _SESSION_READS.pop(key, None)
+
+    future.add_done_callback(finished)
+    return future
+
+
+def _unavailable_sessions(reason: str) -> dict[str, Any]:
+    return {
+        "available": False,
+        "reason": reason,
+        "complete": False,
+        "sessions": [],
+        "messages": [],
+        "conflicts": [],
+        "warnings": [],
+    }
 
 
 def inbox(session: str, repo: str) -> dict[str, Any]:
