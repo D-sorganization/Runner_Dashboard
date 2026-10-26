@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 from coordination import service
 
+pytestmark = pytest.mark.unit
+
 EMPTY_BOARD = {"available": True, "complete": True, "sessions": [], "messages": [], "conflicts": [], "warnings": []}
 
 
