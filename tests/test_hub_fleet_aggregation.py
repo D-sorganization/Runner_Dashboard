@@ -2,8 +2,8 @@
 
 Verifies that:
 1. Hub dashboard (/api/fleet/status) accurately aggregates all active nodes
-   (ControlTower-Runner, DeskComputer, OGLaptop) while ignoring retired pools
-   (ControlTower-NVMe).
+   (node-a-Runner, hub-a, node-b) while ignoring retired pools
+   (node-a-NVMe).
 2. Offline / connection-refused nodes are gracefully classified as offline
    without blocking or dropping other healthy machines.
 3. Startup assertions validate active pools and dashboard URLs, failing fast
@@ -30,36 +30,36 @@ _MOCK_ACTIVE_FLEET_REGISTRY = {
     "version": 1,
     "machines": [
         {
-            "name": "ControlTower",
-            "aliases": ["controltower"],
+            "name": "node-a",
+            "aliases": ["node-a"],
             "role": "hub",
-            "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+            "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
             "runner_pools": [
                 {
-                    "name": "ControlTower-NVMe",
-                    "aliases": ["controltower-nvme"],
-                    "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                    "name": "node-a-NVMe",
+                    "aliases": ["node-a-nvme"],
+                    "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
                     "retired": True,
                     "retired_on": "2026-07-31",
                 },
                 {
-                    "name": "ControlTower-Runner",
-                    "aliases": ["controltower-runner"],
-                    "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                    "name": "node-a-Runner",
+                    "aliases": ["node-a-runner"],
+                    "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
                 },
             ],
         },
         {
-            "name": "DeskComputer",
-            "aliases": ["deskcomputer"],
+            "name": "hub-a",
+            "aliases": ["hub-a"],
             "role": "node",
-            "dashboard_url": "http://deskcomputer.tail2bbcc7.ts.net:8321",
+            "dashboard_url": "http://hub-a.fleet-example.ts.net:8321",
         },
         {
-            "name": "OGLaptop",
-            "aliases": ["oglaptop"],
+            "name": "node-b",
+            "aliases": ["node-b"],
             "role": "node",
-            "dashboard_url": "http://oglaptop.tail2bbcc7.ts.net:8321",
+            "dashboard_url": "http://node-b.fleet-example.ts.net:8321",
         },
     ],
 }
@@ -84,20 +84,20 @@ async def client(mock_auth: Any) -> AsyncGenerator[httpx.AsyncClient, None]:  # 
 
 @pytest.mark.asyncio
 async def test_hub_fleet_status_aggregates_all_active_machines(client: httpx.AsyncClient) -> None:
-    """Hub should aggregate ControlTower-Runner, DeskComputer, and OGLaptop.
+    """Hub should aggregate node-a-Runner, hub-a, and node-b.
 
-    ControlTower-NVMe is retired and must not appear in the telemetry.
+    node-a-NVMe is retired and must not appear in the telemetry.
     """
     desk_telemetry = {
         "status": "online",
-        "hostname": "DeskComputer",
+        "hostname": "hub-a",
         "cpu": {"percent": 12.5},
         "memory": {"percent": 45.0},
         "disk": {"percent": 60.0},
     }
     og_telemetry = {
         "status": "online",
-        "hostname": "OGLaptop",
+        "hostname": "node-b",
         "cpu": {"percent": 25.0},
         "memory": {"percent": 55.0},
         "disk": {"percent": 70.0},
@@ -105,9 +105,9 @@ async def test_hub_fleet_status_aggregates_all_active_machines(client: httpx.Asy
 
     async def mock_get(url: str, **kwargs: Any) -> httpx.Response:
         request = httpx.Request("GET", url)
-        if "deskcomputer" in url:
+        if "hub-a" in url:
             return httpx.Response(200, json=desk_telemetry, request=request)
-        if "oglaptop" in url:
+        if "node-b" in url:
             return httpx.Response(200, json=og_telemetry, request=request)
         return httpx.Response(404, request=request)
 
@@ -115,7 +115,7 @@ async def test_hub_fleet_status_aggregates_all_active_machines(client: httpx.Asy
         patch("dashboard_config.PORT", 8321),
         patch("dashboard_config.MACHINE_ROLE", "hub"),
         patch("routers.fleet.MACHINE_ROLE", "hub"),
-        patch("routers.fleet.HOSTNAME", "ControlTower"),
+        patch("routers.fleet.HOSTNAME", "node-a"),
         patch("routers.fleet.FLEET_NODES", {}),
         patch("routers.fleet.load_machine_registry", return_value=_MOCK_ACTIVE_FLEET_REGISTRY),
         patch.dict("os.environ", {"AUTODERIVE_FLEET_NODES": "1"}),
@@ -132,17 +132,17 @@ async def test_hub_fleet_status_aggregates_all_active_machines(client: httpx.Asy
         data = resp.json()
 
         # Exactly the 3 active machines/pools must be present
-        assert "ControlTower-Runner" in data
-        assert "DeskComputer" in data
-        assert "OGLaptop" in data
+        assert "node-a-Runner" in data
+        assert "hub-a" in data
+        assert "node-b" in data
 
         # Retired pool must NOT be present
-        assert "ControlTower-NVMe" not in data
+        assert "node-a-NVMe" not in data
 
         # Telemetry verification
-        assert data["DeskComputer"]["cpu"]["percent"] == 12.5
-        assert data["OGLaptop"]["cpu"]["percent"] == 25.0
-        assert data["ControlTower-Runner"]["_role"] == "hub"
+        assert data["hub-a"]["cpu"]["percent"] == 12.5
+        assert data["node-b"]["cpu"]["percent"] == 25.0
+        assert data["node-a-Runner"]["_role"] == "hub"
 
 
 @pytest.mark.asyncio
@@ -150,15 +150,15 @@ async def test_hub_fleet_status_handles_connection_refused_offline_node(client: 
     """When a node experiences connection refused, it is marked offline gracefully."""
     desk_telemetry = {
         "status": "online",
-        "hostname": "DeskComputer",
+        "hostname": "hub-a",
         "cpu": {"percent": 14.0},
     }
 
     async def mock_get(url: str, **kwargs: Any) -> httpx.Response:
         request = httpx.Request("GET", url)
-        if "deskcomputer" in url:
+        if "hub-a" in url:
             return httpx.Response(200, json=desk_telemetry, request=request)
-        if "oglaptop" in url:
+        if "node-b" in url:
             raise httpx.ConnectError("Connection refused", request=request)
         return httpx.Response(404, request=request)
 
@@ -166,7 +166,7 @@ async def test_hub_fleet_status_handles_connection_refused_offline_node(client: 
         patch("dashboard_config.PORT", 8321),
         patch("dashboard_config.MACHINE_ROLE", "hub"),
         patch("routers.fleet.MACHINE_ROLE", "hub"),
-        patch("routers.fleet.HOSTNAME", "ControlTower"),
+        patch("routers.fleet.HOSTNAME", "node-a"),
         patch("routers.fleet.FLEET_NODES", {}),
         patch("routers.fleet.load_machine_registry", return_value=_MOCK_ACTIVE_FLEET_REGISTRY),
         patch.dict("os.environ", {"AUTODERIVE_FLEET_NODES": "1"}),
@@ -183,16 +183,16 @@ async def test_hub_fleet_status_handles_connection_refused_offline_node(client: 
         data = resp.json()
 
         # All 3 nodes exist in response
-        assert "ControlTower-Runner" in data
-        assert "DeskComputer" in data
-        assert "OGLaptop" in data
+        assert "node-a-Runner" in data
+        assert "hub-a" in data
+        assert "node-b" in data
 
-        # DeskComputer is online
-        assert data["DeskComputer"]["status"] == "online"
+        # hub-a is online
+        assert data["hub-a"]["status"] == "online"
 
-        # OGLaptop is offline with refused reason
-        assert data["OGLaptop"]["status"] == "offline"
-        assert data["OGLaptop"]["offline_reason"] in ("refused", "wsl_connection_lost")
+        # node-b is offline with refused reason
+        assert data["node-b"]["status"] == "offline"
+        assert data["node-b"]["offline_reason"] in ("refused", "wsl_connection_lost")
 
 
 @pytest.mark.asyncio
@@ -203,11 +203,11 @@ async def test_startup_fails_fast_on_invalid_active_pool() -> None:
     invalid_registry = {
         "machines": [
             {
-                "name": "ControlTower",
-                "dashboard_url": "http://controltower.tail2bbcc7.ts.net:8321",
+                "name": "node-a",
+                "dashboard_url": "http://node-a.fleet-example.ts.net:8321",
                 "runner_pools": [
                     {
-                        "name": "ControlTower-Runner",
+                        "name": "node-a-Runner",
                         "dashboard_url": "",  # Empty URL on active pool
                     }
                 ],
