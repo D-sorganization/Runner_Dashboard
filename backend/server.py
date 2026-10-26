@@ -896,6 +896,12 @@ app.add_middleware(StaffV1Middleware)
 # Starlette's GZipMiddleware passes text/event-stream through unbuffered.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+# Validate Host before auth and routing. Public hostnames come from the same
+# registry and explicit origin allowlist used by browser sign-in.
+from trusted_hosts import IPv6AwareTrustedHostMiddleware, trusted_hosts_from_env  # noqa: E402
+
+app.add_middleware(IPv6AwareTrustedHostMiddleware, allowed_hosts=trusted_hosts_from_env())
+
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────
 BOOT_TIME = time.time()
