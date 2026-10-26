@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import autoscaler_systemd as sd
 import pytest
+from bash_host import require_bash
 
 
 def _cp(stdout: str = "", returncode: int = 0) -> MagicMock:
@@ -86,9 +87,10 @@ def test_runner_sudoers_grants_only_the_argument_free_control_helper() -> None:
 
 
 def test_runner_control_helper_rejects_invalid_input_without_invoking_systemctl() -> None:
+    bash = require_bash()
     helper = Path(__file__).resolve().parents[1] / "deploy" / "rd-runner-ctl"
     with_args = subprocess.run(
-        ["bash", str(helper), "unexpected"],
+        [bash, str(helper), "unexpected"],
         input="start\nactions.runner.org.runner-a.service\n",
         text=True,
         capture_output=True,
@@ -101,7 +103,7 @@ def test_runner_control_helper_rejects_invalid_input_without_invoking_systemctl(
         "start\nother.service\n",
         "start\nactions.runner.org.runner-a.service\nextra\n",
     ):
-        result = subprocess.run(["bash", str(helper)], input=payload, text=True, capture_output=True, check=False)
+        result = subprocess.run([bash, str(helper)], input=payload, text=True, capture_output=True, check=False)
         assert result.returncode != 0
 
 
