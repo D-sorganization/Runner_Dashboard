@@ -11,17 +11,16 @@ from pathlib import Path
 
 from staff.cli_projects import PANEL_SCRATCH_PREFIX
 
-from shared_scripts.panel_turn_scratch import (
-    discover_fleet_repo_root,
-    write_panel_scratch_marker,
-)
-
 log = logging.getLogger("dashboard.staff.panel_scratch")
 
 __all__ = ["prepare_panel_turn_scratch", "remove_panel_turn_scratch"]
 
 
 def _panel_fleet_root() -> Path:
+    # Imported at use: ``shared_scripts`` lives at the repo root, which is not on
+    # ``sys.path`` for ``backend/server.py`` or the deploy artifact (#2994).
+    from shared_scripts.panel_turn_scratch import discover_fleet_repo_root
+
     root = discover_fleet_repo_root(Path(__file__).resolve())
     if root is None:
         raise RuntimeError("Runner_Dashboard fleet root not found for panel scratch marker")
@@ -52,6 +51,8 @@ def prepare_panel_turn_scratch() -> str:
         git_dir = os.path.join(path, ".git")
         if not os.path.isdir(git_dir):
             raise RuntimeError(f"panel scratch missing .git after init: {path}")
+        from shared_scripts.panel_turn_scratch import write_panel_scratch_marker
+
         write_panel_scratch_marker(scratch, _panel_fleet_root())
         return path
     except Exception:
