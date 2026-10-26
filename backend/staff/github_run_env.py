@@ -14,7 +14,9 @@ from github_app_auth import (
     mint_installation_access_token,
 )
 from security import validate_repo_slug
+from staff.board_post import staff_github_write_env_flags
 from staff.git_identity import staff_git_identity_env
+from staff.github_write_identity import require_github_app_installation_token
 from staff.roles import RoleSpec
 
 _CHILD_STRIP_KEYS = (
@@ -160,6 +162,9 @@ def build_staff_run_env(
     py = python_executable or sys.executable
     env["GH_TOKEN"] = github_token
     env["GITHUB_TOKEN"] = github_token
+    env.update(staff_github_write_env_flags())
+    env["STAFF_RUN_ID"] = run_id
+    require_github_app_installation_token(env)
     env["STAFF_GITHUB_CREDENTIAL_URL"] = _credential_url(run_id, dashboard_port)
     env["STAFF_REAL_GH"] = real_gh_path
     env["STAFF_REAL_GH_PATH"] = real_gh_path

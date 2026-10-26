@@ -102,6 +102,15 @@ def test_git_credential_helper_fails_closed_on_mint_failure(gh_app: Any) -> None
 
 
 @pytest.mark.unit
+def test_agent_session_active_for_staff_and_desktop_markers(gh_app: Any) -> None:
+    assert gh_app.agent_session_active({"FLEET_GH_REQUIRE_APP": "1"})
+    assert gh_app.agent_session_active({"FLEET_AGENT_SESSION": "1"})
+    assert gh_app.agent_session_active({"STAFF_RUN_ID": "run-abc"})
+    assert gh_app.agent_session_active({"CODEX_SANDBOX": "seatbelt"})
+    assert not gh_app.agent_session_active({"PATH": "/bin"})
+
+
+@pytest.mark.unit
 def test_installer_sets_staff_real_gh_and_prepends_path() -> None:
     text = _INSTALLER.read_text(encoding="utf-8")
     assert "STAFF_REAL_GH" in text

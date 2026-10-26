@@ -400,6 +400,8 @@ def compose_prompt(
         parts.append(dashboard_api_note())
 
     full_prompt = "\n\n".join(parts)
+    if not chat_turn and "STAFF_RESULT:" not in full_prompt:
+        full_prompt = f"{full_prompt}\n\n{RESULT_CONTRACT}"
     if not chat_turn:
         static_tokens = estimate_tokens("\n\n".join(static_blocks))
         if static_tokens > TOTAL_CONTEXT_TOKEN_CAP:

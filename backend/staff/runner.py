@@ -151,6 +151,7 @@ class StaffRunner:
         with provider_sema, self._sema:
             if rec.id in self._cancel_flags:
                 return
+            staff_github_env: dict[str, str] | None = None
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
                 handle_run_status_change(rec, "preparing")
@@ -160,6 +161,19 @@ class StaffRunner:
                 workdir = (
                     ops.prepare_cloud_workdir(store, rec) if cloud_run else ops.prepare_run_workdir(store, rec, plan)
                 )
+                role = self.roles()[plan.role]
+                real_gh = os.environ.get("STAFF_REAL_GH", "").strip() or "/usr/bin/gh"
+                staff_github_env = ops.apply_staff_run_github_child_env(
+                    store,
+                    rec,
+                    os.environ,
+                    role,
+                    plan.repo or "",
+                    run_id=rec.id,
+                    real_gh_path=real_gh,
+                )
+                if staff_github_env is None:
+                    return
                 lease_note = ""
                 agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
@@ -170,30 +184,40 @@ class StaffRunner:
                         issue=plan.issue_number,
                         agent=agent,
                         branch=plan.branch,
+                        github_env=staff_github_env,
                     )
                     if note is None:
                         return  # blocked; status already recorded
                     lease_note = note
-                self._execute(rec, plan, workdir, lease_note)
+                self._execute(rec, plan, workdir, lease_note, staff_github_env=staff_github_env)
             except Exception as exc:  # noqa: BLE001
                 log.exception("staff run %s crashed", rec.id)
                 store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
                 store.append_event(rec.id, "error", str(exc)[:1000])
             finally:
-                if plan.lease_ritual:
+                if plan.lease_ritual and staff_github_env is not None:
                     lease_ritual.release(
                         store,
                         rec.id,
                         repo=plan.repo,
                         issue=plan.issue_number,
                         agent=self._adapters[plan.provider].lease_agent,
+                        github_env=staff_github_env,
                     )
         retry_mod.handle_post_execution_retry(self, rec, plan)
 
     def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
         return ops.prepare_run_workdir(self.store, rec, plan)
 
-    def _execute(self, rec: RunRecord, plan: RunPlan, workdir: Path, lease_note: str) -> None:
+    def _execute(
+        self,
+        rec: RunRecord,
+        plan: RunPlan,
+        workdir: Path,
+        lease_note: str,
+        *,
+        staff_github_env: dict[str, str] | None = None,
+    ) -> None:
         store = self.store
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
@@ -221,19 +245,21 @@ class StaffRunner:
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
         idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
-        real_gh = os.environ.get("STAFF_REAL_GH", "").strip() or "/usr/bin/gh"
-
-        env = ops.apply_staff_run_github_child_env(
-            store,
-            rec,
-            os.environ,
-            role,
-            plan.repo or "",
-            run_id=rec.id,
-            real_gh_path=real_gh,
-        )
-        if env is None:
-            return
+        if staff_github_env is not None:
+            env = dict(staff_github_env)
+        else:
+            real_gh = os.environ.get("STAFF_REAL_GH", "").strip() or "/usr/bin/gh"
+            env = ops.apply_staff_run_github_child_env(
+                store,
+                rec,
+                os.environ,
+                role,
+                plan.repo or "",
+                run_id=rec.id,
+                real_gh_path=real_gh,
+            )
+            if env is None:
+                return
         if plan.execution_mode == "cloud":
             env = scrub_api_key_env(env)
         env = ops.apply_staff_run_fleet_token(

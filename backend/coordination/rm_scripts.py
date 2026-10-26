@@ -62,17 +62,40 @@ def python_for_rm() -> str:
     return os.environ.get("STAFF_RM_PYTHON") or shutil.which("python3") or shutil.which("python") or "python"
 
 
-def run_argv(argv: list[str], cwd: Path, timeout: int = DEFAULT_TIMEOUT) -> ScriptResult:
+def run_argv(
+    argv: list[str],
+    cwd: Path,
+    timeout: int = DEFAULT_TIMEOUT,
+    env: dict[str, str] | None = None,
+) -> ScriptResult:
     try:
-        r = subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)  # noqa: S603
+        r = subprocess.run(
+            argv,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=env,
+        )  # noqa: S603
         return ScriptResult(r.returncode, r.stdout or "", r.stderr or "")
     except (OSError, subprocess.TimeoutExpired) as exc:
         return ScriptResult(130, "", str(exc))
 
 
-def run_module(module: str, *args: str, root: Path | None = None, timeout: int = DEFAULT_TIMEOUT) -> ScriptResult:
+def run_module(
+    module: str,
+    *args: str,
+    root: Path | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+    env: dict[str, str] | None = None,
+) -> ScriptResult:
     """Run ``scripts.<module>`` in the RM checkout. Pre: ``root`` or a discoverable checkout."""
     root = root or rm_root()
     if root is None:
         return ScriptResult(127, "", RM_MISSING)
-    return run_argv([python_for_rm(), "-m", f"scripts.{module}", *args], cwd=root, timeout=timeout)
+    return run_argv(
+        [python_for_rm(), "-m", f"scripts.{module}", *args],
+        cwd=root,
+        timeout=timeout,
+        env=env,
+    )

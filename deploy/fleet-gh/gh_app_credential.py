@@ -14,6 +14,7 @@ MINT_FAILURE_EXIT = 3
 MINT_FAILURE_MESSAGE = "fleet App token mint failed; refusing to fall back to personal auth"
 
 _TOKEN_KEYS = ("GH_TOKEN", "GITHUB_TOKEN")
+_TRUTHY = frozenset({"1", "true", "yes"})
 
 
 class FleetGhMintError(RuntimeError):
@@ -23,6 +24,30 @@ class FleetGhMintError(RuntimeError):
 def scrub_personal_github_tokens(env: Mapping[str, str]) -> dict[str, str]:
     """Remove inherited operator tokens before invoking fleet ``gh``."""
     return {k: v for k, v in env.items() if k not in _TOKEN_KEYS}
+
+
+def agent_session_active(env: Mapping[str, str] | None = None) -> bool:
+    """True when gh/git must use fleet App credentials (staff runs, desktop agents)."""
+    source = os.environ if env is None else env
+    if str(source.get("FLEET_GH_REQUIRE_APP", "")).strip().lower() in _TRUTHY:
+        return True
+    if str(source.get("FLEET_AGENT_SESSION", "")).strip().lower() in _TRUTHY:
+        return True
+    if str(source.get("STAFF_RUN_ID", "")).strip():
+        return True
+    if str(source.get("STAFF_GITHUB_CREDENTIAL_URL", "")).strip():
+        return True
+    if str(source.get("FLEET_AGENT", "")).strip():
+        return True
+    for key in ("CLAUDECODE", "CODEX_SANDBOX", "CLAUDE_CODE_ENTRYPOINT"):
+        if str(source.get(key, "")).strip():
+            return True
+    return False
+
+
+def require_app_token(env: Mapping[str, str]) -> bool:
+    """Whether mint failure must not fall back to personal auth."""
+    return agent_session_active(env) or str(env.get("FLEET_GH_REQUIRE_APP", "")).strip().lower() in _TRUTHY
 
 
 def _env_file_path() -> Path:
