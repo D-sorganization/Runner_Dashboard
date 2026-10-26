@@ -46,3 +46,21 @@ gh variable set EXPEDITE_CONCURRENT_CAP --repo D-sorganization/Runner_Dashboard 
 ```
 
 Over the cap, the guard workflow refuses the label and posts the hub message on the PR.
+
+## Merge queue jump (slice 3)
+
+`POST /api/staff/escalate` with body `{"repo","pr","reason"}` (requires `staff.admin`). Uses GraphQL `enqueuePullRequest(jump: true)`. **Jumping rebuilds in-flight merge-queue entries.**
+
+The hub verifies `mergeQueueEntry.position` (and queue depth when available) after the mutation. GitHub can return success while leaving the PR at the back of the queue (for example position 27 of 27). In that case the API responds with `status: jump_ignored` and a clear message — do not treat a bare GraphQL success as a jump.
+
+**Ruleset bypass:** effective jumping requires a **ruleset bypass actor** with merge-queue permission on the repository ruleset (Runner_Dashboard ruleset `24444089`). Personal `gh` login alone is not enough when no bypass actor covers that login. Whether to add a bypass actor is an owner decision; this runbook does not change rulesets.
+
+CLI (operator hub bearer — not a GitHub token):
+
+```bash
+export RUNNER_DASHBOARD_URL="https://<hub>:8321"
+export RUNNER_DASHBOARD_TOKEN="<operator bearer>"
+python3 scripts/escalate.py --repo D-sorganization/Runner_Dashboard --pr <N> --reason "why"
+```
+
+When the fleet `gh` token lacks merge-queue jump permission, the hub returns `gh_personal_command` for Dieter or Barb to run locally (never copy tokens into env files). If the command succeeds but position stays at the tail, use `jump_ignored` guidance above — fix bypass actors, not tokens.

@@ -5,14 +5,23 @@ import os
 from typing import Any
 
 from escalation.cap import capacity_refused, resolve_cap
+from escalation.merge_jump import (
+    enqueue_jump,
+    plan_from_pr_view,
+    refusal_from_pr_payload,
+    split_repo,
+)
 from escalation.store import EscalationEvent, EscalationOutcome, get_escalation_store, reset_escalation_store
 from fastapi import APIRouter, Depends, HTTPException, Request
+from gh_utils import gh_api
 from identity import Principal, _resolve_principal_optional, auth_header, require_fleet_peer, require_scope
 from pydantic import BaseModel, Field
+from staff.audit import record_audit
 
 router = APIRouter(tags=["escalation"])
 
 _STAFF_READ = require_scope("staff.read")
+_STAFF_ADMIN = require_scope("staff.admin")
 
 
 class EscalationIngestBody(BaseModel):
@@ -22,6 +31,12 @@ class EscalationIngestBody(BaseModel):
     outcome: EscalationOutcome
     reason: str = Field(default="", max_length=2000)
     concurrent_cap: int | None = Field(default=None, ge=1, le=50)
+
+
+class StaffEscalateBody(BaseModel):
+    repo: str = Field(min_length=1, max_length=200)
+    pr: int = Field(gt=0)
+    reason: str = Field(min_length=1, max_length=2000)
 
 
 def require_escalation_ingest_caller(
@@ -82,6 +97,60 @@ async def list_escalations(
         "recent": store.list_recent(limit=limit),
         "label": "priority:expedite",
     }
+
+
+@router.post("/api/staff/escalate")
+async def staff_escalate_merge_queue(
+    body: StaffEscalateBody,
+    caller: Principal = Depends(_STAFF_ADMIN),  # noqa: B008
+) -> dict[str, Any]:
+    """Jump a green, unheld PR to the front of the merge queue (never skips required checks)."""
+    owner, repo = split_repo(body.repo)
+    slug = f"{owner}/{repo}"
+    pr_payload = await gh_api(f"repos/{owner}/{repo}/pulls/{body.pr}")
+    refusal = refusal_from_pr_payload(pr_payload, repo)
+    if refusal:
+        raise HTTPException(status_code=409, detail={"code": "escalate_refused", "message": refusal})
+    try:
+        plan = plan_from_pr_view(pr_payload, owner, repo, body.pr)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    result = await enqueue_jump(plan)
+    record_audit(
+        action="maintenance",
+        target=f"escalate:{slug}#{body.pr}",
+        principal=caller.id,
+        detail={"reason": body.reason, "ok": result.ok, "message": result.message},
+        surface="api",
+    )
+    if result.ok:
+        get_escalation_store().append(
+            EscalationEvent(
+                repo=slug,
+                pr_number=body.pr,
+                github_actor=caller.id,
+                outcome="applied",
+                reason=f"merge_jump: {body.reason}",
+            )
+        )
+    if result.ok:
+        return {"status": "enqueued", "message": result.message, "merge_queue_entry": result.detail}
+    if result.jump_ignored:
+        response: dict[str, Any] = {
+            "status": "jump_ignored",
+            "message": result.message,
+            "merge_queue_entry": result.detail,
+        }
+        if result.manual_command:
+            response["gh_personal_command"] = result.manual_command
+        return response
+    if result.manual_command:
+        return {
+            "status": "manual_required",
+            "message": result.message,
+            "gh_personal_command": result.manual_command,
+        }
+    raise HTTPException(status_code=502, detail=result.message)
 
 
 __all__ = ["router", "reset_escalation_store"]

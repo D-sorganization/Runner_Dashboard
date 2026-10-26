@@ -6116,6 +6116,30 @@
         "title": "StaffDispatchResponse",
         "type": "object"
       },
+      "StaffEscalateBody": {
+        "properties": {
+          "pr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr", "reason"],
+        "title": "StaffEscalateBody",
+        "type": "object"
+      },
       "StaffHold": {
         "additionalProperties": true,
         "description": "One policy hold.\n\n``kind``: ``\"guardrail\"`` (seeded from a role's YAML ``holds:`` list;\nstays in the role prompt, shown in the UI as a standing rule, never\nblocks scheduling) or ``\"schedule\"`` (created via the Holds tab, the\nholds API, or a ``staff.hold`` action; blocks scheduling). Owner\ndecision, issue #1726.",
@@ -17897,6 +17921,56 @@
         ],
         "summary": "Trigger Briefing",
         "tags": ["staff-inbox"]
+      }
+    },
+    "/api/staff/escalate": {
+      "post": {
+        "description": "Jump a green, unheld PR to the front of the merge queue (never skips required checks).",
+        "operationId": "staff_escalate_merge_queue_api_staff_escalate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffEscalateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Staff Escalate Merge Queue Api Staff Escalate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Staff Escalate Merge Queue",
+        "tags": ["escalation"]
       }
     },
     "/api/staff/escalations": {

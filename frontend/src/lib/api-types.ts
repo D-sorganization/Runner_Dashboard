@@ -4672,6 +4672,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Staff Escalate Merge Queue
+         * @description Jump a green, unheld PR to the front of the merge queue (never skips required checks).
+         */
+        post: operations["staff_escalate_merge_queue_api_staff_escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/escalations": {
         parameters: {
             query?: never;
@@ -11184,6 +11204,15 @@ export interface components {
             run?: components["schemas"]["StaffRunRecord"] | null;
         } & {
             [key: string]: unknown;
+        };
+        /** StaffEscalateBody */
+        StaffEscalateBody: {
+            /** Pr */
+            pr: number;
+            /** Reason */
+            reason: string;
+            /** Repo */
+            repo: string;
         };
         /**
          * StaffHold
@@ -18876,6 +18905,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PostBriefingBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    staff_escalate_merge_queue_api_staff_escalate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffEscalateBody"];
             };
         };
         responses: {
