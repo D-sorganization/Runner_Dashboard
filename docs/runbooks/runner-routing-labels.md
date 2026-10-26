@@ -20,6 +20,7 @@ workflow routing honest without requiring WSL to be online.
 | `d-sorg-fleet-fast-io` | dependency installs, large test suites, Playwright, lockfile refreshes, native-build churn  | pure docs/governance workflows                                       |
 | `d-sorg-fleet-docker`  | Docker image builds, Trivy scans, container-layer churn                                     | lightweight maintenance workflows                                    |
 | `d-sorg-fleet-nvme`    | explicit physical placement on the NVMe tier when the fastest pool is required              | lightweight workflows that can stay on HDD capacity                  |
+| `d-sorg-fleet-queue`   | reserved runner capacity for `merge_group` validation only                                  | PR builds, schedules, and manual jobs                                |
 
 ## Workflow Classes
 
@@ -43,6 +44,15 @@ the neutral `d-sorg-fleet` label. The audit is intentionally conservative:
   migrated later.
 
 That keeps current CI stable while making the future label migration concrete.
+
+## Merge Queue Reservation
+
+`d-sorg-fleet-queue` is a dedicated routing label for merge-group checks. Add
+it only to the reserved runner slot on each participating host, and use it only
+for jobs running on the `merge_group` event. Keep it off PR builds and general
+maintenance so queued merges retain reserved capacity. Do not enable live
+superseded-run cancellation until the owner records approval in the enabling
+PR; first validate the reaper in dry-run mode.
 
 ## Offline Audit
 

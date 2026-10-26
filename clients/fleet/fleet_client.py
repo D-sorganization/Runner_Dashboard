@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from fleet_barb_claim import BarbClaimMixin
 from fleet_barb_seat import BarbSeatMixin
 from fleet_exclusion_tools import ExclusionClientMixin
 from fleet_friction_tools import FrictionClientMixin
@@ -93,7 +94,7 @@ DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
-class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin):
+class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""
 
@@ -166,7 +167,7 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
         )
         url = f"{self.base_url}{path}" + (f"?{query}" if query else "")
         data = None if body is None else json.dumps(body).encode("utf-8")
-        req_headers = self._headers(data is not None)
+        req_headers = {**self._headers(data is not None), **self._barb_claim_headers(method, path, body)}
         if headers:
             req_headers.update(headers)
 
@@ -178,9 +179,14 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
             req = urllib.request.Request(url, data=data, method=method, headers=req_headers)
             try:
                 with urllib.request.urlopen(req, timeout=call_timeout) as resp:
-                    return _decode(resp.read())
+                    result = _decode(resp.read())
+                self._barb_observe(method, path, body, result)
+                return result
             except urllib.error.HTTPError as exc:
                 body_decoded = _decode(exc.read())
+                lost_seat = self._barb_translate(FleetAPIError(exc.code, body_decoded), req_headers)
+                if lost_seat is not None:
+                    raise lost_seat from None  # never retried: the hub refused this write
                 if is_idempotent and exc.code in (502, 503, 504) and attempt < max_attempts - 1:
                     time.sleep(0.2)
                     continue

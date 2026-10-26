@@ -22,10 +22,16 @@ import {
   fireEvent,
   within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DesktopShell, type ShellAction } from "../DesktopShell";
 
 afterEach(cleanup);
+
+// DesktopShell mounts BarbSidebar through React.lazy. Preload it so tests
+// check sidebar behaviour, not cold-import latency on a busy runner (#2774).
+beforeAll(async () => {
+  await import("../BarbSidebar");
+});
 
 function actions(spy = vi.fn()): ShellAction[] {
   return [

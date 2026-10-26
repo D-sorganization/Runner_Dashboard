@@ -267,9 +267,13 @@ def test_group_larger_than_its_max_count_is_refused_before_touching_any_runner()
 
 def test_cooldown_blocks_an_immediate_repeat_of_a_wired_action() -> None:
     params = VALID_PARAMS["maintenance.vacuum_sqlite"]
-    assert execute_maintenance("maintenance.vacuum_sqlite", params, CTX).success
-    with pytest.raises(MaintenanceCooldownError):
-        execute_maintenance("maintenance.vacuum_sqlite", params, CTX)
+    vacuum_result = {"database": params["database"], "freed_bytes": 0, "status": "vacuumed"}
+    # Real VACUUM can take tens of seconds on fleet runners; under xdist another test's
+    # autouse fixture may reset the process-wide cooldown tracker before the repeat call.
+    with patch("staff.maintenance._vacuum_db", return_value=vacuum_result):
+        assert execute_maintenance("maintenance.vacuum_sqlite", params, CTX).success
+        with pytest.raises(MaintenanceCooldownError):
+            execute_maintenance("maintenance.vacuum_sqlite", params, CTX)
 
 
 @pytest.mark.parametrize("name", OWNER_GATED)
