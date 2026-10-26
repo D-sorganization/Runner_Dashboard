@@ -120,3 +120,11 @@ them before further recovery. An unhealthy restored release is reported as
 ```bash
 bash ~/actions-runners/dashboard/deploy/node-auto-deploy.sh --dry-run
 ```
+
+## Attention when green main goes unreleased
+
+`attention=true` is set (and surfaced via `/api/fleet/status`) when a gate-green main
+commit has no release for more than `AUTO_DEPLOY_MAX_UNRELEASED_HOURS` (default 3), or more
+than `AUTO_DEPLOY_MAX_GREEN_BEHIND` (default 5) green commits sit ahead of the newest
+released one. Reason: `no release published for green main <sha> since <time>`. Usually the
+release publisher (`Main CI auto-release`) is failing; fix that, not the node.
