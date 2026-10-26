@@ -9,8 +9,9 @@ import { execSync } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = join(__dirname, "../../..");
+const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 
 export function ensureStaffE2ePorts(): void {
   if (process.env.STAFF_E2E_BACKEND_PORT && process.env.STAFF_E2E_UI_PORT) {
