@@ -102,6 +102,24 @@ def source_status(root: Path | None = None, *, state_path: Path | None = None) -
     }
 
 
+def stale_source_warning() -> str | None:
+    """One-line warning when the RM checkout has stopped updating, else None (#2978).
+
+    Reads only the timer's status file (no Git, no role validation), so request paths can call it.
+    Post: None unless the status belongs to ``STAFF_RM_ROOT`` and shows repeated skips or a failed refresh.
+    """
+    configured = os.environ.get("STAFF_RM_ROOT")
+    if not configured:
+        return None
+    state = _read(_state_path())
+    if state.get("root") != str(Path(configured).expanduser().resolve()):
+        return None
+    if not (state.get("attention") or state.get("status") == "error"):
+        return None
+    reason = state.get("reason") or "unknown reason"
+    return f"RM checkout sync {state.get('status')} ({reason}); board reads may be stale or target a retired board"
+
+
 def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     """Update clean main only; dirty, ahead/diverged and unavailable repos survive.
 
