@@ -27,6 +27,7 @@ INTERVAL_SECONDS = 15 * 60
 GIT_TIMEOUT_SECONDS = 60
 # The timer writes status every ~15 minutes; keep roughly a day of history.
 BACKUP_KEEP = 96
+SKIPPED_ATTENTION_THRESHOLD = 3
 
 
 def _state_path() -> Path:
@@ -152,6 +153,15 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         # Never log Git stderr/stdout: remote URLs and helpers may contain credentials.
         state.update(status="error", reason=type(exc).__name__)
+    if state["status"] == "skipped":
+        state["consecutive_skips"] = (
+            int(previous.get("consecutive_skips", 0)) + 1 if previous.get("status") == "skipped" else 1
+        )
+    elif state["status"] in {"updated", "unchanged"}:
+        state["consecutive_skips"] = 0
+    else:
+        state["consecutive_skips"] = int(previous.get("consecutive_skips", 0))
+    state["attention"] = state["consecutive_skips"] >= SKIPPED_ATTENTION_THRESHOLD
     try:
         state["commit"] = _git(root, "rev-parse", "HEAD")
         state["commit_time"] = int(_git(root, "show", "-s", "--format=%ct", "HEAD"))
