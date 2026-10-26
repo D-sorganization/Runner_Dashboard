@@ -14,7 +14,7 @@ export function modelOptionsForDashboardProvider(
   dashboardId: string,
 ): ModelOption[] {
   const row = registry.byDashboardId(dashboardId);
-  if (!row?.models.length) return [];
+  if (!row?.enabled || !row.models.length) return [];
   return row.models.map((id, index) => ({
     id,
     label: id,
