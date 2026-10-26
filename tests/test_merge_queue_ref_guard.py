@@ -1,0 +1,184 @@
+"""merge_group ref guard: obsolete queue entries self-cancel before heavy jobs (#2764 F1)."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import textwrap
+from pathlib import Path
+
+import pytest
+import yaml
+
+_ROOT = Path(__file__).resolve().parents[1]
+_SCRIPT = _ROOT / ".github" / "scripts" / "merge-queue-ref-guard.sh"
+_WORKFLOWS = _ROOT / ".github" / "workflows"
+
+_MERGE_GROUP_WORKFLOWS = [
+    "ci-standard.yml",
+    "frontend-tests.yml",
+    "docker-build.yml",
+    "ci-secrets.yml",
+    "ci-auto-deploy-regression.yml",
+]
+
+_QUEUE_REF = "gh-readonly-queue/main/pr-77-abcdef0123456789abcdef0123456789"  # pragma: allowlist secret
+
+
+def _load_workflow(name: str) -> dict:
+    data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    return data
+
+
+def _guard_run_block(name: str) -> str:
+    workflow = _load_workflow(name)
+    job = workflow["jobs"]["queue-entry-alive"]
+    assert job.get("if") == "github.event_name == 'merge_group'"
+    steps = job["steps"]
+    run_step = next(s for s in steps if s.get("run") and "merge-queue-ref-guard" in str(s.get("run", "")))
+    return str(run_step["run"])
+
+
+def _run_guard(
+    *,
+    gh_stub: str,
+    event_name: str = "merge_group",
+    head_ref: str = _QUEUE_REF,
+    run_id: str = "999001",
+    repository: str = "D-sorganization/Runner_Dashboard",
+) -> subprocess.CompletedProcess[str]:
+    assert _SCRIPT.is_file(), "guard script must exist before workflow wiring"
+    env = os.environ.copy()
+    env.update(
+        {
+            "GITHUB_EVENT_NAME": event_name,
+            "MERGE_GROUP_HEAD_REF": head_ref,
+            "GITHUB_REF": f"refs/heads/{head_ref}",
+            "GITHUB_RUN_ID": run_id,
+            "GITHUB_REPOSITORY": repository,
+            "PATH": f"{Path(gh_stub).parent}:{env.get('PATH', '')}",
+        }
+    )
+    return subprocess.run(
+        ["bash", str(_SCRIPT)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
+def test_heavy_workflows_define_queue_entry_alive_job(name: str) -> None:
+    workflow = _load_workflow(name)
+    triggers = workflow.get(True) or workflow.get("on")
+    assert "merge_group" in triggers
+    assert "queue-entry-alive" in workflow["jobs"]
+
+
+@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
+def test_workflow_invokes_shared_guard_script(name: str) -> None:
+    block = _guard_run_block(name)
+    assert "merge-queue-ref-guard.sh" in block
+
+
+def test_existing_queue_ref_continues(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    gh = tmp_path / "gh"
+    gh.write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "$@" >> "{tmp_path / "calls.log"}"
+            if [[ "$1" == "api" ]]; then
+              exit 0
+            fi
+            echo "unexpected gh invocation: $*" >&2
+            exit 99
+            """
+        ),
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+
+    result = _run_guard(gh_stub=str(gh))
+    assert result.returncode == 0
+    log = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert "git/ref/" in log
+    assert "run cancel" not in log
+
+
+def test_missing_queue_ref_self_cancels_only_this_run(tmp_path: Path) -> None:
+    gh = tmp_path / "gh"
+    gh.write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "$@" >> "{tmp_path / "calls.log"}"
+            if [[ "$1" == "api" ]]; then
+              echo '{{"message":"Not Found"}}' >&2
+              exit 1
+            fi
+            if [[ "$1" == "run" && "$2" == "cancel" ]]; then
+              if [[ "$3" != "999001" ]]; then
+                echo "refusing to cancel another run: $3" >&2
+                exit 2
+              fi
+              exit 0
+            fi
+            if [[ "$1" == "run" && "$2" == "view" ]]; then
+              echo '{{"status":"completed","conclusion":"cancelled"}}'
+              exit 0
+            fi
+            exit 99
+            """
+        ),
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+
+    result = _run_guard(gh_stub=str(gh))
+    assert result.returncode == 0
+    log = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert "run cancel 999001" in log
+    assert "run cancel" not in log.replace("run cancel 999001", "")
+
+
+@pytest.mark.parametrize("event_name", ["pull_request", "push"])
+def test_non_merge_group_events_are_never_touched(event_name: str, tmp_path: Path) -> None:
+    gh = tmp_path / "gh"
+    gh.write_text("#!/usr/bin/env bash\nexit 99\n", encoding="utf-8")
+    gh.chmod(0o755)
+
+    result = _run_guard(gh_stub=str(gh), event_name=event_name, head_ref="main")
+    assert result.returncode == 0
+
+
+def test_gh_api_error_fails_open_without_cancel(tmp_path: Path) -> None:
+    gh = tmp_path / "gh"
+    gh.write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "$@" >> "{tmp_path / "calls.log"}"
+            if [[ "$1" == "api" ]]; then
+              echo "internal error" >&2
+              exit 1
+            fi
+            exit 99
+            """
+        ),
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+
+    result = _run_guard(gh_stub=str(gh))
+    assert result.returncode == 0
+    log = (tmp_path / "calls.log").read_text(encoding="utf-8")
+    assert "run cancel" not in log
+    assert "fail-open" in result.stderr + result.stdout
