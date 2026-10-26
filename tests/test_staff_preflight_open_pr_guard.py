@@ -260,3 +260,39 @@ async def test_check_duplicate_pr_or_run_refuses_on_active_claim_label(mock_runn
         assert exc_info.value.status_code == 409
         assert exc_info.value.detail["code"] == "active_claim_exists"
         assert "claim:cursor-agent" in exc_info.value.detail["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_ref", ["#123", "123"])
+async def test_active_run_guard_matches_stored_hash_prefixed_target_ref(
+    mock_runner: StaffRunner, stored_ref: str
+) -> None:
+    """Runs persist ``plan.target_ref`` as ``#N``; the duplicate guard must still match it (#2968)."""
+    mock_runner.store.create_run(
+        RunRecord(
+            id="run-hash-ref",
+            role="issue-remediator",
+            provider="claude",
+            model="sonnet",
+            machine="local",
+            repo="Test_Repo",
+            target_kind="issue",
+            target_ref=stored_ref,
+            prompt="Working on issue #123",
+            status="running",
+        )
+    )
+    with patch("staff.preflight_duplicate_guard.get_runner", return_value=mock_runner):
+        with pytest.raises(HTTPException) as exc_info:
+            await check_duplicate_pr_or_run(
+                "Test_Repo",
+                123,
+                gh_get_fn=AsyncMock(return_value=[]),
+                check_open_pr=False,
+                check_merged_pr=False,
+                check_issue_branches=False,
+                check_claim=False,
+            )
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "active_run_exists"
+    assert exc_info.value.detail["run_id"] == "run-hash-ref"
