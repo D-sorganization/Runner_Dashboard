@@ -528,14 +528,9 @@ _replay_store: ReplayStore = ReplayStore(_REPLAY_STORE_PATH)
 migrate_json_to_sqlite(_PROCESSED_ENVELOPES_PATH, _replay_store)
 
 
-async def _is_envelope_replay(envelope_id: str) -> bool:
-    """Check if envelope_id has already been processed (replay detection)."""
-    return _replay_store.is_replay(envelope_id)
-
-
-async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400) -> None:
-    """Record that envelope_id has been processed (for replay detection)."""
-    _replay_store.record(envelope_id)
+async def _claim_envelope_once(envelope_id: str) -> bool:
+    """Atomically claim a dispatch envelope identifier for one submission."""
+    return _replay_store.claim_once(envelope_id)
 
 
 async def _watchdog_heartbeat() -> None:
@@ -682,7 +677,7 @@ _BROWSER_ACCESS_VALIDATOR = CloudflareAccessValidator(
 app.state.browser_access_validator = _BROWSER_ACCESS_VALIDATOR
 
 app.include_router(_dispatch_router.router)
-_dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
+_dispatch_router.set_replay_function(_claim_envelope_once)
 app.include_router(_credentials_router.router)
 app.include_router(_remediation_router.router)
 app.include_router(_providers_router.router)  # shared provider registry (issue #810)
