@@ -12,6 +12,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 _LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]")
+_EXTRA_HOSTS_ENV = "DASHBOARD_TRUSTED_EXTRA_HOSTS"
 _IPV6_LOOPBACK_HOST = re.compile(r"\[::1\](?::\d{1,5})?\Z", re.IGNORECASE)
 
 
@@ -56,4 +57,10 @@ def trusted_hosts_from_env(
         parsed = urlsplit(origin)
         if parsed.hostname:
             hosts.add(parsed.hostname.casefold())
+    extra = source.get(_EXTRA_HOSTS_ENV, "").strip()
+    if extra:
+        for entry in extra.split(","):
+            hostname = entry.strip().casefold()
+            if hostname:
+                hosts.add(hostname)
     return tuple(sorted(hosts))

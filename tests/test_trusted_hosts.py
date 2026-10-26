@@ -9,6 +9,24 @@ from starlette.testclient import TestClient
 from trusted_hosts import trusted_hosts_from_env
 
 
+def test_trusted_hosts_omit_extra_hosts_without_env() -> None:
+    hosts = trusted_hosts_from_env(
+        {"DASHBOARD_PUBLIC_ORIGIN": "https://hub.example.test"},
+        registry={"machines": []},
+    )
+
+    assert "testserver" not in hosts
+
+
+def test_trusted_hosts_include_extra_hosts_when_configured() -> None:
+    hosts = trusted_hosts_from_env(
+        {"DASHBOARD_TRUSTED_EXTRA_HOSTS": "testserver,peer.example.test"},
+        registry={"machines": []},
+    )
+
+    assert {"testserver", "peer.example.test"} <= set(hosts)
+
+
 def test_trusted_hosts_include_local_and_configured_public_origins() -> None:
     hosts = trusted_hosts_from_env(
         {
@@ -49,9 +67,12 @@ def test_dashboard_accepts_bracketed_ipv6_loopback_host() -> None:
 
 def test_loopback_request_without_credentials_is_unauthorized(monkeypatch) -> None:
     monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
-    client = TestClient(dashboard_app, client=("127.0.0.1", 8321))
+    client = TestClient(dashboard_app, client=("127.0.0.1", 8321), raise_server_exceptions=False)
 
-    response = client.get("/api/runners", headers={"host": "localhost:8321"})
+    response = client.post(
+        "/api/staff/runs/run-x/cancel",
+        headers={"host": "localhost:8321", "X-Requested-With": "XMLHttpRequest"},
+    )
 
     assert response.status_code == 401
 
