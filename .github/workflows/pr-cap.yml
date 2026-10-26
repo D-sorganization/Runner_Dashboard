@@ -9,7 +9,7 @@ on:
 # event is processed. Separate caller and reusable groups avoid self-blocking.
 concurrency:
   group: pr-cap-caller-${{ github.repository }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions: {}
 

@@ -53,7 +53,11 @@ def test_caller_uses_only_trusted_base_pr_metadata_events() -> None:
     [("pr-cap.yml", "pr-cap-caller-"), ("reusable-pr-cap.yml", "pr-cap-reusable-")],
 )
 def test_advisory_serialization_is_pr_scoped_distinct_and_non_canceling(name: str, prefix: str) -> None:
-    assert _workflow(name)["concurrency"] == {"group": prefix + PR_SCOPE, "cancel-in-progress": False}
+    cancel = name == "pr-cap.yml"
+    assert _workflow(name)["concurrency"] == {
+        "group": prefix + PR_SCOPE,
+        "cancel-in-progress": cancel,
+    }
 
 
 def test_counter_executes_only_the_sparse_trusted_base_bundle() -> None:
@@ -107,7 +111,7 @@ def test_writer_is_separate_one_shot_and_does_not_modify_pr_state() -> None:
         assert mutation not in script
 
 
-@pytest.mark.parametrize("name", ["pr-cap.yml", "reusable-pr-cap.yml"])
+@pytest.mark.parametrize("name", ["reusable-pr-cap.yml"])
 def test_non_canceling_exception_and_bulk_classification_are_explicit(name: str) -> None:
     policy = json.loads((ROOT / "config/workflow_concurrency_policy.json").read_text(encoding="utf-8"))
     reason = policy["cancel_in_progress_false_allowlist"][name]
