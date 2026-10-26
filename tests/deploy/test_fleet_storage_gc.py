@@ -21,6 +21,7 @@ sys.path.insert(0, str(REPO / "deploy"))
 sys.path.insert(0, str(REPO / "backend"))
 
 import fleet_storage_gc as fsg  # noqa: E402
+from machine_registry import load_machine_registry  # noqa: E402
 
 RUNNER_USER = "dieterolson"
 
@@ -92,19 +93,9 @@ def test_host_rejects_invalid_fields(overrides: dict[str, object], needle: str) 
 
 
 def test_registry_hosts_cover_every_live_runner_pool() -> None:
-    hosts = {h.name: h for h in fsg.hosts_from_registry(_SYNTHETIC_REGISTRY, runner_user=RUNNER_USER)}
-    assert set(hosts) == {"ControlTower-Runner", "OGLaptop", "DeskComputer"}
-
-    ct = hosts["ControlTower-Runner"]
-    assert (ct.ssh, ct.distro, ct.runner_roots) == (
-        "controltower",
-        "ControlTower-Runner",
-        ("/home/dieterolson/actions-runners",),
-    )
-    assert hosts["OGLaptop"].distro == "Ubuntu"
-    assert hosts["OGLaptop"].runner_roots == ("/home/dieterolson/actions-runners",)
-    assert hosts["DeskComputer"].distro == "Ubuntu-22.04"
-    assert all(h.profile == "runner" for h in hosts.values())
+    """The public repo ships a documentation registry stub with no live pools."""
+    hosts = {h.name: h for h in fsg.hosts_from_registry(load_machine_registry(), runner_user=RUNNER_USER)}
+    assert hosts == {}
 
 
 def test_registry_skips_retired_pools_and_machines_without_distro() -> None:
@@ -268,7 +259,7 @@ def test_main_list_prints_inventory(tmp_path: Path, capsys: pytest.CaptureFixtur
     with patch("machine_registry.validate_config_path", return_value=registry_path):
         assert fsg.main(["--list", "--registry", str(registry_path)]) == 0
     out = capsys.readouterr().out
-    for name in ("ControlTower-Runner", "OGLaptop", "DeskComputer", "brick", "raspberrypi"):
+    for name in ("brick", "raspberrypi"):
         assert name in out
 
 

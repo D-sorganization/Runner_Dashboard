@@ -37,6 +37,7 @@ def _production_env() -> dict[str, str]:
         "GITHUB_ORG": "D-sorganization",
         "DASHBOARD_PUBLIC_ORIGIN": _ORIGIN,
         "GITHUB_OAUTH_CALLBACK_URL": _CALLBACK,
+        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": _ORIGIN,
         "DASHBOARD_TLS": "1",
         "SESSION_SECRET": _SESSION_SECRET,  # pragma: allowlist secret
     }
