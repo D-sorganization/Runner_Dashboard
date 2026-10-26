@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, model_validator
 
 ENTRY_TYPES = ("session_digest", "decision", "task", "transcript", "lesson")
 EntryType = Literal["session_digest", "decision", "task", "transcript", "lesson"]
@@ -17,6 +17,11 @@ DigestID = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]*$"),
 ]
 DigestText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)]
+ReviewStatus = Literal["proposed", "accepted", "quarantined", "retired", "promoted"]
+Visibility = Literal["fleet", "barb-only"]
+RepositoryName = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=200)]
+SourceRunID = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=120, pattern=r"^[A-Za-z0-9_-]+$")]
+_REPOSITORY_NAME = TypeAdapter(RepositoryName)
 
 
 class SessionDigestAppendRequest(BaseModel):
@@ -42,9 +47,17 @@ class MemoryAppendRequest(BaseModel):
     body: dict[str, Any]
     expires_at: str | None = None
     supersedes_id: str | None = None
+    repo: RepositoryName | None = None
+    source_run: SourceRunID | None = None
+    review_status: ReviewStatus | None = None
+    visibility: Visibility | None = None
 
-    def __getattr__(self, name: str) -> Any:
-        return (self.model_extra or {}).get(name)
+    @model_validator(mode="after")
+    def validate_lesson_repo(self) -> Self:
+        """Keep the supported body.repo fallback subject to the same typed boundary."""
+        if self.entry_type == "lesson" and self.repo is None and "repo" in self.body:
+            self.repo = _REPOSITORY_NAME.validate_python(self.body["repo"])
+        return self
 
 
 class MemoryEntry(BaseModel):
@@ -67,7 +80,7 @@ class MemoryEntry(BaseModel):
 
 
 class MemoryReviewRequest(BaseModel):
-    review_status: str
+    review_status: ReviewStatus
     expires_at: str | None = None
 
 
