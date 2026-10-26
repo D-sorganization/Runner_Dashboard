@@ -64,3 +64,5 @@ def test_architecture_map_workflow_pytest_skips_heavy_conftest() -> None:
     text = workflow.read_text(encoding="utf-8")
     assert "test_architecture_map_contract.py" in text
     assert "--noconftest" in text
+    assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD" in text
+    assert "pytest_asyncio.plugin" in text
