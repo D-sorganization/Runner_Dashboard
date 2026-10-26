@@ -68,8 +68,10 @@ export function CodeRequestsTab({
   }, []);
 
   useEffect(() => {
-    if (!selProvider && registry && registry.providers.length > 0) {
-      const preferred = registry.providers.find((p) => p.loginStatus === "authenticated") || registry.providers[0];
+    if (!selProvider && registry && registry.selectableProviders.length > 0) {
+      const preferred =
+        registry.selectableProviders.find((p) => p.loginStatus === "authenticated") ||
+        registry.selectableProviders[0];
       if (preferred) {
         setSelProvider(preferred.dashboardId);
       }
@@ -270,8 +272,8 @@ export function CodeRequestsTab({
                   minWidth: 140,
                 }}
               >
-                {registry && registry.providers.length > 0 ? (
-                  registry.providers.map((p) => (
+                {registry && registry.selectableProviders.length > 0 ? (
+                  registry.selectableProviders.map((p) => (
                     <option key={p.dashboardId} value={p.dashboardId}>
                       {p.label}
                       {p.loginStatus === "authenticated" ? " ✓" : ""}
