@@ -737,9 +737,6 @@ def test_overview_desktop_route_bypasses_legacy_app() -> None:
         encoding="utf-8",
     )
     overview_page = (_FRONTEND_DIR / "src" / "pages" / "OverviewPage.tsx").read_text(encoding="utf-8")
-    vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
-        encoding="utf-8",
-    )
 
     assert 'case "overview":' in routed_shell
     assert "const LazyOverviewPage = React.lazy(" in routed_shell
@@ -750,7 +747,9 @@ def test_overview_desktop_route_bypasses_legacy_app() -> None:
     assert 'legacyFetch("/api/fleet/control/" + action' in overview_page
     assert 'legacyFetch("/api/runners/" + id + "/" + action' in overview_page
     assert "export function OverviewPage" in overview_page
-    assert "return 'fleet-overview'" in vite_config
+    # #2990: the page is a dynamic-import chunk, never a static entry import.
+    assert 'import("../pages/OverviewPage")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/OverviewPage"', routed_shell, re.M)
 
 
 def test_remediation_desktop_route_bypasses_legacy_app() -> None:
@@ -759,9 +758,6 @@ def test_remediation_desktop_route_bypasses_legacy_app() -> None:
         encoding="utf-8",
     )
     remediation_page = (_FRONTEND_DIR / "src" / "pages" / "RemediationPage.tsx").read_text(encoding="utf-8")
-    vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
-        encoding="utf-8",
-    )
 
     assert 'case "remediation":' in routed_shell
     assert "const LazyRemediationPage = React.lazy(" in routed_shell
@@ -773,7 +769,9 @@ def test_remediation_desktop_route_bypasses_legacy_app() -> None:
     assert 'legacyFetch("/api/agent-remediation/plan"' in remediation_page
     assert "buildPrefilledRemediationUrl" in remediation_page
     assert "export function RemediationPage" in remediation_page
-    assert "return 'remediation'" in vite_config
+    # #2990: the page is a dynamic-import chunk, never a static entry import.
+    assert 'import("../pages/RemediationPage")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/RemediationPage"', routed_shell, re.M)
 
 
 def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
@@ -786,15 +784,28 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
     )
 
     for marker in [
-        "overview: <FleetMobile />",
+        "overview: (",
+        "<LazyFleetMobile />",
         "queue: <QueueMobile />",
         "remediation: (",
-        "<RemediationMobile",
-        "reports: <ReportsMobile />",
+        "<LazyRemediationMobile",
+        "reports: (",
+        "<LazyReportsMobile />",
         "const mobileFallback = mobileTabContent[mobileTab] ? null :",
         "nativeDesktopTabContent(mobileTab)",
     ]:
         assert marker in routed_shell
+
+    # #2990: mobile views are lazy chunks mapped to the native components,
+    # and must not be statically imported into the entry bundle.
+    for lazy_name, export in [
+        ("LazyFleetMobile", "FleetMobile"),
+        ("LazyReportsMobile", "ReportsMobile"),
+        ("LazyRemediationMobile", "RemediationMobile"),
+    ]:
+        assert f"const {lazy_name} = React.lazy(" in routed_shell
+        assert re.search(rf"\{{\s*{export}\s*\}}\)\s*=>\s*\(\{{\s*default:\s*{export}", routed_shell)
+        assert not re.search(rf"^import\s*\{{[^}}]*{export}[^}}]*\}}\s*from", routed_shell, re.M)
 
     assert "{mobileFallback}" in routed_shell
     assert "LegacyApp" not in routed_shell
