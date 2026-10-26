@@ -22,6 +22,7 @@ class PrRollup:
     ci_rounds_to_green: int | None
     lead_time_seconds: float | None
     ci_wait_seconds: float | None
+    rework_seconds: float | None
     dieter_wait_seconds: float | None
     churn_flags: tuple[str, ...]
 
@@ -33,6 +34,7 @@ class PrRollup:
             "ci_rounds_to_green": self.ci_rounds_to_green,
             "lead_time_seconds": self.lead_time_seconds,
             "ci_wait_seconds": self.ci_wait_seconds,
+            "rework_seconds": self.rework_seconds,
             "dieter_wait_seconds": self.dieter_wait_seconds,
             "churn_flags": list(self.churn_flags),
         }
@@ -74,6 +76,35 @@ def lead_time_seconds(pr: PrSnapshot) -> float | None:
     return _duration_seconds(pr.created_at, end)
 
 
+def rework_seconds(runs: Sequence[CheckRunSnapshot]) -> float | None:
+    """Seconds waiting to retry after a failed check (per check name).
+
+    Pre: ``runs`` belong to one PR head.
+    Post: ``None`` when no timed completed runs; otherwise non-negative.
+    """
+    completed = [r for r in runs if r.status == "completed" and r.completed_at is not None]
+    if not completed:
+        return None
+    by_name: dict[str, list[CheckRunSnapshot]] = defaultdict(list)
+    for run in completed:
+        by_name[run.name].append(run)
+    total = 0.0
+    saw_failure = False
+    for items in by_name.values():
+        items.sort(key=lambda r: r.completed_at or datetime.min.replace(tzinfo=UTC))
+        for idx, run in enumerate(items):
+            if run.conclusion != "failure":
+                continue
+            saw_failure = True
+            if idx + 1 >= len(items):
+                continue
+            nxt = items[idx + 1]
+            if nxt.started_at is None:
+                continue
+            total += max(0.0, (nxt.started_at - run.completed_at).total_seconds())
+    return total if saw_failure else 0.0
+
+
 def churn_flags(pr: PrSnapshot, runs: Sequence[CheckRunSnapshot], *, now: datetime) -> tuple[str, ...]:
     flags: list[str] = []
     if pr.state == "closed" and not pr.merged:
@@ -98,6 +129,7 @@ def build_pr_rollup(pr: PrSnapshot, runs: Sequence[CheckRunSnapshot], *, now: da
         ci_rounds_to_green=ci_rounds_to_green(runs),
         lead_time_seconds=lead_time_seconds(pr),
         ci_wait_seconds=ci_wait_seconds(pr, runs),
+        rework_seconds=rework_seconds(runs),
         dieter_wait_seconds=None,
         churn_flags=churn_flags(pr, runs, now=now),
     )
