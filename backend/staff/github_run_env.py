@@ -14,6 +14,7 @@ from github_app_auth import (
     mint_installation_access_token,
 )
 from security import validate_repo_slug
+from staff.git_identity import staff_git_identity_env
 from staff.roles import RoleSpec
 
 _CHILD_STRIP_KEYS = (
@@ -168,6 +169,7 @@ def build_staff_run_env(
     env["GIT_CONFIG_KEY_1"] = "credential.useHttpPath"
     env["GIT_CONFIG_VALUE_1"] = "true"
     env["GIT_TERMINAL_PROMPT"] = "0"
+    env.update(staff_git_identity_env())
     wrapper_dir = str(_WRAPPERS_DIR)
     env["PATH"] = os.pathsep.join([wrapper_dir, env.get("PATH", "")])
     # The gh wrapper and credential helper import ``staff.*``; a target repo's cwd does not provide it (#2481).
