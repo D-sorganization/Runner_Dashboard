@@ -63,10 +63,7 @@ def split_repo(slug: str) -> tuple[str, str]:
 def personal_jump_command(plan: EscalatePlan) -> str:
     """Command for Dieter/Barb to run under ``gh-personal`` when the fleet token cannot jump."""
     q = _JUMP_MUTATION.replace('"', '\\"')
-    return (
-        f"gh-personal api graphql -f query=\"{q}\" "
-        f"-f id={plan.node_id} -f oid={plan.head_sha}"
-    )
+    return f'gh-personal api graphql -f query="{q}" -f id={plan.node_id} -f oid={plan.head_sha}'
 
 
 def _label_names(labels: list[dict[str, Any]]) -> set[str]:
