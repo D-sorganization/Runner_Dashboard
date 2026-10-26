@@ -57,6 +57,10 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
         "Single-flight publish on d-sorg-fleet; cancel-in-progress would abort every in-flight release "
         "on a busy main and starve auto-deploy."
     ),
+    "ci-slo-check.yml": (
+        "Read-only SLO snapshot and stall alarm must finish GitHub API reads; cancel-in-progress would "
+        "discard partial metrics without reducing queue load."
+    ),
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
