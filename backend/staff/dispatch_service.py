@@ -445,7 +445,9 @@ async def dispatch_staff_run(
         ) from exc
     # Barb-authored dispatch: the lease check and the run admission share one critical section, so a
     # takeover cannot land between them (#2734). ``admit`` is synchronous; never await inside the fence.
-    with barb_write_fence(barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller)):
+    with barb_write_fence(
+        barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller), audit=audit_ctx
+    ):
         rec, plan, created = runner.admit(req, run_id=run_id)
     auth_skipped = getattr(plan, "provider_auth_skipped", None)
     if created and auth_skipped:

@@ -141,11 +141,32 @@ def reject_stale(exc: StaleBarbLease, *, claim: BarbClaim, surface: str, target:
     return HTTPException(status_code=409, detail=exc.detail)
 
 
+def _supersede_admitted_audit(audit: dict[str, Any], rejection: HTTPException) -> None:
+    """Append a ``dispatch``/``rejected`` row so an earlier ``admitted`` row is not the last word (#2970)."""
+    try:
+        from staff.audit import record_audit  # noqa: PLC0415
+
+        detail = rejection.detail if isinstance(rejection.detail, dict) else {"error": str(rejection.detail)}
+        record_audit(action="dispatch", **audit, outcome="rejected", detail=detail, fail_closed=False)
+    except Exception:  # noqa: BLE001 - the rejection must reach the caller even if the audit sink is down
+        log.warning("barb fence: audit of superseded admission failed", exc_info=True)
+
+
 @contextmanager
 def barb_write_fence(
-    claim: BarbClaim | None, *, surface: str, target: str, principal: str, store: Any = None
+    claim: BarbClaim | None,
+    *,
+    surface: str,
+    target: str,
+    principal: str,
+    store: Any = None,
+    audit: dict[str, Any] | None = None,
 ) -> Iterator[None]:
-    """Run a synchronous write under the Barb lease fence; a ``None`` claim is a no-op (non-Barb request)."""
+    """Run a synchronous write under the Barb lease fence; a ``None`` claim is a no-op (non-Barb request).
+
+    ``audit`` is the ``record_audit`` context of an ``admitted`` row already written for this write;
+    when the fence rejects, a ``rejected`` row for the same context is appended so the trail stays accurate.
+    """
     if claim is None:
         yield
         return
@@ -157,5 +178,8 @@ def barb_write_fence(
         try:
             stack.enter_context(store.fence(claim))
         except StaleBarbLease as exc:
-            raise reject_stale(exc, claim=claim, surface=surface, target=target, principal=principal) from None
+            rejection = reject_stale(exc, claim=claim, surface=surface, target=target, principal=principal)
+            if audit is not None:
+                _supersede_admitted_audit(audit, rejection)
+            raise rejection from None
         yield
