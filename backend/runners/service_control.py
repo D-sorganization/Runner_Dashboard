@@ -12,7 +12,6 @@ are read live from :mod:`dashboard_config` — the single source of truth (issue
 from __future__ import annotations
 
 import logging
-import platform
 from pathlib import Path
 
 import dashboard_config
@@ -123,11 +122,7 @@ def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
     assert isinstance(runner_id, int), f"runner_id must be int, got {type(runner_id)!r}"
     assert isinstance(runners, list), f"runners must be list, got {type(runners)!r}"
 
-    local_names = {
-        dashboard_config.HOSTNAME.lower(),
-        platform.node().lower(),
-        *(alias.lower() for alias in dashboard_config.RUNNER_ALIASES),
-    }
+    local_names = dashboard_config.local_runner_machine_names()
     for r in runners:
         name = r.get("name", "")
         parts = name.rsplit("-", 1)

@@ -199,7 +199,10 @@ def test_static_asset_manifest_rejects_symlink_entries(tmp_path: Path) -> None:
     dist.mkdir()
     target = tmp_path / "outside.js"
     target.write_text("outside", encoding="utf-8")
-    (dist / "app.js").symlink_to(target)
+    try:
+        (dist / "app.js").symlink_to(target)
+    except OSError as exc:
+        pytest.skip(f"symlink capability is unavailable: {exc}")
 
     with pytest.raises(ValueError, match="symlink"):
         artifact_metadata.build_static_asset_manifest(dist)

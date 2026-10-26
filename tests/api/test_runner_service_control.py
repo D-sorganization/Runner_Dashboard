@@ -98,6 +98,7 @@ async def test_run_runner_svc_calls_run_cmd(monkeypatch: pytest.MonkeyPatch, tmp
 
 def test_runner_num_from_id_matches_local_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "myhost")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
     runners = [{"id": 42, "name": "d-sorg-local-myhost-3"}]
     result = runner_num_from_id(42, runners)
@@ -106,6 +107,7 @@ def test_runner_num_from_id_matches_local_runner(monkeypatch: pytest.MonkeyPatch
 
 def test_runner_num_from_id_wrong_machine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "myhost")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
     runners = [{"id": 42, "name": "d-sorg-local-otherhost-3"}]
     result = runner_num_from_id(42, runners)
@@ -114,6 +116,7 @@ def test_runner_num_from_id_wrong_machine(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_runner_num_from_id_no_match(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "myhost")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
     runners = [{"id": 99, "name": "d-sorg-local-myhost-3"}]
     result = runner_num_from_id(42, runners)
@@ -122,10 +125,35 @@ def test_runner_num_from_id_no_match(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_runner_num_from_id_alias_match(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "primary")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", ["alias1", "alias2"])
     runners = [{"id": 7, "name": "d-sorg-local-alias1-5"}]
     result = runner_num_from_id(7, runners)
     assert result == 5
+
+
+def test_runner_num_from_id_ignores_platform_node_without_display_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Self-hosted CI hosts must not treat foreign names as local when HOSTNAME is patched."""
+    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "DeskComputer")
+    monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+    runners = [{"id": 1, "name": "d-sorg-local-DeskComputer-1"}]
+    assert runner_num_from_id(1, runners) is None
+
+
+def test_runner_num_from_id_accepts_platform_node_when_display_name_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Split-pool DISPLAY_NAME labels still resolve legacy d-sorg-local-<node>-N names."""
+    monkeypatch.setattr(dc, "DISPLAY_NAME", "ControlTower-NVMe")
+    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower-NVMe")
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "ControlTower")
+    monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+    runners = [{"id": 1, "name": "d-sorg-local-ControlTower-1"}]
+    assert runner_num_from_id(1, runners) == 1
 
 
 # ---------------------------------------------------------------------------

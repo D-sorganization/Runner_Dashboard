@@ -50,6 +50,7 @@ _UNCLASSIFIED: dict[str, str] = {
     "local-only-runner-guard.yml": "runs-on is an expression that falls back to ubuntu-latest on public forks.",
     "maxwell-contract-drift.yml": "Neutral d-sorg-fleet placement; no tier preference has been decided.",
     "util-queued-job-reaper.yml": "Neutral self-hosted placement; the reaper must run wherever the queue is.",
+    "ci-slo-check.yml": "Neutral d-sorg-fleet placement; scheduled read-only queue SLO metrics.",
 }
 
 

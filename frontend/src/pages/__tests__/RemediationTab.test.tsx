@@ -27,7 +27,41 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseRegistry, type ProviderRegistryResponse } from "../../lib/useProviderRegistry";
 import { RemediationTab, type RemediationTabProps } from "../RemediationTab";
+
+const TAB_REGISTRY = parseRegistry({
+  schema_version: "1.0.0",
+  providers: [
+    {
+      id: "codex-cli",
+      dashboard_id: "codex_cli",
+      label: "Codex CLI",
+      auth_mode: "github_app",
+      resource: "runner",
+      enabled: true,
+    },
+    {
+      id: "claude-cli",
+      dashboard_id: "claude_code_cli",
+      label: "Claude CLI",
+      auth_mode: "github_app",
+      resource: "runner",
+      enabled: true,
+    },
+    {
+      id: "jules-api",
+      dashboard_id: "jules_api",
+      label: "Jules API",
+      auth_mode: "api_key",
+      resource: "runner",
+      enabled: false,
+    },
+  ],
+  auth_kinds: [],
+  task_classes: [],
+  capabilities: [],
+} satisfies ProviderRegistryResponse);
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -66,6 +100,7 @@ const CONFIG = {
   providers: {
     jules_api: { label: "Jules API", notes: "cloud" },
     codex_cli: { label: "Codex CLI", notes: "local" },
+    claude_code_cli: { label: "Claude CLI", notes: "local" },
   },
   availability: {
     jules_api: { available: true, status: "ready" },
@@ -84,7 +119,7 @@ function baseProps(
     error: null,
     selectedRunId: null,
     setSelectedRunId: vi.fn(),
-    provider: "jules_api",
+    provider: "codex_cli",
     setProvider: vi.fn(),
     model: "",
     setModel: vi.fn(),
@@ -96,6 +131,7 @@ function baseProps(
     onDispatch: vi.fn(),
     history: [],
     principalName: "tester",
+    registry: TAB_REGISTRY,
     ...overrides,
   };
 }
@@ -191,9 +227,9 @@ describe("RemediationTab — inline editable stats", () => {
     fireEvent.click(screen.getByText("Default provider"));
     // The edit select (scoped to this stat card) shows the current default.
     const select = within(card).getByRole("combobox");
-    fireEvent.change(select, { target: { value: "jules_api" } });
+    fireEvent.change(select, { target: { value: "claude_code_cli" } });
     expect(props.onSaveConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ default_provider: "jules_api" }),
+      expect.objectContaining({ default_provider: "claude_code_cli" }),
     );
   });
 });
@@ -212,8 +248,8 @@ describe("RemediationTab — config + panels", () => {
 
   it("renders provider availability with status badges", () => {
     render(<RemediationTab {...baseProps()} />);
-    expect(screen.getByText("ready")).toBeInTheDocument();
     expect(screen.getByText("degraded")).toBeInTheDocument();
+    expect(screen.queryByText("ready")).not.toBeInTheDocument();
   });
 
   it("renders remediation history entries", () => {
@@ -223,7 +259,7 @@ describe("RemediationTab — config + panels", () => {
         workflow_name: "CI",
         status: "dispatched",
         timestamp: "2026-06-01T01:02:03Z",
-        provider: "jules_api",
+        provider: "codex_cli",
         branch: "main",
         run_id: 9,
       },
