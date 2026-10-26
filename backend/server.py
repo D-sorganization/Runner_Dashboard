@@ -793,9 +793,11 @@ from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)
 
+from routers import activity as _activity_router  # noqa: E402
 from routers import memory_v1 as _memory_v1_router  # noqa: E402
 
 app.include_router(_memory_v1_router.router)
+app.include_router(_activity_router.router)
 
 # Projects tab (issue #1199): per-repo charter, status and steward runs.
 from routers import projects as _projects_router  # noqa: E402
