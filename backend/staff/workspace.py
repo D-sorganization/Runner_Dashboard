@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import staff.worktree_hygiene as _wh
 from platform_utils.wsl_paths import windows_repositories_root
 from staff.git_hooks import install_pre_push_hook
+from staff.git_identity import configure_worktree_git_identity
 from staff.roles import RoleSpec
 from staff.standards_registry import _BUILTIN
 
@@ -199,6 +200,7 @@ def add_worktree(checkout: Path, worktree: Path, branch: str, *, start_ref: str 
     _git(checkout, "config", "extensions.worktreeConfig", "true")
     _git(checkout, "worktree", "add", "-b", branch, str(worktree), base)
     if worktree.is_dir():
+        configure_worktree_git_identity(worktree)
         install_pre_push_hook(worktree)
 
 
