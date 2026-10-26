@@ -22,6 +22,7 @@ from coordination import board, claims, roster
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
 from coordination.models import AckBody, ClaimBody, ClaimReleaseBody, MessageBody, PresenceBody, ReleaseBody
 from coordination.staff_view import staff_runs
+from staff.rm_sync import stale_source_warning
 
 __all__ = ["ImpersonationError", "MissingAgentError", "NotRegisteredError", "UnknownAgentError"]
 
@@ -110,6 +111,9 @@ async def sessions(repo: str | None) -> dict[str, Any]:
                 "sessions": [s for s in data.get("sessions", []) if str(s.get("repo") or "").casefold() == wanted],
             }
         runs = [run for run in runs if str(run.get("repo") or "").casefold() == wanted]
+    source_warning = stale_source_warning()
+    if source_warning:
+        warnings.append(source_warning)
     return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings, *staff_warnings]})
 
 
