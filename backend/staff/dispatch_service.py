@@ -252,7 +252,7 @@ async def dispatch_staff_run(
             issue_number=cmd.issue,
             prompt=cmd.prompt,
             check_claim_labels=not claim_guard.enabled(),
-            check_open_pr=not cmd.force_claim_override,
+            check_open_pr=not (cmd.force_claim_override or cmd.force_duplicate),
         )
         if not premise_res.allowed:
             await log_dispatch_skip(premise_res, cmd.repo, cmd.issue)
@@ -431,6 +431,7 @@ async def dispatch_staff_run(
                 "model": plan.model or routing.model,
                 "routing_reason": routing.reason,
                 "machine": runner.machine,
+                **({"force_duplicate": True} if cmd.force_duplicate else {}),
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
                 **({"claim_check": claim_info["claim_check"]} if claim_info else {}),
