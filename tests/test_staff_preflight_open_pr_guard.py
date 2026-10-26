@@ -8,7 +8,11 @@ import pytest
 from fastapi import HTTPException
 from identity import Principal
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
-from staff.preflight_duplicate_guard import check_duplicate_pr_or_run, is_issue_referenced_in_pr
+from staff.preflight_duplicate_guard import (
+    _issue_branch_pattern,
+    check_duplicate_pr_or_run,
+    is_issue_referenced_in_pr,
+)
 from staff.roles import RoleSpec
 from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore
@@ -296,3 +300,22 @@ async def test_active_run_guard_matches_stored_hash_prefixed_target_ref(
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail["code"] == "active_run_exists"
     assert exc_info.value.detail["run_id"] == "run-hash-ref"
+
+
+@pytest.mark.parametrize(
+    "branch",
+    ["claude/report-2026-10-26", "fix/2026-10-26-cleanup", "release_10-26", "feat/v1-10-2-notes"],
+)
+def test_issue_branch_pattern_ignores_number_inside_dates_and_numbers(branch: str) -> None:
+    """Issue 10 must not match ``-10-`` embedded in dates or other number runs (#2969)."""
+    assert _issue_branch_pattern(10).search(branch) is None
+    assert not is_issue_referenced_in_pr({"head": {"ref": branch}}, 10)
+
+
+@pytest.mark.parametrize(
+    "branch",
+    ["fix/10-bug", "10-bug", "feat/issue-10", "claude/10_slug", "staff/issue-remediator-10-abcdef", "fix/x-10"],
+)
+def test_issue_branch_pattern_still_matches_standalone_issue_token(branch: str) -> None:
+    assert _issue_branch_pattern(10).search(branch) is not None
+    assert is_issue_referenced_in_pr({"head": {"ref": branch}}, 10)

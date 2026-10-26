@@ -14,7 +14,9 @@ log = logging.getLogger("dashboard.staff.preflight")
 
 def _issue_branch_pattern(issue_number: int) -> re.Pattern[str]:
     issue_str = str(issue_number)
-    return re.compile(rf"(?:^|/|-|_){issue_str}(?:-|_|\b)", re.IGNORECASE)
+    # The number must be a standalone token: preceded by start or a separator, and not glued to another digit
+    # group through a ``-``/``_`` (so issue 10 does not match the ``-10-`` of ``2026-10-26``).
+    return re.compile(rf"(?:^|(?<=[/_-]))(?<!\d[-_]){issue_str}(?!\d)(?![-_]\d)(?:-|_|\b)", re.IGNORECASE)
 
 
 def _lane_key_for_branch(branch: str, issue_number: int) -> str:
