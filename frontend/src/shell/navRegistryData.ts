@@ -5,10 +5,10 @@
  *   - Staff (Staff Console, Fleet Command, Library, Agent Bus)
  *   - Work (Queue, Remediation, Workflows, Agent Dispatch, Code Requests, Scheduled, Projects)
  *   - Fleet (Fleet Overview, Machines, Runner Plan, Runner Audit, Event Log, Conductor, Orchestration, Deployment, Insights, Security)
- *   - Settings (one Settings page: Credentials, Linear Setup, Notifications, Principals, Theme, Local Tools)
+ *   - Settings (one Settings page: Credentials, Linear Setup, Notifications, Principals, Theme)
  *
  * Tests lives under Operations → Diagnostics (#1338), not in the nav.
- * Local Tools is a section of the Settings page (#1338), not a nav entry.
+ * Local Tools is a section of the Operations page (#1338), not a nav entry.
  * So are Credentials, Linear Setup, Notifications and Principals (#1338).
  * Organization is retired into Projects (per-repo CI badge, #1338).
  * Assessments is retired into Projects too: score history on each card and a
@@ -231,7 +231,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     group: "settings",
     Icon: SettingsIcon,
     tooltip:
-      "Dashboard settings: credentials, Linear setup, notifications, principals, theme and Local Tools.",
+      "Dashboard settings: credentials, Linear setup, notifications, principals, and theme.",
     tabId: "settings",
     frequent: false,
     mobilePrimary: false,

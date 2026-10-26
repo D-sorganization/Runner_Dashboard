@@ -10,7 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from staff.redaction import redact_sensitive_content, redact_value
+from staff.redaction import redact_value
+from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS
 
 RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked", "needs_input")
@@ -201,6 +202,7 @@ class RunStore:
         for name, decl in _ADDED_COLUMNS:
             if name not in present:
                 self._conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")  # noqa: S608
+        migrate_event_evidence(self._conn)
         self._conn.execute("CREATE INDEX IF NOT EXISTS runs_thread_idx ON runs(thread_id)")
 
     def next_card_version(self, run_id: str) -> int:
@@ -408,8 +410,8 @@ class RunStore:
         ]
 
     # ── events ───────────────────────────────────────────────────────────
-    def append_event(self, run_id: str, kind: str, text: str) -> int:
-        text = redact_sensitive_content(text)
+    def append_event(self, run_id: str, kind: str, text: str, *, lesson_evidence: str | None = None) -> int:
+        text, lesson_evidence = prepare_lesson_evidence(text, lesson_evidence)
         with self._lock:
             seq = self._seq.get(run_id)
             if seq is None:
@@ -421,8 +423,8 @@ class RunStore:
             seq += 1
             self._seq[run_id] = seq
             self._conn.execute(
-                "INSERT INTO events (run_id, seq, ts, kind, text) VALUES (?, ?, ?, ?, ?)",
-                (run_id, seq, _now(), kind, text[:4000]),
+                "INSERT INTO events (run_id, seq, ts, kind, text, lesson_evidence) VALUES (?, ?, ?, ?, ?, ?)",
+                (run_id, seq, _now(), kind, text[:MAX_EVENT_TEXT_CHARS], lesson_evidence),
             )
             if text.strip():
                 self._conn.execute(
@@ -433,15 +435,17 @@ class RunStore:
 
     def last_result_line(self, run_id: str) -> str:
         """The newest event text containing ``STAFF_RESULT:`` for the run ('' when none)."""
-        sql = "SELECT text FROM events WHERE run_id = ? AND text LIKE '%STAFF_RESULT:%' ORDER BY seq DESC LIMIT 1"
         with self._lock:
-            row = self._conn.execute(sql, (run_id,)).fetchone()
-        return str(row[0]) if row else ""
+            return latest_result_line(self._conn, run_id)
 
-    def events_after(self, run_id: str, after_seq: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+    def events_after(
+        self, run_id: str, after_seq: int = 0, limit: int = 500, *, with_evidence: bool = False
+    ) -> list[dict[str, Any]]:
+        evidence_column = ", lesson_evidence" if with_evidence else ""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT seq, ts, kind, text FROM events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?",
+                f"SELECT seq, ts, kind, text{evidence_column} FROM events "
+                "WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?",
                 (run_id, int(after_seq), int(limit)),
             ).fetchall()
         return [dict(r) for r in rows]

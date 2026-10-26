@@ -215,6 +215,7 @@ export function StatsTab(): React.ReactElement {
           Window:
         </label>
         <select
+          aria-label="Analysis time window in days"
           value={days}
           onChange={(e) => {
             setDays(parseInt(e.target.value));
@@ -234,7 +235,13 @@ export function StatsTab(): React.ReactElement {
             </option>
           ))}
         </select>
-        <button className="btn" onClick={refresh} disabled={loading}>
+        <button
+          className="btn"
+          onClick={refresh}
+          disabled={loading}
+          title="Reload workflow duration analysis"
+          aria-label="Refresh workflow analysis"
+        >
           {loading ? "…" : "Refresh"}
         </button>
         <button
@@ -401,7 +408,13 @@ export function PerformanceTab(): React.ReactElement {
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
           {"Sample rate: " + ((data.sample_rate || 0) * 100).toFixed(0) + "%"}
         </span>
-        <button className="btn" onClick={refresh} disabled={loading}>
+        <button
+          className="btn"
+          onClick={refresh}
+          disabled={loading}
+          title="Reload web vitals metrics"
+          aria-label="Refresh web vitals"
+        >
           {loading ? "…" : "Refresh"}
         </button>
       </div>
@@ -550,7 +563,13 @@ export function AnalysisOutcomesTab(): React.ReactElement {
           Recent outcomes by workflow and runner machine. Use this to separate slow workflows from
           slow hosts.
         </div>
-        <button className="btn" onClick={refresh} disabled={loading}>
+        <button
+          className="btn"
+          onClick={refresh}
+          disabled={loading}
+          title="Reload machine health and job outcomes"
+          aria-label="Refresh machine health analysis"
+        >
           {loading ? "…" : "Refresh"}
         </button>
       </div>
@@ -797,6 +816,7 @@ export function ReportsTab({ reports, loading }: ReportsTabProps): React.ReactEl
               <div className="reports-reader__header">
                 <span
                   className="section-badge report-selected-badge"
+                  title={`Selected report: ${selected}`}
                 >
                   {selected}
                 </span>
