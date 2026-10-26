@@ -88,9 +88,10 @@ jobs:
   frontend-scope:
     needs: [pr-guard]
     if: >-
-      github.event_name != 'pull_request' ||
+      always() &&
+      (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
-      needs.pr-guard.outputs.skip_heavy != 'true'
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}

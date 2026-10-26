@@ -10,13 +10,14 @@ on:
     outputs:
       skip_heavy:
         description: When true, heavy jobs for this pull_request run should no-op.
-        value: ${{ jobs.guard.outputs.skip_heavy }}
+        value: ${{ jobs.guard.result == 'success' && jobs.guard.outputs.skip_heavy == 'true' }}
       reason:
         description: Skip reason when skip_heavy is true.
-        value: ${{ jobs.guard.outputs.reason }}
+        value: ${{ jobs.guard.result == 'success' && jobs.guard.outputs.reason || '' }}
 
 concurrency:
-  group: pr-freshness-guard-${{ github.event.pull_request.number || github.run_id }}
+  # Scope per caller workflow so parallel CI workflows do not cancel each other's guard.
+  group: pr-freshness-guard-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:

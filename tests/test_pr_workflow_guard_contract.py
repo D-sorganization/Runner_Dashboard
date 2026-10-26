@@ -31,9 +31,34 @@ def test_reusable_pr_guard_runs_on_fleet_not_hosted() -> None:
     assert "ubuntu-latest" not in str(runs_on)
 
 
-def test_reusable_pr_guard_has_concurrency() -> None:
+def test_reusable_pr_guard_concurrency_scoped_per_caller_workflow() -> None:
     data = yaml.safe_load(_GUARD.read_text(encoding="utf-8"))
-    assert data.get("concurrency", {}).get("cancel-in-progress") is True
+    block = data.get("concurrency", {})
+    assert block.get("cancel-in-progress") is True
+    group = str(block.get("group", ""))
+    assert "github.workflow" in group
+    assert "github.event.pull_request.number" in group or "github.run_id" in group
+
+
+def test_jobs_needing_pr_guard_use_always_when_workflow_has_merge_group() -> None:
+    """Downstream jobs may run on merge_group while pr-guard is skipped (needs + if: always())."""
+    merge_group_workflows = (
+        "ci-secrets.yml",
+        "ci-auto-deploy-regression.yml",
+        "docker-build.yml",
+        "frontend-tests.yml",
+    )
+    for name in merge_group_workflows:
+        data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
+        triggers = data.get("on") or {}
+        if "merge_group" not in triggers and "merge_group" not in str(triggers):
+            continue
+        for job_name, job in data.get("jobs", {}).items():
+            needs = job.get("needs") or []
+            if "pr-guard" not in needs and "pr-guard" not in str(needs):
+                continue
+            job_if = str(job.get("if") or "")
+            assert "always()" in job_if, f"{name}:{job_name} needs pr-guard but lacks always()"
 
 
 def test_pr_guard_job_is_pull_request_only_on_callers() -> None:
@@ -65,4 +90,5 @@ def test_aggregators_tolerate_pr_guard_skipped_on_merge_group_and_push() -> None
 def test_merge_group_event_skips_pr_guard_job() -> None:
     ci = yaml.safe_load((_WORKFLOWS / "ci-standard.yml").read_text(encoding="utf-8"))
     assert ci["on"].get("merge_group") is not None or "merge_group" in ci.get("on", {})
-    assert ci["jobs"]["pr-guard"]["if"] == "github.event_name == 'pull_request'"
+    job_if = str(ci["jobs"]["pr-guard"]["if"])
+    assert "github.event_name == 'pull_request'" in job_if
