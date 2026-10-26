@@ -39,6 +39,7 @@ __all__ = [
     "ChatConcurrencyPool",
     "ChatTurnResult",
     "ChatTurnRunner",
+    "thread_scratch_dir",
     "build_knowledge_turn_block",
     "extract_session_id",
     "format_history_replay",
@@ -46,4 +47,5 @@ __all__ = [
     "run_chat_turn_in_background",
 ]
 
-from staff.chat_turn_runner import ChatTurnRunner  # noqa: E402
+from staff.chat_scratch import thread_scratch_dir as thread_scratch_dir  # noqa: E402, F401
+from staff.chat_turn_runner import ChatTurnRunner  # noqa: E402, F401
