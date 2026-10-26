@@ -60,11 +60,57 @@ def test_systemctl_calls_remain_local_and_use_argv() -> None:
     assert sd._systemctl_command("stop", "--no-block", "example.service", sudo=True) == [
         "sudo",
         "-n",
-        "systemctl",
-        "stop",
-        "--no-block",
-        "example.service",
+        "/usr/local/sbin/rd-runner-ctl",
     ]
+
+
+def test_privileged_runner_control_uses_argument_free_helper_and_stdin() -> None:
+    assert sd._systemctl_command("stop", "--no-block", "actions.runner.org.runner-a.service", sudo=True) == [
+        "sudo",
+        "-n",
+        "/usr/local/sbin/rd-runner-ctl",
+    ]
+    assert sd._privileged_runner_control_input("stop", "actions.runner.org.runner-a.service") == (
+        "stop\nactions.runner.org.runner-a.service\n"
+    )
+
+
+def test_runner_sudoers_grants_only_the_argument_free_control_helper() -> None:
+    content = (Path(__file__).resolve().parents[1] / "deploy" / "sudoers.d-runner-dashboard").read_text(
+        encoding="utf-8"
+    )
+    assert '/usr/local/sbin/rd-runner-ctl ""' in content
+    assert "systemctl start   actions.runner." not in content
+    assert "systemctl stop    actions.runner." not in content
+    assert "systemctl restart actions.runner." not in content
+
+
+def test_runner_control_helper_rejects_invalid_input_without_invoking_systemctl() -> None:
+    helper = Path(__file__).resolve().parents[1] / "deploy" / "rd-runner-ctl"
+    with_args = subprocess.run(
+        ["bash", str(helper), "unexpected"],
+        input="start\nactions.runner.org.runner-a.service\n",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert with_args.returncode != 0
+    for payload in (
+        "stop\nactions.runner.org.runner-a.service extra.service\n",
+        "restart\nactions.runner.org.runner-a.service\n",
+        "start\nother.service\n",
+        "start\nactions.runner.org.runner-a.service\nextra\n",
+    ):
+        result = subprocess.run(["bash", str(helper)], input=payload, text=True, capture_output=True, check=False)
+        assert result.returncode != 0
+
+
+def test_autoscaler_installer_installs_root_owned_control_helper() -> None:
+    installer = Path(__file__).resolve().parents[1] / "deploy" / "install-autoscaler.sh"
+    source = installer.read_text(encoding="utf-8")
+    assert "rd-runner-ctl" in source
+    assert "root:root" in source
+    assert 'NOPASSWD: /usr/local/sbin/rd-runner-ctl ""' in source
 
 
 def test_autoscaler_installer_checks_identity_before_mutations() -> None:
@@ -218,11 +264,12 @@ class TestStartUnit:
             assert sd._start_unit("actions.runner.org.r.service") is False
 
     def test_start_uses_no_block_and_timeout(self) -> None:
-        """Issue #935: start must not block the watchdog — --no-block + timeout."""
+        """Issue #935: start must use the helper's non-blocking operation."""
         with patch("subprocess.run", return_value=_cp(returncode=0)) as mock_run:
             sd._start_unit("actions.runner.org.r.service")
         args, kwargs = mock_run.call_args
-        assert "--no-block" in args[0]
+        assert args[0] == ["sudo", "-n", "/usr/local/sbin/rd-runner-ctl"]
+        assert kwargs.get("input") == "start\nactions.runner.org.r.service\n"
         assert kwargs.get("timeout") == sd._SYSTEMCTL_TIMEOUT_S
 
     def test_start_timeout_returns_false(self) -> None:
@@ -233,8 +280,8 @@ class TestStartUnit:
 class TestStopStartWatchdogContract:
     """Issue #935: neither stop nor start may block the systemd watchdog.
 
-    Every systemctl invocation in the module must carry either ``--no-block`` or
-    an explicit ``timeout=``; a blocking stop that waits out a >=120s drain
+    Every autoscaler lifecycle invocation must use the helper's non-blocking
+    operation and an explicit ``timeout=``; a blocking stop that waits out a >=120s drain
     starves WatchdogSec=120 and systemd SIGABRTs the autoscaler mid-scale-down.
     """
 
@@ -250,11 +297,11 @@ class TestStopStartWatchdogContract:
             patch("runner_state_cleanup.cleanup_runner_state"),
         ):
             sd._stop_unit("actions.runner.org.r.service")
-        # The second call is the actual `systemctl stop`.
+        # The second call is the privileged runner-control helper.
         stop_call = mock_run.call_args_list[1]
         argv = stop_call.args[0]
-        assert "stop" in argv
-        assert "--no-block" in argv
+        assert argv == ["sudo", "-n", "/usr/local/sbin/rd-runner-ctl"]
+        assert stop_call.kwargs.get("input") == "stop\nactions.runner.org.r.service\n"
         assert stop_call.kwargs.get("timeout") == sd._SYSTEMCTL_TIMEOUT_S
 
     def test_stop_timeout_returns_false_without_crashing(self) -> None:

@@ -430,6 +430,7 @@ if [[ -z "$SKIP_RESTART" ]]; then
 fi
 
 # Install tightly-scoped sudoers drop-in (issue #391 AC-6).
+sudo install -o root -g root -m 0755 "${SCRIPT_DIR}/deploy/rd-runner-ctl" /usr/local/sbin/rd-runner-ctl
 SUDOERS_SRC="${SCRIPT_DIR}/deploy/sudoers.d-runner-dashboard"
 SUDOERS_DEST="/etc/sudoers.d/runner-dashboard"
 if [[ -f "${SUDOERS_SRC}" ]]; then
