@@ -87,7 +87,8 @@ def refusal_from_pr_payload(payload: dict[str, Any], repo_name: str) -> str | No
 
 def plan_from_pr_view(payload: dict[str, Any], owner: str, repo: str, pr: int) -> EscalatePlan:
     node_id = str(payload.get("id") or "")
-    head = payload.get("head") if isinstance(payload.get("head"), dict) else {}
+    head_raw = payload.get("head")
+    head = head_raw if isinstance(head_raw, dict) else {}
     head_sha = str(head.get("sha") or "")
     if not node_id or not head_sha:
         raise ValueError("GitHub PR payload missing id or head.sha")
