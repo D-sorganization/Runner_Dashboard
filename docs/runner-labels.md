@@ -15,6 +15,7 @@ to the correct runner tier.
 | `d-sorg-fleet-fast-io` | NVMe or SSD  | CI test suites, lockfile refreshes, Jules Auto-Repair / PR-AutoFix, release builds               | Pure documentation or governance                               |
 | `d-sorg-fleet-docker`  | NVMe or SSD  | Docker image builds, Trivy scans, container-layer cache churn                                    | Lightweight maintenance workflows                              |
 | `d-sorg-fleet-bulk`    | HDD          | Governance, issue taxonomy sync, label sync, spec checks, secret scans, lease reaper, verify-tag | Docker builds, native-build CI, lockfile refreshes, Playwright |
+| `d-sorg-fleet-queue`   | Reserved slot | `merge_group` validation only, to keep merge-queue checks from waiting behind PR builds         | Pull-request builds, scheduled and manual jobs                |
 
 ## Neutral Labels (safe during transition)
 
@@ -51,6 +52,18 @@ runs-on: [self-hosted, Linux, X64, d-sorg-fleet-docker]
 ```yaml
 runs-on: [self-hosted, Linux, X64, d-sorg-fleet-bulk]
 ```
+
+### Merge queue reserved slot
+
+```yaml
+runs-on: [self-hosted, Linux, X64, d-sorg-fleet-queue]
+```
+
+This label is reserved for `merge_group` jobs. Each host must advertise it on
+one reserved runner slot before workflows route jobs to it. Do not assign it to
+PR builds or maintenance jobs; the reservation is what protects merge checks
+from the shared PR queue. Keep merge-queue cancellation disabled until the
+owner records approval in the enabling PR.
 
 ## Workflow Classes
 

@@ -107,10 +107,10 @@ const TESTS_REDIRECT: RedirectTarget = {
 /** Old addresses of the Tests page, which is no longer a nav tab (#1338). */
 const RETIRED_TESTS_PATHS = new Set(["/settings/tests", "/tests", "/t/tests"]);
 
-/** Local Tools is a section of the Settings page (#1338, owner decision). */
+/** Local Tools is a section of the Operations page (#1338, owner decision 2026-10-23). */
 const LOCAL_TOOLS_REDIRECT: RedirectTarget = {
-  to: "/settings#local-tools",
-  label: "Local Tools (Settings)",
+  to: "/fleet/operations#local-tools",
+  label: "Local Tools (Operations)",
 };
 
 /** Old addresses of the Local Tools tab (#1338). */
@@ -301,7 +301,7 @@ export function pathnameToTabId(pathname: string): string | undefined {
   if (normalized === "/work") return "queue";
   if (normalized === "/fleet") return "overview";
   if (normalized === "/settings") return "settings";
-  if (RETIRED_LOCAL_TOOLS_PATHS.has(normalized)) return "settings";
+  if (RETIRED_LOCAL_TOOLS_PATHS.has(normalized)) return "operations";
   if (RETIRED_ORG_PATHS.has(normalized)) return "projects";
   if (normalized in RETIRED_SETTINGS_PATHS) return "settings";
 

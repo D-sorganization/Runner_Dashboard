@@ -61,6 +61,17 @@ const CONTRACT: ProviderRegistryResponse = {
       setup_hint: "Add your OpenAI API key in Credentials.",
       experimental: false,
     } as ProviderRegistryResponse["providers"][number],
+    {
+      id: "jules-api",
+      dashboard_id: "jules_api",
+      label: "Jules API",
+      auth_mode: "api_key",
+      resource: "runner",
+      capabilities: ["code"],
+      models: [],
+      login_status: "unauthenticated",
+      enabled: false,
+    } as ProviderRegistryResponse["providers"][number],
   ],
   auth_kinds: [],
   task_classes: [],
@@ -70,12 +81,13 @@ const CONTRACT: ProviderRegistryResponse = {
 const registry = parseRegistry(CONTRACT);
 
 describe("ProviderModelSelector — cascading", () => {
-  it("renders one option per provider", () => {
+  it("renders one option per selectable (enabled) provider", () => {
     render(<ProviderModelSelector registry={registry} onChange={vi.fn()} />);
     const providerSelect = screen.getByLabelText(/provider/i);
     expect(within(providerSelect).getByRole("option", { name: /Claude CLI/i })).toBeInTheDocument();
     expect(within(providerSelect).getByRole("option", { name: /Ollama/i })).toBeInTheDocument();
     expect(within(providerSelect).getByRole("option", { name: /Codex CLI/i })).toBeInTheDocument();
+    expect(within(providerSelect).queryByRole("option", { name: /Jules API/i })).not.toBeInTheDocument();
   });
 
   it("hides the model picker until a provider is chosen", () => {

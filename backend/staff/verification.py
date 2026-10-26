@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import quote
 
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
-from staff.roles import AD_HOC_ROLE
+from staff.roles import AD_HOC_ROLE, load_roles
 from staff.workspace import ORG
 
 if TYPE_CHECKING:
@@ -342,6 +342,28 @@ def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
     return updates
 
 
+def _record_role_open_pr_diagnostic(store: RunStore, rec: RunRecord, resolver_path: str) -> None:
+    """Telemetry for unexpected ``opens_pr=False`` verdict paths (diagnosis class E)."""
+    payload: dict[str, Any] = {
+        "run_id": rec.id,
+        "role": rec.role,
+        "resolver_path": resolver_path,
+        "role_found": False,
+        "role_permissions_open_pr": None,
+    }
+    try:
+        spec = load_roles().get(rec.role)
+        payload["role_found"] = spec is not None
+        if spec is not None:
+            payload["role_permissions_open_pr"] = bool((spec.permissions or {}).get("open_pr"))
+            payload["role_surface"] = spec.surface
+            payload["role_providers"] = list(spec.providers)
+    except Exception as exc:  # noqa: BLE001 - diagnostics must not affect verification
+        payload["role_lookup_error"] = str(exc)[:200]
+    store.append_event(rec.id, "verify_diag", json.dumps(payload, sort_keys=True))
+    log.warning("verification role-open-pr diagnostic: %s", payload)
+
+
 def verify_and_record(
     store: RunStore,
     run_id: str,
@@ -364,6 +386,7 @@ def verify_and_record(
         rec = store.get_run(run_id)
         if mode == "off" or rec is None:
             return None
+        resolver_path = "callable" if callable(opens_pr) else "direct-value"
         try:
             is_opens_pr = opens_pr() if callable(opens_pr) else bool(opens_pr)
             verdict = evaluate(
@@ -376,6 +399,8 @@ def verify_and_record(
         except Exception as exc:  # noqa: BLE001 - verification must never break a run
             log.exception("verification of run %s failed", run_id)
             verdict = Verdict("unverified", f"verification error: {exc}")
+        if verdict.verification == "not_applicable" and verdict.detail == "role does not open pull requests":
+            _record_role_open_pr_diagnostic(store, rec, resolver_path)
         store.update_run(run_id, **updates_for(rec, verdict, mode))
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
         if verdict.verification == "verified":
