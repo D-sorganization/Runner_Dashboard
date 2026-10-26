@@ -246,6 +246,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           <button
             type="button"
             onClick={() => setShowParams((prev) => !prev)}
+            title={showParams ? "Hide the action parameters JSON" : "Show the action parameters JSON"}
             style={{
               background: "none",
               border: "none",

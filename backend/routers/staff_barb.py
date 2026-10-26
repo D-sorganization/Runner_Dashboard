@@ -21,10 +21,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 import orchestration_audit as _audit
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, format_caller, principal_has_scope, require_scope
 from pydantic import BaseModel, Field
 from staff.barb_continuity import classify_task_surface, get_barb_continuity_store
+from staff.barb_lease_fence import barb_write_fence, parse_barb_claim
 from staff.barb_runtime import barb_status
 from staff.runner import get_runner
 
@@ -176,8 +177,8 @@ async def post_barb_lease_checkout(
         if not req.reason.strip():
             raise HTTPException(status_code=422, detail={"error": "takeover_reason_required"})
     store = get_barb_continuity_store()
-    # SEAM (lease-epoch fencing, pending design panel): dispatch/directive writers should later
-    # validate the lease ``epoch`` returned here; intentionally not enforced yet.
+    # Writers prove they still hold the seat by sending the returned ``epoch`` back as
+    # X-Barb-Lease-Epoch (see staff.barb_lease_fence); takeover bumps it under the store lock.
     res = store.checkout_lease(
         scope=req.scope,
         holder=holder,
@@ -258,19 +259,29 @@ async def get_barb_turnover(
 @router.post("/barb/turnover", summary="Record a shift turnover log entry")
 async def post_barb_turnover(
     req: BarbTurnoverCreateRequest,
+    request: Request,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
-    entry = get_barb_continuity_store().append_turnover(
-        scope=req.scope,
-        persona=req.persona,
-        author=bind_holder(_caller, req.holder),
-        machine=req.machine or get_runner().machine,
-        summary=req.summary,
-        completed=req.completed_items,
-        in_progress=req.in_progress_items,
-        next_actions=req.next_actions,
-        blockers=req.blockers,
-    )
+    author = bind_holder(_caller, req.holder)
+    claim = parse_barb_claim(request.headers, _caller.id)
+    if claim is not None and claim.scope != req.scope:
+        raise HTTPException(
+            status_code=422, detail={"error": "barb_scope_mismatch", "header": claim.scope, "body": req.scope}
+        )
+    with barb_write_fence(
+        claim, surface="barb.turnover", target=f"barb:turnover:{req.scope}", principal=format_caller(_caller)
+    ):
+        entry = get_barb_continuity_store().append_turnover(
+            scope=req.scope,
+            persona=req.persona,
+            author=author,
+            machine=req.machine or get_runner().machine,
+            summary=req.summary,
+            completed=req.completed_items,
+            in_progress=req.in_progress_items,
+            next_actions=req.next_actions,
+            blockers=req.blockers,
+        )
     return {"ok": True, "turnover": entry}
 
 
@@ -289,21 +300,26 @@ async def get_barb_inventory(
 @router.post("/barb/inventory", summary="Create or update a task in the Barb inventory")
 async def post_barb_inventory(
     req: BarbTaskUpsertRequest,
+    request: Request,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
-    task = get_barb_continuity_store().upsert_task(
-        task_id=req.task_id,
-        title=req.title,
-        scope=req.scope,
-        status=req.status,
-        surface=req.surface,
-        owner_persona=req.assigned_persona or req.assigned_holder,
-        machine=req.machine or get_runner().machine,
-        repo=req.repo,
-        issue_or_pr=req.target_ref,
-        priority=req.priority,
-        handoff_request=req.desktop_reason or None,
-    )
+    claim = parse_barb_claim(request.headers, _caller.id)
+    with barb_write_fence(
+        claim, surface="barb.inventory", target=f"barb:inventory:{req.scope}", principal=format_caller(_caller)
+    ):
+        task = get_barb_continuity_store().upsert_task(
+            task_id=req.task_id,
+            title=req.title,
+            scope=req.scope,
+            status=req.status,
+            surface=req.surface,
+            owner_persona=req.assigned_persona or req.assigned_holder,
+            machine=req.machine or get_runner().machine,
+            repo=req.repo,
+            issue_or_pr=req.target_ref,
+            priority=req.priority,
+            handoff_request=req.desktop_reason or None,
+        )
     return {"ok": True, "task": task}
 
 
@@ -319,19 +335,24 @@ _HANDOFF_ACTION_MAP = {
 @router.post("/barb/handoff", summary="Transition CLI <-> Desktop handoff state with monotonic fencing epoch")
 async def post_barb_handoff(
     req: BarbHandoffTransitionRequest,
+    request: Request,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     target_state = _HANDOFF_ACTION_MAP.get(req.action, req.action)
+    claim = parse_barb_claim(request.headers, _caller.id)
     try:
-        res = get_barb_continuity_store().transition_handoff(
-            task_id=req.task_id,
-            target_state=target_state,
-            actor_persona=req.persona or req.actor,
-            expected_epoch=req.expected_epoch,
-            handoff_request=req.reason or None,
-            handoff_resolution=req.resume_notes or None,
-            artifact_ref=req.artifact_uri or None,
-        )
+        with barb_write_fence(
+            claim, surface="barb.handoff", target=f"barb:handoff:{req.task_id}", principal=format_caller(_caller)
+        ):
+            res = get_barb_continuity_store().transition_handoff(
+                task_id=req.task_id,
+                target_state=target_state,
+                actor_persona=req.persona or req.actor,
+                expected_epoch=req.expected_epoch,
+                handoff_request=req.reason or None,
+                handoff_resolution=req.resume_notes or None,
+                artifact_ref=req.artifact_uri or None,
+            )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"error": "task_not_found", "detail": str(exc)}) from exc
     if not res["transitioned"]:
