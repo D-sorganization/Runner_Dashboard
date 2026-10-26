@@ -1,14 +1,12 @@
-"""Slot-health detector: outlier timeout/failure rates and toolcache errors (#2898)."""
+"""Slot-health detector (#2898)."""
 
 from __future__ import annotations
 
-import json
 import time
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, Literal
 
 from fleet_events import FleetEvent, get_event_store
@@ -25,8 +23,7 @@ Severity = Literal["warning", "critical"]
 
 
 class SlotHealthPreconditionError(ValueError):
-    pass
-
+    """Invalid job snapshot input."""
 
 @dataclass(frozen=True, slots=True)
 class SlotFlag:
