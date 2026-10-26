@@ -176,6 +176,12 @@ def test_queue_entry_alive_job_has_minimal_cancel_permissions(name: str) -> None
     assert perms == {"actions": "write", "contents": "read"}
 
 
+@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
+def test_queue_entry_alive_routes_to_fleet_not_hosted(name: str) -> None:
+    runs_on = _load_workflow(name)["jobs"]["queue-entry-alive"]["runs-on"]
+    assert runs_on == "d-sorg-fleet"
+
+
 def test_ci_standard_tests_job_can_self_cancel_on_merge_group_recheck() -> None:
     perms = _load_workflow("ci-standard.yml")["jobs"]["tests"]["permissions"]
     assert perms == {"actions": "write", "contents": "read"}
