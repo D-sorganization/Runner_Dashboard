@@ -62,6 +62,7 @@ from pydantic import BaseModel, Field
 from routers import admin as admin_router
 from routers import auth as auth_router
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from tailnet_identity import build_asgi_app
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -890,6 +891,10 @@ async def _add_security_headers(request, call_next):
 from staff.v1_envelope import StaffV1Middleware  # noqa: E402
 
 app.add_middleware(StaffV1Middleware)
+
+# Issue #2990: compress text responses (JS/CSS/HTML/JSON) for slow mobile links.
+# Starlette's GZipMiddleware passes text/event-stream through unbuffered.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────
