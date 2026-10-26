@@ -8,6 +8,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 from staff.redaction import redact_value
@@ -278,6 +279,35 @@ class RunStore:
             rows = self._conn.execute(
                 f"SELECT * FROM runs {where} ORDER BY created_at DESC LIMIT ?",  # noqa: S608
                 (*params, int(limit)),
+            ).fetchall()
+        return [_run_from_row(r) for r in rows]
+
+    def list_runs_for_prs(
+        self,
+        pr_keys: Sequence[tuple[str, int]],
+        *,
+        logical_only: bool = False,
+    ) -> list[RunRecord]:
+        """Runs associated with specific PR numbers (repo is short name), oldest first.
+
+        Unbounded by count but bounded by the caller's PR window. Includes physical
+        retry rows when ``logical_only`` is false (#2117 attribution).
+        """
+        if not pr_keys:
+            return []
+        pairs = [(repo, int(number)) for repo, number in pr_keys]
+        ors = " OR ".join("(repo = ? AND pr_number = ?)" for _ in pairs)
+        clauses = [f"({ors})"]
+        if logical_only:
+            clauses.append("retry_of = ''")
+        where = " AND ".join(clauses)
+        params: list[Any] = []
+        for repo, number in pairs:
+            params.extend([repo, number])
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM runs WHERE {where} ORDER BY created_at ASC",  # noqa: S608
+                params,
             ).fetchall()
         return [_run_from_row(r) for r in rows]
 

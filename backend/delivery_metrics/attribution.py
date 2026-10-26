@@ -7,7 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from staff.store import RunRecord
+from delivery_metrics.models import PrSnapshot
+from staff.store import RunRecord, get_run_store
 
 _DEFAULT_ORG = "D-sorganization"
 
@@ -17,6 +18,16 @@ class PrAttribution:
     role: str
     agent: str
     model: str
+
+
+def repo_short_name(repo_full: str) -> str:
+    return repo_full.split("/")[-1]
+
+
+def load_attribution_runs(pulls: Sequence[PrSnapshot]) -> list[RunRecord]:
+    """Staff runs for PRs in the metrics window (includes retries; no created_at cutoff)."""
+    keys = [(repo_short_name(p.repo_full), p.number) for p in pulls]
+    return get_run_store().list_runs_for_prs(keys, logical_only=False)
 
 
 def normalize_repo_full(repo: str, *, org: str = _DEFAULT_ORG) -> str:

@@ -63,15 +63,9 @@ def _with_conn() -> sqlite3.Connection:
 
 
 def _run_report(**kwargs: Any) -> dict[str, Any]:
-    since = kwargs.get("since")
-    until = kwargs.get("until")
     conn = _with_conn()
     try:
-        runs: list = []
-        if isinstance(since, datetime) and isinstance(until, datetime):
-            since_iso = since.isoformat().replace("+00:00", "Z")
-            runs = get_run_store().list_runs(limit=500, since=since_iso)
-        return build_metrics_report(conn, **kwargs, staff_runs=runs)
+        return build_metrics_report(conn, **kwargs)
     finally:
         conn.close()
 
