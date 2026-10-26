@@ -326,18 +326,15 @@ jobs:
       - name: Start dashboard backend
         run: |
           cd backend
-          GH_TOKEN=dummy DASHBOARD_PORT="$DASHBOARD_PORT" DASHBOARD_LOOPBACK_AUTH=1 python server.py &
+          backend_log="${RUNNER_TEMP}/dashboard-backend.log"
+          : > "${backend_log}"
+          GH_TOKEN=dummy \
+            DASHBOARD_PORT="$DASHBOARD_PORT" \
+            DASHBOARD_LOOPBACK_AUTH=1 \
+            DASHBOARD_LIGHTWEIGHT_STARTUP=1 \
+            python server.py >> "${backend_log}" 2>&1 &
           echo "$!" > "$RUNNER_TEMP/dashboard-backend.pid"
-          # Wait for backend to be ready
-          for i in $(seq 1 30); do
-            if curl -sf "http://localhost:${DASHBOARD_PORT}/api/health" > /dev/null 2>&1; then
-              echo "Backend ready after ${i}s"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Backend did not become ready on port ${DASHBOARD_PORT}" >&2
-          exit 1
+          bash ../scripts/wait_for_dashboard_backend.sh "$DASHBOARD_PORT" 90 "${backend_log}"
 
       - name: Run Playwright e2e smoke tests
         run: |
