@@ -6,7 +6,6 @@ from typing import Any
 
 from escalation.cap import capacity_refused, resolve_cap
 from escalation.merge_jump import (
-    EscalatePlan,
     enqueue_jump,
     plan_from_pr_view,
     refusal_from_pr_payload,
@@ -16,8 +15,8 @@ from escalation.store import EscalationEvent, EscalationOutcome, get_escalation_
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api
 from identity import Principal, _resolve_principal_optional, auth_header, require_fleet_peer, require_scope
-from staff.audit import record_audit
 from pydantic import BaseModel, Field
+from staff.audit import record_audit
 
 router = APIRouter(tags=["escalation"])
 

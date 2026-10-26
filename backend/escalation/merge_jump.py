@@ -70,7 +70,7 @@ def personal_jump_command(plan: EscalatePlan) -> str:
 
 
 def _label_names(labels: list[dict[str, Any]]) -> set[str]:
-    return {str(l.get("name", "")).lower() for l in labels if isinstance(l, dict)}
+    return {str(label.get("name", "")).lower() for label in labels if isinstance(label, dict)}
 
 
 def refusal_from_pr_payload(payload: dict[str, Any], repo_name: str) -> str | None:
