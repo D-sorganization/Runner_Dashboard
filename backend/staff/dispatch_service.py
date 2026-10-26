@@ -234,7 +234,11 @@ async def dispatch_staff_run(
         from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
 
         await check_duplicate_pr_or_run(
-            cmd.repo, cmd.issue, current_run_id=cmd.run_id(), check_open_pr=not cmd.force_claim_override
+            cmd.repo,
+            cmd.issue,
+            current_run_id=cmd.run_id(),
+            check_open_pr=not cmd.force_claim_override,
+            check_claim=not cmd.force_claim_override,
         )
 
     claim_info = await claim_guard.enforce_claim_guard(cmd, caller)
