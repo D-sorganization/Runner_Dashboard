@@ -4,6 +4,7 @@ import hmac
 import os
 from typing import Any
 
+from escalation.cap import capacity_refused, resolve_cap
 from escalation.store import EscalationEvent, EscalationOutcome, get_escalation_store, reset_escalation_store
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, _resolve_principal_optional, auth_header, require_fleet_peer, require_scope
@@ -20,6 +21,7 @@ class EscalationIngestBody(BaseModel):
     github_actor: str = Field(min_length=1, max_length=120)
     outcome: EscalationOutcome
     reason: str = Field(default="", max_length=2000)
+    concurrent_cap: int | None = Field(default=None, ge=1, le=50)
 
 
 def require_escalation_ingest_caller(
@@ -47,6 +49,11 @@ def require_escalation_ingest_caller(
 async def ingest_escalation_event(body: EscalationIngestBody) -> dict[str, Any]:
     """Record a label guard outcome from a fleet repository workflow."""
     store = get_escalation_store()
+    if body.outcome == "applied":
+        cap = resolve_cap(body.concurrent_cap)
+        refused = capacity_refused(body.repo, cap, body.pr_number, store)
+        if refused:
+            raise HTTPException(status_code=409, detail={"code": "expedite_cap", "message": refused})
     row_id = store.append(
         EscalationEvent(
             repo=body.repo,

@@ -32,5 +32,6 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           RUNNER_DASHBOARD_URL: ${{ secrets.RUNNER_DASHBOARD_URL }}
           HUB_FLEET_TOKEN: ${{ secrets.HUB_FLEET_TOKEN }}
+          EXPEDITE_CONCURRENT_CAP: ${{ vars.EXPEDITE_CONCURRENT_CAP }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 scripts/priority_expedite_guard_action.py
