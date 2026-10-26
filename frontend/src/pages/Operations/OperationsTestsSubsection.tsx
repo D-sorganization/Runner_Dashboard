@@ -64,6 +64,7 @@ export function OperationsTestsSubsection(): React.ReactElement {
           type="button"
           aria-expanded={open}
           aria-controls="operations-tests-body"
+          title={open ? "Hide CI tests and heavy suite controls" : "Show CI tests and heavy suite controls"}
           onClick={() => setOpen((v) => !v)}
           style={{
             padding: "0.4rem 0.75rem",

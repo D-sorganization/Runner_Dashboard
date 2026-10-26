@@ -11,7 +11,7 @@
 
 | Date | PR / Issue | Summary |
 | --- | --- | --- |
-| 2026-10-21 | #2022 | DeskComputer is the fleet hub in `machine_registry.yml`; spokes derive `HUB_URL` and local `MACHINE_ROLE` from the registry (env override only) with dual-hub startup guard; Brick registered; Codex default model `gpt-6-luna` in `config/staff_provider_defaults.json` passed explicitly on `codex exec`; unsupported ChatGPT-account models classify as `config`. |
+| 2026-10-21 | #2022 | hub-a is the fleet hub in `machine_registry.yml`; spokes derive `HUB_URL` and local `MACHINE_ROLE` from the registry (env override only) with dual-hub startup guard; node-c registered; Codex default model `gpt-6-luna` in `config/staff_provider_defaults.json` passed explicitly on `codex exec`; unsupported ChatGPT-account models classify as `config`. |
 | 2026-10-04 | #1900 | Read-only `fleetctl doctor` (step 1 of BR-09): DNS/TLS, token validity, scopes, schema-version compatibility and briefing freshness checks as pure functions in `clients/fleet/fleet_client.py`; Barb round-trip only behind `--with-roundtrip`. |
 | 2026-10-04 | #1338 | Mobile Maxwell page drops its own chat and links to the Staff Console (last SC-G6 slice). |
 | 2026-10-04 | #1871 | Spec Check edits its existing bot `SPEC.md Update Required` comment in place when the warning text has changed (creates one when none exists, no-op when identical), so stale wording such as "bump the Spec Version" does not linger on open PRs (Codex review on #1872). |
@@ -72,7 +72,7 @@
 | 2026-09-28 | #1770 | A Tailscale sign-in from a tailnet device other than the dashboard host (`DASHBOARD_TAILSCALE_SELF_IPS`) gets the `tailnet-approver` role (`staff.approve` only), so the owner can approve Staff Console proposals from the phone. Loopback and the host's own node cannot approve; if the variable is unset, nobody gets the role. |
 | 2026-09-28 | #1767 | Board group turns resolve issue/PR references in the question and append the fetched `## Referenced items` block to every seat's prompt (larger Board budget: 60000 Markdown chars, 80000 block chars); a truncated Markdown file now lists the headings it cut off. |
 | 2026-09-28 | #1766 | The chat reply contract's action table adds a `Params` column rendered from each action's `params_schema` (e.g. `question: string, title?: string`), so roles stop guessing action parameter names. |
-| 2026-09-28 | #1764 | Make GitHub OAuth 503 error hint host-neutral, eliminating the hard-coded "OGLaptop" machine name; dynamically mention `DASHBOARD_TAILSCALE_AUTH` as the tailnet alternative when Tailscale auth is disabled. |
+| 2026-09-28 | #1764 | Make GitHub OAuth 503 error hint host-neutral, eliminating the hard-coded "node-b" machine name; dynamically mention `DASHBOARD_TAILSCALE_AUTH` as the tailnet alternative when Tailscale auth is disabled. |
 | 2026-09-28 | #1758 | `board.propose` persists the proposal text on the work item (`description` column, additive migration) and returns it in the result; `open_pr` no longer claims `opened: True` — it returns an honest `not_implemented` failure. |
 | 2026-09-28 | #1759 | SPA shell (`/`, client routes, `/sw.js`) serves `Cache-Control: no-cache` so a deploy is not masked by a cached stale bundle; Staff Console roster shows a retired role as "Retired" instead of "Idle". |
 | 2026-09-28 | #1760 | Auto-route follow-ups after a Barb reply are no longer keyword-pre-routed (only explicit `/role`/`@mention`), keyword pre-routing ignores pasted table rows/blockquotes/fenced code, and `handoff: <Display Name>` is slugified instead of being dropped. |
@@ -262,19 +262,19 @@
 | 2026-09-24 | #1290 | SC-A2: Fleet page tri-state status (unknown/loading, degraded, ok); skeletons and Checking fleet… during initial load; fail-visible banner naming failed source; KPI em-dashes when unpopulated; stale badge. |
 | 2026-09-24 | #1289 | Staff board spend defensive handling: type spend_today_usd as dict with total, show per-provider breakdown in tooltip, add Pydantic response models. |
 | 2026-09-23 | #1280 | Feature Request dispatch reports the real outcome: 502 + `failed` history entry when the RM workflow is missing; list exposes cached `dispatchTarget`; UI disables dispatch and shows errors. |
-| 2026-09-23 | #1257 / #1273 rollout | Record OGLaptop 31a9104 Python 3.11 redeployment, unified 44/0 worker acceptance, backups and portproxy cleanup status. |
-| 2026-09-23 | #1276 | Staff node acceptance: parse API JSON, real scheduler/provider/rm_source fields, OGLaptop timer link, 15 min ad-hoc wait, --expect-sha; ControlTower runbook facts. |
-| 2026-09-23 | #1273 | Add ControlTower staff worker runbook, deploy/staff-node-acceptance.sh unified test, three-node fleet acceptance docs, and fix machine registry LAN comment. |
+| 2026-09-23 | #1257 / #1273 rollout | Record node-b 31a9104 Python 3.11 redeployment, unified 44/0 worker acceptance, backups and portproxy cleanup status. |
+| 2026-09-23 | #1276 | Staff node acceptance: parse API JSON, real scheduler/provider/rm_source fields, node-b timer link, 15 min ad-hoc wait, --expect-sha; node-a runbook facts. |
+| 2026-09-23 | #1273 | Add node-a staff worker runbook, deploy/staff-node-acceptance.sh unified test, three-node fleet acceptance docs, and fix machine registry LAN comment. |
 | 2026-09-23 | #1257 eGPU follow-up | Record Sonnet 750ex/RTX 5070 recovery after reboot and successful Windows/WSL detection; retain unattended-startup limitation. |
 | 2026-09-23 | #1257 final firewall | Confirm all firewall profiles enabled with Windows/WSL connectivity intact and CI capacity restored. |
 | 2026-09-23 | #1257 Windows recovery | Record Windows reboot, six-provider recovery, duplicate-IP diagnosis, firewall checks and remaining acceptance steps. |
-| 2026-09-23 | #1257 restart | Record safe OGLaptop CI drain, verified WSL restart and six-provider recovery, RM user-bus observation and restoration procedure. |
+| 2026-09-23 | #1257 restart | Record safe node-b CI drain, verified WSL restart and six-provider recovery, RM user-bus observation and restoration procedure. |
 | 2026-09-23 | #1257 verification | Record successful SYSTEM task execution and automatic RM#1719 uptake; retain restart and external-isolation checks pending a safe CI window. |
 | 2026-09-23 | #1257 task policy | Explicitly use process-scoped RemoteSigned for the SYSTEM bridge task; preserve machine-wide execution policy. |
-| 2026-09-23 | #1258 rollout | Record OGLaptop deployment, live RM timer, empty holds, successful Ollama checks, backups and remaining owner bridge/reboot acceptance. |
+| 2026-09-23 | #1258 rollout | Record node-b deployment, live RM timer, empty holds, successful Ollama checks, backups and remaining owner bridge/reboot acceptance. |
 | 2026-09-23 | #1258 | Refresh the Linux RM clone with a safe throttled systemd user timer; expose source revision and age, and reread role definitions without restart. |
 | 2026-09-23 | #1257 | Add an owner-installed, reboot-safe WSL-only Ollama bridge with dry-run planning, ownership checks, backups and a hidden scheduled task. |
-| 2026-09-23 | #1192 | Record verified OGLaptop worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths. |
+| 2026-09-23 | #1192 | Record verified node-b worker deployment, six-provider health checks, scoped WSL Ollama connectivity, and rollback paths. |
 | 2026-10-23 | #2485 | Staff run env prepends the dashboard backend dir to `PYTHONPATH` and the pre-push hook references the dashboard's own `git_hooks.py` via the running interpreter, so git/gh helpers work in non-Runner_Dashboard repos; the staff scheduler reseeds a cursor stale by two or more slots to now. |
 
 <!-- prettier-ignore-end -->
@@ -309,15 +309,15 @@
 - **2026-09-24:** Durable Staff Audit Log & Archival (issue #1298, SC-A8). Implemented node-local append-only SQLite audit table (`staff_audit`) with WAL mode in `backend/staff/audit.py`. Standardized audit schema (`id`, `ts`, `principal`, `on_behalf_of`, `surface`, `action`, `target`, `request_id`, `thread_id`, `run_id`, `outcome`, `detail`) with strict surface and action vocabulary. Enforced fail-closed policy where mutating staff actions (`dispatch`, `cancel`, `hold_set`, `hold_clear`, `schedule_toggle`, proposals, maintenance) fail the operation if audit persistence fails, while read-only auditing logs loudly. Integrated audit points across `backend/routers/staff.py` and `backend/routers/staff_schedule.py`. Added `GET /api/staff/audit` protected by `staff.audit.read` scope with filtering, offset/limit pagination, and CSV/NDJSON export. Added `archive_old_audit_entries()` with 180-day retention and gzip verification. TDD: `tests/unit/test_staff_audit.py`, `tests/api/test_staff_audit_api.py`.
 - **2026-09-24:** Staff Role Definitions & Schema Validation (issue #1300, SC-B8). Extended `RoleSpec` to parse and retain all schema fields (`scope`, `prompt_template`, `retired_reason`, `persona`, `chat`, `group`, `valid`, `errors`). Added schema validation using `jsonschema.Draft202012Validator` with fallback to bundled `backend/staff/schema.json`. Implemented mtime-keyed cache in `load_roles()` so YAML is read once per file change. Surfaced broken YAML files and schema-invalid role files as invalid roles (`valid=False`, `dispatchable=False`, `errors=[...]`) in the roster UI and API rather than silently skipping them. Exposed per-file validation errors via `roles.role_validation_errors()` and `rm_sync.source_status()`. TDD: `tests/unit/test_staff_roles.py`.
 - **2026-09-24:** Staff Hub Auth & Scope Enforcement (issue #1295, SC-F1). Replaced broad peer checks on staff endpoints with explicit fine-grained scopes: `staff.read` on read routes (`/roster`, `/roles`, `/board`, `/summary`, `/runs`, `/runs/{id}`, `/runs/{id}/stream`, `/holds`, `/schedule`, `/usage`, `/usage/pricing`), `staff.dispatch` on `POST /{role}/run`, `staff.cancel` on `POST /runs/{id}/cancel`, `staff.holds.write` on `PUT /holds`, and `staff.admin` on `POST /usage/export`. Updated `SCOPE_PRESETS` for `operator` (all staff scopes), `viewer` (`staff.read`), `bot` (`staff.read`, `staff.chat`, `staff.dispatch`, `staff.cancel`), `fleet-peer` (`staff.read`, `staff.dispatch`, `staff.cancel`, `staff.chat`, `fleet.maintain`), and `loopback` (scoped operator capabilities without `*` wildcard admin). Enhanced `require_scope` with `@functools.cache`, supporting service tokens, session credentials, fleet peer tokens, loopback dev, and test dependency overrides. Unauthorized requests fail with 401; callers lacking required scope fail with 403 naming the missing scope. TDD: `tests/api/test_staff_scopes.py`.
-- **2026-09-23:** ControlTower Staff Worker Runbook and Three-Node Fleet Acceptance (#1273, epic #1192).
-  Delivered `docs/operations/controltower-staff-worker.md` with an ordered checklist (probe to acceptance,
+- **2026-09-23:** node-a Staff Worker Runbook and Three-Node Fleet Acceptance (#1273, epic #1192).
+  Delivered `docs/operations/node-a-staff-worker.md` with an ordered checklist (probe to acceptance,
   marked Owner/Agent); unified pass/fail test script `deploy/staff-node-acceptance.sh` covering deployment,
   sign-ins, CLIs, drop-in permissions/directories, live role source/timer, holds, scheduler expectation,
   Ollama reachability, and provider verification; three-node fleet qualification section in `docs/staff-hub.md`;
-  and corrected the out-of-date OGLaptop network caveat in `backend/machine_registry.yml` (same home LAN).
+  and corrected the out-of-date node-b network caveat in `backend/machine_registry.yml` (same home LAN).
   TDD: `tests/deploy/test_staff_node_acceptance.py`.
 - **2026-09-23:** Node LAN duplicate-address prevention (#1270, epic #1192). `docs/staff-hub.md` documents
-  the OGLaptop 2026-09-23 outage cause (DHCP address held by a silent LAN device, Tcpip event 4199), router
+  the node-b 2026-09-23 outage cause (DHCP address held by a silent LAN device, Tcpip event 4199), router
   reservations for every node and the conflicting device, one active LAN interface per node, read-only diagnosis
   and lease-renewal recovery. No household identifiers in the public repo.
 - **2026-09-23:** Staff provider options (#1252, epic #1192). `cursor-agent` runs `-p --output-format stream-json
@@ -551,9 +551,9 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   Enforced `require_fleet_peer` on `GET /api/orchestrator/queue`. TDD: 22 tests in
   `tests/api/test_orchestrator_api.py`.
 - **2026-09-06 (2.5.206):** Runner host reality vs /tmp runbook, per-host distro parity,
-  and profile cargo cleanup (#1159). Host environments like OGLaptop lack a local
+  and profile cargo cleanup (#1159). Host environments like node-b lack a local
   `Runner_Dashboard` checkout, execute across varying WSL distribution names (`Ubuntu`,
-  `Ubuntu-22.04`, `ControlTower-Runner`), and accumulated 12 deleted cargo env source
+  `Ubuntu-22.04`, `node-a-Runner`), and accumulated 12 deleted cargo env source
   lines in `~/.profile` causing noise in login shells. Created
   `deploy/clean-stale-shell-profiles.sh` to safely prune non-existent cargo/env lines from
   shell profiles and integrated it into `deploy/install-runner-maintenance.sh` as well as
@@ -562,17 +562,17 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   `tests/deploy/test_clean_stale_shell_profiles.py`.
 - **2026-09-06 (2.5.205):** Hub dashboard telemetry aggregation and stale registry
   validation (#1169). The hub dashboard previously reported telemetry for only one node
-  and identified it by a retired pool (`ControlTower-NVMe` retired 2026-07-31).
+  and identified it by a retired pool (`node-a-NVMe` retired 2026-07-31).
   Added startup registry validation (`assert_valid_active_registry`) in
   `backend/fleet_autoconfig.py` and `backend/server.py` ensuring every non-retired
   machine and runner pool resolves to a valid, reachable dashboard URL and fails fast
   on unresolvable endpoints or duplicate port collisions across active pools.
   Updated `derive_pool_topology` and `_iter_registry_entries` to filter out retired
-  pools (`retired: true`), ensuring the hub identifies itself as `ControlTower-Runner`
+  pools (`retired: true`), ensuring the hub identifies itself as `node-a-Runner`
   and eliminates phantom peer self-probes. Unified `FLEET_NODES` between `server.py`
   and `dashboard_config`, and enabled registry autoderivation in `routers/fleet.py` so
   `/api/fleet/status` concurrently polls and aggregates telemetry across all active
-  fleet nodes (`DeskComputer`, `OGLaptop`, `ControlTower-Runner`) with graceful offline
+  fleet nodes (`hub-a`, `node-b`, `node-a-Runner`) with graceful offline
   handling for connection-refused peers. TDD: `tests/test_hub_fleet_aggregation.py`
   and `tests/test_fleet_autoconfig.py`.
 - **2026-09-06 (2.5.204):** Monitor host volume disk guard and inhibit scheduling
@@ -715,15 +715,15 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   with narrow typed exceptions logging source names and error classes without
   leaking credential values, and add comprehensive unit test coverage (issue #1151).
 - **2026-09-01 (2.5.195):** Update `backend/machine_registry.yml` to the
-  post-rebuild ControlTower topology. The active pool is
-  **ControlTower-Runner** (fresh distro at `F:\WSL\ControlTower-Runner`,
-  runners `d-sorg-local-ControlTower-1..4`, min 2 / default 4 / max 4,
-  scheduler-managed daytime reduction), replacing the ControlTower-SSD
+  post-rebuild node-a topology. The active pool is
+  **node-a-Runner** (fresh distro at `F:\WSL\node-a-Runner`,
+  runners `d-sorg-local-node-a-1..4`, min 2 / default 4 / max 4,
+  scheduler-managed daytime reduction), replacing the node-a-SSD
   pool whose vhdx went corrupt on 2026-08-24
   (Repository_Management#1453; vhdx retained on F:, its 8 GitHub runner
   registrations are offline ghosts). Docker engine (docker.io 29.1.3 +
   buildx + compose-v2) now lives in-distro and the pool carries
-  `d-sorg-fleet-docker`, ending the period where DeskComputer's single
+  `d-sorg-fleet-docker`, ending the period where hub-a's single
   online runner was the fleet's only docker capacity.
 - **2026-09-01 (2.5.194):** Extend `deploy/runner-cleanup.sh` with `/tmp`
   CI-litter garbage collection (Repository_Management#1489 / #1495).
@@ -755,34 +755,34 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   on `d-sorg-fleet`. The routing guard explicitly allowlists the anti-phantom
   selector, preventing governance-only checks from deadlocking while local
   runner pools are intentionally drained or quarantined.
-- **2026-08-27 (2.5.191):** Strengthen the DeskComputer maintenance drain
+- **2026-08-27 (2.5.191):** Strengthen the hub-a maintenance drain
   into a two-key operator contract. The Windows keepalive and fleet monitor
   may perform automatic recovery only when the drain marker is absent and the
   explicit enable marker is present. Removing the drain marker alone therefore
   cannot restart WSL or local runners (issue #1144).
 - **2026-08-26 (2.5.190):** Synchronize release metadata at version 4.9.34
   so protected `main` publishes the first immutable schema-v2 artifact that
-  contains the interactive-safe DeskComputer capacity policy: one weekday-day
+  contains the interactive-safe hub-a capacity policy: one weekday-day
   runner, two weekend/overnight runners, and a hard maximum of two. The live
   drain remains fail-closed until the signed artifact, checksum, SBOM,
   provenance, offline install, rollback, exact-revision APIs, and one governed
   scheduler cycle are verified (issue #1144).
-- **2026-08-26 (2.5.189):** Align the canonical DeskComputer schedule with
+- **2026-08-26 (2.5.189):** Align the canonical hub-a schedule with
   Repository Management's interactive-safe fleet policy: one weekday-day
   runner, two weekend/overnight runners, and a hard maximum of two. Exact
   schedule regression coverage prevents a future drain release from restoring
   twice the governed workstation load (issue #1142).
 - **2026-08-26 (2.5.188):** Harden the issue #1138 deployment boundary before
   bootstrap. The exact deploy job now requires the protected
-  `oglaptop-production` environment and its no-fallback organization-runner-read
+  `node-b-production` environment and its no-fallback organization-runner-read
   credential. The transaction records prior service authority, crosses the
   rollback boundary, quiesces all dashboard/scheduler/autoscaler writers, and
   only then snapshots and manifests mutable state. The root scheduler now uses
   a root-owned, release-specific Python 3.12 runtime and signed scheduler under
   `/opt`, plus the root-owned canonical schedule; it never executes user-writable
   scheduler code, configuration, or an interpreter.
-- **2026-08-26 (2.5.187):** Add the issue #1138 qualified OGLaptop release
-  deployment contract. A workflow-dispatch-only job on the exact OGLaptop-1
+- **2026-08-26 (2.5.187):** Add the issue #1138 qualified node-b release
+  deployment contract. A workflow-dispatch-only job on the exact node-b-1
   runner verifies annotated protected-main release identity, checksum, cosign
   bundle, build attestation, safe schema-v2 archive metadata, and Python ABI,
   then crosses a one-time root-owned no-argument helper boundary. The helper
@@ -810,20 +810,20 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   also names the GitHub repository explicitly, avoiding WSL checkout discovery
   and dubious-ownership failures (issue #1132).
 - **2026-08-25 (2.5.185):** Replaced the former 32-runner always-on default
-  with an initial bounded DeskComputer schedule (issue #1125). Issue #1142
+  with an initial bounded hub-a schedule (issue #1125). Issue #1142
   subsequently tightened that policy for interactive-safe operation.
 - **2026-08-24 (2.5.184):** Restore deterministic cross-platform frontend
   installation by recording Vitest's esbuild 0.28.2 dependency tree in the
   root lockfile. Frontend validation now fails closed on `npm ci` instead of
   falling back to an ungoverned `npm install`, keeping pull-request and Release
   lockfile behavior identical (issue #1085).
-- **2026-08-24 (2.5.183):** Add a shared fail-closed DeskComputer
+- **2026-08-24 (2.5.183):** Add a shared fail-closed hub-a
   maintenance-drain marker (issue #1115). The Windows WSL keepalive and fleet
   health monitor exit before recovery side effects while the marker exists;
   pure fleet-monitor helpers remain available for diagnostics. The operator
   runbook defines controlled drain and scheduler-governed restoration.
 - **2026-08-24 (2.5.182):** Make governed runner scheduling the sole authority
-  for DeskComputer capacity recovery (issue #1113). The five-minute fleet
+  for hub-a capacity recovery (issue #1113). The five-minute fleet
   monitor reads the scheduler's last fail-closed desired-capacity decision,
   uses that value as the Desktop pool floor, and invokes
   `runner-scheduler.service` when recovery is required. It no longer starts
@@ -956,7 +956,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   `id` instead of `user_id` can still start, stop, and restart runners without
   tripping logging-only `AttributeError`s after authorization succeeds. The
   local runner-number resolver also accepts current fleet names such as
-  `d-sorg-local-ControlTower-nvme-1` in addition to legacy `runner-1` suffixes,
+  `d-sorg-local-node-a-nvme-1` in addition to legacy `runner-1` suffixes,
   keeping `/api/runners/{id}/start|stop|restart` and group start/stop actions
   mapped to the right `svc.sh` path while preserving the existing
   `runners.control` scope requirement.
@@ -988,12 +988,12 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   are tailnet-scoped GET metrics already intended as tailnet-public fleet reads
   (`require_fleet_peer`); `/api/fleet/status` keeps its own `require_fleet_peer`
   dependency. Restores hub→node fleet status across the fleet.
-- **2026-06-16 (2.5.161):** Fixed the DeskComputer node `dashboard_url` in
+- **2026-06-16 (2.5.161):** Fixed the hub-a node `dashboard_url` in
   `machine_registry.yml` to its MagicDNS name
-  (`http://deskcomputer.tail2bbcc7.ts.net:8321`) instead of the raw tailnet IP.
+  (`http://hub-a.fleet-example.ts.net:8321`) instead of the raw tailnet IP.
   Tailscale's `serve` exposes node dashboards by name (name-based HTTP), so the
-  raw-IP entry returned 404 and the hub marked DeskComputer offline. Every other
-  node already used its MagicDNS name; this aligns DeskComputer with the fleet
+  raw-IP entry returned 404 and the hub marked hub-a offline. Every other
+  node already used its MagicDNS name; this aligns hub-a with the fleet
   convention so hub↔node fleet status resolves.
 - **2026-06-16 (2.5.160):** Made `/api/fleet/status` resilient to unreachable
   fleet nodes. Peer pools are now fetched concurrently (`asyncio.gather`)
@@ -1329,8 +1329,8 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   Tests in `tests/test_gh_client.py` and `tests/test_start_dashboard_script.py`.
 - **2026-06-12 (2.5.108):** Single source of truth for fleet topology, runtime
   config, and the identity store (issues #942, #943, #944). (#942) `/api/fleet/status`
-  no longer hardcodes `if PORT == 8322` to label itself ControlTower-NVMe and
-  probe a phantom ControlTower-HDD peer; it derives local-pool identity and the
+  no longer hardcodes `if PORT == 8322` to label itself node-a-NVMe and
+  probe a phantom node-a-HDD peer; it derives local-pool identity and the
   sibling pools to probe from `machine_registry.yml` via a new
   `fleet_autoconfig.derive_pool_topology`. Single-pool machines emit no phantom
   peer node, and `_startup` now fails fast (`assert_no_maxwell_port_collision`)
@@ -1426,7 +1426,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 - **2026-06-12 (2.5.99):** RD↔MD integration contract cluster (issues #959, #961,
   #963). (#959) `MAXWELL_PORT` defaulted to 8322 — a port that appears nowhere in
   Maxwell_Daemon (which serves on 8080) and that collided with the
-  ControlTower-SSD pool's own `dashboard_url:8322` in `machine_registry.yml`, so a
+  node-a-SSD pool's own `dashboard_url:8322` in `machine_registry.yml`, so a
   default deploy probed a second dashboard and misreported it as Maxwell. The
   default is now 8080 (the daemon's real port). A new `MAXWELL_EXPLICITLY_CONFIGURED`
   flag is surfaced on `GET /api/maxwell/status` as `configured` so the tab can show
@@ -1604,14 +1604,8 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   minting a valid signature on the caller's behalf. Locally minted,
   server-originated envelopes still auto-sign and round-trip unchanged.
 - **2026-06-12 (2.5.84):** Authenticated the agent-launcher control surface
-  (security, issue #920). Every `/api/agent-launcher/*` route now requires an
-  authenticated principal; the mutating routes (`PUT /config`, `POST /start`,
-  `POST /stop`, `POST /run-once`) additionally require the privileged
-  `system.control` scope. Previously these routes — which spawn code-executing
-  agent processes and write attacker-controllable JSON into the operator's home
-  directory — were completely unauthenticated, so any LAN/Tailscale peer
-  reaching the dashboard port could launch or reconfigure agents (RCE-adjacent).
-  Unauthenticated requests now return 401 and under-scoped principals get 403.
+  (security, issue #920). Those `/api/agent-launcher/*` routes were later removed
+  with the Cline Launcher retirement (#1338); this entry is historical only.
 - **2026-06-10 (2.5.83):** Corrected queue-diagnosis target classification for
   fleet jobs whose GitHub job metadata contains only custom `d-sorg-fleet*`
   labels. These jobs are now counted as self-hosted fleet work instead of
@@ -1630,7 +1624,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   dispatch, fleet control, diagnostics, group, and orchestration capacity paths
   now share a paginated GitHub runner inventory helper, so `/api/runners` and
   `/api/health` report all registered runners instead of stopping at 30 when
-  the organization has additional DeskComputer/OGLaptop/MATLAB capacity. CI
+  the organization has additional hub-a/node-b/MATLAB capacity. CI
   routing now keeps Python dependency-heavy jobs on `d-sorg-fleet-fast-io` and
   Docker image scans on runners with both `d-sorg-fleet-docker` and
   `d-sorg-fleet-fast-io`, preventing broad-fleet dispatch onto light laptop
@@ -1639,7 +1633,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   GitHub App API client instead of shelling out to `gh api`. The dashboard queue
   view now uses the same authenticated client path as health checks, preserves
   per-job queued depth, and keeps stale auth or transient repo failures from
-  silently flattening the queue to zero. The OGLaptop registry entry now uses
+  silently flattening the queue to zero. The node-b registry entry now uses
   its Tailscale MagicDNS dashboard URL so Tailscale Serve routes fleet health
   calls to the running backend instead of returning the IP-host 404 path.
 - **2026-06-10 (2.5.79):** Restored post-merge `main` CI compatibility for the
@@ -1650,11 +1644,11 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   workflow-routing validation no longer depends on hosted GitHub runners.
 - **2026-06-10 (2.5.78):** Hardened fleet dashboard routing for the
   GitHub-primary/Forgejo-ready fleet posture. `backend/machine_registry.yml`
-  now routes ControlTower pool dashboards through Tailscale MagicDNS
-  (`controltower.tail2bbcc7.ts.net`) instead of stale local/offline addresses,
-  marks the live ControlTower host as preferred, and keeps the legacy monitoring
+  now routes node-a pool dashboards through Tailscale MagicDNS
+  (`node-a.fleet-example.ts.net`) instead of stale local/offline addresses,
+  marks the live node-a host as preferred, and keeps the legacy monitoring
   node non-preferred. Node-system proxy calls now have a 30 s budget so loaded
-  DeskComputer and ControlTower runner hosts can finish process enumeration
+  hub-a and node-a runner hosts can finish process enumeration
   without false 504s. `deploy/wsl-mirrored-port-helper.sh` now detects and
   clears Tailscale Serve HTTP/HTTPS/TCP bindings by protocol before restoring
   the WSL dashboard HTTP binding. The `security-scan` CI job now runs
@@ -2007,7 +2001,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   `docs/runner-labels.md` is the canonical label documentation.
   Tests in `tests/api/test_label_guidance.py` and
   `frontend/src/pages/Fleet/__tests__/LabelGuide.test.tsx` pin the contracts.
-- **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for ControlTower
+- **2026-05-28 (2.5.40):** Added tier-aware autoscaler controls for node-a
   NVMe and HDD pools (issue #755). New `backend/routers/autoscaler_pools.py`
   exposes two endpoints:
 
@@ -2029,20 +2023,20 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
 
 - **2026-05-28 (2.5.40):** Added multi-pool backend aggregation to
   `GET /api/fleet/status` (issue #753). When the dashboard runs on port 8321
-  (ControlTower-NVMe), it automatically queries its peer on port 8322
-  (ControlTower-HDD) and merges both pool responses into a single JSON object
+  (node-a-NVMe), it automatically queries its peer on port 8322
+  (node-a-HDD) and merges both pool responses into a single JSON object
   keyed by pool name. If the peer is unreachable the endpoint returns an
   `"offline"` entry for that pool rather than failing the whole request,
   preserving orthogonality. Pass `?exclude_pools=true` to suppress the peer
   query (used internally so the peer does not recurse back). The Fleet tab
-  `Mobile.tsx` already renders ControlTower pool nodes in a dedicated
-  side-by-side section when their names start with `"ControlTower"`. Tests in
+  `Mobile.tsx` already renders node-a pool nodes in a dedicated
+  side-by-side section when their names start with `"node-a"`. Tests in
   `tests/api/test_fleet_aggregator.py` cover the full-aggregate, peer-offline
   fallback, and exclude_pools code paths.
 - **2026-05-27 (2.5.39):** Optimized per-runner worker process resource metric collection in `backend/routers/system.py` and `backend/system_utils.py` by pre-computing path patterns and optimizing the process iteration loop to avoid filesystem lookup overhead, preventing CI Standard timeouts. Updated `.github/workflows/ci-standard.yml` to exempt newly expanded files from the 500-line check soft cap, and disabled autoderiving fleet nodes in tests (`tests/conftest.py`) to prevent network timeouts.
 - **2026-05-26 (2.5.37):** Fixed pre-existing TestErrorHandling test pollution in `tests/api/test_routers_runners.py`. Earlier tests in `TestGetRunners` populate two pieces of module-level state — `cache_utils._cache` (TTL cache) and `runners_router._last_successful_runners` (degraded-mode fallback). Once populated, the API-error / rate-limit tests in `TestErrorHandling` received `source='cache'` instead of `'unavailable'`/`429`, because the endpoint falls back to the last-known-good response when the mocked GitHub call fails. The actual root cause was the global, not just the cache. Added an autouse fixture on `TestErrorHandling` that clears both pieces of state before and after each test. 33/33 passing locally (was 31 pass + 2 fail).
 - **2026-05-26 (2.5.36):** Comprehensive autoscaler-corruption recovery + VS Code blank-window fix. New `backend/runner_state_cleanup.py` module removes orphaned `$HOME/.gitconfig.lock` (and stale per-worktree git locks older than 60s) after every autoscaler stop — recovering from the fleet-wide outage signature where a SIGTERM mid-`git config --global` poisons every subsequent `actions/checkout` on the host (Runner_Dashboard#640). Cleanup is invoked from `_stop_unit` on every stop path and mirrored in `deploy/runner-hooks/job-started.sh`. `backend/routers/credentials.py` Cline detection uses a new `_resolve_vscode_cli` helper that prefers `code.cmd` over `Code.exe` on Windows and a `_vscode_has_extension` helper that passes `CREATE_NO_WINDOW`. 7 new unit tests + 3 updated; 25/25 passing.
-- **2026-05-26 (2.5.35):** Added the ControlTower workflow-routing policy
+- **2026-05-26 (2.5.35):** Added the node-a workflow-routing policy
   contract for issue `#757`. `config/workflow_runner_routing_policy.json`
   now defines the future `d-sorg-fleet-bulk`, `d-sorg-fleet-fast-io`,
   `d-sorg-fleet-docker`, and `d-sorg-fleet-nvme` label taxonomy, while
@@ -2087,7 +2081,7 @@ never` (late > 1.5 intervals since the last success, dead > 3 intervals or fired
   runner restarts opt-in, so WSL restarts do not launch every runner before
   the autoscaler can sample host pressure.
 - **2026-05-25 (2.5.32):** Hardened autoscaler overload detection for
-  ControlTower WSL I/O stalls. `backend/autoscaler_sampling.py` now parses
+  node-a WSL I/O stalls. `backend/autoscaler_sampling.py` now parses
   Linux PSI data from `/proc/pressure/io`, and `backend/runner_autoscaler.py`
   treats high `full avg10` I/O pressure as overload while blocking scale-up
   recovery until I/O pressure drops. `AUTOSCALER_IO_PRESSURE_FULL_HIGH`,
@@ -2466,23 +2460,23 @@ distros in one shared utility VM. Two hardening steps keep them out of the
   This avoids the `WSL_E_LOCAL_SYSTEM_NOT_SUPPORTED` failure under `SYSTEM` and the missing
   user-scoped WSL registration access under `S4U`, while keeping the host-side handle that holds
   the WSL VM resident.
-- **`deploy/fleet-health-monitor.ps1`** is the canonical DeskComputer fleet
+- **`deploy/fleet-health-monitor.ps1`** is the canonical hub-a fleet
   monitor (5-minute scheduled task, launched via `run-hidden.vbs`). Beyond the
-  original DeskComputer-keepalive check and ControlTower WMI-handle guard, it
-  enforces **per-pool online floors** (Desktop / ControlTower-SSD / Oglaptop)
+  original hub-a-keepalive check and node-a WMI-handle guard, it
+  enforces **per-pool online floors** (Desktop / node-a-SSD / NodeB)
   from the dashboard's `/api/runners` feed, self-heals a below-floor Desktop
   pool with in-place `systemctl start` of the local runner units (never a WSL
   reset), and raises an explicit **registration-purge alarm** (zero pool
   members online on GitHub while local units run — the signature of GitHub's
-  ~14-day offline auto-delete, which silently destroyed the DeskComputer
+  ~14-day offline auto-delete, which silently destroyed the hub-a
   pool's registrations in July 2026). Recovery procedure:
   `docs/runbooks/runner-registration-purge-recovery.md`. Cycles carry a
-  heartbeat log line and a hard deadline on the ControlTower SSH leg (a
+  heartbeat log line and a hard deadline on the node-a SSH leg (a
   hung ssh once stalled the monitor for 100+ minutes under
   `MultipleInstances=IgnoreNew`), and any floor breach computed from the
   dashboard feed is re-verified against the GitHub API before warnings or
   self-heal actions (the feed can serve stale/false zeros; verification
-  unavailable → the cycle takes no action). The same ControlTower probe
+  unavailable → the cycle takes no action). The same node-a probe
   reports host free space and alarms below per-drive floors
   (`$DiskFloorsGb`, default C: 25 GB / F: 40 GB): a WSL2 distro that
   exhausts host disk mid-write corrupts itself — null-byte files and a
@@ -2539,10 +2533,10 @@ start/stop controls per runner and bulk fleet controls.
 #### 3.1.1 Multi-Pool Fleet Status
 
 `GET /api/fleet/status` aggregates multiple co-located runner-pool backends
-into a single response. On a ControlTower host that runs two pool backends:
+into a single response. On a node-a host that runs two pool backends:
 
-- Port **8321** — `ControlTower-NVMe` (primary, hub role)
-- Port **8322** — `ControlTower-HDD` (secondary pool)
+- Port **8321** — `node-a-NVMe` (primary, hub role)
+- Port **8322** — `node-a-HDD` (secondary pool)
 
 The primary dashboard instance (8321) queries the secondary (`?exclude_pools=true`)
 and merges both pool entries under their pool names. If the secondary is
@@ -2552,27 +2546,27 @@ recursive peer queries.
 
 In the fleet deployment, dashboard-to-dashboard routing must prefer Tailscale
 MagicDNS hostnames over ephemeral WSL-local or stale tailnet IP addresses. The
-ControlTower pool URLs are canonicalized as:
+node-a pool URLs are canonicalized as:
 
-- `http://controltower.tail2bbcc7.ts.net:8321` for `ControlTower-NVMe`
-- `http://controltower.tail2bbcc7.ts.net:8322` for `ControlTower-SSD`
+- `http://node-a.fleet-example.ts.net:8321` for `node-a-NVMe`
+- `http://node-a.fleet-example.ts.net:8322` for `node-a-SSD`
 
 The per-node system proxy budget is 30 s for remote node telemetry. This keeps
-loaded Windows hosts, especially DeskComputer during full runner load, from
+loaded Windows hosts, especially hub-a during full runner load, from
 being marked unhealthy while enumerating runner processes and host metrics.
 
 Response shape (keyed by pool name, plus any FLEET_NODES peers):
 
 ```json
 {
-  "ControlTower-NVMe": { "status": "online", "hostname": "...", ... },
-  "ControlTower-SSD":  { "status": "online",  "hostname": "...", ... },
-  "OGLaptop":          { "status": "online",  "hostname": "...", ... }
+  "node-a-NVMe": { "status": "online", "hostname": "...", ... },
+  "node-a-SSD":  { "status": "online",  "hostname": "...", ... },
+  "node-b":          { "status": "online",  "hostname": "...", ... }
 }
 ```
 
-The Fleet tab `Mobile.tsx` renders entries whose names start with `"ControlTower"`
-in a dedicated **ControlTower Pools** section with a side-by-side card layout;
+The Fleet tab `Mobile.tsx` renders entries whose names start with `"node-a"`
+in a dedicated **node-a Pools** section with a side-by-side card layout;
 all other fleet nodes render as standard runner cards below that section.
 
 #### 3.1.2 Persistent hardware-facts cache (cold-start budget)
@@ -3071,7 +3065,7 @@ Response shape (`schema_version` `1.0.0`):
   "auth_kinds": ["none", "github_app", "api_key", "local"],
   "task_classes": ["format", "..."],
   "capabilities": ["code_edit", "..."],
-  "hostname": "DeskComputer", // dashboard host the node probe ran on (#1193)
+  "hostname": "hub-a", // dashboard host the node probe ran on (#1193)
   "node_availability": {
     // one row per provider that declares an availability_probe (#1193)
     "antigravity": {
@@ -3330,12 +3324,11 @@ End-to-end acceptance run for the suggestion box and proposal intake pipeline:
 
 ### Launchers
 
-| Method | Path                         | Description                                                                                                                      |
-| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/launchers/generate`    | Generate Windows PowerShell launcher scripts on the Desktop                                                                      |
-| GET    | `/api/agent-launcher/status` | Read cline agent scheduler pidfile and per-agent state                                                                           |
-| POST   | `/api/agent-launcher/start`  | Start the cline agent scheduler; on Linux this detaches `agent_launcher.py` with `subprocess.Popen(..., start_new_session=True)` |
-| POST   | `/api/agent-launcher/stop`   | Stop the cline agent scheduler via the launcher CLI                                                                              |
+| Method | Path                      | Description                                                 |
+| ------ | ------------------------- | ----------------------------------------------------------- |
+| POST   | `/api/launchers/generate` | Generate Windows PowerShell launcher scripts on the Desktop |
+
+The `/api/agent-launcher/*` routes (Cline Launcher scheduler, #920) were retired with SC-G6 (#1338). Cline extension detection remains on `GET /api/cline/status` (Credentials).
 
 ### Static Assets
 
@@ -3397,8 +3390,8 @@ or `empty`) so deploy validation can confirm it.
 
 Registry entries may retain historical nodes for audit or rollback, but exactly
 one live entry per physical host should be marked `preferred: true`. For the
-ControlTower host, the preferred entry is the Windows/Tailscale node
-`controltower.tail2bbcc7.ts.net`, and any obsolete WSL monitoring node remains
+node-a host, the preferred entry is the Windows/Tailscale node
+`node-a.fleet-example.ts.net`, and any obsolete WSL monitoring node remains
 non-preferred. Dashboard URLs should be stable HTTP URLs reachable from the
 tailnet and should not use loopback except for same-host-only helper endpoints.
 
@@ -3461,20 +3454,20 @@ cd runner-dashboard
 Run the full setup script on the target machine:
 
 ```bash
-bash deploy/setup.sh --runners 4 --machine-name ControlTower --role hub
+bash deploy/setup.sh --runners 4 --machine-name node-a --role hub
 ```
 
 Fleet node examples:
 
 ```bash
-bash deploy/setup.sh --runners 8 --machine-name OG-Laptop
-bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
-bash deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-  --fleet-nodes "OG-Laptop:http://100.64.12.7:8321,DeskComputer:http://100.64.12.9:8321"
+bash deploy/setup.sh --runners 8 --machine-name node-b
+bash deploy/setup.sh --runners 8 --machine-name hub-a --runner-aliases desktop
+bash deploy/setup.sh --runners 8 --machine-name node-a --role hub \
+  --fleet-nodes "node-b:http://100.64.254.7:8321,hub-a:http://100.64.254.9:8321"
 ```
 
 Node-specific runner counts in the setup script examples must reflect the
-current fleet plan. OG-Laptop is documented as an eight-runner node, and hub
+current fleet plan. node-b is documented as an eight-runner node, and hub
 fleet-node examples use concrete Tailscale URL placeholders so operators can
 replace addresses without changing the argument shape.
 
@@ -3884,7 +3877,7 @@ invariants hold:
   `role: hub` in `machine_registry.yml`, or listed in
   `DASHBOARD_OAUTH_ALLOWED_ORIGINS` (comma-separated). When unset, the hub
   origin defaults from the registry (currently
-  `https://deskcomputer.tail2bbcc7.ts.net`). `GITHUB_OAUTH_CALLBACK_URL` must
+  `https://hub-a.fleet-example.ts.net`). `GITHUB_OAUTH_CALLBACK_URL` must
   be exactly that origin plus `/api/auth/callback` (also defaulted when unset).
 - `DASHBOARD_TLS` is enabled so the session cookie carries `Secure`.
 - `DASHBOARD_DEV_LOGIN` and `DASHBOARD_LOOPBACK_AUTH` are entirely unset.
@@ -3897,7 +3890,7 @@ exposes only `oauth.ready`, `oauth.status`, and non-sensitive reason codes; it
 never returns a client ID, secret, OAuth state, access token, or session secret.
 Production provisioning, rotation, rollback, tailnet-only verification, and
 reason-code guidance are controlled by
-`docs/runbooks/oglaptop-production-oauth.md`.
+`docs/runbooks/node-b-production-oauth.md`.
 
 **Authorization:**
 All mutating `/api/*` endpoints require a principal.
@@ -4165,7 +4158,7 @@ Aggregates open pull-requests across organisation repositories.
       "number": 76,
       "title": "...",
       "url": "...",
-      "author": "dieter",
+      "author": "operator",
       "draft": false,
       "age_hours": 12.3,
       "labels": ["bug", "ci"],
@@ -4233,7 +4226,7 @@ filtering.
       "number": 76,
       "title": "...",
       "url": "...",
-      "author": "dieter",
+      "author": "operator",
       "assignees": [],
       "labels": ["bug", "ci"],
       "age_hours": 12.3,
@@ -4419,7 +4412,7 @@ Dispatches agents to one or more pull requests via `Agent-PR-Action.yml`.
   "provider": "claude_code_cli",
   "prompt": "Address review comments",
   "model": "claude-opus-4-7",
-  "confirmation": { "approved_by": "dieter", "note": "manual click" }
+  "confirmation": { "approved_by": "operator", "note": "manual click" }
 }
 ```
 
@@ -5127,7 +5120,7 @@ warning for backwards-compatibility; clients should supply it.
 `_default_pool_overloaded()` and `_default_pool_recovered()` are now
 pure functions in `runner_autoscaler.py`, extracted from the inline
 poll-loop expressions. This makes the overload contract unit-testable
-without running the poll loop or touching systemd (OGLaptop 2026-06-09
+without running the poll loop or touching systemd (node-b 2026-06-09
 regression: idle host at load 0.23/20 cores was wrongly scaled to the
 floor and logged as "host overloaded").
 

@@ -132,6 +132,7 @@ export const MobileRunsView: React.FC<MobileRunsViewProps> = ({ roles, onOpenRun
               role="button"
               tabIndex={0}
               data-testid={`staff-mobile-run-${run.id}`}
+              title={`Open staff run ${run.id} (${run.status})`}
               onClick={() => handleOpenRun(run.id)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
