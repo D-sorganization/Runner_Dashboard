@@ -23,6 +23,9 @@ if str(_BACKEND) not in sys.path:
 
 os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
 
+_XHR = {"X-Requested-With": "XMLHttpRequest"}
+
+import dashboard_config as dc  # noqa: E402
 import gh_utils  # noqa: E402
 import server  # noqa: E402
 from routers import runner_diagnostics as diagnostics_router  # noqa: E402
@@ -39,6 +42,8 @@ def client(mock_auth) -> TestClient:  # noqa: ARG001
 @pytest.fixture
 def mock_gh_api_admin(monkeypatch: pytest.MonkeyPatch):
     """Mock the GitHub API admin calls."""
+    monkeypatch.setattr(dc, "HOSTNAME", "testhost")
+    monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
 
     async def mock_api(endpoint: str) -> dict:
         if "/actions/runners" in endpoint:
@@ -47,7 +52,7 @@ def mock_gh_api_admin(monkeypatch: pytest.MonkeyPatch):
                 "runners": [
                     {
                         "id": 1,
-                        "name": "d-sorg-fleet-runner-1",
+                        "name": "d-sorg-local-testhost-1",
                         "status": "online",
                         "busy": False,
                         "labels": [
@@ -61,7 +66,7 @@ def mock_gh_api_admin(monkeypatch: pytest.MonkeyPatch):
                     },
                     {
                         "id": 2,
-                        "name": "d-sorg-fleet-runner-2",
+                        "name": "d-sorg-local-testhost-2",
                         "status": "online",
                         "busy": True,
                         "labels": [
@@ -75,7 +80,7 @@ def mock_gh_api_admin(monkeypatch: pytest.MonkeyPatch):
                     },
                     {
                         "id": 3,
-                        "name": "windows-matlab-runner-1",
+                        "name": "d-sorg-local-testhost-3",
                         "status": "offline",
                         "busy": False,
                         "labels": [
@@ -337,7 +342,7 @@ class TestGetMatlabRunnerHealth:
         data = response.json()
         assert data["total"] == 1
         assert len(data["runners"]) == 1
-        assert data["runners"][0]["name"] == "windows-matlab-runner-1"
+        assert data["runners"][0]["name"] == "d-sorg-local-testhost-3"
         assert "matlab" in [lbl.lower() for lbl in data["runners"][0]["labels"]]
 
     def test_matlab_health_counts_status(
@@ -420,7 +425,7 @@ class TestRunnerStatus:
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == 1
-        assert data["name"] == "d-sorg-fleet-runner-1"
+        assert data["name"] == "d-sorg-local-testhost-1"
         assert data["status"] == "online"
         assert "health" in data
         assert data["health"]["status"] == "healthy"
@@ -465,7 +470,7 @@ class TestRunnerGroups:
         data = response.json()
         assert data["group_label"] == "matlab"
         assert data["total"] == 1
-        assert data["runners"][0]["name"] == "windows-matlab-runner-1"
+        assert data["runners"][0]["name"] == "d-sorg-local-testhost-3"
 
     def test_get_runner_group_empty_group(
         self,
@@ -752,22 +757,72 @@ class TestErrorHandling:
 class TestHelperFunctions:
     """Tests for internal helper functions."""
 
-    def test_runner_num_from_id_finds_correct_runner(self) -> None:
-        """Test that runner number extraction works correctly."""
+    def test_runner_num_from_id_finds_correct_runner(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that runner number extraction works for this host's fleet names."""
+        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
         runners = [
-            {"id": 1, "name": "d-sorg-fleet-runner-1"},
-            {"id": 2, "name": "d-sorg-fleet-runner-2"},
-            {"id": 3, "name": "d-sorg-fleet-runner-10"},
+            {"id": 1, "name": "d-sorg-local-ControlTower-1"},
+            {"id": 2, "name": "d-sorg-local-ControlTower-2"},
+            {"id": 3, "name": "d-sorg-local-ControlTower-10"},
         ]
 
         assert runners_router.runner_num_from_id(1, runners) == 1
         assert runners_router.runner_num_from_id(2, runners) == 2
         assert runners_router.runner_num_from_id(3, runners) == 10
 
-    def test_runner_num_from_id_not_found(self) -> None:
+    def test_runner_num_from_id_rejects_other_machine(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Cross-node runner IDs must not map to a local slot (#2519)."""
+        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+        runners = [{"id": 1, "name": "d-sorg-local-DeskComputer-1"}]
+        assert runners_router.runner_num_from_id(1, runners) is None
+
+    def test_runner_num_from_id_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that non-existent runner ID returns None."""
-        runners = [{"id": 1, "name": "d-sorg-fleet-runner-1"}]
+        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+        runners = [{"id": 1, "name": "d-sorg-local-ControlTower-1"}]
         assert runners_router.runner_num_from_id(999, runners) is None
+
+
+class TestRunnerControlHostGuard:
+    """Route-level proof that foreign-host runner IDs never invoke local svc.sh (#2519)."""
+
+    def test_start_foreign_runner_returns_404_without_svc(
+        self,
+        client: TestClient,
+        mock_auth,  # noqa: ARG002
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+        monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+
+        async def mock_api(endpoint: str) -> dict:  # noqa: ARG001
+            return {
+                "runners": [
+                    {
+                        "id": 99,
+                        "name": "d-sorg-local-DeskComputer-1",
+                        "status": "online",
+                        "busy": False,
+                        "labels": [],
+                    }
+                ],
+            }
+
+        svc_calls: list[tuple[int, str]] = []
+
+        async def tracking_svc(runner_num: int, action: str, timeout: int = 30) -> tuple[int, str, str]:  # noqa: ARG001
+            svc_calls.append((runner_num, action))
+            return 0, "", ""
+
+        monkeypatch.setattr(runners_router, "gh_api_admin", mock_api, raising=False)
+        monkeypatch.setattr(runners_router, "run_runner_svc", tracking_svc, raising=False)
+
+        response = client.post("/api/runners/99/start", headers=_XHR)
+        assert response.status_code == 404
+        assert svc_calls == []
 
     def test_is_matlab_runner_detection(self) -> None:
         """Test MATLAB runner detection by label."""
