@@ -13,6 +13,7 @@ import { OperationsRunnerHoursSection, type RunnerScheduleData } from "./Operati
 import { OperationsScheduledWorkflowsSection, type ScheduledWorkflowsData } from "./OperationsScheduledWorkflowsSection";
 import { OperationsDiagnosticsSection, type DiagnosticsSummary } from "./OperationsDiagnosticsSection";
 import { OperationsCiMetricsSection } from "./OperationsCiMetricsSection";
+import { OperationsLocalToolsSubsection } from "./OperationsLocalToolsSubsection";
 
 const CI_METRICS_PANEL_ENABLED =
   (import.meta.env as Record<string, string | undefined>).VITE_CI_METRICS_PANEL_ENABLED !== "false";
@@ -122,6 +123,8 @@ export function OperationsPage(): React.ReactElement {
       <OperationsScheduledWorkflowsSection onDataChange={handleScheduledWorkflowsChange} />
 
       <OperationsDiagnosticsSection onSummaryChange={handleDiagnosticsChange} />
+
+      <OperationsLocalToolsSubsection />
     </div>
   );
 }
