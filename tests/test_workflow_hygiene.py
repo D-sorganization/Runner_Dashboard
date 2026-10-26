@@ -614,7 +614,7 @@ def test_required_context_workflows_run_in_the_merge_queue() -> None:
 # Event-tiered CI Standard (issue #1864, sibling of Repository_Management#1915)
 #
 # pull_request  -> PR tier: lint, format, type check and fast tests.
-# merge_group   -> full tier: everything (the authoritative gate).
+# merge_group   -> merge-group tier: slim required gate (#2891).
 # push to main  -> post-merge tier: no duplicate heavy jobs; the squash commit
 #                  is the tree the merge queue already tested.
 # A `changes` job decides the tier and, on pull_request only, whether the PR
@@ -627,8 +627,13 @@ import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 
 _CI_STANDARD = _WORKFLOWS_DIR / "ci-standard.yml"
-_HEAVY_FULL_TIER_JOBS = ("security-scan",)
+_HEAVY_SCANNER_STEPS = ("Run bandit security scan", "Security Audit (pip-audit)")
+_HEAVY_SCANNER_JOB = "security-scan"
 _PYTHON_LANE_JOBS = ("lint", "tests")
+
+
+def _heavy_scanner_if() -> str:
+    return str(_ci_jobs()[_HEAVY_SCANNER_JOB]["if"])
 
 
 def _ci_jobs() -> dict:
@@ -678,9 +683,9 @@ def _tier_for(event_name: str) -> dict[str, str]:
 
 
 def test_ci_standard_keeps_every_trigger() -> None:
-    """The tiers depend on all three events still reaching the workflow."""
+    """The tiers depend on all events still reaching the workflow."""
     data = _load_workflow(_CI_STANDARD)
-    for event in ("pull_request", "merge_group", "push", "workflow_dispatch"):
+    for event in ("pull_request", "merge_group", "push", "workflow_dispatch", "schedule"):
         assert _has_trigger(data, event), f"ci-standard.yml lost its `{event}` trigger"
 
 
@@ -697,7 +702,7 @@ def test_changes_job_runs_on_every_event() -> None:
     ("event_name", "tier", "full_suite", "run_python_tests"),
     [
         ("pull_request", "pr", "false", None),  # decided by the scope detector
-        ("merge_group", "full", "true", "true"),
+        ("merge_group", "merge-group", "false", "true"),
         ("workflow_dispatch", "full", "true", "true"),
         ("push", "post-merge", "false", "false"),
         ("schedule", "full", "true", "true"),  # unknown events fail safe to full
@@ -733,16 +738,18 @@ def test_python_lane_jobs_gate_on_changes_job() -> None:
         assert "changes" in jobs[job_id]["needs"], job_id
 
 
-def test_heavy_jobs_run_only_in_the_full_tier() -> None:
-    jobs = _ci_jobs()
-    for job_id in _HEAVY_FULL_TIER_JOBS:
-        condition = str(jobs[job_id].get("if", ""))
-        assert "needs.changes.outputs.full_suite == 'true'" in condition, (
-            f"{job_id} is a heavy scan; it belongs to the merge_group tier, not every PR push"
-        )
-    for step_name in ("Run bandit security scan", "Security Audit (pip-audit)"):
-        step = _ci_step("lint", name=step_name)
-        assert step.get("if") == "needs.changes.outputs.full_suite == 'true'", step_name
+def test_heavy_security_scanners_run_on_pull_request_or_schedule_not_merge_group() -> None:
+    """Bandit, pip-audit and security-scan must run on PRs (in scope) and nightly, not in the queue."""
+    workflow = _load_workflow(_CI_STANDARD)
+    assert _has_trigger(workflow, "schedule"), "heavy scanners need a nightly schedule trigger"
+    gate = _heavy_scanner_if()
+    assert "github.event_name != 'merge_group'" in gate
+    assert "github.event_name == 'pull_request'" in gate
+    assert "github.event_name == 'schedule'" in gate
+    assert "needs.changes.outputs.run_python_tests == 'true'" in gate
+    for step_name in _HEAVY_SCANNER_STEPS:
+        step_if = str(_ci_step("lint", name=step_name).get("if", ""))
+        assert step_if == gate, f"{step_name} must share the security-scan job gate"
 
 
 def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
@@ -773,7 +780,8 @@ def _quality_gate(**env: str) -> int:
         "RUN_PYTHON_TESTS": "true",
         "RESULT_LINT": "success",
         "RESULT_TESTS": "success",
-        "RESULT_SECURITY": "skipped",
+        "RESULT_SECURITY": "success",
+        "GITHUB_EVENT_NAME": "pull_request",
     }
     code, _ = _run_step(_ci_step("quality-gate", name="Require every gated job to succeed"), {**defaults, **env})
     return code
@@ -791,8 +799,12 @@ def _tests_required(**env: str) -> int:
     return code
 
 
-def test_quality_gate_passes_the_pr_tier_without_heavy_scans() -> None:
-    assert _quality_gate() == 0
+def test_quality_gate_passes_the_pr_tier_when_security_scan_succeeds() -> None:
+    assert _quality_gate(RESULT_SECURITY="success") == 0
+
+
+def test_quality_gate_requires_security_scan_on_pr_python_lane() -> None:
+    assert _quality_gate(RESULT_SECURITY="skipped") == 1
 
 
 def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
@@ -800,6 +812,17 @@ def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
     assert _quality_gate(**full, RESULT_SECURITY="success") == 0
     assert _quality_gate(**full, RESULT_SECURITY="skipped") == 1
     assert _quality_gate(**full, RESULT_SECURITY="failure") == 1
+
+
+def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
+    mq = {
+        "TIER": "merge-group",
+        "FULL_SUITE": "false",
+        "GITHUB_EVENT_NAME": "merge_group",
+    }
+    assert _quality_gate(**mq, RESULT_SECURITY="skipped") == 0
+    assert _quality_gate(**mq, RESULT_LINT="skipped") == 1
+    assert _quality_gate(**mq, RESULT_TESTS="cancelled") == 1
 
 
 def test_quality_gate_passes_docs_only_pr_and_post_merge_push() -> None:
