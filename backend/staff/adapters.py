@@ -34,7 +34,9 @@ from staff.adapter_policies import (
     claude_unattended_tools,
     gemini_policy_toml,
 )
+from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
+from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
 
 # Provider ids used by staff roles. They intentionally match the
 # ``dashboard_id`` values in agent_remediation/provider_registry.py where an
@@ -303,6 +305,8 @@ class ProviderAdapter:
         kind = str(raw.get("type") or raw.get("event") or raw.get("kind") or "json")
         text = _extract_text(raw)
         event: dict[str, Any] = {"kind": kind, "text": text, "raw": raw}
+        if has_supported_assistant_answer(self.provider_id, raw, text):
+            event["lesson_evidence"] = LESSON_EVIDENCE_ASSISTANT_ANSWER
         usage = _extract_usage(raw)
         if usage:
             event["usage"] = usage

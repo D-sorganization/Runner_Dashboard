@@ -3,7 +3,7 @@
 Tests the same endpoint that RemediationMobile.tsx (issue #196 M10) calls when
 the user completes the 3-tap agent dispatch flow on mobile.
 
-Test patterns follow tests/test_quick_dispatch.py and tests/conftest.py.
+Test patterns follow tests/conftest.py and remediation dispatch tests.
 """
 
 from __future__ import annotations
