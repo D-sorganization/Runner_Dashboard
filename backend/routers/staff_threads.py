@@ -250,7 +250,7 @@ async def post_message(
 
     try:
         thread = store.get_thread(thread_id)
-        if not thread:
+        if not thread or not thread_readable_by(thread, caller):
             raise HTTPException(status_code=404, detail="thread not found")
 
         existing = find_idempotent_reply(store._conn, thread_id, idempotency_key)

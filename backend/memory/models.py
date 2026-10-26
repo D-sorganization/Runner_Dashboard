@@ -21,7 +21,7 @@ ReviewStatus = Literal["proposed", "accepted", "quarantined", "retired", "promot
 Visibility = Literal["fleet", "barb-only"]
 RepositoryName = Annotated[str, StringConstraints(strict=True, strip_whitespace=True, min_length=1, max_length=200)]
 SourceRunID = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=120, pattern=r"^[A-Za-z0-9_-]+$")]
-_REPOSITORY_NAME = TypeAdapter(RepositoryName)
+_REPOSITORY_NAME: TypeAdapter[str] = TypeAdapter(RepositoryName)
 
 
 class SessionDigestAppendRequest(BaseModel):

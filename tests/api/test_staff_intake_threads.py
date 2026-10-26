@@ -106,3 +106,19 @@ def test_open_thread_stays_readable_by_non_participants() -> None:
     assert client.get(f"/api/v1/staff/threads/{tid}").status_code == 200
     listed = [t["id"] for t in client.get("/api/v1/staff/threads").json()["items"]]
     assert tid in listed
+
+
+def test_participants_only_thread_rejects_outsider_export_and_post() -> None:
+    client = TestClient(app, headers={"X-Requested-With": "XMLHttpRequest"})
+    tid = _create(client, participants_only=True, no_auto_reply=True)["id"]
+    _post(client, tid, "k1")
+
+    _act_as(OUTSIDER)
+    for suffix in ("export", "export.md", "export.json"):
+        assert client.get(f"/api/v1/staff/threads/{tid}/{suffix}").status_code == 404
+    # Neither a new post nor an idempotent replay of a participant's key reaches the thread.
+    for key in ("k2", "k1"):
+        resp = client.post(
+            f"/api/v1/staff/threads/{tid}/messages", json={"body": "x"}, headers={"Idempotency-Key": key}
+        )
+        assert resp.status_code == 404
