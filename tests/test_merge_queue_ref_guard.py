@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from bash_host import find_bash
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = _ROOT / ".github" / "scripts" / "merge-queue-ref-guard.sh"
@@ -79,8 +80,10 @@ def _run_guard(
             "PATH": f"{Path(gh_stub).parent}:{env.get('PATH', '')}",
         }
     )
+    bash = find_bash()
+    assert bash is not None
     return subprocess.run(
-        ["bash", str(_SCRIPT)],
+        [bash, str(_SCRIPT)],
         env=env,
         capture_output=True,
         text=True,
@@ -102,7 +105,7 @@ def test_pull_request_jobs_never_need_queue_entry_alive_job(name: str) -> None:
 def test_merge_group_only_workflows_keep_standalone_guard_job(name: str) -> None:
     workflow = _load_workflow(name)
     job = workflow["jobs"]["queue-entry-alive"]
-    assert job.get("if") == "github.event_name == 'merge_group'"
+    assert "github.event_name == 'merge_group'" in str(job.get("if", ""))
     assert job["runs-on"] == "d-sorg-fleet"
     assert job["permissions"] == {"actions": "write", "contents": "read"}
 

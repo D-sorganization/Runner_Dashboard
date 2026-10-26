@@ -472,7 +472,8 @@ def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
 
 def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> None:
     workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
-    step = workflow["jobs"]["frontend-scope"]["steps"][0]
+    steps = workflow["jobs"]["frontend-scope"]["steps"]
+    step = next(s for s in steps if s.get("id") == "scope" or s.get("run"))
     output = tmp_path / "github-output"
     bash = require_bash()
     # A stub also prevents executing Python if this branch accidentally falls through.

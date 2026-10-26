@@ -35,7 +35,10 @@ concurrency:
 jobs:
   queue-entry-alive:
     name: Merge queue ref guard
-    if: github.event_name == 'merge_group'
+    if: >-
+      github.event_name == 'merge_group' &&
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: d-sorg-fleet
     timeout-minutes: 3
     permissions:
