@@ -42,6 +42,8 @@ export interface RawProvider {
   experimental?: boolean;
   editable?: boolean;
   remote?: boolean;
+  /** When false the provider is registry-retired and must not appear in pickers (#1193). */
+  enabled?: boolean;
 }
 
 /** Raw top-level registry response. */
@@ -75,6 +77,8 @@ export interface Provider {
   experimental: boolean;
   editable: boolean;
   remote: boolean;
+  /** Mirrors backend ``ProviderEntry.enabled`` — false for retired providers. */
+  enabled: boolean;
 }
 
 /** Normalized registry with lookup helpers. */
@@ -84,6 +88,8 @@ export interface ProviderRegistry {
   authKinds: string[];
   taskClasses: string[];
   capabilities: string[];
+  /** Registry rows the operator may select (``enabled === true`` only). */
+  selectableProviders: Provider[];
   /** Resolve by canonical (hyphenated) id. */
   byId(id: string): Provider | undefined;
   /** Resolve by dashboard (underscored) id. */
@@ -112,6 +118,7 @@ function normalizeProvider(raw: RawProvider): Provider {
     experimental: raw.experimental ?? false,
     editable: raw.editable ?? false,
     remote: raw.remote ?? false,
+    enabled: raw.enabled ?? true,
   };
 }
 
@@ -123,11 +130,13 @@ function normalizeProvider(raw: RawProvider): Provider {
  */
 export function parseRegistry(raw: ProviderRegistryResponse): ProviderRegistry {
   const providers = (raw.providers ?? []).map(normalizeProvider);
+  const selectableProviders = providers.filter((p) => p.enabled);
   const byIdMap = new Map(providers.map((p) => [p.id, p]));
   const byDashboardIdMap = new Map(providers.map((p) => [p.dashboardId, p]));
   return {
     schemaVersion: raw.schema_version ?? "",
     providers,
+    selectableProviders,
     authKinds: raw.auth_kinds ?? [],
     taskClasses: raw.task_classes ?? [],
     capabilities: raw.capabilities ?? [],

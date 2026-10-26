@@ -30,7 +30,6 @@ DEFAULT_PROVIDER_ORDER = (
     "cursor_agent",
     "ollama",
     "cline",
-    "maxwell",
 )
 DEFAULT_CURSOR_BRANCH_PREFIXES: tuple[str, ...] = ("cursor/",)
 DEFAULT_CURSOR_BRANCH_PROVIDER = "cursor_agent"
@@ -354,10 +353,14 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
             attempt_window_hours=24,
             provider_order=DEFAULT_PROVIDER_ORDER,
             enabled_providers=DEFAULT_PROVIDER_ORDER,
+<<<<<<< HEAD
             default_provider="jules_api",
             cursor_branch_prefixes=DEFAULT_CURSOR_BRANCH_PREFIXES,
             cursor_branch_provider=DEFAULT_CURSOR_BRANCH_PROVIDER,
             blocked_pr_labels=DEFAULT_BLOCKED_PR_LABELS,
+=======
+            default_provider="codex_cli",
+>>>>>>> origin/main
             workflow_type_rules=_default_workflow_type_rules(),
         )
     payload = json.loads(resolved.read_text(encoding="utf-8"))
@@ -369,6 +372,7 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
         attempt_window_hours=int(payload.get("attempt_window_hours", 24)),
         provider_order=_as_tuple_strings(payload.get("provider_order"), fallback=DEFAULT_PROVIDER_ORDER),
         enabled_providers=_as_tuple_strings(payload.get("enabled_providers"), fallback=DEFAULT_PROVIDER_ORDER),
+<<<<<<< HEAD
         default_provider=str(payload.get("default_provider") or "jules_api"),
         cursor_branch_prefixes=_as_tuple_strings(
             payload.get("cursor_branch_prefixes"),
@@ -376,6 +380,9 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
         ),
         cursor_branch_provider=str(payload.get("cursor_branch_provider") or DEFAULT_CURSOR_BRANCH_PROVIDER),
         blocked_pr_labels=_as_tuple_strings(payload.get("blocked_pr_labels"), fallback=DEFAULT_BLOCKED_PR_LABELS),
+=======
+        default_provider=str(payload.get("default_provider") or "codex_cli"),
+>>>>>>> origin/main
         workflow_type_rules=_load_workflow_type_rules(payload.get("workflow_type_rules")),
     )
 

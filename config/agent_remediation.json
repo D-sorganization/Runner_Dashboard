@@ -20,8 +20,7 @@
     "antigravity",
     "cursor_agent",
     "ollama",
-    "cline",
-    "maxwell"
+    "cline"
   ],
   "enabled_providers": [
     "gemini_cli",
