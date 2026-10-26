@@ -76,32 +76,34 @@ def lead_time_seconds(pr: PrSnapshot) -> float | None:
     return _duration_seconds(pr.created_at, end)
 
 
+def _run_sequence_key(run: CheckRunSnapshot) -> datetime:
+    return run.started_at or run.completed_at or datetime.min.replace(tzinfo=UTC)
+
+
 def rework_seconds(runs: Sequence[CheckRunSnapshot]) -> float | None:
     """Seconds waiting to retry after a failed check (per check name).
 
     Pre: ``runs`` belong to one PR head.
-    Post: ``None`` when no timed completed runs; otherwise non-negative.
+    Post: ``None`` when no runs; otherwise non-negative. In-progress retries count.
     """
-    completed = [r for r in runs if r.status == "completed" and r.completed_at is not None]
-    if not completed:
+    if not runs:
         return None
     by_name: dict[str, list[CheckRunSnapshot]] = defaultdict(list)
-    for run in completed:
+    for run in runs:
         by_name[run.name].append(run)
     total = 0.0
     saw_failure = False
     for items in by_name.values():
-        items.sort(key=lambda r: r.completed_at or datetime.min.replace(tzinfo=UTC))
+        items.sort(key=_run_sequence_key)
         for idx, run in enumerate(items):
-            if run.conclusion != "failure":
+            if run.status != "completed" or run.conclusion != "failure" or run.completed_at is None:
                 continue
             saw_failure = True
-            if idx + 1 >= len(items):
-                continue
-            nxt = items[idx + 1]
-            if nxt.started_at is None:
-                continue
-            total += max(0.0, (nxt.started_at - run.completed_at).total_seconds())
+            for nxt in items[idx + 1 :]:
+                if nxt.started_at is None:
+                    continue
+                total += max(0.0, (nxt.started_at - run.completed_at).total_seconds())
+                break
     return total if saw_failure else 0.0
 
 

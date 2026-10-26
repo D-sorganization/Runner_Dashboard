@@ -44,6 +44,33 @@ def test_rework_seconds_zero_when_no_failures() -> None:
     assert rework_seconds(runs) == 0.0
 
 
+def test_rework_seconds_counts_in_progress_retry_start() -> None:
+    fail_end = datetime(2026, 10, 1, 10, 30, tzinfo=UTC)
+    retry_start = datetime(2026, 10, 1, 11, 0, tzinfo=UTC)
+    runs = (
+        _run(
+            "tests",
+            "failure",
+            started_at=datetime(2026, 10, 1, 10, 0, tzinfo=UTC),
+            completed_at=fail_end,
+            check_run_id=1,
+        ),
+        CheckRunSnapshot(
+            repo_full=REPO,
+            head_sha="sha1",
+            check_run_id=2,
+            name="tests",
+            status="in_progress",
+            conclusion=None,
+            started_at=retry_start,
+            completed_at=None,
+            details_url="https://example.invalid/check",
+            app_slug="github-actions",
+        ),
+    )
+    assert rework_seconds(runs) == 1800.0
+
+
 def test_rework_seconds_sums_failure_to_retry_gap_per_check() -> None:
     fail_end = datetime(2026, 10, 1, 10, 30, tzinfo=UTC)
     retry_start = datetime(2026, 10, 1, 11, 0, tzinfo=UTC)
