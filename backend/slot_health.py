@@ -7,9 +7,9 @@ from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from fleet_events import FleetEvent, get_event_store
+from fleet_events import FleetEvent, Severity as FleetEventSeverity, get_event_store
 
 TOOLCACHE_MARKERS = (
     "actions/setup-python",
@@ -182,7 +182,10 @@ def publish_slot_health_flags(
         store.record(
             FleetEvent(
                 ts=ts,
-                severity=str(flag.get("severity") or "warning"),
+                severity=cast(
+                    FleetEventSeverity,
+                    flag.get("severity") or "warning",
+                ),
                 kind="slot_health",
                 title=f"Slot health flag: {flag['descriptor']}",
                 detail="; ".join(flag.get("reasons") or []),

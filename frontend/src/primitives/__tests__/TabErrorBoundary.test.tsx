@@ -135,7 +135,7 @@ describe("TabErrorBoundary", () => {
     );
 
     // Verify copy button
-    const copyBtn = screen.getByRole("button", { name: /copy error details to clipboard/i });
+    const copyBtn = screen.getByRole("button", { name: /^copy details$/i });
     expect(copyBtn).toBeTruthy();
     fireEvent.click(copyBtn);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(

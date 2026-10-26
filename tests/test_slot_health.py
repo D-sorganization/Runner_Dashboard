@@ -91,14 +91,12 @@ def test_rate_rule_requires_three_x_fleet_and_five_samples() -> None:
 
 
 def test_publish_records_hub_and_barb_lane() -> None:
-    flags = [{"descriptor": "Linux fleet runner (d-sorg-fleet-general)", "reasons": ["toolcache/setup-python"], "severity": "warning"}]
+    flags = [{"descriptor": "Linux fleet runner (d-sorg-fleet-general)", "reasons": ["x"], "severity": "warning"}]
     events: list[dict] = []
     barb: list[str] = []
-
     class Store:
         def record(self, ev):  # noqa: ANN001
-            events.append({"kind": ev.kind, "title": ev.title, "detail": ev.detail})
-
+            events.append({"kind": ev.kind, "title": ev.title})
     publish_slot_health_flags(flags, event_store=Store(), barb_lane=lambda f: barb.append(f[0]["descriptor"]))
     assert events[0]["kind"] == "slot_health"
     assert barb == [flags[0]["descriptor"]]
