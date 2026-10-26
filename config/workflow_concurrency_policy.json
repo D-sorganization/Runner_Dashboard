@@ -1,6 +1,5 @@
 {
   "cancel_in_progress_false_allowlist": {
-    "pr-cap.yml": "PR-cap caller must await its separately serialized metadata workflow without interrupting the one-shot advisory comment.",
     "reusable-pr-cap.yml": "PR-cap metadata reporting and its one-shot comment must finish without cancellation during a potentially committed POST.",
     "collate-changes.yml": "Batch collation updates one rolling bot PR; cancel mid-run leaves bot/collate-changes inconsistent and recreates cancelled main runs from overlap.",
     "conflict-disarm.yml": "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state.",
