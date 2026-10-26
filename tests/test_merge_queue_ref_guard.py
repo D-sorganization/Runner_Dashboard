@@ -158,6 +158,29 @@ def test_non_merge_group_events_are_never_touched(event_name: str, tmp_path: Pat
     assert result.returncode == 0
 
 
+@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
+def test_workflow_does_not_grant_actions_write_globally(name: str) -> None:
+    workflow = _load_workflow(name)
+    top = workflow.get("permissions")
+    if top is None:
+        return
+    if isinstance(top, dict):
+        assert top.get("actions") != "write", (
+            f"{name}: actions: write belongs on queue-entry-alive (and tests recheck) only"
+        )
+
+
+@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
+def test_queue_entry_alive_job_has_minimal_cancel_permissions(name: str) -> None:
+    perms = _load_workflow(name)["jobs"]["queue-entry-alive"]["permissions"]
+    assert perms == {"actions": "write", "contents": "read"}
+
+
+def test_ci_standard_tests_job_can_self_cancel_on_merge_group_recheck() -> None:
+    perms = _load_workflow("ci-standard.yml")["jobs"]["tests"]["permissions"]
+    assert perms == {"actions": "write", "contents": "read"}
+
+
 def test_gh_api_error_fails_open_without_cancel(tmp_path: Path) -> None:
     gh = tmp_path / "gh"
     gh.write_text(

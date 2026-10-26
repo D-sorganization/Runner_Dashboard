@@ -699,6 +699,9 @@ jobs:
       - lint
       - pick-runner
     if: needs.changes.outputs.run_python_tests == 'true'
+    permissions:
+      actions: write
+      contents: read
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
