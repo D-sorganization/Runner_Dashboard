@@ -1,0 +1,34 @@
+{
+  "data": {
+    "repository": {
+      "mergeQueue": {
+        "entries": {
+          "totalCount": 4,
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "MNE0"
+          },
+          "nodes": [
+            {
+              "state": "MERGEABLE",
+              "headCommit": {
+                "oid": "0000000000000000000000000000000000000abc"
+              }
+            },
+            {
+              "state": "QUEUED",
+              "headCommit": {}
+            },
+            {
+              "state": "QUEUED"
+            },
+            {
+              "state": "QUEUED",
+              "headCommit": null
+            }
+          ]
+        }
+      }
+    }
+  }
+}

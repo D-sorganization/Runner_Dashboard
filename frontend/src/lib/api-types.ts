@@ -9421,12 +9421,20 @@ export interface components {
             entry_type: "session_digest" | "decision" | "task" | "transcript" | "lesson";
             /** Expires At */
             expires_at?: string | null;
+            /** Repo */
+            repo?: string | null;
+            /** Review Status */
+            review_status?: ("proposed" | "accepted" | "quarantined" | "retired" | "promoted") | null;
             /** Source Product */
             source_product: string;
+            /** Source Run */
+            source_run?: string | null;
             /** Supersedes Id */
             supersedes_id?: string | null;
             /** Tags */
             tags?: string[];
+            /** Visibility */
+            visibility?: ("fleet" | "barb-only") | null;
         } & {
             [key: string]: unknown;
         };
