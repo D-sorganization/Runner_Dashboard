@@ -1984,6 +1984,42 @@
         "title": "DraftEdit",
         "type": "object"
       },
+      "EscalationIngestBody": {
+        "properties": {
+          "github_actor": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Github Actor",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": ["applied", "stripped", "refused"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "pr_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr Number",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr_number", "github_actor", "outcome"],
+        "title": "EscalationIngestBody",
+        "type": "object"
+      },
       "EvaluateBoardPayload": {
         "properties": {
           "board_route": {
@@ -12942,6 +12978,56 @@
         "tags": ["dispatch"]
       }
     },
+    "/api/fleet/escalation-events": {
+      "post": {
+        "description": "Record a label guard outcome from a fleet repository workflow.",
+        "operationId": "ingest_escalation_event_api_fleet_escalation_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalationIngestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ingest Escalation Event Api Fleet Escalation Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Escalation Event",
+        "tags": ["escalation"]
+      }
+    },
     "/api/fleet/hardware": {
       "get": {
         "description": "Return centralized fleet hardware specs for workload placement.",
@@ -17798,6 +17884,36 @@
         ],
         "summary": "Trigger Briefing",
         "tags": ["staff-inbox"]
+      }
+    },
+    "/api/staff/escalations": {
+      "get": {
+        "description": "Active expedited PRs (latest hub event ``applied``) and recent audit rows.",
+        "operationId": "list_escalations_api_staff_escalations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Escalations Api Staff Escalations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Escalations",
+        "tags": ["escalation"]
       }
     },
     "/api/staff/exclusions": {
