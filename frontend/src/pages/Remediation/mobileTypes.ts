@@ -147,8 +147,6 @@ export const SUBTAB_OPTIONS = [
   { label: "Issues", value: "issues" },
 ];
 
-<<<<<<< HEAD
-=======
 /** Display order for remediation mobile pickers; must stay aligned with enabled registry rows. */
 export const DEFAULT_PROVIDER_ORDER = [
   "codex_cli",
@@ -160,7 +158,6 @@ export const DEFAULT_PROVIDER_ORDER = [
   "cline",
 ];
 
->>>>>>> origin/main
 export function pickRecommendedProvider(
   registry: ProviderRegistry | null,
   providers: Record<string, AgentProvider>,
