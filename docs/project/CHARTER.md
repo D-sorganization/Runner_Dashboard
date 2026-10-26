@@ -9,7 +9,7 @@ Provide a unified, secure web control console and AI Staff Console for the D-sor
 
 ## Non-Goals
 
-- Running Maxwell pipeline execution, Strategist, Crucible, or sandboxes directly (owned exclusively by `Maxwell-Daemon`).
+- Running Maxwell pipeline execution, Strategist, Crucible, or sandboxes directly (`Maxwell_Daemon` was archived 2026-10-22; the dashboard no longer proxies it).
 - Fleet-wide CI workflow orchestration, skill definitions, and central governance policies (owned by `Repository_Management`).
 - Operating as an unauthenticated or public network service (must fail closed with strict identity, OAuth, and RBAC).
 - Executing unverified mutating maintenance actions without dry-run previews and explicit human or policy approval gates.
@@ -32,8 +32,12 @@ Provide a unified, secure web control console and AI Staff Console for the D-sor
 | F11 | Code Requests and Proposals Pipeline    | shipped     | #1279    | Agent-agnostic planner-to-executor pipeline and board suggestion box.     |
 | F12 | Multi-Host Node Infrastructure          | shipped     | #1258    | Node cluster synchronization, self-updating roles, and Ollama bridges.    |
 | F13 | Projects and Fleet Stewardship          | shipped     | #1248    | Per-repo charters, status reporting, and deferred-plan owner tracking.    |
+<<<<<<< HEAD
 | F14 | Staff Hub Reliability and Watchdogs     | shipped     | #1347    | Epic SC-A closed 2026-10-14.                                               |
 | F15 | Maxwell Control Plane Proxy             | shipped     | #1338    | HTTP proxy interface and contract tests for external Maxwell daemon.      |
+=======
+| F14 | Staff Hub Reliability and Watchdogs     | in-progress | #1347    | Process tree cleanup, orphan run reconciliation, and error boundaries.    |
+>>>>>>> origin/main
 | F16 | Fleet Coordination and Priorities       | shipped     | #1233    | Priorities API, board meetings, directives, and lease tracking.           |
 | F17 | Board Deliberation and Group Threads    | shipped     | #1339    | Multi-seat group threads coordinated by Board-Secretary.                  |
 | F18 | Offline Release Artifact Pipeline       | parked      | #1085    | Checksummed bundle distribution bypassing machine-local npm installs.     |

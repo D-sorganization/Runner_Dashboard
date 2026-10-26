@@ -65,7 +65,7 @@ def _active_storage_path() -> Path:
 
 # ─── Dispatch target ──────────────────────────────────────────────────────────
 
-_DISPATCH_WORKFLOW = "Jules-Feature-Request.yml"
+_DISPATCH_WORKFLOW = "Agent-Quick-Dispatch.yml"
 _DISPATCH_WORKFLOW_ENDPOINT = f"/repos/{ORG}/Repository_Management/actions/workflows/{_DISPATCH_WORKFLOW}"
 _DISPATCH_TARGET_TTL_S = 600.0
 
