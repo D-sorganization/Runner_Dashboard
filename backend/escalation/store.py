@@ -74,7 +74,10 @@ class EscalationStore:
                 "(ts, repo, pr_number, github_actor, outcome, reason) VALUES (?, ?, ?, ?, ?, ?)",
                 (event.ts, event.repo, event.pr_number, event.github_actor, event.outcome, event.reason),
             )
-            return int(cur.lastrowid)
+            row_id = cur.lastrowid
+            if row_id is None:
+                raise RuntimeError("escalation_events INSERT did not return row id")
+            return int(row_id)
 
     def list_recent(self, *, limit: int = 50) -> list[dict[str, Any]]:
         limit = max(1, min(limit, 200))
