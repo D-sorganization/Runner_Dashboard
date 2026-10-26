@@ -27,7 +27,7 @@ def _run_gate(*, frontend: bool, staff: bool, failure: tuple[str, str] | None = 
     workflow = yaml.safe_load((ROOT / ".github/workflows/frontend-tests.yml").read_text())
     gate = workflow["jobs"]["frontend-required"]
     assert _frontend_aggregate_if_allows_skipped_pr_guard(gate["if"])
-    assert set(gate["needs"]) == {"frontend-scope", *JOBS}
+    assert set(gate["needs"]) == {"pr-guard", "frontend-scope", *JOBS}
     needs = {job: {"result": "success"} for job in JOBS}
     needs["pr-guard"] = {"result": "skipped", "outputs": {}}
     if not frontend:

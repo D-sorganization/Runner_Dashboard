@@ -42,8 +42,7 @@ def test_pr_guard_job_is_pull_request_only_on_callers() -> None:
         pr_guard = data["jobs"]["pr-guard"]
         job_if = str(pr_guard.get("if") or "")
         assert "github.event_name == 'pull_request'" in job_if, name
-        if name == "ci-auto-deploy-regression.yml":
-            assert "head.repo.full_name == github.repository" in job_if, name
+        assert "head.repo.full_name == github.repository" in job_if, name
 
 
 def _pr_guard_aggregator_if_allows_skipped(job_if: object) -> bool:

@@ -34,7 +34,10 @@ concurrency:
 
 jobs:
   pr-guard:
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/reusable-pr-freshness-guard.yml
 
   decide-docker-scope:
