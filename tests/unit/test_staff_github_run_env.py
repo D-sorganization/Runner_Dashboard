@@ -101,6 +101,8 @@ def test_build_staff_run_env_injects_token_and_refresh_hooks() -> None:
     assert "github_git_credential" in env["GIT_CONFIG_VALUE_0"]
     assert "x-access-token" not in env["GIT_CONFIG_VALUE_0"]
     assert env["STAFF_GITHUB_CREDENTIAL_URL"].endswith("/runs/run-env-01/github-credential")
+    assert env["GIT_AUTHOR_NAME"] == "d-sorggeneralagent[bot]"
+    assert env["GIT_COMMITTER_EMAIL"].endswith("@users.noreply.github.com")
 
 
 def test_mint_staff_run_github_token_fail_closed_without_app(monkeypatch: pytest.MonkeyPatch) -> None:
