@@ -25,6 +25,7 @@ Severity = Literal["warning", "critical"]
 class SlotHealthPreconditionError(ValueError):
     """Invalid job snapshot input."""
 
+
 @dataclass(frozen=True, slots=True)
 class SlotFlag:
     descriptor: str
@@ -201,4 +202,3 @@ def _default_barb_lane(flags: Sequence[Mapping[str, Any]]) -> None:
         target="barb-operator-lane",
         detail={"count": len(flags), "descriptors": [f.get("descriptor") for f in flags]},
     )
-
