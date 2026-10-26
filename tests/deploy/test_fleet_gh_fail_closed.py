@@ -53,6 +53,19 @@ def test_mint_failure_raises(gh_app: Any) -> None:
 
 
 @pytest.mark.unit
+def test_apply_fleet_app_token_never_falls_back_to_personal_gh_token(gh_app: Any) -> None:
+    """App mint failure must not surface an inherited operator ``ghp_`` token (#3000)."""
+    inherited = {
+        "PATH": "/bin",
+        "GH_TOKEN": _FAKE_GHP,
+        "GITHUB_TOKEN": _FAKE_GHP,
+    }
+    with patch.object(gh_app, "mint_fleet_app_token", side_effect=gh_app.FleetGhMintError(_MINT_ERR)):
+        with pytest.raises(gh_app.FleetGhMintError, match=_MINT_ERR):
+            gh_app.apply_fleet_app_token(dict(inherited))
+
+
+@pytest.mark.unit
 def test_gh_shim_exits_nonzero_on_mint_failure(gh_app: Any) -> None:
     with patch.object(gh_app, "mint_fleet_app_token", side_effect=gh_app.FleetGhMintError(_MINT_ERR)):
         proc = subprocess.run(
