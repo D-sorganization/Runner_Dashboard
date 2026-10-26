@@ -1,0 +1,40 @@
+# Fleet guardrails mirrored from Repository_Management; reconcile seeds staff_holds.json.
+name: barb
+title: Barb — Portfolio direction
+summary: Orchestrator and front-door staff role.
+playbook: docs/fleet-barb.md
+prompt_template: null
+instructions: Coordinate fleet work and dispatch lanes.
+providers:
+  - grok-chat
+  - claude
+model: default
+schedule: null
+window: null
+repos:
+  - Runner_Dashboard
+  - Repository_Management
+scope: {}
+budget:
+  usd_per_run: 0.5
+  usd_per_day: 2.0
+permissions:
+  lease: false
+  push_branch: false
+  open_pr: false
+  merge: false
+  host_shell: false
+  notify_user: true
+reports_to: user
+holds:
+  - text: >-
+      RD deploy/release HOLD: no new deploy or release feature slices on Runner_Dashboard
+      until Main CI auto-release passes on two consecutive main commits with zero cancelled runs.
+      Bug fixes to auto-release itself are allowed.
+    set_by: dieter
+    created: 2026-10-23
+    lifted_when: >-
+      Main CI auto-release passes on two consecutive main commits with zero cancelled runs.
+    applies_to:
+      - repo:Runner_Dashboard
+surface: both

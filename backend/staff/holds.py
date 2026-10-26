@@ -43,6 +43,13 @@ MAX_TEXT = 500
 HoldKind = Literal["guardrail", "schedule"]
 HOLD_KINDS: frozenset[str] = frozenset({"guardrail", "schedule"})
 
+RD_DEPLOY_RELEASE_HOLD_PREFIX = "RD deploy/release HOLD:"
+RD_DEPLOY_RELEASE_HOLD_TEXT = (
+    "RD deploy/release HOLD: no new deploy or release feature slices on Runner_Dashboard "
+    "until Main CI auto-release passes on two consecutive main commits with zero cancelled runs. "
+    "Bug fixes to auto-release itself are allowed."
+)
+
 
 def holds_path() -> Path:
     return Path(os.environ.get("STAFF_HOLDS_FILE", str(_config_dir() / HOLDS_FILE))).expanduser()
@@ -68,6 +75,7 @@ class Hold:
     applies_to: list[str] = field(default_factory=lambda: ["*"])
     active: bool = True
     kind: HoldKind = "schedule"
+    set_by: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], default_kind: HoldKind = "schedule") -> Hold:
@@ -92,14 +100,17 @@ class Hold:
             kind = str(raw_kind).strip().lower()  # type: ignore[assignment]
             if kind not in HOLD_KINDS:
                 raise ValueError(f"kind must be 'guardrail' or 'schedule', got {raw_kind!r}")
+        created = str(data.get("created") or data.get("set_on") or "").strip()
+        lifted = str(data.get("lifted_when") or data.get("lift_condition") or "")
         hold = cls(
             id=str(data.get("id") or _hold_id(text)),
             text=text,
-            set_on=str(data.get("set_on") or _now()),
-            lifted_when=str(data.get("lifted_when") or ""),
+            set_on=created or _now(),
+            lifted_when=lifted,
             applies_to=[t.strip() for t in raw_targets],
             active=bool(data.get("active", True)),
             kind=kind,
+            set_by=str(data.get("set_by") or ""),
         )
         assert hold.kind in HOLD_KINDS  # noqa: S101 — DbC boundary check (#1726)
         return hold
@@ -128,15 +139,31 @@ def seed_from_roles(roles: dict[str, RoleSpec]) -> list[Hold]:
     """
     by_text: dict[str, Hold] = {}
     for name in sorted(roles):
-        for text in roles[name].holds:
-            key = text.strip().lower()
+        entries = roles[name].parsed_holds
+        for entry in entries:
+            text = entry.text.strip()
+            key = text.lower()
             if not key:
                 continue
             hold = by_text.get(key)
             if hold is None:
-                by_text[key] = Hold(id=_hold_id(text), text=text.strip(), applies_to=[name], kind="guardrail")
-            elif name not in hold.applies_to:
-                hold.applies_to.append(name)
+                applies = list(entry.applies_to) if entry.applies_to else [name]
+                by_text[key] = Hold(
+                    id=_hold_id(text),
+                    text=text,
+                    applies_to=applies,
+                    kind="guardrail",
+                    set_on=entry.created or _now(),
+                    lifted_when=entry.lifted_when,
+                    set_by=entry.set_by,
+                )
+            else:
+                if name not in hold.applies_to and not entry.applies_to:
+                    hold.applies_to.append(name)
+                if entry.lifted_when and not hold.lifted_when:
+                    hold.lifted_when = entry.lifted_when
+                if entry.set_by and not hold.set_by:
+                    hold.set_by = entry.set_by
     return list(by_text.values())
 
 
@@ -234,3 +261,21 @@ class HoldsList:
 def active_holds() -> list[dict[str, Any]]:
     """Active holds as plain dicts, for read-only views such as ``GET /api/staff/summary``."""
     return [h.to_dict() for h in HoldsList().load() if h.active]
+
+
+def refusal_detail(hold: Hold) -> dict[str, Any]:
+    """The 409 body for a dispatch refused by an active hold."""
+    return {
+        "code": "dispatch_hold",
+        "hold_id": hold.id,
+        "reason": hold.text,
+        "lifted_when": hold.lifted_when,
+        "message": hold.text,
+    }
+
+
+def refuse_dispatch_if_held(role: str, repo: str, prompt: str) -> Hold | None:
+    """Return the blocking hold when dispatch must be refused, else None."""
+    from staff.hold_dispatch import blocking_dispatch_hold  # noqa: PLC0415
+
+    return blocking_dispatch_hold(HoldsList(), role, repo, prompt)

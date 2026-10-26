@@ -301,6 +301,7 @@ class StaffHold(BaseModel):
     applies_to: list[str]
     active: bool
     kind: Literal["guardrail", "schedule"] = "schedule"
+    set_by: str = ""
 
     model_config = ConfigDict(extra="allow")
 
