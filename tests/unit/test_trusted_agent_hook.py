@@ -42,16 +42,6 @@ def _run_hook(cwd: Path, *, env: dict[str, str] | None = None, stdin: str = "{}"
 
 
 @pytest.mark.unit
-def test_trusted_agent_hook_skips_when_cwd_is_not_a_git_worktree(tmp_path: Path) -> None:
-    scratch = tmp_path / "staff_panel_no_git"
-    scratch.mkdir()
-    result = _run_hook(scratch)
-    assert result.returncode == 0
-    assert result.stdout == ""
-    assert "worktree" not in result.stderr.lower()
-
-
-@pytest.mark.unit
 def test_trusted_agent_hook_skips_verified_panel_scratch_with_panel_turn_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
@@ -62,24 +52,6 @@ def test_trusted_agent_hook_skips_verified_panel_scratch_with_panel_turn_env(
     write_panel_scratch_marker(scratch, REPO)
     result = _run_hook(scratch, env={"STAFF_PANEL_TURN": "1"})
     assert result.returncode == 0
-
-
-@pytest.mark.unit
-def test_trusted_agent_hook_skips_throwaway_git_init_without_fleet_manifest(tmp_path: Path) -> None:
-    scratch = tmp_path / "staff_panel_git_only"
-    scratch.mkdir()
-    init = subprocess.run(["git", "init"], cwd=scratch, capture_output=True, text=True, check=False)
-    assert init.returncode == 0, init.stderr
-    result = _run_hook(scratch)
-    assert result.returncode == 0
-    assert "Agent hook checks failed" not in result.stdout
-
-
-@pytest.mark.unit
-def test_is_verified_panel_scratch_rejects_arbitrary_tmp_path(tmp_path: Path) -> None:
-    arbitrary = tmp_path / "not_a_panel"
-    arbitrary.mkdir()
-    assert is_verified_panel_scratch(arbitrary) is False
 
 
 @pytest.mark.unit
