@@ -379,6 +379,17 @@ class TestRegistryV2Providers:
         for dashboard_id in ("claude_code_cli", "codex_cli", "antigravity", "cursor_agent"):
             assert by_dash[dashboard_id]["enabled"] is True
 
+    def test_selectable_conductor_ids_match_enabled_registry_rows(self) -> None:
+        from agent_remediation.provider_registry import (  # noqa: PLC0415
+            PROVIDER_REGISTRY,
+            selectable_conductor_ids,
+        )
+
+        expected = {e.conductor_id for e in PROVIDER_REGISTRY if e.enabled}
+        assert selectable_conductor_ids() == frozenset(expected)
+        assert "jules-cli" not in selectable_conductor_ids()
+        assert "jules-api" not in selectable_conductor_ids()
+
     def test_validate_registry_rejects_local_exec_without_probe(self) -> None:
         from agent_remediation.provider_registry import ProviderEntry, validate_registry  # noqa: PLC0415
 

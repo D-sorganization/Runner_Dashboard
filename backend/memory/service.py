@@ -86,7 +86,7 @@ def _validate_and_resolve_expires_at(expires_at: str | None) -> str:
     try:
         dt = datetime.fromisoformat(expires_at)
         dt = dt if dt.tzinfo else dt.replace(tzinfo=UTC)
-        if dt <= now or dt > now + timedelta(days=MAX_LESSON_TTL_DAYS, minutes=5):
+        if dt <= now or dt > now + timedelta(days=MAX_LESSON_TTL_DAYS):
             raise ValueError
         return dt.isoformat()
     except ValueError as exc:
@@ -95,12 +95,16 @@ def _validate_and_resolve_expires_at(expires_at: str | None) -> str:
 
 def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
     expires_at: str | None = req.expires_at
+    review_status: str | None
+    visibility: str | None
     if req.entry_type == "lesson":
         if contains_secret(req.body):
             raise HTTPException(status_code=422, detail="secret detected in lesson entry")
         enforce_entry_size(req.body, "lesson")
-        if req.review_status and req.review_status != "proposed" and not is_librarian_principal(principal):
-            raise HTTPException(status_code=403, detail="agent principal cannot set non-proposed review_status")
+        if req.review_status and req.review_status != "proposed":
+            if not is_librarian_principal(principal):
+                raise HTTPException(status_code=403, detail="agent principal cannot set non-proposed review_status")
+            raise HTTPException(status_code=422, detail="new lessons must be proposed before review")
         bound = extract_authenticated_run(principal)
         if bound and req.source_run and req.source_run != bound:
             raise HTTPException(status_code=403, detail="caller cannot spoof source_run")
@@ -115,8 +119,12 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
     body = _redact_body(req.body)
     enforce_entry_size(body, req.entry_type)
     store = get_memory_store()
-    if req.supersedes_id and not store.get(req.supersedes_id):
-        raise HTTPException(status_code=404, detail="supersedes_id not found")
+    if req.supersedes_id:
+        superseded = store.get(req.supersedes_id)
+        if superseded is None:
+            raise HTTPException(status_code=404, detail="supersedes_id not found")
+        if superseded.entry_type == "lesson":
+            raise HTTPException(status_code=422, detail="lessons cannot be superseded through generic append")
     entry = MemoryEntry(
         id=new_entry_id(),
         entry_type=req.entry_type,
@@ -146,9 +154,13 @@ def review_entry(principal: Principal, entry_id: str, req: MemoryReviewRequest) 
     store = get_memory_store()
     if not (entry := store.get(entry_id)):
         raise HTTPException(status_code=404, detail="memory entry not found")
+    if entry.entry_type != "lesson":
+        raise HTTPException(status_code=422, detail="only lessons can be reviewed")
+    if req.review_status == "promoted":
+        raise HTTPException(status_code=422, detail="promotion requires trusted merged-promotion evidence")
     validate_status_transition(entry.review_status, req.review_status)
     target = validate_lesson_acceptance(entry, store) if req.review_status == "accepted" else req.review_status
-    exp = _validate_and_resolve_expires_at(req.expires_at) if req.expires_at else None
+    exp = _validate_and_resolve_expires_at(req.expires_at) if req.expires_at or target == "accepted" else None
     acc = _now() if target == "accepted" else entry.accepted_at
     kw = {"review_status": target, "reviewed_by": format_caller(principal), "accepted_at": acc, "expires_at": exp}
     return store.update_review(entry_id, **kw)  # type: ignore[arg-type]
