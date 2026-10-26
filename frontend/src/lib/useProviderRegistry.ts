@@ -42,6 +42,7 @@ export interface RawProvider {
   experimental?: boolean;
   editable?: boolean;
   remote?: boolean;
+  /** When false the provider is registry-retired and must not appear in pickers (#1193). */
   enabled?: boolean;
 }
 
@@ -76,6 +77,7 @@ export interface Provider {
   experimental: boolean;
   editable: boolean;
   remote: boolean;
+  /** Mirrors backend ``ProviderEntry.enabled`` — false for retired providers. */
   enabled: boolean;
 }
 
@@ -86,6 +88,7 @@ export interface ProviderRegistry {
   authKinds: string[];
   taskClasses: string[];
   capabilities: string[];
+  /** Registry rows the operator may select (``enabled === true`` only). */
   selectableProviders: Provider[];
   /** Resolve by canonical (hyphenated) id. */
   byId(id: string): Provider | undefined;

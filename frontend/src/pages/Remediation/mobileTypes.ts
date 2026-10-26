@@ -144,10 +144,12 @@ export const SUBTAB_OPTIONS = [
   { label: "Issues", value: "issues" },
 ];
 
+/** Display order for remediation mobile pickers; must stay aligned with enabled registry rows. */
 export const DEFAULT_PROVIDER_ORDER = [
-  "jules_api",
   "codex_cli",
   "claude_code_cli",
+  "antigravity",
+  "cursor_agent",
   "gemini_cli",
   "ollama",
   "cline",
