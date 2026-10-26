@@ -84,6 +84,7 @@ def test_summary_and_pull_drill_down(app: FastAPI) -> None:
     assert summary.status_code == 200
     body = summary.json()
     assert body["summary"]["prs"] >= 1
+    assert body["groupings"]["by_role"]
     assert body["pr_drill_down"]
     trends = client.get("/api/v1/metrics/trends", params={"repo_full": REPO}, headers=_XHR)
     assert trends.status_code == 200
