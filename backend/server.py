@@ -153,6 +153,7 @@ from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import diagnostics_logs as _diagnostics_logs_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
+from routers import escalation as _escalation_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
@@ -700,6 +701,7 @@ app.include_router(_web_vitals_router.router)
 app.include_router(_events_router.router)  # issue #863 fleet event log
 app.include_router(_client_errors_router.router)  # issue #1292 client error beacon
 app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics and page tracking
+app.include_router(_escalation_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_fleet_run_token_router.router)
 app.include_router(_queue_router.router)

@@ -2199,6 +2199,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/escalation-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Escalation Event
+         * @description Record a label guard outcome from a fleet repository workflow.
+         */
+        post: operations["ingest_escalation_event_api_fleet_escalation_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/hardware": {
         parameters: {
             query?: never;
@@ -4646,6 +4666,26 @@ export interface paths {
          * @description Generate and post an on-schedule or on-demand briefing to Barb's thread.
          */
         post: operations["trigger_briefing_api_staff_briefing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/escalations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Escalations
+         * @description Active expedited PRs (latest hub event ``applied``) and recent audit rows.
+         */
+        get: operations["list_escalations_api_staff_escalations_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9271,6 +9311,25 @@ export interface components {
             plan: {
                 [key: string]: unknown;
             };
+        };
+        /** EscalationIngestBody */
+        EscalationIngestBody: {
+            /** Github Actor */
+            github_actor: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "applied" | "stripped" | "refused";
+            /** Pr Number */
+            pr_number: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Repo */
+            repo: string;
         };
         /** EvaluateBoardPayload */
         EvaluateBoardPayload: {
@@ -15631,6 +15690,41 @@ export interface operations {
             };
         };
     };
+    ingest_escalation_event_api_fleet_escalation_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EscalationIngestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_fleet_hardware_api_fleet_hardware_get: {
         parameters: {
             query?: never;
@@ -18801,6 +18895,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_escalations_api_staff_escalations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
