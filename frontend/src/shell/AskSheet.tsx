@@ -189,6 +189,7 @@ export function AskSheet({ isOpen, onClose, onOpenStaffConsole }: AskSheetProps)
                   type="submit"
                   variant="primary"
                   disabled={!prompt.trim() || submitting}
+                  title="Send this question to staff dispatch"
                 >
                   {submitting ? "Sending…" : "Ask"}
                 </TouchButton>
