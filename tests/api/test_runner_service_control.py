@@ -101,9 +101,7 @@ async def test_run_runner_svc_rejects_unsupported_action(monkeypatch: pytest.Mon
         await run_runner_svc(1, "status")
 
 
-async def test_run_runner_svc_rejects_untrusted_unit_name(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+async def test_run_runner_svc_rejects_untrusted_unit_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(dc, "RUNNER_BASE_DIR", tmp_path)
     runner_dir = tmp_path / "runner-1"
     runner_dir.mkdir()
