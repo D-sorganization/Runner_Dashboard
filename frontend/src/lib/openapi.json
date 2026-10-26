@@ -1986,6 +1986,19 @@
       },
       "EscalationIngestBody": {
         "properties": {
+          "concurrent_cap": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concurrent Cap"
+          },
           "github_actor": {
             "maxLength": 120,
             "minLength": 1,

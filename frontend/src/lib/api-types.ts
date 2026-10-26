@@ -9314,6 +9314,8 @@ export interface components {
         };
         /** EscalationIngestBody */
         EscalationIngestBody: {
+            /** Concurrent Cap */
+            concurrent_cap?: number | null;
             /** Github Actor */
             github_actor: string;
             /**

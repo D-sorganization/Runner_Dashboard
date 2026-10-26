@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -45,6 +46,8 @@ def main() -> int:
     hub_url = os.environ.get("RUNNER_DASHBOARD_URL", "").rstrip("/")
     hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
     if hub_url and hub_token:
+        cap_raw = os.environ.get("EXPEDITE_CONCURRENT_CAP", "").strip()
+        cap = int(cap_raw) if cap_raw.isdigit() else None
         payload = json.dumps(
             {
                 "repo": repo,
@@ -52,6 +55,7 @@ def main() -> int:
                 "github_actor": sender,
                 "outcome": outcome,
                 "reason": reason,
+                "concurrent_cap": cap,
             }
         ).encode()
         req = urllib.request.Request(  # noqa: S310
@@ -64,8 +68,31 @@ def main() -> int:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30):  # noqa: S310
-            pass
+        try:
+            with urllib.request.urlopen(req, timeout=30):  # noqa: S310
+                pass
+        except urllib.error.HTTPError as exc:
+            if exc.code == 409 and trusted:
+                detail = exc.read().decode(errors="replace")
+                subprocess.run(
+                    ["gh", "pr", "edit", pr, "--repo", repo, "--remove-label", EXPEDITE_LABEL],
+                    check=True,
+                )
+                subprocess.run(
+                    [
+                        "gh",
+                        "pr",
+                        "comment",
+                        pr,
+                        "--repo",
+                        repo,
+                        "--body",
+                        f"### Escalation refused\n\n{detail}",
+                    ],
+                    check=True,
+                )
+            else:
+                raise
     return 0
 
 

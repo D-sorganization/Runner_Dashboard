@@ -34,3 +34,15 @@ curl -sS -H "Authorization: Bearer $RUNNER_DASHBOARD_TOKEN" \
 ```
 
 Use an operator or staff bearer from the hub identity store — not a GitHub token.
+
+## Runner lane (slice 2)
+
+When a PR carries `priority:expedite`, `ci-standard` routes `pull_request` and `merge_group` jobs to `ubuntu-latest` via the `pick-runner` output (private repos included). `workflow_dispatch` with `force_local` still wins.
+
+Concurrent expedites per repository default to **3**. Override:
+
+```bash
+gh variable set EXPEDITE_CONCURRENT_CAP --repo D-sorganization/Runner_Dashboard --body 3
+```
+
+Over the cap, the guard workflow refuses the label and posts the hub message on the PR.
