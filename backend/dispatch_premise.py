@@ -157,18 +157,18 @@ async def check_issue_has_open_pr(
             return False, None
 
     issue_ref = str(issue_number)
-    ref_patterns = [
-        re.compile(rf"(?:closes|fixes|refs|resolves)[^\d]*#{issue_ref}\b", re.I),
-        re.compile(rf"#{issue_ref}\b"),
-        re.compile(rf"issue-?{issue_ref}\b", re.I),
-    ]
+    closing_ref = re.compile(rf"\b(?:close[sd]?|fix(?:es|ed)?|resolv(?:e[sd]?))\s+#\s*{issue_ref}\b", re.I)
+    branch_ref = re.compile(rf"(?:^|[/_-])issue-?{issue_ref}(?:$|[-_])|(?:^|[/_-]){issue_ref}(?:$|[-_])", re.I)
 
     for pr in pulls:
         title = str(pr.get("title") or "")
         body = str(pr.get("body") or "")
         head_ref = str((pr.get("head") or {}).get("ref") or "")
-        haystack = f"{title}\n{body}\n{head_ref}"
-        if any(p.search(haystack) for p in ref_patterns):
+        closing_refs = pr.get("closingIssuesReferences") or pr.get("closing_issues_references") or []
+        if isinstance(closing_refs, dict):
+            closing_refs = closing_refs.get("nodes") or []
+        closes_issue = any(isinstance(ref, dict) and str(ref.get("number")) == issue_ref for ref in closing_refs)
+        if closes_issue or closing_ref.search(body) or branch_ref.search(head_ref):
             return True, {
                 "number": pr.get("number"),
                 "title": title,

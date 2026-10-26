@@ -168,6 +168,13 @@ export function StaffPage() {
   }, []);
 
   const roleNames = roster ? roster.roles.map((r) => r.name) : [];
+  const activityPanel = (
+    <details className="staff__activity" open={section !== "console"}>
+      <summary>Activity and approvals</summary>
+      <InboxPanel onOpenRun={openRun} onOpenThread={openThread} />
+      <Board onOpenRun={openRun} />
+    </details>
+  );
 
   return (
     <div className="staff">
@@ -178,11 +185,7 @@ export function StaffPage() {
         ariaLabel="Staff sections"
         className="staff__tabs"
       />
-      <details className="staff__activity" open={section !== "console"}>
-        <summary>Activity and approvals</summary>
-        <InboxPanel onOpenRun={openRun} onOpenThread={openThread} />
-        <Board onOpenRun={openRun} />
-      </details>
+      {section !== "console" && activityPanel}
       <div className="staff__content">
         {section === "console" ? (
           <StaffConsoleDesktop initialThreadId={selectedThread} chatFirst />
@@ -217,6 +220,7 @@ export function StaffPage() {
         ) : null}
         {section === "holds" ? <Holds roles={roleNames} /> : null}
       </div>
+      {section === "console" && activityPanel}
     </div>
   );
 }
