@@ -145,7 +145,6 @@ SAFE_EXEMPT_PATHS = {
     "SPEC.md",
     "AGENTS.md",
     "CLAUDE.md",
-    "AGENT_HANDOFF.md",
     "requirements-lock.txt",
 }
 
