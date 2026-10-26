@@ -648,9 +648,8 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                     h(
                       "select",
                       {
-                        value: isSelected
-                          ? provider
-                          : defaultProviderId,
+                        value:
+                          isSelected && provider ? provider : defaultProviderId,
                         onClick: function (e: any) {
                           e.stopPropagation();
                           setSelectedRunId(String(run.id));
@@ -678,9 +677,8 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                       }),
                     ),
                     (function () {
-                      const currentProvider = isSelected
-                        ? provider
-                        : defaultProviderId;
+                      const currentProvider =
+                        isSelected && provider ? provider : defaultProviderId;
                       const modelOpts =
                         registry
                           ? modelOptionsForDashboardProvider(registry, currentProvider)
