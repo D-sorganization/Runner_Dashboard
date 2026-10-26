@@ -22,6 +22,8 @@ import {
   type IssueRecord,
 } from "./remediationDispatch";
 import { buildBulkIssueRequest, dispatchBulkByRepo, keepFailedSelected } from "./Remediation/remediationBulkRequest";
+import type { ProviderRegistry } from "../lib/useProviderRegistry";
+import { useProviderRegistry } from "../lib/useProviderRegistry";
 
 export type { IssueRecord, IssueTaxonomy } from "./remediationDispatch";
 
@@ -47,16 +49,8 @@ interface DispatchResult {
 export interface RemediationIssuesProps {
   /** Name recorded as the dispatch `approved_by`; defaults to "anonymous". */
   principalName?: string;
+  registry?: ProviderRegistry | null;
 }
-
-const PROVIDER_OPTIONS = [
-  "jules_api",
-  "codex_cli",
-  "claude_code_cli",
-  "gemini_cli",
-  "ollama",
-  "cline",
-];
 
 function issueTypeTone(type?: string): BadgeTone {
   if (type === "bug" || type === "security") return "danger";
@@ -83,7 +77,11 @@ function judgementTone(judgement?: string): BadgeTone {
 
 export function RemediationIssuesSubTab({
   principalName,
+  registry: registryProp,
 }: RemediationIssuesProps = {}): React.ReactElement {
+  const { registry: fetchedRegistry } = useProviderRegistry();
+  const registry = registryProp ?? fetchedRegistry;
+  const providerOptions = registry?.selectableProviders ?? [];
   const [issues, setIssues] = useState<IssueRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -701,9 +699,9 @@ export function RemediationIssuesSubTab({
               borderRadius: 4,
             }}
           >
-            {PROVIDER_OPTIONS.map((p) => (
-              <option key={p} value={p}>
-                {p}
+            {providerOptions.map((p) => (
+              <option key={p.dashboardId} value={p.dashboardId}>
+                {p.label}
               </option>
             ))}
           </select>
