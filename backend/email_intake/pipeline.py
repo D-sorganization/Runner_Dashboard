@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from email_intake.dispatch_role import UnknownStaffRoleError, normalize_staff_role
 from email_intake.intake_store import IntakeStore, default_intake_store
 from email_intake.models import InboundMessage, IntakeDisposition
 from email_intake.parse_request import parse_dispatch_hints
@@ -51,18 +52,55 @@ def process_inbound_message(
     )
     if outcome.disposition != IntakeDisposition.ACCEPT:
         return {"status": outcome.disposition.value, "reasons": list(outcome.reasons)}
-    hints = parse_dispatch_hints(message.body_plain, default_role="")
+    hints = parse_dispatch_hints(message.body_plain)
+    if hints is None:
+        store.record(
+            message_id=message.message_id or f"anon-role-{received_ts}",
+            from_address=message.from_address,
+            disposition="quarantine",
+            received_at=received_ts,
+            detail={"reasons": ["missing_role"], "message": message.to_dict()},
+        )
+        record_audit(
+            action="email_intake",
+            target=message.message_id or "unknown",
+            principal="email-intake",
+            surface="scheduler",
+            outcome="quarantine",
+            detail={"reasons": ["missing_role"]},
+        )
+        return {"status": "quarantine", "reasons": ["missing_role"]}
+    try:
+        role = normalize_staff_role(hints.role)
+    except UnknownStaffRoleError as exc:
+        store.record(
+            message_id=message.message_id or f"anon-badrole-{received_ts}",
+            from_address=message.from_address,
+            disposition="quarantine",
+            received_at=received_ts,
+            detail={"reasons": ["invalid_role"], "error": str(exc), "message": message.to_dict()},
+        )
+        record_audit(
+            action="email_intake",
+            target=message.message_id or "unknown",
+            principal="email-intake",
+            surface="scheduler",
+            outcome="quarantine",
+            detail={"reasons": ["invalid_role"], "error": str(exc)},
+        )
+        return {"status": "quarantine", "reasons": ["invalid_role"], "error": str(exc)}
+    dispatch = {
+        "role": role,
+        "repo": hints.repo,
+        "issue": hints.issue,
+        "prompt": hints.prompt,
+    }
     proposal = proposals.create_pending(
         subject=message.subject,
         body_plain=message.body_plain,
         sender=message.from_address,
         message_id=message.message_id,
-        dispatch={
-            "role": hints.role,
-            "repo": hints.repo,
-            "issue": hints.issue,
-            "prompt": hints.prompt,
-        },
+        dispatch=dispatch,
     )
     record_audit(
         action="intake_proposal_create",

@@ -179,6 +179,7 @@ export function StaffConsoleDesktop({
                 </button>
                 <Dropdown
                   label="Export"
+                  triggerClassName="staff-console__export-btn"
                   items={[
                     {
                       id: "export-md",

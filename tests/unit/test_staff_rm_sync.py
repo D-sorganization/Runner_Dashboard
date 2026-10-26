@@ -78,6 +78,27 @@ def test_unsafe_checkout_is_preserved(repo, kind):
     assert git(clone, "rev-parse", "HEAD") == before
 
 
+def test_consecutive_skips_raise_attention_and_success_resets_counter(repo, monkeypatch):
+    import staff.rm_sync as rm_sync
+
+    _, clone, state = repo
+    (clone / "owner.txt").write_text("owner work\n")
+    now = [1_800_000_000.0]
+    monkeypatch.setattr(rm_sync.time, "time", lambda: now[0])
+
+    for expected_count in range(1, rm_sync.SKIPPED_ATTENTION_THRESHOLD + 1):
+        result = refresh(clone, state_path=state)
+        assert result["consecutive_skips"] == expected_count
+        assert result["attention"] is (expected_count >= rm_sync.SKIPPED_ATTENTION_THRESHOLD)
+        now[0] += rm_sync.INTERVAL_SECONDS
+
+    (clone / "owner.txt").unlink()
+    result = refresh(clone, state_path=state)
+    assert result["status"] == "unchanged"
+    assert result["consecutive_skips"] == 0
+    assert result["attention"] is False
+
+
 def test_throttle_persists_between_invocations(repo):
     origin, clone, state = repo
     refresh(clone, state_path=state)

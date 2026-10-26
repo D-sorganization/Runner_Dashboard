@@ -23,7 +23,18 @@ _MIN_SAFE_STOP_TIMEOUT_SECONDS = 120
 
 def _systemctl_command(*args: str, sudo: bool = False) -> list[str]:
     """Build argv for the systemd manager local to this process."""
-    return (["sudo", "-n", "systemctl"] if sudo else ["systemctl"]) + list(args)
+    if sudo:
+        return ["sudo", "-n", "/usr/local/sbin/rd-runner-ctl"]
+    return ["systemctl", *args]
+
+
+def _privileged_runner_control_input(action: str, unit: str) -> str:
+    """Serialize one validated runner control request for the root helper."""
+    if action not in {"start", "stop", "restart"}:
+        raise ValueError("unsupported runner control action")
+    if not re.fullmatch(r"actions\.runner\.[A-Za-z0-9._-]+\.service", unit):
+        raise ValueError("invalid runner unit")
+    return f"{action}\n{unit}\n"
 
 
 def _dry_run_enabled() -> bool:
@@ -224,6 +235,7 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
     try:
         r = subprocess.run(
             _systemctl_command("stop", "--no-block", unit, sudo=True),
+            input=_privileged_runner_control_input("stop", unit),
             capture_output=True,
             text=True,
             timeout=_SYSTEMCTL_TIMEOUT_S,
@@ -268,6 +280,7 @@ def _start_unit(unit: str) -> bool:
     try:
         r = subprocess.run(
             _systemctl_command("start", "--no-block", unit, sudo=True),
+            input=_privileged_runner_control_input("start", unit),
             capture_output=True,
             text=True,
             timeout=_SYSTEMCTL_TIMEOUT_S,

@@ -24,7 +24,7 @@ import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
-import { pushThreadUrl, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
+import { selectMobileThread, startNewMobileConversation, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
 import "./mobile.css";
 
 export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
@@ -36,6 +36,7 @@ export interface StaffConsoleMobileProps {
   initialThread?: ThreadInfo;
   initialMessages?: ThreadMessage[];
   onOpenThread?: (threadId: string) => void;
+  onThreadSelected?: (threadId: string, role: string) => void;
   onOpenRun?: (runId: string) => void;
   onSendMessage?: (payload: SendMessagePayload) => Promise<{ ok: boolean; [key: string]: unknown }>;
   onApproveProposal?: ProposalApproveHandler;
@@ -61,6 +62,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   initialThread,
   initialMessages,
   onOpenThread,
+  onThreadSelected,
   onOpenRun,
   onSendMessage,
   onApproveProposal,
@@ -155,11 +157,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
       const thread = await sc.openRole(roleName);
       if (!thread) return;
       applyComposerPrefill(prefill);
-      setView("thread"); onOpenThread?.(thread.id);
-
-      pushThreadUrl(roleName, thread.id);
+      setView("thread");
+      selectMobileThread(thread.id, roleName, onThreadSelected, onOpenThread);
     },
-    [sc, onOpenThread],
+    [sc, onOpenThread, onThreadSelected],
   );
 
   // Return to roster view
@@ -239,7 +240,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 className="staff-mobile__details-btn"
                 data-testid="staff-mobile-new-conversation-btn"
                 aria-label="New conversation"
-                onClick={() => void sc.newConversation()}
+                onClick={() => void startNewMobileConversation(sc.newConversation, currentRoleObj.name, onThreadSelected, onOpenThread)}
               >
                 New conversation
               </button>
