@@ -1,5 +1,8 @@
 # Agent Handoff — Runner Dashboard
 
+> Archived session notes (moved from repo root). Canonical operator handoff is
+> `docs/development/HANDOFF.md` (collated from PR change fragments).
+
 ## GitHub Actions Artifact Transport — #2115
 
 - PR #2125, branch `codex/2115-artifact-transport`: bounded transport and async fixture correction are qualified locally; follow required source and merge-group CI.

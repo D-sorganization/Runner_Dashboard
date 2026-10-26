@@ -58,6 +58,7 @@ export function SegmentedControl({
           onClick={() => onChange(option.value)}
           role="radio"
           tabIndex={option.value === value ? 0 : -1}
+          title={option.disabled ? `${option.label} (unavailable)` : `Select ${option.label}`}
           type="button"
         >
           {option.label}
