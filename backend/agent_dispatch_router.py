@@ -44,6 +44,7 @@ from dispatch_routing import (
     resolve_model_routing,
 )
 from epic_expansion import expansion_routing, render_expansion_prompt
+from fastapi import HTTPException
 from identity import identity_manager
 from pydantic import BaseModel, Field
 from time_utils import utc_now_iso
@@ -602,12 +603,32 @@ async def dispatch_to_issues(
                     }
                 )
                 continue
+            # Use the same duplicate guard as Staff dispatch so every issue
+            # launch path (including provider launches such as Cursor) shares
+            # the open-PR and active-run decision.
+            try:
+                from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
+
+                await check_duplicate_pr_or_run(repo, num)
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+                pre_rejected.append(
+                    {
+                        "repository": repo,
+                        "number": num,
+                        "reason": (
+                            f"{detail.get('code', 'duplicate_target')}: {detail.get('message', 'dispatch refused')}"
+                        ),
+                    }
+                )
+                continue
             premise_res = await evaluate_dispatch_premise(
                 repository=repo,
                 issue_number=num,
                 prompt=req.prompt,
                 run_cmd_fn=run_cmd_fn,
                 repo_root=repo_root,
+                check_open_pr=False,
             )
             if not premise_res.allowed:
                 pre_rejected.append(

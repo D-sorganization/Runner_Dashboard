@@ -47,10 +47,10 @@ def test_main_push_runs_are_not_cancel_in_progress(name: str) -> None:
 @pytest.mark.parametrize("name", _MAIN_PUSH_BLOCKING)
 def test_main_push_groups_are_unique_per_commit(name: str) -> None:
     group = _load(name)["concurrency"]["group"]
-    # PRs share a group per ref (so superseded runs cancel); push/merge_group get one per sha.
+    # PRs share a group per ref; merge_group is keyed per queue PR; push is per sha.
     assert "github.event_name" in group
     assert "github.sha" in group
-    assert "github.ref" in group
+    assert "merge_group-pr-" in group or "github.ref" in group
 
 
 # Workflows that already ran in the merge queue; the queue needs them to keep reporting.

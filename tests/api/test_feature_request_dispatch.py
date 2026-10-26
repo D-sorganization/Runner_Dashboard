@@ -1,6 +1,6 @@
 """Feature Request dispatch must report the real outcome (issue #1280).
 
-The dispatch target ``Jules-Feature-Request.yml`` does not exist in
+The dispatch target ``Agent-Quick-Dispatch.yml`` may be missing in
 Repository_Management, so ``gh api`` fails with HTTP 404.  The handler used to
 swallow that failure, record the request as ``dispatched`` and return success,
 silently dropping every request.
@@ -24,7 +24,7 @@ from server import app  # noqa: E402
 _NOT_FOUND = (
     1,
     "",
-    "gh: Not Found (HTTP 404)\nworkflow Jules-Feature-Request.yml not found on the default branch",
+    "gh: Not Found (HTTP 404)\nworkflow Agent-Quick-Dispatch.yml not found on the default branch",
 )
 _BODY = {
     "repository": "Runner_Dashboard",
@@ -65,7 +65,7 @@ def test_dispatch_failure_returns_502_and_records_failed(client: TestClient, his
         resp = client.post("/api/feature-requests/dispatch", json=_BODY)
 
     assert resp.status_code == 502
-    assert "Jules-Feature-Request.yml" in resp.json()["detail"]
+    assert "Agent-Quick-Dispatch.yml" in resp.json()["detail"]
     entries = _history(history_path)
     assert len(entries) == 1
     assert entries[0]["status"] == "failed"
@@ -90,7 +90,7 @@ def test_list_reports_unavailable_dispatch_target(client: TestClient) -> None:
         second = client.get("/api/feature-requests").json()
 
     assert first["dispatchTarget"]["available"] is False
-    assert "Jules-Feature-Request.yml" in first["dispatchTarget"]["detail"]
+    assert "Agent-Quick-Dispatch.yml" in first["dispatchTarget"]["detail"]
     assert second["dispatchTarget"]["available"] is False
     assert probe.await_count == 1, "probe result should be cached between list calls"
 

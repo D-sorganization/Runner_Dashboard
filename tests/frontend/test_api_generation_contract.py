@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.loader_env import loader_env
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -28,6 +30,14 @@ def test_api_generation_formats_openapi_snapshot_before_diff() -> None:
     assert 'npx prettier --parser json --write "$TMP_SNAPSHOT"' in generator
     assert generator.index('npx prettier --parser json --write "$TMP_SNAPSHOT"') < generator.index(
         'npx openapi-typescript "$TMP_SNAPSHOT" --output "$TMP_TYPES"'
+    )
+
+
+def test_api_generation_does_not_append_handwritten_compat_types() -> None:
+    generator = (ROOT / "scripts/gen-api-client.sh").read_text(encoding="utf-8")
+    assert "Client compatibility aliases" not in generator and 'cat >> "$TMP_TYPES"' not in generator
+    assert "Client compatibility aliases" not in (ROOT / "frontend/src/lib/api-types.ts").read_text(
+        encoding="utf-8"
     )
 
 
@@ -81,6 +91,7 @@ def _run_api_scope_classifier(classifier: str, changed_files: list[str]) -> subp
         child_env = {
             key: value for key, value in os.environ.items() if key in {"PATH", "SYSTEMROOT", "TEMP", "TMP", "WINDIR"}
         }
+        child_env.update(loader_env())  # where the shared-libpython interpreter finds its library
         child_env.update(
             {
                 "GH_TOKEN": "test-token",

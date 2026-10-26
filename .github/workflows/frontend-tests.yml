@@ -11,12 +11,11 @@ permissions:
   contents: read
   pull-requests: read
 
-# Main-push / merge-group runs are never cancelled by a newer merge: a cancelled
-# required check leaves that commit permanently non-green, so node auto-deploy and
-# main-ci-auto-release would never find a releasable commit. Only superseded
-# pull_request runs are cancelled. Contract: tests/test_main_push_concurrency.py
+# Main-push and live merge_group runs are never concurrency-cancelled. Only
+# pull_request runs cancel in progress. merge_group supersession uses
+# merge_queue_cancel_safety (GraphQL entries) before any bot cancel.
 concurrency:
-  group: frontend-tests-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -395,6 +394,12 @@ jobs:
           "$RUNNER_TEMP/staff-e2e-venv/bin/python" -m pip install --upgrade pip
           "$RUNNER_TEMP/staff-e2e-venv/bin/python" -m pip install -r requirements.txt
           echo "STAFF_E2E_PYTHON=$RUNNER_TEMP/staff-e2e-venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Verify Staff E2E port allocation
+        run: python -m unittest discover -s tests/e2e/staff -p 'test_port_allocator.py'
+
+      - name: Allocate Staff E2E ports
+        run: python tests/e2e/staff/port_allocator.py
 
       - name: Run Staff Console e2e suite
         run: npx playwright test -c tests/e2e/staff/playwright.config.ts

@@ -3,7 +3,7 @@
  *
  * Wraps fetch() with:
  * - AbortController plumbing (via signal option)
- * - Typed request/response shapes from api-types.ts
+ * - Typed request/response shapes from api-compat.ts (stable client aliases)
  * - Structured typed errors (ApiClientError) surfacing 4xx/5xx
  * - X-Requested-With header on every request (CSRF protection)
  *
@@ -26,7 +26,7 @@ import type {
   UserMe,
   StatsResponse,
   UsageResponse,
-} from "./api-types";
+} from "./api-compat";
 
 // Re-export types so consumers can import from a single location.
 export type {
@@ -45,7 +45,7 @@ export type {
   UserMe,
   StatsResponse,
   UsageResponse,
-} from "./api-types";
+} from "./api-compat";
 import type { EventsResponse } from "./fleetEvents";
 import { fetchWithBrowserCsrf } from "./browserCsrf";
 import {

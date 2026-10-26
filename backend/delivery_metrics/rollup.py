@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from delivery_metrics.escapes import weighted_escapes
 from delivery_metrics.models import CheckRunSnapshot, PrSnapshot
 
 
@@ -140,7 +141,7 @@ def aggregate_window(
         "open": sum(1 for p in pulls if p.state == "open"),
         "median_ci_rounds": _median(ci_known),
         "top_failing_checks": top_failing_checks(all_runs),
-        "escapes_weighted": [],
+        "escapes_weighted": weighted_escapes(pulls, checks_by_head),
         "pr_drill_down": [r.to_dict() for r in pr_rows],
     }
 
