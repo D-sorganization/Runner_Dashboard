@@ -121,7 +121,7 @@ them before further recovery. An unhealthy restored release is reported as
 bash ~/actions-runners/dashboard/deploy/node-auto-deploy.sh --dry-run
 ```
 
-## Attention when green main goes unreleased
+## Attention When Green Main Goes Unreleased
 
 `attention=true` is set (and surfaced via `/api/fleet/status`) when a gate-green main
 commit has no release for more than `AUTO_DEPLOY_MAX_UNRELEASED_HOURS` (default 3), or more
