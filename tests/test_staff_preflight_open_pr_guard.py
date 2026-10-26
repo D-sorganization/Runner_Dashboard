@@ -188,3 +188,75 @@ async def test_check_duplicate_pr_or_run_direct_call(mock_runner: StaffRunner) -
     with patch("staff.preflight_duplicate_guard.get_runner", return_value=mock_runner):
         # Clean call with no active run and no open PRs
         await check_duplicate_pr_or_run("Test_Repo", 999, gh_get_fn=AsyncMock(return_value=[]))
+
+
+@pytest.mark.asyncio
+async def test_check_duplicate_pr_or_run_refuses_on_merged_pr(mock_runner: StaffRunner) -> None:
+    async def gh_get(endpoint: str):
+        if "pulls?state=open" in endpoint:
+            return []
+        if "pulls?state=closed" in endpoint:
+            return [
+                {
+                    "number": 778,
+                    "title": "fix: complete issue #123",
+                    "body": "Closes #123",
+                    "merged_at": "2026-10-24T00:00:00Z",
+                    "head": {"ref": "staff/issue-remediator-123-a1b2c3"},
+                    "html_url": "https://example.invalid/pr/778",
+                }
+            ]
+        if "branches?per_page=100" in endpoint:
+            return []
+        if "issues/123" in endpoint:
+            return {"labels": []}
+        return []
+
+    with patch("staff.preflight_duplicate_guard.get_runner", return_value=mock_runner):
+        with pytest.raises(HTTPException) as exc_info:
+            await check_duplicate_pr_or_run("Test_Repo", 123, gh_get_fn=gh_get)
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["code"] == "merged_pr_exists"
+        assert "778" in exc_info.value.detail["message"]
+
+
+@pytest.mark.asyncio
+async def test_check_duplicate_pr_or_run_refuses_on_issue_branch(mock_runner: StaffRunner) -> None:
+    async def gh_get(endpoint: str):
+        if "pulls?state=open" in endpoint:
+            return []
+        if "pulls?state=closed" in endpoint:
+            return []
+        if "branches?per_page=100" in endpoint:
+            return [{"name": "staff/issue-remediator-123-deadbe"}]
+        if "issues/123" in endpoint:
+            return {"labels": []}
+        return []
+
+    with patch("staff.preflight_duplicate_guard.get_runner", return_value=mock_runner):
+        with pytest.raises(HTTPException) as exc_info:
+            await check_duplicate_pr_or_run("Test_Repo", 123, gh_get_fn=gh_get)
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["code"] == "issue_branch_exists"
+        assert "issue-remediator-123" in exc_info.value.detail["message"]
+
+
+@pytest.mark.asyncio
+async def test_check_duplicate_pr_or_run_refuses_on_active_claim_label(mock_runner: StaffRunner) -> None:
+    async def gh_get(endpoint: str):
+        if "pulls?state=open" in endpoint:
+            return []
+        if "pulls?state=closed" in endpoint:
+            return []
+        if "branches?per_page=100" in endpoint:
+            return []
+        if "issues/123" in endpoint:
+            return {"labels": [{"name": "claim:cursor-agent"}]}
+        return []
+
+    with patch("staff.preflight_duplicate_guard.get_runner", return_value=mock_runner):
+        with pytest.raises(HTTPException) as exc_info:
+            await check_duplicate_pr_or_run("Test_Repo", 123, gh_get_fn=gh_get)
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.detail["code"] == "active_claim_exists"
+        assert "claim:cursor-agent" in exc_info.value.detail["message"]
