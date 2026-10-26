@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 
-from fleet_events import FleetEvent, Severity as FleetEventSeverity, get_event_store
+from fleet_events import FleetEvent, get_event_store
+from fleet_events import Severity as FleetEventSeverity
 
 TOOLCACHE_MARKERS = (
     "actions/setup-python",
