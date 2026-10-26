@@ -20,7 +20,6 @@ _CI_STANDARD = _WORKFLOWS / "ci-standard.yml"
 MERGE_GROUP_JOB_ALLOWLIST: dict[str, frozenset[str]] = {
     "ci-standard.yml": frozenset(
         {
-            "queue-entry-alive",
             "pick-runner",
             "changes",
             "ci-health-check",
@@ -32,14 +31,13 @@ MERGE_GROUP_JOB_ALLOWLIST: dict[str, frozenset[str]] = {
     ),
     "frontend-tests.yml": frozenset(
         {
-            "queue-entry-alive",
             "frontend-scope",
             "typecheck",
             "vitest",
             "frontend-required",
         }
     ),
-    "ci-secrets.yml": frozenset({"queue-entry-alive", "detect-secrets"}),
+    "ci-secrets.yml": frozenset({"detect-secrets"}),
     "docker-build.yml": frozenset({"queue-entry-alive"}),
     "ci-auto-deploy-regression.yml": frozenset({"queue-entry-alive"}),
     "anti-phantom-merge.yml": frozenset(),
@@ -191,7 +189,6 @@ def test_quality_gate_needs_cover_merge_group_allowlist() -> None:
     needs = set(gate["needs"])
     allowlisted = MERGE_GROUP_JOB_ALLOWLIST["ci-standard.yml"] - {
         "quality-gate",
-        "queue-entry-alive",
         "pick-runner",
         "tests",
     }

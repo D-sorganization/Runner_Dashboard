@@ -12,6 +12,7 @@ import yaml
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = _ROOT / ".github" / "scripts" / "merge-queue-ref-guard.sh"
+_ACTION = "./.github/actions/merge-queue-ref-guard"
 _WORKFLOWS = _ROOT / ".github" / "workflows"
 
 _MERGE_GROUP_WORKFLOWS = [
@@ -22,6 +23,17 @@ _MERGE_GROUP_WORKFLOWS = [
     "ci-auto-deploy-regression.yml",
 ]
 
+_STANDALONE_GUARD_JOB_WORKFLOWS = [
+    "docker-build.yml",
+    "ci-auto-deploy-regression.yml",
+]
+
+_GUARD_STEP_ENTRY_JOBS: dict[str, str] = {
+    "ci-standard.yml": "pick-runner",
+    "frontend-tests.yml": "frontend-scope",
+    "ci-secrets.yml": "detect-secrets",
+}
+
 _QUEUE_REF = "gh-readonly-queue/main/pr-77-abcdef0123456789abcdef0123456789"  # pragma: allowlist secret
 
 
@@ -31,12 +43,19 @@ def _load_workflow(name: str) -> dict:
     return data
 
 
-def _guard_run_block(name: str) -> str:
-    workflow = _load_workflow(name)
-    job = workflow["jobs"]["queue-entry-alive"]
-    assert job.get("if") == "github.event_name == 'merge_group'"
-    steps = job["steps"]
-    run_step = next(s for s in steps if s.get("run") and "merge-queue-ref-guard" in str(s.get("run", "")))
+def _job_needs(job: dict) -> list[str]:
+    needs = job.get("needs", [])
+    if isinstance(needs, str):
+        return [needs]
+    return list(needs)
+
+
+def _guard_script_from_action() -> str:
+    action = yaml.safe_load(
+        (_ROOT / ".github" / "actions" / "merge-queue-ref-guard" / "action.yml").read_text(encoding="utf-8")
+    )
+    steps = action["runs"]["steps"]
+    run_step = next(s for s in steps if "merge-queue-ref-guard" in str(s.get("run", "")))
     return str(run_step["run"])
 
 
@@ -70,22 +89,37 @@ def _run_guard(
 
 
 @pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
-def test_heavy_workflows_define_queue_entry_alive_job(name: str) -> None:
+def test_pull_request_jobs_never_need_queue_entry_alive_job(name: str) -> None:
+    """Skipped queue-entry-alive must not skip changes, scope, or health jobs on pull_request."""
     workflow = _load_workflow(name)
-    triggers = workflow.get(True) or workflow.get("on")
-    assert "merge_group" in triggers
-    assert "queue-entry-alive" in workflow["jobs"]
+    for job_id, job in workflow["jobs"].items():
+        assert "queue-entry-alive" not in _job_needs(job), (
+            f"{name}::{job_id} must not need queue-entry-alive (transitive skip on pull_request)"
+        )
 
 
-@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
-def test_workflow_invokes_shared_guard_script(name: str) -> None:
-    block = _guard_run_block(name)
-    assert "merge-queue-ref-guard.sh" in block
+@pytest.mark.parametrize("name", _STANDALONE_GUARD_JOB_WORKFLOWS)
+def test_merge_group_only_workflows_keep_standalone_guard_job(name: str) -> None:
+    workflow = _load_workflow(name)
+    job = workflow["jobs"]["queue-entry-alive"]
+    assert job.get("if") == "github.event_name == 'merge_group'"
+    assert job["runs-on"] == "d-sorg-fleet"
+    assert job["permissions"] == {"actions": "write", "contents": "read"}
+
+
+@pytest.mark.parametrize("name", sorted(_GUARD_STEP_ENTRY_JOBS))
+def test_merge_group_guard_step_on_first_heavy_job(name: str) -> None:
+    job_id = _GUARD_STEP_ENTRY_JOBS[name]
+    steps = _load_workflow(name)["jobs"][job_id]["steps"]
+    guard = next(s for s in steps if _ACTION in str(s.get("uses", "")))
+    assert "merge_group" in str(guard.get("if", ""))
+
+
+def test_composite_action_invokes_shared_guard_script() -> None:
+    assert "merge-queue-ref-guard.sh" in _guard_script_from_action()
 
 
 def test_existing_queue_ref_continues(tmp_path: Path) -> None:
-    calls: list[list[str]] = []
-
     gh = tmp_path / "gh"
     gh.write_text(
         textwrap.dedent(
@@ -165,21 +199,7 @@ def test_workflow_does_not_grant_actions_write_globally(name: str) -> None:
     if top is None:
         return
     if isinstance(top, dict):
-        assert top.get("actions") != "write", (
-            f"{name}: actions: write belongs on queue-entry-alive (and tests recheck) only"
-        )
-
-
-@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
-def test_queue_entry_alive_job_has_minimal_cancel_permissions(name: str) -> None:
-    perms = _load_workflow(name)["jobs"]["queue-entry-alive"]["permissions"]
-    assert perms == {"actions": "write", "contents": "read"}
-
-
-@pytest.mark.parametrize("name", _MERGE_GROUP_WORKFLOWS)
-def test_queue_entry_alive_routes_to_fleet_not_hosted(name: str) -> None:
-    runs_on = _load_workflow(name)["jobs"]["queue-entry-alive"]["runs-on"]
-    assert runs_on == "d-sorg-fleet"
+        assert top.get("actions") != "write", f"{name}: actions: write belongs on guard jobs/steps only"
 
 
 def test_ci_standard_tests_job_can_self_cancel_on_merge_group_recheck() -> None:

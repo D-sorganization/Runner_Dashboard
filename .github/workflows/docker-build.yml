@@ -54,10 +54,8 @@ jobs:
 
   decide-docker-scope:
     name: Decide Docker validation scope
-    needs: [queue-entry-alive]
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      always() && (needs.queue-entry-alive.result == 'success' || needs.queue-entry-alive.result == 'skipped') &&
       github.event_name != 'merge_group' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)

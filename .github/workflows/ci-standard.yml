@@ -46,35 +46,17 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  queue-entry-alive:
-    name: Merge queue ref guard
-    if: github.event_name == 'merge_group'
-    runs-on: d-sorg-fleet
-    timeout-minutes: 3
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
-          sparse-checkout-cone-mode: false
-      - name: Stop obsolete merge queue entries
-        shell: bash
-        env:
-          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-        run: bash .github/scripts/merge-queue-ref-guard.sh
-
   pick-runner:
     name: Select reversible CI runner
-    needs: [queue-entry-alive]
-    if: always() && (needs.queue-entry-alive.result == 'success' || needs.queue-entry-alive.result == 'skipped')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
       'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
     outputs:
       runner: ${{ steps.select.outputs.runner }}
       mode: ${{ steps.select.outputs.mode }}
@@ -103,6 +85,11 @@ jobs:
           fi
           echo "has_expedite=$has" >> "$GITHUB_OUTPUT"
 
+      - name: Merge queue ref guard
+        if: github.event_name == 'merge_group'
+        uses: ./.github/actions/merge-queue-ref-guard
+        with:
+          merge_group_head_ref: ${{ github.event.merge_group.head_ref }}
       - id: select
         name: Select runner without API polling
         shell: bash
@@ -720,10 +707,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Re-check merge queue entry during long tests
         if: github.event_name == 'merge_group'
-        shell: bash
-        env:
-          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
-        run: bash .github/scripts/merge-queue-ref-guard.sh
+        uses: ./.github/actions/merge-queue-ref-guard
+        with:
+          merge_group_head_ref: ${{ github.event.merge_group.head_ref }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python }}

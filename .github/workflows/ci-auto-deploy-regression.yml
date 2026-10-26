@@ -56,9 +56,7 @@ jobs:
 
   auto-deploy-regression:
     name: Auto-deploy live regression
-    needs: [queue-entry-alive]
     if: >-
-      always() && (needs.queue-entry-alive.result == 'success' || needs.queue-entry-alive.result == 'skipped') &&
       github.event_name != 'merge_group' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
