@@ -445,8 +445,15 @@ async def dispatch_staff_run(
         ) from exc
     # Barb-authored dispatch: the lease check and the run admission share one critical section, so a
     # takeover cannot land between them (#2734). ``admit`` is synchronous; never await inside the fence.
-    with barb_write_fence(barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller)):
-        rec, plan, created = runner.admit(req, run_id=run_id)
+    try:
+        with barb_write_fence(
+            barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller)
+        ):
+            rec, plan, created = runner.admit(req, run_id=run_id)
+    except HTTPException as exc:
+        # The audit row above said "admitted"; correct the trail so a fenced dispatch is not left looking dispatched.
+        _record_fence_rejection(audit_ctx, exc)
+        raise
     auth_skipped = getattr(plan, "provider_auth_skipped", None)
     if created and auth_skipped:
         from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
@@ -493,3 +500,12 @@ def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, aud
     runner.store.update_run(run_id, status="failed", error=error, failure_class="launch_failed", ended_at=_now())
     runner.store.append_event(run_id, "failed", error)
     record_audit(action="dispatch", **audit_ctx, outcome="launch_failed", detail={"error": str(exc)}, fail_closed=False)
+
+
+def _record_fence_rejection(audit_ctx: dict[str, Any], exc: HTTPException) -> None:
+    """Follow the ``admitted`` audit row with ``rejected`` when the Barb lease fence refuses the dispatch (#2970)."""
+    detail = exc.detail if isinstance(exc.detail, dict) else {"error": str(exc.detail)}
+    try:
+        record_audit(action="dispatch", **audit_ctx, outcome="rejected", detail=detail, fail_closed=False)
+    except AuditError as audit_exc:
+        log.warning("staff: audit of fenced dispatch rejection failed: %s", audit_exc)
