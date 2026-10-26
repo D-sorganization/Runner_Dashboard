@@ -60,14 +60,14 @@ async def check_duplicate_pr_or_run(
     check_claim: bool = True,
 ) -> None:
     """Refuse dispatch if a run, claim, PR, or branch already owns (repo, issue)."""
-    # 1. Active staff runs in local runner store
+    # 1. Active staff runs in local runner store (stored refs are ``#N``; compare on the bare number)
     try:
         runner = get_runner()
         if runner and runner.store:
             for r in runner.store.active_runs():
                 if r.id == current_run_id:
                     continue
-                if r.repo == repo and r.target_kind == "issue" and r.target_ref == str(issue):
+                if r.repo == repo and r.target_kind == "issue" and r.target_ref.lstrip("#") == str(issue):
                     raise HTTPException(
                         status_code=409,
                         detail={
