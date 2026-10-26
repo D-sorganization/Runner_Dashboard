@@ -56,3 +56,11 @@ def test_validate_architecture_map_rejects_empty_tables(tmp_path: Path) -> None:
     )
     with pytest.raises(ArchitectureMapContractError, match="Feature Map"):
         validate_architecture_map(test_file)
+
+
+def test_architecture_map_workflow_pytest_skips_heavy_conftest() -> None:
+    """Architecture map CI must not load tests/conftest.py (5m job timeout on fleet)."""
+    workflow = ROOT / ".github" / "workflows" / "architecture-map-contract.yml"
+    text = workflow.read_text(encoding="utf-8")
+    assert "test_architecture_map_contract.py" in text
+    assert "--noconftest" in text

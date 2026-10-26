@@ -30,7 +30,6 @@ DEFAULT_PROVIDER_ORDER = (
     "cursor_agent",
     "ollama",
     "cline",
-    "maxwell",
 )
 RUNNER_STATE_MATCH_TERMS: tuple[str, ...] = (
     "toolchain binary missing",
@@ -322,7 +321,7 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
             attempt_window_hours=24,
             provider_order=DEFAULT_PROVIDER_ORDER,
             enabled_providers=DEFAULT_PROVIDER_ORDER,
-            default_provider="jules_api",
+            default_provider="codex_cli",
             workflow_type_rules=_default_workflow_type_rules(),
         )
     payload = json.loads(resolved.read_text(encoding="utf-8"))
@@ -334,7 +333,7 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
         attempt_window_hours=int(payload.get("attempt_window_hours", 24)),
         provider_order=_as_tuple_strings(payload.get("provider_order"), fallback=DEFAULT_PROVIDER_ORDER),
         enabled_providers=_as_tuple_strings(payload.get("enabled_providers"), fallback=DEFAULT_PROVIDER_ORDER),
-        default_provider=str(payload.get("default_provider") or "jules_api"),
+        default_provider=str(payload.get("default_provider") or "codex_cli"),
         workflow_type_rules=_load_workflow_type_rules(payload.get("workflow_type_rules")),
     )
 

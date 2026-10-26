@@ -47,6 +47,7 @@ export const RosterGroup: React.FC<RosterGroupProps> = ({
         data-testid={`group-header-${groupKey}`}
         aria-expanded={!isCollapsed}
         aria-controls={`group-content-${groupKey}`}
+        title={`${isCollapsed ? "Expand" : "Collapse"} ${label} (${roles.length} roles)`}
         onClick={handleHeaderClick}
         onKeyDown={handleKeyDown}
         className="roster-group__header"
