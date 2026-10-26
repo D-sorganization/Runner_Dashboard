@@ -356,28 +356,76 @@ def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
         assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
 
 
+def test_redundant_pr_closer_f7_contract() -> None:
+    """Issue #2895: GITHUB_TOKEN, open PR only, fleet runner, loud failure, summary counts."""
+    wf = _WORKFLOWS_DIR / "Agent-Redundant-PR-Closer.yml"
+    text = wf.read_text(encoding="utf-8")
+    script = (Path(__file__).parent.parent / "scripts" / "close_redundant_agent_prs.py").read_text(encoding="utf-8")
+    job = _load_workflow(wf)["jobs"]["close-redundant"]
+    cond = str(job.get("if", ""))
+    assert "pull_request.state" in cond and "open" in cond
+    assert "JULES_APP_ID" not in text and "create-github-app-token" not in text and "github.token" in text
+    assert "d-sorg-fleet" in str(job["runs-on"]) and "ubuntu-latest" not in str(job["runs-on"])
+    run = next(s for s in job["steps"] if s.get("name") == "Close redundant agent PRs")["run"]
+    assert "|| {" not in run and "continuing" not in run and "::error::GITHUB_TOKEN is empty" in run
+    assert all(tok in script for tok in ("examined", "closed", "skipped"))
+    from scripts.close_redundant_agent_prs import pr_closing_issue_numbers, require_github_token, run_closer
+
+    assert pr_closing_issue_numbers("Refs #5", "Closes #10") == frozenset({10})
+    closed: list[int] = []
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[
+            _redundant_pr_payload(1, "Refs #42", "codex"),
+            _redundant_pr_payload(2, "Closes #42", "jules"),
+        ],
+        dry_run=True,
+        agent_filter=None,
+        close_pr=lambda *_: None,
+        comment=lambda *_: None,
+    )
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[_redundant_pr_payload(10, "Closes #99", "claude"), _redundant_pr_payload(11, "Closes #99", "jules")],
+        dry_run=False,
+        agent_filter=None,
+        close_pr=lambda _r, n: closed.append(n),
+        comment=lambda *_: None,
+    )
+    assert closed == [11]
+    import os
+
+    os.environ.pop("GH_TOKEN", None)
+    os.environ.pop("GITHUB_TOKEN", None)
+    with pytest.raises(SystemExit):
+        require_github_token()
+
+
+def _redundant_pr_payload(number: int, body: str, agent: str) -> dict:
+    login = "human" if agent == "user" else f"{agent}-bot"
+    labels = [{"name": f"agent:{agent}"}] if agent != "user" else []
+    return {
+        "number": number,
+        "title": "",
+        "body": body,
+        "labels": labels,
+        "user": {"login": login, "type": "User" if agent == "user" else "Bot"},
+        "head": {"ref": f"{agent}/lane"},
+    }
+
+
 @pytest.mark.parametrize(
-    ("dry_run", "agent_filter", "action", "number", "stub_exit", "optional"),
+    ("dry_run", "agent_filter", "stub_exit", "optional"),
     [
-        ("false", "", "opened", "", "0", []),
-        ("true", "codex", "closed", "42", "0", ["--dry-run", "--agent-filter", "codex", "--backstop-pr", "42"]),
-        (
-            "false",
-            "agent with spaces *",
-            "closed",
-            "43",
-            "0",
-            ["--agent-filter", "agent with spaces *", "--backstop-pr", "43"],
-        ),
-        ("false", "", "opened", "", "17", []),
+        ("false", "", "0", []),
+        ("true", "codex", "0", ["--dry-run", "--agent-filter", "codex"]),
+        ("false", "", "17", []),
     ],
 )
 def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
     tmp_path: Path,
     dry_run: str,
     agent_filter: str,
-    action: str,
-    number: str,
     stub_exit: str,
     optional: list[str],
 ) -> None:
@@ -389,7 +437,10 @@ def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
     )
     arguments = tmp_path / "argv.bin"
     bash = require_bash()
-    stub = 'python() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+    stub = (
+        'python3() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+        'python() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+    )
     result = subprocess.run(
         [bash, "-c", stub + step["run"]],
         cwd=tmp_path,
@@ -400,18 +451,19 @@ def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
             "REPO_NAME": "Runner_Dashboard",
             "DRY_RUN_INPUT": dry_run,
             "AGENT_FILTER": agent_filter,
-            "PR_ACTION": action,
-            "EVENT_PR_NUMBER": number,
+            "GITHUB_TOKEN": "test-token",
+            "GH_TOKEN": "test-token",
+            "GITHUB_REPOSITORY_OWNER": "D-sorganization",
         },
         capture_output=True,
         text=True,
         check=False,
         timeout=20,
     )
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == int(stub_exit), (result.stdout, result.stderr)
     actual = [value.decode() for value in arguments.read_bytes().split(b"\0")[:-1]]
     assert actual == ["-m", "scripts.close_redundant_agent_prs", "--repo", "Runner_Dashboard", *optional]
-    assert ("continuing" in result.stdout) == (stub_exit != "0")
+    assert "continuing" not in result.stdout
 
 
 def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> None:
