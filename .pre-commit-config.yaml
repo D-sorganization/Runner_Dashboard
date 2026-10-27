@@ -13,6 +13,13 @@
 
 repos:
   # Ruff - Fast Python linter with auto-fix
+  # The rev MUST equal the ruff CI runs: pyproject [dependency-groups.dev]
+  # `ruff==X` (resolved in uv.lock) and the ci-standard.yml fallback pin.
+  # `files` MUST equal CI Standard's lint scope (`ruff check backend/
+  # clients/`): linting paths CI never checks (scripts/, tests/, ...) made the
+  # hooks reformat ~60 untouched files and blocked every rebased push.
+  # Extensionless scripts are excluded too: ruff only discovers *.py/*.pyi.
+  # Enforced by tests/test_precommit_ci_parity.py.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.10
     hooks:
@@ -20,12 +27,12 @@ repos:
         name: "ruff (Python lint + fix)"
         args: ["--fix", "--exit-non-zero-on-fix"]
         types: [python]
-        exclude: ^(\.github/|docs/|frontend/|deploy/)
+        files: ^(backend|clients)/.*\.pyi?$
 
       - id: ruff-format
         name: "ruff format (Python)"
         types: [python]
-        exclude: ^(\.github/|docs/|frontend/|deploy/)
+        files: ^(backend|clients)/.*\.pyi?$
 
   # Prettier - Format YAML, JSON, Markdown
   - repo: https://github.com/pre-commit/mirrors-prettier
@@ -93,6 +100,10 @@ repos:
     hooks:
       - id: detect-secrets
         name: "detect-secrets (baseline diff)"
+        # Wrapper keeps .secrets.baseline paths POSIX on Windows (upstream
+        # rewrites them with backslashes and exits 3). Runs inside this
+        # SHA-pinned hook env, so `python` resolves to its interpreter.
+        entry: python scripts/detect_secrets_stable.py
         args: ["--baseline", ".secrets.baseline"]
         exclude: |
           (?x)^(

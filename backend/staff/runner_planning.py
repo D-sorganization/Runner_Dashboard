@@ -15,7 +15,7 @@ from staff.adapters import ProviderAdapter
 from staff.lessons import select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec
-from staff.standards_registry import estimate_tokens
+from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP, estimate_tokens
 
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
 
@@ -62,6 +62,7 @@ def build_run_plan(
         raise ValueError(str(exc)) from exc
     repo_lessons = select_repo_lessons(req.repo)
     references_block, library_work_ids = library_references_for_plan(role, req)
+    prompt_token_cap = TOTAL_CONTEXT_TOKEN_CAP if provider == "codex" else None
     prompt = workspace.compose_prompt(
         role,
         repo=req.repo,
@@ -73,6 +74,7 @@ def build_run_plan(
         dispatch_bundle=bundle,
         library_references=references_block,
         repo_lessons_result=repo_lessons,
+        prompt_token_cap=prompt_token_cap,
     )
     adapter = adapters[provider]
     chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)

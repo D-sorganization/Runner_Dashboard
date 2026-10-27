@@ -102,7 +102,7 @@ def test_validate_fleet_node_url_tailscale_cgnat_high() -> None:
     """Pin the high end of 100.64.0.0/10. Anything inside this range must
     pass; anything outside must fail.
     """
-    assert security.validate_fleet_node_url("http://100.127.255.254:8321") == "http://100.127.255.254:8321"
+    assert security.validate_fleet_node_url("http://100.127.255.254:8321") == "http://100.127.255.254:8321"  # pragma: allowlist private-topology
 
 
 def test_validate_fleet_node_url_just_above_cgnat_rejected() -> None:
@@ -116,8 +116,8 @@ def test_validate_fleet_node_url_tailscale_magicdns_hostname() -> None:
     """Tailscale MagicDNS hostnames end in .ts.net; allow them so operators
     can use stable names instead of CGNAT IPs in registry / FLEET_NODES."""
     assert (
-        security.validate_fleet_node_url("https://controltower.tail-scale.ts.net")
-        == "https://controltower.tail-scale.ts.net"
+        security.validate_fleet_node_url("https://node-a.fleet-example.ts.net")
+        == "https://node-a.fleet-example.ts.net"
     )
 
 
@@ -173,8 +173,8 @@ def test_fleet_url_internal_resolving_to_link_local_rejected(monkeypatch) -> Non
 
 def test_fleet_url_tsnet_resolving_to_cgnat_accepted(monkeypatch) -> None:
     """#931: a .ts.net name resolving into the Tailscale CGNAT range is allowed."""
-    _patch_resolver(monkeypatch, {"peer.tail-scale.ts.net": ["100.101.102.103"]})
-    assert security.validate_fleet_node_url("https://peer.tail-scale.ts.net") == "https://peer.tail-scale.ts.net"
+    _patch_resolver(monkeypatch, {"peer.fleet-example.ts.net": ["100.64.0.101"]})
+    assert security.validate_fleet_node_url("https://peer.fleet-example.ts.net") == "https://peer.fleet-example.ts.net"
 
 
 def test_fleet_url_internal_resolving_to_private_accepted(monkeypatch) -> None:
@@ -187,7 +187,7 @@ def test_fleet_url_unresolvable_name_accepted_at_config_time(monkeypatch) -> Non
     """#931: a name that does not resolve (peer offline) is still accepted at
     config time — connect-time pinning guards the actual request."""
     _patch_resolver(monkeypatch, {})  # everything resolves to []
-    assert security.validate_fleet_node_url("https://offline.ts.net") == "https://offline.ts.net"
+    assert security.validate_fleet_node_url("https://offline.ts.net") == "https://offline.ts.net"  # pragma: allowlist private-topology
 
 
 def test_resolve_and_validate_fleet_host_pins_private_ip(monkeypatch) -> None:
@@ -198,9 +198,9 @@ def test_resolve_and_validate_fleet_host_pins_private_ip(monkeypatch) -> None:
 
 def test_resolve_and_validate_fleet_host_rejects_public(monkeypatch) -> None:
     """#931: pinning a name that resolves public fails loudly (rebinding guard)."""
-    _patch_resolver(monkeypatch, {"rebind.ts.net": ["1.2.3.4"]})
+    _patch_resolver(monkeypatch, {"rebind.ts.net": ["1.2.3.4"]})  # pragma: allowlist private-topology
     with pytest.raises(ValueError, match="outside allowed"):
-        security.resolve_and_validate_fleet_host("rebind.ts.net")
+        security.resolve_and_validate_fleet_host("rebind.ts.net")  # pragma: allowlist private-topology
 
 
 def test_resolve_and_validate_fleet_host_literal_ip(monkeypatch) -> None:
@@ -496,7 +496,7 @@ def test_safe_subprocess_env_strips_new_secret_suffixes(monkeypatch) -> None:
     stripped by the suffix catch-all, while known-required vars pass through."""
     fake_env = {
         "PATH": "/usr/bin",
-        "HOME": "/home/dieter",
+        "HOME": "/home/fleet-operator",
         "LANG": "en_US.UTF-8",
         "MY_NEW_SECRET": "x",
         "FOO_TOKEN": "y",
@@ -511,7 +511,7 @@ def test_safe_subprocess_env_strips_new_secret_suffixes(monkeypatch) -> None:
     for leaked in ("MY_NEW_SECRET", "FOO_TOKEN", "BAR_API_KEY", "DB_PASSWORD", "SVC_CREDENTIALS", "ROOT_PASSWD"):
         assert leaked not in result, f"{leaked} leaked to subprocess env"
     # Required, non-secret vars still pass through.
-    assert result == {"PATH": "/usr/bin", "HOME": "/home/dieter", "LANG": "en_US.UTF-8"}
+    assert result == {"PATH": "/usr/bin", "HOME": "/home/fleet-operator", "LANG": "en_US.UTF-8"}
 
 
 def test_is_secret_env_key_suffix_anchored() -> None:
