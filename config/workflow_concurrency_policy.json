@@ -1,13 +1,13 @@
 {
   "cancel_in_progress_false_allowlist": {
-    "pr-cap.yml": "PR-cap caller must await its separately serialized metadata workflow without interrupting the one-shot advisory comment.",
     "reusable-pr-cap.yml": "PR-cap metadata reporting and its one-shot comment must finish without cancellation during a potentially committed POST.",
     "collate-changes.yml": "Batch collation updates one rolling bot PR; cancel mid-run leaves bot/collate-changes inconsistent and recreates cancelled main runs from overlap.",
     "conflict-disarm.yml": "Conflict disarm must finish PR label and queue mutations; cancel mid-run risks half-applied disarm state.",
     "arm-cap-reconcile.yml": "Armed-PR inventory reconcile must finish SQLite inventory sync before optional disarm dispatch; cancel mid-run risks cap drift.",
     "deploy-qualified-release.yml": "A root deployment transaction must reach commit or rollback and cannot be interrupted safely.",
     "release.yml": "Release publishing must not be interrupted after versioning and tag orchestration begin.",
-    "main-ci-auto-release.yml": "Per-SHA release packaging runs npm ci, wheelhouse build, and gh release create; the publish job (job-level group main-ci-auto-release-publish) must never be cancelled mid-upload; only the wait-only gate job is cancellable."
+    "main-ci-auto-release.yml": "Per-SHA release packaging runs npm ci, wheelhouse build, and gh release create; the publish job (job-level group main-ci-auto-release-publish) must never be cancelled mid-upload; only the wait-only gate job is cancellable.",
+    "ci-slo-check.yml": "Read-only SLO snapshot and stall alarm must finish GitHub API reads; cancel-in-progress would discard partial metrics without reducing queue load."
   },
   "pr_concurrency_singleton_allowlist": {
     "Agent-Redundant-PR-Closer.yml": "Duplicate PR arbitration intentionally runs as one repo-wide singleton to compare all open PRs."

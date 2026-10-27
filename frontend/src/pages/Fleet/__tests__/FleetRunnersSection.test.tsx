@@ -11,28 +11,28 @@ afterEach(() => {
 const mockRunners = [
   {
     id: 1,
-    name: "d-sorg-local-ControlTower-1",
+    name: "d-sorg-local-node-a-1",
     status: "online",
     busy: false,
     labels: [{ name: "self-hosted" }, { name: "linux" }],
   },
   {
     id: 2,
-    name: "d-sorg-local-ControlTower-2",
+    name: "d-sorg-local-node-a-2",
     status: "online",
     busy: true,
     labels: [{ name: "self-hosted" }],
   },
   {
     id: 3,
-    name: "d-sorg-local-DeskComputer-1",
+    name: "d-sorg-local-hub-a-1",
     status: "offline",
     busy: false,
     labels: [],
   },
   {
     id: 4,
-    name: "d-sorg-local-ControlTower-3",
+    name: "d-sorg-local-node-a-3",
     status: "online",
     busy: true,
     labels: [],
@@ -43,7 +43,7 @@ const mockRuns = [
   {
     id: 991,
     run_number: 42,
-    runner_name: "d-sorg-local-ControlTower-2",
+    runner_name: "d-sorg-local-node-a-2",
     head_branch: "feat/some-branch",
     workflow_name: "CI Standard",
     html_url: "https://github.com/runs/991",
@@ -86,8 +86,8 @@ describe("FleetRunnersSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^Offline \(/i }));
 
-    expect(screen.getByText("d-sorg-local-DeskComputer-1")).toBeInTheDocument();
-    expect(screen.queryByText("d-sorg-local-ControlTower-1")).not.toBeInTheDocument();
+    expect(screen.getByText("d-sorg-local-hub-a-1")).toBeInTheDocument();
+    expect(screen.queryByText("d-sorg-local-node-a-1")).not.toBeInTheDocument();
   });
 
   it("dispatches fleet controls and runner actions", () => {
@@ -154,7 +154,7 @@ describe("FleetRunnersSection", () => {
     fireEvent.click(takeOfflineItem);
 
     expect(onMaintenanceAction).toHaveBeenCalledWith(
-      "d-sorg-local-ControlTower-1",
+      "d-sorg-local-node-a-1",
       "take_offline",
       false
     );
@@ -173,11 +173,11 @@ describe("FleetRunnersSection", () => {
       />
     );
 
-    const busyRow = screen.getByText("d-sorg-local-ControlTower-3").closest("tr");
+    const busyRow = screen.getByText("d-sorg-local-node-a-3").closest("tr");
     expect(busyRow).not.toBeNull();
     expect(busyRow!.textContent).toContain("busy");
 
-    const offlineRow = screen.getByText("d-sorg-local-DeskComputer-1").closest("tr");
+    const offlineRow = screen.getByText("d-sorg-local-hub-a-1").closest("tr");
     expect(offlineRow).not.toBeNull();
     const cells = offlineRow!.querySelectorAll("td");
     // Current Task is the 4th column (Runner, Status, Labels, Current Task, Actions)

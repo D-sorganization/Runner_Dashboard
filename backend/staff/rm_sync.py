@@ -27,6 +27,7 @@ INTERVAL_SECONDS = 15 * 60
 GIT_TIMEOUT_SECONDS = 60
 # The timer writes status every ~15 minutes; keep roughly a day of history.
 BACKUP_KEEP = 96
+SKIPPED_ATTENTION_THRESHOLD = 3
 
 
 def _state_path() -> Path:
@@ -101,6 +102,24 @@ def source_status(root: Path | None = None, *, state_path: Path | None = None) -
     }
 
 
+def stale_source_warning() -> str | None:
+    """One-line warning when the RM checkout has stopped updating, else None (#2978).
+
+    Reads only the timer's status file (no Git, no role validation), so request paths can call it.
+    Post: None unless the status belongs to ``STAFF_RM_ROOT`` and shows repeated skips or a failed refresh.
+    """
+    configured = os.environ.get("STAFF_RM_ROOT")
+    if not configured:
+        return None
+    state = _read(_state_path())
+    if state.get("root") != str(Path(configured).expanduser().resolve()):
+        return None
+    if not (state.get("attention") or state.get("status") == "error"):
+        return None
+    reason = state.get("reason") or "unknown reason"
+    return f"RM checkout sync {state.get('status')} ({reason}); board reads may be stale or target a retired board"
+
+
 def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     """Update clean main only; dirty, ahead/diverged and unavailable repos survive.
 
@@ -152,6 +171,15 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         # Never log Git stderr/stdout: remote URLs and helpers may contain credentials.
         state.update(status="error", reason=type(exc).__name__)
+    if state["status"] == "skipped":
+        state["consecutive_skips"] = (
+            int(previous.get("consecutive_skips", 0)) + 1 if previous.get("status") == "skipped" else 1
+        )
+    elif state["status"] in {"updated", "unchanged"}:
+        state["consecutive_skips"] = 0
+    else:
+        state["consecutive_skips"] = int(previous.get("consecutive_skips", 0))
+    state["attention"] = state["consecutive_skips"] >= SKIPPED_ATTENTION_THRESHOLD
     try:
         state["commit"] = _git(root, "rev-parse", "HEAD")
         state["commit_time"] = int(_git(root, "show", "-s", "--format=%ct", "HEAD"))

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from delivery_metrics.escapes import weighted_escapes
 from delivery_metrics.models import CheckRunSnapshot, PrSnapshot
 
 
@@ -21,6 +22,7 @@ class PrRollup:
     ci_rounds_to_green: int | None
     lead_time_seconds: float | None
     ci_wait_seconds: float | None
+    rework_seconds: float | None
     dieter_wait_seconds: float | None
     churn_flags: tuple[str, ...]
 
@@ -32,6 +34,7 @@ class PrRollup:
             "ci_rounds_to_green": self.ci_rounds_to_green,
             "lead_time_seconds": self.lead_time_seconds,
             "ci_wait_seconds": self.ci_wait_seconds,
+            "rework_seconds": self.rework_seconds,
             "dieter_wait_seconds": self.dieter_wait_seconds,
             "churn_flags": list(self.churn_flags),
         }
@@ -73,6 +76,37 @@ def lead_time_seconds(pr: PrSnapshot) -> float | None:
     return _duration_seconds(pr.created_at, end)
 
 
+def _run_sequence_key(run: CheckRunSnapshot) -> datetime:
+    return run.started_at or run.completed_at or datetime.min.replace(tzinfo=UTC)
+
+
+def rework_seconds(runs: Sequence[CheckRunSnapshot]) -> float | None:
+    """Seconds waiting to retry after a failed check (per check name).
+
+    Pre: ``runs`` belong to one PR head.
+    Post: ``None`` when no runs; otherwise non-negative. In-progress retries count.
+    """
+    if not runs:
+        return None
+    by_name: dict[str, list[CheckRunSnapshot]] = defaultdict(list)
+    for run in runs:
+        by_name[run.name].append(run)
+    total = 0.0
+    saw_failure = False
+    for items in by_name.values():
+        items.sort(key=_run_sequence_key)
+        for idx, run in enumerate(items):
+            if run.status != "completed" or run.conclusion != "failure" or run.completed_at is None:
+                continue
+            saw_failure = True
+            for nxt in items[idx + 1 :]:
+                if nxt.started_at is None:
+                    continue
+                total += max(0.0, (nxt.started_at - run.completed_at).total_seconds())
+                break
+    return total if saw_failure else 0.0
+
+
 def churn_flags(pr: PrSnapshot, runs: Sequence[CheckRunSnapshot], *, now: datetime) -> tuple[str, ...]:
     flags: list[str] = []
     if pr.state == "closed" and not pr.merged:
@@ -97,6 +131,7 @@ def build_pr_rollup(pr: PrSnapshot, runs: Sequence[CheckRunSnapshot], *, now: da
         ci_rounds_to_green=ci_rounds_to_green(runs),
         lead_time_seconds=lead_time_seconds(pr),
         ci_wait_seconds=ci_wait_seconds(pr, runs),
+        rework_seconds=rework_seconds(runs),
         dieter_wait_seconds=None,
         churn_flags=churn_flags(pr, runs, now=now),
     )
@@ -140,7 +175,7 @@ def aggregate_window(
         "open": sum(1 for p in pulls if p.state == "open"),
         "median_ci_rounds": _median(ci_known),
         "top_failing_checks": top_failing_checks(all_runs),
-        "escapes_weighted": [],
+        "escapes_weighted": weighted_escapes(pulls, checks_by_head),
         "pr_drill_down": [r.to_dict() for r in pr_rows],
     }
 

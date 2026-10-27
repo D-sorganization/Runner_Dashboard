@@ -82,8 +82,41 @@ def shape_new_thread(body: Any, caller_id: str) -> tuple[str, str, list[str], di
     if caller_id not in participants:
         participants.append(caller_id)
 
+    for flag in ("no_auto_reply", "participants_only"):
+        if getattr(body, flag, False):
+            meta[flag] = True
+
     title = body.title or (f"Conversation with {role.title()}" if role else "New conversation")
     return title, kind, participants, meta
+
+
+def thread_readable_by(thread: Any, caller: Any) -> bool:
+    """A participants_only thread is readable only by its participants (#3017); others by any reader."""
+    if not (thread.meta or {}).get("participants_only"):
+        return True
+    from identity import format_caller
+
+    return bool({caller.id, format_caller(caller)} & set(thread.participants))
+
+
+def store_without_turn(
+    store: ConversationStore, bus: Any, thread_id: str, body: Any, caller_id: str, idempotency_key: str
+) -> dict[str, Any]:
+    """Persist and broadcast a post to a no_auto_reply thread; no reply slot, no chat turn (#3017)."""
+    import asyncio
+
+    user_msg = store.add_message(
+        thread_id=thread_id,
+        author_kind="user",
+        author=caller_id,
+        kind=body.kind or "text",
+        body_md=body.body,
+        meta=body.meta or {},
+        idempotency_key=idempotency_key,
+        delivery="complete",
+    )
+    asyncio.create_task(bus.publish_message(thread_id, user_msg.to_dict()))
+    return {"message": user_msg.to_dict()}
 
 
 class StaleThreadEpochError(ValueError):
