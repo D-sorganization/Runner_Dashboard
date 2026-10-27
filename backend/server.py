@@ -2690,6 +2690,11 @@ async def _startup() -> None:
         assert_no_maxwell_port_collision,
         assert_valid_active_registry,
     )
+    from overlay_contract import assert_overlay_ready
+
+    # Issue #3079: refuse to start when a configured private overlay is
+    # missing or invalid. No overlay configured -> no-op (unchanged behaviour).
+    assert_overlay_ready()
 
     _startup_reg = load_machine_registry()
     assert_no_maxwell_port_collision(
