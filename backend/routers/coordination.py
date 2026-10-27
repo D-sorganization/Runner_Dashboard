@@ -11,6 +11,7 @@ Routes (all under ``/api/coordination``):
   POST /claims              Check then lease; 409 when another agent holds it.
   POST /claims/release      Release the lease (RM ``release_agent_lease``).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
+  GET  /postman/reports     Newest postman dry-run reports (what it would deliver; nothing is sent).
 
 Auth: reads ``require_fleet_peer``; writes ``require_coordination_writer``
 (scope ``coordination.write`` or the loopback orchestrator peer) plus the
@@ -26,7 +27,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from coordination import service
+from coordination import postman_runner, service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
@@ -143,3 +144,13 @@ async def get_briefing(
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     return await build_briefing(_repo(repo), agent)
+
+
+@router.get("/postman/reports")
+async def get_postman_reports(
+    limit: int = Query(default=10, ge=1, le=postman_runner.REPORT_KEEP),
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Read-only: the postman runs in dry run only, so ``live`` is always False."""
+    reports = await run_in_threadpool(postman_runner.read_reports, None, limit)
+    return {"live": False, "reports": reports}
