@@ -31,8 +31,6 @@ from staff.plan import RunRequest
 
 logger = logging.getLogger("dashboard.staff.watch_tick")
 
-BURN_PROBE_TODO = "TODO(#2878): read the Actions-burn/cost store once it lands; stub only."
-
 Role = Literal["queue-shepherd", "pr-remediator", "night-watch"]
 _ROLES: frozenset[str] = frozenset({"queue-shepherd", "pr-remediator", "night-watch"})
 
