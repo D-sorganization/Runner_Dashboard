@@ -486,6 +486,8 @@ jobs:
             pip install -r requirements.txt
             echo "$RUNNER_TEMP/ci-tools/bin" >> "$GITHUB_PATH"
           fi
+      - name: Validate private CI gate manifest
+        run: python -m backend.ci.private_gate_manifest --validate
       - name: Check Tool Version Consistency
         run: |
           echo "Validating tool versions match .pre-commit-config.yaml..."
