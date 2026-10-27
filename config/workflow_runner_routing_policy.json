@@ -44,6 +44,7 @@
         "lint-workflow-files.yml",
         "priority-expedite-guard.yml",
         "pr-cap.yml",
+        "rd-barb-hold-integrity.yml",
         "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",
         "Verify-Issue-Closure.yml",
