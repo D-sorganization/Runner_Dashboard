@@ -116,8 +116,6 @@ class ChatTurnRunner:
         stdin_text: str | None = None,
     ) -> subprocess.Popen[str]:
         """Spawn the provider CLI subprocess in read-only scratch mode."""
-        if stdin_text is None:
-            return spawn_cli_process(cmd=cmd, cwd=cwd, env=env)
         return spawn_cli_process(cmd=cmd, cwd=cwd, env=env, stdin_text=stdin_text)
 
     async def execute_turn(
@@ -369,11 +367,8 @@ class ChatTurnRunner:
             )
         env = {**os.environ, **adapter.runtime_env()}
 
-        stdin_text = adapter.chat_stdin(prompt)
-        if isinstance(stdin_text, str):  # prompt too long for argv (#2744)
-            proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env, stdin_text=stdin_text)
-        else:
-            proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
+        # chat_stdin() is non-None only when the prompt is too long for argv (#2744).
+        proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env, stdin_text=adapter.chat_stdin(prompt))
 
         # Stream stdout lines incrementally and publish tokens live (SC-B1-G10)
         stream_out = await stream_turn_output(

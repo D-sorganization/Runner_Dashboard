@@ -244,11 +244,8 @@ class ProviderAdapter:
             if session_id:
                 cmd += ["--session", session_id]
         elif self.provider_id == "antigravity":
-            cmd = [self.executable]
-            if self.chat_stdin(prompt) is None:
-                cmd += ["--print", prompt]
-            cmd += ["--output-format", "stream-json", "--add-dir", workdir]
-            cmd += read_only
+            cmd = [self.executable, *(["--print", prompt] if self.chat_stdin(prompt) is None else [])]
+            cmd += ["--output-format", "stream-json", "--add-dir", workdir, *read_only]
             if session_id:
                 cmd += ["--conversation", session_id]
         elif self.provider_id == "cursor-agent":
