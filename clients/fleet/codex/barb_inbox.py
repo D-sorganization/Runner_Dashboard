@@ -13,8 +13,8 @@ def main() -> int:
     prompt = str(event.get("prompt", ""))
     if "@barb" not in prompt.casefold():
         return 0
-    cli = Path(__file__).with_name("rd_threads_cli").read_text(encoding="utf-8").strip()
-    cli = Path(cli)
+    cli_path = Path(__file__).with_name("rd_threads_cli").read_text(encoding="utf-8").strip()
+    cli = Path(cli_path)
     if not cli.is_file():
         return 0
     result = subprocess.run(
