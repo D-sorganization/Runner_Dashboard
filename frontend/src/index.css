@@ -950,6 +950,31 @@ table, .tabular {
   height: auto;
 }
 
+.shell-session-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  max-width: min(240px, 28vw);
+  margin-inline-end: 4px;
+  line-height: 1.2;
+}
+.shell-session-identity__user {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.shell-session-identity__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
 .shell-action {
   display: inline-flex;
   align-items: center;
