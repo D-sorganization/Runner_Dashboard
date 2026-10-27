@@ -22,24 +22,54 @@ def context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(tmp_path / "memory.sqlite3"))
     reset_memory_store()
     store = RunStore(tmp_path / "runs.sqlite3")
-    rec = RunRecord("run", "role", "claude", None, "machine", "repo", "prompt", "", "test",
-                    status="running", requested_by="operator", standards_version="v1")
+    rec = RunRecord(
+        "run",
+        "role",
+        "claude",
+        None,
+        "machine",
+        "repo",
+        "prompt",
+        "",
+        "test",
+        status="running",
+        requested_by="operator",
+        standards_version="v1",
+    )
     store.create_run(rec)
     monkeypatch.setattr(run_stores, "get_store", lambda: store)
     monkeypatch.setattr(tokens, "_active_run_tokens", {"run": "staff:role:run"})
-    principal = Principal(id="staff:role:run", type="bot", name="test", roles=["staff-run:run"], scopes=["memory.write"])
+    principal = Principal(
+        id="staff:role:run", type="bot", name="test", roles=["staff-run:run"], scopes=["memory.write"]
+    )
     yield store, rec, principal
     store.close()
     reset_memory_store()
 
 
 def request(**kwargs) -> MemoryAppendRequest:
-    return MemoryAppendRequest(**({"entry_type": "lesson", "source_product": "test", "repo": "repo",
-                                  "body": {"text": "exact"}} | kwargs))
+    return MemoryAppendRequest(
+        **({"entry_type": "lesson", "source_product": "test", "repo": "repo", "body": {"text": "exact"}} | kwargs)
+    )
 
 
-@pytest.mark.parametrize("case", ["generic", "unbound", "marker", "multiple_markers", "role", "missing_run",
-                                  "repo", "body_repo", "source", "standards", "requester", "completed"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "generic",
+        "unbound",
+        "marker",
+        "multiple_markers",
+        "role",
+        "missing_run",
+        "repo",
+        "body_repo",
+        "source",
+        "standards",
+        "requester",
+        "completed",
+    ],
+)
 def test_api_rejects_fabricated_or_stale_provenance(context, case: str) -> None:
     store, _, principal = context
     kwargs = {}
@@ -89,9 +119,14 @@ def test_internal_filing_reloads_and_checks_authoritative_run(context, case: str
     if case == "missing":
         store._conn.execute("DELETE FROM runs")
     else:
-        field, value = {"failed": ("status", "failed"), "exit": ("exit_code", 1), "role": ("role", "other"),
-                        "repo": ("repo", "other"), "requester": ("requested_by", "other"),
-                        "standards": ("standards_version", "")}[case]
+        field, value = {
+            "failed": ("status", "failed"),
+            "exit": ("exit_code", 1),
+            "role": ("role", "other"),
+            "repo": ("repo", "other"),
+            "requester": ("requested_by", "other"),
+            "standards": ("standards_version", ""),
+        }[case]
         store.update_run("run", **{field: value})
     assert file_proposed_lessons(store, caller, events=[{"kind": "assistant", "text": "STAFF_LESSON: exact"}]) == []
     assert get_memory_store().list_entries(entry_type="lesson") == []
@@ -105,3 +140,23 @@ def test_internal_valid_run_preserves_legacy_parser_and_reads(context) -> None:
     assert len(ids) == 1
     entry = get_memory_store().get(ids[0])
     assert entry.source_run == "run" and entry.author_principal == "operator"
+
+
+@pytest.mark.parametrize("bound", [False, True])
+def test_http_proposal_requires_active_run_binding(context, monkeypatch: pytest.MonkeyPatch, bound: bool) -> None:
+    from fastapi.testclient import TestClient
+    from identity import require_principal
+    from server import app
+
+    _, _, principal = context
+    if not bound:
+        tokens._active_run_tokens.clear()
+    monkeypatch.setitem(app.dependency_overrides, require_principal, lambda: principal)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/api/v1/memory",
+            json=request(source_run="run").model_dump(),
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+    assert response.status_code == (201 if bound else 403)
+    assert len(get_memory_store().list_entries(entry_type="lesson")) == int(bound)
