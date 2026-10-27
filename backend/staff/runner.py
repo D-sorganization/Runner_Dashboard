@@ -36,6 +36,10 @@ NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
 
+from staff.runner_registry import get_runner, reset_runner  # noqa: E402
+
+__all__ = ["RunPlan", "RunRequest", "StaffRunner", "get_runner", "reset_runner"]
+
 
 class StaffRunner:
     """Owns run threads and the process table for this node."""
@@ -394,21 +398,3 @@ class StaffRunner:
         self, rec: RunRecord, adapter: ProviderAdapter, proc: Any, transcript: Path, watchdog: Any = None
     ) -> Any:
         return ops.pump_output(rec, adapter, proc, transcript, self.store, watchdog)
-
-
-_runner: StaffRunner | None = None
-_runner_lock = threading.Lock()
-
-
-def get_runner() -> StaffRunner:
-    global _runner  # noqa: PLW0603
-    with _runner_lock:
-        if _runner is None:
-            _runner = StaffRunner()
-        return _runner
-
-
-def reset_runner() -> None:
-    global _runner  # noqa: PLW0603
-    with _runner_lock:
-        _runner = None
