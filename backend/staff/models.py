@@ -126,6 +126,8 @@ class StaffRunRecord(BaseModel):
     prompt: str = ""
     status: str = "queued"
     requested_by: str = ""
+    dispatched_by: str = ""
+    dispatch_origin: str = "other"
     on_behalf_of: str = ""
     created_at: str = ""
     started_at: str | None = None

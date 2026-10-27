@@ -40,6 +40,17 @@ CREATE TABLE IF NOT EXISTS events (
     text TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id, seq);
+CREATE TABLE IF NOT EXISTS dispatcher_fallbacks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idempotency_key TEXT NOT NULL,
+    principal TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    task_class TEXT NOT NULL,
+    est_grok_turns INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(principal, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS dispatcher_fallbacks_created_idx ON dispatcher_fallbacks(created_at);
 """
 
 # Columns added after the first schema shipped. Applied with a guarded
@@ -80,4 +91,6 @@ _ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
     ("lessons_tokens", "INTEGER NOT NULL DEFAULT 0"),
     ("execution_mode", "TEXT NOT NULL DEFAULT 'local'"),
     ("remote_session_url", "TEXT NOT NULL DEFAULT ''"),
+    ("dispatched_by", "TEXT NOT NULL DEFAULT ''"),
+    ("dispatch_origin", "TEXT NOT NULL DEFAULT 'other'"),
 )
