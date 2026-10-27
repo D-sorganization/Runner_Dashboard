@@ -1611,12 +1611,22 @@
             "title": "Kind",
             "type": "string"
           },
+          "no_auto_reply": {
+            "default": false,
+            "title": "No Auto Reply",
+            "type": "boolean"
+          },
           "participants": {
             "items": {
               "type": "string"
             },
             "title": "Participants",
             "type": "array"
+          },
+          "participants_only": {
+            "default": false,
+            "title": "Participants Only",
+            "type": "boolean"
           },
           "role": {
             "anyOf": [
@@ -1982,6 +1992,55 @@
         },
         "required": ["plan"],
         "title": "DraftEdit",
+        "type": "object"
+      },
+      "EscalationIngestBody": {
+        "properties": {
+          "concurrent_cap": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concurrent Cap"
+          },
+          "github_actor": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Github Actor",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": ["applied", "stripped", "refused"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "pr_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr Number",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr_number", "github_actor", "outcome"],
+        "title": "EscalationIngestBody",
         "type": "object"
       },
       "EvaluateBoardPayload": {
@@ -6067,6 +6126,30 @@
         "title": "StaffDispatchResponse",
         "type": "object"
       },
+      "StaffEscalateBody": {
+        "properties": {
+          "pr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr", "reason"],
+        "title": "StaffEscalateBody",
+        "type": "object"
+      },
       "StaffHold": {
         "additionalProperties": true,
         "description": "One policy hold.\n\n``kind``: ``\"guardrail\"`` (seeded from a role's YAML ``holds:`` list;\nstays in the role prompt, shown in the UI as a standing rule, never\nblocks scheduling) or ``\"schedule\"`` (created via the Holds tab, the\nholds API, or a ``staff.hold`` action; blocks scheduling). Owner\ndecision, issue #1726.",
@@ -7775,6 +7858,27 @@
             },
             "title": "Attention",
             "type": "array"
+          },
+          "board_sessions": {
+            "description": "Agent sessions with live coordination-board presence, incl. desktop CLI agents (#2980)",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Board Sessions",
+            "type": "array"
+          },
+          "board_sessions_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why board_sessions may be empty",
+            "title": "Board Sessions Warning"
           },
           "exclusions_active": {
             "default": 0,
@@ -12942,6 +13046,56 @@
         "tags": ["dispatch"]
       }
     },
+    "/api/fleet/escalation-events": {
+      "post": {
+        "description": "Record a label guard outcome from a fleet repository workflow.",
+        "operationId": "ingest_escalation_event_api_fleet_escalation_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalationIngestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ingest Escalation Event Api Fleet Escalation Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Escalation Event",
+        "tags": ["escalation"]
+      }
+    },
     "/api/fleet/hardware": {
       "get": {
         "description": "Return centralized fleet hardware specs for workload placement.",
@@ -17798,6 +17952,86 @@
         ],
         "summary": "Trigger Briefing",
         "tags": ["staff-inbox"]
+      }
+    },
+    "/api/staff/escalate": {
+      "post": {
+        "description": "Jump a green, unheld PR to the front of the merge queue (never skips required checks).",
+        "operationId": "staff_escalate_merge_queue_api_staff_escalate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffEscalateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Staff Escalate Merge Queue Api Staff Escalate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Staff Escalate Merge Queue",
+        "tags": ["escalation"]
+      }
+    },
+    "/api/staff/escalations": {
+      "get": {
+        "description": "Active expedited PRs (latest hub event ``applied``) and recent audit rows.",
+        "operationId": "list_escalations_api_staff_escalations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Escalations Api Staff Escalations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Escalations",
+        "tags": ["escalation"]
       }
     },
     "/api/staff/exclusions": {

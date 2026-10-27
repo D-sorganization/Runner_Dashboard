@@ -4059,6 +4059,33 @@ th.sortable.active .sort-indicator {
   background: rgba(88, 166, 255, 0.08);
 }
 @media (max-width: 768px) {
+  /* Keep long section strips inside the page's horizontal viewport. */
+  .subtabs {
+    max-width: 100%;
+    min-width: 0;
+  }
+  .subtabs-strip {
+    flex: 1 1 auto;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .subtabs-strip .subtab {
+    flex: 0 0 auto;
+    min-height: var(--mobile-hit-target);
+    min-width: var(--mobile-hit-target);
+  }
+  .subtabs-right {
+    flex: 0 0 auto;
+  }
+  .mobile-shell__content > .agent-bus-page {
+    box-sizing: border-box;
+    min-width: 0;
+    padding-inline: var(--space-8, 16px);
+  }
   .subtabs.remediation-mobile-tabs {
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
