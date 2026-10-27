@@ -1,7 +1,8 @@
 // @vitest-environment node
 /**
  * lazyChunks.test.ts — the Fleet and Remediation pages must stay out of the
- * eagerly loaded graph (entry chunk + its static imports), so /staff and the
+ * eagerly loaded graph (entry chunk + its static imports). Optional telemetry
+ * also stays outside that graph (#3282), so /staff and the
  * other first-load routes do not download them (#2990).
  */
 import path from "node:path";
@@ -27,7 +28,7 @@ const LAZY_MODULES = [
   /pages\/Remediation\/Mobile/,
 ];
 
-describe("eager graph excludes Fleet/Remediation pages (#2990)", () => {
+describe("eager graph excludes lazy pages and optional telemetry", () => {
   it("entry chunk and its static imports contain none of the lazy pages", async () => {
     const result = await build({
       configFile: path.join(__dirname, "../../../../vite.config.ts"),
