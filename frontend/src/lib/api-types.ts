@@ -1564,6 +1564,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/postman/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Postman Reports
+         * @description Read-only: the postman runs in dry run only, so ``live`` is always False.
+         */
+        get: operations["get_postman_reports_api_coordination_postman_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/presence": {
         parameters: {
             query?: never;
@@ -15053,6 +15073,39 @@ export interface operations {
                 "application/json": components["schemas"]["coordination__models__AckBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_postman_reports_api_coordination_postman_reports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
