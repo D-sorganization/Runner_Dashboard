@@ -162,10 +162,8 @@ async def _handle_idempotent_post(
     if isinstance(result, Response):
         body_json = bytes(result.body).decode("utf-8")
         status_code = result.status_code
-    elif isinstance(result, BaseModel):
-        body_json = json.dumps(result.model_dump())
-    elif isinstance(result, dict):
-        body_json = json.dumps(result)
+    elif isinstance(result, (BaseModel, dict)):
+        body_json = json.dumps(result.model_dump() if isinstance(result, BaseModel) else result)
     else:
         body_json = json.dumps({"result": result})
     resp_headers = {"Content-Type": "application/json"}
@@ -182,12 +180,7 @@ async def _handle_idempotent_post(
         log.exception("could not record idempotent result for %s under key %s", endpoint, key)
         resp_headers["Idempotency-Receipt"] = "unrecorded"
 
-    return Response(
-        content=body_json,
-        status_code=status_code,
-        media_type="application/json",
-        headers=resp_headers,
-    )
+    return Response(content=body_json, status_code=status_code, media_type="application/json", headers=resp_headers)
 
 
 # ── Roster & Board ─────────────────────────────────────────────────────────────
