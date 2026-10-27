@@ -50,6 +50,8 @@ test = [
 
 [tool.uv]
 package = false
+# Transitive via CacheControl (pip-audit). 1.2.1 fails lint on CVE-2026-114613 (#3115).
+constraint-dependencies = ["msgpack>=1.2.2"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
