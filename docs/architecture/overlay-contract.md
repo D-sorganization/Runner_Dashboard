@@ -22,7 +22,11 @@ One JSON object. All keys are required and unknown keys are rejected.
 | `private_docs_dir`  | string | Private docs.                                      |
 
 A fake example lives in `tests/fixtures/overlay/mock-overlay.json`; public CI
-runs the suite against it alone.
+runs the suite against it alone. A second, docs-facing placeholder overlay
+lives at `tests/fixtures/overlay/sample-public-overlay.json` — see
+[private-mode-policy-schema.md](private-mode-policy-schema.md) for the
+Private Mode epic's (#3249) generic policy schema, which is operator data
+kept under this overlay's `policy_dir` and never in this repo.
 
 ## Startup behaviour
 

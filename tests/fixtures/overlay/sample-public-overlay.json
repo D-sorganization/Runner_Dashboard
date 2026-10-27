@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "hosts": [
+    { "name": "example-hub", "address": "example-hub.example.invalid" },
+    { "name": "example-node", "address": "example-node.example.invalid" }
+  ],
+  "agent_token_paths": {
+    "example-agent": "~/.config/example-corp-overlay/example-agent.token-path"
+  },
+  "roles_dir": "roles",
+  "policy_dir": "policy",
+  "private_docs_dir": "docs-private"
+}
