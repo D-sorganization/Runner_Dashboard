@@ -8,9 +8,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from identity import Principal, principal_has_scope, require_scope
-from routers import staff_v1
+from routers import staff_dispatcher
 from staff import idempotency
-from staff.store import DispatcherRateLimitError, RunRecord, RunStore
+from staff.dispatcher_metrics import DispatcherRateLimitError, record_dispatcher_fallback
+from staff.store import RunRecord, RunStore
 
 READER = Principal(id="reader", type="human", name="Reader", roles=[], scopes=["staff.read"])
 WRITER = Principal(id="agent-grok", type="bot", name="Grok", roles=[], scopes=["staff.dispatcher.ledger.write"])
@@ -20,10 +21,10 @@ WRITER = Principal(id="agent-grok", type="bot", name="Grok", roles=[], scopes=["
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     store = RunStore(tmp_path / "runs.sqlite3")
     monkeypatch.setattr("staff.runner.get_store", lambda: store)
-    monkeypatch.setattr(staff_v1, "get_runner", lambda: type("R", (), {"store": store})())
+    monkeypatch.setattr(staff_dispatcher, "get_runner", lambda: type("R", (), {"store": store})())
     monkeypatch.setattr(idempotency, "_GLOBAL_IDEMPOTENCY_STORE", idempotency.IdempotencyStore(tmp_path / "idem.db"))
     app = FastAPI()
-    app.include_router(staff_v1.router)
+    app.include_router(staff_dispatcher.router, prefix="/api/v1/staff")
     app.dependency_overrides[require_scope("staff.read")] = lambda: READER
     app.dependency_overrides[require_scope("staff.dispatcher.ledger.write")] = lambda: WRITER
     with TestClient(app) as test_client:
@@ -74,7 +75,8 @@ def test_metrics_aggregate_dispatches_and_fallbacks_by_day(client: TestClient) -
     assert saved_grok_run is not None
     assert saved_grok_run.dispatched_by == "principal:agent-grok"
     assert saved_grok_run.dispatch_origin == "grok"
-    store.record_dispatcher_fallback(
+    record_dispatcher_fallback(
+        store.path,
         reason="hub_unreachable",
         task_class="small",
         est_grok_turns=3,
@@ -136,7 +138,8 @@ def test_dispatcher_ledger_enforces_per_principal_rate_cap(client: TestClient) -
     store: RunStore = client.store  # type: ignore[attr-defined]
     today = datetime.now(UTC).date().isoformat()
     for index in range(60):
-        store.record_dispatcher_fallback(
+        record_dispatcher_fallback(
+            store.path,
             reason="held",
             task_class="small",
             est_grok_turns=1,
@@ -147,7 +150,8 @@ def test_dispatcher_ledger_enforces_per_principal_rate_cap(client: TestClient) -
         )
 
     with pytest.raises(DispatcherRateLimitError):
-        store.record_dispatcher_fallback(
+        record_dispatcher_fallback(
+            store.path,
             reason="held",
             task_class="small",
             est_grok_turns=1,

@@ -2,9 +2,92 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Any
+
+
+class DispatcherRateLimitError(RuntimeError):
+    """The dispatcher fallback ledger exceeded its per-principal write rate."""
+
+
+def dispatcher_origin(principal: str) -> str:
+    """Classify run provenance from the trusted principal identity only."""
+    normalized = principal.removeprefix("principal:")
+    if normalized == "agent-grok":
+        return "grok"
+    if normalized == "scheduler":
+        return "schedule"
+    if normalized == "watch_tick":
+        return "watch_tick"
+    return "other"
+
+
+def record_dispatcher_fallback(
+    database: str | Path,
+    *,
+    reason: str,
+    task_class: str,
+    est_grok_turns: int,
+    created_at: str,
+    principal: str,
+    idempotency_key: str,
+    rate_window_since: str,
+) -> dict[str, Any]:
+    """Persist a fallback once per key and enforce a 60 writes/minute principal cap."""
+    conn = sqlite3.connect(database, timeout=30.0, isolation_level=None)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA busy_timeout = 30000")
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            count = conn.execute(
+                "SELECT count(*) FROM dispatcher_fallbacks WHERE principal = ? AND created_at >= ?",
+                (principal, rate_window_since),
+            ).fetchone()[0]
+            if int(count) >= 60:
+                raise DispatcherRateLimitError(principal)
+            conn.execute(
+                """INSERT OR IGNORE INTO dispatcher_fallbacks
+                (idempotency_key, principal, reason, task_class, est_grok_turns, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (idempotency_key, principal, reason, task_class, est_grok_turns, created_at),
+            )
+            row = conn.execute(
+                """SELECT reason, task_class, est_grok_turns, created_at
+                FROM dispatcher_fallbacks WHERE principal = ? AND idempotency_key = ?""",
+                (principal, idempotency_key),
+            ).fetchone()
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def dispatcher_rows_since(database: str | Path, since: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Read only the bounded columns needed to aggregate dispatcher metrics."""
+    conn = sqlite3.connect(database, timeout=30.0)
+    conn.row_factory = sqlite3.Row
+    try:
+        runs = conn.execute(
+            """SELECT requested_by, dispatched_by, dispatch_origin, created_at, status, repo,
+            verification, target_kind, target_ref, artifact, pr_number
+            FROM runs WHERE created_at >= ? AND retry_of = ''""",
+            (since,),
+        ).fetchall()
+        fallbacks = conn.execute(
+            """SELECT reason, task_class, est_grok_turns, created_at
+            FROM dispatcher_fallbacks WHERE created_at >= ?""",
+            (since,),
+        ).fetchall()
+        return [dict(row) for row in runs], [dict(row) for row in fallbacks]
+    finally:
+        conn.close()
 
 
 def aggregate_dispatcher_metrics(

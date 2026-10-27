@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from staff.dispatcher_metrics import dispatcher_origin
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
@@ -109,12 +110,8 @@ class RunRecord:
             int(self.attempt),
             int(self.max_attempts),
         )
-        # requested_by is populated from the authenticated dispatch principal (or
-        # an internal scheduler identity), never from the request body.
-        if not self.dispatched_by:
-            self.dispatched_by = self.requested_by
-        if not self.dispatch_origin:
-            self.dispatch_origin = dispatcher_origin(self.dispatched_by)
+        self.dispatched_by = self.dispatched_by or self.requested_by
+        self.dispatch_origin = self.dispatch_origin or dispatcher_origin(self.dispatched_by)
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
@@ -126,22 +123,6 @@ class RunRecord:
 
 
 _RUN_FIELDS = frozenset(RunRecord.__dataclass_fields__)
-
-
-class DispatcherRateLimitError(RuntimeError):
-    """The dispatcher fallback ledger exceeded its per-principal write rate."""
-
-
-def dispatcher_origin(principal: str) -> str:
-    """Classify run provenance from the trusted principal identity only."""
-    normalized = principal.removeprefix("principal:")
-    if normalized == "agent-grok":
-        return "grok"
-    if normalized == "scheduler":
-        return "schedule"
-    if normalized == "watch_tick":
-        return "watch_tick"
-    return "other"
 
 
 def _run_from_row(row: sqlite3.Row) -> RunRecord:
@@ -219,60 +200,6 @@ class RunStore:
                 tuple(_redacted(c, getattr(rec, c)) for c in _COLUMNS),
             )  # noqa: S608
         return rec
-
-    def record_dispatcher_fallback(
-        self,
-        *,
-        reason: str,
-        task_class: str,
-        est_grok_turns: int,
-        created_at: str,
-        principal: str,
-        idempotency_key: str,
-        rate_window_since: str,
-    ) -> dict[str, Any]:
-        """Persist once per key and enforce a 60 writes/minute principal cap."""
-        with self._lock:
-            self._conn.execute("BEGIN IMMEDIATE")
-            try:
-                count = self._conn.execute(
-                    "SELECT count(*) FROM dispatcher_fallbacks WHERE principal = ? AND created_at >= ?",
-                    (principal, rate_window_since),
-                ).fetchone()[0]
-                if int(count) >= 60:
-                    raise DispatcherRateLimitError(principal)
-                self._conn.execute(
-                    """INSERT OR IGNORE INTO dispatcher_fallbacks
-                    (idempotency_key, principal, reason, task_class, est_grok_turns, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)""",
-                    (idempotency_key, principal, reason, task_class, est_grok_turns, created_at),
-                )
-                row = self._conn.execute(
-                    """SELECT reason, task_class, est_grok_turns, created_at
-                    FROM dispatcher_fallbacks WHERE principal = ? AND idempotency_key = ?""",
-                    (principal, idempotency_key),
-                ).fetchone()
-                self._conn.execute("COMMIT")
-            except BaseException:
-                self._conn.execute("ROLLBACK")
-                raise
-        return dict(row)
-
-    def dispatcher_rows_since(self, since: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """Return bounded-column dispatch and fallback rows for metrics aggregation."""
-        with self._lock:
-            runs = self._conn.execute(
-                """SELECT requested_by, dispatched_by, dispatch_origin, created_at, status, repo,
-                verification, target_kind, target_ref, artifact, pr_number
-                FROM runs WHERE created_at >= ? AND retry_of = ''""",
-                (since,),
-            ).fetchall()
-            fallbacks = self._conn.execute(
-                """SELECT reason, task_class, est_grok_turns, created_at
-                FROM dispatcher_fallbacks WHERE created_at >= ?""",
-                (since,),
-            ).fetchall()
-        return [dict(row) for row in runs], [dict(row) for row in fallbacks]
 
     def update_run(self, run_id: str, **fields: Any) -> None:
         if not fields:

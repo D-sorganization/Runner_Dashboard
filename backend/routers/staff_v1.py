@@ -15,13 +15,12 @@ import asyncio
 import json
 import logging
 import shutil
-from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 from routers.staff import (
     MAX_LIMIT,
     RunBody,
@@ -41,7 +40,6 @@ from staff.audit import (
 from staff.cli_version import provider_versions
 from staff.cloud_dispatch import cloud_capabilities_payload
 from staff.dispatch_auth import require_staff_run_dispatch
-from staff.dispatcher_metrics import aggregate_dispatcher_metrics
 from staff.idempotency import (
     IdempotencyStoreError,
     get_idempotency_store,
@@ -65,7 +63,7 @@ from staff.models import (
 from staff.pagination import CursorPage, paginate_items
 from staff.pricing import price_table_rows
 from staff.runner import get_runner
-from staff.store import USAGE_GROUPS, DispatcherRateLimitError
+from staff.store import USAGE_GROUPS
 
 log = logging.getLogger("dashboard.staff.v1")
 router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
@@ -73,64 +71,6 @@ router.include_router(staff_knowledge_router)
 router.include_router(staff_skills_router)
 router.include_router(staff_projects_router)
 router.include_router(staff_references_router)
-
-
-class DispatcherFallbackBody(BaseModel):
-    """Validated, bounded ledger entry for a dispatcher fallback."""
-
-    reason: Literal["hub_unreachable", "held", "rejected", "no_provider", "small_task"]
-    task_class: str = Field(min_length=1, max_length=80)
-    est_grok_turns: int = Field(ge=0, le=1000)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-@router.post("/dispatcher/ledger")
-async def write_dispatcher_ledger(
-    request: Request,
-    body: DispatcherFallbackBody,
-    idempotency_key: str = Depends(require_idempotency_header),
-    caller: Principal = Depends(require_scope("staff.dispatcher.ledger.write")),
-) -> Response:
-    """Append one bounded fallback record; the dedicated scope has no read access."""
-    if len(await request.body()) > 16_384:
-        raise HTTPException(status_code=422, detail="ledger body exceeds 16384 bytes")
-    caller_id = format_caller(caller)
-    payload = body.model_dump(mode="json")
-
-    def _execute() -> dict[str, Any]:
-        now = datetime.now(UTC)
-        try:
-            record = get_runner().store.record_dispatcher_fallback(
-                **payload,
-                created_at=now.isoformat().replace("+00:00", "Z"),
-                principal=caller_id,
-                idempotency_key=idempotency_key,
-                rate_window_since=(now - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
-            )
-        except DispatcherRateLimitError as exc:
-            raise HTTPException(status_code=429, detail="dispatcher ledger rate limit exceeded") from exc
-        return {"recorded": True, "fallback": record}
-
-    return await _handle_idempotent_post(
-        idempotency_key,
-        "POST /api/v1/staff/dispatcher/ledger",
-        caller_id,
-        payload,
-        _execute,
-    )
-
-
-@router.get("/dispatcher/metrics")
-async def read_dispatcher_metrics(
-    days: int = Query(default=7, ge=1, le=90),
-    _peer: Principal = Depends(require_scope("staff.read")),
-) -> dict[str, Any]:
-    """Return measured dispatcher counts and visibly labelled estimates."""
-    today = datetime.now(UTC).date()
-    since_day = today - timedelta(days=days - 1)
-    runs, fallbacks = get_runner().store.dispatcher_rows_since(f"{since_day.isoformat()}T00:00:00Z")
-    return aggregate_dispatcher_metrics(runs, fallbacks, days=days, today=today)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:
