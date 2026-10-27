@@ -76,7 +76,7 @@ def select(config: Mapping[str, str], current: str | None = None, failure_class:
 
 
 def switch_notice(d: Decision, *, failure_class: str | None, run_id: str | None = None) -> dict[str, Any] | None:
-    """Envelope for rd_barb_notify: fyi on a switch, alert when nothing is left."""
+    """Envelope for rd_barb_notify: update on a switch, alert when nothing is left (#3112)."""
     if not d.switched:
         return None
     key = f"rd-barb-provider-{d.previous}-{d.provider or 'none'}-{failure_class}"
@@ -90,7 +90,7 @@ def switch_notice(d: Decision, *, failure_class: str | None, run_id: str | None 
             "recommended_action": f"Re-authenticate the {DEFAULT_PROVIDER} CLI on Desk, then restart rd-barb.",
         }
     return base | {
-        "kind": "fyi",
+        "kind": "update",
         "urgency": "normal",
         "summary": f"rd-barb switched provider {d.previous} -> {d.provider} ({failure_class})",
         "body": (

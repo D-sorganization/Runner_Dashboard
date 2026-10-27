@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from scripts import rd_barb_notify as rn
+from scripts import rd_threads_envelope as env
 
 CFG = {"RD_BARB_WEBHOOK_URL": "https://hook.example/x", "RD_BARB_WEBHOOK_KEY": "k", "RD_BARB_THREAD_ID": "th_abc"}
 
@@ -167,6 +168,27 @@ def test_cli_rejects_bad_json_with_exit_1(
     monkeypatch.setattr(rn, "_fleet_thread_poster", lambda: None)
     assert rn.main(["send", "--json", str(bad)]) == 1
     assert "invalid_json" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("msg", [_question(), _alert(), _fyi("f1")])
+def test_valid_envelopes_also_pass_the_shared_rd_threads_contract(msg: dict[str, Any]) -> None:
+    """notify builds through rd_threads_envelope (#3112): same shape, one validator."""
+    shared = env.with_defaults({**msg, "kind": "update" if msg["kind"] == "fyi" else msg["kind"], "from": "rd-barb", "to": "barb"})
+    assert rn.validate(msg) == [] and env.validate(shared) == []
+
+
+def test_update_kind_is_accepted_as_the_canonical_alias_of_fyi(tmp_path: Path, rec: Rec) -> None:
+    msg = _fyi("f1")
+    msg["kind"] = "update"
+    assert rn.validate(msg) == []
+    assert _notifier(tmp_path, rec).notify(msg)["status"] == "queued_for_digest"
+
+
+def test_recommendation_reason_is_optional_but_must_be_one_line_when_present() -> None:
+    omitted = _question()
+    del omitted["recommendation_reason"]
+    assert rn.validate(omitted) == []
+    assert any("recommendation_reason" in p for p in rn.validate(_question(recommendation_reason="")))
 
 
 def test_load_config_env_wins_for_every_rd_barb_key(tmp_path: Path) -> None:

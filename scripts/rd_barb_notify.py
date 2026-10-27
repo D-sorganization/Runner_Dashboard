@@ -32,9 +32,12 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from scripts import rd_threads_envelope as _envelope
+
 log = logging.getLogger("rd_barb.notify")
 
-KINDS = frozenset({"fyi", "question", "alert"})
+KINDS = frozenset({"fyi", "question", "alert", "update"})
+DEPRECATED_KIND_ALIASES = {"fyi": "update"}
 URGENCIES = frozenset({"low", "normal", "high"})
 DEDUPE_WINDOW_S = 24 * 3600
 _HOME = Path.home() / ".config" / "runner-dashboard"
@@ -49,43 +52,40 @@ def _one_line(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip()) and "\n" not in value
 
 
+def _as_shared_envelope(msg: dict[str, Any]) -> dict[str, Any]:
+    """Map an rd-barb message onto the shared rd_threads_envelope shape (#3072, #3112).
+
+    rd-barb only ever sends to one recipient (Grok Barb's relay), so ``from``/``to``
+    are fixed; the deprecated ``fyi`` kind becomes ``update`` for the shared contract.
+    """
+    kind = str(msg.get("kind"))
+    return _envelope.with_defaults(
+        {**msg, "kind": DEPRECATED_KIND_ALIASES.get(kind, kind), "from": "rd-barb", "to": "barb"}
+    )
+
+
 def validate(msg: Any) -> list[str]:
-    """Return every contract problem with ``msg``; an empty list means valid."""
+    """Return every contract problem with ``msg``; an empty list means valid.
+
+    Shape and enum rules (kind, urgency, question options, alert recommended_action)
+    are delegated to the shared ``rd_threads_envelope`` contract (#3072) so rd-barb's
+    messages, barb_cli and the MCP server validate identically (#3112). ``dedupe_key``
+    and the optional ``recommendation_reason`` are notify-specific and stay here.
+    """
     if not isinstance(msg, dict):
         return ["message must be a JSON object"]
     errors: list[str] = []
     kind = msg.get("kind")
     if kind not in KINDS:
         errors.append(f"kind must be one of {sorted(KINDS)}")
-    if not _one_line(msg.get("summary")):
-        errors.append("summary must be one non-empty line")
-    if not isinstance(msg.get("body", ""), str):
-        errors.append("body must be a string")
-    if msg.get("urgency") not in URGENCIES:
-        errors.append(f"urgency must be one of {sorted(URGENCIES)}")
+    else:
+        errors.extend(_envelope.validate(_as_shared_envelope(msg)))
     if not _one_line(msg.get("dedupe_key")):
         errors.append("dedupe_key must be one non-empty line")
     if kind == "question":
-        errors.extend(_question_errors(msg))
-    if kind == "alert" and not _one_line(msg.get("recommended_action")):
-        errors.append("alert requires a one-line recommended_action")
-    return errors
-
-
-def _question_errors(msg: dict[str, Any]) -> list[str]:
-    options = msg.get("options")
-    if not isinstance(options, list) or len(options) < 2:
-        return ["question requires options: a list of at least 2 {label, recommended?}"]
-    errors = [
-        f"options[{i}].label must be one non-empty line"
-        for i, o in enumerate(options)
-        if not (isinstance(o, dict) and _one_line(o.get("label")))
-    ]
-    recommended = sum(1 for o in options if isinstance(o, dict) and o.get("recommended") is True)
-    if recommended != 1:
-        errors.append(f"question needs exactly one option with recommended: true (found {recommended})")
-    if not _one_line(msg.get("recommendation_reason")):
-        errors.append("question requires a one-line recommendation_reason")
+        reason = msg.get("recommendation_reason")
+        if reason is not None and not _one_line(reason):
+            errors.append("recommendation_reason must be one non-empty line when present")
     return errors
 
 
@@ -134,7 +134,7 @@ class Notifier:
         state = self._load_state()
         if self._is_duplicate(state, msg["dedupe_key"]):
             return {"ok": True, "status": "deduped"}
-        if msg["kind"] == "fyi":
+        if msg["kind"] in ("fyi", "update"):
             state["digest"].append(msg)
             self._mark(state, msg["dedupe_key"])
             return {"ok": True, "status": "queued_for_digest"}
