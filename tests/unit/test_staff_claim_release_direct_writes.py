@@ -20,6 +20,8 @@ from staff import claim_guard, dispatch_service
 from staff import lease as lease_mod
 from staff import runner as runner_mod
 
+pytestmark = pytest.mark.unit
+
 REPO = "D-sorganization/Runner_Dashboard"
 
 
