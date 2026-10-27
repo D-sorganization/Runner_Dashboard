@@ -216,9 +216,7 @@ async def get_repos(request: Request) -> Any:
             "last_ci_updated": None,
         }
         cached_enrichment = _cache_get(enrichment_cache_key, _REPO_ENRICHMENT_TTL)
-        if isinstance(cached_enrichment, dict) and all(
-            field in cached_enrichment for field in _REPO_ENRICHMENT_FIELDS
-        ):
+        if isinstance(cached_enrichment, dict) and all(field in cached_enrichment for field in _REPO_ENRICHMENT_FIELDS):
             info.update({field: cached_enrichment[field] for field in _REPO_ENRICHMENT_FIELDS})
             info["open_issues"] = max(0, info["open_issues_count"] - info["open_prs"])
             return info
