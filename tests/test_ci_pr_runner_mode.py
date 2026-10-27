@@ -98,3 +98,27 @@ def test_light_pr_jobs_honor_pr_runner_mode(workflow: str, only: list[str] | Non
 def test_heavy_jobs_stay_local(workflow: str, only: list[str] | None) -> None:
     for job_id, job in _jobs(workflow, only).items():
         assert "CI_PR_RUNNER_MODE" not in str(job.get("runs-on")), f"{workflow}::{job_id}"
+
+
+QUEUE_SWITCH = "github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest'"
+QUEUE_LIGHT_JOBS = {
+    "frontend-tests.yml": ["frontend-required", "frontend-scope", "typecheck", "vitest", "perf-budget"],
+    "ci-secrets.yml": None,
+    "architecture-map-contract.yml": None,
+}
+
+
+@pytest.mark.parametrize(("workflow", "only"), QUEUE_LIGHT_JOBS.items())
+def test_light_queue_jobs_honor_queue_runner_mode(workflow: str, only: list[str] | None) -> None:
+    jobs = _jobs(workflow, only)
+    assert jobs
+    for job_id, job in jobs.items():
+        runs_on = " ".join(str(job["runs-on"]).split())
+        assert QUEUE_SWITCH in runs_on, f"{workflow}::{job_id}"
+        assert runs_on.endswith("'d-sorg-fleet' }}"), f"{workflow}::{job_id} lost the fleet default"
+
+
+@pytest.mark.parametrize(("workflow", "only"), HEAVY_JOBS.items())
+def test_heavy_jobs_ignore_queue_runner_mode(workflow: str, only: list[str] | None) -> None:
+    for job_id, job in _jobs(workflow, only).items():
+        assert "CI_QUEUE_RUNNER_MODE" not in str(job.get("runs-on")), f"{workflow}::{job_id}"
