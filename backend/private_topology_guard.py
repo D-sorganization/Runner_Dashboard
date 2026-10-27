@@ -35,8 +35,8 @@ _ALLOWED_TS_NET_SUFFIXES: tuple[str, ...] = (
 
 # RFC 6598 example blocks — only these CGNAT subnets may appear in tracked files.
 _EXAMPLE_CGNAT_NETWORKS: tuple[ipaddress.IPv4Network, ...] = (
-    ipaddress.ip_network("100.64.0.0/24"),
-    ipaddress.ip_network("100.64.254.0/24"),
+    ipaddress.IPv4Network("100.64.0.0/24"),
+    ipaddress.IPv4Network("100.64.254.0/24"),
 )
 
 _BLOCKED_EMAIL_RE = re.compile(
@@ -144,8 +144,5 @@ def scan_text(text: str) -> list[tuple[int, TopologyFinding]]:
 
 
 def format_findings(findings: Iterable[tuple[str, int, TopologyFinding]]) -> str:
-    lines = [
-        f"{path}:{lineno} -> {finding.rule} ({finding.detail})"
-        for path, lineno, finding in findings
-    ]
+    lines = [f"{path}:{lineno} -> {finding.rule} ({finding.detail})" for path, lineno, finding in findings]
     return "\n  ".join(lines)
