@@ -308,9 +308,7 @@ def retry_plan(runner: Any, rec: RunRecord, role: RoleSpec) -> RunPlan:
     else:
         argv = adapter.build_command(rec.prompt, "<workdir>", rec.model, **read_only_kwargs(role))
         cloud_stdin = ""
-        lease_ritual = (
-            bool(role.permissions.get("lease", True)) and rec.target_kind == "issue" and bool(rec.repo)
-        )
+        lease_ritual = bool(role.permissions.get("lease", True)) and rec.target_kind == "issue" and bool(rec.repo)
     return RunPlan(
         role=rec.role,
         provider=rec.provider,

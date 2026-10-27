@@ -83,9 +83,7 @@ def _codex_cloud_environment() -> str:
     """Codex Cloud ``exec`` requires ``--env`` (id or label); configured per staff node."""
     env_id = os.environ.get("STAFF_CODEX_CLOUD_ENV", "").strip()
     if not env_id:
-        raise ValueError(
-            "codex cloud execution requires STAFF_CODEX_CLOUD_ENV (Codex Cloud environment id or label)"
-        )
+        raise ValueError("codex cloud execution requires STAFF_CODEX_CLOUD_ENV (Codex Cloud environment id or label)")
     return env_id
 
 
