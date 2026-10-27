@@ -152,7 +152,8 @@ class ActivityStore:
     ) -> ActivityPage:
         if since < 0 or not 1 <= limit <= 500:
             raise ValueError("since must be nonnegative and limit must be between 1 and 500")
-        clauses, params = ["cursor > ?"], [since]
+        clauses: list[str] = ["cursor > ?"]
+        params: list[int | str] = [since]
         for column, value in (("repo", repo), ("node", node), ("session_id", session_id)):
             if value is not None:
                 if column == "repo":

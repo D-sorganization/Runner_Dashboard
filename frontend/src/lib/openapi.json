@@ -115,6 +115,168 @@
         "title": "ActionRiskLevel",
         "type": "string"
       },
+      "ActivityEnvelope": {
+        "additionalProperties": false,
+        "description": "Canonical v1 metadata record. Extra fields fail closed.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "event_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Event Id",
+            "type": "string"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "kind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Node",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "principal": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Principal",
+            "type": "string"
+          },
+          "redaction_version": {
+            "minimum": 1.0,
+            "title": "Redaction Version",
+            "type": "integer"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "staff_run",
+              "coordination",
+              "agent_bus",
+              "recorder",
+              "desktop_adapter",
+              "checkin",
+              "job_board",
+              "github"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "event_id",
+          "source",
+          "principal",
+          "node",
+          "session_id",
+          "seq",
+          "ts",
+          "kind",
+          "redaction_version"
+        ],
+        "title": "ActivityEnvelope",
+        "type": "object"
+      },
+      "ActivityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityEnvelope"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": ["items", "next_cursor"],
+        "title": "ActivityPage",
+        "type": "object"
+      },
       "AnswerNeedsInputRequest": {
         "properties": {
           "answer": {
@@ -19208,6 +19370,120 @@
         },
         "summary": "Get Usage Table",
         "tags": ["usage-metrics"]
+      }
+    },
+    "/api/v1/activity": {
+      "get": {
+        "description": "Return a bounded cursor page; readers cannot mutate stored metadata.",
+        "operationId": "read_activity_api_v1_activity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Activity",
+        "tags": ["activity"]
       }
     },
     "/api/v1/agent/backlog": {
