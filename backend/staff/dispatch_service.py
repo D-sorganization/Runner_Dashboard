@@ -25,6 +25,7 @@ from staff.audit import AuditError, record_audit
 from staff.barb_lease_fence import BarbClaim, barb_write_fence
 from staff.budget import BudgetGuard
 from staff.rate_limit import check_rate_limit
+from staff.run_link import handle_run_status_change
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import _now
 
@@ -495,4 +496,6 @@ def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, aud
     error = f"worker did not start: {exc}"
     runner.store.update_run(run_id, status="failed", error=error, failure_class="launch_failed", ended_at=_now())
     runner.store.append_event(run_id, "failed", error)
+    if (rec := runner.store.get_run(run_id)) is not None:
+        handle_run_status_change(rec, "failed")  # releases the claim:* label applied at dispatch (#3033)
     record_audit(action="dispatch", **audit_ctx, outcome="launch_failed", detail={"error": str(exc)}, fail_closed=False)

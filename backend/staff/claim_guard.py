@@ -40,6 +40,8 @@ STAFF_LABEL = "claim:staff"
 ROLE_LABELS = frozenset({"claim:issue-remediator", "claim:pr-remediator"})
 OWN_LABELS = frozenset({STAFF_LABEL}) | ROLE_LABELS
 TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+# ``blocked`` is not terminal but ends the run before it starts, so it also drops the label (#3033).
+RELEASE_STATUSES = TERMINAL_STATUSES | {"blocked"}
 OVERRIDE_SCOPE = "staff.admin"
 DEFAULT_ORG = "D-sorganization"
 PULLS_TTL_SECONDS = 30.0
@@ -456,8 +458,8 @@ def release_claim(
     write: Callable[[str, str], Any] | None = None,
     others_active: Callable[[str, str, int], bool] | None = None,
 ) -> bool:
-    """Remove the label this process applied once the run is terminal. Best effort; True when removed."""
-    if status not in TERMINAL_STATUSES:
+    """Remove the label this process applied once the run is terminal or blocked. Best effort; True when removed."""
+    if status not in RELEASE_STATUSES:
         return False
     with _applied_lock:
         entry = _applied.get(run_id)

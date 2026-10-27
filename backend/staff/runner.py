@@ -179,6 +179,8 @@ class StaffRunner:
                 log.exception("staff run %s crashed", rec.id)
                 store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
                 store.append_event(rec.id, "error", str(exc)[:1000])
+                # Route the direct ``failed`` write through the status hook so the claim:* label is released (#3033).
+                handle_run_status_change(store.get_run(rec.id) or rec, "failed")
             finally:
                 if plan.lease_ritual:
                     lease_ritual.release(
