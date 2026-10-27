@@ -1,8 +1,8 @@
 ---
 issue: 3231
-summary: "Proposal: persistent messenger agents (postman runner plus per-runtime doorbells) for Claude, Codex and agy"
+summary: "Proposal: persistent messenger agents for Claude, Codex and agy, plus slice 1: the postman runner in dry run only"
 dl_state: "in_review"
-next_step: "Grok Barb, rd-barb and the Board review; Dieter decides before any slice is built."
+next_step: "Barbs and the Board review; reopen or replace closed board #2376; seed the cursor before any live cycle."
 branch: "claude/project-thread-04aykb"
 ---
 

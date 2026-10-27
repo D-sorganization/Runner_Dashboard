@@ -1,6 +1,7 @@
 # Persistent Messenger Agents for Claude, Codex and Antigravity (Proposal)
 
-Status: **Proposed, for Barb and Board review.** Nothing here is built or switched on by this change.
+Status: **Proposed, for Barb and Board review.** Slice 1 (the postman runner) is built in **dry run only**,
+with Dieter's yes on 2026-10-27; nothing delivers, registers or wakes anyone.
 Dieter asked on 2026-10-27 for a persistent Claude messaging agent, and one each for Codex and
 Antigravity (`agy`) if those runtimes can message between their sessions.
 
@@ -109,6 +110,25 @@ roll up into the existing coordination briefing, so `fleet_briefing` shows them 
 3. Barbara inbox as a postman source.
 4. Doorbells: the Barbara PR #11 comment, then resume wakes, each behind its own switch and budget.
 5. Message state on the board view and in the briefing.
+
+## Slice 1: Dry Run
+
+`backend/coordination/postman_runner.py` wires the engine to the dashboard's board reads and a `gh api` issue
+check. Its bus and board-register adapters refuse every call, and the delivery cursor is never saved. Run it with
+`python scripts/postman_dry_run.py` (once, or `--every 300`); reports are kept in `POSTMAN_DATA_DIR` and served
+read-only at `GET /api/coordination/postman/reports`. The Staff Console view is left for slice 5.
+
+The first dry run against the live board (2026-10-27, 22:42 UTC) planned 296 actions and sent none:
+
+- **Board #2376 is closed** (since 2026-10-23, with 1,419 comments) while RM still writes to it, so the postman
+  warns "closed/full, no successor" every cycle. Someone needs to reopen it or name a successor.
+- **Only two sessions were live**, both Claude on Runner_Dashboard, so the 111 board messages (all broadcasts to
+  `*`, from 2026-10-24 to 2026-10-27) would all go to Claude. The engine reads only live sessions' inboxes, so
+  a message addressed to an agent with no live session is not seen at all.
+- **A first live cycle would flood Barb**: 105 of the 136 alerts are for her, mostly claim text in the backlog.
+  Before going live, the first cycle should seed the cursor with the existing backlog instead of sending it.
+- **26 sender rejections** (14 unknown senders, 11 identity changes, 1 malformed comment) and **22 presence
+  registrations** for roster agents that have no `pm-<agent>` session.
 
 ## Questions for the Barbs and the Board
 
