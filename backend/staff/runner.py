@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, review, runner_planning, verification, workspace
+from staff import claim_guard, consolidation, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import runner_ops as ops
@@ -179,6 +179,7 @@ class StaffRunner:
             except Exception as exc:  # noqa: BLE001
                 log.exception("staff run %s crashed", rec.id)
                 store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
+                claim_guard.release_claim(rec.id, "failed")
                 store.append_event(rec.id, "error", str(exc)[:1000])
             finally:
                 if plan.lease_ritual:
