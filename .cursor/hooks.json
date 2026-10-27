@@ -8,6 +8,13 @@
         "command": "python3 scripts/agent-bus-hook-bridge.py session-start",
         "timeout": 120
       }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "type": "command",
+        "command": "python3 scripts/wrappers/cursor_barb_hook.py",
+        "timeout": 30
+      }
     ]
   }
 }
