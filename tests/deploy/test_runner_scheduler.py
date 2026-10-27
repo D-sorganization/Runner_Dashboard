@@ -454,6 +454,30 @@ def test_apply_capacity_rejects_unsorted_units(tmp_path: Path) -> None:
         runner_scheduler.apply_capacity(list(reversed(_out_of_order_units(tmp_path))), desired=3, dry_run=True)
 
 
+def test_apply_capacity_repeated_ticks_converge_one_swap_at_a_time(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path) for n in range(1, 8)]
+    for unit in units:
+        unit.active = unit.num in (1, 2, 6, 7)
+
+    def start(cmd):
+        next(u for u in units if u.unit == cmd[-1]).active = True
+        return _process_result()
+
+    def stop(unit):
+        unit.active = False
+        assert sum(u.active for u in units) >= 4
+        return True
+
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", start)
+    monkeypatch.setattr(runner_scheduler, "stop_runner_safely", stop)
+    for _ in range(2):
+        actions = runner_scheduler.apply_capacity(units, desired=4, dry_run=False)
+        assert [a["action"] for a in actions] == ["start", "stop"]
+    assert [u.num for u in units if u.active] == [1, 2, 3, 4]
+    assert runner_scheduler.apply_capacity(units, desired=4, dry_run=False) == []
+
+
 def test_apply_capacity_rechecks_busy_immediately_before_stop(monkeypatch, tmp_path: Path) -> None:
     """A runner that picked up a job after the snapshot must not be stopped (TOCTOU)."""
     commands: list[list[str]] = []
