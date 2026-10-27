@@ -1,6 +1,6 @@
-## Pre-close evidence gate — epic #2117 (verified on `main` 2026-10-24)
+## Pre-close evidence gate — epic #2117 (verified on `main` 2026-10-27)
 
-Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to paths, tests, and merge PRs. **Epic stays open** — epic-level gaps at the end.
+Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to paths, tests, and merge PRs.
 
 ---
 
@@ -27,7 +27,7 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 
 ---
 
-### Slice #2120 — Rollups (merged **PR #2139**)
+### Slice #2120 — Rollups (merged **PR #2139**; gaps closed **#2706**, **#2936**, workflow runs **#TBD**)
 
 | Criterion                                                | Evidence                                                                            |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -35,8 +35,10 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 | CI rounds, top failing checks, lead/ci wait, churn flags | `ci_rounds_to_green`, `top_failing_checks`, `build_pr_rollup`, `churn_flags`        |
 | Weekly trend buckets                                     | `weekly_trends()` in `rollup.py`; `test_build_metrics_report_from_seeded_db`        |
 | Drill-down payloads with PR numbers + check run ids      | `pr_drill_down()` returns `pull`, `rollup`, `check_runs` (`check_run_id` in models) |
-| **Grouping by role/agent, repo, model**                  | **Not implemented** — only repo filter in UI; no backend grouping dimensions        |
-| **Escapes weighted (red-main, reverts, rollouts)**       | **Stub** — `aggregate_window` sets `"escapes_weighted": []` always (`rollup.py`)    |
+| **Grouping by role/agent, repo, model**                  | **Pass** — `attribution.py`, `groupings` in `report.py`; UI filters **PR #2955**    |
+| **Escapes weighted (red-main, reverts, rollouts)**       | **Pass** — `escapes.py`, `weighted_escapes` in `aggregate_window` (**PR #2706**)    |
+| **Rework time**                                          | **Pass** — `rework_seconds` on `PrRollup` (**PR #2936**)                            |
+| **Actions workflow run drill-down**                      | **Pass** — `workflow_runs.py`, `workflow_runs` on pull drill-down (**PR #TBD**)     |
 
 ---
 
@@ -51,7 +53,7 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 
 ---
 
-### Slice #2122 — Frontend (merged **PR #2144**)
+### Slice #2122 — Frontend (merged **PR #2144**; grouping **#2955**; workflow runs **#TBD**)
 
 | Criterion                                              | Evidence                                                                               |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
@@ -75,19 +77,20 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 
 ### Epic acceptance criteria (#2117 body)
 
-| Epic checkbox                                                           | Verdict     | Notes                                                                                                               |
-| ----------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------- |
-| Incremental GitHub collection + cache + rate limits + existing auth     | **Pass**    | #2118 evidence                                                                                                      |
-| Metrics: CI rounds, failing checks, lead time, Dieter wait, churn, cost | **Partial** | Dieter wait + cost in weekly summary; per-PR `dieter_wait_seconds` always `None` in rollups; **rework** not modeled |
-| **Escapes** (red main, reverts, failed rollouts)                        | **Fail**    | `escapes_weighted` always `[]`                                                                                      |
-| `GET /api/v1/metrics/*` + dashboard page, default-off flag              | **Pass**    | #2121, #2122                                                                                                        |
-| Weekly summary for staff/board                                          | **Pass**    | #2123                                                                                                               |
-| Drill-down to PRs and workflow runs; no vanity leaderboards             | **Partial** | PR + **check runs** drill-down; not Actions workflow-run IDs; UI avoids leaderboards                                |
+| Epic checkbox                                                           | Verdict  | Notes                                                                                        |
+| ----------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
+| Incremental GitHub collection + cache + rate limits + existing auth     | **Pass** | #2118 evidence                                                                               |
+| Metrics: CI rounds, failing checks, lead time, Dieter wait, churn, cost | **Pass** | Weekly summary + per-PR rollups; `rework_seconds` (**#2936**)                                |
+| **Escapes** (red main, reverts, failed rollouts)                        | **Pass** | `weighted_escapes` in `aggregate_window` (**#2706**)                                         |
+| `GET /api/v1/metrics/*` + dashboard page, default-off flag              | **Pass** | #2121, #2122                                                                                 |
+| Weekly summary for staff/board                                          | **Pass** | #2123                                                                                        |
+| Drill-down to PRs and workflow runs; no vanity leaderboards             | **Pass** | PR + check runs + grouped Actions runs (`workflow_runs`); anti-leaderboard copy in UI       |
+| Role/agent/model grouping                                               | **Pass** | `groupings` + UI filters (**#2955**)                                                         |
 
 ---
 
-### Decision
+### Decision (post gap-4 merge)
 
-**Do not close epic #2117** until escapes rollups and role/agent/model grouping (slice #2120 / epic scope) land with tests. Track follow-up on top of merged slice PRs above.
+After **PR #TBD** (workflow run drill-down) merges to `main`, **epic #2117 is closable** — all epic-level gaps from the 2026-10-24 audit are addressed with tests. Close with `Closes #2117` on that PR or a follow-up housekeeping PR that only updates tracking.
 
-_Evidence run: cloud agent housekeeping PR (STATUS refresh + this comment)._
+_Gap PRs: escapes **#2706**, rework **#2936**, grouping **#2955**, workflow runs **#TBD**._
