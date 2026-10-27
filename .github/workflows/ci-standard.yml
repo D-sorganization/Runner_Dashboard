@@ -628,7 +628,6 @@ jobs:
     needs:
       - changes
       - ci-health-check
-      - lint
       - pick-runner
     if: needs.changes.outputs.run_python_tests == 'true'
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
@@ -643,8 +642,10 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        python:
-          - "3.11"
+        include: >-
+          ${{ github.event_name == 'merge_group' &&
+          fromJSON('[{"python":"3.11","shard":1,"shards":2},{"python":"3.11","shard":2,"shards":2}]') ||
+          fromJSON('[{"python":"3.11","shard":1,"shards":1}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -676,6 +677,8 @@ jobs:
           PYTHONPATH: backend:.
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
           EXPECTED_PYTHON: ${{ matrix.python }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
         # Full tier (merge_group): whole suite with coverage (issue #342); the
@@ -700,12 +703,19 @@ jobs:
             echo "No tests directory found - skipping"
             exit 0
           fi
+          FAST_MARKER="not integration and not playwright and not slow"
           if [ "$FULL_SUITE" = "true" ]; then
             pip install pytest-cov==6.1.1 --quiet
             pytest tests/ --tb=short -n auto -m "not integration and not playwright" \
               --cov=backend --cov-report=xml --cov-report=term-missing
+          elif [ "$SHARDS" -gt 1 ]; then
+            mapfile -t SHARD_NODES < <(
+              python scripts/pytest_ci_shard.py --groups "$SHARDS" --index "$SHARD" --marker "$FAST_MARKER"
+            )
+            echo "merge_group shard ${SHARD}/${SHARDS}: ${#SHARD_NODES[@]} tests"
+            pytest --tb=short -n auto "${SHARD_NODES[@]}"
           else
-            pytest tests/ --tb=short -n auto -m "not integration and not playwright and not slow"
+            pytest tests/ --tb=short -n auto -m "$FAST_MARKER"
           fi
       - name: Upload coverage artifact
         if: always() && hashFiles('coverage.xml') != ''
