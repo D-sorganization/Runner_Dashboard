@@ -186,6 +186,7 @@ async def _prepare_grounding(request: PanelCreateRequest) -> str | None:
     try:
         return await task
     except asyncio.CancelledError:
+
         def _drop_orphan(fut: asyncio.Task[str | None]) -> None:
             try:
                 path = fut.result()
