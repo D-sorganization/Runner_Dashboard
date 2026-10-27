@@ -30,7 +30,7 @@ CODEWORD = "PERIWINKLE-42"
 
 @pytest.fixture
 def conv_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConversationStore:
-    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
+    monkeypatch.setattr("staff.chat_turn_runner.version_gate", lambda *_: None)
     reset_conversation_store()
     reset_thread_bus()
     return get_conversation_store(tmp_path / "test_chat_memory.sqlite3")
@@ -107,8 +107,8 @@ async def test_turns_on_one_thread_run_in_the_same_directory_so_resume_finds_the
         return _proc("sess-1")
 
     with (
-        patch("staff.chat.load_roles", return_value={"barb": role}),
-        patch("staff.chat.build_fleet_context_block", new_callable=AsyncMock, return_value=None),
+        patch("staff.chat_turn_runner.load_roles", return_value={"barb": role}),
+        patch("staff.chat_turn_runner.build_fleet_context_block", new_callable=AsyncMock, return_value=None),
         patch.object(runner, "_spawn_cli_process", side_effect=spawn),
     ):
         turns = ((thread.id, f"The codeword is {CODEWORD}."), (thread.id, "Codeword?"), (other.id, "Hi"))
