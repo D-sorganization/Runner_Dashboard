@@ -10,11 +10,11 @@ can neither be written to nor leak credentials from the checkout's git config.
 from __future__ import annotations
 
 import logging
-import threading
 import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import time
 from contextvars import ContextVar
 from pathlib import Path
