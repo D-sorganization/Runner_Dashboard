@@ -16,14 +16,13 @@ The companion router shares dependency state via :func:`set_dependencies`.
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from repos_enrichment import build_repos_payload
 
 from .repos_stats import router as stats_router
 
@@ -164,86 +163,7 @@ async def get_repos(request: Request) -> Any:
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
 
-    cached = _cache_get("repos", _REPOS_TTL)
-    if cached is not None:
-        return cached
-
-    repos: list[dict] = []
-    for page in range(1, 3):
-        code, stdout, _stderr = await _run_cmd(
-            ["gh", "api", f"/orgs/{ORG}/repos?per_page=100&page={page}&sort=updated&direction=desc"],
-            timeout=30,
-        )
-        if code != 0:
-            break
-        try:
-            batch = json.loads(stdout)
-        except (json.JSONDecodeError, ValueError):
-            break
-        if not batch:
-            break
-        repos.extend(batch)
-
-    results: list[dict] = []
-
-    async def enrich_repo(repo: dict) -> dict:
-        name = repo["name"]
-        full_name = repo["full_name"]
-        info: dict[str, Any] = {
-            "name": name,
-            "full_name": full_name,
-            "description": repo.get("description", ""),
-            "url": repo.get("html_url", ""),
-            "private": repo.get("private", False),
-            "language": repo.get("language"),
-            "default_branch": repo.get("default_branch", "main"),
-            "updated_at": repo.get("updated_at", ""),
-            "open_issues_count": repo.get("open_issues_count", 0),
-            "open_prs": 0,
-            "open_issues": 0,
-            "last_ci_status": None,
-            "last_ci_conclusion": None,
-            "last_ci_run_url": None,
-            "last_ci_updated": None,
-        }
-        pr_code, pr_out, _ = await _run_cmd(
-            ["gh", "api", "--paginate", f"/repos/{full_name}/pulls?state=open&per_page=100"],
-            timeout=30,
-        )
-        if pr_code == 0:
-            try:
-                info["open_prs"] = len(json.loads(pr_out))
-            except (json.JSONDecodeError, ValueError):
-                pass
-        info["open_issues"] = max(0, info["open_issues_count"] - info["open_prs"])
-        run_code, run_out, _ = await _run_cmd(
-            ["gh", "api", f"/repos/{full_name}/actions/runs?per_page=1"],
-            timeout=15,
-        )
-        if run_code == 0:
-            try:
-                runs_data = json.loads(run_out)
-                runs_list = runs_data.get("workflow_runs", [])
-                if runs_list:
-                    last_run = runs_list[0]
-                    info["last_ci_status"] = last_run.get("status")
-                    info["last_ci_conclusion"] = last_run.get("conclusion")
-                    info["last_ci_run_url"] = last_run.get("html_url")
-                    info["last_ci_updated"] = last_run.get("updated_at")
-            except (json.JSONDecodeError, ValueError):
-                pass
-        return info
-
-    batch_size = 5
-    for i in range(0, len(repos), batch_size):
-        batch = repos[i : i + batch_size]
-        batch_results = await asyncio.gather(*[enrich_repo(r) for r in batch])
-        results.extend(batch_results)
-
-    results.sort(key=lambda r: (r["last_ci_updated"] or "",), reverse=True)
-    result = {"repos": results, "total_count": len(results), "org": ORG}
-    _cache_set("repos", result)
-    return result
+    return await build_repos_payload(org=ORG, repos_ttl=_REPOS_TTL)
 
 
 @router.get("/api/prs")

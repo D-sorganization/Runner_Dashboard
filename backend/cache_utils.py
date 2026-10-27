@@ -108,6 +108,18 @@ class Cache:
     # Core get / set / delete
     # ------------------------------------------------------------------
 
+    def get_within(self, key: str, max_age: float) -> Any | None:
+        """Return cached value when younger than ``max_age`` without deleting on miss."""
+        assert max_age > 0, "max_age must be positive"
+        entry = self._store.get(key)
+        if entry is None:
+            return None
+        data, ts = entry
+        if time.monotonic() - ts >= max_age:
+            return None
+        self._store.move_to_end(key)
+        return data
+
     def get(self, key: str, ttl: float | None = None) -> Any | None:
         """Return cached value if within TTL, else ``None``.
 
