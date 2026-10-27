@@ -254,6 +254,9 @@ class CreateThreadRequest(BaseModel):
     kind: str = "direct"
     role: str | None = None
     participants: list[str] = Field(default_factory=list)
+    # Intake threads (#3017): store posts without a paid reply turn; hide from non-participants.
+    no_auto_reply: bool = False
+    participants_only: bool = False
 
 
 class UpdateThreadRequest(BaseModel):

@@ -17,6 +17,8 @@ Mounted under ``/api/v1/staff``:
 # ruff: noqa: B008
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,6 +52,17 @@ def bind_holder(caller: Principal, requested: str | None) -> str:
         status_code=403,
         detail={"error": "holder_caller_mismatch", "caller": cid, "holder": requested},
     )
+
+
+@contextmanager
+def _invalid_lease_request_as_422() -> Iterator[None]:
+    """Map the store's contract violations (bad scope, empty holder) to 422 instead of a 500."""
+    try:
+        yield
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail={"error": "invalid_barb_lease_request", "detail": str(exc)}
+        ) from exc
 
 
 class BarbLeaseCheckoutRequest(BaseModel):
@@ -179,15 +192,16 @@ async def post_barb_lease_checkout(
     store = get_barb_continuity_store()
     # Writers prove they still hold the seat by sending the returned ``epoch`` back as
     # X-Barb-Lease-Epoch (see staff.barb_lease_fence); takeover bumps it under the store lock.
-    res = store.checkout_lease(
-        scope=req.scope,
-        holder=holder,
-        persona=req.persona,
-        machine=req.machine or get_runner().machine,
-        ttl_seconds=req.ttl_sec,
-        summary=req.summary,
-        force=req.takeover,
-    )
+    with _invalid_lease_request_as_422():
+        res = store.checkout_lease(
+            scope=req.scope,
+            holder=holder,
+            persona=req.persona,
+            machine=req.machine or get_runner().machine,
+            ttl_seconds=req.ttl_sec,
+            summary=req.summary,
+            force=req.takeover,
+        )
     if not res["acquired"]:
         raise HTTPException(status_code=409, detail=res)
     if req.takeover:
@@ -213,9 +227,10 @@ async def post_barb_lease_heartbeat(
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     holder = bind_holder(_caller, req.holder)
-    res = get_barb_continuity_store().heartbeat_lease(
-        scope=req.scope, holder=holder, epoch=req.epoch, ttl_seconds=req.ttl_sec
-    )
+    with _invalid_lease_request_as_422():
+        res = get_barb_continuity_store().heartbeat_lease(
+            scope=req.scope, holder=holder, epoch=req.epoch, ttl_seconds=req.ttl_sec
+        )
     if not res["renewed"]:
         code = 403 if res["reason"] == "holder_mismatch" else 409
         raise HTTPException(status_code=code, detail=res)
@@ -228,19 +243,23 @@ async def post_barb_lease_release(
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     holder = bind_holder(_caller, req.holder)
-    store = get_barb_continuity_store()
-    if req.turnover_summary.strip():
-        store.append_turnover(
-            scope=req.scope,
-            author=holder,
-            machine=get_runner().machine,
-            summary=req.turnover_summary,
-            completed=req.completed_items,
-            in_progress=req.in_progress_items,
-            next_actions=req.next_actions,
-            blockers=req.blockers,
+    turnover = (
+        {
+            "machine": get_runner().machine,
+            "summary": req.turnover_summary,
+            "completed": req.completed_items,
+            "in_progress": req.in_progress_items,
+            "next_actions": req.next_actions,
+            "blockers": req.blockers,
+        }
+        if req.turnover_summary.strip()
+        else None
+    )
+    # The store validates the holder before writing the turnover, then releases in the same transaction.
+    with _invalid_lease_request_as_422():
+        res = get_barb_continuity_store().release_lease(
+            scope=req.scope, holder=holder, require_turnover=not req.force, turnover=turnover
         )
-    res = store.release_lease(scope=req.scope, holder=holder, require_turnover=not req.force)
     if not res["released"]:
         raise HTTPException(status_code=409, detail=res)
     return {"ok": True, **res}

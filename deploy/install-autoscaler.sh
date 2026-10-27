@@ -99,17 +99,16 @@ if ! python3 -c "import psutil" 2>/dev/null; then
     pip3 install --break-system-packages psutil
 fi
 
-# 3. Sudoers drop-in: allow runner user to start/stop actions.runner.* only
+# 3. Install the root-owned runner lifecycle boundary and its no-argument grant.
+sudo install -o root -g root -m 0755 "$SCRIPT_DIR/rd-runner-ctl" /usr/local/sbin/rd-runner-ctl
 SUDOERS_FILE="/etc/sudoers.d/runner-autoscaler"
-if ! sudo test -f "$SUDOERS_FILE"; then
-    echo "==> Installing sudoers drop-in at $SUDOERS_FILE"
-    sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
-# Allow the autoscaler to toggle self-hosted runner units (no other commands).
-$RUNNER_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start actions.runner.*, /usr/bin/systemctl stop actions.runner.*
+echo "==> Installing sudoers drop-in at $SUDOERS_FILE"
+sudo tee "$SUDOERS_FILE" > /dev/null <<EOF
+# Permit runner lifecycle requests through the validated root-owned helper only.
+$RUNNER_USER ALL=(root) NOPASSWD: /usr/local/sbin/rd-runner-ctl ""
 EOF
-    sudo chmod 0440 "$SUDOERS_FILE"
-    sudo visudo -cf "$SUDOERS_FILE" > /dev/null || { echo "sudoers validation failed"; exit 1; }
-fi
+sudo chmod 0440 "$SUDOERS_FILE"
+sudo visudo -cf "$SUDOERS_FILE" > /dev/null || { echo "sudoers validation failed"; exit 1; }
 
 # 4. Graceful-stop drop-in for all actions.runner.* units (issue #640 Fix 3).
 #
