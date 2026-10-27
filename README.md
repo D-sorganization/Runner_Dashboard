@@ -1,9 +1,15 @@
 # D-sorganization Runner Dashboard
 
-A web UI control surface for the D-sorganization self-hosted GitHub Actions
-runner fleet. Monitor runner health in real-time, control runner lifecycle,
-dispatch AI agents, manage workflows, and orchestrate multi-node deployments —
-all from a single browser tab.
+Runner_Dashboard is a self-hosted workspace that carries engineering work from
+an agent session through GitHub review and CI, keeping task context and evidence
+with the work. It brings runner operations, agent dispatch, and workflow status
+into one local console.
+
+Unlike hosted agent workspaces, it runs on your own infrastructure and focuses
+on fleet and GitHub workflow integration; it is not a hosted coding environment.
+Unlike a runner-only dashboard, it also connects agent runs and their evidence
+to the review workflow. Capacity-aware scheduling is not a positioning claim
+until a benchmark supports it.
 
 ## Sibling repos
 
@@ -112,6 +118,13 @@ starting a broken server.
 
 **Requirements:** Python 3.11+, Node.js 18+/npm (for the frontend build), and a
 GitHub PAT with `repo` and `admin:org` scopes.
+
+### Cold-start check
+
+After the demo, ask someone outside the fleet to follow this Quick Start from a
+clean machine. Record any prerequisite, instruction, or first-run step that
+blocks them, then file each friction point as an issue. This check is not yet
+complete.
 
 ### Deterministic / offline-constrained installs
 
