@@ -2687,6 +2687,10 @@ _leader_lock_fd = None
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    from oauth_config import OAuthConfig, validate_oauth_startup
+
+    validate_oauth_startup(OAuthConfig.from_env())
+
     # Issue #942: refuse to start when Maxwell's port collides with a peer
     # dashboard port declared in machine_registry.yml — a silent mis-probe
     # otherwise misreports a sibling dashboard as the Maxwell daemon.
