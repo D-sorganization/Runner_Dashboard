@@ -3563,6 +3563,11 @@
             "title": "Experts",
             "type": "array"
           },
+          "ground_repos": {
+            "default": true,
+            "title": "Ground Repos",
+            "type": "boolean"
+          },
           "mode": {
             "default": "debate",
             "enum": ["debate", "brainstorm"],
@@ -10823,7 +10828,7 @@
     },
     "/api/cline/status": {
       "get": {
-        "description": "Return Cline extension detection status.",
+        "description": "Return Cline CLI detection status.",
         "operationId": "get_cline_status_api_cline_status_get",
         "responses": {
           "200": {
@@ -25258,6 +25263,24 @@
               ],
               "title": "Run Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
           }
         ],
         "responses": {
@@ -25572,7 +25595,7 @@
     },
     "/api/v1/staff/panels/presets": {
       "get": {
-        "description": "Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.",
+        "description": "Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).",
         "operationId": "get_panel_presets_api_v1_staff_panels_presets_get",
         "responses": {
           "200": {

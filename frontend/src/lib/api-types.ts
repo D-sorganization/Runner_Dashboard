@@ -1055,7 +1055,7 @@ export interface paths {
         };
         /**
          * Get Cline Status
-         * @description Return Cline extension detection status.
+         * @description Return Cline CLI detection status.
          */
         get: operations["get_cline_status_api_cline_status_get"];
         put?: never;
@@ -7062,7 +7062,7 @@ export interface paths {
         };
         /**
          * Expert panel presets
-         * @description Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.
+         * @description Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).
          */
         get: operations["get_panel_presets_api_v1_staff_panels_presets_get"];
         put?: never;
@@ -10022,6 +10022,11 @@ export interface components {
             confirm_cost: boolean;
             /** Experts */
             experts: components["schemas"]["PanelExpert"][];
+            /**
+             * Ground Repos
+             * @default true
+             */
+            ground_repos: boolean;
             /**
              * Mode
              * @default debate
@@ -23253,6 +23258,7 @@ export interface operations {
                 /** @description Include superseded passages */
                 include_superseded?: boolean;
                 run_id?: string | null;
+                repo?: string | null;
             };
             header?: never;
             path: {

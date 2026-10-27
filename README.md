@@ -152,6 +152,12 @@ bash deploy/setup.sh
 bash deploy/update-deployed.sh
 ```
 
+Runner Dashboard single-worker is the only supported mode. Keep `WORKERS=1`
+and `uvicorn --workers 1` (including `WEB_CONCURRENCY=1` when set). Startup
+refuses worker counts greater than one because leases, locks, rate limiters,
+bearer tokens and event sequences are process-local. Multi-worker support
+requires a separate shared-state redesign.
+
 The dashboard runs as `runner-dashboard.service` on port 8321. Logs:
 `journalctl -u runner-dashboard -f`
 
@@ -176,7 +182,7 @@ and architecture documentation.
 
 When deployed across multiple machines, the dashboard differentiates between "Hub" and "Node" operation:
 
-- **Hub (Leader)**: The central dashboard instance. Processes global actions, scheduled background tasks, stale queue cleanup, and autoscaler evaluations. If `WORKERS > 1` is configured, leader-election ensures only a single background task thread executes across all workers.
+- **Hub (Leader)**: The central dashboard instance. Processes global actions, scheduled background tasks, stale queue cleanup, and autoscaler evaluations. Each instance runs a single worker; leader-election coordinates background tasks between instances.
 - **Node (Follower)**: Run instances on edge runner hosts without the leader lock (`DASHBOARD_LEADER=0`). They provide the local `/api/system/metrics` endpoints that the Hub aggregates, and stream logs/metrics to the Hub.
   If two Hubs run concurrently without a shared lock directory, background scans (like queue purging) will run twice, but API operations remain idempotent.
 
