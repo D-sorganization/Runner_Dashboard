@@ -13,6 +13,8 @@ from staff.lesson_locator import locate_lesson_evidence, verify_lesson_evidence
 from staff.runner_ops import pump_output
 from staff.store import RunRecord, RunStore
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture
 def store(tmp_path: Path):
