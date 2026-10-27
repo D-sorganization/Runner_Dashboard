@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Callable, Generic, TypeVar
+from datetime import UTC, datetime
+from typing import Generic, TypeVar
 
 _COUNT_FIELDS = ("queued", "in_progress", "pending", "issues", "prs")
 
@@ -51,10 +52,10 @@ def aggregate(
     repos: list[RepoCounts], *, as_of: datetime | None = None
 ) -> FleetGlance:
     """Sum healthy repositories and retain failed rows for visible diagnostics."""
-    timestamp = as_of or datetime.now(timezone.utc)
+    timestamp = as_of or datetime.now(UTC)
     if (
         timestamp.tzinfo is None
-        or timestamp.utcoffset() != timezone.utc.utcoffset(timestamp)
+        or timestamp.utcoffset() != UTC.utcoffset(timestamp)
     ):
         raise ValueError("as_of must be a UTC timestamp")
 
