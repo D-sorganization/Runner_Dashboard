@@ -24,6 +24,37 @@ def _minimal_entry(name: str = "machine-1") -> dict:
 
 
 # ---------------------------------------------------------------------------
+# _resolve_registry_path
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_registry_path_prefers_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    custom = tmp_path / "custom.yml"
+    custom.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    assert mr._resolve_registry_path(str(custom)) == custom
+
+
+def test_resolve_registry_path_uses_local_config_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    local = tmp_path / "machine_registry.yml"
+    local.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", local)
+    assert mr._resolve_registry_path(None) == local
+
+
+def test_resolve_registry_path_falls_back_to_shipped_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "missing.yml"
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing)
+    assert mr._resolve_registry_path(None) == mr.DEFAULT_REGISTRY_PATH
+
+
+# ---------------------------------------------------------------------------
 # _normalize_token
 # ---------------------------------------------------------------------------
 
@@ -167,12 +198,17 @@ def test_normalize_machine_entry_minimal() -> None:
     assert isinstance(result["tailscale_nodes"], list)
 
 
-def test_checked_in_brick_registry_disables_github_actions_runners() -> None:
-    registry_path = Path(__file__).resolve().parents[1] / "backend" / "machine_registry.yml"
+def test_example_registry_node_c_disables_github_actions_runners() -> None:
+    registry_path = (
+        Path(__file__).resolve().parents[1]
+        / "backend"
+        / "fixtures"
+        / "machine_registry_node_c_documentation.yml"
+    )
     registry = mr.load_machine_registry(path=registry_path)
-    brick = next(machine for machine in registry["machines"] if machine["name"] == "Brick")
+    node_c = next(machine for machine in registry["machines"] if machine["name"] == "node-c")
 
-    assert brick["runners"] == {"min": 0, "default": 0, "max": 0}
+    assert node_c["runners"] == {"min": 0, "default": 0, "max": 0}
 
 
 def test_normalize_machine_entry_requires_name() -> None:
@@ -200,10 +236,10 @@ def test_normalize_machine_entry_invalid_tailscale_nodes() -> None:
 
 def test_normalize_machine_entry_runner_pools() -> None:
     entry = {
-        "name": "ControlTower",
+        "name": "node-a",
         "runner_pools": [
             {
-                "name": "ControlTower-NVMe",
+                "name": "node-a-NVMe",
                 "aliases": "ct-fast",
                 "dashboard_url": "http://127.0.0.1:8321",
                 "storage_tier": "nvme",
@@ -223,8 +259,8 @@ def test_normalize_machine_entry_runner_pools() -> None:
     result = mr._normalize_machine_entry(entry)
     pool = result["runner_pools"][0]
 
-    assert pool["name"] == "ControlTower-NVMe"
-    assert pool["parent_machine"] == "ControlTower"
+    assert pool["name"] == "node-a-NVMe"
+    assert pool["parent_machine"] == "node-a"
     assert pool["aliases"] == ["ct-fast"]
     assert pool["runner_labels"] == ["d-sorg-fleet-nvme"]
     assert pool["runners"] == {"default": 4, "max": 8}
@@ -233,12 +269,12 @@ def test_normalize_machine_entry_runner_pools() -> None:
 
 def test_normalize_machine_entry_rejects_invalid_runner_pools() -> None:
     with pytest.raises(ValueError, match="runner_pools"):
-        mr._normalize_machine_entry({"name": "ControlTower", "runner_pools": "bad"})
+        mr._normalize_machine_entry({"name": "node-a", "runner_pools": "bad"})
 
 
 def test_normalize_machine_entry_rejects_runner_pool_without_name() -> None:
     with pytest.raises(ValueError, match="runner_pools.name"):
-        mr._normalize_machine_entry({"name": "ControlTower", "runner_pools": [{}]})
+        mr._normalize_machine_entry({"name": "node-a", "runner_pools": [{}]})
 
 
 # ---------------------------------------------------------------------------
@@ -308,13 +344,13 @@ def test_build_index_runner_pool_names_and_aliases_included() -> None:
     registry = {
         "machines": [
             {
-                "name": "ControlTower",
+                "name": "node-a",
                 "aliases": [],
                 "runner_pools": [
                     {
-                        "name": "ControlTower-NVMe",
+                        "name": "node-a-NVMe",
                         "aliases": ["ct-fast"],
-                        "parent_machine": "ControlTower",
+                        "parent_machine": "node-a",
                     }
                 ],
             }
@@ -322,9 +358,9 @@ def test_build_index_runner_pool_names_and_aliases_included() -> None:
     }
     index = mr.build_machine_registry_index(registry)
 
-    assert index["controltowernvme"]["name"] == "ControlTower-NVMe"
-    assert index["ctfast"]["name"] == "ControlTower-NVMe"
-    assert index["controltowernvme"]["parent_machine"] == "ControlTower"
+    assert index["nodeanvme"]["name"] == "node-a-NVMe"
+    assert index["ctfast"]["name"] == "node-a-NVMe"
+    assert index["nodeanvme"]["parent_machine"] == "node-a"
 
 
 def test_build_index_empty_registry() -> None:
@@ -364,15 +400,15 @@ def test_merge_registry_runner_pool_placeholder_included() -> None:
     registry = {
         "machines": [
             {
-                "name": "ControlTower",
+                "name": "node-a",
                 "aliases": [],
                 "hardware": {},
                 "runner_pools": [
                     {
-                        "name": "ControlTower-SSD",
+                        "name": "node-a-SSD",
                         "aliases": [],
                         "dashboard_url": "http://127.0.0.1:8321",
-                        "parent_machine": "ControlTower",
+                        "parent_machine": "node-a",
                         "storage_tier": "ssd",
                     }
                 ],
@@ -381,34 +417,34 @@ def test_merge_registry_runner_pool_placeholder_included() -> None:
     }
 
     merged = mr.merge_registry_with_live_nodes(live, registry)
-    pool = next(m for m in merged if m.get("name") == "ControlTower-SSD")
+    pool = next(m for m in merged if m.get("name") == "node-a-SSD")
 
     assert pool["role"] == "runner_pool"
-    assert pool["parent_machine"] == "ControlTower"
+    assert pool["parent_machine"] == "node-a"
     assert pool["registry"]["storage_tier"] == "ssd"
 
 
 def test_merge_registry_live_child_pool_satisfies_parent_machine() -> None:
-    live = [{"name": "ControlTower-NVMe", "online": True, "system": {}, "health": {}}]
+    live = [{"name": "node-a-NVMe", "online": True, "system": {}, "health": {}}]
     registry = {
         "machines": [
             {
-                "name": "ControlTower",
+                "name": "node-a",
                 "aliases": [],
                 "hardware": {},
-                "dashboard_url": "http://100.95.177.68:8321",
+                "dashboard_url": "http://100.64.254.10:8321",
                 "runner_pools": [
                     {
-                        "name": "ControlTower-NVMe",
+                        "name": "node-a-NVMe",
                         "aliases": [],
-                        "dashboard_url": "http://100.95.177.68:8321",
-                        "parent_machine": "ControlTower",
+                        "dashboard_url": "http://100.64.254.10:8321",
+                        "parent_machine": "node-a",
                     },
                     {
-                        "name": "ControlTower-SSD",
+                        "name": "node-a-SSD",
                         "aliases": [],
-                        "dashboard_url": "http://100.95.177.68:8321",
-                        "parent_machine": "ControlTower",
+                        "dashboard_url": "http://100.64.254.10:8321",
+                        "parent_machine": "node-a",
                     },
                 ],
             }
@@ -417,8 +453,8 @@ def test_merge_registry_live_child_pool_satisfies_parent_machine() -> None:
 
     merged = mr.merge_registry_with_live_nodes(live, registry)
 
-    assert [node["name"] for node in merged] == ["ControlTower-NVMe", "ControlTower-SSD"]
-    assert merged[0]["registry"]["parent_machine"] == "ControlTower"
+    assert [node["name"] for node in merged] == ["node-a-NVMe", "node-a-SSD"]
+    assert merged[0]["registry"]["parent_machine"] == "node-a"
     assert merged[1]["role"] == "runner_pool"
 
 

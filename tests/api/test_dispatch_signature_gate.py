@@ -29,6 +29,16 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("DISPATCH_SIGNING_SECRET", _SECRET)
     from routers import dispatch  # noqa: PLC0415
 
+    processed: set[str] = set()
+
+    async def claim_once(envelope_id: str) -> bool:
+        if envelope_id in processed:
+            return False
+        processed.add(envelope_id)
+        return True
+
+    dispatch.set_replay_function(claim_once)
+
     app = FastAPI()
     app.include_router(dispatch.router)
     return TestClient(app)
@@ -127,3 +137,11 @@ def test_submit_accepts_correctly_signed_envelope(client: TestClient) -> None:
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["action"] == data["action"]
+
+
+def test_submit_rejects_duplicate_envelope_id(client: TestClient) -> None:
+    data = _valid_envelope_dict()
+    assert client.post("/api/fleet/dispatch/submit", json=data).status_code == 200
+    duplicate = client.post("/api/fleet/dispatch/submit", json=data)
+    assert duplicate.status_code == 400
+    assert "already been processed" in duplicate.text
