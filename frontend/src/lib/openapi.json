@@ -10823,7 +10823,7 @@
     },
     "/api/cline/status": {
       "get": {
-        "description": "Return Cline extension detection status.",
+        "description": "Return Cline CLI detection status.",
         "operationId": "get_cline_status_api_cline_status_get",
         "responses": {
           "200": {
@@ -25257,6 +25257,24 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
             }
           }
         ],

@@ -1055,7 +1055,7 @@ export interface paths {
         };
         /**
          * Get Cline Status
-         * @description Return Cline extension detection status.
+         * @description Return Cline CLI detection status.
          */
         get: operations["get_cline_status_api_cline_status_get"];
         put?: never;
@@ -23253,6 +23253,7 @@ export interface operations {
                 /** @description Include superseded passages */
                 include_superseded?: boolean;
                 run_id?: string | null;
+                repo?: string | null;
             };
             header?: never;
             path: {
