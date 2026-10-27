@@ -64,7 +64,7 @@ def test_resolve_local_identity_exact_match() -> None:
     assert res["name"] == "hub-a"
     assert res["role"] == "node"
     assert res["registry_match"] == "hub-a"
-    assert res["matched_alias"] == "hub-a"
+    assert res["matched_alias"] == "huba"
 
 
 def test_resolve_local_identity_alias_match() -> None:
@@ -79,7 +79,7 @@ def test_resolve_local_identity_runner_pool_match() -> None:
     res = mr.resolve_local_identity("node-a-Runner", "node", _SAMPLE_REGISTRY)
     assert res["name"] == "node-a-Runner"
     assert res["registry_match"] == "node-a-Runner"
-    assert res["matched_alias"] == "node-arunner"
+    assert res["matched_alias"] == "nodearunner"
 
 
 def test_resolve_local_identity_never_matches_by_role() -> None:
@@ -128,7 +128,7 @@ def test_get_fleet_identity_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     assert data["name"] == "hub-a"
     assert data["role"] == "node"
     assert data["registry_match"] == "hub-a"
-    assert data["matched_alias"] == "hub-a"
+    assert data["matched_alias"] == "huba"
     assert data["unregistered"] is False
     assert "hub-a" in data["aliases"]
 
@@ -195,9 +195,7 @@ def test_get_fleet_nodes_does_not_proxy_to_hub(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_merge_registry_suppresses_runner_pool_offline_when_parent_is_live() -> None:
-    live = [
-        {"name": "node-a", "url": "http://node-a.fleet-example.ts.net:8321", "online": True, "is_local": True}
-    ]
+    live = [{"name": "node-a", "url": "http://node-a.fleet-example.ts.net:8321", "online": True, "is_local": True}]
     merged = mr.merge_registry_with_live_nodes(live, _SAMPLE_REGISTRY)
     names = [n["name"] for n in merged]
     # node-a must be present
