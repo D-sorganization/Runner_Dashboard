@@ -1,6 +1,16 @@
 {
   "outputStyle": "Proactive",
   "hooks": {
-    "Stop": []
+    "Stop": [],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 scripts/wrappers/claude_barb_hook.py"
+          }
+        ]
+      }
+    ]
   }
 }

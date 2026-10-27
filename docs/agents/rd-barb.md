@@ -101,6 +101,19 @@ reuses `staff.provider_failover_config.resolve_failover_chain`.
   restarts on the printed provider, and the script sends a "switched provider"
   fyi with a recommendation. An exhausted chain sends an `alert`.
 
+## `/barb` and `@barb` per-CLI wrappers (#3067)
+
+Every fleet CLI gets the same `/barb` slash command, rendered from one shared
+template (`scripts/wrappers/barb_command_template.py`, synced per provider by
+`scripts/wrappers/sync_barb_commands.py`). On Claude Code:
+`/barb <message>` relays `<message>` to rd-barb (async, returns a
+`correlation_id` immediately); `/barb chat` opens or continues the
+conversation in rd-barb's RD staff thread, read with `@barb` mention-wake —
+`scripts/wrappers/claude_barb_hook.py` is a `UserPromptSubmit` hook that calls
+the shared `barb_cli.inbox()` entrypoint and injects unread items addressed to
+this agent into context. Both only call `scripts/barb_cli.py`; auth is the
+calling agent's own principal and the token is never printed or logged.
+
 ## Config on hub-a (never committed)
 
 `~/.config/runner-dashboard/rd-barb.env` (or env vars):
