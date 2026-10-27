@@ -9182,8 +9182,18 @@ export interface components {
              * @default direct
              */
             kind: string;
+            /**
+             * No Auto Reply
+             * @default false
+             */
+            no_auto_reply: boolean;
             /** Participants */
             participants?: string[];
+            /**
+             * Participants Only
+             * @default false
+             */
+            participants_only: boolean;
             /** Role */
             role?: string | null;
             /** Title */
@@ -12146,6 +12156,18 @@ export interface components {
             attention?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Board Sessions
+             * @description Agent sessions with live coordination-board presence, incl. desktop CLI agents (#2980)
+             */
+            board_sessions?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Board Sessions Warning
+             * @description Why board_sessions may be empty
+             */
+            board_sessions_warning?: string | null;
             /**
              * Exclusions Active
              * @description Active dispatch exclusions (repo/issue lanes)

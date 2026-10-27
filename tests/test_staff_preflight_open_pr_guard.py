@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from dispatch_premise import PremiseCheckResult
 from fastapi import HTTPException
 from identity import Principal
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
@@ -185,6 +186,64 @@ async def test_dispatch_force_duplicate_bypasses_guard(mock_runner: StaffRunner,
         res = await dispatch_staff_run(cmd, test_principal)
         assert res is not None
         assert res.get("dry_run") is True
+
+
+@pytest.mark.asyncio
+async def test_force_duplicate_skips_open_pr_premise_and_records_override(
+    mock_runner: StaffRunner, test_principal: Principal
+) -> None:
+    """The override skips only open PR premise checks and is visible in audit detail."""
+    cmd = DispatchCommand(
+        role="issue-remediator",
+        requested_by="test:operator",
+        repo="Test_Repo",
+        issue=2980,
+        prompt="Fix the issue",
+        force_duplicate=True,
+    )
+    with (
+        patch("staff.dispatch_service.get_runner", return_value=mock_runner),
+        patch("staff.dispatch_service.claim_guard.enforce_claim_guard", new_callable=AsyncMock, return_value={}),
+        patch("staff.dispatch_service.claim_guard.enabled", return_value=False),
+        patch("dispatch_premise.evaluate_dispatch_premise", new_callable=AsyncMock) as evaluate,
+        patch("staff.dispatch_service.record_audit") as record_audit,
+        patch("dispatch_routing.resolve_model_routing") as routing,
+        patch("staff.dispatch_service.barb_write_fence"),
+    ):
+        evaluate.return_value = PremiseCheckResult(allowed=True)
+        routing.return_value = MagicMock(tier="test", model="sonnet", reason="test")
+        mock_run = MagicMock(id="run-new", role="issue-remediator", provider="claude", to_dict=lambda: {})
+        mock_runner.admit.return_value = (mock_run, mock_runner.plan.return_value, False)
+        await dispatch_staff_run(cmd, test_principal)
+
+    assert evaluate.await_args.kwargs["check_open_pr"] is False
+    assert evaluate.await_args.kwargs["check_claim_labels"] is True
+    assert record_audit.call_args.kwargs["detail"]["force_duplicate"] is True
+
+
+@pytest.mark.asyncio
+async def test_force_duplicate_keeps_resolved_on_main_premise_check(
+    mock_runner: StaffRunner, test_principal: Principal
+) -> None:
+    cmd = DispatchCommand(
+        role="issue-remediator",
+        requested_by="test:operator",
+        repo="Test_Repo",
+        issue=2980,
+        prompt="Fix local-only-runner-guard.yml",
+        force_duplicate=True,
+    )
+    with (
+        patch("staff.dispatch_service.get_runner", return_value=mock_runner),
+        patch("staff.dispatch_service.claim_guard.enforce_claim_guard", new_callable=AsyncMock, return_value={}),
+        patch("dispatch_premise.evaluate_dispatch_premise", new_callable=AsyncMock) as evaluate,
+    ):
+        evaluate.return_value = PremiseCheckResult(
+            allowed=False, reason="already_resolved_on_main", detail="already resolved", should_close=True
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await dispatch_staff_run(cmd, test_principal)
+    assert exc_info.value.detail["reason"] == "already_resolved_on_main"
 
 
 @pytest.mark.asyncio

@@ -1611,12 +1611,22 @@
             "title": "Kind",
             "type": "string"
           },
+          "no_auto_reply": {
+            "default": false,
+            "title": "No Auto Reply",
+            "type": "boolean"
+          },
           "participants": {
             "items": {
               "type": "string"
             },
             "title": "Participants",
             "type": "array"
+          },
+          "participants_only": {
+            "default": false,
+            "title": "Participants Only",
+            "type": "boolean"
           },
           "role": {
             "anyOf": [
@@ -7848,6 +7858,27 @@
             },
             "title": "Attention",
             "type": "array"
+          },
+          "board_sessions": {
+            "description": "Agent sessions with live coordination-board presence, incl. desktop CLI agents (#2980)",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Board Sessions",
+            "type": "array"
+          },
+          "board_sessions_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why board_sessions may be empty",
+            "title": "Board Sessions Warning"
           },
           "exclusions_active": {
             "default": 0,

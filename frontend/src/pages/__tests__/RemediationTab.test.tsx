@@ -207,6 +207,35 @@ describe("RemediationTab — automations view", () => {
   });
 });
 
+describe("RemediationTab — model picker provider fallback", () => {
+  it("falls back to the policy default provider's models when the selected run has no provider", () => {
+    const registry = parseRegistry({
+      schema_version: "1.0.0",
+      providers: [
+        {
+          id: "codex-cli",
+          dashboard_id: "codex_cli",
+          label: "Codex CLI",
+          auth_mode: "github_app",
+          resource: "runner",
+          models: ["gpt-5", "o4-mini"],
+          enabled: true,
+        },
+      ],
+    } as ProviderRegistryResponse);
+    render(
+      <RemediationTab
+        {...baseProps({
+          registry,
+          provider: undefined,
+          selectedRunId: String(FAILED_RUN.id),
+        })}
+      />,
+    );
+    expect(screen.getByRole("option", { name: "gpt-5" })).toBeTruthy();
+  });
+});
+
 describe("RemediationTab — inline editable stats", () => {
   it("edits and saves the loop guard via onSaveConfig", () => {
     const props = baseProps();

@@ -22,6 +22,7 @@ from coordination import board, claims, roster
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
 from coordination.models import AckBody, ClaimBody, ClaimReleaseBody, MessageBody, PresenceBody, ReleaseBody
 from coordination.staff_view import staff_runs
+from staff.rm_sync import stale_source_warning
 
 __all__ = ["ImpersonationError", "MissingAgentError", "NotRegisteredError", "UnknownAgentError"]
 
@@ -110,6 +111,9 @@ async def sessions(repo: str | None) -> dict[str, Any]:
                 "sessions": [s for s in data.get("sessions", []) if str(s.get("repo") or "").casefold() == wanted],
             }
         runs = [run for run in runs if str(run.get("repo") or "").casefold() == wanted]
+    source_warning = stale_source_warning()
+    if source_warning:
+        warnings.append(source_warning)
     return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings, *staff_warnings]})
 
 
@@ -195,3 +199,26 @@ def release_claim(body: ClaimReleaseBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
     return _stamp(claims.release(body.repo, body.issue, agent=agent, session=body.session, reason=body.reason))
+
+
+BOARD_SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "expires")
+
+
+async def board_sessions_bounded() -> tuple[list[dict[str, Any]], str | None]:
+    """Live board sessions for the staff summary, bounded like ``sessions`` (#2980).
+
+    Post: never raises; on an unavailable, failed or slow board read returns ``([], reason)``.
+    Shares the in-flight board read with ``sessions`` and never cancels it.
+    """
+    future = _shared_session_read("board", lambda: board.read_sessions())
+    try:
+        data = await asyncio.wait_for(
+            asyncio.shield(asyncio.wrap_future(future)), timeout=SESSION_RESPONSE_DEADLINE_SECONDS
+        )
+    except TimeoutError:
+        return [], "board sessions read timed out"
+    except Exception:  # noqa: BLE001 — the summary must not fail on a board read
+        return [], "board sessions read failed"
+    if not data.get("available"):
+        return [], f"board unavailable: {data.get('reason') or 'unknown reason'}"
+    return [{k: s.get(k) for k in BOARD_SESSION_KEYS} for s in data.get("sessions", [])], None

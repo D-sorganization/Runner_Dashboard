@@ -7,6 +7,7 @@ can call it without importing router internals (Law of Demeter).
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -36,6 +37,13 @@ def _operator_auth_health() -> dict[str, Any]:
     return dict(aggregate_operator_auth_health())
 
 
+async def _board_sessions() -> tuple[list[dict[str, Any]], str | None]:
+    """Desktop CLI and other agent sessions with live board presence (#2980); bounded, never raises."""
+    from coordination.service import board_sessions_bounded  # noqa: PLC0415 — coordination imports staff
+
+    return await board_sessions_bounded()
+
+
 async def build_staff_summary() -> dict[str, Any]:
     """The one-call brief for Barb and Orchestrator (#1195).
 
@@ -46,6 +54,7 @@ async def build_staff_summary() -> dict[str, Any]:
     and the roster with schedules.
     """
     runner = get_runner()
+    board_sessions_task = asyncio.create_task(_board_sessions())  # overlaps the peer fan-out below
     board_view = await staff_fleet.aggregate_board(staff_fleet.local_board(runner))
     since = (datetime.now(UTC) - timedelta(hours=24)).isoformat().replace("+00:00", "Z")
     recent = runner.store.list_runs(limit=200, since=since)
@@ -81,12 +90,15 @@ async def build_staff_summary() -> dict[str, Any]:
         "last_line",
     )
     in_flight = [{k: r.get(k) for k in keep} for r in [*board_view["running"], *board_view["queued"]]]
+    board_sessions, board_sessions_warning = await board_sessions_task
     return {
         "generated_at": board_view["generated_at"],
         "hub": board_view["hub"],
         "machines_online": board_view["online"],
         "machines_offline": board_view["offline"],
         "in_flight": in_flight,
+        "board_sessions": board_sessions,
+        **({"board_sessions_warning": board_sessions_warning} if board_sessions_warning else {}),
         "recent_24h": counts,
         "attention": attention[:20],
         "spend_today_usd": board_view["spend_today_usd"],

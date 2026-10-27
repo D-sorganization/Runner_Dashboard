@@ -51,6 +51,19 @@ def test_record_idempotent(store: ReplayStore) -> None:
     assert store.is_replay("env-001") is True
 
 
+def test_claim_once_is_atomic_across_store_instances(tmp_path: Path) -> None:
+    db_path = tmp_path / "atomic-replay.db"
+    stores = [ReplayStore(db_path, ttl_s=60) for _ in range(8)]
+    try:
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda item: item.claim_once("env-atomic"), stores))
+        assert results.count(True) == 1
+        assert results.count(False) == 7
+    finally:
+        for item in stores:
+            item.close()
+
+
 def test_concurrent_store_instances_share_file(tmp_path: Path) -> None:
     db_path = tmp_path / "replay.db"
 
