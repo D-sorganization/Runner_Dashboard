@@ -42,6 +42,7 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "tools",
     "scopes",
     "retry",
+    "avatar",
 )
 STRATEGY_KEYS: tuple[str, ...] = ("consolidate_when",)
 CONSOLIDATE_WHEN_BOUNDS: dict[str, tuple[int, int | None]] = {
