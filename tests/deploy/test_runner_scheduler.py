@@ -393,6 +393,67 @@ def _active_unit(num: int, tmp_path: Path, busy: bool = False):
     )
 
 
+def _out_of_order_units(tmp_path: Path):
+    units = [_active_unit(n, tmp_path) for n in range(1, 6)]
+    for unit in units:
+        unit.active = unit.num in (1, 2, 5)
+    return units
+
+
+def test_apply_capacity_reduced_target_activates_lowest_slots(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    actions = runner_scheduler.apply_capacity(_out_of_order_units(tmp_path), desired=3, dry_run=True)
+    assert [(a["runner"], a["action"]) for a in actions] == [(3, "start"), (5, "stop")]
+
+
+def test_apply_capacity_reconcile_skips_busy_out_of_range_slot(monkeypatch, tmp_path: Path) -> None:
+    units = _out_of_order_units(tmp_path)
+    units[-1].busy = True
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    assert runner_scheduler.apply_capacity(units, desired=3, dry_run=True) == []
+    units[-1].busy = False
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: False)
+    assert runner_scheduler.apply_capacity(units, desired=3, dry_run=True) == []
+
+
+def test_apply_capacity_never_drops_below_target_during_reconcile(monkeypatch, tmp_path: Path) -> None:
+    units = _out_of_order_units(tmp_path)
+    active = {u.num for u in units if u.active}
+    calls = []
+
+    def start(cmd):
+        assert cmd == ["systemctl", "start", units[2].unit]
+        calls.append("start")
+        active.add(3)
+        return _process_result()
+
+    def stop(unit):
+        calls.append("stop")
+        active.remove(unit.num)
+        assert len(active) >= 3
+        return True
+
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", start)
+    monkeypatch.setattr(runner_scheduler, "stop_runner_safely", stop)
+    actions = runner_scheduler.apply_capacity(units, desired=3, dry_run=False)
+    assert calls == ["start", "stop"]
+    assert active == {1, 2, 3}
+    assert [a["action"] for a in actions] == calls
+
+
+def test_apply_capacity_failed_replacement_never_stops_existing_runner(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd: _process_result(returncode=1))
+    monkeypatch.setattr(runner_scheduler, "stop_runner_safely", lambda unit: pytest.fail("stop after failed start"))
+    assert runner_scheduler.apply_capacity(_out_of_order_units(tmp_path), desired=3, dry_run=False) == []
+
+
+def test_apply_capacity_rejects_unsorted_units(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="sorted"):
+        runner_scheduler.apply_capacity(list(reversed(_out_of_order_units(tmp_path))), desired=3, dry_run=True)
+
+
 def test_apply_capacity_rechecks_busy_immediately_before_stop(monkeypatch, tmp_path: Path) -> None:
     """A runner that picked up a job after the snapshot must not be stopped (TOCTOU)."""
     commands: list[list[str]] = []
