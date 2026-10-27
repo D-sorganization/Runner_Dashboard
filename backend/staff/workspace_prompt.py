@@ -29,6 +29,7 @@ def compose_prompt(
     custom_standards: Any | None = None,
     reads_repo_instructions: bool = True,
     repo_lessons_result: Any | None = None,
+    prompt_token_cap: int | None = None,
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
 
@@ -45,7 +46,7 @@ def compose_prompt(
         estimate_tokens,
         load_fleet_standards,
     )
-    from staff.workspace import ORG, READ_ONLY_FLEET_RULES, dashboard_api_note, playbook_text
+    from staff.workspace import ORG, READ_ONLY_FLEET_RULES, _truncate_for_budget, dashboard_api_note, playbook_text
 
     static_blocks: list[str] = []
     if not chat_turn:
@@ -135,16 +136,25 @@ def compose_prompt(
         else f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard."
     )
     parts = [*static_blocks, intro]
+    playbook_idx: int | None = None
+    instructions_idx: int | None = None
+    lease_idx: int | None = None
+    consolidation_idx: int | None = None
+    focus_idx: int | None = None
+    references_idx: int | None = None
     if role.playbook:
         text = playbook_text(role.playbook)
         if text:
+            playbook_idx = len(parts)
             parts.append(f"Your playbook (Repository_Management/{role.playbook}):\n" + text)
         else:
+            playbook_idx = len(parts)
             parts.append(
                 f"Your playbook is Repository_Management/{role.playbook}; read it first if it is available in this "
                 "checkout or as a sibling repository."
             )
     if role.instructions:
+        instructions_idx = len(parts)
         parts.append("Role instructions:\n" + role.instructions.strip())
     if repo:
         if chat_turn:
@@ -160,12 +170,16 @@ def compose_prompt(
     if operator_prompt:
         parts.append("Task from the operator:\n" + operator_prompt.strip())
     if lease_note:
+        lease_idx = len(parts)
         parts.append(lease_note)
     if consolidation and not chat_turn:
+        consolidation_idx = len(parts)
         parts.append(consolidation)
     if focus and not chat_turn:
+        focus_idx = len(parts)
         parts.append(focus)
     if library_references and not chat_turn:
+        references_idx = len(parts)
         parts.append(library_references)
 
     if chat_turn:
@@ -180,7 +194,41 @@ def compose_prompt(
     else:
         parts.append(dashboard_api_note())
 
-    full_prompt = "\n\n".join(parts)
+    if prompt_token_cap is not None and not chat_turn:
+        if prompt_token_cap <= 0:
+            raise ContextBudgetExceededError("prompt_token_cap must be positive")
+
+        def _joined() -> str:
+            return "\n\n".join(p for p in parts if p)
+
+        full_prompt = _joined()
+        # Drop the least critical dynamic context first; keep task/operator content intact.
+        for idx in (references_idx, focus_idx, consolidation_idx, lease_idx):
+            if estimate_tokens(full_prompt) <= prompt_token_cap:
+                break
+            if idx is not None:
+                parts[idx] = ""
+                full_prompt = _joined()
+
+        if estimate_tokens(full_prompt) > prompt_token_cap and playbook_idx is not None:
+            parts[playbook_idx] = "Playbook context omitted to satisfy prompt_token_cap."
+            full_prompt = _joined()
+
+        if estimate_tokens(full_prompt) > prompt_token_cap and instructions_idx is not None:
+            overflow = estimate_tokens(full_prompt) - prompt_token_cap
+            current = parts[instructions_idx]
+            current_tokens = estimate_tokens(current)
+            target_tokens = max(40, current_tokens - overflow - 32)
+            parts[instructions_idx] = _truncate_for_budget(current, target_tokens)
+            full_prompt = _joined()
+
+        if estimate_tokens(full_prompt) > prompt_token_cap:
+            raise ContextBudgetExceededError(
+                f"Prompt budget exceeded after trimming: {estimate_tokens(full_prompt)} > {prompt_token_cap} tokens"
+            )
+    else:
+        full_prompt = "\n\n".join(parts)
+
     if not chat_turn:
         static_tokens = estimate_tokens("\n\n".join(static_blocks))
         if static_tokens > TOTAL_CONTEXT_TOKEN_CAP:
