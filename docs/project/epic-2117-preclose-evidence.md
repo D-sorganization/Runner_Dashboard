@@ -27,7 +27,7 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 
 ---
 
-### Slice #2120 — Rollups (merged **PR #2139**; gaps closed **#2706**, **#2936**, workflow runs **#TBD**)
+### Slice #2120 — Rollups (merged **PR #2139**; gaps closed **#2706**, **#2936**, workflow runs **#3198**)
 
 | Criterion                                                | Evidence                                                                            |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -38,7 +38,7 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 | **Grouping by role/agent, repo, model**                  | **Pass** — `attribution.py`, `groupings` in `report.py`; UI filters **PR #2955**    |
 | **Escapes weighted (red-main, reverts, rollouts)**       | **Pass** — `escapes.py`, `weighted_escapes` in `aggregate_window` (**PR #2706**)    |
 | **Rework time**                                          | **Pass** — `rework_seconds` on `PrRollup` (**PR #2936**)                            |
-| **Actions workflow run drill-down**                      | **Pass** — `workflow_runs.py`, `workflow_runs` on pull drill-down (**PR #TBD**)     |
+| **Actions workflow run drill-down**                      | **Pass** — `workflow_runs.py`, `workflow_runs` on pull drill-down (**PR #3198**)    |
 
 ---
 
@@ -53,7 +53,7 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 
 ---
 
-### Slice #2122 — Frontend (merged **PR #2144**; grouping **#2955**; workflow runs **#TBD**)
+### Slice #2122 — Frontend (merged **PR #2144**; grouping **#2955**; workflow runs **#3198**)
 
 | Criterion                                              | Evidence                                                                               |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
@@ -91,6 +91,6 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 
 ### Decision (post gap-4 merge)
 
-After **PR #TBD** (workflow run drill-down) merges to `main`, **epic #2117 is closable** — all epic-level gaps from the 2026-10-24 audit are addressed with tests. Close with `Closes #2117` on that PR or a follow-up housekeeping PR that only updates tracking.
+After **PR #3198** (workflow run drill-down) merges to `main`, **epic #2117 is closable** — all epic-level gaps from the 2026-10-24 audit are addressed with tests. Close with `Closes #2117` on that PR or a follow-up housekeeping PR that only updates tracking.
 
-_Gap PRs: escapes **#2706**, rework **#2936**, grouping **#2955**, workflow runs **#TBD**._
+_Gap PRs: escapes **#2706**, rework **#2936**, grouping **#2955**, workflow runs **#3198**._
