@@ -39,7 +39,7 @@ def detect_service_scope(
     """Classify scope from fakeable probe tuples ``(scope_label, exit_code)``.
 
     ``probe_results`` entries are tried in order; the first scope with exit 0 wins.
-    System scope is preferred when both are active (DeskComputer WSL hub pattern).
+    System scope is preferred when both are active (hub-a WSL hub pattern).
     """
     for label, code in probe_results:
         if code != 0:

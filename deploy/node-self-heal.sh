@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DASHBOARD_HOME="${HOME:-/home/dieterolson}"
+DASHBOARD_HOME="${HOME:-/home/fleet-operator}"
 BASE_DIR="${RUNNER_BASE_DIR:-${DASHBOARD_HOME}/actions-runners}"
 DEPLOY_DIR="${RUNNER_DASHBOARD_DEPLOY_DIR:-${BASE_DIR}/dashboard}"
 PORT="${DASHBOARD_PORT:-8321}"

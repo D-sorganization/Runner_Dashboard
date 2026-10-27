@@ -6,8 +6,8 @@
 # fleet_storage_gc.py) delegates here, so the units are defined exactly once.
 #
 # Why it exists: on 2026-10-11 every runner host ran a DIFFERENT cleanup —
-# OGLaptop an old fork with no rustup reaper (35k leaked dirs, C: at 0.6 GB),
-# DeskComputer the right binary silently replaced by a drop-in ExecStart
+# node-b an old fork with no rustup reaper (35k leaked dirs, C: at 0.6 GB),
+# hub-a the right binary silently replaced by a drop-in ExecStart
 # override — because three installers wrote the same paths and nothing ever
 # checked what was actually installed.
 #

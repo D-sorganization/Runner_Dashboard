@@ -45,8 +45,8 @@ Environment=RUNNER_BASE_DIR=/home/YOUR_USER/actions-runners
 # with Tailscale's specific-IP listener on the shared network namespace.
 # Tailscale-serve still proxies external Tailnet traffic to 127.0.0.1:8321.
 #Environment=DASHBOARD_HOST=127.0.0.1
-Environment=DISPLAY_NAME=ControlTower
-Environment=RUNNER_ALIASES=controltower,control-tower-runner-monitoring
+Environment=DISPLAY_NAME=node-a
+Environment=RUNNER_ALIASES=node-a,node-a-runner-monitoring
 Environment=RUNNER_SCHEDULE_CONFIG=/home/YOUR_USER/.config/runner-dashboard/runner-schedule.json
 Environment=RUNNER_SCHEDULER_BIN=/usr/local/bin/runner-scheduler
 # Fleet role (hub vs node) is derived at runtime from machine_registry.yml (#2022).
@@ -62,7 +62,7 @@ Environment=WSL_INTEROP=/run/WSL/1_interop
 # File: /home/YOUR_USER/.config/runner-dashboard/env
 # Contents:
 #   GH_TOKEN=ghp_<classic PAT with scopes: repo, admin:org>
-#   FLEET_NODES=OGLaptop:http://100.x.x.a:8321,...   (once nodes are live)
+#   FLEET_NODES=node-b:http://100.x.x.a:8321,...   (once nodes are live)
 EnvironmentFile=-/home/YOUR_USER/.config/runner-dashboard/env
 
 # Hardening (issue #391)

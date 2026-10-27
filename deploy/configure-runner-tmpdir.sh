@@ -4,7 +4,7 @@
 #
 # Why: pip build trees (pip-install-*, pip-build-env-*, ...), pytest and
 # Python tempfile scratch all land in $TMPDIR, which defaults to /tmp. On
-# hosts where /tmp is tmpfs (OGLaptop: 24G) a handful of cancelled jobs
+# hosts where /tmp is tmpfs (node-b: 24G) a handful of cancelled jobs
 # exhaust it, every later `pip install` on the host dies with ENOSPC, the
 # dependency-install step fails, and required checks hard-block PRs
 # fleet-wide while every root-disk gate stays green.

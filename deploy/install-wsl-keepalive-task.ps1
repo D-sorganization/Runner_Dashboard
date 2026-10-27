@@ -9,7 +9,7 @@
     dashboard service when health fails. It deliberately does not reset WSL.
 
 .EXAMPLE
-    .\install-wsl-keepalive-task.ps1 -Distro WSL -TaskName ControlTower-NVMe-WSL-KeepAlive
+    .\install-wsl-keepalive-task.ps1 -Distro WSL -TaskName node-a-NVMe-WSL-KeepAlive
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]

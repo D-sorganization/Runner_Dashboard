@@ -8,9 +8,9 @@ RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
 # subdirs. If unset, falls back to RUNNER_ROOT for backwards compat.
 # The cleanup pass accepts a runner workdir if it sits under ANY of
 # these roots. Guards against: 2026-05-28 disk fill where
-# /home/dieterolson/actions-runners-nvme/runner-*/_work grew unbounded
+# /home/fleet-operator/actions-runners-nvme/runner-*/_work grew unbounded
 # because the daily cleanup only knew about
-# /home/dieterolson/actions-runners/runner-* and silently skipped
+# /home/fleet-operator/actions-runners/runner-* and silently skipped
 # every nvme unit with "unexpected WorkingDirectory".
 RUNNER_ROOTS="${RUNNER_ROOTS:-$RUNNER_ROOT}"
 RUNNER_USER="${RUNNER_USER:-${SUDO_USER:-$USER}}"
@@ -23,14 +23,14 @@ DOCKER_PRUNE_UNTIL="${DOCKER_PRUNE_UNTIL:-168h}"
 # Every rebuild of a tagged image (UpstreamDrift rebuilds five
 # upstream-drift:<profile> images several times a day) leaves the previous
 # image dangling, and nothing else ever removes it: on 2026-09-14
-# ControlTower carried 42 dangling images (~100 GiB, none older than 41 h)
+# node-a carried 42 dangling images (~100 GiB, none older than 41 h)
 # under the 168h window, which is what drove the runner vhdx from 432 to
 # 465 GB in nine days. A dangling image is by definition superseded, so a
 # few hours is plenty of grace for an in-flight `docker load`/retag.
 DOCKER_DANGLING_UNTIL="${DOCKER_DANGLING_UNTIL:-6h}"
 # rustup leaks one ~/.rustup/tmp/<id>_dir per interrupted toolchain
 # operation (jobs killed mid-`rustup update` by cancel/timeout); 19,627 of
-# them (37 GiB) had accumulated on ControlTower in 17 days. Only reaped
+# them (37 GiB) had accumulated on node-a in 17 days. Only reaped
 # while no rustup process is running so a live install is never touched.
 RUSTUP_TMP_HOURS="${RUSTUP_TMP_HOURS:-6}"
 JOURNAL_MAX_SIZE="${JOURNAL_MAX_SIZE:-1G}"
@@ -40,7 +40,7 @@ PRUNE_DOCKER_VOLUMES="${PRUNE_DOCKER_VOLUMES:-0}"
 # Orphaned buildx builder state volumes are always reaped, independent of
 # PRUNE_DOCKER_VOLUMES. docker/setup-buildx-action creates a fresh
 # docker-container builder per job and never removes its
-# buildx_buildkit_<builder>_state volume; on 2026-09-14 DeskComputer carried
+# buildx_buildkit_<builder>_state volume; on 2026-09-14 hub-a carried
 # 37 of them (119 GiB, 78 stale builder definitions) that no container
 # referenced. Only volumes matching that name AND unreferenced by any
 # container (dangling) are removed, so user volumes and live builders are
@@ -335,7 +335,7 @@ runner_busy_via_lockfile() {
     # doesn't permanently lock its runner out of cleanup.
     #
     # NOTE (#640): the argument is the *registered runner name* (e.g.
-    # d-sorg-local-ControlTower-nvme-4), not the workdir basename (runner-4).
+    # d-sorg-local-node-a-nvme-4), not the workdir basename (runner-4).
     # The hook writes ${RUNNER_NAME}.lock, so keying on the workdir basename
     # never matched and this signal was silently dead.
     local runner_name="$1"

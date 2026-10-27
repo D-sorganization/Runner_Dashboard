@@ -12,18 +12,18 @@
 # Usage (from WSL2, in the runner-dashboard directory):
 #   sed -i 's/\r$//' deploy/setup.sh && chmod +x deploy/setup.sh
 #
-#   ControlTower  (16 local runners across NVMe and SSD pools, hub):
-#     ./deploy/setup.sh --runners 8 --machine-name ControlTower --role hub
+#   node-a  (16 local runners across NVMe and SSD pools, hub):
+#     ./deploy/setup.sh --runners 8 --machine-name node-a --role hub
 #
-#   OGLaptop      (8 runners, node):
-#     ./deploy/setup.sh --runners 8 --machine-name OGLaptop
+#   node-b      (8 runners, node):
+#     ./deploy/setup.sh --runners 8 --machine-name node-b
 #
-#   DeskComputer  (8 installed runners, schedule controls day/night count):
-#     ./deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
+#   hub-a  (8 installed runners, schedule controls day/night count):
+#     ./deploy/setup.sh --runners 8 --machine-name hub-a --runner-aliases desktop
 #
 #   Hub — add fleet nodes after all machines are running (Tailscale IPs):
-#     ./deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-#       --fleet-nodes "OGLaptop:http://100.125.64.108:8321,DeskComputer:http://100.122.254.109:8321"
+#     ./deploy/setup.sh --runners 8 --machine-name node-a --role hub \
+#       --fleet-nodes "node-b:http://100.64.254.12:8321,hub-a:http://100.64.254.13:8321"
 # ==============================================================================
 
 set -euo pipefail
@@ -391,8 +391,8 @@ sed -e "s|Description=D-sorganization Runner Dashboard|Description=D-sorganizati
     -e "s|ReadWritePaths=${HOME}/actions-runners$|ReadWritePaths=${RUNNER_BASE_DIR}|g" \
     -e "s|NUM_RUNNERS=12|NUM_RUNNERS=${NUM_RUNNERS}|g" \
     -e "s|DASHBOARD_PORT=8321|DASHBOARD_PORT=${PORT}|g" \
-    -e "s|DISPLAY_NAME=ControlTower|DISPLAY_NAME=${DISPLAY_NAME_VAL}|g" \
-    -e "s|RUNNER_ALIASES=controltower,control-tower-runner-monitoring|RUNNER_ALIASES=${RUNNER_ALIASES_VAL}|g" \
+    -e "s|DISPLAY_NAME=node-a|DISPLAY_NAME=${DISPLAY_NAME_VAL}|g" \
+    -e "s|RUNNER_ALIASES=node-a,node-a-runner-monitoring|RUNNER_ALIASES=${RUNNER_ALIASES_VAL}|g" \
     -e "s|RUNNER_SCHEDULE_CONFIG=.*|RUNNER_SCHEDULE_CONFIG=${SCHEDULE_CONFIG_VAL}|g" \
     "${TEMPLATE_FILE}" | sudo tee "${SERVICE_FILE}" > /dev/null
 

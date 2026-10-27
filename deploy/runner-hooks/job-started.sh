@@ -105,7 +105,7 @@ fi
 # working tree: `git checkout --force` then *empties the tree*, emitting the
 # WARNING_SPARSE_NOT_UPTODATE_FILE warning above for the paths whose stat
 # cache is stale and silently deleting the rest -- while still exiting 0, so
-# actions/checkout reports success.  Verified on ControlTower: with
+# actions/checkout reports success.  Verified on node-a: with
 # `core.sparseCheckout=true` and an empty `.git/info/sparse-checkout`,
 # `git checkout --progress --force <ref>` exits 0 and leaves the tree empty.
 #
@@ -118,7 +118,7 @@ fi
 # Clearing only that incoherent "on with no patterns" state was not enough.
 # A self-hosted runner reuses `_work/<repo>/<repo>` across jobs, and three
 # kinds of residue from a PREVIOUS job break the NEXT job's actions/checkout
-# (diagnosed on DeskComputer, Gasification_Model):
+# (diagnosed on hub-a, Gasification_Model):
 #
 #   1. Sparse / skip-worktree residue.  A job that ran actions/checkout with
 #      `sparse-checkout:` (worst with `sparse-checkout-cone-mode: false`)
@@ -135,12 +135,12 @@ fi
 #      file.  Across thousands of files the step looks hung for 10+ minutes or
 #      is cancelled.  `git sparse-checkout disable` does not fix this.
 #      A promisor clone whose index blobs are all present is HEALTHY: once
-#      checkout's auth is set, later lazy fetches work.  (ControlTower, on a
+#      checkout's auth is set, later lazy fetches work.  (node-a, on a
 #      ~6 Mbit/s uplink, runs 14 such workspaces; re-cloning them would hurt.)
 #   3. Stale git locks (.git/index.lock and friends, including under
 #      .git/modules/**) left by a killed job, and the temp packs
 #      (objects/pack/tmp_pack_*, tmp_idx_*) of a fetch it cancelled -- six on
-#      DeskComputer runner-3, ~2.4 GB (#1979).
+#      hub-a runner-3, ~2.4 GB (#1979).
 #
 # The old exception -- "a genuine sparse checkout (config on AND patterns
 # present) is left alone" -- was wrong for a shared workspace: at job start
@@ -316,9 +316,9 @@ _reap_old_quarantine() {
 
 # -- Reseed from a local sibling (2026-10-17, production evidence) -----------
 # An EMPTY workspace makes actions/checkout clone over the network.  At ~09:00Z
-# six DeskComputer runners lost their GM workspaces at once; their parallel
+# six hub-a runners lost their GM workspaces at once; their parallel
 # `fetch --depth=1` clones saturated the uplink, took 43 minutes and the jobs
-# were cancelled (ControlTower is on ~6 Mbit/s cellular).  Rebuilding the same
+# were cancelled (node-a is on ~6 Mbit/s cellular).  Rebuilding the same
 # workspaces from a healthy sibling on local disk took 11-14 s each, after
 # which checkout fetched only a small delta.  So a quarantined workspace is
 # RESEEDED from the healthiest sibling workspace of the same repo on this host
