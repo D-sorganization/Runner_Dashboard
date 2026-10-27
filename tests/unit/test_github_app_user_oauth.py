@@ -46,6 +46,7 @@ def _oauth_env() -> dict[str, str]:
         "GITHUB_CLIENT_SECRET": "x" * 40,  # pragma: allowlist secret
         "GITHUB_ORG": EXPECTED_GITHUB_ORG,
         "DASHBOARD_PUBLIC_ORIGIN": _HUB_ORIGIN,
+        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": _HUB_ORIGIN,
         "GITHUB_OAUTH_CALLBACK_URL": _HUB_CALLBACK,
         "SESSION_SECRET": "s" * 64,  # pragma: allowlist secret
         "DASHBOARD_TLS": "1",
