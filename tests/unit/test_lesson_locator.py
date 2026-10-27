@@ -93,11 +93,39 @@ def test_pagination_and_scan_limit_fail_closed_even_after_match(store: RunStore)
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("version", True), ("version", 2), ("event_seq", True), ("event_seq", 0),
-     ("line_index", False), ("line_index", -1), ("line_sha256", "A" * 64), ("extra", 1)],
+    [
+        ("version", True),
+        ("version", 2),
+        ("event_seq", True),
+        ("event_seq", 0),
+        ("line_index", False),
+        ("line_index", -1),
+        ("line_sha256", "A" * 64),
+        ("extra", 1),
+    ],
 )
 def test_locator_is_closed_and_strictly_typed(store: RunStore, field: str, value: object) -> None:
     append(store, "STAFF_LESSON: exact")
     locator = locate_lesson_evidence(store, "run", "repo", "exact")
     locator[field] = value
     assert not verify_lesson_evidence(store, "run", "repo", "exact", locator)
+
+
+@pytest.mark.parametrize(("field", "value"), [("event_seq", 2), ("line_index", 1), ("line_sha256", "0" * 64)])
+def test_valid_shape_still_requires_exact_rederived_evidence(store: RunStore, field: str, value: object) -> None:
+    append(store, "STAFF_LESSON: exact")
+    locator = locate_lesson_evidence(store, "run", "repo", "exact")
+    locator[field] = value
+    assert not verify_lesson_evidence(store, "run", "repo", "exact", locator)
+
+
+@pytest.mark.parametrize("invalid", [None, [], "locator", {}, {"version": 1}])
+def test_malformed_locator_fails_closed(store: RunStore, invalid: object) -> None:
+    assert not verify_lesson_evidence(store, "run", "repo", "exact", invalid)
+
+
+@pytest.mark.parametrize("invalid", [None, False, 1, ""])
+def test_boundary_rejects_invalid_identity_or_body(store: RunStore, invalid: object) -> None:
+    for values in ((invalid, "repo", "exact"), ("run", invalid, "exact"), ("run", "repo", invalid)):
+        with pytest.raises(ValueError, match="non-empty strings"):
+            locate_lesson_evidence(store, *values)
