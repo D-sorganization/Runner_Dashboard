@@ -167,3 +167,13 @@ def test_cli_rejects_bad_json_with_exit_1(
     monkeypatch.setattr(rn, "_fleet_thread_poster", lambda: None)
     assert rn.main(["send", "--json", str(bad)]) == 1
     assert "invalid_json" in capsys.readouterr().out
+
+
+def test_load_config_env_wins_for_every_rd_barb_key(tmp_path: Path) -> None:
+    cfg_file = tmp_path / "rd-barb.env"
+    cfg_file.write_text("RD_BARB_PROVIDER=claude\nRD_BARB_LAUNCH_CMD=bin/a {provider}\n", encoding="utf-8")
+    env = {"RD_BARB_CONFIG": str(cfg_file), "RD_BARB_PROVIDER": "codex", "HOME": "/x", "RD_BARB_MODEL": ""}
+    cfg = rn.load_config(env)
+    assert cfg["RD_BARB_PROVIDER"] == "codex"
+    assert cfg["RD_BARB_LAUNCH_CMD"] == "bin/a {provider}"
+    assert "HOME" not in cfg and "RD_BARB_MODEL" not in cfg
