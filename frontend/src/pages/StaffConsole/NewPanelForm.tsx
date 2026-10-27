@@ -119,7 +119,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
     const found = presets.find((p) => p.id === selectedPresetId);
     if (!found) return;
     applyPresetExperts(found);
-  }, [applyPresetExperts, presetCatalogKey, selectedPresetId]);
+  }, [applyPresetExperts, presetCatalogKey, presets, selectedPresetId]);
 
   const handleUpdateExpert = (index: number, patch: Partial<PanelFormExpert>) => {
     setExperts((prev) => {
