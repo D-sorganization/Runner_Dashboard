@@ -142,7 +142,6 @@ def test_held_lock_logs_distinct_from_unusable(tmp_path, monkeypatch, caplog):
 
 
 def _subprocess_leader_attempt(lock_path: str, result_path: str) -> None:
-    import fcntl
 
     import server as srv  # noqa: PLC0415
 
