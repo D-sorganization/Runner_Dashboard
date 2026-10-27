@@ -32,4 +32,5 @@ Repo defaults: `config/agent_principals.yml` (`assistant_profile` + per-agent `k
 - [Codex hands](codex-hands.md)
 - [Codex CLI (MCP)](codex.md)
 - [Claude](claude.md)
+- [Barb exchange repo](barb-exchange.md)
 - [Connect index](connect.md)
