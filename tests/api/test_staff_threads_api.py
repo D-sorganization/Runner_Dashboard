@@ -137,6 +137,43 @@ def test_list_threads_filtering(client: TestClient):
     assert items[0]["title"] == "T1"
 
 
+def test_list_threads_offloads_sqlite_query(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    """The async route delegates its blocking SQLite read to the thread pool."""
+    calls: list[tuple[object, tuple, dict]] = []
+
+    async def recording_to_thread(func, /, *args, **kwargs):
+        calls.append((func, args, kwargs))
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("routers.staff_threads.asyncio.to_thread", recording_to_thread)
+
+    response = client.get("/api/v1/staff/threads")
+
+    assert response.status_code == 200, response.text
+    assert len(calls) == 1
+    assert calls[0][0].__name__ == "list_threads"
+    assert calls[0][2]["limit"] == 200
+
+
+def test_thread_detail_offloads_sqlite_queries(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    """The async detail route delegates both blocking SQLite reads to the thread pool."""
+    thread_id = client.post(
+        "/api/v1/staff/threads", json={"title": "Details", "role": "barb"}
+    ).json()["id"]
+    calls: list[str] = []
+
+    async def recording_to_thread(func, /, *args, **kwargs):
+        calls.append(func.__name__)
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("routers.staff_threads.asyncio.to_thread", recording_to_thread)
+
+    response = client.get(f"/api/v1/staff/threads/{thread_id}")
+
+    assert response.status_code == 200, response.text
+    assert calls == ["get_thread", "list_messages"]
+
+
 def test_role_filter_finds_older_thread_past_global_cap(client: TestClient, clean_conversations) -> None:
     """Role filter applies in SQL before the 200-row cap (#2662)."""
     store = clean_conversations
