@@ -41,13 +41,16 @@ def test_cross_provider_round_trip(tmp_path, source, target):
     assert json.loads(session["prompt"].split("\n", 1)[1]) == context()
 
 
-@pytest.mark.parametrize("invalid", [
-    {"work_item": "x"},
-    {**context(), "decisions": "not a list"},
-    {**context(), "evidence": [{"ref": "x"}]},
-    {**context(), "context": " "},
-    {**context(), "session_id": "native-session"},
-])
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"work_item": "x"},
+        {**context(), "decisions": "not a list"},
+        {**context(), "evidence": [{"ref": "x"}]},
+        {**context(), "context": " "},
+        {**context(), "session_id": "native-session"},
+    ],
+)
 def test_invalid_context_fails_without_creating_output(tmp_path, invalid):
     source, destination = tmp_path / "input.json", tmp_path / "output.json"
     source.write_text(json.dumps(invalid))
@@ -57,7 +60,9 @@ def test_invalid_context_fails_without_creating_output(tmp_path, invalid):
     assert not destination.exists()
 
 
-@pytest.mark.parametrize("payload", ["{broken", "[]", '{"version": 99}', "x" * 262145], ids=["malformed", "array", "version", "oversize"])
+@pytest.mark.parametrize(
+    "payload", ["{broken", "[]", '{"version": 99}', "x" * 262145], ids=["malformed", "array", "version", "oversize"]
+)
 def test_invalid_package_fails_closed(tmp_path, payload):
     source, destination = tmp_path / "input.json", tmp_path / "output.json"
     source.write_text(payload)
@@ -76,3 +81,11 @@ def test_does_not_overwrite_existing_output_or_echo_input(tmp_path):
     assert "handoff:" in result.stderr
     assert destination.read_text() == "keep existing"
     assert "café" not in result.stderr
+
+
+def test_rejects_non_utf8_json(tmp_path):
+    source, destination = tmp_path / "input.json", tmp_path / "output.json"
+    source.write_bytes(json.dumps(context()).encode("utf-16"))
+    result = run_cli("export", "--source-provider", "codex", "--input", source, "--output", destination)
+    assert result.returncode == 2
+    assert not destination.exists()
