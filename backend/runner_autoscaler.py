@@ -539,6 +539,17 @@ def _get_scheduled_pool_desired(pool_name: str, pool_units_count: int) -> int:
     return desired
 
 
+def _lease_protected_units(units: list[str], leased: set[str]) -> set[str]:
+    """Resolve concrete leases; unknown virtual ownership protects every pool."""
+    names = {_runner_name_for_unit(unit) for unit in units}
+    if leased - names - set(units):
+        # Virtual quota/claim records contain no physical runner or pool mapping.
+        # Until that mapping exists, no pool can safely be excluded.
+        log.warning("unresolved lease ownership; blocking scale-down for all pools")
+        return set(units)
+    return {unit for unit in units if unit in leased or _runner_name_for_unit(unit) in leased}
+
+
 def _sample_all_pools() -> dict[str, dict[str, float]]:
     """Sample resources for all pools.
 
@@ -675,6 +686,7 @@ def _run_poll_loop() -> None:
                 classified_units[cls].append(u)
 
             leased = _leased_runners()
+            lease_protected = _lease_protected_units(units, leased)
             if leased:
                 log.info(
                     "Detected %d active leases: %s",
@@ -692,9 +704,7 @@ def _run_poll_loop() -> None:
                 pool_active = [u for u in pool_units if _unit_is_active(u)]
                 pool_inactive = [u for u in pool_units if u not in pool_active]
                 pool_busy = {u for u in pool_active if _runner_is_busy(u)}
-                pool_idle_active = [
-                    u for u in pool_active if u not in pool_busy and _runner_name_for_unit(u) not in leased
-                ]
+                pool_idle_active = [u for u in pool_active if u not in pool_busy and u not in lease_protected]
 
                 hist = pool_samples[pool_name]
                 overloaded = False
