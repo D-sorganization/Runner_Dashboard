@@ -2929,6 +2929,32 @@
         "title": "LaunchAuthRequest",
         "type": "object"
       },
+      "LeaderLeaseBody": {
+        "properties": {
+          "machine": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 3600.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Seconds"
+          }
+        },
+        "required": ["machine"],
+        "title": "LeaderLeaseBody",
+        "type": "object"
+      },
       "LeaseRequest": {
         "description": "Conductor's request for a CI dispatch slot.",
         "properties": {
@@ -19199,6 +19225,56 @@
           }
         ],
         "summary": "Get Schedule",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/schedule/leader-lease": {
+      "post": {
+        "description": "Acquire or renew the scheduler leader lease (fleet peer internal contract).",
+        "operationId": "post_leader_lease_api_staff_schedule_leader_lease_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderLeaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Leader Lease Api Staff Schedule Leader Lease Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Leader Lease",
         "tags": ["staff"]
       }
     },
