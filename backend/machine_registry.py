@@ -25,6 +25,75 @@ from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.machine_registry")
 DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
+LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
+
+
+def _resolve_registry_path(path: str | Path | None) -> Path:
+    """Pick the registry file: env override, local config, then shipped default."""
+
+    if path is not None:
+        return Path(path)
+    env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
+    if env_path:
+        return Path(env_path)
+    if LOCAL_REGISTRY_PATH.is_file():
+        return LOCAL_REGISTRY_PATH
+    return DEFAULT_REGISTRY_PATH
+
+
+_DOCUMENTATION_TOPOLOGY = "documentation"
+_EXAMPLE_MAGICDNS_LABEL = "fleet-example.ts.net"
+
+
+def _registry_contains_documentation_machines(registry: dict[str, Any]) -> bool:
+    """True when the registry would surface example fleet nodes in the UI."""
+
+    if registry.get("topology") == _DOCUMENTATION_TOPOLOGY:
+        machines = registry.get("machines") or []
+        return bool(machines)
+
+    for entry in registry.get("machines", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        blob = json.dumps(entry, default=str).lower()
+        if _EXAMPLE_MAGICDNS_LABEL in blob:
+            return True
+    return False
+
+
+def _require_local_registry_env() -> bool:
+    return os.environ.get("RUNNER_DASHBOARD_REQUIRE_LOCAL_REGISTRY", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def assert_safe_registry_source(registry_path: Path, registry: dict[str, Any]) -> None:
+    """Guard against silently running production on shipped documentation topology.
+
+    * An empty shipped registry is allowed (fleet view comes from live probes only).
+    * Example hosts in the shipped file fail closed.
+    * ``RUNNER_DASHBOARD_REQUIRE_LOCAL_REGISTRY=1`` fails when the canonical
+      local file is missing, even if the shipped default is empty.
+    """
+
+    resolved = registry_path.expanduser().resolve()
+    default_resolved = DEFAULT_REGISTRY_PATH.resolve()
+    local_resolved = LOCAL_REGISTRY_PATH.expanduser().resolve()
+
+    if _require_local_registry_env() and not local_resolved.is_file():
+        raise RuntimeError(
+            "RUNNER_DASHBOARD_REQUIRE_LOCAL_REGISTRY is set but the canonical local "
+            f"registry file is missing ({LOCAL_REGISTRY_PATH}). Copy live topology "
+            "before starting the dashboard (see docs/runbooks/local-fleet-topology.md)."
+        )
+
+    if resolved == default_resolved and _registry_contains_documentation_machines(registry):
+        raise RuntimeError(
+            "The shipped machine_registry.yml contains documentation-only fleet nodes. "
+            f"Install live topology at {LOCAL_REGISTRY_PATH} or set MACHINE_REGISTRY_PATH."
+        )
 
 
 def _normalize_token(value: str) -> str:
@@ -336,9 +405,7 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
     config files (issue #355).
     """
 
-    if path is None:
-        path = os.environ.get("MACHINE_REGISTRY_PATH") or DEFAULT_REGISTRY_PATH
-    registry_path = Path(path)
+    registry_path = _resolve_registry_path(path)
     if not registry_path.exists():
         return {"version": 1, "machines": []}
 
@@ -379,6 +446,7 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
         if not isinstance(entry, dict):
             raise ValueError("Each machine registry entry must be a mapping")
         normalized["machines"].append(_normalize_machine_entry(entry))
+    assert_safe_registry_source(registry_path, normalized)
     return normalized
 
 

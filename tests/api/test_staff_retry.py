@@ -14,6 +14,7 @@ Acceptance criteria:
 from __future__ import annotations
 
 import sys
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -232,14 +233,18 @@ def test_fallback_provider_chain() -> None:
 def test_provider_concurrency_enforced_serially(
     temp_store: RunStore, mock_cli_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """3 dispatches to a provider with max_concurrency=1 run serially."""
-    active_count = 0
-    max_active = 0
-    import threading
+    """3 dispatches to a provider with max_concurrency=1 run serially.
 
+    ``_execute`` is replaced by a fake that blocks on a ``threading.Event`` and
+    records the peak number of concurrent executions, so no subprocess is spawned
+    and the outcome does not depend on host load. All waits use a monotonic
+    deadline and fail loudly with the observed state.
+    """
     lock = threading.Lock()
+    state = {"active": 0, "max_active": 0, "entered": 0}
+    release = threading.Event()
+    entered_ids: list[str] = []
 
-    # Wrap mock execution to track concurrent active executions
     adapter = adapters_mod.ProviderAdapter(
         provider_id="fake-serial",
         label="Fake Serial CLI",
@@ -248,54 +253,70 @@ def test_provider_concurrency_enforced_serially(
         json_lines=True,
         max_concurrency=1,
     )
-    adapters = {"fake-serial": adapter}
-    role = RoleSpec(
-        name="serial-worker",
-        title="Serial Worker",
-        providers=("fake-serial",),
-    )
-    roles = {"serial-worker": role}
-
+    role = RoleSpec(name="serial-worker", title="Serial Worker", providers=("fake-serial",))
     runner = runner_mod.StaffRunner(
         store=temp_store,
-        roles_loader=lambda: roles,
-        adapters=adapters,
+        roles_loader=lambda: {"serial-worker": role},
+        adapters={"fake-serial": adapter},
         machine="test-node",
     )
 
-    orig_execute = runner._execute
-
-    def tracked_execute(rec: RunRecord, plan: runner_mod.RunPlan, workdir: Path, lease_note: str) -> None:
-        nonlocal active_count, max_active
+    def fake_execute(rec: RunRecord, plan: runner_mod.RunPlan, workdir: Path, lease_note: str) -> None:
         with lock:
-            active_count += 1
-            if active_count > max_active:
-                max_active = active_count
+            state["active"] += 1
+            state["entered"] += 1
+            state["max_active"] = max(state["max_active"], state["active"])
+            entered_ids.append(rec.id)
         try:
-            orig_execute(rec, plan, workdir, lease_note)
+            # Hold the provider slot until the test releases it.
+            if not release.wait(timeout=30):
+                raise AssertionError("fake_execute was never released")
+            temp_store.update_run(rec.id, status="succeeded", ended_at=runner_mod._now())
         finally:
             with lock:
-                active_count -= 1
+                state["active"] -= 1
 
-    monkeypatch.setattr(runner, "_execute", tracked_execute)
+    monkeypatch.setattr(runner, "_execute", fake_execute)
 
-    # Dispatch 3 runs
-    r1 = runner.submit(runner_mod.RunRequest(role="serial-worker", prompt="task 1"))
-    r2 = runner.submit(runner_mod.RunRequest(role="serial-worker", prompt="task 2"))
-    r3 = runner.submit(runner_mod.RunRequest(role="serial-worker", prompt="task 3"))
+    def snapshot() -> str:
+        with lock:
+            snap = dict(state)
+        statuses = {rid: (row.status if (row := temp_store.get_run(rid)) else None) for rid in run_ids}
+        return f"state={snap} statuses={statuses}"
 
-    # Wait for all 3 runs to complete
-    for r in (r1, r2, r3):
-        for _ in range(300):
-            row = temp_store.get_run(r.id)
-            if row and row.status in ("succeeded", "failed"):
-                break
-            time.sleep(0.05)
+    def wait_until(predicate, what: str, timeout: float = 30.0) -> None:
+        start = time.monotonic()
+        deadline = start + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(0.01)
+        pytest.fail(f"timed out after {time.monotonic() - start:.2f}s waiting for {what}; {snapshot()}")
 
-    assert max_active == 1, f"Expected strictly serial execution (max 1), got max {max_active}"
-    assert temp_store.get_run(r1.id).status == "succeeded"
-    assert temp_store.get_run(r2.id).status == "succeeded"
-    assert temp_store.get_run(r3.id).status == "succeeded"
+    run_ids: list[str] = []
+    for n in (1, 2, 3):
+        run_ids.append(runner.submit(runner_mod.RunRequest(role="serial-worker", prompt=f"task {n}")).id)
+
+    # The first run takes the single provider slot and blocks inside the fake.
+    wait_until(lambda: state["entered"] >= 1, "first run to enter execution")
+    # Give the other workers a bounded chance to (wrongly) enter while it is held.
+    settle_deadline = time.monotonic() + 0.5
+    while time.monotonic() < settle_deadline and state["entered"] < 2:
+        time.sleep(0.01)
+    assert state["max_active"] == 1 and state["entered"] == 1, (
+        f"provider max_concurrency=1 violated while first run held the slot; {snapshot()}"
+    )
+
+    release.set()
+    wait_until(
+        lambda: all((row := temp_store.get_run(rid)) and row.status in ("succeeded", "failed") for rid in run_ids),
+        "all 3 runs to reach a terminal status",
+    )
+
+    assert state["max_active"] == 1, f"Expected strictly serial execution (max 1); {snapshot()}"
+    assert state["entered"] == 3, snapshot()
+    for rid in run_ids:
+        assert temp_store.get_run(rid).status == "succeeded", snapshot()
 
 
 def test_bounded_retry_fake_provider_429_twice_then_success(
