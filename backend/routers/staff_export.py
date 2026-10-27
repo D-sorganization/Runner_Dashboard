@@ -30,6 +30,7 @@ from staff.retention import (
     export_thread_markdown,
     run_retention_archival,
 )
+from staff.thread_helpers import thread_readable_by
 
 log = logging.getLogger("dashboard.staff.export")
 
@@ -50,9 +51,10 @@ def _render_export(
     store: ConversationStore,
     thread_id: str,
     fmt: str,
+    caller: Principal,
 ) -> Response:
     thread = store.get_thread(thread_id)
-    if not thread:
+    if not thread or not thread_readable_by(thread, caller):
         raise HTTPException(
             status_code=404,
             detail={"code": "thread_not_found", "message": f"Thread {thread_id} not found"},
@@ -86,7 +88,7 @@ async def export_thread(
     """Export a conversation thread in Markdown or JSON format."""
     store = _get_store_or_503()
     try:
-        return _render_export(store, thread_id, format)
+        return _render_export(store, thread_id, format, caller)
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -101,7 +103,7 @@ async def export_thread_markdown_endpoint(
     """Convenience endpoint to download a thread as Markdown."""
     store = _get_store_or_503()
     try:
-        return _render_export(store, thread_id, "markdown")
+        return _render_export(store, thread_id, "markdown", caller)
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -116,7 +118,7 @@ async def export_thread_json_endpoint(
     """Convenience endpoint to download a thread as JSON."""
     store = _get_store_or_503()
     try:
-        return _render_export(store, thread_id, "json")
+        return _render_export(store, thread_id, "json", caller)
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

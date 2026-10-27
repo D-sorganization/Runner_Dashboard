@@ -20,23 +20,38 @@ _BACKEND = Path(__file__).resolve().parents[2] / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-# A two-pool node-a registry: NVMe on :8321, SSD on :8322.
+# A two-pool ControlTower registry: NVMe on :8321, SSD on :8322.
+@pytest.fixture(autouse=True)
+def _fleet_status_bypass_swr_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fleet status SWR cache must not make aggregator tests order- or host-dependent."""
+    import fleet_status_cache as fsc  # noqa: PLC0415
+
+    async def immediate(
+        cache_key: str,
+        collect,
+        **kwargs,
+    ):
+        return await collect()
+
+    monkeypatch.setattr(fsc, "serve_fleet_status", immediate)
+
+
 _SPLIT_POOL_REGISTRY = {
     "version": 1,
     "machines": [
         {
-            "name": "node-a",
-            "aliases": ["node-a"],
+            "name": "ControlTower",
+            "aliases": ["controltower"],
             "dashboard_url": "http://localhost:8321",
             "runner_pools": [
                 {
-                    "name": "node-a-NVMe",
-                    "aliases": ["node-a-nvme"],
+                    "name": "ControlTower-NVMe",
+                    "aliases": ["controltower-nvme"],
                     "dashboard_url": "http://localhost:8321",
                 },
                 {
-                    "name": "node-a-SSD",
-                    "aliases": ["node-a-ssd"],
+                    "name": "ControlTower-SSD",
+                    "aliases": ["controltower-ssd"],
                     "dashboard_url": "http://localhost:8322",
                 },
             ],
@@ -66,7 +81,7 @@ def _patch_topology(port: int = 8321):
     """Patch the env so this dashboard is the NVMe pool of the split registry."""
     return (
         patch("dashboard_config.PORT", port),
-        patch("routers.fleet.HOSTNAME", "node-a-NVMe"),
+        patch("routers.fleet.HOSTNAME", "ControlTower-NVMe"),
         patch("server.FLEET_NODES", {}),
         patch("dashboard_config.FLEET_NODES", {}),
         patch("routers.fleet.FLEET_NODES", {}),
@@ -92,8 +107,8 @@ async def test_fleet_status_exclude_pools(client) -> None:
         data = resp.json()
 
         # Local pool is the NVMe pool; the SSD peer must not be probed/listed.
-        assert "node-a-NVMe" in data
-        assert "node-a-SSD" not in data
+        assert "ControlTower-NVMe" in data
+        assert "ControlTower-SSD" not in data
 
         # Verify no requests were made to the peer.
         assert mock_client.get.call_count == 0
@@ -111,9 +126,9 @@ async def test_fleet_status_aggregates_peer_successfully(client) -> None:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
-            "node-a-SSD": {
+            "ControlTower-SSD": {
                 "status": "online",
-                "hostname": "node-a",
+                "hostname": "ControlTower",
                 "cpu": {"percent": 15.0},
             }
         }
@@ -125,9 +140,9 @@ async def test_fleet_status_aggregates_peer_successfully(client) -> None:
         data = resp.json()
 
         # Should contain both local (NVMe) and peer (SSD).
-        assert "node-a-NVMe" in data
-        assert "node-a-SSD" in data
-        assert data["node-a-SSD"]["status"] == "online"
+        assert "ControlTower-NVMe" in data
+        assert "ControlTower-SSD" in data
+        assert data["ControlTower-SSD"]["status"] == "online"
 
         # Verify the peer URL came from the registry's SSD dashboard_url.
         mock_client.get.assert_called_once()
@@ -154,10 +169,10 @@ async def test_fleet_status_peer_offline_fallback(client) -> None:
         assert resp.status_code == 200
         data = resp.json()
 
-        assert "node-a-NVMe" in data
-        assert "node-a-SSD" in data
-        assert data["node-a-SSD"]["status"] == "offline"
-        assert data["node-a-SSD"]["offline_reason"] in ("refused", "wsl_connection_lost")
+        assert "ControlTower-NVMe" in data
+        assert "ControlTower-SSD" in data
+        assert data["ControlTower-SSD"]["status"] == "offline"
+        assert data["ControlTower-SSD"]["offline_reason"] in ("refused", "wsl_connection_lost")
 
 
 @pytest.mark.asyncio
@@ -244,4 +259,4 @@ async def test_fleet_status_exclude_pools_skips_hub_proxy_and_remote_nodes(clien
     assert resp.status_code == 200
     mock_proxy.assert_not_called()
     assert mock_client.get.call_count == 0
-    assert "node-a-NVMe" in resp.json()
+    assert "ControlTower-NVMe" in resp.json()
