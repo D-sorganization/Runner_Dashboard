@@ -43,7 +43,9 @@ def test_dry_run_is_a_no_op_but_a_live_run_persists_and_alerts(tmp_path: Path, m
     live_sink = _RecordingSink()
     events: list[cli.SentinelEvent] = []
     for _ in range(3):
-        events = cli.run_once(hub_url="http://brick:8321", state_path=state_path, sinks=[live_sink], dry_run=False, now=NOW)
+        events = cli.run_once(
+            hub_url="http://brick:8321", state_path=state_path, sinks=[live_sink], dry_run=False, now=NOW
+        )
     assert state_path.exists()
     assert len(events) == 1
     assert live_sink.messages == ["hub unreachable: transport_down (refused)"]
