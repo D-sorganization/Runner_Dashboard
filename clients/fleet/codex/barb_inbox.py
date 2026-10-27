@@ -23,7 +23,7 @@ def main() -> int:
     if result.returncode:
         return 0
     inbox = json.loads(result.stdout)
-    print(
+    sys.stdout.write(
         json.dumps(
             {
                 "hookSpecificOutput": {
@@ -32,6 +32,7 @@ def main() -> int:
                 }
             }
         )
+        + "\n"
     )
     return 0
 

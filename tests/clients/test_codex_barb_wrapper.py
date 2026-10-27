@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/providers/codex/barb_wrapper.py"
+SCRIPT = ROOT / "clients/fleet/codex/barb_wrapper.py"
 SPEC = importlib.util.spec_from_file_location("codex_barb_wrapper", SCRIPT)
 assert SPEC and SPEC.loader
 wrapper = importlib.util.module_from_spec(SPEC)
@@ -72,7 +72,7 @@ def test_invoke_only_calls_shared_cli_without_credentials_or_hub_url() -> None:
 def test_mention_hook_reads_inbox_only_for_explicit_barb_mentions(tmp_path: Path, capsys) -> None:
     hook_path = tmp_path / "hooks/barb_inbox.py"
     hook_path.parent.mkdir()
-    shutil.copyfile(ROOT / "scripts/providers/codex/barb_inbox.py", hook_path)
+    shutil.copyfile(ROOT / "clients/fleet/codex/barb_inbox.py", hook_path)
     (hook_path.parent / "rd_threads_cli").write_text(str(ROOT / "scripts/barb_cli.py"), encoding="utf-8")
     hook_spec = importlib.util.spec_from_file_location("codex_barb_inbox", hook_path)
     assert hook_spec and hook_spec.loader

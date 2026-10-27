@@ -80,6 +80,6 @@ def dispatch(arguments: Sequence[str], *, invoke: Callable[[str, dict[str, str]]
 
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "--install":
-        print(install())
+        sys.stdout.write(f"{install()}\n")
         raise SystemExit(0)
-    print(dispatch(sys.argv[1:]))
+    sys.stdout.write(f"{dispatch(sys.argv[1:])}\n")

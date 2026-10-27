@@ -1,6 +1,6 @@
 # Codex rd-barb wrapper
 
-Install or sync the Codex prompt with `python3 scripts/providers/codex/barb_wrapper.py`.
+Install or sync the Codex prompt with `python3 scripts/providers/codex/install_barb.py`.
 It installs `~/.codex/prompts/barb.md`, which Codex exposes as `/prompts:barb`.
 
 Use `/barb <message>` to relay a message and `/barb chat <message>` to continue
