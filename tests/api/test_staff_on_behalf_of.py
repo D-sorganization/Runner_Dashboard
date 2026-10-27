@@ -154,7 +154,6 @@ def test_verify_on_behalf_of_missing_principal_rejected() -> None:
 
 @pytest.mark.unit
 def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    from routers import staff as staff_router
     from staff.dispatch_auth import require_staff_run_dispatch
 
     monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"node-b": "http://og:8321"})
