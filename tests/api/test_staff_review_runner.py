@@ -54,6 +54,13 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     monkeypatch.setattr(adapters_mod, "ADAPTERS", adapters)
     monkeypatch.setattr(workspace_mod, "find_repo_checkout", lambda _repo: tmp_path / "checkout")
     monkeypatch.setattr(workspace_mod, "add_worktree", lambda _c, wt, _b: wt.mkdir(parents=True, exist_ok=True))
+    # The worktree above has no real repo contents, so the bootstrap preflight (#2796)
+    # would fail fast; stub it so these tests keep exercising review outcomes, not bootstrap.
+    monkeypatch.setattr(
+        runner_mod.ops,
+        "ensure_worktree_bootstrap_ready",
+        lambda *_a, **_k: runner_mod.ops.WorktreeBootstrapPreflight(ok=True),
+    )
     store_mod.reset_store()
     runner_mod.reset_runner()
     r = runner_mod.StaffRunner(
