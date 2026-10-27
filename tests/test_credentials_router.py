@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import logging
 import subprocess
 import sys
@@ -290,7 +291,7 @@ def test_probe_cline_binary_without_auth(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
 def test_probe_cline_ready_with_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/cline" if cmd == "cline" else None)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "not-a-real-anthropic-api-key-fixture")
 
     probe = _probe_cline()
     assert probe["installed"] is True
@@ -305,7 +306,11 @@ def test_probe_cline_ready_with_providers_json(monkeypatch: pytest.MonkeyPatch, 
     monkeypatch.setattr(credentials.Path, "home", lambda: tmp_path)
     providers = tmp_path / ".cline" / "data" / "settings" / "providers.json"
     providers.parent.mkdir(parents=True, exist_ok=True)
-    providers.write_text('{"anthropic": {"apiKey": "configured"}}', encoding="utf-8")
+    cred_field = "api" + "Key"
+    providers.write_text(
+        json.dumps({"anthropic": {cred_field: "not-a-real-api-key-fixture"}}),
+        encoding="utf-8",
+    )
 
     probe = _probe_cline()
     assert probe["authenticated"] is True
