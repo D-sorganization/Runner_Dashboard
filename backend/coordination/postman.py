@@ -20,6 +20,8 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
+from coordination.relay_guard import RelayGuard, RelayRefused
+
 log = logging.getLogger("dashboard.coordination.postman")
 
 BOARD_REPO = "Repository_Management"
@@ -167,11 +169,13 @@ class Postman:
         roster: Sequence[str],
         state: PostmanState,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        relay_guard: RelayGuard | None = None,
     ) -> None:
         self.board, self.bus, self.source = board, bus, source
         self.roster = tuple(roster)
         self.state = state
         self._clock = clock
+        self._relay_guard = relay_guard if relay_guard is not None else RelayGuard(self.roster, clock=clock)
 
     # -- planning (pure: reads only) -------------------------------------------------
     def _follow_rollover(self, actions: list[Action]) -> int:
@@ -277,6 +281,9 @@ class Postman:
         return CycleReport(False, issue, tuple(actions))
 
     def _deliver(self, delivery: Delivery) -> None:
+        verdict = self._relay_guard.check_delivery(delivery)
+        if not verdict.allowed:
+            raise RelayRefused(verdict.reason)
         self.bus.send(delivery)
         self.state.mark(delivery.idempotency_key)
 
