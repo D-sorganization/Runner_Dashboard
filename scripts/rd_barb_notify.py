@@ -101,9 +101,9 @@ def load_config(env: Mapping[str, str] | None = None) -> dict[str, str]:
                 cfg[key.strip()] = value.strip()
     except OSError:
         pass
-    for key in ("RD_BARB_WEBHOOK_URL", "RD_BARB_WEBHOOK_KEY", "RD_BARB_WEBHOOK_KEY_HEADER", "RD_BARB_THREAD_ID"):
-        if env.get(key):
-            cfg[key] = env[key]
+    for key, value in env.items():  # every non-empty RD_BARB_* setting (provider, launch, webhook)
+        if key.startswith("RD_BARB_") and key != "RD_BARB_CONFIG" and value:
+            cfg[key] = value
     return cfg
 
 

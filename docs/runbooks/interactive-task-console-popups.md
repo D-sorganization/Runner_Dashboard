@@ -93,16 +93,16 @@ Verify a wrapped task runs windowless: fire it, then confirm the child's
 
 ## Fleet state (rollout 2026-07-30)
 
-| Host         | Task                                                    | Action                                                                                           |
-| ------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| hub-a | `RunnerFleet-Health-Monitor` (5 min)                    | wrapped                                                                                          |
-| hub-a | `Forgejo-Backup-Sync` (daily 03:00)                     | wrapped                                                                                          |
-| hub-a | Startup `start_docker.bat`                              | replaced by `start_docker_hidden.lnk` → launcher; bat moved to `C:\Users\fleet\start_docker.bat` |
+| Host   | Task                                                    | Action                                                                                           |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| hub-a  | `RunnerFleet-Health-Monitor` (5 min)                    | wrapped                                                                                          |
+| hub-a  | `Forgejo-Backup-Sync` (daily 03:00)                     | wrapped                                                                                          |
+| hub-a  | Startup `start_docker.bat`                              | replaced by `start_docker_hidden.lnk` → launcher; bat moved to `C:\Users\fleet\start_docker.bat` |
 | node-a | `Conductor-RealWork-RM-30min` (30 min)                  | wrapped                                                                                          |
 | node-a | `D-sorg GitHub Forgejo Posture Backup`                  | wrapped                                                                                          |
 | node-a | `WSL-VHDX-Compact-Overnight`                            | wrapped                                                                                          |
 | node-a | `\D-sorganization\matlab-runner`                        | wrapped                                                                                          |
-| node-b     | — (keepalive already S4U; no interactive console tasks) | launcher staged only                                                                             |
+| node-b | — (keepalive already S4U; no interactive console tasks) | launcher staged only                                                                             |
 
 Not wrapped on purpose: S4U/SYSTEM tasks (no UI by construction), Microsoft
 system tasks (`\Microsoft\...`), and node-b's `RebootToUbuntu`
