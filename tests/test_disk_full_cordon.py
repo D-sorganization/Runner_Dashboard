@@ -67,12 +67,42 @@ def test_disk_pressure_trips_on_used_percent_or_low_free_gb() -> None:
     assert disk_pressure_trips(30.0, 90.0, thresholds) is False
 
 
-def test_readmit_uses_hysteresis_or_semantics() -> None:
+def test_readmit_uses_hysteresis_and_semantics() -> None:
     policy = _cfg()
     thresholds = policy.thresholds
-    assert disk_pressure_allows_readmit(45.0, 90.0, thresholds) is True
-    assert disk_pressure_allows_readmit(30.0, 80.0, thresholds) is True
+    assert disk_pressure_allows_readmit(45.0, 80.0, thresholds) is True
+    assert disk_pressure_allows_readmit(40.0, 85.0, thresholds) is True
+    assert disk_pressure_allows_readmit(45.0, 90.0, thresholds) is False
+    assert disk_pressure_allows_readmit(30.0, 80.0, thresholds) is False
     assert disk_pressure_allows_readmit(30.0, 90.0, thresholds) is False
+
+
+def test_cordon_hysteresis_no_state_satisfies_trip_and_readmit() -> None:
+    thresholds = _cfg().thresholds
+    # RD-07 repro: 1 TB volume at 93% used (70 GB free) trips on used %, so must not readmit.
+    assert disk_pressure_trips(70.0, 93.0, thresholds) is True
+    assert disk_pressure_allows_readmit(70.0, 93.0, thresholds) is False
+
+    for free_gb in (0.0, 24.9, 25.0, 30.0, 39.9, 40.0, 70.0, 500.0):
+        for used_percent in (0.0, 50.0, 84.9, 85.0, 90.0, 91.9, 92.0, 93.0, 100.0):
+            assert not (
+                disk_pressure_trips(free_gb, used_percent, thresholds)
+                and disk_pressure_allows_readmit(free_gb, used_percent, thresholds)
+            ), (free_gb, used_percent)
+
+
+def test_cordoned_stays_cordoned_while_trip_condition_holds() -> None:
+    state = DiskFullCordonState(phase="cordoned", tripped_at=900.0, cleanup_done=True)
+    result = plan_cordon_tick(
+        state,
+        free_gb=70.0,
+        used_percent=93.0,
+        config=_cfg(),
+        runners=[],
+        now=2000.0,
+    )
+    assert result.state.phase == "cordoned"
+    assert all(a.kind != CordonActionKind.SET_MAINTENANCE_OFF for a in result.actions)
 
 
 def test_trip_starts_drain_and_sets_min_online_zero() -> None:

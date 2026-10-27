@@ -104,6 +104,37 @@ describe("StatsTab", () => {
     expect(screen.getByText(/Not enough data yet/)).toBeInTheDocument();
   });
 
+  it("does not refresh when Collect now is rejected by the backend (#3028)", async () => {
+    global.fetch = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: { message: "collector down" } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve(jsonResponse(ROWS));
+    }) as unknown as typeof fetch;
+    render(<StatsTab />);
+    await waitFor(() => expect(screen.getByText("CI Standard")).toBeInTheDocument());
+    const getCalls = () =>
+      (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method !== "POST",
+      ).length;
+    const before = getCalls();
+
+    fireEvent.click(screen.getByText("Collect now"));
+
+    await waitFor(() => {
+      const posts = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(posts.length).toBe(1);
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(getCalls()).toBe(before);
+  });
+
   it("changing the group-by control refetches", async () => {
     routeFetch([["/api/stats/workflows", ROWS]]);
     render(<StatsTab />);

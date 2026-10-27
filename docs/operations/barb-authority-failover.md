@@ -18,8 +18,8 @@ Issue: [#1800](https://github.com/D-sorganization/Runner_Dashboard/issues/1800) 
 
 | Setting                | Every node                             | Notes                                          |
 | ---------------------- | -------------------------------------- | ---------------------------------------------- |
-| `BARB_AUTHORITY_NODE`  | `ControlTower` (the registry `hub`)    | The node that commits threads.                 |
-| `BARB_AUTHORITY_URL`   | `http://controltower:8321`             | The authority's stable private URL.            |
+| `BARB_AUTHORITY_NODE`  | `node-a` (the registry `hub`)    | The node that commits threads.                 |
+| `BARB_AUTHORITY_URL`   | `http://node-a:8321`             | The authority's stable private URL.            |
 | `BARB_AUTHORITY_EPOCH` | current epoch (starts at `1`)          | Bumped on every failover.                      |
 | `FLEET_API_URL`        | same as `BARB_AUTHORITY_URL`, or unset | Fleet clients default to `BARB_AUTHORITY_URL`. |
 
@@ -47,17 +47,17 @@ Fail over only if the authority will not be back within the RTO. A short outage 
 replicas queue their updates and deliver them, deduplicated, when the authority returns. Check:
 
 ```bash
-curl -s http://controltower:8321/api/v1/staff/barb/status -H "Authorization: Bearer $TOKEN"
+curl -s http://node-a:8321/api/v1/staff/barb/status -H "Authorization: Bearer $TOKEN"
 ```
 
-## Procedure (example: ControlTower to DeskComputer, epoch 1 to 2)
+## Procedure (example: node-a to hub-a, epoch 1 to 2)
 
 Run the steps in order. Each script command prints one JSON document. Exit code 1 means the fence
 refused the step: stop and check the epoch and node.
 
-1. **Stop the old authority if you can reach it.** Stop the dashboard service on ControlTower so it
+1. **Stop the old authority if you can reach it.** Stop the dashboard service on node-a so it
    cannot accept writes.
-2. **Get the newest copy of the authority database.** If ControlTower's disk is readable, take an
+2. **Get the newest copy of the authority database.** If node-a's disk is readable, take an
    online backup there. The backup keeps WAL-resident rows, IDs and receipts.
 
    ```bash
@@ -69,32 +69,32 @@ refused the step: stop and check the epoch and node.
    recent backup if the disk is lost. Writes after that backup are the RPO gap that a synchronous
    standby would close.
 
-3. **Promote the new authority's copy.** With the DeskComputer dashboard stopped and the
-   backup in place, run this on DeskComputer:
+3. **Promote the new authority's copy.** With the hub-a dashboard stopped and the
+   backup in place, run this on hub-a:
 
    ```bash
    python scripts/barb_failover.py advance --db ~/.config/runner-dashboard/staff_runs.sqlite3 \
-     --epoch 2 --node DeskComputer --reason "ControlTower down"
+     --epoch 2 --node hub-a --reason "node-a down"
    ```
 
 4. **Print the new settings** and apply them to every node, including the new authority:
 
    ```bash
-   python scripts/barb_failover.py env --node DeskComputer --url http://deskcomputer:8321 --epoch 2
+   python scripts/barb_failover.py env --node hub-a --url http://hub-a:8321 --epoch 2
    ```
 
    Put the values in each node's `~/.config/runner-dashboard/env`. Restart every dashboard.
 
-5. **Verify.** On DeskComputer, `/barb/status` shows `role: authority`, `epoch: 2`,
+5. **Verify.** On hub-a, `/barb/status` shows `role: authority`, `epoch: 2`,
    `fenced: false`. On each replica, it shows `role: replica`, `epoch: 2`, and the outbox drains to 0.
    A replica still on epoch 1 gets `409 stale_authority_epoch` and keeps its updates queued until it
    is reconfigured.
-6. **Fence the old authority before it rejoins.** When ControlTower comes back, keep its dashboard
+6. **Fence the old authority before it rejoins.** When node-a comes back, keep its dashboard
    stopped and run:
 
    ```bash
    python scripts/barb_failover.py advance --db ~/.config/runner-dashboard/staff_runs.sqlite3 \
-     --epoch 2 --node DeskComputer --reason "demoted"
+     --epoch 2 --node hub-a --reason "demoted"
    ```
 
    Then give it the epoch 2 settings from step 4 and start it as a replica. Even with stale

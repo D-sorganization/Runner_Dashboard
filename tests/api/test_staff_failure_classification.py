@@ -69,7 +69,7 @@ def test_run_detail_exposes_failure_classification(
         role="coder",
         provider="claude",
         model="sonnet",
-        machine="OGLaptop",
+        machine="node-b",
         repo="Tools",
         target_kind="issue",
         target_ref="#101",
@@ -77,7 +77,7 @@ def test_run_detail_exposes_failure_classification(
         status="failed",
         failure_class="auth_expired",
         retryable=False,
-        remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node OGLaptop.",
+        remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node node-b.",
         error="401 OAuth access token has expired",
     )
     temp_store.create_run(run)
@@ -97,14 +97,14 @@ def test_summary_attention_exposes_classified_failures_and_deduplicates_auth(
     authed_client: TestClient,
 ) -> None:
     """GET /api/staff/summary deduplicates auth_expired runs per node+provider and exposes remediation."""
-    # 2 Claude auth failures on OGLaptop
+    # 2 Claude auth failures on node-b
     temp_store.create_run(
         RunRecord(
             id="run-c1",
             role="coder",
             provider="claude",
             model="sonnet",
-            machine="OGLaptop",
+            machine="node-b",
             repo="Tools",
             target_kind="issue",
             target_ref="#101",
@@ -113,7 +113,7 @@ def test_summary_attention_exposes_classified_failures_and_deduplicates_auth(
             failure_class="auth_expired",
             retryable=False,
             error="401 Unauthorized",
-            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node OGLaptop.",
+            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node node-b.",
         )
     )
     temp_store.create_run(
@@ -122,7 +122,7 @@ def test_summary_attention_exposes_classified_failures_and_deduplicates_auth(
             role="coder",
             provider="claude",
             model="sonnet",
-            machine="OGLaptop",
+            machine="node-b",
             repo="Tools",
             target_kind="issue",
             target_ref="#102",
@@ -131,17 +131,17 @@ def test_summary_attention_exposes_classified_failures_and_deduplicates_auth(
             failure_class="auth_expired",
             retryable=False,
             error="401 Unauthorized",
-            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node OGLaptop.",
+            remediation="Run `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude claude auth login` on node node-b.",
         )
     )
-    # 1 Rate limit failure on DeskComputer
+    # 1 Rate limit failure on hub-a
     temp_store.create_run(
         RunRecord(
             id="run-rl",
             role="worker",
             provider="codex",
             model=None,
-            machine="DeskComputer",
+            machine="hub-a",
             repo="Tools",
             target_kind="issue",
             target_ref="#103",
@@ -158,12 +158,12 @@ def test_summary_attention_exposes_classified_failures_and_deduplicates_auth(
     assert resp.status_code == 200
     attention = resp.json()["attention"]
 
-    # Should have 2 attention items: 1 deduplicated for Claude auth on OGLaptop, 1 for rate limit
+    # Should have 2 attention items: 1 deduplicated for Claude auth on node-b, 1 for rate limit
     assert len(attention) == 2
 
     auth_item = next((item for item in attention if item.get("failure_class") == "auth_expired"), None)
     assert auth_item is not None
-    assert auth_item["machine"] == "OGLaptop"
+    assert auth_item["machine"] == "node-b"
     assert auth_item["provider"] == "claude"
     assert "CLAUDE_CONFIG_DIR" in auth_item["remediation"]
     assert set(auth_item.get("affected_runs", [])) == {"run-c1", "run-c2"}

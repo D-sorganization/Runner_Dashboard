@@ -13,6 +13,9 @@
  */
 
 import { defineConfig, devices } from "@playwright/test";
+import { ensureStaffE2ePorts } from "./resolvePorts";
+
+ensureStaffE2ePorts();
 
 const BACKEND_PORT = Number(process.env.STAFF_E2E_BACKEND_PORT ?? "5092");
 const BACKEND_URL = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${BACKEND_PORT}`;
