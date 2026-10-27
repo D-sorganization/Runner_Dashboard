@@ -16,7 +16,7 @@ async def test_enrich_run_adds_runner_and_machine(monkeypatch: pytest.MonkeyPatc
                     "name": "tests",
                     "status": "completed",
                     "conclusion": "success",
-                    "runner_name": "d-sorg-local-ControlTower-nvme-3",
+                    "runner_name": "d-sorg-local-node-a-nvme-3",
                     "runner_id": 42,
                     "started_at": "2026-05-26T12:00:00Z",
                     "completed_at": "2026-05-26T12:02:00Z",
@@ -33,9 +33,9 @@ async def test_enrich_run_adds_runner_and_machine(monkeypatch: pytest.MonkeyPatc
         }
     )
 
-    assert enriched["runner_name"] == "d-sorg-local-ControlTower-nvme-3"
-    assert enriched["runner_names"] == ["d-sorg-local-ControlTower-nvme-3"]
-    assert enriched["machine_name"] == "ControlTower-NVMe"
+    assert enriched["runner_name"] == "d-sorg-local-node-a-nvme-3"
+    assert enriched["runner_names"] == ["d-sorg-local-node-a-nvme-3"]
+    assert enriched["machine_name"] == "node-a-NVMe"
 
 
 def _raw_github_run() -> dict:

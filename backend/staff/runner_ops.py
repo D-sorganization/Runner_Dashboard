@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
-import subprocess
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 import provider_switch
 from staff import cli_version, workspace
@@ -23,8 +21,17 @@ from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
+from staff.runner_stream import (  # noqa: F401  re-exported for existing importers (#2803)
+    RESULT_NUDGE_PROMPT,
+    PumpResult,
+    execute_retry_nudge,
+    extract_transcript_question,
+    pump_nudge_output,
+    pump_output,
+)
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import mint_run_token
+
 log = logging.getLogger("dashboard.staff.runner_ops")
 
 _GITHUB_AUTH_REMEDIATION = (
@@ -221,47 +228,6 @@ def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> LaunchPaths
     if policy_text is not None and any("{policy}" in part for part in argv):
         paths["policy"] = str(workspace.write_policy_file(adapter.provider_id, policy_text()))
     return paths
-
-
-from staff.runner_output import (
-    RESULT_NUDGE_PROMPT,
-    PumpResult,
-    execute_retry_nudge,
-    pump_nudge_output,
-    pump_output,
-)
-
-__all__ = [
-    "LaunchPaths",
-    "PumpResult",
-    "ReadOnlyKwargs",
-    "RESULT_NUDGE_PROMPT",
-    "apply_staff_run_fleet_token",
-    "apply_staff_run_github_child_env",
-    "can_run_unattended",
-    "execute_retry_nudge",
-    "extract_transcript_question",
-    "fail_if_cli_outdated",
-    "new_run_record",
-    "prepare_cloud_workdir",
-    "prepare_run_workdir",
-    "pump_nudge_output",
-    "pump_output",
-    "read_only_kwargs",
-    "resolve_launch_paths",
-    "select_first_available_provider",
-]
-
-
-def extract_transcript_question(transcript: Path) -> str | None:
-    """Extract trailing question text from transcript if agent ended on a question."""
-    from staff.classifier import _extract_last_line_text  # noqa: PLC0415
-
-    try:
-        last = _extract_last_line_text(transcript.read_text(encoding="utf-8", errors="replace"))
-        return last if last.endswith("?") else None
-    except Exception:  # noqa: BLE001
-        return None
 
 
 def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: int, run_id: str | None) -> RunRecord:

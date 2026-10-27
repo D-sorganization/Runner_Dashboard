@@ -63,6 +63,8 @@ _Notes:_
 - On Windows, specify `python` or the full path to `python.exe` in `command`.
 - Ensure paths use forward slashes or escaped backslashes in TOML.
 - `FLEET_AGENT = "codex"` ensures all derived sessions adhere to the required `codex-` session prefix.
+- Avoid the stale top-level `sandbox` key in `~/.codex/config.toml`: `codex exec` ignores that key as unrecognized.
+- Runner Dashboard staff runs set sandbox behavior via CLI flags (`--sandbox workspace-write`) and the supported Codex config override `sandbox_workspace_write.network_access=true` for git/PR network operations.
 
 ---
 

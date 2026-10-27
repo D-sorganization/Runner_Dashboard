@@ -15,8 +15,10 @@ from typing import TYPE_CHECKING, Any
 import staff.worktree_hygiene as _wh
 from platform_utils.wsl_paths import windows_repositories_root
 from staff.git_hooks import install_pre_push_hook
+from staff.git_identity import configure_worktree_git_identity
 from staff.roles import RoleSpec
 from staff.standards_registry import _BUILTIN
+from staff.worktree_status import worktree_has_unpushed_commits  # noqa: F401  re-export (#2806)
 
 finalize_run_worktree = _wh.finalize_run_worktree
 persist_run_transcript = _wh.persist_run_transcript
@@ -49,6 +51,7 @@ READ_ONLY_FLEET_RULES = (
 )
 
 PLAYBOOK_MAX_CHARS = 16000
+_TRIMMED_MARKER = "\n[trimmed for prompt budget]"
 
 
 def dashboard_api_note() -> str:
@@ -104,6 +107,21 @@ def playbook_text(rel: str, limit: int = PLAYBOOK_MAX_CHARS) -> str:
     except OSError:
         return ""
     return text if len(text) <= limit else text[:limit] + "\n[playbook truncated]"
+
+
+def _truncate_for_budget(text: str, max_tokens: int) -> str:
+    """Return ``text`` truncated to ``max_tokens`` with a stable marker."""
+    from staff.standards_registry import estimate_tokens
+
+    if max_tokens <= 0:
+        return _TRIMMED_MARKER.strip()
+    if estimate_tokens(text) <= max_tokens:
+        return text
+    max_chars = max_tokens * 4
+    if max_chars <= len(_TRIMMED_MARKER):
+        return _TRIMMED_MARKER[:max_chars]
+    keep = max_chars - len(_TRIMMED_MARKER)
+    return text[:keep].rstrip() + _TRIMMED_MARKER
 
 
 def staff_worktrees_root() -> Path:
@@ -199,6 +217,7 @@ def add_worktree(checkout: Path, worktree: Path, branch: str, *, start_ref: str 
     _git(checkout, "config", "extensions.worktreeConfig", "true")
     _git(checkout, "worktree", "add", "-b", branch, str(worktree), base)
     if worktree.is_dir():
+        configure_worktree_git_identity(worktree)
         install_pre_push_hook(worktree)
 
 
@@ -219,71 +238,6 @@ def _git(cwd: Path, *args: str) -> None:
         text=True,
         timeout=600,
     )  # noqa: S603
-
-
-def worktree_has_unpushed_commits(worktree: Path, base_ref: str = "origin/main") -> bool:
-    """Return True if worktree has commits ahead of base_ref or uncommitted changes."""
-    if not worktree.exists() or not worktree.is_dir():
-        return False
-    try:
-        status_res = subprocess.run(  # noqa: S603
-            ["git", "status", "--porcelain"],
-            cwd=str(worktree),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if status_res.returncode == 0:
-            dirty = [
-                ln
-                for ln in status_res.stdout.splitlines()
-                if ln.strip() and not ln.strip().startswith(("?? .staff/", "?? .gemini/"))
-            ]
-            if dirty:
-                return True
-        else:
-            return True
-        # Try checking against upstream tracking branch first, then origin/<branch>, then base_ref
-        log_res = subprocess.run(  # noqa: S603
-            ["git", "rev-list", "@{u}..HEAD", "--count"],
-            cwd=str(worktree),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if log_res.returncode == 0:
-            return log_res.stdout.strip() != "0"
-        head_res = subprocess.run(  # noqa: S603
-            ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
-            cwd=str(worktree),
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-        cur_branch = head_res.stdout.strip() if head_res.returncode == 0 else ""
-        if cur_branch:
-            remote_res = subprocess.run(  # noqa: S603
-                ["git", "rev-list", f"origin/{cur_branch}..HEAD", "--count"],
-                cwd=str(worktree),
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if remote_res.returncode == 0:
-                return remote_res.stdout.strip() != "0"
-
-        fallback_res = subprocess.run(  # noqa: S603
-            ["git", "rev-list", f"{base_ref}..HEAD", "--count"],
-            cwd=str(worktree),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if fallback_res.returncode == 0:
-            return fallback_res.stdout.strip() != "0"
-    except Exception:  # noqa: BLE001
-        return True
-    return True
 
 
 def remove_worktree(
@@ -311,6 +265,7 @@ def compose_prompt(
     custom_standards: Any | None = None,
     reads_repo_instructions: bool = True,
     repo_lessons_result: Any | None = None,
+    prompt_token_cap: int | None = None,
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
 
@@ -416,16 +371,25 @@ def compose_prompt(
         else f"You are the fleet staff role '{role.title}' ({role.name}) running unattended from the Runner Dashboard."
     )
     parts = [*static_blocks, intro]
+    playbook_idx: int | None = None
+    instructions_idx: int | None = None
+    lease_idx: int | None = None
+    consolidation_idx: int | None = None
+    focus_idx: int | None = None
+    references_idx: int | None = None
     if role.playbook:
         text = playbook_text(role.playbook)
         if text:
+            playbook_idx = len(parts)
             parts.append(f"Your playbook (Repository_Management/{role.playbook}):\n" + text)
         else:
+            playbook_idx = len(parts)
             parts.append(
                 f"Your playbook is Repository_Management/{role.playbook}; read it first if it is available in this "
                 "checkout or as a sibling repository."
             )
     if role.instructions:
+        instructions_idx = len(parts)
         parts.append("Role instructions:\n" + role.instructions.strip())
     if repo:
         if chat_turn:
@@ -441,12 +405,16 @@ def compose_prompt(
     if operator_prompt:
         parts.append("Task from the operator:\n" + operator_prompt.strip())
     if lease_note:
+        lease_idx = len(parts)
         parts.append(lease_note)
     if consolidation and not chat_turn:
+        consolidation_idx = len(parts)
         parts.append(consolidation)
     if focus and not chat_turn:
+        focus_idx = len(parts)
         parts.append(focus)
     if library_references and not chat_turn:
+        references_idx = len(parts)
         parts.append(library_references)
 
     if chat_turn:
@@ -461,7 +429,41 @@ def compose_prompt(
     else:
         parts.append(dashboard_api_note())
 
-    full_prompt = "\n\n".join(parts)
+    if prompt_token_cap is not None and not chat_turn:
+        if prompt_token_cap <= 0:
+            raise ContextBudgetExceededError("prompt_token_cap must be positive")
+
+        def _joined() -> str:
+            return "\n\n".join(p for p in parts if p)
+
+        full_prompt = _joined()
+        # Drop the least critical dynamic context first; keep task/operator content intact.
+        for idx in (references_idx, focus_idx, consolidation_idx, lease_idx):
+            if estimate_tokens(full_prompt) <= prompt_token_cap:
+                break
+            if idx is not None:
+                parts[idx] = ""
+                full_prompt = _joined()
+
+        if estimate_tokens(full_prompt) > prompt_token_cap and playbook_idx is not None:
+            parts[playbook_idx] = "Playbook context omitted to satisfy prompt_token_cap."
+            full_prompt = _joined()
+
+        if estimate_tokens(full_prompt) > prompt_token_cap and instructions_idx is not None:
+            overflow = estimate_tokens(full_prompt) - prompt_token_cap
+            current = parts[instructions_idx]
+            current_tokens = estimate_tokens(current)
+            target_tokens = max(40, current_tokens - overflow - 32)
+            parts[instructions_idx] = _truncate_for_budget(current, target_tokens)
+            full_prompt = _joined()
+
+        if estimate_tokens(full_prompt) > prompt_token_cap:
+            raise ContextBudgetExceededError(
+                f"Prompt budget exceeded after trimming: {estimate_tokens(full_prompt)} > {prompt_token_cap} tokens"
+            )
+    else:
+        full_prompt = "\n\n".join(parts)
+
     if not chat_turn:
         static_tokens = estimate_tokens("\n\n".join(static_blocks))
         if static_tokens > TOTAL_CONTEXT_TOKEN_CAP:
