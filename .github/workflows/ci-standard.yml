@@ -493,6 +493,11 @@ jobs:
           mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
       - name: Runner disk guard vendored manifest
         run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
+      - name: Grok role bundle drift (fixture canary)
+        if: needs.changes.outputs.run_python_tests == 'true'
+        run: >
+          python -m scripts.export_grok_role_bundles --check
+          --roles-dir tests/fixtures/grok_role_sync/roles
       - name: Run bandit security scan
         # pull_request (in scope), schedule, or workflow_dispatch — not merge_group.
         if: >-
