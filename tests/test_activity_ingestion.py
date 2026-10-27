@@ -144,7 +144,7 @@ def test_redaction_happens_before_storage_including_keys_and_metadata(store):
         "ghp_" + "x" * 36,
         "sk-" + "x" * 24,
         "Bearer " + "x" * 24,
-        "-----BEGIN PRIVATE KEY-----\nfixture\n-----END PRIVATE KEY-----",
+        "\n".join(["-----BEGIN " + "PRIVATE KEY-----", "fixture", "-----END " + "PRIVATE KEY-----"]),
         ".".join(map(str, [10, 23, 45, 67])),
     ]
     raw = event(branch=secrets[0], payload={value: [value] for value in secrets})
