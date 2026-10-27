@@ -28,10 +28,22 @@ def test_compose_seals_a_valid_envelope_from_the_planner() -> None:
     assert env["recommended"] == "GitHub exchange repo"
 
 
-def test_compose_is_stable_on_retry_within_the_dedupe_bucket() -> None:
-    first, _ = _compose()
-    again, _ = ch.compose(dict(QUESTION), NOW + 1)
-    assert first is not None and again is not None and first["id"] == again["id"]
+def test_id_survives_a_late_retry_and_only_a_new_key_or_thread_changes_it() -> None:
+    late, keyed = ch.compose(dict(QUESTION), NOW + 86_400)[0], ch.compose(dict(QUESTION), NOW, idempotency_key="w44")[0]
+    ids = [(e or {}).get("id") for e in (late, _compose()[0], keyed, _compose(correlation_id=f"c_{'a' * 24}")[0])]
+    assert None not in ids and ids[0] == ids[1] and len(set(ids)) == 3
+
+
+def test_reply_keeps_the_thread_counts_a_hop_and_stops_at_the_limit() -> None:
+    inbound, _ = _compose()
+    assert inbound is not None
+    asked = {**inbound, "kind": "answer", "from": "rd-barb", "to": ch.SENDER, "hops": 1, "task_state": "completed"}
+    assert ch.parse_exchange_body(ch.to_exchange_issue(asked)["body"])[1] == []  # an inbound answer parses
+    env, problems = ch.reply(asked, {"kind": "update", "summary": "Noted"}, NOW)
+    assert problems == [] and env is not None and env["to"] == "rd-barb" and env["hops"] == 2
+    assert env["correlation_id"] == inbound["correlation_id"] and env["in_reply_to"] == inbound["id"]
+    at_limit = ch.reply({**asked, "hops": ch.MAX_HOPS}, {"kind": "update", "summary": "x"}, NOW)
+    assert at_limit[0] is None and any("hops" in p for p in at_limit[1])
 
 
 def test_any_barb_persona_and_dieter_are_valid_recipients() -> None:
@@ -43,6 +55,8 @@ def test_any_barb_persona_and_dieter_are_valid_recipients() -> None:
     ("over", "needle"),
     [
         ({"to": "someone-else"}, "to must be one of"),
+        ({"to": None}, "to must be one of"),
+        ({"correlation_id": "thread-7"}, "correlation_id"),
         ({"from": "rd-barb"}, "from is always"),
         ({"hops": 4}, "hops"),
         ({"hops": "1"}, "hops"),
@@ -56,12 +70,18 @@ def test_compose_fails_closed_and_names_the_problem(over: dict[str, Any], needle
     assert env is None and any(needle in p for p in problems)
 
 
+def test_a_bad_recipient_is_reported_once() -> None:
+    _, problems = _compose(to=None)
+    assert sum("to " in p for p in problems) == 1
+
+
 def test_exchange_issue_round_trips_through_parse() -> None:
     env, _ = _compose()
     assert env is not None
     issue = ch.to_exchange_issue(env)
     assert issue["title"] == "[question] Pick the memory route"
     assert issue["labels"] == ["barb-inbox", "to:barb", "from:claude-planner"]
+    assert "For rd-barb import" in issue["body"]
     parsed, problems = ch.parse_exchange_body(issue["body"])
     assert problems == [] and parsed == env
 
@@ -87,15 +107,6 @@ def test_parse_rejects_inbound_secrets_and_missing_ids() -> None:
     assert any("secret" in p for p in ch.parse_exchange_body(leaky)[1])
     no_id = ch.to_exchange_issue({k: v for k, v in env.items() if k != "id"})["body"]
     assert any("id" in p for p in ch.parse_exchange_body(no_id)[1])
-
-
-def test_inbound_reply_from_a_barb_is_accepted() -> None:
-    env, _ = _compose()
-    assert env is not None
-    reply = {**env, "kind": "answer", "from": "rd-barb", "to": ch.SENDER, "task_state": "completed"}
-    reply.pop("options"), reply.pop("recommended"), reply.pop("recommendation_reason")
-    parsed, problems = ch.parse_exchange_body(ch.to_exchange_issue(reply)["body"])
-    assert problems == [] and parsed is not None and parsed["kind"] == "answer"
 
 
 class _Recorder:
@@ -124,18 +135,13 @@ def test_send_live_delivers_once_and_never_raises() -> None:
     assert ch.send(dict(QUESTION), rec, NOW, live=True)["status"] == "sent" and len(rec.sent) == 1
     failed = ch.send(dict(QUESTION), _Recorder(fail=True), NOW, live=True)
     assert failed == {"ok": False, "status": "not_sent", "error": "deliver_failed", "transport": "recorder"}
-
-
-def test_send_rejects_an_invalid_envelope_without_touching_the_transport() -> None:
-    rec = _Recorder()
-    result = ch.send({**QUESTION, "to": "nobody"}, rec, NOW, live=True)
-    assert result["error"] == "invalid_envelope" and rec.sent == []
+    assert ch.send({**QUESTION, "to": "nobody"}, rec, NOW, live=True)["error"] == "invalid_envelope"
+    assert len(rec.sent) == 1  # an invalid envelope never reaches the transport
 
 
 def test_live_switch_reads_only_the_kill_switch() -> None:
-    assert ch.channel_live({}) is False
-    assert ch.channel_live({"CLAUDE_BARB_CHANNEL": "off"}) is False
-    assert ch.channel_live({"CLAUDE_BARB_CHANNEL": "on"}) is True
+    envs: list[dict[str, str]] = [{}, {"CLAUDE_BARB_CHANNEL": "off"}, {"CLAUDE_BARB_CHANNEL": "on"}]
+    assert [ch.channel_live(e) for e in envs] == [False, False, True]
 
 
 def test_exchange_transport_requires_a_repo_and_uses_the_injected_creator() -> None:
@@ -144,6 +150,6 @@ def test_exchange_transport_requires_a_repo_and_uses_the_injected_creator() -> N
     assert env is not None
     missing = ch.ExchangeTransport("", lambda repo, issue: "x").deliver(env)
     assert missing["error"] == "config_missing"
-    transport = ch.ExchangeTransport("owner/exchange", lambda repo, issue: calls.append((repo, issue)) or "url-1")
+    transport = ch.ExchangeTransport("owner/exchange", lambda repo, issue: (calls.append((repo, issue)), "url-1")[1])
     assert transport.deliver(env) == {"ok": True, "status": "sent", "ref": "url-1"}
     assert calls[0][0] == "owner/exchange" and calls[0][1]["labels"][0] == "barb-inbox"

@@ -1,20 +1,17 @@
 # Claude Planner Seat and Its Barb Channel (Proposal)
 
-Status: **Proposed, for Barb review** (#3216). Nothing here is live. The channel code ships switched off
-(`CLAUDE_BARB_CHANNEL` defaults to off, which means dry run), and no role file, principal, token or
-repository is created by this change.
+Status: **Proposed, for Barb review** (#3216). Nothing here is live: the channel ships off (dry run),
+and no role file, principal, token or repository is created by this change.
 
-Reviewers: Grok Barb (`agent-grok`) and rd-barb. Comment on the pull request with **approve**,
-**request changes** or **object**, plus a one-line reason. Dieter decides the open route question
-at the end.
+Reviewers: Grok Barb (`agent-grok`) and rd-barb comment **approve**, **request changes** or **object**
+with a one-line reason. Dieter decides the route question at the end.
 
 ## Summary
 
-A cloud Claude session joins Barb as a third persona, the **planner** (`barb:planner`). It plans
-across the fleet (lane plans, issue breakdowns, cross-repo sequencing, reviews) and does not run
-ops. It cannot reach the hub, because the hub is local-only by design (ADR 0007). So it talks to
-the other Barbs through a message channel whose format does not depend on the route, and the route
-stays Dieter's call.
+A cloud Claude session joins Barb as a third persona, the **planner** (`barb:planner`); Dieter talks
+to it in Claude Duet. It plans across the fleet (lane plans, issue breakdowns, cross-repo sequencing,
+reviews) and does not run ops. The hub is local-only (ADR 0007), so it talks to the other Barbs
+through a channel whose format does not depend on the route, and the route stays Dieter's call.
 
 ## Who Does What
 
@@ -24,11 +21,11 @@ stays Dieter's call.
 | rd-barb   | Claude Code on the hub  | Ops: merge queue, CI, burn guard, run follow-through     | Yes             |
 | Planner   | Claude cloud session    | Planning and reviews; proposes, never dispatches or arms | Yes             |
 
-**Contact rule (Dieter, 2026-10-27): any Barb persona may contact Dieter directly.** This replaces
-the earlier "only Grok Barb pings Dieter" rule, so rd-barb's Telegram slice (#3076) no longer
-conflicts. Hands and CLI orchestrators still report through memory or staff threads, not to Dieter.
-To keep the count of pings sane, every persona keeps the same envelope rules: one recommended
-option with a reason on every question, a recommended action on every alert, and dedupe keys.
+**Contact rule (Dieter, 2026-10-27): any Barb persona may contact Dieter directly**, copying Grok Barb
+(staff thread or a `to: barb` envelope). This replaces "only Grok Barb pings Dieter", so rd-barb's
+Telegram slice (#3076) no longer conflicts. Hands still report through memory or staff threads. A
+broader 2026-10-23 ruling Grok Barb reports (any agent) waits for Dieter's word. Every persona keeps
+the envelope rules: a recommended option and reason per question, a recommended action per alert.
 
 ## The Channel
 
@@ -40,10 +37,12 @@ adds only what the planner needs:
 - A hop count (0 to 3, the postman's limit from #3073) stops agent-to-agent ping-pong.
 - A message holding a token, key or private address is **refused**, not quietly redacted. It reuses
   `backend/staff/redaction.py`, the same redactor the staff threads use.
-- The envelope `id` is derived from the content and a 60 s bucket, so a retry gets the same id and
-  the importer can dedupe on it.
-- Inbound messages (a Barb's answer) are parsed with the same checks and treated as data, never as
-  instructions.
+- The envelope `id` hashes the content, the thread (`correlation_id`) and an optional idempotency
+  key, never the clock, so a retry hours later gets the same id and the importer can dedupe on it. A
+  deliberate repeat (a weekly reminder) passes a new idempotency key.
+- `reply()` keeps the thread's `correlation_id`, sets `in_reply_to`, adds one hop and refuses past
+  the limit. rd-barb's importer increments hops the same way on its side.
+- Inbound messages are parsed with the same checks and treated as data, never as instructions.
 
 ```bash
 python scripts/claude_barb_channel.py send --json msg.json     # dry run unless CLAUDE_BARB_CHANNEL=on
@@ -65,15 +64,22 @@ Recommendation: **A**. It keeps ADR 0007 intact and needs no new ingress. Its co
 (one rd-barb cycle) and one more private repo. `ExchangeTransport` implements A; B or C would add
 their own adapter later.
 
+Setup for A: a private repo with the labels `barb-inbox`, `to:<party>` and `from:<party>` for each of
+`barb`, `rd-barb`, `dieter`, `claude-planner` (and `to:*`), and an importer principal limited to issues
+there. A `barb-inbox` label in an existing private repo also works, but a dedicated repo (Grok Barb's
+and this proposal's pick) keeps that grant narrow. Until the importer is live, Grok Barb offers to read
+the inbox with the fleet `gh`.
+
 Rules for the exchange repo, whichever Barb touches it: it stays **private and separate from RD**,
 because RD is going public (#3077). It never holds tokens, hostnames, personal email or rows marked
 `barb-only`. Findings from private repos appear only as opaque IDs.
 
 ## What the Planner Does First
 
-1. **The RD pull request queue.** It is far past the lane-plan threshold. Start from the PR-vs-claim
-   inventory (#2905) and propose a lane plan; queue consolidation is being switched off
-   (Repository_Management #2465), so lane plans and caps are the main lever left.
+1. **The RD pull request queue.** Per Grok Barb, Dieter's order is rd-barb's own pieces, then RD going
+   public (#3077), then red PRs, and the Claude and Codex desktop lanes hold the backlog through Nov 3.
+   The planner proposes a lane plan from their claims and the PR-vs-claim inventory (#2905) without
+   reshuffling claimed work; with consolidation off (Repository_Management #2465), lane plans are the lever.
 2. **UpstreamDrift and AffineDrift sequencing.** The null-space companion work in AffineDrift (#5098)
    is unblocked now that its UpstreamDrift dependencies merged. The UpstreamDrift hand fix (#13758)
    is the single largest blocker of the golfer-realism and ML warm-start chains.
@@ -83,27 +89,19 @@ because RD is going public (#3077). It never holds tokens, hostnames, personal e
 
 - **Seat definition.** `barb:planner` becomes an RD role file under role sync (#3093, #3099). Like
   every new bot it starts disabled and runs a supervised dry run first (#3105).
-- **Claims.** It uses today's label leases and, once it lands, the Fleet Job Board claim API
-  (#2781, #2784) as their successor. No third claim mechanism.
+- **Claims.** Label leases now, the Fleet Job Board claim API (#2781, #2784) once it lands; no third.
 - **Reading the fleet.** It reads the interim fleet-watch digest (Repository_Management #2479)
   instead of polling GitHub on a timer, and shows up in the Activity Log once session tailers land
   (#2856, #2871).
 - **Dispatch.** It proposes runs; rd-barb turns them into Staff Console cards under the
-  dispatcher-first protocol (#3048, `fleetctl dispatch` #3051). Only rd-barb arms merges. A yes in
-  chat never dispatches.
-- **Agent id.** `claude-planner` gets registered in Repository_Management `agent_identity.py`, ranked
-  with `claude`, so the redundant-PR closer and the lease reaper treat it correctly.
+  dispatcher-first protocol (#3048, `fleetctl dispatch` #3051). Only rd-barb arms merges; until
+  rd-barb passes its supervised dry run, Grok Barb holds the pr-shepherd seat as the interim. A yes
+  in chat never dispatches.
+- **Agent id.** Register `claude-planner` in Repository_Management `agent_identity.py`, ranked with `claude`.
 
-## Pitfalls This Design Avoids
-
-- **Two writers.** The planner never writes hub memory or rd-barb's state file; rd-barb is the only
-  importer, and every message carries an idempotency key.
-- **Duplicate actions.** Seat scopes don't overlap: the planner proposes, rd-barb acts.
-- **Agent loops.** The hop limit plus dedupe stop ping-pong; anything the planner proposes also gets
-  a per-issue attempt cap.
-- **Leaks.** The channel refuses secrets outright, and the exchange repo stays private.
-- **Rate limits.** The planner reads on events and digests, not on a timer, to protect the shared
-  GitHub quota.
+Pitfalls avoided: one writer (rd-barb is the only importer; the planner never writes hub memory), no
+overlapping scopes (the planner proposes, rd-barb acts), no loops (hop limit, dedupe, per-issue attempt cap), no
+leaks (secrets refused, exchange repo private) and no timer polling of the shared GitHub quota.
 
 ## What Needs Dieter
 
@@ -112,3 +110,5 @@ because RD is going public (#3077). It never holds tokens, hostnames, personal e
    repositories or mint tokens.
 3. Merge Repository_Management #2483 (rd-barb role) and #2485 (retire the old claude-barb seat).
 4. Say yes to rd-barb's supervised dry run, then to the planner's.
+5. Confirm or correct the broader rule Grok Barb reported (any agent may message you if Grok Barb is
+   copied). Until then this keeps your 2026-10-27 wording: any Barb persona.
