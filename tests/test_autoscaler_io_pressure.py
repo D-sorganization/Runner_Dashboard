@@ -13,9 +13,9 @@ class PollFinished(BaseException):
 
 @pytest.mark.parametrize(
     ("pressures", "expected_starts"),
-    [([80, 80, 80], []), ([80, 80, 80, 20, 10, 9], [9]), ([None, None, None], [None])],
+    [([35, 35, 35], []), ([80, 80, 80], []), ([80, 80, 80, 20, 10, 9], [9]), ([None, None, None], [None])],
 )
-def test_io_pressure_used_in_poll(monkeypatch, pressures, expected_starts):
+def test_io_pressure_used_in_poll(monkeypatch, caplog, pressures, expected_starts):
     current = [None]
     remaining = iter(pressures)
 
@@ -23,7 +23,7 @@ def test_io_pressure_used_in_poll(monkeypatch, pressures, expected_starts):
         try:
             current[0] = next(remaining)
         except StopIteration:
-            raise PollFinished
+            raise PollFinished from None
         return None if current[0] is None else {"full": {"avg10": current[0]}}
 
     reader = Mock(side_effect=pressure)
@@ -68,3 +68,5 @@ def test_io_pressure_used_in_poll(monkeypatch, pressures, expected_starts):
         ra._run_poll_loop()
     assert reader.call_count == len(pressures)
     assert starts == expected_starts
+    if pressures[0] is None:
+        assert "PSI I/O pressure unavailable" in caplog.text
