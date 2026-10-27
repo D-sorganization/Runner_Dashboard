@@ -12,6 +12,7 @@ from staff import workspace
 from staff.dispatch_bundle import resolve_dispatch_bundle
 from staff.roles import RoleSpec
 from staff.standards_registry import (
+    TOTAL_CONTEXT_TOKEN_CAP,
     ContextBudgetExceededError,
     FleetStandards,
     estimate_tokens,
@@ -72,6 +73,47 @@ def test_compose_prompt_aggregate_budget_caps() -> None:
         _prompt(custom_standards=huge)
     with pytest.raises(ContextBudgetExceededError, match="Lessons"):
         _prompt(dispatch_bundle=b, lessons=["L" * 2800])
+
+
+def test_compose_prompt_can_trim_to_runtime_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    role = RoleSpec(
+        "night-watch",
+        "Night Watch",
+        instructions="Investigate and remediate.\n" * 3000,
+        playbook="docs/playbook.md",
+    )
+    monkeypatch.setattr(workspace, "playbook_text", lambda *_a, **_k: "Playbook text.\n" * 4000)
+    prompt = workspace.compose_prompt(
+        role=role,
+        repo="Tools",
+        target_ref="#42",
+        operator_prompt="Fix issue #42 safely and open exactly one PR.",
+        branch="staff/night-watch-42",
+        prompt_token_cap=TOTAL_CONTEXT_TOKEN_CAP,
+    )
+    assert estimate_tokens(prompt) <= TOTAL_CONTEXT_TOKEN_CAP
+    assert "Task from the operator" in prompt
+    assert "Fix issue #42 safely and open exactly one PR." in prompt
+
+
+def test_runner_plan_sets_codex_prompt_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff.plan import RunRequest
+    from staff.runner import get_runner
+
+    seen: dict[str, int | None] = {"cap": None}
+    original_compose_prompt = workspace.compose_prompt
+
+    def wrapped_compose_prompt(*args: Any, **kwargs: Any) -> str:
+        seen["cap"] = kwargs.get("prompt_token_cap")
+        return original_compose_prompt(*args, **kwargs)
+
+    monkeypatch.setattr(workspace, "compose_prompt", wrapped_compose_prompt)
+    monkeypatch.setattr(
+        "staff.failover_dispatch.resolve_provider_and_model",
+        lambda *args, **kwargs: ("codex", None, "routine", []),
+    )
+    get_runner().plan(RunRequest(role="ad-hoc", repo="Tools", issue=1, prompt="Review and patch."))
+    assert seen["cap"] == TOTAL_CONTEXT_TOKEN_CAP
 
 
 def test_run_context_stamping_and_token_accounting(monkeypatch: pytest.MonkeyPatch) -> None:
