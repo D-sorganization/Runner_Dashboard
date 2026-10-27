@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 from staff import work_request_dispatch as wrd
 
 
@@ -41,3 +43,13 @@ def test_issue_dispatch_targets_the_full_repository(sent: list[tuple[str, dict[s
     assert result["workflow"] == "Agent-Issue-Dispatch.yml"
     assert result["target_repository"].endswith("/Runner_Dashboard")
     assert sent[0][1]["inputs"]["number"] == "12"
+
+
+@pytest.mark.unit
+def test_issue_dispatch_refuses_duplicate_issue(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _reject(*_args: Any, **_kwargs: Any) -> None:
+        raise HTTPException(status_code=409, detail={"code": "open_pr_exists", "message": "existing PR"})
+
+    monkeypatch.setattr(wrd, "check_duplicate_pr_or_run", AsyncMock(side_effect=_reject))
+    with pytest.raises(RuntimeError, match="open_pr_exists"):
+        asyncio.run(wrd._dispatch_issue_or_pr_action("issue", "Runner_Dashboard", 12, None, None, "do it"))

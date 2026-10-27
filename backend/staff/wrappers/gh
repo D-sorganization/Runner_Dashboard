@@ -2,7 +2,7 @@
 """Prepend-on-PATH ``gh`` shim for Staff runs (#2038, #2408).
 
 Refreshes ``GH_TOKEN`` / ``GITHUB_TOKEN`` via the loopback credential endpoint
-when a per-run token is configured, enforces pre-close verification evidence on
+or fleet App minting, enforces pre-close verification evidence on
 ``gh issue close``, sanitizes literal ``\n`` sequences in ``gh pr create|edit``,
 then execs the real ``gh`` binary stored in ``STAFF_REAL_GH``.
 """
@@ -18,22 +18,57 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(_BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(_BACKEND_ROOT))
 
+_FLEET_GH_LIB = Path(
+    os.environ.get("FLEET_GH_LIB", str(Path(__file__).resolve().parents[3] / "deploy" / "fleet-gh"))
+).resolve()
+if _FLEET_GH_LIB.is_dir() and str(_FLEET_GH_LIB) not in sys.path:
+    sys.path.insert(0, str(_FLEET_GH_LIB))
+
+from gh_app_credential import (  # noqa: E402
+    FleetGhMintError,
+    MINT_FAILURE_EXIT,
+    MINT_FAILURE_MESSAGE,
+    apply_fleet_app_token,
+    scrub_personal_github_tokens,
+)
+
+
+def _real_gh_path() -> str:
+    return (
+        os.environ.get("STAFF_REAL_GH", "").strip()
+        or os.environ.get("STAFF_REAL_GH_PATH", "").strip()
+    )
+
+
+def _inject_fleet_github_token(env: dict[str, str]) -> dict[str, str]:
+    cleaned = scrub_personal_github_tokens(env)
+    url = cleaned.get("STAFF_GITHUB_CREDENTIAL_URL", "").strip()
+    fleet = cleaned.get("FLEET_API_TOKEN", "").strip()
+    if url and fleet:
+        from staff.github_credential_client import fetch_github_token_for_run  # noqa: PLC0415
+
+        prior = {k: cleaned.get(k, "") for k in ("STAFF_GITHUB_CREDENTIAL_URL", "FLEET_API_TOKEN")}
+        os.environ.update(prior)
+        try:
+            token = fetch_github_token_for_run()
+        except Exception:
+            raise FleetGhMintError(MINT_FAILURE_MESSAGE) from None
+        cleaned["GH_TOKEN"] = token
+        cleaned["GITHUB_TOKEN"] = token
+        return cleaned
+    return apply_fleet_app_token(cleaned)
+
 
 def main() -> int:
-    real_gh = os.environ.get("STAFF_REAL_GH", "").strip()
+    real_gh = _real_gh_path()
     if not real_gh:
         sys.stderr.write("staff gh wrapper: STAFF_REAL_GH is not set\n")
         return 127
-    env = dict(os.environ)
     try:
-        from staff.github_credential_client import fetch_token_from_env
-
-        fresh = fetch_token_from_env()
-        if fresh:
-            env["GH_TOKEN"] = fresh
-            env["GITHUB_TOKEN"] = fresh
-    except Exception:  # noqa: BLE001
-        pass
+        env = _inject_fleet_github_token(dict(os.environ))
+    except FleetGhMintError:
+        sys.stderr.write(MINT_FAILURE_MESSAGE + "\n")
+        return MINT_FAILURE_EXIT
 
     args = list(sys.argv[1:])
     try:

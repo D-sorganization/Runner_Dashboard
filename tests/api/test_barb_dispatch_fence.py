@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 from identity import Principal
 from staff import runner as runner_mod
-from staff.audit import reset_audit_store
+from staff.audit import get_audit_store, reset_audit_store
 from staff.barb_continuity import BarbContinuityStore
 from staff.barb_lease_fence import BarbClaim
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
@@ -119,3 +119,25 @@ async def test_dispatch_without_claim_is_unaffected(
     store.checkout_lease(scope=SCOPE, holder="op-1")
     out = await dispatch_staff_run(_cmd(), CALLER)
     assert out["run"]["id"] in launches
+
+
+@pytest.mark.unit
+async def test_fenced_dispatch_audit_trail_records_the_rejection(
+    store: BarbContinuityStore,
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    launches: list[str],
+) -> None:
+    """A fenced dispatch must not leave an ``admitted`` row standing as its final word (#2970)."""
+    lease = store.checkout_lease(scope=SCOPE, holder="agent-alpha")["lease"]
+    store.checkout_lease(scope=SCOPE, holder="op-1", force=True)
+    with pytest.raises(HTTPException):
+        await dispatch_staff_run(_cmd(), CALLER, barb_claim=_claim(lease["epoch"]))
+    entries = get_audit_store().list_entries(action="dispatch")
+    by_run: dict[str, list[str]] = {}
+    for entry in entries:
+        by_run.setdefault(entry.run_id, []).append(entry.outcome)
+    assert len(by_run) == 1
+    (outcomes,) = by_run.values()
+    assert "rejected" in outcomes
+    assert staff.store.list_runs(limit=5) == []
+    assert launches == []
