@@ -19,7 +19,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { Stat } from "../components/Stat";
 import { SubTabs } from "../components/SubTabs";
-import { legacyFetch } from "../lib/api";
+import { apiRequest, legacyFetch } from "../lib/api";
 import { isAnalysisTabKey } from "../lib/analysisTabs";
 import { HistoryTab } from "./History";
 import { ChartGlyph } from "./decompIcons";
@@ -105,13 +105,12 @@ export function StatsTab(): React.ReactElement {
   }
   function collectNow(): void {
     setLoading(true);
-    legacyFetch("/api/stats/workflows/collect", {
-      method: "POST",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-    })
-      .then((r) => r.json())
+    apiRequest<unknown>("/api/stats/workflows/collect", { method: "POST" })
       .then(() => {
         refresh();
+      })
+      .catch(() => {
+        setLoading(false);
       });
   }
   useEffect(() => {

@@ -28,7 +28,7 @@ ROSTER = {"barb": MagicMock(), "maintenance": MagicMock(), "issue-remediator": M
 
 @pytest.fixture(autouse=True)
 def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
+    monkeypatch.setattr("staff.chat_turn_runner.version_gate", lambda *_: None)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "staff_runs.sqlite3"))
     monkeypatch.setattr("staff.chat_preroute.load_roles", lambda: ROSTER)
     reset_conversation_store()

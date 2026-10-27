@@ -3,7 +3,7 @@
  * NewPanelForm.test.tsx — Unit tests for NewPanelForm component (SC-D/Issue #1635).
  */
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NewPanelForm } from "../NewPanelForm";
 import type { PanelCostEstimate, PanelPresetsResponse } from "../panelApi";
@@ -133,20 +133,54 @@ describe("NewPanelForm", () => {
     render(<NewPanelForm onCreated={vi.fn()} />);
 
     await waitFor(() => {
-      expect(panelApiMock.fetchPanelPresets).toHaveBeenCalled();
+      expect(screen.getByRole("option", { name: /engineering design review/i })).toBeInTheDocument();
     });
 
     const presetSelect = screen.getByLabelText(/preset/i);
     fireEvent.change(presetSelect, { target: { value: "engineering-review" } });
 
-    const nameInputs = screen.getAllByLabelText(/expert name/i);
-    expect(nameInputs).toHaveLength(3);
-    expect(nameInputs[0]).toHaveValue("Architect");
-    expect(nameInputs[1]).toHaveValue("Skeptic");
-    expect(nameInputs[2]).toHaveValue("Operator");
+    await waitFor(() => {
+      const nameInputs = screen.getAllByLabelText(/expert name/i);
+      expect(nameInputs).toHaveLength(3);
+      expect(nameInputs[0]).toHaveValue("Architect");
+      expect(nameInputs[1]).toHaveValue("Skeptic");
+      expect(nameInputs[2]).toHaveValue("Operator");
+    });
 
     const perspectiveInputs = screen.getAllByLabelText(/expert perspective/i);
     expect(perspectiveInputs[0]).toHaveValue("System architecture and maintainability.");
+  });
+
+  it("fills expert rows when a preset is chosen before the catalog promise resolves", async () => {
+    let resolvePresets!: (value: PanelPresetsResponse) => void;
+    panelApiMock.fetchPanelPresets.mockImplementation(
+      () =>
+        new Promise<PanelPresetsResponse>((resolve) => {
+          resolvePresets = resolve;
+        }),
+    );
+
+    render(<NewPanelForm onCreated={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(panelApiMock.fetchPanelPresets).toHaveBeenCalled();
+    });
+
+    const presetSelect = screen.getByLabelText(/preset/i);
+    const pendingOption = document.createElement("option");
+    pendingOption.value = "engineering-review";
+    presetSelect.appendChild(pendingOption);
+    await act(async () => {
+      fireEvent.change(presetSelect, { target: { value: "engineering-review" } });
+    });
+
+    await act(async () => {
+      resolvePresets(mockPresets);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText(/expert name/i)[0]).toHaveValue("Architect");
+    });
   });
 
   it("shows the estimate on PanelCostRequired and Confirm resubmits with confirm_cost true", async () => {

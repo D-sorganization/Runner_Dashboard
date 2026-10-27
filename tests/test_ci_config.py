@@ -228,11 +228,16 @@ def test_docker_build_routes_public_repo_to_hosted_with_self_hosted_fallback() -
     assert "prune" not in str(job)
 
 
-def test_docker_workflow_runs_in_merge_queue() -> None:
-    """Merge-queue events must always exercise the Docker image build."""
+def test_docker_workflow_skips_merge_queue_jobs() -> None:
+    """Merge-queue runs use the slim gate; Docker build stays on pull_request (#2891)."""
     workflow = _workflow_yaml(DOCKER_WORKFLOW)
     triggers = workflow.get("on") or workflow.get(True) or {}
-    assert "merge_group" in triggers, "docker-build.yml must list merge_group so queue runs can build the image"
+    assert "merge_group" in triggers, "docker-build.yml keeps merge_group for required-check trigger parity"
+    for job_id, job in workflow["jobs"].items():
+        condition = str(job.get("if", ""))
+        assert "github.event_name != 'merge_group'" in condition, (
+            f"docker job {job_id} must skip merge_group"
+        )
 
 
 def test_docker_pull_request_has_no_workflow_path_filter() -> None:

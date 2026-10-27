@@ -14,7 +14,9 @@ log = logging.getLogger("dashboard.staff.preflight")
 
 def _issue_branch_pattern(issue_number: int) -> re.Pattern[str]:
     issue_str = str(issue_number)
-    return re.compile(rf"(?:^|/|-|_){issue_str}(?:-|_|\b)", re.IGNORECASE)
+    # The number must be a standalone token: preceded by start or a separator, and not glued to another digit
+    # group through a ``-``/``_`` (so issue 10 does not match the ``-10-`` of ``2026-10-26``).
+    return re.compile(rf"(?:^|(?<=[/_-]))(?<!\d[-_]){issue_str}(?!\d)(?![-_]\d)(?:-|_|\b)", re.IGNORECASE)
 
 
 def _lane_key_for_branch(branch: str, issue_number: int) -> str:
@@ -60,14 +62,14 @@ async def check_duplicate_pr_or_run(
     check_claim: bool = True,
 ) -> None:
     """Refuse dispatch if a run, claim, PR, or branch already owns (repo, issue)."""
-    # 1. Active staff runs in local runner store
+    # 1. Active staff runs in local runner store (stored refs are ``#N``; compare on the bare number)
     try:
         runner = get_runner()
         if runner and runner.store:
             for r in runner.store.active_runs():
                 if r.id == current_run_id:
                     continue
-                if r.repo == repo and r.target_kind == "issue" and r.target_ref == str(issue):
+                if r.repo == repo and r.target_kind == "issue" and r.target_ref.lstrip("#") == str(issue):
                     raise HTTPException(
                         status_code=409,
                         detail={
