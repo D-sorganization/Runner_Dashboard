@@ -346,6 +346,40 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
     ),
 )
 
+# Staff and older clients historically used several spellings for the same
+# provider. Keep those input aliases here so every consumer resolves identity
+# against the canonical dashboard id instead of maintaining its own map.
+PROVIDER_ID_COMPATIBILITY: dict[str, str] = {
+    "claude": "claude_code_cli",
+    "claude-cli": "claude_code_cli",
+    "claude-code": "claude_code_cli",
+    "codex": "codex_cli",
+    "codex-cli": "codex_cli",
+    "gemini": "gemini_cli",
+    "gemini-cli": "gemini_cli",
+    "agy": "antigravity",
+    "cursor-agent": "cursor_agent",
+    "ollama-local": "ollama",
+    "claude-ollama": "ollama",
+    "claude_ollama": "ollama",
+}
+
+
+def canonical_provider_id(provider_id: str) -> str:
+    """Resolve a canonical dashboard id or historical spelling.
+
+    Raises ``KeyError`` for unknown ids so boundary callers cannot silently
+    route an unregistered provider.
+    """
+    normalized = provider_id.strip().lower()
+    if not normalized:
+        raise KeyError("provider id must be non-empty")
+    canonical_ids = {entry.dashboard_id for entry in PROVIDER_REGISTRY}
+    canonical_id = PROVIDER_ID_COMPATIBILITY.get(normalized, normalized)
+    if canonical_id not in canonical_ids:
+        raise KeyError(f"unknown provider id: {provider_id!r}")
+    return canonical_id
+
 
 def validate_registry(entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY) -> None:
     """Assert the canonical table's invariants (Design by Contract).
@@ -370,6 +404,10 @@ def validate_registry(entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY) ->
     assert all(conductor_ids), "every entry needs a non-empty conductor_id"
     assert len(dashboard_ids) == len(set(dashboard_ids)), "duplicate dashboard_id"
     assert len(conductor_ids) == len(set(conductor_ids)), "duplicate conductor_id"
+    for alias, target in PROVIDER_ID_COMPATIBILITY.items():
+        assert alias == alias.strip().lower(), f"provider alias must be normalized: {alias!r}"
+        assert alias not in dashboard_ids, f"provider alias shadows a canonical id: {alias!r}"
+        assert target in dashboard_ids, f"provider alias targets unknown id: {target!r}"
     for e in entries:
         assert e.auth_mode in AUTH_KINDS, f"{e.dashboard_id}: bad auth_mode {e.auth_mode!r}"
         assert e.resource in RESOURCES, f"{e.dashboard_id}: bad resource {e.resource!r}"

@@ -12,7 +12,11 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS
+from agent_remediation.provider_registry import (
+    _ANTIGRAVITY_MODELS,
+    _CURSOR_AGENT_MODELS,
+    canonical_provider_id,
+)
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -473,8 +477,11 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
 
 
 def get_adapter(provider_id: str) -> ProviderAdapter:
-    """Return the adapter for ``provider_id`` or raise ``KeyError``."""
-    return ADAPTERS[provider_id]
+    """Return an adapter by legacy or canonical id, preferring the primary launch path."""
+    if provider_id in ADAPTERS:
+        return ADAPTERS[provider_id]
+    canonical_id = canonical_provider_id(provider_id)
+    return next(adapter for key, adapter in ADAPTERS.items() if canonical_provider_id(key) == canonical_id)
 
 
 def available_providers() -> dict[str, bool]:
