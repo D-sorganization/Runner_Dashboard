@@ -5,7 +5,8 @@
  *
  * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Workstream B (#1720).
  */
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useComposerAutosize } from "../../hooks/useComposerAutosize";
 import { useVoiceInput } from "../../hooks/useVoiceInput";
 import type { ComposerAttachment, ComposerProps as BaseComposerProps, IntakeSensitivity, SlashCommand } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
@@ -131,39 +132,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
     onError: (err) => setVoiceError(err),
   });
 
-  // height = min(scrollHeight, cap); resetting to "auto" first forces an accurate
-  // scrollHeight re-measure even when the previous render shrank the element.
-  const recalcHeight = useCallback(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const natural = el.scrollHeight;
-    el.style.height = `${Math.min(natural, COMPOSER_MAX_HEIGHT_PX)}px`;
-    el.style.overflowY = natural > COMPOSER_MAX_HEIGHT_PX ? "auto" : "hidden";
-  }, []);
-
-  // Covers typing, prefill, and draft-restore: all three flow through `text`.
-  // useLayoutEffect (not useEffect) so the cap applies before paint.
-  useLayoutEffect(() => {
-    recalcHeight();
-  }, [text, recalcHeight]);
-
-  // Covers container width changes. Guarded against feedback loops: a resize
-  // caused by our own height write doesn't change the container's width, so
-  // the observer only re-fires on a genuine width change (skipped otherwise).
-  useEffect(() => {
-    const container = textareaRef.current?.closest(".staff-composer__box");
-    if (!container || typeof ResizeObserver === "undefined") return;
-    let lastWidth: number | null = null;
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (width === undefined || width === lastWidth) return;
-      lastWidth = width;
-      recalcHeight();
-    });
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [recalcHeight]);
+  useComposerAutosize(textareaRef, text, ".staff-composer__box", COMPOSER_MAX_HEIGHT_PX);
 
   const getCaretPos = useCallback(() => {
     if (!textareaRef.current) return text.length;

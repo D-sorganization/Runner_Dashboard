@@ -5,7 +5,7 @@
  */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Composer } from "../Composer";
 import type { StaffRoleItem } from "../types";
@@ -439,137 +439,53 @@ describe("Composer Component", () => {
   });
 });
 
-// #2654: height = min(scrollHeight, 220px) on typing, prefill, draft restore,
-// and container width change. jsdom never computes layout, so scrollHeight is
-// mocked per-test on HTMLTextAreaElement.prototype (restored in afterAll).
-describe("Composer autosize to wrapped content (#2654)", () => {
-  let mockScrollHeight = 0;
-  let originalScrollHeightDescriptor: PropertyDescriptor | undefined;
-
-  beforeAll(() => {
-    originalScrollHeightDescriptor = Object.getOwnPropertyDescriptor(
-      HTMLTextAreaElement.prototype,
-      "scrollHeight",
-    );
-    Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
-      configurable: true,
-      get() {
-        return mockScrollHeight;
-      },
-    });
+// #2654: autosize cap/resize-loop mechanics are unit-tested against the hook
+// directly in hooks/__tests__/useComposerAutosize.test.tsx. This covers the
+// Composer-specific integration: draft and focus retention across a resize.
+// jsdom never computes layout, so scrollHeight is mocked for the duration of
+// this test on HTMLTextAreaElement.prototype (restored in `finally`).
+it("Composer preserves focus and draft text across an autosize resize (#2654)", () => {
+  type ResizeCallback = (entries: Array<{ contentRect: { width: number } }>) => void;
+  let capturedCb: ResizeCallback | null = null;
+  let mockScrollHeight = 60;
+  class FakeResizeObserver {
+    constructor(cb: ResizeCallback) {
+      capturedCb = cb;
+    }
+    observe(): void {}
+    disconnect(): void {}
+  }
+  const originalScrollHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "scrollHeight");
+  const originalResizeObserver = globalThis.ResizeObserver;
+  Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+    configurable: true,
+    get: () => mockScrollHeight,
   });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = FakeResizeObserver;
 
-  afterAll(() => {
+  try {
+    localStorage.clear();
+    render(<Composer threadId="thread-resize-focus" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+    const textarea = screen.getByPlaceholderText(/message barb/i) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "Mid-resize draft" } });
+    textarea.focus();
+    expect(textarea).toHaveFocus();
+
+    mockScrollHeight = 95;
+    capturedCb!([{ contentRect: { width: 600 } }]);
+
+    expect(textarea).toHaveFocus();
+    expect(textarea).toHaveValue("Mid-resize draft");
+    expect(localStorage.getItem("staff-console:draft:thread-resize-focus")).toBe("Mid-resize draft");
+  } finally {
+    globalThis.ResizeObserver = originalResizeObserver;
     if (originalScrollHeightDescriptor) {
       Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", originalScrollHeightDescriptor);
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (HTMLTextAreaElement.prototype as any).scrollHeight;
     }
-  });
-
-  beforeEach(() => {
-    localStorage.clear();
-    mockScrollHeight = 0;
-  });
-
-  it("grows to fit wrapped prefill below the cap", () => {
-    mockScrollHeight = 120;
-    render(
-      <Composer
-        threadId="thread-prefill"
-        roles={MOCK_ROLES}
-        onSendMessage={vi.fn()}
-        prefilledText="Wrapped prefill text that spans multiple lines"
-        prefillSeq={1}
-      />,
-    );
-    const textarea = screen.getByPlaceholderText(/message barb/i) as HTMLTextAreaElement;
-
-    expect(textarea).toHaveValue("Wrapped prefill text that spans multiple lines");
-    expect(textarea.style.height).toBe("120px");
-    expect(textarea.style.overflowY).toBe("hidden");
-  });
-
-  it("scrolls above the 220px cap", () => {
-    mockScrollHeight = 400;
-    render(<Composer threadId="thread-cap" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
-    const textarea = screen.getByPlaceholderText(/message barb/i) as HTMLTextAreaElement;
-
-    fireEvent.change(textarea, { target: { value: "x".repeat(500) } });
-
-    expect(textarea.style.height).toBe("220px");
-    expect(textarea.style.overflowY).toBe("auto");
-  });
-
-  it("recalculates on width change without a resize loop", () => {
-    type ResizeCallback = (entries: Array<{ contentRect: { width: number } }>) => void;
-    let capturedCb: ResizeCallback | null = null;
-    class FakeResizeObserver {
-      constructor(cb: ResizeCallback) {
-        capturedCb = cb;
-      }
-      observe(): void {}
-      disconnect(): void {}
-    }
-    const originalResizeObserver = globalThis.ResizeObserver;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).ResizeObserver = FakeResizeObserver;
-
-    try {
-      mockScrollHeight = 50;
-      render(<Composer threadId="thread-resize" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
-      const textarea = screen.getByPlaceholderText(/message barb/i) as HTMLTextAreaElement;
-      expect(textarea.style.height).toBe("50px");
-      expect(capturedCb).not.toBeNull();
-
-      // Genuine width change recomputes height from the new scrollHeight.
-      mockScrollHeight = 90;
-      capturedCb!([{ contentRect: { width: 300 } }]);
-      expect(textarea.style.height).toBe("90px");
-
-      // Same width again must be a no-op (the dedup guard that prevents a
-      // resize -> recalc -> resize feedback loop), even though content
-      // "changed" underneath it.
-      mockScrollHeight = 150;
-      capturedCb!([{ contentRect: { width: 300 } }]);
-      expect(textarea.style.height).toBe("90px");
-    } finally {
-      globalThis.ResizeObserver = originalResizeObserver;
-    }
-  });
-
-  it("preserves focus and draft text across a resize", () => {
-    type ResizeCallback = (entries: Array<{ contentRect: { width: number } }>) => void;
-    let capturedCb: ResizeCallback | null = null;
-    class FakeResizeObserver {
-      constructor(cb: ResizeCallback) {
-        capturedCb = cb;
-      }
-      observe(): void {}
-      disconnect(): void {}
-    }
-    const originalResizeObserver = globalThis.ResizeObserver;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).ResizeObserver = FakeResizeObserver;
-
-    try {
-      mockScrollHeight = 60;
-      render(<Composer threadId="thread-resize-focus" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
-      const textarea = screen.getByPlaceholderText(/message barb/i) as HTMLTextAreaElement;
-
-      fireEvent.change(textarea, { target: { value: "Mid-resize draft" } });
-      textarea.focus();
-      expect(textarea).toHaveFocus();
-
-      mockScrollHeight = 95;
-      capturedCb!([{ contentRect: { width: 600 } }]);
-
-      expect(textarea).toHaveFocus();
-      expect(textarea).toHaveValue("Mid-resize draft");
-      expect(localStorage.getItem("staff-console:draft:thread-resize-focus")).toBe("Mid-resize draft");
-    } finally {
-      globalThis.ResizeObserver = originalResizeObserver;
-    }
-  });
+  }
 });
