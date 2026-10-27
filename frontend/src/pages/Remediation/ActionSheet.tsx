@@ -2,8 +2,10 @@ import { useCallback, useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { BottomSheet } from "../../primitives/BottomSheet";
 import { TouchButton } from "../../primitives/TouchButton";
+import type { ProviderRegistry } from "../../lib/useProviderRegistry";
+import { providerSortIndex } from "../../lib/remediationProviders";
 import type { AgentProvider, ProviderAvailability } from "./mobileTypes";
-import { DEFAULT_PROVIDER_ORDER, getProviderLabel } from "./mobileTypes";
+import { getProviderLabel } from "./mobileTypes";
 
 interface ActionSheetProps {
   isOpen: boolean;
@@ -13,6 +15,7 @@ interface ActionSheetProps {
   recommendedProviderId: string;
   providers: Record<string, AgentProvider>;
   availability: Record<string, ProviderAvailability>;
+  registry: ProviderRegistry | null;
   onDispatch: (providerId: string) => void;
   dispatching: boolean;
 }
@@ -25,6 +28,7 @@ export function ActionSheet({
   recommendedProviderId,
   providers,
   availability,
+  registry,
   onDispatch,
   dispatching,
 }: ActionSheetProps) {
@@ -36,6 +40,9 @@ export function ActionSheet({
   }, [itemHtmlUrl, onClose]);
 
   const sortedProviders = Object.entries(providers)
+    .filter(
+      ([id]) => !registry || registry.byDashboardId(id)?.enabled !== false,
+    )
     .map(([id, p]) => ({
       id,
       label: p.label ?? id,
@@ -43,8 +50,8 @@ export function ActionSheet({
     }))
     .sort((a, b) => {
       if (a.available !== b.available) return a.available ? -1 : 1;
-      const ai = DEFAULT_PROVIDER_ORDER.indexOf(a.id);
-      const bi = DEFAULT_PROVIDER_ORDER.indexOf(b.id);
+      const ai = providerSortIndex(registry, a.id);
+      const bi = providerSortIndex(registry, b.id);
       if (ai !== -1 && bi !== -1) return ai - bi;
       if (ai !== -1) return -1;
       if (bi !== -1) return 1;

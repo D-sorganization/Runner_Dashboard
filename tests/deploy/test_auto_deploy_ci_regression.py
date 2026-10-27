@@ -18,8 +18,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-
-from tests.loader_env import loader_env
+from loader_env import loader_env  # resolved via tests/deploy/conftest.py, immune to a shadowing `tests` package
 
 REPO = Path(__file__).resolve().parents[2]
 DEPLOY = REPO / "deploy"

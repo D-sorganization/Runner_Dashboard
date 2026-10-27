@@ -77,6 +77,10 @@ def backend_env(state: Path, port: int) -> dict[str, str]:
             for k, v in os.environ.items()
             if k in ("LANG", "LC_ALL", "TZ", "SYSTEMROOT", "TEMP", "TMP", "LD_LIBRARY_PATH")
         },
+        # Repo root first (the backend runs with cwd=backend/, so top-level
+        # packages such as ``shared_scripts`` are otherwise unimportable from a
+        # plain checkout), then any caller-supplied entries (#2992).
+        "PYTHONPATH": os.pathsep.join(filter(None, [str(REPO), os.environ.get("PYTHONPATH", "")])),
         "PATH": os.pathsep.join([str(FAKES / "bin"), system_path or os.environ.get("PATH", "")]),
         "HOME": str(state / "home"),
         "XDG_CONFIG_HOME": str(state / "xdg"),
