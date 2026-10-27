@@ -82,6 +82,31 @@ async def test_aggregate_budget_preserves_completed_checks(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("probe_type", [readiness.GhCliProbe, readiness.LeaseDbProbe, readiness.PushDbProbe])
+async def test_filesystem_and_database_probes_do_not_block_event_loop(monkeypatch, probe_type):
+    release = threading.Event()
+    calls = []
+
+    def blocked_sync_check():
+        calls.append(1)
+        release.wait(1)
+        return "ok", None
+
+    probe = probe_type()
+    monkeypatch.setattr(probe, "_check_sync", blocked_sync_check)
+    try:
+        status, body = await asyncio.wait_for(readiness.aggregate([probe]), 0.3)
+        assert status == 503
+        assert body["checks"][probe.name]["status"] == "timed_out"
+        for _ in range(10):
+            assert (await readiness.aggregate([probe]))[0] == 503
+        assert len(calls) == 1
+    finally:
+        release.set()
+        await asyncio.sleep(0.02)
+
+
+@pytest.mark.asyncio
 async def test_subprocess_probe_killed_on_timeout(monkeypatch):
     proc = Mock()
 
@@ -143,3 +168,14 @@ async def test_healthy_probes_and_liveness(monkeypatch):
 
     monkeypatch.setattr(health, "get_default_probes", forbidden_io)
     assert await health.livez() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_unknown_probe_status_fails_closed():
+    class InvalidProbe:
+        name = "invalid-status"
+
+        async def check(self):
+            return "unexpected", None
+
+    assert (await readiness.aggregate([InvalidProbe()]))[0] == 503
