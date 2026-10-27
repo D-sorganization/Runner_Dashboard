@@ -155,7 +155,7 @@ def test_github_credential_endpoint_returns_fresh_token(
     reset_runner()
     store = RunStore(tmp_path / "runs.sqlite3")  # type: ignore[operator]
     runner = StaffRunner(store=store)
-    monkeypatch.setattr("staff.runner._runner", runner)
+    monkeypatch.setattr("staff.runner_registry._runner", runner)
     monkeypatch.setattr("staff.github_credential_service.get_runner", lambda: runner)
     rec = RunRecord(
         id=run_id,
