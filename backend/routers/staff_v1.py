@@ -153,7 +153,7 @@ async def _handle_idempotent_post(
     except BaseException:
         # The action did not complete, so free the key for a retry.
         try:
-            store.release(key, endpoint, caller)
+            store.release(key, endpoint, caller, reservation.operation_id)
         except IdempotencyStoreError:
             log.exception("could not release idempotency key %s for %s", key, endpoint)
         raise
@@ -171,7 +171,7 @@ async def _handle_idempotent_post(
     resp_headers = {"Content-Type": "application/json"}
 
     try:
-        store.complete(key, endpoint, caller, status_code, resp_headers, body_json)
+        store.complete(key, endpoint, caller, reservation.operation_id, status_code, resp_headers, body_json)
     except IdempotencyStoreError:
         # The effect happened; report it. The reservation stays pending, so a retry is
         # answered with in-progress or unknown-outcome instead of running again.

@@ -65,7 +65,7 @@ def test_changed_payload_under_the_same_key_is_a_mismatch(db: Path) -> None:
 def test_completed_reservation_replays_the_original_receipt(db: Path) -> None:
     store = IdempotencyStore(db)
     first = store.reserve(KEY, ENDPOINT, WHO, "h1")
-    store.complete(KEY, ENDPOINT, WHO, 201, {"Content-Type": "application/json"}, '{"id": "run-1"}')
+    store.complete(KEY, ENDPOINT, WHO, first.operation_id, 201, {"Content-Type": "application/json"}, '{"id": "run-1"}')
 
     again = store.reserve(KEY, ENDPOINT, WHO, "h1")
     assert again.state == "replay"
@@ -77,8 +77,8 @@ def test_completed_reservation_replays_the_original_receipt(db: Path) -> None:
 @pytest.mark.unit
 def test_released_reservation_can_be_taken_again(db: Path) -> None:
     store = IdempotencyStore(db)
-    store.reserve(KEY, ENDPOINT, WHO, "h1")
-    store.release(KEY, ENDPOINT, WHO)
+    held = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    store.release(KEY, ENDPOINT, WHO, held.operation_id)
     assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "acquired"
 
 
@@ -100,8 +100,8 @@ def test_lapsed_reservation_is_unknown_unless_the_operation_is_safe_to_take_over
 @pytest.mark.unit
 def test_expired_receipt_frees_the_key(db: Path) -> None:
     store = IdempotencyStore(db)
-    store.reserve(KEY, ENDPOINT, WHO, "h1")
-    store.complete(KEY, ENDPOINT, WHO, 200, {}, "{}", ttl_seconds=-1)
+    held = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    store.complete(KEY, ENDPOINT, WHO, held.operation_id, 200, {}, "{}", ttl_seconds=-1)
     assert store.reserve(KEY, ENDPOINT, WHO, "h2").state == "acquired"
 
 
@@ -135,3 +135,36 @@ def test_legacy_ledger_is_migrated_and_its_rows_replay(db: Path) -> None:
     assert replay.state == "replay"
     assert replay.record is not None
     assert replay.record.response_body == '{"old": true}'
+
+
+@pytest.mark.unit
+def test_release_requires_operation_id(db: Path) -> None:
+    """A stale holder cannot drop the live reservation another request now owns (RD#3023)."""
+    store = IdempotencyStore(db)
+    stale = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    assert store.release(KEY, ENDPOINT, WHO, stale.operation_id) == "ok"
+    live = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    assert live.state == "acquired"
+    assert live.operation_id != stale.operation_id
+
+    # The original holder's failure path fires again with its old operation id.
+    assert store.release(KEY, ENDPOINT, WHO, stale.operation_id) == "not_owner"
+    again = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    assert (again.state, again.operation_id) == ("in_progress", live.operation_id)
+
+    assert store.release(KEY, ENDPOINT, WHO, live.operation_id) == "ok"
+    assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "acquired"
+
+
+@pytest.mark.unit
+def test_complete_requires_operation_id(db: Path) -> None:
+    store = IdempotencyStore(db)
+    held = store.reserve(KEY, ENDPOINT, WHO, "h1")
+
+    result = store.complete(KEY, ENDPOINT, WHO, "op-stale", 200, {}, "{}")
+    assert result == "not_owner"
+    assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "in_progress"
+    assert store.get(KEY, ENDPOINT, WHO) is None
+
+    assert store.complete(KEY, ENDPOINT, WHO, held.operation_id, 200, {}, "{}") == "ok"
+    assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "replay"

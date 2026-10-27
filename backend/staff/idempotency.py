@@ -32,6 +32,8 @@ DEFAULT_TTL_HOURS = 24
 DEFAULT_LEASE_SECONDS = 600
 
 ReservationState = Literal["acquired", "replay", "in_progress", "mismatch", "unknown_outcome"]
+# Outcome of release/complete: ``not_owner`` means the caller's operation id no longer owns the row.
+OwnerResult = Literal["ok", "not_owner"]
 
 # Columns added for atomic reservation (#1795); legacy rows are completed receipts.
 _RESERVATION_COLUMNS = {
@@ -55,6 +57,14 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 );
 CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_keys(expires_at);
 """
+
+
+def _owner_result(action: str, key: str, endpoint: str, operation_id: str, rowcount: int) -> OwnerResult:
+    """Map a guarded write's row count to an ``OwnerResult``, logging a lost reservation."""
+    if rowcount == 1:
+        return "ok"
+    log.warning("idempotency %s ignored: %s no longer owns key %s for %s", action, operation_id, key, endpoint)
+    return "not_owner"
 
 
 class IdempotencyStoreError(RuntimeError):
@@ -228,38 +238,61 @@ class IdempotencyStore:
         key: str,
         endpoint: str,
         principal: str,
+        operation_id: str,
         status_code: int,
         response_headers: dict[str, str],
         response_body: str,
         ttl_seconds: int | None = None,
-    ) -> None:
-        """Record the final receipt of a reservation this caller acquired."""
+    ) -> OwnerResult:
+        """Record the final receipt of the reservation held under ``operation_id``.
+
+        Only the row whose operation id matches is completed; a mismatch changes nothing
+        and returns ``not_owner`` (RD#3023).
+        """
+        if not operation_id:
+            raise ValueError("operation_id must be the non-empty id returned by reserve")
         ttl = ttl_seconds if ttl_seconds is not None else DEFAULT_TTL_HOURS * 3600
         skip_headers = ("content-length", "transfer-encoding")
         clean_headers = {k: v for k, v in response_headers.items() if k.lower() not in skip_headers}
         try:
             with self._lock:
-                self._conn.execute(
+                cur = self._conn.execute(
                     """
                     UPDATE idempotency_keys
                     SET state = 'done', status_code = ?, response_headers = ?, response_body = ?, expires_at = ?
-                    WHERE key = ? AND endpoint = ? AND principal = ?
+                    WHERE key = ? AND endpoint = ? AND principal = ? AND operation_id = ?
                     """,
-                    (status_code, json.dumps(clean_headers), response_body, _iso_in(ttl), key, endpoint, principal),
+                    (
+                        status_code,
+                        json.dumps(clean_headers),
+                        response_body,
+                        _iso_in(ttl),
+                        key,
+                        endpoint,
+                        principal,
+                        operation_id,
+                    ),
                 )
+            return _owner_result("complete", key, endpoint, operation_id, cur.rowcount)
         except Exception as exc:
             log.error("Idempotency complete error: %s", exc)
             raise IdempotencyStoreError(f"Idempotency completion failed: {exc}") from exc
 
-    def release(self, key: str, endpoint: str, principal: str) -> None:
-        """Drop a pending reservation whose action failed before any effect."""
+    def release(self, key: str, endpoint: str, principal: str, operation_id: str) -> OwnerResult:
+        """Drop the pending reservation held under ``operation_id`` after its action failed.
+
+        A mismatch changes nothing and returns ``not_owner`` (RD#3023).
+        """
+        if not operation_id:
+            raise ValueError("operation_id must be the non-empty id returned by reserve")
         try:
             with self._lock:
-                self._conn.execute(
+                cur = self._conn.execute(
                     "DELETE FROM idempotency_keys"
-                    " WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending'",
-                    (key, endpoint, principal),
+                    " WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending' AND operation_id = ?",
+                    (key, endpoint, principal, operation_id),
                 )
+            return _owner_result("release", key, endpoint, operation_id, cur.rowcount)
         except Exception as exc:
             log.error("Idempotency release error: %s", exc)
             raise IdempotencyStoreError(f"Idempotency release failed: {exc}") from exc
