@@ -65,7 +65,15 @@ def test_changed_payload_under_the_same_key_is_a_mismatch(db: Path) -> None:
 def test_completed_reservation_replays_the_original_receipt(db: Path) -> None:
     store = IdempotencyStore(db)
     first = store.reserve(KEY, ENDPOINT, WHO, "h1")
-    store.complete(KEY, ENDPOINT, WHO, 201, {"Content-Type": "application/json"}, '{"id": "run-1"}')
+    store.complete(
+        KEY,
+        ENDPOINT,
+        WHO,
+        201,
+        {"Content-Type": "application/json"},
+        '{"id": "run-1"}',
+        operation_id=first.operation_id,
+    )
 
     again = store.reserve(KEY, ENDPOINT, WHO, "h1")
     assert again.state == "replay"
@@ -77,8 +85,8 @@ def test_completed_reservation_replays_the_original_receipt(db: Path) -> None:
 @pytest.mark.unit
 def test_released_reservation_can_be_taken_again(db: Path) -> None:
     store = IdempotencyStore(db)
-    store.reserve(KEY, ENDPOINT, WHO, "h1")
-    store.release(KEY, ENDPOINT, WHO)
+    first = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    store.release(KEY, ENDPOINT, WHO, operation_id=first.operation_id)
     assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "acquired"
 
 
@@ -100,8 +108,8 @@ def test_lapsed_reservation_is_unknown_unless_the_operation_is_safe_to_take_over
 @pytest.mark.unit
 def test_expired_receipt_frees_the_key(db: Path) -> None:
     store = IdempotencyStore(db)
-    store.reserve(KEY, ENDPOINT, WHO, "h1")
-    store.complete(KEY, ENDPOINT, WHO, 200, {}, "{}", ttl_seconds=-1)
+    first = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    store.complete(KEY, ENDPOINT, WHO, 200, {}, "{}", ttl_seconds=-1, operation_id=first.operation_id)
     assert store.reserve(KEY, ENDPOINT, WHO, "h2").state == "acquired"
 
 
