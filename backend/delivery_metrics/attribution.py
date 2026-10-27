@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from delivery_metrics.models import PrSnapshot
+from delivery_metrics.rollup import _median
 from staff.store import RunRecord, get_run_store
 
 _DEFAULT_ORG = "D-sorganization"
@@ -67,16 +68,6 @@ def attach_attribution(row: Mapping[str, Any], attr: PrAttribution | None) -> di
     else:
         out.update({"role": attr.role, "agent": attr.agent, "model": attr.model})
     return out
-
-
-def _median(values: Sequence[int]) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    mid = len(ordered) // 2
-    if len(ordered) % 2:
-        return float(ordered[mid])
-    return (ordered[mid - 1] + ordered[mid]) / 2.0
 
 
 def _bucket_rows(rows: Sequence[Mapping[str, Any]], field: str) -> list[dict[str, Any]]:
