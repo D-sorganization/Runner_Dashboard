@@ -34,6 +34,7 @@ from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
 from staff import liveness as staff_liveness
 from staff.adapters import available_providers, chat_only_providers
+from staff.liveness import _parse_iso
 from staff.rm_sync import source_status
 from staff.store import ACTIVE_STATUSES
 from staff.usage import today_iso
@@ -137,16 +138,6 @@ async def fetch_peer_board(name: str, url: str) -> tuple[str, dict[str, Any]]:
                     return name, stale_board
         log.info("staff.fleet: peer %s board unavailable: %s", name, exc)
         return name, {"machine": name, "status": "offline", "error": str(exc)[:200]}
-
-
-def _parse_iso(raw: str | None) -> datetime | None:
-    if not raw:
-        return None
-    try:
-        when = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return when if when.tzinfo else when.replace(tzinfo=UTC)
 
 
 def scheduler_watchdog_alerts(machines: dict[str, dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
