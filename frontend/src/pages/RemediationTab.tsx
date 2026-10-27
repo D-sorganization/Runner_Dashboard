@@ -19,7 +19,12 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- 1:1 port of dynamically-typed legacy remediation payloads; the backend response shapes lack complete TypeScript definitions. */
 import React from "react";
-import { PROVIDER_MODELS } from "../lib/providerModels";
+import { modelOptionsForDashboardProvider } from "../lib/providerModels";
+import {
+  buildRemediationProviderEntries,
+  policyDefaultProvider,
+} from "../lib/remediationProviders";
+import type { ProviderRegistry } from "../lib/useProviderRegistry";
 import { SubTabs } from "../components/SubTabs";
 import { Stat } from "../components/Stat";
 import {
@@ -55,6 +60,7 @@ export interface RemediationTabProps {
   onDispatch: (run: any) => void;
   history?: any[];
   principalName?: string;
+  registry?: ProviderRegistry | null;
 }
 
 export function RemediationTab(p: RemediationTabProps): React.ReactElement {
@@ -88,21 +94,9 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
   const policy = config.policy || {};
   const providers = config.providers || {};
   const availability = config.availability || {};
-  const providerOrder = [
-    "jules_api",
-    "codex_cli",
-    "claude_code_cli",
-    "gemini_cli",
-    "ollama",
-    "cline",
-  ];
-  const providerEntries = Object.keys(providers).length
-    ? Object.keys(providers).map(function (providerId) {
-        return [providerId, providers[providerId]];
-      })
-    : providerOrder.map(function (providerId) {
-        return [providerId, { label: providerId, notes: "" }];
-      });
+  const registry = p.registry ?? null;
+  const defaultProviderId = policyDefaultProvider(policy, registry);
+  const providerEntries = buildRemediationProviderEntries(registry, providers);
   const drr = React.useState(policy.workflow_type_rules || {});
   const draftRules = drr[0],
     setDraftRules = drr[1];
@@ -182,8 +176,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
     return (
       (plan && plan.decision && plan.decision.provider_id) ||
       provider ||
-      policy.default_provider ||
-      "jules_api"
+      defaultProviderId
     );
   }
   function remediationRunTitle(run: any) {
@@ -655,9 +648,8 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                     h(
                       "select",
                       {
-                        value: isSelected
-                          ? provider
-                          : policy.default_provider || "jules_api",
+                        value:
+                          isSelected && provider ? provider : defaultProviderId,
                         onClick: function (e: any) {
                           e.stopPropagation();
                           setSelectedRunId(String(run.id));
@@ -685,16 +677,18 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                       }),
                     ),
                     (function () {
-                      const currentProvider = isSelected
-                        ? provider
-                        : policy.default_provider || "jules_api";
-                      const modelOpts = (PROVIDER_MODELS as any)[currentProvider];
-                      if (!modelOpts || !isSelected) return null;
+                      const currentProvider =
+                        isSelected && provider ? provider : defaultProviderId;
+                      const modelOpts =
+                        registry
+                          ? modelOptionsForDashboardProvider(registry, currentProvider)
+                          : [];
+                      if (!modelOpts.length || !isSelected) return null;
                       return h(
                         "select",
                         {
                           value:
-                            model || (modelOpts[0] && modelOpts[0].value) || "",
+                            model || (modelOpts[0] && modelOpts[0].id) || "",
                           onClick: function (e: any) {
                             e.stopPropagation();
                           },
@@ -714,7 +708,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                         modelOpts.map(function (m: any) {
                           return h(
                             "option",
-                            { key: m.value, value: m.value },
+                            { key: m.id, value: m.id },
                             m.label,
                           );
                         }),
@@ -845,7 +839,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                   "select",
                   {
                     autoFocus: true,
-                    value: policy.default_provider || "jules_api",
+                    value: defaultProviderId,
                     onChange: function (e: any) {
                       saveDefaultProvider(e.target.value);
                     },
@@ -873,7 +867,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
               : h(
                   "div",
                   { style: { fontSize: 16, fontWeight: 700 } },
-                  policy.default_provider || "jules_api",
+                  defaultProviderId,
                 ),
             h(
               "div",
@@ -1051,10 +1045,7 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
                         h(
                           "select",
                           {
-                            value:
-                              rule.provider_id ||
-                              policy.default_provider ||
-                              "jules_api",
+                            value: rule.provider_id || defaultProviderId,
                             onChange: function (e: any) {
                               updateRule(
                                 workflowType,
@@ -1660,9 +1651,15 @@ export function RemediationTab(p: RemediationTabProps): React.ReactElement {
         ),
       ),
     subTab === "prs" &&
-      h(RemediationPRsSubTab, { principalName: p.principalName } as any),
+      h(RemediationPRsSubTab, {
+        principalName: p.principalName,
+        registry,
+      } as any),
     subTab === "issues" &&
-      h(RemediationIssuesSubTab, { principalName: p.principalName } as any),
+      h(RemediationIssuesSubTab, {
+        principalName: p.principalName,
+        registry,
+      } as any),
   );
 }
 

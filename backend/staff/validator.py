@@ -443,7 +443,7 @@ def _validate_avatar_field(data: dict[str, Any]) -> list[str]:
 
 
 def _validate_retry_block(data: dict[str, Any]) -> list[str]:
-    """Optional ``retry`` block: max_attempts and legacy fallback_providers."""
+    """Optional ``retry`` block: max_attempts, legacy fallback_providers and failover_chain."""
     problems: list[str] = []
     retry = data.get("retry")
     if retry is None:
@@ -452,7 +452,7 @@ def _validate_retry_block(data: dict[str, Any]) -> list[str]:
         problems.append("retry must be a mapping")
         return problems
     for key in retry:
-        if key not in ("max_attempts", "fallback_providers", "provider_fallbacks"):
+        if key not in ("max_attempts", "fallback_providers", "provider_fallbacks", "failover_chain"):
             problems.append(f"unknown retry key {key!r}")
     max_att = retry.get("max_attempts")
     if max_att is not None:
@@ -462,4 +462,25 @@ def _validate_retry_block(data: dict[str, Any]) -> list[str]:
     if fb is not None:
         if not isinstance(fb, list) or any(not isinstance(p, str) or not p.strip() for p in fb):
             problems.append("retry.fallback_providers must be a list of non-empty strings")
+    if "failover_chain" in retry:
+        problems.extend(_failover_chain_shape_problems(retry["failover_chain"]))
+    return problems
+
+
+def _failover_chain_shape_problems(chain: Any) -> list[str]:
+    """Shape of ``retry.failover_chain`` (RM schema mirror); provider membership is checked in parse_role."""
+    if not isinstance(chain, list) or not chain:
+        return ["retry.failover_chain must be a non-empty list"]
+    problems: list[str] = []
+    for idx, step in enumerate(chain):
+        prefix = f"retry.failover_chain[{idx}]"
+        if not isinstance(step, dict) or set(step) - {"provider", "model"}:
+            problems.append(f"{prefix} must be a mapping of provider and optional model")
+            continue
+        provider = step.get("provider")
+        if not isinstance(provider, str) or not provider.strip():
+            problems.append(f"{prefix}.provider must be a non-empty string")
+        model = step.get("model")
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            problems.append(f"{prefix}.model must be a non-empty string or null")
     return problems

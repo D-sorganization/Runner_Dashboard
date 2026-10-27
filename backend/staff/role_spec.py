@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from staff.model_tiers import validate_role_tier
+from staff.provider_failover_config import (
+    FailoverStep,
+    parse_role_failover_chain,
+    validate_failover_chain,
+)
 from staff.provider_fallback import (
     ProviderFallbackRule,
     parse_provider_fallback_rules,
@@ -53,6 +58,7 @@ class RoleSpec:
     fallback_providers: tuple[str, ...] = ()
     provider_fallbacks: tuple[ProviderFallbackRule, ...] = ()
     avatar: str | None = None
+    failover_chain: tuple[FailoverStep, ...] = ()
     valid: bool = True
     errors: tuple[str, ...] = ()
     source_path: str = ""
@@ -144,6 +150,7 @@ class RoleSpec:
                 }
                 for r in self.provider_fallbacks
             ],
+            "failover_chain": [{"provider": s.provider, "model": s.model} for s in self.failover_chain],
             "valid": self.valid,
             "errors": list(self.errors),
             "error": self.errors[0] if self.errors else None,
@@ -262,6 +269,8 @@ def parse_role(
         if avatar_err:
             merged_errors.append(avatar_err)
     merged_errors.extend(validate_provider_fallback_rules(provider_fallback_rules, _as_tuple(data.get("providers"))))
+    failover_chain = parse_role_failover_chain(data) or ()
+    merged_errors.extend(validate_failover_chain(failover_chain, _as_tuple(data.get("providers"))))
     role_tier = str(data.get("tier") or "routine").strip().lower()
     merged_errors.extend(validate_role_tier(role_tier))
     allow_escalation = bool(data.get("allow_tier_escalation", False))
@@ -305,6 +314,7 @@ def parse_role(
         fallback_providers=fallback_provs,
         provider_fallbacks=provider_fallback_rules,
         avatar=avatar,
+        failover_chain=failover_chain,
         valid=len(merged_errors) == 0,
         errors=tuple(merged_errors),
         source_path=source_path,
