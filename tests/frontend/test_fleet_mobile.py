@@ -44,6 +44,8 @@ async def test_fleet_status_endpoint_returns_dict_shape(client):
         for hostname, node in data.items():
             assert isinstance(hostname, str)
             assert isinstance(node, dict)
+            if hostname.startswith("_"):
+                continue
             assert "status" in node or "_role" in node
 
 

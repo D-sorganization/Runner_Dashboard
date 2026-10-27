@@ -1,0 +1,37 @@
+name: Priority Expedite Guard
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: priority-expedite-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    # Fork PRs route to ubuntu-latest, never the fleet (RM#1989).
+    if: github.event.label.name == 'priority:expedite'
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Enforce trusted actors
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.event.sender.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          RUNNER_DASHBOARD_URL: ${{ secrets.RUNNER_DASHBOARD_URL }}
+          HUB_FLEET_TOKEN: ${{ secrets.HUB_FLEET_TOKEN }}
+          EXPEDITE_CONCURRENT_CAP: ${{ vars.EXPEDITE_CONCURRENT_CAP }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/priority_expedite_guard_action.py

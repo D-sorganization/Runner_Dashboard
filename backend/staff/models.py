@@ -313,6 +313,11 @@ class StaffSummaryResponse(BaseModel):
     machines_online: list[str] = Field(default_factory=list)
     machines_offline: list[str] = Field(default_factory=list)
     in_flight: list[dict[str, Any]] = Field(default_factory=list)
+    board_sessions: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Agent sessions with live coordination-board presence, incl. desktop CLI agents (#2980)",
+    )
+    board_sessions_warning: str | None = Field(default=None, description="Why board_sessions may be empty")
     recent_24h: dict[str, int] = Field(default_factory=dict)
     attention: list[dict[str, Any]] = Field(default_factory=list)
     spend_today_usd: dict[str, float] = Field(

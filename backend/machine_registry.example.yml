@@ -1,0 +1,118 @@
+# Example fleet machine registry for Runner Dashboard (public repo).
+# Copy to ~/.config/runner-dashboard/machine_registry.yml and customize for
+# your deployment. See docs/runbooks/local-fleet-topology.md.
+version: 1
+updated_at: 2026-10-24
+machines:
+  - name: hub-a
+    aliases:
+      - hub-a
+      - fleet-hub
+    display_name: hub-a
+    role: hub
+    dashboard_url: http://hub-a.fleet-example.ts.net:8321
+    tailscale_nodes:
+      - name: hub-a
+        ip: 100.64.254.13
+        transport: windows
+        preferred: true
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+    runners:
+      min: 2
+      default: 4
+      max: 8
+    storage:
+      runner_backing_drive: "D:"
+      host_drive: "D:"
+      windows_host_path: "D:\\WSL"
+      wsl_distro: Ubuntu-22.04
+    hardware:
+      workload_tags:
+        - hub
+        - control-plane
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: true
+  - name: node-a
+    aliases:
+      - node-a
+      - control-node
+    display_name: node-a
+    role: node
+    dashboard_url: http://node-a.fleet-example.ts.net:8321
+    tailscale_nodes:
+      - name: node-a
+        ip: 100.64.254.10
+        transport: wsl2
+        preferred: true
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+    runner_pools:
+      - name: node-a-runner
+        aliases:
+          - node-a-runner
+        dashboard_url: http://node-a.fleet-example.ts.net:8321
+        storage_tier: ssd
+        runner_base_dir: /home/fleet-operator/actions-runners
+        runner_labels:
+          - self-hosted
+          - Linux
+          - X64
+          - d-sorg-fleet
+        runners:
+          min: 1
+          default: 2
+          max: 4
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: false
+  - name: node-b
+    aliases:
+      - node-b
+      - laptop-node
+    display_name: node-b
+    role: node
+    dashboard_url: http://node-b.fleet-example.ts.net:8321
+    tailscale_nodes:
+      - name: node-b
+        ip: 100.64.254.12
+        transport: wsl2
+        preferred: true
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: true
+  - name: node-c
+    aliases:
+      - node-c
+    display_name: node-c
+    role: node
+    dashboard_url: http://node-c.fleet-example.ts.net:8321
+    tailscale_nodes:
+      - name: node-c
+        ip: 100.64.254.14
+        transport: linux
+        preferred: true
+    runner_labels:
+      - self-hosted
+      - Linux
+      - X64
+      - d-sorg-fleet
+    runners:
+      min: 0
+      default: 0
+      max: 0
+    maintenance:
+      owner: fleet-ops
+      allow_auto_stop: true
