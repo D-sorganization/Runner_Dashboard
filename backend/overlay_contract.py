@@ -111,9 +111,7 @@ def _parse_private_role(raw: object, index: int) -> PrivateRole:
     providers_raw = raw["providers"]
     if not isinstance(providers_raw, dict):
         raise OverlayError(f"{where}: providers must be an object")
-    providers = {
-        host: _non_empty_str_list(clis, f"{where}: providers[{host}]") for host, clis in providers_raw.items()
-    }
+    providers = {host: _non_empty_str_list(clis, f"{where}: providers[{host}]") for host, clis in providers_raw.items()}
     store_dir = raw["context_store_dir"]
     if not isinstance(store_dir, str) or not store_dir:
         raise OverlayError(f"{where}: context_store_dir must be a non-empty string")
