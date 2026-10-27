@@ -10,17 +10,114 @@
  *
  * LoD: flat typed props only — activeTabId, onSelect(tabId), and actions.
  */
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Sidebar } from "./Sidebar";
+import "./BarbSidebar.css";
 import { Tooltip } from "../primitives/Tooltip";
 import { Dropdown } from "../primitives/Dropdown";
 import { CommandPalette, type Command } from "../primitives/CommandPalette";
 import { NAV_ITEMS, NAV_GROUPS } from "./navRegistry";
 import { ChatGlyph } from "../pages/decompIcons";
 
-const LazyBarbSidebar = React.lazy(() =>
-  import("./BarbSidebar").then(({ BarbSidebar }) => ({ default: BarbSidebar })),
-);
+function loadBarbSidebar() {
+  return import("./BarbSidebar").then(({ BarbSidebar }) => ({ default: BarbSidebar }));
+}
+
+const LazyBarbSidebar = React.lazy(loadBarbSidebar);
+
+function warmBarbSidebar(): void {
+  void loadBarbSidebar().catch(() => undefined);
+}
+
+function BarbSidebarLoading({
+  open,
+  onClose,
+  failed = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  failed?: boolean;
+}): React.ReactElement {
+  const panelRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (open) panel.removeAttribute("inert");
+    else panel.setAttribute("inert", "");
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose, open]);
+
+  return (
+    <aside
+      ref={panelRef}
+      id="barb-sidebar"
+      className={`barb-sidebar${open ? " barb-sidebar--open" : ""}`}
+      aria-label="Ask Barb"
+      aria-hidden={!open}
+    >
+      <header className="barb-sidebar__header">
+        <div className="barb-sidebar__identity">
+          <span className="barb-sidebar__mark" aria-hidden="true"><ChatGlyph /></span>
+          <div><h2>Ask Barb</h2><p>Fleet concierge</p></div>
+        </div>
+        <div className="barb-sidebar__header-actions">
+          <button type="button" className="barb-sidebar__close" aria-label="Close Ask Barb" onClick={onClose}>
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+      </header>
+      <div className="barb-sidebar__conversation">
+        {failed ? (
+          <div className="barb-sidebar__welcome" role="alert">
+            <h3>Ask Barb could not load</h3>
+            <p>Reload the dashboard to try again.</p>
+            <button type="button" className="barb-sidebar__new" onClick={() => window.location.reload()}>
+              Reload dashboard
+            </button>
+          </div>
+        ) : (
+          <div className="barb-sidebar__welcome" role="status">Loading your Barb conversation…</div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+class BarbSidebarErrorBoundary extends React.Component<
+  { open: boolean; onClose: () => void; children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error): void {
+    // eslint-disable-next-line no-console
+    console.error("Ask Barb sidebar failed to load", error);
+  }
+
+  render(): React.ReactNode {
+    if (this.state.failed) {
+      return <BarbSidebarLoading open={this.props.open} onClose={this.props.onClose} failed />;
+    }
+    return (
+      <React.Suspense
+        fallback={<BarbSidebarLoading open={this.props.open} onClose={this.props.onClose} />}
+      >
+        {this.props.children}
+      </React.Suspense>
+    );
+  }
+}
 
 export interface ShellAction {
   /** Stable identifier. */
@@ -231,6 +328,10 @@ export function DesktopShell({
     setBarbMounted(true);
     setBarbOpen(true);
   };
+  const closeBarb = () => {
+    setBarbOpen(false);
+    barbToggleRef.current?.focus();
+  };
 
   const activeItem = NAV_ITEMS.find(
     (it) => it.tabId === activeTabId || it.id === activeTabId,
@@ -294,6 +395,8 @@ export function DesktopShell({
                 aria-controls="barb-sidebar"
                 aria-expanded={barbOpen}
                 data-testid="ask-barb-toggle"
+                onPointerEnter={warmBarbSidebar}
+                onFocus={warmBarbSidebar}
                 onClick={() => (barbOpen ? setBarbOpen(false) : openBarb())}
               >
                 <ChatGlyph size={15} />
@@ -321,15 +424,15 @@ export function DesktopShell({
         onOpenChange={setPaletteOpen}
       />
       {barbMounted ? (
-        <React.Suspense fallback={null}>
+        <BarbSidebarErrorBoundary open={barbOpen} onClose={closeBarb}>
           <LazyBarbSidebar
             open={barbOpen}
-            onClose={() => setBarbOpen(false)}
+            onClose={closeBarb}
             onNavigate={onSelect}
             onThreadSelected={onThreadSelected}
             restoreFocusTargetRef={barbToggleRef}
           />
-        </React.Suspense>
+        </BarbSidebarErrorBoundary>
       ) : null}
     </div>
   );

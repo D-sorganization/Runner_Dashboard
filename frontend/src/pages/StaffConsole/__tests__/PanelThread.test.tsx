@@ -178,8 +178,8 @@ describe("Panel thread rendering", () => {
       expect(screen.getByRole("article", { name: /panel consensus/i })).toBeInTheDocument();
     });
 
-    expect(screen.getByText("Consensus reached")).toBeInTheDocument();
-    expect(screen.getByText("2 of 3 rounds used")).toBeInTheDocument();
+    expect(await screen.findByText("Consensus reached")).toBeInTheDocument();
+    expect(await screen.findByText("2 of 3 rounds used")).toBeInTheDocument();
     expect(screen.getByText("Moderator synthesis: consensus was reached.")).toBeInTheDocument();
 
     // Composer disabled in panel thread

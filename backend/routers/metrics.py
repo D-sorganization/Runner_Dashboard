@@ -88,6 +88,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
 
     liveness = board.get("liveness") or []
     liveness_alerts = [item for item in liveness if isinstance(item, dict) and item.get("state") in ("late", "dead")]
+    ci_slo = cache_get("ci_slo_metrics", 86400.0) or {}
     return {
         "nodes": nodes,
         "in_flight": len(board.get("running", [])) + len(board.get("queued", [])),
@@ -96,6 +97,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "attention_items": len(format_attention_items(recent)),
         "liveness_alerts": len(liveness_alerts),
         "holds_active": len(staff_fleet.holds_snapshot()),
+        "ci_slo": ci_slo if isinstance(ci_slo, dict) else {},
     }
 
 
@@ -164,9 +166,19 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
             "# HELP rd_holds_active_total Active fleet/staff holds.",
             "# TYPE rd_holds_active_total gauge",
             f"rd_holds_active_total {int(snapshot.get('holds_active', 0))}",
-            "",
         ]
     )
+    ci_slo = snapshot.get("ci_slo") or {}
+    if isinstance(ci_slo, dict) and ci_slo.get("metrics"):
+        lines.extend(
+            [
+                "# TYPE rd_ci_slo_ok gauge",
+                f"rd_ci_slo_ok {1 if ci_slo.get('ok') else 0}",
+                "",
+            ]
+        )
+    else:
+        lines.append("")
     return "\n".join(lines)
 
 

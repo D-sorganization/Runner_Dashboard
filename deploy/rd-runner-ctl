@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Root-owned boundary for runner unit lifecycle operations.
+set -euo pipefail
+
+if (( $# != 0 )); then
+    exit 2
+fi
+
+IFS= read -r action || exit 2
+IFS= read -r unit || exit 2
+if IFS= read -r extra || [[ -n "${extra:-}" ]]; then
+    exit 2
+fi
+
+if [[ ! "$action" =~ ^(start|stop|restart)$ ]] ||
+   [[ ! "$unit" =~ ^actions\.runner\.[A-Za-z0-9._-]+\.service$ ]]; then
+    exit 2
+fi
+
+exec /usr/bin/systemctl "$action" --no-block "$unit"
