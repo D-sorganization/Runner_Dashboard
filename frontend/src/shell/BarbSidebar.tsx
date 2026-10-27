@@ -47,8 +47,12 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    if (!open) return;
     const sidebarEl = sidebarRef.current;
+    if (sidebarEl) {
+      if (open) sidebarEl.removeAttribute("inert");
+      else sidebarEl.setAttribute("inert", "");
+    }
+    if (!open) return;
     const focusTarget = restoreFocusTargetRef?.current ?? document.activeElement;
     restoreFocusRef.current = focusTarget instanceof HTMLElement ? focusTarget : null;
     if (mobile) {

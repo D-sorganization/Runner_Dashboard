@@ -80,6 +80,10 @@
   color: "9333EA"
   description: "Agent panel is reviewing / should review. Do not implement from this issue."
 
+- name: "priority:expedite"
+  color: "B60205"
+  description: "Expedited lane: hosted CI + merge-queue jump (trusted actors only)."
+
 # ---------------------------------------------------------------------------
 # Judgement — dispatch gating.
 # ---------------------------------------------------------------------------

@@ -17,6 +17,7 @@ def _git(root: Path, *args: str) -> str:
 def _repo(root: Path, files: dict[str, str]) -> str:
     root.mkdir(parents=True)
     _git(root, "init", "-q")
+    _git(root, "config", "core.autocrlf", "false")
     _git(root, "config", "user.name", "Test")
     _git(root, "config", "user.email", "test@example.invalid")
     for name, text in files.items():
@@ -26,6 +27,27 @@ def _repo(root: Path, files: dict[str, str]) -> str:
     _git(root, "add", "--all")
     _git(root, "commit", "-qm", "initial")
     return _git(root, "rev-parse", "HEAD")
+
+
+def test_repo_helper_is_hermetic_against_autocrlf_in_global_git_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    global_config = tmp_path / "gitconfig"
+    global_config.write_text("[core]\n\tautocrlf = true\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
+    root = tmp_path / "repo"
+    _repo(root, {"crlf.md": "line\n"})
+    payload = b"a\r\nb\r\n"
+    (root / "crlf.md").write_bytes(payload)
+    _git(root, "add", "crlf.md")
+    _git(root, "commit", "-qm", "crlf")
+
+    stored = subprocess.run(
+        ["git", "cat-file", "blob", "HEAD:crlf.md"], cwd=root, check=True, capture_output=True
+    ).stdout
+
+    assert stored == payload
+    assert _git(root, "status", "--porcelain") == ""
 
 
 def test_zero_citation_documents_and_pr_body_check_links_without_database(tmp_path: Path) -> None:
