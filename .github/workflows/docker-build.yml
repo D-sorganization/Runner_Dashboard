@@ -152,6 +152,13 @@ jobs:
             attempt=$((attempt + 1))
           done
 
+      - name: Smoke-test the built image
+        id: smoke
+        if: steps.build.outcome == 'success'
+        env:
+          IMAGE_TAG: ${{ steps.build.outputs.image_tag }}
+        run: bash scripts/ci/docker_smoke_test.sh "$IMAGE_TAG"
+
       - name: Run Trivy vulnerability scan
         if: steps.build.outcome == 'success'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
