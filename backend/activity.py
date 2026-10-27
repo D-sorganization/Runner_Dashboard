@@ -6,15 +6,20 @@ import json
 import os
 import sqlite3
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from staff.redaction import redact_sensitive_content
 
 GAP_KINDS = ("OverflowGap", "RetentionGap", "CaptureGap")
 MAX_PAYLOAD_BYTES = 16_384
+MAX_BATCH_BYTES = 262_144
+MAX_BATCH_EVENTS = 100
+REDACTION_VERSION = 1
 _initialization_lock = threading.RLock()
 ActivitySource = Literal[
     "staff_run",
@@ -104,6 +109,10 @@ class ActivityStore:
                 "CREATE TRIGGER IF NOT EXISTS activity_no_delete BEFORE DELETE ON activity_events "
                 "BEGIN SELECT RAISE(ABORT, 'activity log is append-only'); END"
             )
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS activity_ingestion_usage ("
+                "principal TEXT NOT NULL, ts REAL NOT NULL, events INTEGER NOT NULL, bytes INTEGER NOT NULL)"
+            )
             conn.close()
 
     def _connection(self) -> sqlite3.Connection:
@@ -140,6 +149,87 @@ class ActivityStore:
             finally:
                 conn.close()
         return ActivityEnvelope.model_validate_json(row["envelope"])
+
+    def ingest(
+        self,
+        events: list[ActivityEnvelope],
+        *,
+        principal: str,
+        max_events: int = 1000,
+        max_bytes: int = 1_048_576,
+        now: float | None = None,
+    ) -> list[ActivityEnvelope]:
+        """Bind sources (type + node) and sessions on first write; commit a batch once.
+
+        Quotas count new redacted events in a rolling 60-second window. Retries
+        consume no quota. SQLite serializes binding, dedupe, quota and commit
+        across processes; any failure rolls the entire batch back.
+        """
+        if not principal or max_events < 1 or max_bytes < 1:
+            raise ValueError("principal and positive quota limits are required")
+        if not events or len(events) > MAX_BATCH_EVENTS:
+            raise HTTPException(413 if events else 422, "activity batch must contain 1..100 events")
+        if sum(len(event.model_dump_json().encode()) for event in events) > MAX_BATCH_BYTES:
+            raise HTTPException(413, "activity batch exceeds byte limit")
+        if any(event.principal != principal for event in events):
+            raise HTTPException(403, "activity principal does not match caller")
+        safe = [_redacted_event(event) for event in events]
+        timestamp = time.time() if now is None else now
+        with self._lock:
+            conn = self._connection()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                conn.execute("DELETE FROM activity_ingestion_usage WHERE ts <= ?", (timestamp - 60,))
+                used = conn.execute(
+                    "SELECT COALESCE(SUM(events),0), COALESCE(SUM(bytes),0) "
+                    "FROM activity_ingestion_usage WHERE principal=?",
+                    (principal,),
+                ).fetchone()
+                count = size = 0
+                result = []
+                for event in safe:
+                    # Include legacy append() records in binding enforcement.
+                    foreign = conn.execute(
+                        "SELECT 1 FROM activity_events WHERE "
+                        "(session_id=? OR (source=? AND json_extract(envelope,'$.node')=?)) "
+                        "AND json_extract(envelope,'$.principal') != ? LIMIT 1",
+                        (event.session_id, event.source, event.node, principal),
+                    ).fetchone()
+                    if foreign:
+                        raise HTTPException(403, "activity source or session belongs to another principal")
+                    encoded = event.model_dump_json()
+                    previous = conn.execute(
+                        "SELECT envelope FROM activity_events WHERE source=? AND session_id=? AND seq=?",
+                        (event.source, event.session_id, event.seq),
+                    ).fetchone()
+                    if previous:
+                        if previous["envelope"] != encoded:
+                            raise HTTPException(409, "activity sequence conflicts with stored event")
+                        result.append(ActivityEnvelope.model_validate_json(previous["envelope"]))
+                        continue
+                    count += 1
+                    size += len(encoded.encode())
+                    if count + used[0] > max_events or size + used[1] > max_bytes:
+                        raise HTTPException(429, "activity ingestion quota exceeded", headers={"Retry-After": "60"})
+                    conn.execute(
+                        "INSERT INTO activity_events(source,session_id,seq,event_id,envelope) VALUES(?,?,?,?,?)",
+                        (event.source, event.session_id, event.seq, event.event_id, encoded),
+                    )
+                    result.append(event)
+                if count:
+                    conn.execute(
+                        "INSERT INTO activity_ingestion_usage VALUES(?,?,?,?)", (principal, timestamp, count, size)
+                    )
+                conn.commit()
+                return result
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                raise HTTPException(409, "activity event id conflicts with stored event") from exc
+            except BaseException:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def read(
         self,
@@ -178,6 +268,31 @@ class ActivityStore:
 
 
 _store: ActivityStore | None = None
+
+
+def _redacted_event(event: ActivityEnvelope) -> ActivityEnvelope:
+    def clean(value: Any) -> Any:
+        if isinstance(value, str):
+            return redact_sensitive_content(value)
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, dict):
+            result = {clean(key): clean(item) for key, item in sorted(value.items())}
+            if len(result) != len(value):
+                raise HTTPException(422, "activity keys collide after redaction")
+            return result
+        return value
+
+    data = clean(event.model_dump(mode="json"))
+    # Binding identifiers must be opaque, never secrets or network addresses.
+    for key in ("principal", "source", "node", "session_id", "event_id"):
+        if data[key] != getattr(event, key):
+            raise HTTPException(422, "activity identifiers must not contain sensitive content")
+    data["redaction_version"] = REDACTION_VERSION
+    try:
+        return ActivityEnvelope.model_validate(data)
+    except ValidationError as exc:
+        raise HTTPException(422, "activity envelope invalid after redaction") from exc
 
 
 def get_activity_store() -> ActivityStore:
