@@ -32,9 +32,7 @@ class RepoCounts:
             value = getattr(self, field_name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
-        if self.error is not None and (
-            not isinstance(self.error, str) or not self.error.strip()
-        ):
+        if self.error is not None and (not isinstance(self.error, str) or not self.error.strip()):
             raise ValueError("error must be non-empty when provided")
 
 
@@ -48,15 +46,10 @@ class FleetGlance:
     as_of: datetime
 
 
-def aggregate(
-    repos: list[RepoCounts], *, as_of: datetime | None = None
-) -> FleetGlance:
+def aggregate(repos: list[RepoCounts], *, as_of: datetime | None = None) -> FleetGlance:
     """Sum healthy repositories and retain failed rows for visible diagnostics."""
     timestamp = as_of or datetime.now(UTC)
-    if (
-        timestamp.tzinfo is None
-        or timestamp.utcoffset() != UTC.utcoffset(timestamp)
-    ):
+    if timestamp.tzinfo is None or timestamp.utcoffset() != UTC.utcoffset(timestamp):
         raise ValueError("as_of must be a UTC timestamp")
 
     totals = {name: 0 for name in _COUNT_FIELDS}
