@@ -14,9 +14,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
-from staff.host_settings_contract import HostSettingsDocument, resolve_all_roles
+from staff.host_settings_contract import (
+    HostSettingsDocument,
+    host_settings_path,
+    load_host_settings,
+    resolve_role_leader,
+)
 from staff.host_settings_service import HostSettingsError, apply_host_settings_update
-from staff.host_settings_contract import host_settings_path, load_host_settings
 from staff.roles import load_roles
 
 log = logging.getLogger("dashboard.staff.host_settings")
@@ -39,7 +43,7 @@ def _effective_document() -> HostSettingsDocument | None:
 def host_settings_view() -> dict[str, Any]:
     doc = _effective_document()
     role_names = sorted(load_roles())
-    resolved = resolve_all_roles(role_names, doc)
+    resolved = [resolve_role_leader(name, doc) for name in role_names]
     payload = doc.to_dict() if doc else HostSettingsDocument.empty().to_dict()
     return {
         "settings": payload,

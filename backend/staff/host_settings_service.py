@@ -7,12 +7,7 @@ from typing import Any
 
 from staff.audit import record_audit
 from staff.holds import HoldsList
-from staff.host_settings_contract import (
-    HostSettingsDocument,
-    document_digest,
-    load_host_settings,
-    save_host_settings,
-)
+from staff.host_settings_contract import HostSettingsDocument, load_host_settings, save_host_settings
 
 _log = logging.getLogger("dashboard.staff.host_settings")
 
@@ -39,8 +34,8 @@ def apply_host_settings_update(
     holds_list = holds or HoldsList()
     before_holds = _holds_snapshot(holds_list)
     before_doc = load_host_settings()
-    before_digest = document_digest(before_doc) if before_doc else document_digest(HostSettingsDocument.empty())
-    after_digest = document_digest(doc)
+    before_digest = (before_doc or HostSettingsDocument.empty()).to_dict()
+    after_digest = doc.to_dict()
     if path_store:
         save_host_settings(doc)
     after_holds = _holds_snapshot(holds_list)

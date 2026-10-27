@@ -43,10 +43,6 @@ vi.mock("../../../components/VaultPanel", () => ({
   VaultPanel: () => <div data-testid="vault-panel">Vault</div>,
 }));
 
-vi.mock("../HostSettingsPanel", () => ({
-  HostSettingsPanel: () => <div data-testid="host-settings-panel">Host settings</div>,
-}));
-
 import { SettingsPage } from "../SettingsPage";
 
 afterEach(() => {
@@ -77,7 +73,6 @@ describe("SettingsPage (#1338)", () => {
       "principals",
       "theme",
       "vault",
-      "host-settings",
     ]);
   });
 
