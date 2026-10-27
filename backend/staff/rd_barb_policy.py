@@ -12,10 +12,10 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 DEFAULT_POLICY_PATH = Path(__file__).resolve().parents[2] / "config" / "rd_barb_locked_policy.json"
-# Regex fragments; each is load-bearing (the canary drops them one at a time).
-LIFT_TERMS: tuple[str, ...] = tuple(
+LIFT_TERMS: tuple[str, ...] = tuple(  # each fragment is load-bearing: the canary drops them one by one
     r"lift(?:s|ed|ing)? overrid(?:e|es|den|ing)|overrode ignor(?:e|es|ed|ing) bypass(?:es|ed|ing)? waiv(?:e|es|ed|ing)"
     r" disabl(?:e|es|ed|ing) skip(?:s|ped|ping)? suspend(?:s|ed|ing)? relax(?:es|ed|ing)? un-?hold(?:s|ing)?"
     r" auto[-\s]?approv(?:e|es|ed|al|ing) auto[-\s]?ok(?:ed|'d)? no\slonger\sappl(?:y|ies)".split()
@@ -38,7 +38,7 @@ class LockedPolicy:
         return next((name for name in self.ids + self.aliases if name.lower() in haystack), None)
 
 
-def _entries(data: object, key: str) -> list[dict[str, object]]:
+def _entries(data: object, key: str) -> list[dict[str, Any]]:
     items = data.get(key) if isinstance(data, dict) else None
     if not isinstance(items, list) or not items:
         raise LockedPolicyError(f"locked policy needs a non-empty {key!r} list")
