@@ -56,6 +56,7 @@ jobs:
     outputs:
       runner: ${{ steps.select.outputs.runner }}
       mode: ${{ steps.select.outputs.mode }}
+      fast_checks_runner: ${{ steps.select.outputs.fast_checks_runner }}
     steps:
       - id: detect-expedite
         name: Detect priority:expedite on this PR
@@ -88,6 +89,7 @@ jobs:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
           CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          EVENT_NAME: ${{ github.event_name }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
           EVENT_NAME: ${{ github.event_name }}
           HAS_EXPEDITE: ${{ steps.detect-expedite.outputs.has_expedite }}
@@ -126,6 +128,20 @@ jobs:
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
             echo "Public repo hosted runner (CI_RUNNER_MODE not local)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          FAST_CHECKS="${{ vars.RD_FAST_CHECKS_RUNNER }}"
+          if [ -n "$FAST_CHECKS" ] && [ "$FAST_CHECKS" != "hosted" ] && [ "$FAST_CHECKS" != "local" ]; then
+            echo "::error::RD_FAST_CHECKS_RUNNER must be 'hosted', 'local', or unset (got '$FAST_CHECKS')"
+            exit 1
+          fi
+          if [ "$FORK_PR" = "true" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$FAST_CHECKS" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
           fi
 
   # ── Event tier + docs-only fast path (issue #1864, RM#1915) ─────────────
@@ -628,7 +644,7 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -726,7 +742,7 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
     timeout-minutes: 5
     steps:
       - name: Confirm Python test matrix
@@ -824,7 +840,7 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
     timeout-minutes: 5
     steps:
       - name: Require every gated job to succeed
