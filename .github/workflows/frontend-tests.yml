@@ -90,6 +90,7 @@ jobs:
     permissions:
       actions: write
       contents: read
+      pull-requests: read
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
       run_staff_e2e: ${{ steps.scope.outputs.run_staff_e2e }}

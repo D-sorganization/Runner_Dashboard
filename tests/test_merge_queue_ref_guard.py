@@ -210,6 +210,16 @@ def test_ci_standard_tests_job_can_self_cancel_on_merge_group_recheck() -> None:
     assert perms == {"actions": "write", "contents": "read"}
 
 
+def test_frontend_scope_guard_preserves_pull_request_files_read_permission() -> None:
+    workflow = _load_workflow("frontend-tests.yml")
+
+    assert workflow["jobs"]["frontend-scope"]["permissions"] == {
+        "actions": "write",
+        "contents": "read",
+        "pull-requests": "read",
+    }
+
+
 def test_gh_api_error_fails_open_without_cancel(tmp_path: Path) -> None:
     gh = tmp_path / "gh"
     gh.write_text(
