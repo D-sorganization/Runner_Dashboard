@@ -17,6 +17,8 @@ type Chunk = {
 };
 
 const LAZY_MODULES = [
+  /lib\/webVitals\.ts$/,
+  /node_modules\/web-vitals\//,
   /pages\/OverviewPage/,
   /pages\/FleetTab/,
   /pages\/RemediationPage/,
