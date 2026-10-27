@@ -67,6 +67,8 @@ def test_codex_guide_contents() -> None:
     assert "agent-codex" in text
     assert "staff.chat" in text
     assert "barb" in lower
+    assert "top-level `sandbox` key" in text
+    assert "sandbox_workspace_write.network_access=true" in text
 
 
 def test_grok_guide_contents() -> None:

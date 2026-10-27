@@ -51,15 +51,15 @@ function stubFetch(driftPayload: Record<string, unknown>) {
 }
 
 const RUNNERS = [
-  { id: 1, name: "d-sorg-local-ControlTower-1", status: "online", busy: false, labels: ["self-hosted", "gpu"] },
-  { id: 2, name: "d-sorg-local-ControlTower-2", status: "online", busy: true, labels: [] },
-  { id: 3, name: "d-sorg-local-DeskComputer-1", status: "offline", busy: false, labels: [] },
+  { id: 1, name: "d-sorg-local-node-a-1", status: "online", busy: false, labels: ["self-hosted", "gpu"] },
+  { id: 2, name: "d-sorg-local-node-a-2", status: "online", busy: true, labels: [] },
+  { id: 3, name: "d-sorg-local-hub-a-1", status: "offline", busy: false, labels: [] },
 ];
 
 const MACHINES_DATA = {
   nodes: [
     {
-      name: "ControlTower",
+      name: "node-a",
       online: true,
       dashboard_reachable: true,
       last_seen: "2026-06-02T00:00:00Z",
@@ -99,7 +99,7 @@ describe("FleetTab hero + KPIs", () => {
     renderFleet();
     const hero = screen.getByRole("region", { name: "Fleet status" });
     expect(hero).toBeInTheDocument();
-    // Machines 1/2 (ControlTower online, DeskComputer synthesized offline),
+    // Machines 1/2 (node-a online, hub-a synthesized offline),
     // Open PRs 7, Runners 2/3.
     expect(within(hero).getByText("1 / 2")).toBeInTheDocument();
     expect(within(hero).getByText("7")).toBeInTheDocument();
@@ -159,8 +159,8 @@ describe("FleetTab machine health table", () => {
   it("lists each machine with an online badge", () => {
     renderFleet();
     expect(screen.getByText("Machine Health")).toBeInTheDocument();
-    // ControlTower appears as a row strong label.
-    const controlTowerCells = screen.getAllByText("ControlTower");
+    // node-a appears as a row strong label.
+    const controlTowerCells = screen.getAllByText("node-a");
     expect(controlTowerCells.length).toBeGreaterThan(0);
     expect(screen.getAllByText("online").length).toBeGreaterThan(0);
   });
@@ -183,7 +183,7 @@ describe("FleetTab runner fleet controls", () => {
   it("threads a per-runner action through onRunner", () => {
     const onRunner = vi.fn();
     renderFleet({ onRunner });
-    // The offline DeskComputer runner shows a "Start" button.
+    // The offline hub-a runner shows a "Start" button.
     const startButtons = screen.getAllByRole("button", { name: "Start" });
     fireEvent.click(startButtons[0]);
     expect(onRunner).toHaveBeenCalledWith(3, "start");
@@ -194,15 +194,15 @@ describe("FleetTab runner fleet controls", () => {
     // The status-filter group exposes pills; click the "Offline" filter.
     const filterGroup = screen.getByRole("group", { name: "Runner status filters" });
     fireEvent.click(within(filterGroup).getByText("Offline").closest("button")!);
-    // Only the offline DeskComputer runner remains in the desktop table; the
-    // online ControlTower runners are filtered out of the per-machine tables.
+    // Only the offline hub-a runner remains in the desktop table; the
+    // online node-a runners are filtered out of the per-machine tables.
     // (The mobile card list always renders all filtered runners too, so the
     // offline name appears at least once.)
     expect(
-      screen.getAllByText("d-sorg-local-DeskComputer-1").length,
+      screen.getAllByText("d-sorg-local-hub-a-1").length,
     ).toBeGreaterThan(0);
     expect(
-      screen.queryByText("d-sorg-local-ControlTower-1"),
+      screen.queryByText("d-sorg-local-node-a-1"),
     ).not.toBeInTheDocument();
   });
 });
@@ -229,7 +229,7 @@ describe("FleetTab tri-state and loading states (Issue #1290)", () => {
   it("names the failing source when /api/runners fails", () => {
     renderFleet({
       runners: [],
-      machinesData: { nodes: [{ name: "ControlTower", online: true }] },
+      machinesData: { nodes: [{ name: "node-a", online: true }] },
       loading: false,
       runnersLoaded: false,
       nodesLoaded: true,
