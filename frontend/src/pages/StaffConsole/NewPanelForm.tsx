@@ -4,7 +4,7 @@
  * Implements topic, mode, rounds (1-6), 3-4 expert rows with preset picker,
  * inline validation, and cost-guard confirmation with re-submission.
  */
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TouchButton } from "../../primitives/TouchButton";
 import { GroupCostConfirm } from "./GroupCostConfirm";
 import {
@@ -44,17 +44,50 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [costError, setCostError] = useState<{ estimate: PanelCostEstimate | null; message: string } | null>(null);
+  const presetCatalogKey = useMemo(() => presets.map((preset) => preset.id).join("\0"), [presets]);
+  const selectedPresetIdRef = useRef(selectedPresetId);
+  selectedPresetIdRef.current = selectedPresetId;
+
+  const applyPresetExperts = useCallback(
+    (found: PanelPreset, providerList: string[] = providers) => {
+      const defaultProvider = providerList[0] || "claude";
+      setExperts(
+        found.experts.map((e) => ({
+          name: e.name,
+          perspective: e.perspective,
+          provider: defaultProvider,
+          model: "",
+        })),
+      );
+    },
+    [providers],
+  );
 
   useEffect(() => {
     let cancelled = false;
     fetchPanelPresets()
       .then((data) => {
-        if (!cancelled) {
-          setPresets(data.presets || []);
-          if (data.providers && data.providers.length > 0) {
-            setProviders(data.providers);
-          }
+        if (cancelled) return;
+        const loadedPresets = data.presets || [];
+        const providerList =
+          data.providers && data.providers.length > 0 ? data.providers : DEFAULT_PROVIDERS;
+        setPresets(loadedPresets);
+        if (data.providers && data.providers.length > 0) {
+          setProviders(data.providers);
         }
+        const presetId = selectedPresetIdRef.current;
+        if (!presetId) return;
+        const found = loadedPresets.find((preset) => preset.id === presetId);
+        if (!found) return;
+        const defaultProvider = providerList[0] || "claude";
+        setExperts(
+          found.experts.map((expert) => ({
+            name: expert.name,
+            perspective: expert.perspective,
+            provider: defaultProvider,
+            model: "",
+          })),
+        );
       })
       .catch(() => {
         // fail-open with defaults
@@ -77,17 +110,16 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
     setSelectedPresetId(presetId);
     if (!presetId) return;
     const found = presets.find((p) => p.id === presetId);
-    if (!found) return;
-
-    const defaultProvider = providers[0] || "claude";
-    const mapped: PanelFormExpert[] = found.experts.map((e) => ({
-      name: e.name,
-      perspective: e.perspective,
-      provider: defaultProvider,
-      model: "",
-    }));
-    setExperts(mapped);
+    if (found) applyPresetExperts(found);
   };
+
+  // Preset pick can beat fetchPanelPresets on a slow runner; apply when the catalog arrives.
+  useEffect(() => {
+    if (!selectedPresetId) return;
+    const found = presets.find((p) => p.id === selectedPresetId);
+    if (!found) return;
+    applyPresetExperts(found);
+  }, [applyPresetExperts, presetCatalogKey, presets, selectedPresetId]);
 
   const handleUpdateExpert = (index: number, patch: Partial<PanelFormExpert>) => {
     setExperts((prev) => {
@@ -174,6 +206,12 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
           onChange={(e) => handleSelectPreset(e.target.value)}
         >
           <option value="">Custom panel line-up…</option>
+          {selectedPresetId &&
+            !presets.some((preset) => preset.id === selectedPresetId) && (
+              <option value={selectedPresetId} disabled hidden>
+                {selectedPresetId}
+              </option>
+            )}
           {presets.map((preset) => (
             <option key={preset.id} value={preset.id}>
               {preset.title}

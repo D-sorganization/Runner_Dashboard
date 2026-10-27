@@ -17,6 +17,7 @@ import {
 } from './lib/sessionExpired'
 import { installWheelValueGuard } from './lib/wheelValueGuard'
 import { initWebVitals } from './lib/webVitals'
+import { loadFonts } from './lib/loadFonts'
 import './index.css'
 
 // Global guards the Classic layout used to install (#1345): credential API
@@ -133,6 +134,8 @@ export function AppRoutes() {
     </Routes>
   )
 }
+
+loadFonts()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
