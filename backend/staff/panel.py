@@ -13,8 +13,6 @@ import asyncio
 import contextlib
 import logging
 import os
-import shutil
-import tempfile
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -23,9 +21,9 @@ from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
-from staff.cli_projects import PANEL_SCRATCH_PREFIX
 from staff.conversation_models import ThreadRecord
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.panel_hook_errors import hook_error_reason, is_hook_error_reply
 from staff.panel_models import (
     CODEBASE_REPOS,
     DEFAULT_TURN_TIMEOUT_SECONDS,
@@ -41,6 +39,7 @@ from staff.panel_prompts import (
     estimate_panel_cost,
     parse_stance,
 )
+from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_scratch
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.panel")
@@ -211,12 +210,22 @@ async def run_panel(
         prompt = build_synthesis_prompt(request, turns, rounds_used, consensus, codebase_context, tally)
         meta = {"is_panel_synthesis": True, "panel_expert": MODERATOR_NAME}
         synthesis = await _speak(store, thread_id, moderator, prompt, meta, run, turn_timeout)
-        ok = synthesis["status"] == "ok"
+        synthesis_ok = synthesis["status"] == "ok"
+        expert_ok = any(t.get("status") == "ok" for t in turns)
+        seat_errors = sum(1 for t in turns if t.get("status") != "ok")
+        if synthesis_ok:
+            panel_status = "complete"
+        elif expert_ok:
+            panel_status = "complete"
+        else:
+            panel_status = "failed"
         _set_panel_state(
             store,
             thread_id,
-            status="complete" if ok else "failed",
-            synthesis_message_id=synthesis["message_id"] if ok else None,
+            status=panel_status,
+            synthesis_message_id=synthesis["message_id"],
+            synthesis_ok=synthesis_ok,
+            seat_errors=seat_errors if seat_errors else None,
         )
     except Exception as exc:  # noqa: BLE001 — record the failure on the thread, never leave it "running"
         log.exception("panel %s failed", thread_id)
@@ -291,8 +300,8 @@ async def default_turn_runner(
         adapter = get_adapter(speaker.provider)
     except KeyError:
         return TurnOutcome(ok=False, error=f"unknown provider {speaker.provider!r}")
-    scratch_dir = tempfile.mkdtemp(prefix=PANEL_SCRATCH_PREFIX)
-    env: dict[str, str] = {**os.environ}
+    scratch_dir = prepare_panel_turn_scratch()
+    env: dict[str, str] = {**os.environ, "STAFF_PANEL_TURN": "1"}
     proc = None
     try:
         try:
@@ -300,6 +309,7 @@ async def default_turn_runner(
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             return TurnOutcome(ok=False, error=str(exc))
         env.update(adapter.runtime_env())
+        env["STAFF_PANEL_TURN"] = "1"
         proc = spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
         bus = get_thread_bus() if message_id is not None else _NULL_BUS
         out = await stream_turn_output(
@@ -310,6 +320,8 @@ async def default_turn_runner(
             placeholder_id=message_id or "",
         )
         text = out.reply_text.strip()
+        if is_hook_error_reply(text):
+            return TurnOutcome(ok=False, error=hook_error_reason(text))
         if out.returncode != 0 or not text:
             tail = "".join(out.stderr_lines[-5:]).strip()[-400:]
             return TurnOutcome(ok=False, error=f"exit {out.returncode}: {tail or 'empty reply'}")
@@ -318,5 +330,5 @@ async def default_turn_runner(
         if proc is not None and proc.poll() is None:
             with contextlib.suppress(OSError):
                 proc.kill()
-        shutil.rmtree(scratch_dir, ignore_errors=True)
+        remove_panel_turn_scratch(scratch_dir)
         cli_projects.remove_turn_project(scratch_dir, env)

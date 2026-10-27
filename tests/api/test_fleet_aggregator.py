@@ -21,6 +21,21 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 # A two-pool ControlTower registry: NVMe on :8321, SSD on :8322.
+@pytest.fixture(autouse=True)
+def _fleet_status_bypass_swr_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fleet status SWR cache must not make aggregator tests order- or host-dependent."""
+    import fleet_status_cache as fsc  # noqa: PLC0415
+
+    async def immediate(
+        cache_key: str,
+        collect,
+        **kwargs,
+    ):
+        return await collect()
+
+    monkeypatch.setattr(fsc, "serve_fleet_status", immediate)
+
+
 _SPLIT_POOL_REGISTRY = {
     "version": 1,
     "machines": [

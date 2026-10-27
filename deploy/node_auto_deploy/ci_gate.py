@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from node_auto_deploy.check_runs import (
@@ -124,28 +125,71 @@ def select_deployable_main_commit(
     return None, (f"no green commit in last {len(commits_newest_first)} main commits: {last_detail}")
 
 
+@dataclass(frozen=True)
+class MainWindowScan:
+    """Newest-first view of the main window: what is deployable and what is merely green.
+
+    ``newest_state`` describes the newest commit with a usable verdict (not the oldest), so a
+    red ancestor cannot make a green HEAD look broken.
+    """
+
+    deployable_sha: str | None
+    deployable_detail: str
+    newest_sha: str | None
+    newest_state: str  # "green_released" | "green_unreleased" | "not_green" | "empty"
+    newest_detail: str
+    green_unreleased: tuple[str, ...]
+    window: int
+
+    @property
+    def newest_green_unreleased(self) -> str | None:
+        return self.green_unreleased[0] if self.green_unreleased else None
+
+    @property
+    def detail(self) -> str:
+        if self.deployable_sha is not None:
+            return self.deployable_detail
+        if self.newest_sha is None:
+            return "no commits in main history window"
+        short = self.newest_sha[:7]
+        if self.newest_state == "green_unreleased":
+            return f"main {short} is green but has no published release (none of last {self.window} commits released)"
+        return f"main {short} is not green: {self.newest_detail} (no green released commit in last {self.window})"
+
+
+def scan_main_window(
+    commits_newest_first: list[str],
+    fetch_check_runs: Callable[[str], list[dict[str, Any]]],
+    has_release: Callable[[str], bool],
+) -> MainWindowScan:
+    """Walk newest-first until the first green *released* commit, recording green-unreleased ones."""
+    window = len(commits_newest_first)
+    newest_sha: str | None = None
+    newest_state = "empty"
+    newest_detail = ""
+    unreleased: list[str] = []
+    for raw_sha in commits_newest_first:
+        sha = normalize_commit_sha(str(raw_sha))
+        if sha is None:
+            continue
+        ok, detail = ci_gate_for_deploy_commit(fetch_check_runs(sha), sha)
+        released = ok and has_release(sha)
+        if newest_sha is None:
+            newest_sha = sha
+            newest_detail = detail
+            newest_state = "green_released" if released else ("green_unreleased" if ok else "not_green")
+        if released:
+            return MainWindowScan(sha, detail, newest_sha, newest_state, newest_detail, tuple(unreleased), window)
+        if ok:
+            unreleased.append(sha)
+    return MainWindowScan(None, "", newest_sha, newest_state, newest_detail, tuple(unreleased), window)
+
+
 def select_deployable_main_commit_with_release(
     commits_newest_first: list[str],
     fetch_check_runs: Callable[[str], list[dict[str, Any]]],
     has_release: Callable[[str], bool],
 ) -> tuple[str | None, str]:
     """Newest commit that passes ``ci_gate_for_deploy_commit`` and ``has_release(sha)``."""
-    if not commits_newest_first:
-        return None, "no commits in main history window"
-
-    last_detail = "no qualifying commit"
-    for raw_sha in commits_newest_first:
-        sha = normalize_commit_sha(str(raw_sha))
-        if sha is None:
-            continue
-        runs = fetch_check_runs(sha)
-        ok, detail = ci_gate_for_deploy_commit(runs, sha)
-        if not ok:
-            last_detail = detail
-            continue
-        if not has_release(sha):
-            last_detail = f"CI green at {sha[:7]} but no published release"
-            continue
-        return sha, detail
-
-    return None, (f"no green released commit in last {len(commits_newest_first)} main commits: {last_detail}")
+    scan = scan_main_window(commits_newest_first, fetch_check_runs, has_release)
+    return scan.deployable_sha, scan.detail

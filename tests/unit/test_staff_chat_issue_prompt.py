@@ -20,7 +20,7 @@ from staff.turn_prompt import MESSAGE_HEADER
 
 @pytest.fixture
 def conv_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConversationStore:
-    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
+    monkeypatch.setattr("staff.chat_turn_runner.version_gate", lambda *_: None)
     reset_conversation_store()
     reset_thread_bus()
     db_file = tmp_path / "test_chat_issue_prompt.sqlite3"
@@ -67,10 +67,10 @@ async def test_chat_turn_passes_issue_context_before_user_text(conv_store: Conve
     ]
 
     with (
-        patch("staff.chat.load_roles", return_value={"barb": role}),
-        patch("staff.chat.build_fleet_context_block", new_callable=AsyncMock, return_value=None),
+        patch("staff.chat_turn_runner.load_roles", return_value={"barb": role}),
+        patch("staff.chat_turn_runner.build_fleet_context_block", new_callable=AsyncMock, return_value=None),
         patch(
-            "staff.chat.build_issue_context_block",
+            "staff.chat_turn_runner.build_issue_context_block",
             new_callable=AsyncMock,
             return_value="## Referenced items\nPR #11080: Proposal packet",
         ),
