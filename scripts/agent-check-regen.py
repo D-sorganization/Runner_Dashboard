@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,9 +15,29 @@ def main() -> int:
         sys.path.insert(0, str(root))
 
     from scripts.verify_merge_gates import touches_api_contract  # noqa: PLC0415
-    from shared_scripts.run_mypy_diff import resolve_changed_files  # noqa: PLC0415
+    from scripts.run_mypy_diff import resolve_changed_files  # noqa: PLC0415
 
-    changed = [path.replace("\\", "/") for path in resolve_changed_files(cwd=root)]
+    if os.environ.get("FLEET_HOOK_FROM_REF") and os.environ.get("FLEET_HOOK_TO_REF"):
+        diff = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--diff-filter=ACMR",
+                f"{os.environ['FLEET_HOOK_FROM_REF']}..{os.environ['FLEET_HOOK_TO_REF']}",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if diff.returncode != 0:
+            sys.stderr.write("agent-check-regen: could not read pre-push ref range\n")
+            return diff.returncode
+        changed = diff.stdout.splitlines()
+    else:
+        changed = resolve_changed_files(cwd=root)
+    changed = [path.replace("\\", "/") for path in changed]
     if not touches_api_contract(changed):
         return 0
 

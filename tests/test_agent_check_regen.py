@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,11 @@ def test_regen_skips_when_diff_does_not_touch_api_contract(tmp_path: Path) -> No
     proc = subprocess.run(
         [sys.executable, str(SCRIPT)],
         cwd=tmp_path,
+        env={
+            **os.environ,
+            "FLEET_HOOK_FROM_REF": "HEAD",
+            "FLEET_HOOK_TO_REF": "HEAD",
+        },
         capture_output=True,
         text=True,
         check=False,
