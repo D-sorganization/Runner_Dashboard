@@ -135,3 +135,50 @@ def test_legacy_ledger_is_migrated_and_its_rows_replay(db: Path) -> None:
     assert replay.state == "replay"
     assert replay.record is not None
     assert replay.record.response_body == '{"old": true}'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("method", ["release", "complete"])
+def test_release_requires_operation_id(db: Path, method: str) -> None:
+    """RD-14 / #3021: a stale holder cannot mutate a replacement reservation."""
+    store = IdempotencyStore(db)
+    old = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    # Simulate expiry of the whole receipt, which mints a distinct owner on reserve.
+    store._conn.execute("UPDATE idempotency_keys SET expires_at = '2000-01-01T00:00:00Z'")
+    current = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    assert current.operation_id != old.operation_id
+    if method == "release":
+        result = store.release(KEY, ENDPOINT, WHO, operation_id=old.operation_id)
+    else:
+        result = store.complete(KEY, ENDPOINT, WHO, 200, {}, "stale", operation_id=old.operation_id)
+    assert result == "not-owner"
+    assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "in_progress"
+    assert store.complete(KEY, ENDPOINT, WHO, 201, {}, "current", operation_id=current.operation_id) == "ok"
+    assert store.get(KEY, ENDPOINT, WHO).response_body == "current"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("method", ["release", "complete"])
+def test_completed_receipt_cannot_be_mutated(db: Path, method: str) -> None:
+    store = IdempotencyStore(db)
+    owner = store.reserve(KEY, ENDPOINT, WHO, "h1")
+    assert store.complete(KEY, ENDPOINT, WHO, 201, {}, "original", operation_id=owner.operation_id) == "ok"
+    if method == "release":
+        result = store.release(KEY, ENDPOINT, WHO, operation_id=owner.operation_id)
+    else:
+        result = store.complete(KEY, ENDPOINT, WHO, 200, {}, "replacement", operation_id=owner.operation_id)
+    assert result == "not-owner"
+    assert store.get(KEY, ENDPOINT, WHO).response_body == "original"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("method", ["release", "complete"])
+def test_reservation_mutation_requires_nonempty_owner(db: Path, method: str) -> None:
+    store = IdempotencyStore(db)
+    store.reserve(KEY, ENDPOINT, WHO, "h1")
+    with pytest.raises(ValueError):
+        if method == "release":
+            store.release(KEY, ENDPOINT, WHO, operation_id="")
+        else:
+            store.complete(KEY, ENDPOINT, WHO, 200, {}, "{}", operation_id="")
+    assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "in_progress"
