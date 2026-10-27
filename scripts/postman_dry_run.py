@@ -4,8 +4,8 @@
   python scripts/postman_dry_run.py              one cycle, summary on stdout
   python scripts/postman_dry_run.py --json       the full report as JSON
   python scripts/postman_dry_run.py --every 300  repeat every 300 s until stopped
-  python scripts/postman_dry_run.py --seed alert --seed rejection
-                                                 mark today's backlog as seen (run once, before go-live)
+  python scripts/postman_dry_run.py --seed message --seed alert --seed rejection --through 2026-10-27T18:08:10Z
+                                                 mark the reviewed backlog as seen (run once, before go-live)
 
 Reports are kept in ``$POSTMAN_DATA_DIR`` (default ``backend/data``) and served read-only at
 ``GET /api/coordination/postman/reports``. Needs a Repository_Management checkout (``STAFF_RM_ROOT``) and
@@ -19,6 +19,7 @@ import json
 import logging
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,12 @@ def summary(entry: dict[str, Any]) -> str:
     return "\n".join([f"{head}  {counts}", *rows])
 
 
+def _utc_time(text: str) -> datetime:
+    """Parse an ISO time; a naive one is taken as UTC."""
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--json", action="store_true", help="print the full report as JSON")
@@ -49,12 +56,17 @@ def main(argv: list[str] | None = None) -> int:
         choices=sorted(SEEDABLE),
         help="mark the current backlog of this kind as already delivered, then exit; sends nothing",
     )
+    parser.add_argument(
+        "--through",
+        type=_utc_time,
+        help="with --seed: only seed board messages posted at or before this ISO time; later ones still go out",
+    )
     args = parser.parse_args(argv)
     if args.every and args.every < MIN_EVERY:
         parser.error(f"--every must be at least {MIN_EVERY} seconds")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     if args.seed:
-        print(json.dumps(seed_cursor(kinds=frozenset(args.seed)), sort_keys=True), flush=True)
+        print(json.dumps(seed_cursor(kinds=frozenset(args.seed), through=args.through), sort_keys=True), flush=True)
         return 0
     while True:
         entry = run_dry_cycle()

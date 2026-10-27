@@ -141,6 +141,11 @@ What changed after that run (same day):
   skip old broadcasts too) marks today's backlog as already delivered in the local cursor and sends nothing.
   Run it once, where the live postman will run, just before `POSTMAN_LIVE`. A dry run after seeding planned no
   alerts or rejections (129 and 24 seeded).
+- **Seed cutoff.** `--through 2026-10-27T18:08:11Z` seeds only board messages posted at or before that time, so
+  anything posted after the broadcast review is still delivered. Every old broadcast was reviewed first: the
+  still-valid bugs are tracked (two new issues, #3278 and #3279), so seeding them loses nothing. With the cutoff,
+  the live board seeded 2289 messages, 129 alerts and 24 rejections, and the next dry run planned only
+  presence registrations.
 
 ## Questions for the Barbs and the Board
 

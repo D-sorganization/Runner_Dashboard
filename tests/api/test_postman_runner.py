@@ -141,3 +141,22 @@ def test_seed_marks_the_backlog_so_the_next_dry_cycle_plans_none_of_it(tmp_path:
 def test_seed_refuses_unknown_kinds(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         postman_runner.seed_cursor(kinds=frozenset({"presence"}), directory=tmp_path)
+
+
+def test_seed_with_a_cutoff_leaves_later_messages_for_delivery(tmp_path: Path) -> None:
+    old = {**message("old"), "at": "2026-10-27T18:08:10+00:00"}
+    new = {**message("new"), "at": "2026-10-27T22:30:00+00:00"}
+    board = ReadOnlyBoard(sessions_reader=sessions_ok, inbox_reader=inbox_with(old, new))
+    source = GitHubBoardSource(run=gh_issue(), configured=lambda: 2376)
+    counts = postman_runner.seed_cursor(
+        kinds=frozenset({"message"}),
+        through=datetime(2026, 10, 27, 18, 8, 10, tzinfo=UTC),
+        board_port=board,
+        source=source,
+        roster_ids=("claude", "codex"),
+        directory=tmp_path,
+        clock=lambda: NOW,
+    )
+    assert counts == {"message": 1}  # only the reviewed backlog; the later message still goes out
+    entry = run(tmp_path, board)
+    assert entry["counts"]["message"] == 1

@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from coordination import board, roster
-from coordination.postman import BOARD_OWNER_REPO, BoardRef, CycleReport, Delivery, Postman, PostmanState
+from coordination.postman import BOARD_OWNER_REPO, Action, BoardRef, CycleReport, Delivery, Postman, PostmanState
 from coordination.rm_scripts import ScriptResult, run_argv
 from staff.workspace import rm_root
 
@@ -188,6 +188,7 @@ def _load_state(directory: Path) -> PostmanState:
 def seed_cursor(
     *,
     kinds: frozenset[str] = SEEDABLE,
+    through: datetime | None = None,
     board_port: ReadOnlyBoard | None = None,
     source: GitHubBoardSource | None = None,
     roster_ids: Sequence[str] | None = None,
@@ -198,14 +199,16 @@ def seed_cursor(
 
     Run once where the live postman will run, just before it is switched on. It plans a dry cycle and saves
     every planned delivery of ``kinds`` into the cursor; nothing is sent or registered. Returns counts per kind.
-    Pre: ``kinds`` is a subset of ``SEEDABLE``. Post: a dry cycle right after plans none of ``kinds``.
+    ``through`` limits the seed to board messages posted at or before it, so mail that arrives after a reviewed
+    backlog is still delivered; an action with no board timestamp (a rejection) is seeded regardless.
+    Pre: ``kinds`` is a subset of ``SEEDABLE``. Post: a dry cycle right after plans none of the seeded deliveries.
     """
     if not kinds or not kinds <= SEEDABLE:
         raise ValueError(f"kinds must be a non-empty subset of {sorted(SEEDABLE)}, got {sorted(kinds)}")
     directory = directory or data_dir()
     state = _load_state(directory)
     report = _engine(board_port, source, roster_ids, state, clock).cycle(dry_run=True)
-    seeded = [a for a in report.actions if a.kind in kinds]
+    seeded = [a for a in report.actions if a.kind in kinds and _posted_by(a, through)]
     for action in seeded:
         state.mark(action.key)
     state.board_issue = report.board_issue
@@ -214,6 +217,17 @@ def seed_cursor(
     counts = dict(Counter(a.kind for a in seeded))
     log.info("postman cursor seeded on board #%s: %s", report.board_issue, counts or "nothing to seed")
     return counts
+
+
+def _posted_by(action: Action, through: datetime | None) -> bool:
+    """True when ``action``'s board message was posted at or before ``through`` (or no cutoff applies)."""
+    at = str(action.payload.get("at") or "")
+    if through is None or not at:
+        return True
+    try:
+        return datetime.fromisoformat(at.replace("Z", "+00:00")) <= through
+    except ValueError:
+        return False  # an unreadable timestamp is not provably old, so it stays deliverable
 
 
 def run_dry_cycle(

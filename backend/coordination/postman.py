@@ -237,14 +237,15 @@ class Postman:
         for m, to in inboxes:
             mid, text = str(m["id"]), str(m.get("text", ""))
             head = f"[board #{issue}] {m.get('session')} -> {m.get('recipient')}: "
-            out.append(self._pair("message", "request", to, mid, head + text, issue))
+            out.append(self._pair("message", "request", to, mid, head + text, issue, str(m.get("at") or "")))
             claim = bool(CLAIM_RE.search(text))
             for target in sorted(self._alert_targets(m)):
                 if f"{mid}|{target}" in alerted:
                     continue
                 alerted.add(f"{mid}|{target}")
                 label = "claim/checkout" if claim else "addressed to you"
-                out.append(self._pair("alert", "status", target, mid, f"[postman alert: {label}] {head}{text}", issue))
+                body = f"[postman alert: {label}] {head}{text}"
+                out.append(self._pair("alert", "status", target, mid, body, issue, str(m.get("at") or "")))
         return out
 
     def _plan_rejections(self, warnings: list[str], issue: int) -> list[tuple[Action, Delivery]]:
@@ -259,10 +260,11 @@ class Postman:
         return out
 
     @staticmethod
-    def _pair(kind: str, typ: str, to: str, mid: str, body: str, issue: int) -> tuple[Action, Delivery]:
+    def _pair(kind: str, typ: str, to: str, mid: str, body: str, issue: int, at: str = "") -> tuple[Action, Delivery]:
         key = delivery_key(kind, to, mid)
         delivery = Delivery(to, kind, typ, body[:MAX_BODY], mid, key, work_number=issue)
-        return Action(kind, key, f"to {to}", {"to": to, "board_message_id": mid}), delivery
+        payload = {"to": to, "board_message_id": mid, **({"at": at} if at else {})}
+        return Action(kind, key, f"to {to}", payload), delivery
 
     # -- one cycle ---------------------------------------------------------------------
     def cycle(self, dry_run: bool = False) -> CycleReport:
