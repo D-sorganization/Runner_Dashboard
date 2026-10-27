@@ -421,6 +421,17 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
+from demo_mode import demo_api_block  # noqa: E402
+
+
+@app.middleware("http")
+async def _demo_api_guard(request: Request, call_next):
+    blocked = demo_api_block(
+        request.url.path,
+        enabled=os.environ.get("RUNNER_DASHBOARD_DEMO") == "1",
+    )
+    return blocked if blocked is not None else await call_next(request)
+
 
 @app.exception_handler(gh_utils.RateLimitedError)
 async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimitedError) -> JSONResponse:
@@ -2687,6 +2698,10 @@ _leader_lock_fd = None
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    if os.environ.get("RUNNER_DASHBOARD_DEMO") == "1":
+        log.info("Demo mode enabled; skipping external clients and background workers")
+        return
+
     # Issue #942: refuse to start when Maxwell's port collides with a peer
     # dashboard port declared in machine_registry.yml — a silent mis-probe
     # otherwise misreports a sibling dashboard as the Maxwell daemon.
