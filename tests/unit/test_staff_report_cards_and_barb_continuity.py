@@ -43,7 +43,7 @@ def _make_run(
         role=role,
         provider=provider,
         model=model,
-        machine="DeskComputer",
+        machine="hub-a",
         repo=repo,
         prompt="fix issue",
         status=status,
@@ -172,10 +172,10 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
 
     # 1. Parallel scoped checkout across distinct scopes succeeds
     c1 = store.checkout_lease(
-        scope="barb:front-door", holder="grok-1", persona="grok-barb", machine="DeskComputer", summary="Front door"
+        scope="barb:front-door", holder="grok-1", persona="grok-barb", machine="hub-a", summary="Front door"
     )
     c2 = store.checkout_lease(
-        scope="barb:ci-shepherd", holder="claude-1", persona="claude-barb", machine="Brick", summary="Watching CI"
+        scope="barb:ci-shepherd", holder="claude-1", persona="claude-barb", machine="node-c", summary="Watching CI"
     )
     assert c1["acquired"] is True
     assert c2["acquired"] is True
@@ -196,10 +196,10 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
         scope="barb:front-door",
         persona="grok-barb",
         author="grok-1",
-        machine="DeskComputer",
+        machine="hub-a",
         summary="Triaged 4 issues and routed 2 PRs.",
         completed=["RD #2278 merged"],
-        next_actions=["Monitor Brick overnight runs"],
+        next_actions=["Monitor node-c overnight runs"],
     )
     assert to_entry["id"].startswith("to-")
 
@@ -209,7 +209,7 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
 
     # 3. Task surface classification & fenced CLI <-> Desktop handoff
     cls_gui = classify_task_surface(
-        "Re-authenticate OAuth session in browser on ControlTower", requires_code_edit=False
+        "Re-authenticate OAuth session in browser on node-a", requires_code_edit=False
     )
     assert cls_gui["requires_desktop"] is True
     assert cls_gui["surface"] == "desktop_app"
@@ -219,7 +219,7 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
     assert cls_cli["surface"] == "headless_cli"
 
     task = store.upsert_task(
-        title="Fix ControlTower dashboard auth flow",
+        title="Fix node-a dashboard auth flow",
         scope="barb:dispatch-coordinator",
         repo="Runner_Dashboard",
         issue_or_pr="2269",
@@ -260,7 +260,7 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
         task_id=tid,
         target_state="resume_ready",
         actor_persona="cursor-barb",
-        artifact_ref="session://controltower/oauth-ok",
+        artifact_ref="session://node-a/oauth-ok",
         handoff_resolution="OAuth cookie refreshed; CLI can resume pytest verification.",
         expected_epoch=3,
     )
@@ -271,7 +271,7 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
     h4 = store.transition_handoff(task_id=tid, target_state="completed", actor_persona="codex-barb", expected_epoch=4)
     assert h4["transitioned"] is True
     assert h4["task"]["status"] == "completed"
-    assert h4["task"]["artifact_ref"] == "session://controltower/oauth-ok"
+    assert h4["task"]["artifact_ref"] == "session://node-a/oauth-ok"
 
 
 def test_api_routes_for_report_cards_and_barb_continuity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -290,7 +290,7 @@ def test_api_routes_for_report_cards_and_barb_continuity(tmp_path: Path, monkeyp
     )
 
     barb_store = BarbContinuityStore(tmp_path / "barb.db")
-    fake_runner = SimpleNamespace(store=staff_db, machine="DeskComputer")
+    fake_runner = SimpleNamespace(store=staff_db, machine="hub-a")
     monkeypatch.setattr(staff_outcomes, "get_runner", lambda: fake_runner)
     monkeypatch.setattr(staff_usage, "get_runner", lambda: fake_runner)
     monkeypatch.setattr(staff_barb, "get_runner", lambda: fake_runner)
@@ -317,7 +317,7 @@ def test_api_routes_for_report_cards_and_barb_continuity(tmp_path: Path, monkeyp
         resp = client.get(path, params={"since": "2020-01-01T00:00:00Z"})
         assert resp.status_code == 200, resp.text
         data = resp.json()
-        assert data["machine"] == "DeskComputer"
+        assert data["machine"] == "hub-a"
         assert data["total_runs_analyzed"] == 1
         assert data["leaderboard"][0]["provider"] == "claude"
 
@@ -377,7 +377,7 @@ def test_leaderboard_recommend_agent_and_barb_leases_route(tmp_path: Path, monke
 
     store = BarbContinuityStore(tmp_path / "barb_leases.db")
     monkeypatch.setattr(staff_barb, "get_barb_continuity_store", lambda: store)
-    monkeypatch.setattr(staff_barb, "get_runner", lambda: SimpleNamespace(machine="DeskComputer"))
+    monkeypatch.setattr(staff_barb, "get_runner", lambda: SimpleNamespace(machine="hub-a"))
     app = FastAPI()
     app.include_router(staff_barb.router, prefix="/api/v1/staff")
     principal = Principal(id="test", type="human", name="Test", roles=["admin"], scopes=["staff:read", "staff:write"])

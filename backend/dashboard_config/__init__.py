@@ -63,7 +63,29 @@ DISK_MIN_FREE_GB = float(
 
 # API / Port
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
-HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
+DISPLAY_NAME = os.environ.get("DISPLAY_NAME")
+PLATFORM_NODE = platform.node()
+HOSTNAME = DISPLAY_NAME or PLATFORM_NODE
+
+
+def local_runner_machine_names() -> frozenset[str]:
+    """Return lowercase machine tokens for runners owned by this dashboard host.
+
+    ``HOSTNAME`` (``DISPLAY_NAME`` or ``PLATFORM_NODE``) is always included.
+    When ``DISPLAY_NAME`` overrides the OS node name (split pool labels like
+    ``ControlTower-NVMe``), the underlying ``PLATFORM_NODE`` is also accepted
+    so legacy ``d-sorg-local-<host>-N`` runner names still resolve.
+
+    Tests monkeypatch ``HOSTNAME``, ``DISPLAY_NAME``, and ``RUNNER_ALIASES`` on
+    this module — never read ``os.environ`` or ``platform.node()`` here.
+    """
+    names: set[str] = {HOSTNAME.lower()}
+    names.update(alias.lower() for alias in RUNNER_ALIASES)
+    if DISPLAY_NAME:
+        bare = PLATFORM_NODE.lower()
+        if bare:
+            names.add(bare)
+    return frozenset(names)
 
 
 def _env_flag(name: str, default: bool = False) -> bool:

@@ -43,3 +43,33 @@ if "STAFF_E2E_HOST_SECRET" in os.environ:
     assert child.returncode == 0, child.stderr
     assert child_env["LD_LIBRARY_PATH"] == loader_path
     assert "STAFF_E2E_HOST_SECRET" not in child_env
+
+
+def test_backend_env_pythonpath_has_repo_root_and_caller_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tests.e2e.fakes.start_staff_backend import REPO
+
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "caller-libs"))
+
+    child_env = backend_env(tmp_path, 5093)
+    entries = child_env["PYTHONPATH"].split(os.pathsep)
+
+    assert entries[0] == str(REPO)
+    assert str(tmp_path / "caller-libs") in entries
+
+
+def test_backend_env_imports_shared_scripts_from_backend_cwd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from tests.e2e.fakes.start_staff_backend import REPO
+
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    child = subprocess.run(
+        [sys.executable, "-c", "import shared_scripts"],
+        check=False,
+        capture_output=True,
+        cwd=REPO / "backend",
+        env=backend_env(tmp_path, 5094),
+        text=True,
+    )
+
+    assert child.returncode == 0, child.stderr
