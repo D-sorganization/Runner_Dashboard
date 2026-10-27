@@ -1055,7 +1055,7 @@ export interface paths {
         };
         /**
          * Get Cline Status
-         * @description Return Cline extension detection status.
+         * @description Return Cline CLI detection status.
          */
         get: operations["get_cline_status_api_cline_status_get"];
         put?: never;
@@ -5468,6 +5468,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Activity
+         * @description Return a bounded cursor page; readers cannot mutate stored metadata.
+         */
+        get: operations["read_activity_api_v1_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/backlog": {
         parameters: {
             query?: never;
@@ -8456,6 +8476,60 @@ export interface components {
          * @enum {string}
          */
         ActionRiskLevel: "low" | "medium" | "high" | "critical";
+        /**
+         * ActivityEnvelope
+         * @description Canonical v1 metadata record. Extra fields fail closed.
+         */
+        ActivityEnvelope: {
+            /** Branch */
+            branch?: string | null;
+            /** Event Id */
+            event_id: string;
+            /** Issue */
+            issue?: number | null;
+            /** Kind */
+            kind: string;
+            /** Node */
+            node: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Pr */
+            pr?: number | null;
+            /** Principal */
+            principal: string;
+            /** Redaction Version */
+            redaction_version: number;
+            /** Repo */
+            repo?: string | null;
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
+            /** Seq */
+            seq: number;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "checkin" | "job_board" | "github";
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+        };
+        /** ActivityPage */
+        ActivityPage: {
+            /** Items */
+            items: components["schemas"]["ActivityEnvelope"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+        };
         /** AnswerNeedsInputRequest */
         AnswerNeedsInputRequest: {
             /** Answer */
@@ -20165,6 +20239,41 @@ export interface operations {
             };
         };
     };
+    read_activity_api_v1_activity_get: {
+        parameters: {
+            query?: {
+                since?: number;
+                repo?: string | null;
+                node?: string | null;
+                session_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_backlog_api_v1_agent_backlog_get: {
         parameters: {
             query?: never;
@@ -23144,6 +23253,7 @@ export interface operations {
                 /** @description Include superseded passages */
                 include_superseded?: boolean;
                 run_id?: string | null;
+                repo?: string | null;
             };
             header?: never;
             path: {

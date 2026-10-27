@@ -14,7 +14,7 @@ from scripts import rd_barb_provider as rp  # noqa: E402
 
 def test_default_is_claude_opus() -> None:
     d = rp.select({})
-    assert (d.provider, d.model, d.switched) == ("claude", "claude-opus-5-5", False)
+    assert (d.provider, d.model, d.switched) == ("claude", "opus", False)
 
 
 def test_dieter_can_switch_default_provider_and_model() -> None:

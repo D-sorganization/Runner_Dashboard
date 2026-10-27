@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 import time
 from typing import Any
 
@@ -44,7 +45,9 @@ def client(tmp_path: Any, monkeypatch: pytest.MonkeyPatch, tmp_audit_db: store_m
     adapters["claude"] = adapters_mod.ProviderAdapter(
         provider_id="claude",
         label="Claude",
-        executable="python",
+        # Absolute path so `installed()` (shutil.which) resolves hermetically: a
+        # bare "python" is not guaranteed on PATH (#3111).
+        executable=sys.executable,
         argv=("-c", "pass"),
     )
     monkeypatch.setenv("STAFF_ROLES_DIR", str(roles_dir))

@@ -51,6 +51,7 @@ class RoleSpec:
     retired_reason: str = ""
     strategy: dict[str, Any] = field(default_factory=dict)
     persona: dict[str, Any] | str = ""
+    avatar: str | None = None
     chat: dict[str, Any] = field(default_factory=dict)
     tools: tuple[str, ...] = ()
     group: str | None = None
@@ -136,6 +137,7 @@ class RoleSpec:
             "retired_reason": self.retired_reason,
             "strategy": dict(self.strategy),
             "persona": self.persona,
+            "avatar": self.avatar,
             "chat": dict(self.chat),
             "tools": list(self.tools),
             "group": self.group,
@@ -285,6 +287,7 @@ def parse_role(
         retired_reason=retired_reason,
         strategy=dict(strategy) if isinstance(strategy, dict) else {},
         persona=persona,
+        avatar=(str(data["avatar"]) if data.get("avatar") not in (None, "") else None),
         chat=chat,
         tools=tools,
         group=group,

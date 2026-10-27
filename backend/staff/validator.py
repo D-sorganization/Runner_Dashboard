@@ -46,6 +46,7 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "retry",
     "tier",
     "allow_tier_escalation",
+    "avatar",
 )
 STRATEGY_KEYS: tuple[str, ...] = ("consolidate_when",)
 CONSOLIDATE_WHEN_BOUNDS: dict[str, tuple[int, int | None]] = {
