@@ -27,11 +27,15 @@ const RUN = {
   branch: "staff/night-watch-10622-run-v",
 };
 
-function stubRun(run: Record<string, unknown>) {
+function stubRun(run: Record<string, unknown>, extra: Record<string, unknown> = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
-      Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ run, events: [] }) }),
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ run, events: [], ...extra }),
+      }),
     ),
   );
 }
@@ -66,5 +70,38 @@ describe("RunDetail post-run verification (#1516)", () => {
 
     await waitFor(() => expect(screen.getByTestId("run-detail")).toBeInTheDocument());
     expect(screen.queryByTestId("run-verification")).not.toBeInTheDocument();
+  });
+
+  it("renders evidence and diff links from existing run detail fields (#3176)", async () => {
+    stubRun(
+      {
+        ...RUN,
+        artifact: "pr_open",
+        branch: "staff/night-watch-10622-run-v",
+        remote_session_url: "https://claude.ai/chat/demo-session",
+      },
+      { logs_ref: "/api/v1/diagnostics/logs?run_id=run-v" },
+    );
+    render(<RunDetail runId="run-v" onBack={() => {}} />);
+
+    const section = await screen.findByTestId("run-evidence-links");
+    expect(section).toBeInTheDocument();
+    expect(screen.getByTestId("run-evidence-artifact")).toHaveTextContent("PR opened");
+    expect(screen.getByRole("link", { name: "Issue #10622" })).toHaveAttribute(
+      "href",
+      "https://github.com/D-sorganization/UpstreamDrift/issues/10622",
+    );
+    expect(screen.getByRole("link", { name: /Diff \(staff\/night-watch/ })).toHaveAttribute(
+      "href",
+      "https://github.com/D-sorganization/UpstreamDrift/compare/main...staff/night-watch-10622-run-v",
+    );
+    expect(screen.getByRole("link", { name: "Review session" })).toHaveAttribute(
+      "href",
+      "https://claude.ai/chat/demo-session",
+    );
+    expect(screen.getByRole("link", { name: "Diagnostic logs" })).toHaveAttribute(
+      "href",
+      "/api/v1/diagnostics/logs?run_id=run-v",
+    );
   });
 });

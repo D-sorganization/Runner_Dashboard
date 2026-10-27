@@ -16,12 +16,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
-import { GITHUB_ORG } from "../FleetCommand/fleetApi";
 import {
   invalidateStaffQueries,
   updateStaffRunFromEvent,
   useResolvedQueryClient,
 } from "../../hooks/useStaffQueries";
+import { buildRunEvidenceLinks, hasRunEvidenceLinks, pullRequestUrl } from "./runDetailLinks";
 import {
   ACTIVE_STATUSES,
   cancelRun,
@@ -40,11 +40,6 @@ export interface RunDetailProps {
   onBack: () => void;
 }
 
-function pullUrl(repo: string, pr: number): string {
-  const full = repo.includes("/") ? repo : `${GITHUB_ORG}/${repo}`;
-  return `https://github.com/${full}/pull/${pr}`;
-}
-
 function mergeEvents(existing: RunEvent[], incoming: RunEvent): RunEvent[] {
   if (existing.some((ev) => ev.seq === incoming.seq)) return existing;
   return [...existing, incoming];
@@ -57,6 +52,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState(false);
+  const [logsRef, setLogsRef] = useState<string | null>(null);
   const logRef = useRef<HTMLPreElement | null>(null);
 
   const load = useCallback(
@@ -65,6 +61,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
         .then((data) => {
           setRun(data.run);
           setEvents(data.events);
+          setLogsRef(data.logs_ref ?? null);
           setError(null);
         })
         .catch((e: unknown) => {
@@ -79,6 +76,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
     const controller = new AbortController();
     setRun(null);
     setEvents([]);
+    setLogsRef(null);
     load(controller.signal);
     return () => controller.abort();
   }, [load]);
@@ -154,6 +152,9 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
       </div>
     );
   }
+
+  const evidenceLinks = buildRunEvidenceLinks(run, logsRef);
+  const showEvidence = hasRunEvidenceLinks(evidenceLinks);
 
   return (
     <div className="glass-card staff-panel staff-run" data-testid="run-detail">
@@ -251,7 +252,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
               {run.pr_number ? (
                 <>
                   {" "}
-                  <a href={pullUrl(run.repo ?? "", run.pr_number)} target="_blank" rel="noreferrer">
+                  <a href={pullRequestUrl(run.repo ?? "", run.pr_number)} target="_blank" rel="noreferrer">
                     #{run.pr_number}
                   </a>
                 </>
@@ -260,6 +261,50 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
           </>
         ) : null}
       </dl>
+
+      {showEvidence ? (
+        <section className="staff-run__evidence" data-testid="run-evidence-links" aria-label="Evidence and links">
+          <h4 className="staff-run__events-title">Evidence and links</h4>
+          {evidenceLinks.artifactLabel ? (
+            <p className="staff-muted" data-testid="run-evidence-artifact">{evidenceLinks.artifactLabel}</p>
+          ) : null}
+          <ul className="staff-run__evidence-list">
+            {evidenceLinks.issue ? (
+              <li>
+                <a href={evidenceLinks.issue.href} target="_blank" rel="noreferrer">
+                  {evidenceLinks.issue.label}
+                </a>
+              </li>
+            ) : null}
+            {evidenceLinks.pullRequest ? (
+              <li>
+                <a href={evidenceLinks.pullRequest.href} target="_blank" rel="noreferrer">
+                  {evidenceLinks.pullRequest.label}
+                </a>
+              </li>
+            ) : null}
+            {evidenceLinks.diff ? (
+              <li>
+                <a href={evidenceLinks.diff.href} target="_blank" rel="noreferrer">
+                  {evidenceLinks.diff.label}
+                </a>
+              </li>
+            ) : null}
+            {evidenceLinks.reviewSession ? (
+              <li>
+                <a href={evidenceLinks.reviewSession.href} target="_blank" rel="noreferrer">
+                  {evidenceLinks.reviewSession.label}
+                </a>
+              </li>
+            ) : null}
+            {evidenceLinks.logs ? (
+              <li>
+                <a href={evidenceLinks.logs.href}>{evidenceLinks.logs.label}</a>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+      ) : null}
 
       <details className="staff-run__prompt">
         <summary>Prompt</summary>
