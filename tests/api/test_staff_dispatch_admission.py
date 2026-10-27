@@ -116,6 +116,9 @@ async def test_launch_failure_leaves_a_failed_run_under_the_same_id(
         claim_guard._applied[run_id] = (repo, issue, "claim:staff")
         return "claim:staff"
 
+    async def clear_claim_check(cmd: Any, caller: Any) -> dict[str, str]:
+        return {"claim_check": "clear"}
+
     real_release = claim_guard.release_claim
 
     def release_claim(run_id: str, status: str) -> bool:
@@ -123,6 +126,7 @@ async def test_launch_failure_leaves_a_failed_run_under_the_same_id(
 
     monkeypatch.setattr(claim_guard, "apply_claim", apply_claim)
     monkeypatch.setattr(claim_guard, "release_claim", release_claim)
+    monkeypatch.setattr(claim_guard, "enforce_claim_guard", clear_claim_check)
 
     def no_threads(rec: Any, plan: Any) -> None:
         raise RuntimeError("can't start new thread")
