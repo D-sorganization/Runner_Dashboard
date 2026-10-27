@@ -31,6 +31,8 @@ it.
 5. [0005 — Single-port architecture: FastAPI serves both API and frontend bundle](./0005-single-port-frontend-and-backend.md) — production runs on port 8321 only; FastAPI serves `/api/*` and the built Vite bundle from `dist/`.
 6. [0006 — Staff conversation model](./0006-staff-conversation-model.md) — retroactive, as-built record of threads, chat turns vs work runs, session resume and node-local state; gaps tracked in #1484–#1494.
 7. [0007 — Agent client ingress stays local-only](./0007-agent-client-ingress-local-only.md) — fleet-machine access for agents; #2252 defines a separately gated owner browser exception.
+8. [0008 — One authoritative Barb endpoint (BR-06 / #1800)](./0008-barb-single-authority.md) — single commit authority, bounded outbox, epoch fence.
+9. [0009 — Private Mode foundation (PM-0 / #3250)](./0009-private-mode-foundation.md) — three classification levels, overlay `private_mode` flag, provider and CI decisions for epic #3249.
 
 ## Template
 

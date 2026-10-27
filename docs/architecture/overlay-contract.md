@@ -20,6 +20,21 @@ One JSON object. All keys are required and unknown keys are rejected.
 | `roles_dir`         | string | Private role and policy files.                     |
 | `policy_dir`        | string | Private policy files.                              |
 | `private_docs_dir`  | string | Private docs.                                      |
+| `private_mode`      | object | Optional (#3250). See below.                       |
+
+### Optional `private_mode` (#3250)
+
+When absent, Private Mode is **disabled** and classification defaults to
+**PUBLIC**. Unknown keys under `private_mode` are rejected.
+
+| Key                      | Type   | Default when omitted | Meaning                                      |
+| ------------------------ | ------ | -------------------- | -------------------------------------------- |
+| `enabled`                | bool   | `false`              | Master feature flag (off = no behaviour change). |
+| `metric_route_templating`| object | —                    | Nested flag for metric route templating.       |
+| `metric_route_templating.enabled` | bool | `false`     | Off by default; independent of master flag.    |
+
+Policy (repo→level maps, provider allowlists) stays under `policy_dir`, not in
+this block. See [ADR-0009](../adr/0009-private-mode-foundation.md).
 
 A fake example lives in `tests/fixtures/overlay/mock-overlay.json`; public CI
 runs the suite against it alone.

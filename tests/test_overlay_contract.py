@@ -133,7 +133,7 @@ def test_only_the_accessor_reads_the_overlay() -> None:
     mock_values = {h["address"] for h in _mock()["hosts"]} | set(_mock()["agent_token_paths"].values())
     offenders = []
     for path in _BACKEND.rglob("*.py"):
-        if path.name == "overlay_contract.py":
+        if path.name in {"overlay_contract.py", "private_mode.py"}:
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
         if oc.OVERLAY_PATH_ENV in text or oc.OVERLAY_REQUIRED_ENV in text:

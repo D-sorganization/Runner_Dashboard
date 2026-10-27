@@ -26,7 +26,10 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from private_mode import PrivateModeSettings
 
 OVERLAY_PATH_ENV = "RD_OVERLAY_PATH"
 OVERLAY_REQUIRED_ENV = "RD_OVERLAY_REQUIRED"
@@ -41,6 +44,7 @@ _TOP_LEVEL_KEYS: dict[str, type] = {
     "private_docs_dir": str,
 }
 _HOST_KEYS: dict[str, type] = {"name": str, "address": str}
+_OPTIONAL_TOP_LEVEL_KEYS = frozenset({"private_mode"})
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
@@ -64,14 +68,21 @@ class Overlay:
     roles_dir: str
     policy_dir: str
     private_docs_dir: str
+    private_mode: PrivateModeSettings
 
     def host_names(self) -> tuple[str, ...]:
         return tuple(h.name for h in self.hosts)
 
 
-def _check_keys(data: Mapping[str, Any], spec: Mapping[str, type], where: str) -> None:
+def _check_keys(
+    data: Mapping[str, Any],
+    spec: Mapping[str, type],
+    where: str,
+    *,
+    optional: frozenset[str] = frozenset(),
+) -> None:
     missing = sorted(set(spec) - set(data))
-    unknown = sorted(set(data) - set(spec))
+    unknown = sorted(set(data) - set(spec) - optional)
     if missing:
         raise OverlayError(f"overlay {where}: missing required key(s): {', '.join(missing)}")
     if unknown:
@@ -91,7 +102,7 @@ def parse_overlay(data: object) -> Overlay:
     version = data.get("schema_version")
     if version != OVERLAY_SCHEMA_VERSION or isinstance(version, bool):
         raise OverlayError(f"overlay: unsupported schema_version (expected {OVERLAY_SCHEMA_VERSION})")
-    _check_keys(data, _TOP_LEVEL_KEYS, "root")
+    _check_keys(data, _TOP_LEVEL_KEYS, "root", optional=_OPTIONAL_TOP_LEVEL_KEYS)
     hosts: list[OverlayHost] = []
     for i, raw in enumerate(data["hosts"]):
         if not isinstance(raw, dict):
@@ -104,6 +115,8 @@ def parse_overlay(data: object) -> Overlay:
     for agent, path in tokens.items():
         if not isinstance(path, str) or not path:
             raise OverlayError(f"overlay agent_token_paths: entry '{agent}' must be a non-empty string")
+    from private_mode import PrivateModeSettings, parse_private_mode_block
+
     return Overlay(
         schema_version=version,
         hosts=tuple(hosts),
@@ -111,6 +124,7 @@ def parse_overlay(data: object) -> Overlay:
         roles_dir=data["roles_dir"],
         policy_dir=data["policy_dir"],
         private_docs_dir=data["private_docs_dir"],
+        private_mode=parse_private_mode_block(data.get("private_mode")),
     )
 
 
