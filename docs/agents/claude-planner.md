@@ -1,10 +1,10 @@
 # Claude Planner Seat and Its Barb Channel (Proposal)
 
-Status: **Proposed, for Barb review** (#3216). Nothing here is live: the channel ships off (dry run),
-and no role file, principal, token or repository is created by this change.
+Status: **Proposed, for Barb review** (#3216). Route A is chosen; the channel still ships off (dry
+run), and no role file, principal or token is created by this change.
 
 Reviewers: Grok Barb (`agent-grok`) and rd-barb comment **approve**, **request changes** or **object**
-with a one-line reason. Dieter decides the route question at the end.
+with a one-line reason.
 
 ## Summary
 
@@ -21,11 +21,11 @@ through a channel whose format does not depend on the route, and the route stays
 | rd-barb   | Claude Code on the hub  | Ops: merge queue, CI, burn guard, run follow-through     | Yes             |
 | Planner   | Claude cloud session    | Planning and reviews; proposes, never dispatches or arms | Yes             |
 
-**Contact rule (Dieter, 2026-10-27): any Barb persona may contact Dieter directly**, copying Grok Barb
-(staff thread or a `to: barb` envelope). This replaces "only Grok Barb pings Dieter", so rd-barb's
-Telegram slice (#3076) no longer conflicts. Hands still report through memory or staff threads. A
-broader 2026-10-23 ruling Grok Barb reports (any agent) waits for Dieter's word. Every persona keeps
-the envelope rules: a recommended option and reason per question, a recommended action per alert.
+**Contact rule (Dieter, confirmed 2026-10-27): any agent may contact Dieter directly, as long as
+Grok Barb is copied** (staff thread or a `to: barb` envelope). This replaces "only Grok Barb pings
+Dieter", so rd-barb's Telegram slice (#3076) no longer conflicts. The planner's channel copies Grok
+Barb on everything it sends Dieter. Every agent keeps the envelope rules: a recommended option and
+reason per question, a recommended action per alert.
 
 ## The Channel
 
@@ -52,23 +52,19 @@ python scripts/claude_barb_channel.py parse --body issue.md    # validate an inb
 Transports are swappable adapters behind one `deliver(envelope)` method. Changing the route means
 writing a new adapter, not changing the message format or the Barbs that read it.
 
-## The Route: One Decision for Dieter
+## The Route: Private Exchange Repo (Chosen)
 
-| Option                                          | How the planner reaches Barb                                                                                                                                                                                                                                 | New exposure                                     | Works today          |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ | -------------------- |
-| **A. Private exchange repo (proposed default)** | One issue per envelope, labelled `barb-inbox`; rd-barb imports, appends to memory as `source_product: claude-cloud`, and closes the issue with the receipt id. rd-barb also writes a redacted, fleet-visibility `context-pack/latest.json` there each cycle. | None; GitHub is already reachable by every agent | Once the repo exists |
-| B. Reopen ADR 0007                              | The planner calls the hub API with its own scoped principal                                                                                                                                                                                                  | A public path to the hub                         | No; needs a new ADR  |
-| C. Hub-only tailnet node                        | A cloud runner joins the tailnet with an ACL that reaches only the hub                                                                                                                                                                                       | A new device on the tailnet                      | Needs network setup  |
+Dieter chose route A on 2026-10-27: a private GitHub repo, configured by `CLAUDE_BARB_EXCHANGE_REPO`
+and never hard-coded (today `D-sorganization/Barbara`). It keeps ADR 0007 intact and needs no new
+ingress; the cost is one rd-barb cycle of latency. The rejected options were reopening ADR 0007 (a
+public path to the hub) and a hub-only tailnet node (a new device on the tailnet). Another route
+would be another transport, not a new format.
 
-Recommendation: **A**. It keeps ADR 0007 intact and needs no new ingress. Its cost is latency
-(one rd-barb cycle) and one more private repo. `ExchangeTransport` implements A; B or C would add
-their own adapter later.
-
-Setup for A: a private repo with the labels `barb-inbox`, `to:<party>` and `from:<party>` for each of
-`barb`, `rd-barb`, `dieter`, `claude-planner` (and `to:*`), and an importer principal limited to issues
-there. A `barb-inbox` label in an existing private repo also works, but a dedicated repo (Grok Barb's
-and this proposal's pick) keeps that grant narrow. Until the importer is live, Grok Barb offers to read
-the inbox with the fleet `gh`.
+One issue per envelope, labelled `barb-inbox`, `to:<party>` and `from:<party>`; rd-barb imports it as
+`source_product: claude-cloud` and closes it with the receipt id. rd-barb also writes a cleaned
+`context-pack/latest.json` there each cycle; the layout and the snapshot cleaner are in
+`docs/agents/barb-exchange.md` (#3221). Until the importer is live, Grok Barb reads the inbox
+with the fleet `gh`.
 
 Rules for the exchange repo, whichever Barb touches it: it stays **private and separate from RD**,
 because RD is going public (#3077). It never holds tokens, hostnames, personal email or rows marked
@@ -105,10 +101,7 @@ leaks (secrets refused, exchange repo private) and no timer polling of the share
 
 ## What Needs Dieter
 
-1. Pick the route: A (recommended), B or C.
-2. For A: create the private exchange repo and the importer's scoped principal. Agents don't create
-   repositories or mint tokens.
-3. Merge Repository_Management #2483 (rd-barb role) and #2485 (retire the old claude-barb seat).
-4. Say yes to rd-barb's supervised dry run, then to the planner's.
-5. Confirm or correct the broader rule Grok Barb reported (any agent may message you if Grok Barb is
-   copied). Until then this keeps your 2026-10-27 wording: any Barb persona.
+1. Give rd-barb's identity contents write on the exchange repo, and the importer issues access there.
+   Agents don't create repositories or mint tokens.
+2. Merge Repository_Management #2483 (rd-barb role) and #2485 (retire the old claude-barb seat).
+3. Say yes to rd-barb's supervised dry run, then to the planner's.

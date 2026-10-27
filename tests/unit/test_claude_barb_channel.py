@@ -46,9 +46,11 @@ def test_reply_keeps_the_thread_counts_a_hop_and_stops_at_the_limit() -> None:
     assert at_limit[0] is None and any("hops" in p for p in at_limit[1])
 
 
-def test_any_barb_persona_and_dieter_are_valid_recipients() -> None:
+def test_any_barb_persona_and_dieter_are_valid_recipients_and_grok_barb_is_copied_on_dieter() -> None:
     for to in ("barb", "rd-barb", "dieter", "*"):
-        assert _compose(to=to)[1] == []
+        env, problems = _compose(to=to)
+        assert problems == [] and env is not None
+        assert ("to:barb" in ch.to_exchange_issue(env)["labels"]) == (to in ("barb", "dieter"))
 
 
 @pytest.mark.parametrize(

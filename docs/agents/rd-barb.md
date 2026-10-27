@@ -50,8 +50,8 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 
 ## Messaging: rd-barb -> Grok Barb -> Dieter
 
-Any Barb persona may contact Dieter directly (Dieter, 2026-10-27), so direct
-channels such as Telegram (#3076) are allowed. The Grok Barb relay below stays
+Any agent may contact Dieter directly if Grok Barb is copied (Dieter,
+2026-10-27), so direct channels such as Telegram (#3076) are allowed. The Grok Barb relay below stays
 rd-barb's default path, and Grok Barb does not redo her work. The Claude planner
 persona and its channel are proposed in [claude-planner.md](claude-planner.md).
 
