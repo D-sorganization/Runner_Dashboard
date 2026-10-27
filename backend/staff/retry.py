@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING, Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS
 from staff.retry_policy import (
-    NON_RETRYABLE_FAILURE_CLASSES,
-    RETRYABLE_FAILURE_CLASSES,
+    NON_RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
+    RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
     compute_backoff,
     compute_next_attempt_at,
     is_retryable_class,
@@ -30,7 +30,6 @@ from staff.retry_policy import (
 from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 if TYPE_CHECKING:
-    from staff.budget import BudgetGuard
     from staff.holds import HoldsList
     from staff.plan import RunPlan
     from staff.roles import RoleSpec
