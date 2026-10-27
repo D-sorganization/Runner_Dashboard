@@ -101,6 +101,19 @@ reuses `staff.provider_failover_config.resolve_failover_chain`.
   restarts on the printed provider, and the script sends a "switched provider"
   fyi with a recommendation. An exhausted chain sends an `alert`.
 
+## `/barb` and `@barb`: the Tools Sidekick contract
+
+Sidekick packaging/dispatch is on HOLD (docs/triage only), so this repo ships no
+Sidekick-side command surface -- only the RD-side contract Tools implements against:
+`barb <message>` / `barb chat` call `scripts/barb_cli.py send` the same way every
+other CLI does (async, returns a `correlation_id` immediately), and
+`scripts/wrappers/sidekick_barb_hook.py` is a generic entrypoint Sidekick can shell
+out to for `@barb` mention-wake (it calls the shared `barb_cli.inbox()` entrypoint
+and prints unread items addressed to `sidekick`, or nothing). Both only call
+`scripts/barb_cli.py`; auth is the calling agent's own principal and the token is
+never printed or logged. The actual Sidekick-side action/mention-handler
+registration is filed in Tools.
+
 ## Config on hub-a (never committed)
 
 `~/.config/runner-dashboard/rd-barb.env` (or env vars):
