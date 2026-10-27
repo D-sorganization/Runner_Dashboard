@@ -20,7 +20,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
-from coordination.relay_guard import RelayGuard
+from coordination.relay_guard import RelayGuard, _parse_time
 
 log = logging.getLogger("dashboard.coordination.postman")
 
@@ -144,13 +144,6 @@ class PostmanState:
         except FileNotFoundError:
             return cls(board_issue=default_board_issue)
         return cls.from_json(text)
-
-
-def _parse_time(value: object) -> datetime | None:
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 def _mentions(text: str, names: Sequence[str], *, bare: bool) -> set[str]:
