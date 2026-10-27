@@ -77,7 +77,8 @@ _REQUIRED_FUNCTIONS = [
     "function CodeRequestsTab",
     "function FeatureRequestsTab",
     "function FleetOrchestrationTab",
-    "function DashboardHelp",
+    # DashboardHelp lived only in the orphaned AssistantSidebar, retired with
+    # assistant chat (#1330) and deleted in #2820.
 ]
 
 # RunnerPlanTab is not yet implemented in the frontend; tracked for a future PR.
@@ -393,7 +394,9 @@ def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:
     assert "transition-duration: 0.01ms !important;" in css
     assert "function prefersReducedMotion()" in js
     assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in js
-    assert 'transition: prefersReducedMotion() ? "none"' in js
+    # Live JS motion guard (Staff Console thread scroll); the old sidebar
+    # width-transition guard was deleted with AssistantSidebar (#2820).
+    assert 'prefersReducedMotion() ? "auto" : "smooth"' in js
 
 
 def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
