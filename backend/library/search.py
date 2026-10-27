@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from knowledge_pack.pack import _TEXT_WEIGHT, _TITLE_WEIGHT, sanitize_fts_query
+from knowledge_pack.pack import _TEXT_WEIGHT, _TITLE_WEIGHT
 from library.collections import CollectionsConfig, load_collections
 from library.db import LibraryStore
+
+_MAX_FTS_QUERY_TOKENS = 32
 
 DEFAULT_BUDGET = 1500
 MAX_BUDGET = 6000
@@ -78,6 +80,16 @@ class SearchHit:
 def estimate_tokens(text: str) -> int:
     words = _WORD_RE.findall(text)
     return max(1, len(words) if words else (len(text) + 3) // 4)
+
+
+def sanitize_fts_query(query: str) -> str | None:
+    """Reduce ``query`` to an FTS5 MATCH expression; ``None`` when no tokens remain."""
+    if not isinstance(query, str):
+        raise TypeError("query must be a string")
+    tokens = _WORD_RE.findall(query)[:_MAX_FTS_QUERY_TOKENS]
+    if not tokens:
+        return None
+    return " OR ".join('"' + t.replace('"', "") + '"' for t in tokens)
 
 
 def library_stats(db_path: Path) -> dict[str, Any]:

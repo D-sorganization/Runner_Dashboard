@@ -4,8 +4,8 @@
 
 Console (PowerShell/cmd/Git Bash) windows appear on the desktop "out of
 nowhere" every few minutes, stealing keyboard/mouse focus mid-typing. On
-DeskComputer this was a visible window every 5 minutes that stayed open for
-the duration of two SSH round-trips; on ControlTower, every 30 minutes.
+hub-a this was a visible window every 5 minutes that stayed open for
+the duration of two SSH round-trips; on node-a, every 30 minutes.
 
 ## Root cause
 
@@ -56,7 +56,7 @@ Contracts (enforced, tested in `tests/deploy/test_hidden_task_launcher.py`):
   fails loudly on any mismatch;
 - foldered tasks are addressed by their discovered `TaskPath`
   (`Get-ScheduledTask` finds them anywhere but `Set-ScheduledTask` without
-  `-TaskPath` fails with 0x80070002 — found live on ControlTower's
+  `-TaskPath` fails with 0x80070002 — found live on node-a's
   `\D-sorganization\matlab-runner`);
 - arguments containing literal double quotes are refused (WScript strips
   quoting during argument parsing, so they cannot be rebuilt losslessly);
@@ -95,20 +95,20 @@ Verify a wrapped task runs windowless: fire it, then confirm the child's
 
 | Host         | Task                                                    | Action                                                                                           |
 | ------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| DeskComputer | `RunnerFleet-Health-Monitor` (5 min)                    | wrapped                                                                                          |
-| DeskComputer | `Forgejo-Backup-Sync` (daily 03:00)                     | wrapped                                                                                          |
-| DeskComputer | Startup `start_docker.bat`                              | replaced by `start_docker_hidden.lnk` → launcher; bat moved to `C:\Users\diete\start_docker.bat` |
-| ControlTower | `Conductor-RealWork-RM-30min` (30 min)                  | wrapped                                                                                          |
-| ControlTower | `D-sorg GitHub Forgejo Posture Backup`                  | wrapped                                                                                          |
-| ControlTower | `WSL-VHDX-Compact-Overnight`                            | wrapped                                                                                          |
-| ControlTower | `\D-sorganization\matlab-runner`                        | wrapped                                                                                          |
-| OGLaptop     | — (keepalive already S4U; no interactive console tasks) | launcher staged only                                                                             |
+| hub-a | `RunnerFleet-Health-Monitor` (5 min)                    | wrapped                                                                                          |
+| hub-a | `Forgejo-Backup-Sync` (daily 03:00)                     | wrapped                                                                                          |
+| hub-a | Startup `start_docker.bat`                              | replaced by `start_docker_hidden.lnk` → launcher; bat moved to `C:\Users\fleet\start_docker.bat` |
+| node-a | `Conductor-RealWork-RM-30min` (30 min)                  | wrapped                                                                                          |
+| node-a | `D-sorg GitHub Forgejo Posture Backup`                  | wrapped                                                                                          |
+| node-a | `WSL-VHDX-Compact-Overnight`                            | wrapped                                                                                          |
+| node-a | `\D-sorganization\matlab-runner`                        | wrapped                                                                                          |
+| node-b     | — (keepalive already S4U; no interactive console tasks) | launcher staged only                                                                             |
 
 Not wrapped on purpose: S4U/SYSTEM tasks (no UI by construction), Microsoft
-system tasks (`\Microsoft\...`), and OGLaptop's `RebootToUbuntu`
+system tasks (`\Microsoft\...`), and node-b's `RebootToUbuntu`
 (user-invoked deliberate reboot; a flash there is moot).
 
-Known remainder: DeskComputer's `WSL-Runner-KeepAlive` was registered from an
+Known remainder: hub-a's `WSL-Runner-KeepAlive` was registered from an
 elevated context, so rewriting its action needs an elevated session (both
 `Set-ScheduledTask` and the `schtasks` fallback are denied non-elevated, and
 elevating non-interactively would itself pop UAC). Low impact — the task is
@@ -117,7 +117,7 @@ health monitor restarts a dead instance. To finish it, run once from an
 elevated PowerShell:
 
 ```powershell
-powershell -NoProfile -File C:\Users\diete\runner_fleet_monitor\install-hidden-task-launcher.ps1 `
+powershell -NoProfile -File C:\Users\fleet\runner_fleet_monitor\install-hidden-task-launcher.ps1 `
     -TaskName 'WSL-Runner-KeepAlive'
 ```
 

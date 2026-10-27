@@ -25,8 +25,8 @@ retries, the repo is running an older wrapper.
 
 ## Why
 
-Self-hosted runners default `TMPDIR` to `/tmp`. On OGLaptop (`Ubuntu` distro)
-`/tmp` is a **24 GB RAM-backed tmpfs**; on ControlTower-Runner and DeskComputer
+Self-hosted runners default `TMPDIR` to `/tmp`. On node-b (`Ubuntu` distro)
+`/tmp` is a **24 GB RAM-backed tmpfs**; on node-a-Runner and hub-a
 it is on the root disk (hundreds of GB free), so the tmpfs host is the one that
 fills. Cancelled or crashed jobs orphan `pip-install-*`, `pip-build-env-*`,
 `pip-ephem-wheel-cache-*`, `node-compile-cache`, `tmp*` scratch at ~1–2 GB/h
@@ -57,11 +57,11 @@ is `exit-code` with an empty journal, are both actionable.
 
 | host         | WSL distros                                                                           |
 | ------------ | ------------------------------------------------------------------------------------- |
-| OGLaptop     | `Ubuntu`                                                                              |
-| ControlTower | `ControlTower-Runner`, `ControlTower-SSD` (the corrupt one, RM #1453), `OllamaServer` |
-| DeskComputer | `Ubuntu-22.04`                                                                        |
+| node-b     | `Ubuntu`                                                                              |
+| node-a | `node-a-Runner`, `node-a-SSD` (the corrupt one, RM #1453), `OllamaServer` |
+| hub-a | `Ubuntu-22.04`                                                                        |
 
-`wsl -d Ubuntu` probes against ControlTower/DeskComputer return nothing for
+`wsl -d Ubuntu` probes against node-a/hub-a return nothing for
 exactly this reason; passing the distro explicitly
 (`ssh <host> "wsl -d <distro> -- <command>"`) is required for any scripted
 step on this runbook.
@@ -80,7 +80,7 @@ step on this runbook.
    `grep -c cleanup_tmp /usr/local/bin/runner-cleanup`), redeploy from the
    Runner_Dashboard checkout: `sudo bash deploy/install-runner-maintenance.sh`.
 
-   **Hosts without a Runner_Dashboard checkout** (RD#1159: on OGLaptop neither
+   **Hosts without a Runner_Dashboard checkout** (RD#1159: on node-b neither
    `~/Runner_Dashboard`, `~/Repositories-WSL/Runner_Dashboard` nor
    `~/repos/Runner_Dashboard` exists, and `install-runner-maintenance.sh`
    resolves `PROJECT_ROOT` from its own location). Fetch the two scripts by
@@ -113,7 +113,7 @@ step on this runbook.
 
 | Control                                                                                                     | Where                                                                                       | State                                                                                                                          |
 | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `/tmp` litter GC, hourly (`--disk-guard`) + daily, allow-listed patterns, 6 h window, 30 min under pressure | Runner_Dashboard `deploy/runner-cleanup.sh` (`cleanup_tmp`)                                 | merged (RD#1155); deployed and verified on OGLaptop 2026-09-03 — ControlTower/DeskComputer deployment **unverified** (RD#1159) |
+| `/tmp` litter GC, hourly (`--disk-guard`) + daily, allow-listed patterns, 6 h window, 30 min under pressure | Runner_Dashboard `deploy/runner-cleanup.sh` (`cleanup_tmp`)                                 | merged (RD#1155); deployed and verified on node-b 2026-09-03 — node-a/hub-a deployment **unverified** (RD#1159) |
 | `tmp*` / `pymp-*` patterns added; GC extended to each runner's relocated `TMPDIR` while idle                | Runner_Dashboard `deploy/runner-cleanup.sh` (`cleanup_litter_in`, `cleanup_runner_tmpdirs`) | this change                                                                                                                    |
 | `TMPDIR=<runner>/_work/_tmp` per runner, so scratch lands on the data disk, never in RAM                    | Runner_Dashboard `deploy/configure-runner-tmpdir.sh`                                        | this change — **needs the host step below**                                                                                    |
 | Fail fast on ENOSPC with a host diagnosis instead of four retries                                           | RM `scripts/ci/pip_install_resilient.sh`                                                    | this change                                                                                                                    |
@@ -137,10 +137,10 @@ Verify from any job on that host: `echo $TMPDIR` should print
 - Surfacing `/tmp` free space per runner in the Runner Dashboard (#1489 item 4)
   is not implemented; the disk-guard log line `tmp cleanup done tmp_used=…` is
   the only signal today.
-- ControlTower's original `runner-3` host distro (`ControlTower-SSD`) is the
+- node-a's original `runner-3` host distro (`node-a-SSD`) is the
   corrupt one (RM #1453) and is not exposed to this failure; its replacement
   has `/tmp` on disk.
-- OGLaptop `~/.profile` sources 12 deleted cargo env files: resolved in
+- node-b `~/.profile` sources 12 deleted cargo env files: resolved in
   Runner_Dashboard#1159 by providing `deploy/clean-stale-shell-profiles.sh`
   and integrating it into `install-runner-maintenance.sh` and the curl/URL-based
   host deployment steps.

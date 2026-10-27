@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Fleet ``gh`` shim: App token only, no personal-auth fallback."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+from gh_app_credential import (  # noqa: E402
+    MINT_FAILURE_EXIT,
+    MINT_FAILURE_MESSAGE,
+    FleetGhMintError,
+    apply_fleet_app_token,
+)
+
+
+def main() -> int:
+    real_gh = os.environ.get("STAFF_REAL_GH", "").strip()
+    if not real_gh:
+        sys.stderr.write("fleet-gh: STAFF_REAL_GH is not set\n")
+        return 127
+    try:
+        env = apply_fleet_app_token(dict(os.environ))
+    except FleetGhMintError:
+        sys.stderr.write(MINT_FAILURE_MESSAGE + "\n")
+        return MINT_FAILURE_EXIT
+    completed = subprocess.run([real_gh, *sys.argv[1:]], env=env, check=False)  # noqa: S603
+    return int(completed.returncode)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

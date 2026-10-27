@@ -43,12 +43,7 @@ import { ShellDensityControl } from "./ShellDensityControl";
 import { ShellThemeControl } from "./ShellThemeControl";
 import { QueueMobile } from "../pages/Queue";
 import { QueueTab } from "../pages/Queue";
-import { ReportsMobile } from "../pages/Reports";
-import { FleetMobile } from "../pages/Fleet";
-import {
-  RemediationMobile,
-  type InFlightDispatch,
-} from "../pages/Remediation/Mobile";
+import type { InFlightDispatch } from "../pages/Remediation/Mobile";
 import { AnalysisTab } from "../pages/Analysis";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
@@ -62,6 +57,18 @@ import { SkeletonCard } from "../primitives/Skeleton";
 import { navItemById } from "./navRegistry";
 
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
+// #2990: mobile Fleet/Remediation views are lazy so they stay out of the entry chunk.
+const LazyFleetMobile = React.lazy(() =>
+  import("../pages/Fleet").then(({ FleetMobile }) => ({ default: FleetMobile })),
+);
+const LazyReportsMobile = React.lazy(() =>
+  import("../pages/Reports").then(({ ReportsMobile }) => ({ default: ReportsMobile })),
+);
+const LazyRemediationMobile = React.lazy(() =>
+  import("../pages/Remediation/Mobile").then(({ RemediationMobile }) => ({
+    default: RemediationMobile,
+  })),
+);
 const LazyRemediationPage = React.lazy(
   () => import("../pages/RemediationPage"),
 );
@@ -332,21 +339,35 @@ export function AppShell({
 
     const mobileTab = normalizeTabId(activeTab) as TabId;
     const mobileTabContent = {
-      overview: <FleetMobile />,
+      overview: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyFleetMobile />
+        </React.Suspense>
+      ),
       queue: <QueueMobile />,
       remediation: (
-        <RemediationMobile
-          inFlightDispatches={mobileRemediationDispatches}
-          onAddInFlight={(dispatch) =>
-            setMobileRemediationDispatches((prev) => [...prev, dispatch])
-          }
-        />
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyRemediationMobile
+            inFlightDispatches={mobileRemediationDispatches}
+            onAddInFlight={(dispatch) =>
+              setMobileRemediationDispatches((prev) => [...prev, dispatch])
+            }
+          />
+        </React.Suspense>
       ),
-      reports: <ReportsMobile />,
-      insights: <ReportsMobile />,
+      reports: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyReportsMobile />
+        </React.Suspense>
+      ),
+      insights: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyReportsMobile />
+        </React.Suspense>
+      ),
       staff: (
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
-          <LazyStaffMobile initialView="home" />
+          <LazyStaffMobile initialView="home" onThreadSelected={onThreadSelected} />
         </React.Suspense>
       ),
       "fleet-command": (
@@ -414,7 +435,7 @@ export function AppShell({
             role="status"
             aria-label={`Loading ${tabDisplayName}…`}
             className="tab-loading-skeleton"
-            style={{ padding: 24, maxWidth: 1440, margin: "0 auto" }}
+            style={{ padding: 24, maxWidth: 1440, width: "100%", boxSizing: "border-box", margin: "0 auto" }}
           >
             <SkeletonCard lines={4} />
           </div>
