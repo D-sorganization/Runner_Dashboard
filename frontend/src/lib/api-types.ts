@@ -6710,6 +6710,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/dispatcher/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write Dispatcher Ledger
+         * @description Append one bounded fallback record; the dedicated scope has no read access.
+         */
+        post: operations["write_dispatcher_ledger_api_v1_staff_dispatcher_ledger_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/dispatcher/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Dispatcher Metrics
+         * @description Return measured dispatcher counts and visibly labelled estimates.
+         */
+        get: operations["read_dispatcher_metrics_api_v1_staff_dispatcher_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/exclusions": {
         parameters: {
             query?: never;
@@ -9406,6 +9446,21 @@ export interface components {
             /** Keys */
             keys?: string[] | null;
         };
+        /**
+         * DispatcherFallbackBody
+         * @description Validated, bounded ledger entry for a dispatcher fallback.
+         */
+        DispatcherFallbackBody: {
+            /** Est Grok Turns */
+            est_grok_turns: number;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "hub_unreachable" | "held" | "rejected" | "no_provider" | "small_task";
+            /** Task Class */
+            task_class: string;
+        };
         /** DraftEdit */
         DraftEdit: {
             /**
@@ -11912,6 +11967,16 @@ export interface components {
              * @default
              */
             created_at: string;
+            /**
+             * Dispatch Origin
+             * @default other
+             */
+            dispatch_origin: string;
+            /**
+             * Dispatched By
+             * @default
+             */
+            dispatched_by: string;
             /** Ended At */
             ended_at?: string | null;
             /**
@@ -22849,6 +22914,74 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    write_dispatcher_ledger_api_v1_staff_dispatcher_ledger_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatcherFallbackBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_dispatcher_metrics_api_v1_staff_dispatcher_metrics_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
