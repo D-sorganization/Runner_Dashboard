@@ -25,14 +25,11 @@ import os
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
-from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
-from dashboard_config import HUB_URL
 from staff import claim_guard, consolidation, verification
 from staff.budget import BudgetGuard
 from staff.exclusions import ExclusionsList
@@ -47,16 +44,22 @@ from staff.scheduler_issue_pick import (
     pick_issue_target,
     scheduled_repo,
 )
+from staff.scheduler_leader_lease import (
+    acquire_leader_lease as _lease_acquire_leader_lease,
+)
+from staff.scheduler_leader_lease import (
+    leader_chain,
+    lease_allows_firing,
+    lease_ttl_seconds,
+)
+from staff.scheduler_leader_lease import (
+    leader_status as _lease_leader_status,
+)
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.scheduler")
 
 STATE_FILE = "staff_schedule_state.json"
-LEADER_LEASE_STATE_KEY = "__leader_lease__"
-LEADER_CHAIN_ENV = "STAFF_SCHEDULER_LEADER_CHAIN"
-LEADER_TTL_SECONDS_ENV = "STAFF_SCHEDULER_LEASE_TTL_SECONDS"
-LEADER_AUTHORITY_URL_ENV = "STAFF_SCHEDULER_LEASE_AUTHORITY_URL"
-LEADER_HTTP_TIMEOUT_SECONDS = 5.0
 SCHEDULED_PROMPT = (
     "Scheduled {title} pass on {repo}. Follow your playbook for this repository: pick the highest-value items you "
     "can finish safely in this one run and ship them as a ready pull request armed with automerge_guard (pr_lifecycle: "
@@ -72,20 +75,6 @@ def state_path() -> Path:
 
 def _iso(when: datetime | None) -> str | None:
     return when.isoformat() if when else None
-
-
-def _parse_iso(raw: str | None) -> datetime | None:
-    if not raw:
-        return None
-    try:
-        return datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-
-
-def _leader_chain() -> tuple[str, ...]:
-    raw = os.environ.get(LEADER_CHAIN_ENV, "")
-    return tuple(name.strip() for name in raw.split(",") if name.strip())
 
 
 class StaffScheduler:
@@ -200,23 +189,9 @@ class StaffScheduler:
         except ValueError:
             return False
 
-    # ── leader lease ─────────────────────────────────────────────────────
+    # ── leader lease (fencing logic lives in scheduler_leader_lease.py; #cap) ──
     def _lease_ttl_seconds(self) -> float:
-        raw = os.environ.get(LEADER_TTL_SECONDS_ENV, "").strip()
-        if raw:
-            try:
-                ttl = float(raw)
-                if ttl > 0:
-                    return ttl
-            except ValueError:
-                log.warning("staff scheduler: ignored bad %s=%r", LEADER_TTL_SECONDS_ENV, raw)
-        return max(self.tick_seconds * 3, self.tick_seconds + 1)
-
-    def _lease_authority_url(self) -> str:
-        raw = os.environ.get(LEADER_AUTHORITY_URL_ENV, "").strip()
-        if raw:
-            return raw.rstrip("/")
-        return (HUB_URL or "").rstrip("/")
+        return lease_ttl_seconds(self.tick_seconds)
 
     def acquire_leader_lease(
         self, machine: str, *, now: datetime | None = None, ttl_seconds: float | None = None
@@ -226,140 +201,17 @@ class StaffScheduler:
         Precondition: ``machine`` is a non-empty fleet display name.
         Postcondition: result includes ``granted`` and current ``holder``.
         """
-        chain = _leader_chain()
         now = now or self._clock()
-        if not chain:
-            return {
-                "granted": True,
-                "holder": machine,
-                "reason": "leader lease disabled",
-                "expires_at": None,
-                "chain": [],
-            }
-        if machine not in chain:
-            return {
-                "granted": False,
-                "holder": "",
-                "reason": f"{machine} not in leader chain",
-                "expires_at": None,
-                "chain": list(chain),
-            }
         ttl = ttl_seconds if ttl_seconds is not None and ttl_seconds > 0 else self._lease_ttl_seconds()
         with self._lock:
-            entry = self._load_state().setdefault(LEADER_LEASE_STATE_KEY, {})
-            if not isinstance(entry, dict):
-                entry = {}
-                self._load_state()[LEADER_LEASE_STATE_KEY] = entry
-            holder = str(entry.get("holder") or "")
-            expires_at = _parse_iso(str(entry.get("expires_at") or ""))
-            acquired_at = str(entry.get("acquired_at") or "")
-            ranks = {name: idx for idx, name in enumerate(chain)}
-            holder_rank = ranks.get(holder, 10_000)
-            requester_rank = ranks.get(machine, 10_000)
-            active = expires_at is not None and expires_at > now
-            granted = False
-            reason = ""
-            if holder == machine:
-                granted = True
-                reason = "renewed"
-            elif (not active) or not holder:
-                granted = True
-                reason = "acquired"
-            elif requester_rank < holder_rank:
-                granted = True
-                reason = "preempted by higher-priority host"
-            else:
-                reason = f"held by {holder}"
-
-            if granted:
-                expires = now + timedelta(seconds=ttl)
-                entry["holder"] = machine
-                entry["acquired_at"] = acquired_at or now.isoformat()
-                if holder != machine:
-                    entry["acquired_at"] = now.isoformat()
-                entry["renewed_at"] = now.isoformat()
-                entry["expires_at"] = expires.isoformat()
-                entry["ttl_seconds"] = ttl
-                entry["chain"] = list(chain)
-                self._save_state()
-                holder = machine
-                expires_at = expires
-            return {
-                "granted": granted,
-                "holder": holder,
-                "reason": reason,
-                "expires_at": _iso(expires_at),
-                "chain": list(chain),
-            }
-
-    def _acquire_remote_leader_lease(self, machine: str, now: datetime, ttl_seconds: float) -> dict[str, Any]:
-        authority = self._lease_authority_url()
-        if not authority:
-            return self.acquire_leader_lease(machine, now=now, ttl_seconds=ttl_seconds)
-        body = json.dumps({"machine": machine, "ttl_seconds": ttl_seconds}).encode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-        }
-        token = os.environ.get("HUB_FLEET_TOKEN", "").strip()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        req = Request(f"{authority}/api/staff/schedule/leader-lease", data=body, headers=headers, method="POST")
-        try:
-            with urlopen(req, timeout=LEADER_HTTP_TIMEOUT_SECONDS) as resp:  # noqa: S310
-                payload = json.loads(resp.read().decode("utf-8"))
-        except (OSError, URLError, TimeoutError, ValueError) as exc:
-            return {
-                "granted": False,
-                "holder": "",
-                "reason": f"leader lease authority unavailable: {exc}",
-                "expires_at": None,
-                "chain": list(_leader_chain()),
-            }
-        if not isinstance(payload, dict):
-            return {
-                "granted": False,
-                "holder": "",
-                "reason": "leader lease authority returned non-object payload",
-                "expires_at": None,
-                "chain": list(_leader_chain()),
-            }
-        return payload
+            return _lease_acquire_leader_lease(self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl)
 
     def _lease_allows_firing(self, now: datetime) -> bool:
-        chain = _leader_chain()
-        if not chain:
-            return True
-        if self.runner.machine not in chain:
-            return False
-        decision = self._acquire_remote_leader_lease(self.runner.machine, now, self._lease_ttl_seconds())
-        if not bool(decision.get("granted", False)):
-            holder = str(decision.get("holder") or "<none>")
-            reason = str(decision.get("reason") or "lease denied")
-            log.info("staff scheduler: lease denied on %s (holder=%s) - %s", self.runner.machine, holder, reason)
-            return False
-        return True
+        return lease_allows_firing(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds())
 
     def leader_status(self, now: datetime | None = None) -> dict[str, Any]:
         now = now or self._clock()
-        chain = _leader_chain()
-        entry = self._load_state().get(LEADER_LEASE_STATE_KEY, {})
-        if not isinstance(entry, dict):
-            entry = {}
-        holder = str(entry.get("holder") or "")
-        expires_at = _parse_iso(str(entry.get("expires_at") or ""))
-        active = bool(holder) and expires_at is not None and expires_at > now
-        return {
-            "configured": bool(chain),
-            "chain": list(chain),
-            "holder": holder,
-            "acquired_at": str(entry.get("acquired_at") or ""),
-            "renewed_at": str(entry.get("renewed_at") or ""),
-            "expires_at": _iso(expires_at),
-            "active": active,
-            "local_holder": active and holder == self.runner.machine,
-        }
+        return _lease_leader_status(self._load_state, leader_chain(), self.runner.machine, now)
 
     # ── evaluation ───────────────────────────────────────────────────────
     def evaluate(self, role: RoleSpec, now: datetime) -> dict[str, Any]:
