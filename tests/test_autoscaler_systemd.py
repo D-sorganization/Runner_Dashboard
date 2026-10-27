@@ -28,6 +28,8 @@ def _cp(stdout: str = "", returncode: int = 0) -> MagicMock:
 def _prevent_host_runner_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
     """Never let lifecycle unit tests clean lockfiles in real runner homes."""
     monkeypatch.setattr("runner_state_cleanup.cleanup_runner_state", MagicMock())
+    # Lifecycle tests model idle runners; probe/race behavior has its own suite.
+    monkeypatch.setattr("autoscaler_busy._runner_is_busy", lambda unit: False)
 
 
 class TestListRunnerUnits:
