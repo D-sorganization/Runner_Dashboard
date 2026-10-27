@@ -23,15 +23,15 @@ def test_dispatch_fails_over_and_reuses_idempotency_key(monkeypatch: pytest.Monk
     monkeypatch.setenv("FLEET_API_URLS", "https://first.example,https://second.example")
     prompt = tmp_path / "prompt.txt"
     prompt.write_text("work", encoding="utf-8")
-    code = fleetctl.main(
-        [
-            "dispatch", "--role", "night-watch", "--repo", "Runner_Dashboard",
-            "--prompt-file", str(prompt),
-        ]
-    )
-    assert code == 0
+    args = [
+        "dispatch", "--role", "night-watch", "--repo", "Runner_Dashboard", "--prompt-file", str(prompt)
+    ]
+    assert fleetctl.main(args) == 0
+    first_key = calls[-1][2]["headers"]["Idempotency-Key"]
+    assert fleetctl.main(args) == 0
     key = calls[-1][2]["headers"]["Idempotency-Key"]
     assert len(key) == 64
+    assert key == first_key
     assert calls[-2][1] == "/api/v1/staff/summary"
     assert calls[-1][0] == "https://second.example"
 

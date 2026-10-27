@@ -224,8 +224,10 @@ def _dispatch_with_failover(namespace: argparse.Namespace) -> int:
                 prompt = source.read(20_001)
             if len(prompt) > 20_000:
                 raise FleetArgumentError("prompt file exceeds 20000 characters")
-        if namespace.issue is None and namespace.pr is None and not prompt:
-            raise FleetArgumentError("one of --issue, --pr or --prompt-file is required")
+        if namespace.pr is not None:
+            raise FleetArgumentError("failover dispatch accepts --issue, not --pr")
+        if namespace.issue is None and not prompt:
+            raise FleetArgumentError("one of --issue, --prompt or --prompt-file is required")
         # Reuse the client boundary checks before probing or dispatching.
         validator = FleetClient(namespace.url, timeout=namespace.timeout)
         validator.dispatch(
@@ -266,6 +268,7 @@ def _dispatch_with_failover(namespace: argparse.Namespace) -> int:
                 namespace.issue,
                 namespace.pr,
                 prompt,
+                provider=namespace.provider,
                 machine=namespace.machine or "auto",
                 dry_run=bool(namespace.dry_run),
                 model=namespace.model,
