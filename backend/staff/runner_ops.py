@@ -243,6 +243,7 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         target_ref=plan.target_ref,
         prompt=plan.prompt,
         requested_by=req.requested_by,
+        dispatch_origin=req.dispatch_origin,
         on_behalf_of=req.on_behalf_of,
         branch=plan.branch,
         strategy_mode=plan.strategy_mode,

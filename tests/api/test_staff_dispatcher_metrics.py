@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from identity import Principal, principal_has_scope, require_scope
 from routers import staff_dispatcher
 from staff import idempotency
-from staff.dispatcher_metrics import DispatcherRateLimitError, record_dispatcher_fallback
+from staff.dispatcher_metrics import DispatcherRateLimitError, dispatcher_origin, record_dispatcher_fallback
 from staff.store import RunRecord, RunStore
 
 READER = Principal(id="reader", type="human", name="Reader", roles=[], scopes=["staff.read"])
@@ -119,6 +119,13 @@ def test_ledger_is_idempotent_and_rejects_unknown_reason(client: TestClient) -> 
 def test_write_only_ledger_scope_cannot_read_metrics(client: TestClient) -> None:
     assert principal_has_scope(WRITER, "staff.dispatcher.ledger.write")
     assert not principal_has_scope(WRITER, "staff.read")
+
+
+@pytest.mark.unit
+def test_run_origin_uses_authenticated_principal_type_and_identity() -> None:
+    assert dispatcher_origin("principal:agent-grok", "bot") == "grok"
+    assert dispatcher_origin("principal:operator", "human") == "console"
+    assert dispatcher_origin("principal:unknown-agent", "bot") == "other"
 
 
 @pytest.mark.unit

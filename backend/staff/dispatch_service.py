@@ -90,6 +90,7 @@ class DispatchCommand:
     force_claim_override: bool = False
     claim_override_reason: str = ""
     execution_mode: str = "local"
+    dispatch_origin: str = ""
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -352,6 +353,7 @@ async def dispatch_staff_run(
         standards_extra=cmd.standards_extra,
         requested_skill=cmd.requested_skill,
         execution_mode=cmd.execution_mode or "local",
+        dispatch_origin=cmd.dispatch_origin,
     )
     try:
         plan = runner.plan(req)

@@ -13,8 +13,8 @@ class DispatcherRateLimitError(RuntimeError):
     """The dispatcher fallback ledger exceeded its per-principal write rate."""
 
 
-def dispatcher_origin(principal: str) -> str:
-    """Classify run provenance from the trusted principal identity only."""
+def dispatcher_origin(principal: str, principal_type: str = "") -> str:
+    """Classify provenance from authenticated identity/type, never request fields."""
     normalized = principal.removeprefix("principal:")
     if normalized == "agent-grok":
         return "grok"
@@ -22,6 +22,8 @@ def dispatcher_origin(principal: str) -> str:
         return "schedule"
     if normalized == "watch_tick":
         return "watch_tick"
+    if principal_type == "human":
+        return "console"
     return "other"
 
 
