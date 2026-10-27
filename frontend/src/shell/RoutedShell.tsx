@@ -112,7 +112,7 @@ function ShellActiveProvider({
   );
 }
 
-function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
+function nativeDesktopTabContent(tabId: string, onThreadSelected?: (threadId: string, role: string) => void): React.ReactNode | null {
   switch (normalizeTabId(tabId)) {
     case "overview":
       return <LazyOverviewPage />;
@@ -158,7 +158,7 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
     case "settings":
       return <SettingsPage />;
     case "staff":
-      return <LazyStaffPage />;
+      return <LazyStaffPage routeThreadId={new URLSearchParams(window.location.search).get("thread")} onThreadSelected={onThreadSelected} />;
     case "workflows":
       return <WorkflowsPage />;
     default:
@@ -386,7 +386,7 @@ export function AppShell({
     const mobileFallback = mobileTabContent[mobileTab] ? null : (
       <TabErrorBoundary tabName={mobileTab} resetKey={mobileTab}>
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
-          {nativeDesktopTabContent(mobileTab) ?? (
+          {nativeDesktopTabContent(mobileTab, onThreadSelected) ?? (
             <NotFoundPanel
               path={unmatchedPath || "/"}
               onNavigateHome={() => onSelectTab("staff")}
@@ -421,7 +421,7 @@ export function AppShell({
     ) : undefined;
   const navItem = navItemById(activeTab);
   const tabDisplayName = navItem ? navItem.label : activeTab;
-  const nativeContent = nativeDesktopTabContent(activeTab);
+  const nativeContent = nativeDesktopTabContent(activeTab, onThreadSelected);
   const wrappedContent = isNotFound ? (
     <NotFoundPanel
       path={unmatchedPath || "/"}
