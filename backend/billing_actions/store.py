@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -41,17 +39,6 @@ def init_db(path: Path | None = None) -> Path:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.executescript(SCHEMA_SQL)
     return db
-
-
-@contextmanager
-def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
-    conn.execute("BEGIN")
-    try:
-        yield conn
-        conn.execute("COMMIT")
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
 
 
 def upsert_usage_item(conn: sqlite3.Connection, item: UsageItem, *, synced_at: datetime) -> bool:
