@@ -53,6 +53,14 @@ _usage_monitoring: Any = None
 ORG: str = "D-sorganization"
 
 _REPOS_TTL = 120.0
+_REPO_ENRICHMENT_TTL = 300.0
+_REPO_ENRICHMENT_FIELDS = (
+    "open_prs",
+    "last_ci_status",
+    "last_ci_conclusion",
+    "last_ci_run_url",
+    "last_ci_updated",
+)
 _CI_TEST_RESULTS_TTL = 60.0
 _STATS_TTL = 30.0
 _USAGE_MONITORING_TTL = 60.0
@@ -189,6 +197,7 @@ async def get_repos(request: Request) -> Any:
     async def enrich_repo(repo: dict) -> dict:
         name = repo["name"]
         full_name = repo["full_name"]
+        enrichment_cache_key = f"repo-enrichment:{full_name}"
         info: dict[str, Any] = {
             "name": name,
             "full_name": full_name,
@@ -206,15 +215,30 @@ async def get_repos(request: Request) -> Any:
             "last_ci_run_url": None,
             "last_ci_updated": None,
         }
+        cached_enrichment = _cache_get(enrichment_cache_key, _REPO_ENRICHMENT_TTL)
+        if isinstance(cached_enrichment, dict) and all(
+            field in cached_enrichment for field in _REPO_ENRICHMENT_FIELDS
+        ):
+            info.update({field: cached_enrichment[field] for field in _REPO_ENRICHMENT_FIELDS})
+            info["open_issues"] = max(0, info["open_issues_count"] - info["open_prs"])
+            return info
+
+        cacheable = True
         pr_code, pr_out, _ = await _run_cmd(
             ["gh", "api", "--paginate", f"/repos/{full_name}/pulls?state=open&per_page=100"],
             timeout=30,
         )
         if pr_code == 0:
             try:
-                info["open_prs"] = len(json.loads(pr_out))
+                pull_requests = json.loads(pr_out)
+                if isinstance(pull_requests, list):
+                    info["open_prs"] = len(pull_requests)
+                else:
+                    cacheable = False
             except (json.JSONDecodeError, ValueError):
-                pass
+                cacheable = False
+        else:
+            cacheable = False
         info["open_issues"] = max(0, info["open_issues_count"] - info["open_prs"])
         run_code, run_out, _ = await _run_cmd(
             ["gh", "api", f"/repos/{full_name}/actions/runs?per_page=1"],
@@ -223,15 +247,31 @@ async def get_repos(request: Request) -> Any:
         if run_code == 0:
             try:
                 runs_data = json.loads(run_out)
-                runs_list = runs_data.get("workflow_runs", [])
-                if runs_list:
-                    last_run = runs_list[0]
-                    info["last_ci_status"] = last_run.get("status")
-                    info["last_ci_conclusion"] = last_run.get("conclusion")
-                    info["last_ci_run_url"] = last_run.get("html_url")
-                    info["last_ci_updated"] = last_run.get("updated_at")
+                if not isinstance(runs_data, dict):
+                    cacheable = False
+                else:
+                    runs_list = runs_data.get("workflow_runs", [])
+                    if not isinstance(runs_list, list):
+                        cacheable = False
+                    elif runs_list:
+                        last_run = runs_list[0]
+                        if isinstance(last_run, dict):
+                            info["last_ci_status"] = last_run.get("status")
+                            info["last_ci_conclusion"] = last_run.get("conclusion")
+                            info["last_ci_run_url"] = last_run.get("html_url")
+                            info["last_ci_updated"] = last_run.get("updated_at")
+                        else:
+                            cacheable = False
             except (json.JSONDecodeError, ValueError):
-                pass
+                cacheable = False
+        else:
+            cacheable = False
+
+        if cacheable:
+            _cache_set(
+                enrichment_cache_key,
+                {field: info[field] for field in _REPO_ENRICHMENT_FIELDS},
+            )
         return info
 
     batch_size = 5
