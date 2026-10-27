@@ -45,6 +45,10 @@ def _request() -> Request:
 async def test_refresh_reuses_repo_enrichment_and_keeps_response_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Other router tests call set_dependencies(), which mutates this module
+    # global. Pin the response TTL so this test's fake-clock boundary stays
+    # below the independent enrichment TTL regardless of test ordering.
+    monkeypatch.setattr(repos, "_REPOS_TTL", 120.0)
     cache = FakeCache()
     repo_rows = [
         {
