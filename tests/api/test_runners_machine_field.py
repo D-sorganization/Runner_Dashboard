@@ -36,10 +36,10 @@ def test_runner_response_stamps_machine_field() -> None:
     data = {
         "total_count": 4,
         "runners": [
-            _runner("d-sorg-local-ControlTower-1"),
+            _runner("d-sorg-local-node-a-1"),
             _runner("d-sorg-local-Desktop-3"),
-            _runner("d-sorg-local-Oglaptop-2"),
-            _runner("d-sorg-local-ControlTower-windows-matlab-1"),
+            _runner("d-sorg-local-node-b-2"),
+            _runner("d-sorg-local-node-a-windows-matlab-1"),
         ],
     }
 
@@ -47,19 +47,19 @@ def test_runner_response_stamps_machine_field() -> None:
 
     machines = {runner["name"]: runner["machine"] for runner in result["runners"]}
     assert machines == {
-        "d-sorg-local-ControlTower-1": "ControlTower",
-        "d-sorg-local-Desktop-3": "DeskComputer",
-        "d-sorg-local-Oglaptop-2": "OGLaptop",
-        "d-sorg-local-ControlTower-windows-matlab-1": "ControlTower",
+        "d-sorg-local-node-a-1": "node-a",
+        "d-sorg-local-Desktop-3": "hub-a",
+        "d-sorg-local-node-b-2": "node-b",
+        "d-sorg-local-node-a-windows-matlab-1": "node-a",
     }
 
 
 def test_runner_response_does_not_mutate_input_dicts() -> None:
-    original = _runner("d-sorg-local-ControlTower-1")
+    original = _runner("d-sorg-local-node-a-1")
     data = {"total_count": 1, "runners": [original]}
 
     result = _runner_response(data, source="github")
 
     assert "machine" not in original
-    assert result["runners"][0]["machine"] == "ControlTower"
+    assert result["runners"][0]["machine"] == "node-a"
     assert result["runners"][0] is not original
