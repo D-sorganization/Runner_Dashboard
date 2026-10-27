@@ -111,7 +111,7 @@ _FALLBACK_ROLES: tuple[dict[str, Any], ...] = (
 _CACHE_LOCK = threading.Lock()
 _CACHE_DIR_SIG: tuple[Any, ...] | None = None
 _CACHE_ROLES: dict[str, RoleSpec] = {}
-_CACHE_FILE_ENTRIES: dict[str, tuple[int, RoleSpec]] = {}
+_CACHE_FILE_ENTRIES: dict[str, tuple[tuple[int, tuple[tuple[str, int], ...]], RoleSpec]] = {}
 _CACHE_ERRORS: dict[str, list[str]] = {}
 
 
