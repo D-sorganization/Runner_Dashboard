@@ -24,6 +24,7 @@ from staff.lessons import file_proposed_lessons, select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
+from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -221,6 +222,7 @@ class StaffRunner:
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
             repo_lessons_result=select_repo_lessons(plan.repo),
+            prompt_token_cap=TOTAL_CONTEXT_TOKEN_CAP if plan.provider == "codex" else None,
         )
         if pre_pr_entrypoint:
             prompt = (
