@@ -161,6 +161,9 @@ def spawn_cli_process(
                 proc.stdin.close()
             except OSError:
                 pass
+            # Popen.communicate() re-flushes self.stdin if it is still set, which raises on an
+            # already-closed file; clear the attribute now that stdin has been fully delivered.
+            proc.stdin = None
     return proc
 
 
