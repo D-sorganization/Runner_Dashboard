@@ -84,6 +84,28 @@ def tail(text: str, limit: int = TAIL_BYTES) -> str:
     return text[-limit:]
 
 
+def cap_alert(provider: str, failure: str, max_restarts: int, run_id: str | None) -> dict[str, Any]:
+    """rd_barb_notify alert envelope for a session that keeps failing on one provider."""
+    msg: dict[str, Any] = {
+        "kind": "alert",
+        "urgency": "high",
+        "dedupe_key": f"rd-barb-restart-cap-{provider}-{failure}",
+        "summary": f"rd-barb stopped: restart cap {max_restarts} hit on {provider} ({failure})",
+        "body": "The watchdog restarted rd-barb repeatedly without a clean exit. Monitoring is paused.",
+        "recommended_action": f"Check the {provider} session log on Desk, fix the cause, then restart rd-barb.",
+    }
+    return msg | {"run_id": run_id} if run_id else msg
+
+
+def _send_alert(alert: Callable[[dict[str, Any]], Any] | None, msg: dict[str, Any]) -> None:
+    if alert is None:
+        return
+    try:
+        alert(msg)
+    except Exception:  # noqa: BLE001 - alerting must never take the watchdog down
+        log.exception("rd-barb restart-cap alert failed")
+
+
 def supervise(
     *,
     launch: Callable[[str, str | None], RunResult],
@@ -91,6 +113,7 @@ def supervise(
     max_restarts: int = DEFAULT_MAX_RESTARTS,
     sleep: Callable[[float], Any] = time.sleep,
     run_id: str | None = None,
+    alert: Callable[[dict[str, Any]], Any] | None = None,
 ) -> int:
     """Run until a clean exit (0), an exhausted chain or the restart cap (1)."""
     pick = next_provider()
@@ -101,6 +124,7 @@ def supervise(
             return 0
         if restarts >= max_restarts:
             log.error("rd-barb restart cap %d reached on %s (%s)", max_restarts, pick.provider, failure)
+            _send_alert(alert, cap_alert(pick.provider, failure, max_restarts, run_id))
             return 1
         log.warning("rd-barb %s exited with %s; asking rd_barb_provider next", pick.provider, failure)
         pick = next_provider(current=pick.provider, failure=failure, run_id=run_id)
@@ -172,6 +196,17 @@ def _load_config(env: Mapping[str, str] | None = None) -> dict[str, str]:
     return cfg
 
 
+def _default_alert() -> Callable[[dict[str, Any]], Any] | None:
+    """rd_barb_notify's Notifier, the single path for rd-barb messages to Grok Barb."""
+    try:
+        rn = importlib.import_module("scripts.rd_barb_notify")
+    except ImportError:
+        log.warning("scripts.rd_barb_notify missing; restart-cap alert disabled")
+        return None
+    state = Path(os.environ.get("RD_BARB_NOTIFY_STATE") or rn.DEFAULT_STATE).expanduser()
+    return rn.Notifier(rn.load_config(), state, rn.http_send, rn._fleet_thread_poster()).notify
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -197,6 +232,7 @@ def main(
             next_provider=nxt,
             max_restarts=args.max_restarts,
             run_id=f"rd-barb-{uuid.uuid4().hex[:8]}",
+            alert=_default_alert(),
         )
     except WatchdogError as exc:
         print(f"rd_barb_watchdog: {exc}", file=sys.stderr)

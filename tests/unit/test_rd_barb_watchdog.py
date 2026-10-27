@@ -166,3 +166,51 @@ def test_load_config_env_launch_cmd_wins_and_ignores_unrelated_keys() -> None:
     cfg = wd._load_config({"RD_BARB_LAUNCH_CMD": "bin/s {provider}", "HOME": "/x", "RD_BARB_MODEL": ""})
     assert cfg["RD_BARB_LAUNCH_CMD"] == "bin/s {provider}"
     assert "HOME" not in cfg and "RD_BARB_MODEL" not in cfg
+
+
+def test_restart_cap_sends_one_alert_with_recommended_action() -> None:
+    sent: list[dict[str, Any]] = []
+
+    def launch(_p: str, _m: str | None) -> wd.RunResult:
+        return wd.RunResult(1, "segfault")
+
+    def always_same(**_kw: Any) -> wd.Pick:
+        return wd.Pick("claude", None)
+
+    rc = wd.supervise(
+        launch=launch, next_provider=always_same, max_restarts=2, sleep=lambda _s: None, run_id="r1", alert=sent.append
+    )
+    assert rc == 1 and len(sent) == 1
+    msg = sent[0]
+    assert msg["kind"] == "alert" and msg["urgency"] == "high" and msg["run_id"] == "r1"
+    assert "claude" in msg["summary"] and "crash" in msg["summary"]
+    assert msg["recommended_action"].strip() and "\n" not in msg["recommended_action"]
+    assert msg["dedupe_key"] == "rd-barb-restart-cap-claude-crash"
+
+
+def test_clean_exit_and_exhausted_chain_send_no_cap_alert() -> None:
+    sent: list[dict[str, Any]] = []
+    ok = wd.supervise(
+        launch=lambda _p, _m: wd.RunResult(0, ""),
+        next_provider=lambda **_kw: wd.Pick("claude", None),
+        alert=sent.append,
+    )
+    assert ok == 0 and sent == []
+
+
+def test_cap_alert_passes_the_notify_contract() -> None:
+    rn = pytest.importorskip("scripts.rd_barb_notify")
+    assert rn.validate(wd.cap_alert("codex", "rate_limited", 8, None)) == []
+
+
+def test_alert_failure_never_breaks_supervise() -> None:
+    def boom(_msg: dict[str, Any]) -> None:
+        raise RuntimeError("webhook down")
+
+    rc = wd.supervise(
+        launch=lambda _p, _m: wd.RunResult(1, "x"),
+        next_provider=lambda **_kw: wd.Pick("claude", None),
+        max_restarts=0,
+        alert=boom,
+    )
+    assert rc == 1
