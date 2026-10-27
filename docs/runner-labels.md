@@ -65,6 +65,36 @@ PR builds or maintenance jobs; the reservation is what protects merge checks
 from the shared PR queue. Keep merge-queue cancellation disabled until the
 owner records approval in the enabling PR.
 
+## Opt-In Reserved-Runner Switch for merge_group (#3046, implements #2768)
+
+`vars.CI_QUEUE_RUNNER_LABEL` is a repo variable, separate from the
+`d-sorg-fleet-queue` taxonomy label above. When set (and
+`CI_QUEUE_RUNNER_MODE` is not `hosted`), every required `merge_group` job on
+`ci-standard.yml`, `frontend-tests.yml`, `ci-secrets.yml`,
+`anti-phantom-merge.yml`, and `ci-auto-deploy-regression.yml` requests that
+label instead of the shared `d-sorg-fleet` pool, so a merge group never waits
+behind PR work. `pull_request`, `push`, `schedule`, and `workflow_dispatch`
+jobs never request it. `CI_QUEUE_RUNNER_MODE=hosted` and `priority:expedite`
+still take precedence, and fork PRs still never reach the fleet.
+
+**Rollout:**
+
+1. Org admin registers one or more self-hosted runners carrying the label you
+   intend to put in `CI_QUEUE_RUNNER_LABEL` (for example `d-sorg-fleet-queue`)
+   — TODO for the org admin; this PR does not register runners or edit
+   organization runner labels.
+2. Set the repo variable `CI_QUEUE_RUNNER_LABEL` to that label. Until it is
+   set, every workflow in scope resolves exactly as it does today — the
+   switch is a no-op by default.
+3. Watch the next few merge-group runs: a job queues visibly on the reserved
+   label. If no runner is online for that label, the job queues (and times
+   out per its `timeout-minutes`) rather than silently falling back to the
+   shared `d-sorg-fleet` pool.
+
+**Rollback:** unset (or empty) the repo variable `CI_QUEUE_RUNNER_LABEL`.
+No workflow file change is needed — every merge_group job immediately
+resumes resolving to `d-sorg-fleet` on the next run.
+
 ## Workflow Classes
 
 The routing policy is maintained in
