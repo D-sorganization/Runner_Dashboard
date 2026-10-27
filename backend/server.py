@@ -65,6 +65,13 @@ def _require_single_worker() -> None:
 
 _require_single_worker()
 
+# Issue #3248: the Docker CMD invokes this module as `python -m backend.server`
+# from WORKDIR /app, where sys.path[0] is /app (not /app/backend). The
+# unqualified sibling imports just below (browser_ingress_guard etc.) only
+# resolve once backend/ itself is on sys.path, so this guard must run first.
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 # systemd watchdog / ready notification (issue #391 AC-3)
 try:
@@ -72,28 +79,31 @@ try:
 except ImportError:
     _sd_notify = None
 
-import httpx
-from browser_ingress_guard import BrowserIngressMiddleware
-from browser_sessions import BrowserSessionMiddleware
-from cloudflare_access import CloudflareAccessValidator
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import (
+import httpx  # noqa: E402
+from browser_ingress_guard import BrowserIngressMiddleware  # noqa: E402
+from browser_sessions import BrowserSessionMiddleware  # noqa: E402
+from cloudflare_access import CloudflareAccessValidator  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import (  # noqa: E402
     FileResponse,
     HTMLResponse,
     JSONResponse,
 )
-from fastapi.staticfiles import StaticFiles
-from identity import Principal, require_scope  # noqa: B008
-from middleware import MaxBodySizeMiddleware
-from pydantic import BaseModel, Field
-from routers import admin as admin_router
-from routers import auth as auth_router
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from tailnet_identity import build_asgi_app
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from identity import Principal, require_scope  # noqa: B008, E402
+from middleware import MaxBodySizeMiddleware  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+from routers import admin as admin_router  # noqa: E402
+from routers import auth as auth_router  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.middleware.gzip import GZipMiddleware  # noqa: E402
+from tailnet_identity import build_asgi_app  # noqa: E402
 
+# Re-affirms the Issue #3248 guard above; kept here (idempotent, see the
+# `not in sys.path` check) so this statement still separates the two
+# sibling-import blocks for import-sort tooling, as it always has.
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
