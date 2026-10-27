@@ -22,8 +22,8 @@ import {
   fireEvent,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { DesktopShell, type ShellAction } from "../DesktopShell";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { DesktopShell, BarbSidebarErrorBoundary, type ShellAction } from "../DesktopShell";
 
 afterEach(cleanup);
 
@@ -122,6 +122,85 @@ describe("DesktopShell — structure", () => {
     const main = screen.getByRole("main");
     expect(main).toHaveClass("desktop-shell__main");
     expect(within(main).getByTestId("page-body")).toBeInTheDocument();
+  });
+});
+
+describe("BarbSidebarErrorBoundary — chunk-load retry (#2752)", () => {
+  // getDerivedStateFromError/componentDidCatch log via console.error; silence
+  // the expected noise without hiding a genuinely unexpected one.
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function makeLoader(outcomes: Array<"reject" | "resolve">) {
+    let call = 0;
+    return () => {
+      const outcome = outcomes[Math.min(call, outcomes.length - 1)];
+      call += 1;
+      if (outcome === "reject") {
+        return Promise.reject(new Error("chunk failed"));
+      }
+      return Promise.resolve({
+        default: () => <div data-testid="barb-loaded">Loaded</div>,
+      });
+    };
+  }
+
+  function Harness({ loader }: { loader: () => Promise<{ default: React.ComponentType }> }) {
+    const [open, setOpen] = React.useState(true);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen((o) => !o)}>
+          toggle
+        </button>
+        <BarbSidebarErrorBoundary open={open} onClose={() => setOpen(false)} loader={loader}>
+          {(Lazy) => <Lazy />}
+        </BarbSidebarErrorBoundary>
+      </>
+    );
+  }
+
+  it("retries the Barb chunk after a failed load when reopened", async () => {
+    const loader = makeLoader(["reject", "resolve"]);
+    render(<Harness loader={loader} />);
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("toggle")); // close
+    fireEvent.click(screen.getByText("toggle")); // reopen -> retries
+
+    expect(await screen.findByTestId("barb-loaded")).toBeInTheDocument();
+  });
+
+  it("the Retry button re-attempts the load", async () => {
+    const loader = makeLoader(["reject", "resolve"]);
+    render(
+      <BarbSidebarErrorBoundary open onClose={() => {}} loader={loader}>
+        {(Lazy) => <Lazy />}
+      </BarbSidebarErrorBoundary>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /retry/i }));
+
+    expect(await screen.findByTestId("barb-loaded")).toBeInTheDocument();
+  });
+
+  it("isolates a persistently failing chunk without crashing the surrounding shell (regression)", async () => {
+    const loader = makeLoader(["reject", "reject", "reject"]);
+    render(
+      <div>
+        <div data-testid="sibling">Sibling content</div>
+        <BarbSidebarErrorBoundary open onClose={() => {}} loader={loader}>
+          {(Lazy) => <Lazy />}
+        </BarbSidebarErrorBoundary>
+      </div>,
+    );
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByTestId("sibling")).toBeInTheDocument();
   });
 });
 
