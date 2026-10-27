@@ -53,6 +53,11 @@ def test_release_passes_reason_flag(tmp_path, monkeypatch):
             },
             "timeout: 5 min",
         ),
+        ({"status": "failed", "failure_class": "timeout"}, "timeout: unknown min"),
+        (
+            {"status": "failed", "failure_class": "timeout", "started_at": "bad", "ended_at": "bad"},
+            "timeout: unknown min",
+        ),
         ({"status": "failed", "failure_class": "config"}, "failed: config"),
         ({"status": "failed"}, "failed: error"),
         ({"status": "cancelled"}, "cancelled"),
