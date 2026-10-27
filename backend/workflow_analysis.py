@@ -25,19 +25,12 @@ def infer_machine_from_runner_name(runner_name: str | None) -> str | None:
         return None
     if "github" in token or "hosted" in token or token.startswith("ubuntu"):
         return "GitHub Hosted"
-    if "node-anvme" in token or "nvme" in token:
-        return "node-a-NVMe"
-    if "node-assd" in token or token.endswith("ssd") or "ssd" in token:
-        return "node-a-SSD"
-    if "node-a" in token:
-        return "node-a"
-    if "hub-a" in token or token.startswith("desk") or "desktop" in token:
+    for k, m in (("nvme", "node-a-NVMe"), ("ssd", "node-a-SSD"), ("nodea", "node-a")):
+        if k in token:
+            return m
+    if "huba" in token or "desk" in token:
         return "hub-a"
-    if "node-b" in token or "oglap" in token:
-        return "node-b"
-    if "node-c" in token:
-        return "node-c"
-    return value
+    return "node-b" if ("nodeb" in token or "oglap" in token) else ("node-c" if "nodec" in token else value)
 
 
 def _parse_ts(value: str | None) -> _dt.datetime | None:
