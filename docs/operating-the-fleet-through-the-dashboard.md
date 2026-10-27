@@ -56,7 +56,7 @@ Body fields (`RunBody`): `repo` (bare name), `issue` | `pr` | `prompt`, `provide
 cancelled`, or `blocked` when another agent holds the issue. Follow a run with `GET /api/staff/runs/{id}` (includes
 events) or `/stream`.
 
-### Grok dispatcher protocol
+### Grok Dispatcher Protocol
 
 Grok agents follow the canonical [dispatcher-first protocol](agents/grok.md#dispatcher-first-protocol)
 for classification, hub probes, idempotent dispatch, waiting, fallback evidence,

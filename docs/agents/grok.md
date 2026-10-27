@@ -24,7 +24,7 @@ Direct connections use the local network or Tailscale address (`http://deskcompu
 
 ---
 
-## Dispatcher-first protocol
+## Dispatcher-First Protocol
 
 Grok handles conversation, decisions, holds and owner questions itself. Route other
 work through RD, subject to the existing proposal-confirmation and cost gates

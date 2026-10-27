@@ -9,17 +9,29 @@ GUIDE = ROOT / "docs/agents/grok.md"
 
 
 def protocol() -> str:
-    return GUIDE.read_text().split("## Dispatcher-first protocol", 1)[1].split("\n## ", 1)[0]
+    return GUIDE.read_text().split("## Dispatcher-First Protocol", 1)[1].split("\n## ", 1)[0]
 
 
 @pytest.mark.parametrize(
     "requirement",
     [
-        "hub_unreachable", "two probes", "terminally failed twice",
-        "no provider available", "5 minutes", "live RD lease",
-        "Sidekick packaging", "Assessment Board", "C3", "#2657",
-        "Gasification_Model", "staff_thread_wait", "Idempotency-Key",
-        "RM #2376", "subscription CLI", "ledger/check-in", "verified outcome",
+        "hub_unreachable",
+        "two probes",
+        "terminally failed twice",
+        "no provider available",
+        "5 minutes",
+        "live RD lease",
+        "Sidekick packaging",
+        "Assessment Board",
+        "C3",
+        "#2657",
+        "Gasification_Model",
+        "staff_thread_wait",
+        "Idempotency-Key",
+        "RM #2376",
+        "subscription CLI",
+        "ledger/check-in",
+        "verified outcome",
     ],
 )
 def test_dispatcher_protocol_retains_gate(requirement: str) -> None:
