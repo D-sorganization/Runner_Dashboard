@@ -23253,6 +23253,7 @@ export interface operations {
                 /** @description Include superseded passages */
                 include_superseded?: boolean;
                 run_id?: string | null;
+                repo?: string | null;
             };
             header?: never;
             path: {
