@@ -7,7 +7,6 @@ import dataclasses
 from pathlib import Path
 
 import pytest
-
 from staff.bot_builder import (
     BUILDER_EDITOR_V1,
     GrantCeiling,
