@@ -113,7 +113,108 @@ them before further recovery. An unhealthy restored release is reported as
 
 - State file: `~/.config/runner-dashboard/auto_deploy_state.json`
 - Fleet UI / Barb: `GET /api/fleet/status` → `auto_deploy` on each node
-  (`attention: true` after rollback or hard failure).
+  (`attention: true` after rollback, hard failure, or release staleness; see [Release-staleness attention](#release-staleness-attention-green-main-no-release)).
+
+## Release-Staleness Attention (Green Main, No Release)
+
+Auto-deploy only deploys a main commit that is both CI-green **and** has a
+published `dashboard-X.Y.Z` release. If main is green but the Main CI
+auto-release gate never publishes, nodes silently sit on an old build. Each
+cycle therefore also checks how long green main has gone unreleased and raises
+`attention` when it exceeds a limit (RD #2932). Code:
+`deploy/node_auto_deploy/staleness.py`, `scan_main_window` in
+`deploy/node_auto_deploy/ci_gate.py`, and `evaluate_cycle` in
+`deploy/node_auto_deploy/runner.py`.
+
+### Knobs
+
+| Variable                           | Default | Meaning                                                                                                       |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| `AUTO_DEPLOY_MAX_UNRELEASED_HOURS` | `3`     | Attention when the newest green-but-unreleased main commit is older than this many hours (by committer date). |
+| `AUTO_DEPLOY_MAX_GREEN_BEHIND`     | `5`     | Attention when more than this many green main commits (within the last 20 scanned) have no release.           |
+
+Either condition is enough. Values must be positive numbers (the second is
+truncated to an integer); an unset, empty, non-numeric, zero, or negative value
+silently falls back to the default (`_env_number` in `deploy/node-auto-deploy.py`).
+
+Set them in the node env file `~/.config/runner-dashboard/env`, the same file
+that holds `GH_TOKEN`, `HUB_URL`, and `RUNNER_DASHBOARD_AUTO_DEPLOY`. The
+systemd unit loads it with `EnvironmentFile=` (see
+`deploy/systemd/runner-dashboard-auto-deploy.service`), so no unit edit or
+reinstall is needed; the next timer tick picks the change up:
+
+```bash
+# ~/.config/runner-dashboard/env
+AUTO_DEPLOY_MAX_UNRELEASED_HOURS=6
+AUTO_DEPLOY_MAX_GREEN_BEHIND=8
+```
+
+### When Attention Is Raised
+
+Each cycle walks the last 20 `main` commits newest-first until the first
+green commit that has a release, and collects the green commits without one.
+The newest of those is the _candidate_. Attention is raised only if a candidate
+exists and it is too old or too many green commits are behind. A red main does
+**not** raise this signal (it is reported as a CI gate failure instead), and
+neither does a green main whose HEAD is already released.
+
+The reason text has this exact format (`<sha7>` is the first 7 characters of
+the newest green unreleased commit, `<iso>` its committer timestamp, and the
+" since ..." part is omitted if the timestamp is unknown):
+
+```text
+no release published for green main <sha7> since <iso> (<N> green commit(s) behind)
+```
+
+The reason is prefixed to the cycle message, so it appears as
+`<reason>; <original message>` in the state file and logs. The prefix is
+applied to the `CI gate: ...` failure and to the
+`already at <sha7> (main HEAD <sha7> awaiting CI/release)`. That last message,
+and the `CI gate:` message when no deployable commit exists, now name the newest
+main candidate (the HEAD or newest commit awaiting CI or release) so an operator
+can see which commit is stuck without querying GitHub.
+
+### Where It Shows Up
+
+- `auto_deploy_state.json`: `attention: true`, with the reason in `message` and
+  the newest event in `events`.
+- `GET /api/fleet/status` -> `auto_deploy.attention` and `auto_deploy.message`
+  on each node, served by `backend/node_auto_deploy_status.py` (best-effort
+  read of the state file; a missing or unreadable file reports
+  `attention: false`).
+
+The flag is recomputed every cycle, so it clears by itself on the first cycle
+where main is released or back under both limits.
+
+### What to Check When It Fires
+
+A green main with no release usually means the **Main CI auto-release** gate is
+skipping (or failing) rather than a node problem.
+
+1. Find the workflow run for the stuck commit: _Main CI auto-release_
+   (`.github/workflows/main-ci-auto-release.yml`), which runs after the
+   `CI Standard` and `Frontend Tests` workflows complete on `main`. Read the gate job log.
+2. In `deploy/publish-main-ci-release.sh`, these log lines explain a missing
+   release:
+   - `CI gate has terminal failures for <sha>; skipping release`: a required
+     check on that commit failed, so the publisher exits 0 without a release.
+     Fix or re-run the failing check; the node scanner treats the same commit
+     as not green.
+   - `CI gate not satisfied for <sha> after N attempts; skipping release`: a
+     check stayed pending past the wait window.
+   - `... was superseded by <sha>` / `is not an ancestor of current main` /
+     `is older than the latest auto-release`: the candidate was skipped on
+     purpose; a newer commit should be released instead.
+   - `CI gate response is invalid or incomplete ...; refusing release`: an
+     error exit; investigate the check-runs payload.
+3. Remember that the node scanner and the publisher share the same gate
+   (`NON_BLOCKING_DEPLOY_CHECK_NAMES` in `ci_gate.py` lists the advisory checks
+   both ignore). A check present in one view but not the other is a bug.
+4. If the workflow never ran, check that `CI Standard` / `Frontend Tests`
+   completed on that commit, then trigger it manually with `workflow_dispatch`
+   and the full commit SHA.
+5. Once a release exists the next timer tick deploys it with no node action.
+   Do not raise the limits to silence the flag unless the delay is understood.
 
 ## Manual dry-run
 

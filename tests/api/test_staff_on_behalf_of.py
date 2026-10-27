@@ -68,7 +68,7 @@ def client(tmp_path: Any, monkeypatch: pytest.MonkeyPatch, tmp_audit_db: store_m
 def test_sign_and_verify_on_behalf_of_roundtrip() -> None:
     signing_key = "dummy-test-key"  # pragma: allowlist secret
     header = fleet_mod.sign_on_behalf_of(
-        principal="user:dieter",
+        principal="user:operator",
         surface="thread",
         thread_id="thr-123",
         request_id="req-abc",
@@ -78,7 +78,7 @@ def test_sign_and_verify_on_behalf_of_roundtrip() -> None:
 
     verified = fleet_mod.verify_on_behalf_of(header, secret=signing_key)
     assert verified is not None
-    assert verified["principal"] == "user:dieter"
+    assert verified["principal"] == "user:operator"
     assert verified["surface"] == "thread"
     assert verified["thread_id"] == "thr-123"
     assert verified["request_id"] == "req-abc"
@@ -89,7 +89,7 @@ def test_sign_and_verify_on_behalf_of_roundtrip() -> None:
 def test_verify_on_behalf_of_tampered_signature_rejected() -> None:
     signing_key = "dummy-test-key"  # pragma: allowlist secret
     header = fleet_mod.sign_on_behalf_of(
-        principal="user:dieter",
+        principal="user:operator",
         surface="thread",
         thread_id="thr-123",
         secret=signing_key,
@@ -103,7 +103,7 @@ def test_verify_on_behalf_of_tampered_signature_rejected() -> None:
 def test_verify_on_behalf_of_tampered_payload_rejected() -> None:
     signing_key = "dummy-test-key"  # pragma: allowlist secret
     header = fleet_mod.sign_on_behalf_of(
-        principal="user:dieter",
+        principal="user:operator",
         surface="thread",
         secret=signing_key,
     )
@@ -118,7 +118,7 @@ def test_verify_on_behalf_of_expired_rejected() -> None:
     signing_key = "dummy-test-key"  # pragma: allowlist secret
     old_time = int(time.time()) - 400  # 400 seconds ago (> default 300s TTL)
     payload = {
-        "principal": "user:dieter",
+        "principal": "user:operator",
         "surface": "thread",
         "thread_id": "thr-123",
         "request_id": "req-123",
@@ -154,7 +154,7 @@ def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, mon
     from routers import staff as staff_router
     from staff.dispatch_auth import require_staff_run_dispatch
 
-    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
+    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"node-b": "http://og:8321"})
     monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-token")  # pragma: allowlist secret
 
     seen: dict[str, Any] = {}
@@ -163,18 +163,18 @@ def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, mon
         seen["url"] = url
         seen["body"] = body
         seen["headers"] = headers
-        return 200, {"dry_run": False, "run": {"id": "peer-run-1"}, "machine": "OGLaptop"}
+        return 200, {"dry_run": False, "run": {"id": "peer-run-1"}, "machine": "node-b"}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
 
-    # Dispatched by user:dieter
+    # Dispatched by user:operator
     client.app.dependency_overrides[require_staff_run_dispatch()] = lambda: Principal(
-        id="user:dieter", type="user", name="Dieter", roles=["operator"]
+        id="user:operator", type="user", name="Dieter", roles=["operator"]
     )
 
     resp = client.post(
         "/api/staff/ad-hoc/run",
-        json={"prompt": "test forward", "machine": "oglaptop", "thread_id": "thread-99", "surface": "thread"},
+        json={"prompt": "test forward", "machine": "node-b", "thread_id": "thread-99", "surface": "thread"},
         headers=_XHR,
     )
     assert resp.status_code == 200, resp.text
@@ -183,7 +183,7 @@ def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, mon
     obo_header = seen["headers"]["X-Staff-On-Behalf-Of"]
     verified = fleet_mod.verify_on_behalf_of(obo_header, secret="test-fleet-token")  # pragma: allowlist secret
     assert verified is not None
-    assert verified["principal"] == "user:dieter"
+    assert verified["principal"] == "user:operator"
     assert verified["thread_id"] == "thread-99"
     assert verified["surface"] == "thread"
 
