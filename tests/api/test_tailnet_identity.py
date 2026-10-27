@@ -17,6 +17,7 @@ Covers ``backend/tailnet_identity.py`` and its wiring into
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -30,13 +31,32 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 import identity as _identity  # noqa: E402
+import tailnet_identity as _tailnet_identity  # noqa: E402
 from identity import Principal, require_principal  # noqa: E402
-from tailnet_identity import TransportPeerMiddleware, build_asgi_app, tailnet_principal  # noqa: E402
+from tailnet_identity import TransportPeerMiddleware, WhoIsIdentity, build_asgi_app, tailnet_principal  # noqa: E402
 
 _LOOPBACK_PEER = ("127.0.0.1", 54321)
 _TAILNET_CLIENT_IP = "100.87.12.4"
 _NON_TAILNET_IP = "203.0.113.7"
 _LOGIN = "alice@example.com"
+
+
+def _mock_whois_matching(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    login: str,
+    name: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 54321,
+) -> None:
+    """Make tailscaled's WhoIs confirm `login` for exactly `host:port` (#3011)."""
+
+    def _fake(h: str | None, p: int | None) -> WhoIsIdentity | None:
+        if h == host and p == port:
+            return WhoIsIdentity(login=login, name=name or login)
+        return None
+
+    monkeypatch.setattr(_tailnet_identity, "_tailscaled_whois", _fake)
 
 
 @pytest.fixture(autouse=True)
@@ -54,9 +74,10 @@ def _mock_request(
     transport_peer: str | None,
     client_host: str | None,
     headers: dict[str, str] | None = None,
+    transport_port: int | None = 54321,
 ) -> MagicMock:
     req = MagicMock()
-    req.scope = {"rd.transport_peer": transport_peer}
+    req.scope = {"rd.transport_peer": transport_peer, "rd.transport_peer_port": transport_port}
     req.client = MagicMock()
     req.client.host = client_host
     headers = headers or {}
@@ -73,6 +94,7 @@ def _mock_request(
 def test_tailnet_principal_admitted(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    _mock_whois_matching(monkeypatch, login=_LOGIN)
     req = _mock_request(
         transport_peer="127.0.0.1",
         client_host=_TAILNET_CLIENT_IP,
@@ -89,6 +111,7 @@ def test_tailnet_principal_admitted(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_tailnet_principal_admitted_name_falls_back_to_login(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    _mock_whois_matching(monkeypatch, login=_LOGIN, host="::1")
     req = _mock_request(
         transport_peer="::1",
         client_host="fd7a:115c:a1e0::1234",
@@ -124,6 +147,7 @@ def test_tailnet_principal_refused_login_not_allowed(monkeypatch: pytest.MonkeyP
 def test_tailnet_principal_login_allowlist_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "Alice@Example.com")
+    _mock_whois_matching(monkeypatch, login=_LOGIN)
     req = _mock_request(
         transport_peer="127.0.0.1",
         client_host=_TAILNET_CLIENT_IP,
@@ -180,6 +204,7 @@ def test_tailnet_principal_refused_missing_login_header(monkeypatch: pytest.Monk
 def test_require_principal_admits_tailnet_principal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    _mock_whois_matching(monkeypatch, login=_LOGIN)
     req = _mock_request(
         transport_peer="127.0.0.1",
         client_host=_TAILNET_CLIENT_IP,
@@ -254,6 +279,7 @@ def test_require_principal_loopback_denied_when_neither_flag_set(monkeypatch: py
 def test_resolve_principal_optional_returns_tailnet_principal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    _mock_whois_matching(monkeypatch, login=_LOGIN)
     req = _mock_request(
         transport_peer="127.0.0.1",
         client_host=_TAILNET_CLIENT_IP,
@@ -282,6 +308,7 @@ def test_resolve_principal_optional_none_without_tailnet_auth(monkeypatch: pytes
 def test_resolve_perimeter_principal_admits_tailnet(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    _mock_whois_matching(monkeypatch, login=_LOGIN)
     req = _mock_request(
         transport_peer="127.0.0.1",
         client_host=_TAILNET_CLIENT_IP,
@@ -303,6 +330,7 @@ def test_resolve_perimeter_principal_admits_tailnet(monkeypatch: pytest.MonkeyPa
 async def test_require_scope_checker_admits_tailnet_principal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    _mock_whois_matching(monkeypatch, login=_LOGIN, host=_LOOPBACK_PEER[0], port=_LOOPBACK_PEER[1])
 
     app = FastAPI()
     _scope_dep = Depends(_identity.require_scope("staff.dispatch"))
@@ -411,6 +439,7 @@ def _signed_in(monkeypatch: pytest.MonkeyPatch, client_host: str, self_ips: str 
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
     if self_ips is not None:
         monkeypatch.setenv("DASHBOARD_TAILSCALE_SELF_IPS", self_ips)
+    _mock_whois_matching(monkeypatch, login=_LOGIN)
     req = _mock_request(
         transport_peer="127.0.0.1",
         client_host=client_host,
@@ -455,6 +484,7 @@ def test_direct_tailnet_connection_without_serve_headers_when_direct_allow_enabl
     monkeypatch.setenv("DASHBOARD_TAILSCALE_DIRECT_ALLOW", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_OPERATOR_WRITES", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "dieterolson@github,dieterolson@gmail.com")
+    _mock_whois_matching(monkeypatch, login="dieterolson@github", host=_TAILNET_CLIENT_IP)
     req = _mock_request(
         transport_peer=_TAILNET_CLIENT_IP,
         client_host=_TAILNET_CLIENT_IP,
@@ -468,3 +498,96 @@ def test_direct_tailnet_connection_without_serve_headers_when_direct_allow_enabl
     assert "admin" in prin.roles
     assert _identity.principal_has_scope(prin, "staff.write")
     assert _identity.principal_has_scope(prin, "staff.admin")
+
+
+# ---------------------------------------------------------------------------
+# #3011: headers alone are not proof of identity — tailscaled's own WhoIs
+# record for this exact peer/port must corroborate the claimed login.
+# ---------------------------------------------------------------------------
+
+
+def test_tailnet_principal_refused_when_whois_has_no_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A local process that forges the serve headers over its own loopback
+    connection is refused: tailscaled never proxied that connection, so it
+    has no WhoIs record for this peer/port (the pre-#3011 vulnerability)."""
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", _LOGIN)
+    monkeypatch.setattr(_tailnet_identity, "_tailscaled_whois", lambda host, port: None)
+    req = _mock_request(
+        transport_peer="127.0.0.1",
+        client_host=_TAILNET_CLIENT_IP,
+        headers={"Tailscale-User-Login": _LOGIN, "Tailscale-User-Name": "Alice"},
+    )
+    assert tailnet_principal(req) is None
+
+
+def test_tailnet_principal_refused_when_whois_names_a_different_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tailscaled proxied *some* connection on this peer/port, but for a
+    different login than the header claims — refused, not trusted."""
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", f"{_LOGIN},mallory@example.com")
+    _mock_whois_matching(monkeypatch, login="mallory@example.com")
+    req = _mock_request(
+        transport_peer="127.0.0.1",
+        client_host=_TAILNET_CLIENT_IP,
+        headers={"Tailscale-User-Login": _LOGIN},
+    )
+    assert tailnet_principal(req) is None
+
+
+def test_tailnet_principal_direct_allow_refused_without_whois_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DASHBOARD_TAILSCALE_DIRECT_ALLOW must not blindly admit the first
+    configured login either: it still needs tailscaled's own confirmation."""
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_DIRECT_ALLOW", "1")
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "dieterolson@github,dieterolson@gmail.com")
+    monkeypatch.setattr(_tailnet_identity, "_tailscaled_whois", lambda host, port: None)
+    req = _mock_request(
+        transport_peer=_TAILNET_CLIENT_IP,
+        client_host=_TAILNET_CLIENT_IP,
+        headers={},
+    )
+    assert tailnet_principal(req) is None
+
+
+def test_tailscaled_whois_fails_closed_on_connect_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No tailscaled socket reachable (e.g. not installed/running) -> None,
+    never an exception that could be mishandled by a caller."""
+
+    def _raise_connect(self: object) -> None:
+        raise OSError("no such file or directory")
+
+    monkeypatch.setattr(_tailnet_identity._UnixSocketHTTPConnection, "connect", _raise_connect)
+    assert _tailnet_identity._tailscaled_whois("127.0.0.1", 54321) is None
+
+
+def test_tailscaled_whois_none_without_host_or_port() -> None:
+    assert _tailnet_identity._tailscaled_whois(None, 54321) is None
+    assert _tailnet_identity._tailscaled_whois("127.0.0.1", None) is None
+
+
+def test_tailscaled_whois_parses_verified_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The happy path: a 200 response with a UserProfile yields a WhoIsIdentity."""
+
+    class _FakeResponse:
+        status = 200
+
+        def read(self) -> bytes:
+            return json.dumps({"UserProfile": {"LoginName": _LOGIN, "DisplayName": "Alice"}}).encode()
+
+    class _FakeConn:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def request(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def getresponse(self) -> _FakeResponse:
+            return _FakeResponse()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(_tailnet_identity, "_UnixSocketHTTPConnection", _FakeConn)
+    result = _tailnet_identity._tailscaled_whois("127.0.0.1", 54321)
+    assert result == WhoIsIdentity(login=_LOGIN, name="Alice")
