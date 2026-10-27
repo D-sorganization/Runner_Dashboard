@@ -30,6 +30,11 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+  - id: agent-smithers
+    kind: grokbot
+    name: Smithers (Grok work-task intake)
+    scopes:
+      - fleet.read
   - id: agent-codex-hands
     kind: codex
     name: Codex hands (computer control)

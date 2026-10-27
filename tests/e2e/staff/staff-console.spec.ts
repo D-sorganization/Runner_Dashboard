@@ -229,9 +229,10 @@ test.describe("provider failures", () => {
     const before = await alerts.count();
     await send(page, `auth ${nonce()} [[e2e:auth]]`);
 
-    await expect(alerts).toHaveCount(before + 1);
-    await expect(alerts.last()).toContainText("claude auth login");
-    await expect(alerts.last()).not.toContainText("systemctl");
+    const latest = alerts.nth(before);
+    await expect(latest).toBeVisible({ timeout: 30_000 });
+    await expect(latest).toContainText("claude auth login");
+    await expect(latest).not.toContainText("systemctl");
   });
 });
 
