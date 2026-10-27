@@ -21,12 +21,12 @@ out to ``wsl.exe``. Those are covered by the Pester suite at
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import textwrap
 from pathlib import Path
 
 import pytest
-
 from pwsh_host import find_pwsh, run_pwsh_command, run_pwsh_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -86,14 +86,20 @@ def test_missing_enable_marker_exits_before_validation_or_recovery(tmp_path: Pat
 def test_keepalive_and_monitor_share_default_operator_markers() -> None:
     keepalive_text = SCRIPT.read_text(encoding="utf-8")
     monitor_text = (REPO_ROOT / "deploy" / "fleet-health-monitor.ps1").read_text(encoding="utf-8")
-    marker_suffixes = (
-        r"runner_fleet_monitor\hub-a-runner-drained.flag",
-        r"runner_fleet_monitor\hub-a-runner-enabled.flag",
+    marker_pattern = re.compile(
+        r"runner_fleet_monitor\\([a-z0-9-]+-runner-(?:drained|enabled)\.flag)",
+        re.IGNORECASE,
     )
+    markers_by_script = []
     for text in (keepalive_text, monitor_text):
         assert "[Environment]::GetFolderPath('UserProfile')" in text
-        for marker_suffix in marker_suffixes:
-            assert marker_suffix in text
+        markers = set(marker_pattern.findall(text))
+        assert {marker.rsplit("-runner-", 1)[1] for marker in markers} == {
+            "drained.flag",
+            "enabled.flag",
+        }
+        markers_by_script.append(markers)
+    assert markers_by_script[0] == markers_by_script[1]
 
 
 INSTALLER = REPO_ROOT / "deploy" / "install-wsl-keepalive-task.ps1"
