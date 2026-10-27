@@ -20,6 +20,8 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Protocol
 
+from coordination.relay_guard import RelayGuard
+
 log = logging.getLogger("dashboard.coordination.postman")
 
 BOARD_REPO = "Repository_Management"
@@ -167,11 +169,13 @@ class Postman:
         roster: Sequence[str],
         state: PostmanState,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        guard: RelayGuard | None = None,
     ) -> None:
         self.board, self.bus, self.source = board, bus, source
         self.roster = tuple(roster)
         self.state = state
         self._clock = clock
+        self.guard = guard or RelayGuard(frozenset(self.roster) | {BARB}, clock=clock)
 
     # -- planning (pure: reads only) -------------------------------------------------
     def _follow_rollover(self, actions: list[Action]) -> int:
@@ -277,6 +281,10 @@ class Postman:
         return CycleReport(False, issue, tuple(actions))
 
     def _deliver(self, delivery: Delivery) -> None:
+        """Pre: ``delivery`` is well-formed. Every delivery passes through the relay guard's
+        secret refusal first (#3233) — a token or key is refused, never sent or logged.
+        """
+        self.guard.refuse_secrets(delivery.body)
         self.bus.send(delivery)
         self.state.mark(delivery.idempotency_key)
 
