@@ -9,7 +9,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from private_topology_guard import TopologyFinding, format_findings, scan_text_line
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
