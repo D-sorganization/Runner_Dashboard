@@ -26,6 +26,7 @@ BOARD_REPO = "Repository_Management"
 BOARD_OWNER_REPO = f"D-sorganization/{BOARD_REPO}"
 POSTMAN_SESSION = "postman-bus"
 BARB = "barb"
+NOT_BROADCAST = frozenset({"user"})  # a person, not a runtime: board broadcasts are agent traffic
 RENEW_MARGIN = timedelta(minutes=30)
 MAX_BODY = 4000
 MAX_DELIVERED = 5000
@@ -201,16 +202,23 @@ class Postman:
     def _read_inboxes(self, sessions: list[dict[str, Any]]) -> tuple[list[tuple[dict[str, Any], str]], list[str]]:
         msgs: dict[str, tuple[dict[str, Any], str]] = {}
         warnings: list[str] = []
+        agents = {str(s.get("session")): str(s.get("agent") or "") for s in sessions}
         for s in sessions:
             sid, agent = str(s.get("session")), str(s.get("agent") or "")
             data = self.board.read_inbox(sid, str(s.get("repo") or BOARD_REPO))
             warnings += [str(w) for w in data.get("warnings") or []]
             for m in data.get("messages") or []:
-                mid, target = str(m["id"]), (m["recipient"] if m["recipient"] != "*" else agent)
-                msgs.setdefault(
-                    f"{mid}|{target if target in self.roster else sid}", (m, target if target in self.roster else sid)
-                )
+                for target in self._recipients(m, agent, sid, agents.get(str(m.get("session")), "")):
+                    msgs.setdefault(f"{m['id']}|{target}", (m, target))
         return list(msgs.values()), warnings
+
+    def _recipients(self, m: dict[str, Any], reader: str, reader_session: str, sender: str) -> list[str]:
+        """Who gets a copy. A ``*`` broadcast goes to every runtime agent but its sender, not only the reader."""
+        if m["recipient"] == "*":
+            fanout = [a for a in self.roster if a not in NOT_BROADCAST and a != sender]
+            return fanout or [reader if reader in self.roster else reader_session]
+        target = str(m["recipient"])
+        return [target if target in self.roster else reader_session]
 
     def _alert_targets(self, m: dict[str, Any]) -> set[str]:
         text, names = str(m.get("text", "")), (*self.roster, BARB)

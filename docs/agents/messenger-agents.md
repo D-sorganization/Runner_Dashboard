@@ -114,7 +114,7 @@ roll up into the existing coordination briefing, so `fleet_briefing` shows them 
 ## Slice 1: Dry Run
 
 `backend/coordination/postman_runner.py` wires the engine to the dashboard's board reads and a `gh api` issue
-check. Its bus and board-register adapters refuse every call, and the delivery cursor is never saved. Run it with
+check. Its bus and board-register adapters refuse every call; a dry cycle never saves the delivery cursor. Run it with
 `python scripts/postman_dry_run.py` (once, or `--every 300`); reports are kept in `POSTMAN_DATA_DIR` and served
 read-only at `GET /api/coordination/postman/reports`. The Staff Console view is left for slice 5.
 
@@ -129,6 +129,18 @@ The first dry run against the live board (2026-10-27, 22:42 UTC) planned 296 act
   Before going live, the first cycle should seed the cursor with the existing backlog instead of sending it.
 - **26 sender rejections** (14 unknown senders, 11 identity changes, 1 malformed comment) and **22 presence
   registrations** for roster agents that have no `pm-<agent>` session.
+
+What changed after that run (same day):
+
+- **Board #2376 reopened** on Dieter's decision. A closed issue still takes comments; reopening makes the
+  status honest and keeps every lane on the same address.
+- **Broadcasts fan out.** A `*` message read by any live session is now delivered to every runtime agent on the
+  roster except its sender's agent and `user` (a person). Before, it went only to the agent whose session read
+  it, so Codex and agy never got Claude-read broadcasts. Next run: 109 broadcasts to each of 21 agents.
+- **Cursor seed.** `python scripts/postman_dry_run.py --seed alert --seed rejection` (add `--seed message` to
+  skip old broadcasts too) marks today's backlog as already delivered in the local cursor and sends nothing.
+  Run it once, where the live postman will run, just before `POSTMAN_LIVE`. A dry run after seeding planned no
+  alerts or rejections (129 and 24 seeded).
 
 ## Questions for the Barbs and the Board
 

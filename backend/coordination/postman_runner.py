@@ -2,8 +2,9 @@
 
 Wires the pure postman engine (#2930) to the real board read path and a GitHub issue check, runs one
 ``cycle(dry_run=True)`` and keeps the last reports so an operator can see what it *would* deliver before
-anything is switched on. Nothing here can write: the bus and the board-register adapter refuse every call,
-and the delivery cursor is never saved. Live delivery is a later slice behind ``POSTMAN_LIVE``.
+anything is switched on. Nothing here can write to the board or the bus: both adapters refuse every call.
+A dry cycle never saves the delivery cursor; only ``seed_cursor``, run on purpose before go-live, writes it,
+and only locally. Live delivery is a later slice behind ``POSTMAN_LIVE``.
 DbC: a report always carries ``dry_run: True``; a board that cannot be read yields a report with ``error``
 instead of an exception, so a scheduler loop never dies on a GitHub outage.
 """
@@ -158,6 +159,63 @@ def read_reports(directory: Path | None = None, limit: int = 10) -> list[dict[st
     return out
 
 
+SEEDABLE = frozenset({"message", "alert", "rejection"})
+
+
+def _engine(
+    board_port: ReadOnlyBoard | None,
+    source: GitHubBoardSource | None,
+    roster_ids: Sequence[str] | None,
+    state: PostmanState,
+    clock: Callable[[], datetime],
+) -> Postman:
+    return Postman(
+        board_port or ReadOnlyBoard(),
+        RefusingBus(),
+        source or GitHubBoardSource(),
+        roster_ids or roster.agent_ids(),
+        state,
+        clock,
+    )
+
+
+def _load_state(directory: Path) -> PostmanState:
+    return PostmanState.load(
+        directory / STATE_FILE, default_board_issue=configured_board_issue() or DEFAULT_BOARD_ISSUE
+    )
+
+
+def seed_cursor(
+    *,
+    kinds: frozenset[str] = SEEDABLE,
+    board_port: ReadOnlyBoard | None = None,
+    source: GitHubBoardSource | None = None,
+    roster_ids: Sequence[str] | None = None,
+    directory: Path | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> dict[str, int]:
+    """Mark today's backlog as already delivered, so a first live cycle starts from new mail only.
+
+    Run once where the live postman will run, just before it is switched on. It plans a dry cycle and saves
+    every planned delivery of ``kinds`` into the cursor; nothing is sent or registered. Returns counts per kind.
+    Pre: ``kinds`` is a subset of ``SEEDABLE``. Post: a dry cycle right after plans none of ``kinds``.
+    """
+    if not kinds or not kinds <= SEEDABLE:
+        raise ValueError(f"kinds must be a non-empty subset of {sorted(SEEDABLE)}, got {sorted(kinds)}")
+    directory = directory or data_dir()
+    state = _load_state(directory)
+    report = _engine(board_port, source, roster_ids, state, clock).cycle(dry_run=True)
+    seeded = [a for a in report.actions if a.kind in kinds]
+    for action in seeded:
+        state.mark(action.key)
+    state.board_issue = report.board_issue
+    directory.mkdir(parents=True, exist_ok=True)
+    state.save(directory / STATE_FILE)
+    counts = dict(Counter(a.kind for a in seeded))
+    log.info("postman cursor seeded on board #%s: %s", report.board_issue, counts or "nothing to seed")
+    return counts
+
+
 def run_dry_cycle(
     *,
     board_port: ReadOnlyBoard | None = None,
@@ -168,17 +226,8 @@ def run_dry_cycle(
 ) -> dict[str, Any]:
     """Plan one postman pass, record it and return the report. Never sends, registers or saves the cursor."""
     directory = directory or data_dir()
-    state = PostmanState.load(
-        directory / STATE_FILE, default_board_issue=configured_board_issue() or DEFAULT_BOARD_ISSUE
-    )
-    engine = Postman(
-        board_port or ReadOnlyBoard(),
-        RefusingBus(),
-        source or GitHubBoardSource(),
-        roster_ids or roster.agent_ids(),
-        state,
-        clock,
-    )
+    state = _load_state(directory)
+    engine = _engine(board_port, source, roster_ids, state, clock)
     try:
         entry = report_entry(engine.cycle(dry_run=True), clock())
     except (BoardUnavailableError, subprocess.SubprocessError) as exc:

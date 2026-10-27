@@ -119,3 +119,25 @@ def test_reports_route_is_read_only_and_never_live(tmp_path: Path, monkeypatch: 
         assert body["live"] is False and len(body["reports"]) == 1
         assert body["reports"][0]["counts"]["message"] == 1
         assert client.get("/api/coordination/postman/reports?limit=0").status_code == 422
+
+
+def test_seed_marks_the_backlog_so_the_next_dry_cycle_plans_none_of_it(tmp_path: Path) -> None:
+    claim = message("c1", "Claimed RD #1 for codex")
+    board = ReadOnlyBoard(sessions_reader=sessions_ok, inbox_reader=inbox_with(message(), claim))
+    source = GitHubBoardSource(run=gh_issue(), configured=lambda: 2376)
+    counts = postman_runner.seed_cursor(
+        kinds=frozenset({"alert"}),
+        board_port=board,
+        source=source,
+        roster_ids=("claude", "codex"),
+        directory=tmp_path,
+        clock=lambda: NOW,
+    )
+    assert counts == {"alert": 4}  # claude (addressee) on both, Barb and codex on the claim; nothing sent
+    entry = run(tmp_path, board)
+    assert "alert" not in entry["counts"] and entry["counts"]["message"] == 2  # messages were not seeded
+
+
+def test_seed_refuses_unknown_kinds(tmp_path: Path) -> None:
+    with pytest.raises(ValueError):
+        postman_runner.seed_cursor(kinds=frozenset({"presence"}), directory=tmp_path)

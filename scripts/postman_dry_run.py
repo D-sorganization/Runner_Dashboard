@@ -4,6 +4,8 @@
   python scripts/postman_dry_run.py              one cycle, summary on stdout
   python scripts/postman_dry_run.py --json       the full report as JSON
   python scripts/postman_dry_run.py --every 300  repeat every 300 s until stopped
+  python scripts/postman_dry_run.py --seed alert --seed rejection
+                                                 mark today's backlog as seen (run once, before go-live)
 
 Reports are kept in ``$POSTMAN_DATA_DIR`` (default ``backend/data``) and served read-only at
 ``GET /api/coordination/postman/reports``. Needs a Repository_Management checkout (``STAFF_RM_ROOT``) and
@@ -22,7 +24,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from coordination.postman_runner import run_dry_cycle  # noqa: E402
+from coordination.postman_runner import SEEDABLE, run_dry_cycle, seed_cursor  # noqa: E402
 
 MIN_EVERY = 60
 
@@ -41,10 +43,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--json", action="store_true", help="print the full report as JSON")
     parser.add_argument("--every", type=int, default=0, help=f"repeat every N seconds (minimum {MIN_EVERY})")
+    parser.add_argument(
+        "--seed",
+        action="append",
+        choices=sorted(SEEDABLE),
+        help="mark the current backlog of this kind as already delivered, then exit; sends nothing",
+    )
     args = parser.parse_args(argv)
     if args.every and args.every < MIN_EVERY:
         parser.error(f"--every must be at least {MIN_EVERY} seconds")
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    if args.seed:
+        print(json.dumps(seed_cursor(kinds=frozenset(args.seed)), sort_keys=True), flush=True)
+        return 0
     while True:
         entry = run_dry_cycle()
         print(json.dumps(entry, indent=2) if args.json else summary(entry), flush=True)
