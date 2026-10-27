@@ -27,6 +27,15 @@ def test_trusted_hosts_include_extra_hosts_when_configured() -> None:
     assert {"testserver", "peer.example.test"} <= set(hosts)
 
 
+def test_trusted_hosts_include_browser_public_origin() -> None:
+    hosts = trusted_hosts_from_env(
+        {"DASHBOARD_BROWSER_PUBLIC_ORIGIN": "https://ops.example.invalid"},
+        registry={"machines": []},
+    )
+
+    assert "ops.example.invalid" in hosts
+
+
 def test_trusted_hosts_include_local_and_configured_public_origins() -> None:
     hosts = trusted_hosts_from_env(
         {

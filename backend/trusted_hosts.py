@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from urllib.parse import urlsplit
 
 from oauth_config import allowed_public_origins
@@ -17,10 +17,17 @@ _IPV6_LOOPBACK_HOST = re.compile(r"\[::1\](?::\d{1,5})?\Z", re.IGNORECASE)
 
 
 class IPv6AwareTrustedHostMiddleware:
-    """Apply Starlette Host checks while handling bracketed IPv6 loopback."""
+    """Apply Starlette Host checks while handling bracketed IPv6 loopback.
 
-    def __init__(self, app: ASGIApp, *, allowed_hosts: tuple[str, ...]) -> None:
-        self._trusted = TrustedHostMiddleware(app, allowed_hosts=allowed_hosts)
+    Hosts are recomputed from ``hosts_provider`` on every call rather than
+    fixed at construction, so config set after the app module is first
+    imported (tests monkeypatching origin env vars, config reloads) still
+    takes effect.
+    """
+
+    def __init__(self, app: ASGIApp, *, hosts_provider: Callable[[], tuple[str, ...]]) -> None:
+        self._app = app
+        self._hosts_provider = hosts_provider
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] in {"http", "websocket"}:
@@ -33,7 +40,8 @@ class IPv6AwareTrustedHostMiddleware:
                     headers[index] = (name, b"localhost")
                     scope = {**scope, "headers": headers}
                     break
-        await self._trusted(scope, receive, send)
+        trusted = TrustedHostMiddleware(self._app, allowed_hosts=self._hosts_provider())
+        await trusted(scope, receive, send)
 
 
 def trusted_hosts_from_env(
@@ -53,6 +61,9 @@ def trusted_hosts_from_env(
     public_origin = source.get("DASHBOARD_PUBLIC_ORIGIN", "").strip()
     if public_origin:
         origins.add(public_origin)
+    browser_public_origin = source.get("DASHBOARD_BROWSER_PUBLIC_ORIGIN", "").strip()
+    if browser_public_origin:
+        origins.add(browser_public_origin)
     for origin in origins:
         parsed = urlsplit(origin)
         if parsed.hostname:
