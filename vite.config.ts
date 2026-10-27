@@ -56,26 +56,6 @@ export default defineConfig({
         if (normalizedId.includes('/frontend/src/pages/FleetOrchestration')) {
           return 'fleet-orchestration'
         }
-        if (
-          normalizedId.includes('/frontend/src/pages/OverviewPage') ||
-          normalizedId.includes('/frontend/src/pages/FleetTab') ||
-          normalizedId.includes('/frontend/src/pages/OverviewLeases') ||
-          normalizedId.includes('/frontend/src/lib/fleetAlerts') ||
-          normalizedId.includes('/frontend/src/lib/fleetTelemetry') ||
-          normalizedId.includes('/frontend/src/lib/fleetMachines')
-        ) {
-          return 'fleet-overview'
-        }
-        if (
-          normalizedId.includes('/frontend/src/pages/RemediationPage') ||
-          normalizedId.includes('/frontend/src/pages/RemediationTab') ||
-          normalizedId.includes('/frontend/src/pages/RemediationPRs') ||
-          normalizedId.includes('/frontend/src/pages/RemediationIssues') ||
-          normalizedId.includes('/frontend/src/pages/remediationDispatch') ||
-          normalizedId.includes('/frontend/src/lib/providerModels')
-        ) {
-          return 'remediation'
-        }
       },
       },
     },
