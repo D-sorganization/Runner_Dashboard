@@ -290,7 +290,7 @@ async def run_panel(
             synthesis_ok=synthesis_ok,
             seat_errors=seat_errors if seat_errors else None,
         )
-        record_panel_turnover(thread_id, request.topic, consensus, rounds_used, ok)
+        record_panel_turnover(thread_id, request.topic, consensus, rounds_used, panel_status == "complete")
     except Exception as exc:  # noqa: BLE001 — record the failure on the thread, never leave it "running"
         log.exception("panel %s failed", thread_id)
         _set_panel_state(store, thread_id, status="failed", error=str(exc))
