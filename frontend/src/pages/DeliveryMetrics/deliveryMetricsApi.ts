@@ -1,3 +1,10 @@
+export interface DimensionBucket {
+  key: string;
+  prs: number;
+  merged: number;
+  median_ci_rounds: number | null;
+}
+
 export interface DeliveryMetricsSummary {
   since: string;
   until: string;
@@ -8,6 +15,11 @@ export interface DeliveryMetricsSummary {
     median_ci_rounds: number | null;
   };
   weekly_trends: { week_start: string; prs: number; merged: number; median_ci_rounds: number | null }[];
+  groupings: {
+    by_role: DimensionBucket[];
+    by_agent: DimensionBucket[];
+    by_model: DimensionBucket[];
+  };
   pr_drill_down: PrRollupRow[];
 }
 
@@ -18,6 +30,10 @@ export interface PrRollupRow {
   ci_rounds_to_green: number | null;
   lead_time_seconds: number | null;
   ci_wait_seconds: number | null;
+  rework_seconds?: number | null;
+  role: string | null;
+  agent: string | null;
+  model: string | null;
   churn_flags: string[];
 }
 
@@ -37,7 +53,12 @@ export function formatDuration(seconds: number | null | undefined): string {
 
 function assertSummary(value: unknown): DeliveryMetricsSummary {
   const v = value as DeliveryMetricsSummary;
-  if (!v?.summary || !Array.isArray(v.weekly_trends) || !Array.isArray(v.pr_drill_down)) {
+  if (
+    !v?.summary ||
+    !Array.isArray(v.weekly_trends) ||
+    !Array.isArray(v.pr_drill_down) ||
+    !v.groupings?.by_role
+  ) {
     throw new Error("Invalid delivery metrics response");
   }
   return v;
@@ -67,4 +88,9 @@ export async function fetchPullDrillDown(repoFull: string, number: number): Prom
 
 export function uniqueRepos(rows: PrRollupRow[]): string[] {
   return [...new Set(rows.map((r) => r.repo_full))].sort();
+}
+
+export function uniqueField(rows: PrRollupRow[], field: "role" | "agent" | "model"): string[] {
+  const values = rows.map((r) => r[field]).filter((v): v is string => Boolean(v));
+  return [...new Set(values)].sort();
 }

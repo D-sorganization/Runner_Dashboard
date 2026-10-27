@@ -794,9 +794,11 @@ from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)
 
+from routers import activity as _activity_router  # noqa: E402
 from routers import memory_v1 as _memory_v1_router  # noqa: E402
 
 app.include_router(_memory_v1_router.router)
+app.include_router(_activity_router.router)
 
 # Projects tab (issue #1199): per-repo charter, status and steward runs.
 from routers import projects as _projects_router  # noqa: E402
@@ -2693,6 +2695,11 @@ async def _startup() -> None:
         assert_no_maxwell_port_collision,
         assert_valid_active_registry,
     )
+    from overlay_contract import assert_overlay_ready
+
+    # Issue #3079: refuse to start when a configured private overlay is
+    # missing or invalid. No overlay configured -> no-op (unchanged behaviour).
+    assert_overlay_ready()
 
     _startup_reg = load_machine_registry()
     assert_no_maxwell_port_collision(

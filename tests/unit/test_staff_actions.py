@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import datetime as _dt
+import re
 from collections.abc import Iterator
 from functools import partial
 from pathlib import Path
@@ -33,6 +34,7 @@ from staff.actions import (
 )
 from staff.audit import reset_audit_store
 from staff.conversations import get_conversation_store, reset_conversation_store
+from staff.dashboard_navigation import DASHBOARD_NAV_TABS
 from staff.roles import RoleSpec
 from staff.runner import StaffRunner, reset_runner
 from staff.store import reset_store
@@ -165,6 +167,22 @@ def test_dashboard_navigation_is_allowlisted_read_only_action() -> None:
     unregistered = action.executor({"tab_id": "owner-console"}, ActionContext())
     assert unregistered.success is False
     assert unregistered.failure_class == "invalid_params"
+
+
+def test_dashboard_navigate_allowlist_covers_every_registered_frontend_tab() -> None:
+    """Regression for #2759: a tab registered in the frontend nav must be
+    navigable, same technique as test_frontend_integrity.py's
+    test_every_registered_desktop_tab_has_native_route_content."""
+    nav_data_path = (
+        Path(__file__).resolve().parents[2] / "frontend" / "src" / "shell" / "navRegistryData.ts"
+    )
+    nav_data = nav_data_path.read_text(encoding="utf-8")
+    registered_tab_ids = set(re.findall(r'tabId:\s*"([^"]+)"', nav_data))
+
+    assert registered_tab_ids, "expected at least one tabId in navRegistryData.ts"
+    assert registered_tab_ids <= DASHBOARD_NAV_TABS, (
+        f"Missing from DASHBOARD_NAV_TABS: {registered_tab_ids - DASHBOARD_NAV_TABS}"
+    )
 
 
 def test_approval_policy_matrix() -> None:

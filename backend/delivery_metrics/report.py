@@ -7,6 +7,12 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
+from delivery_metrics.attribution import (
+    attach_attribution,
+    build_attribution_index,
+    dimension_groups,
+    load_attribution_runs,
+)
 from delivery_metrics.load import check_runs_for_heads, get_pull, list_pulls_between
 from delivery_metrics.rollup import aggregate_window, build_pr_rollup, weekly_trends
 
@@ -26,6 +32,20 @@ def _checks_index(
     return out
 
 
+def _enrich_drill_down(
+    pulls: tuple,
+    pr_drill_down: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged_lookup = {(p.repo_full, p.number): p.merged for p in pulls}
+    index = build_attribution_index(load_attribution_runs(pulls))
+    enriched: list[dict[str, Any]] = []
+    for row in pr_drill_down:
+        key = (str(row["repo_full"]), int(row["number"]))
+        base = {**row, "merged": merged_lookup.get(key, False)}
+        enriched.append(attach_attribution(base, index.get(key)))
+    return enriched
+
+
 def build_metrics_report(
     conn: sqlite3.Connection,
     *,
@@ -40,13 +60,15 @@ def build_metrics_report(
     checks = _checks_index(conn, pulls)
     summary = aggregate_window(pulls, checks, now=moment)
     trends = weekly_trends(pulls, checks, now=moment)
+    pr_drill_down = _enrich_drill_down(pulls, summary["pr_drill_down"])
     return {
         "since": since.isoformat().replace("+00:00", "Z"),
         "until": until.isoformat().replace("+00:00", "Z"),
         "repo_full": repo_full,
         "summary": {k: v for k, v in summary.items() if k != "pr_drill_down"},
         "weekly_trends": trends,
-        "pr_drill_down": summary["pr_drill_down"],
+        "groupings": dimension_groups(pr_drill_down),
+        "pr_drill_down": pr_drill_down,
     }
 
 
