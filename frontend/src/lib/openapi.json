@@ -1611,12 +1611,22 @@
             "title": "Kind",
             "type": "string"
           },
+          "no_auto_reply": {
+            "default": false,
+            "title": "No Auto Reply",
+            "type": "boolean"
+          },
           "participants": {
             "items": {
               "type": "string"
             },
             "title": "Participants",
             "type": "array"
+          },
+          "participants_only": {
+            "default": false,
+            "title": "Participants Only",
+            "type": "boolean"
           },
           "role": {
             "anyOf": [

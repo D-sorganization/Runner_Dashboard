@@ -9182,8 +9182,18 @@ export interface components {
              * @default direct
              */
             kind: string;
+            /**
+             * No Auto Reply
+             * @default false
+             */
+            no_auto_reply: boolean;
             /** Participants */
             participants?: string[];
+            /**
+             * Participants Only
+             * @default false
+             */
+            participants_only: boolean;
             /** Role */
             role?: string | null;
             /** Title */
