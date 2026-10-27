@@ -83,7 +83,7 @@ describe("shortSha", () => {
 describe("machineTelemetryForRunner", () => {
   it("resolves CPU/RAM/uptime telemetry for a runner from the node map", () => {
     const nodesByName = {
-      deskcomputer: {
+      "hub-a": {
         last_seen: "2026-06-01T23:59:00Z",
         system: {
           cpu: { percent_1m_avg: 55 },
@@ -95,16 +95,16 @@ describe("machineTelemetryForRunner", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-02T00:00:00Z"));
     const t = machineTelemetryForRunner(
-      { name: "d-sorg-local-DeskComputer-3" },
+      { name: "d-sorg-local-hub-a-3" },
       nodesByName,
     );
-    expect(t.machine).toBe("DeskComputer");
+    expect(t.machine).toBe("hub-a");
     expect(t.cpu).toBe(55);
     // (1 - 8/32) * 100 = 75
     expect(t.memory).toBe(75);
     expect(t.uptime).toBe("1m 30s");
     expect(t.seen).toBe("1m ago");
-    expect(t.node).toBe(nodesByName.deskcomputer);
+    expect(t.node).toBe(nodesByName["hub-a"]);
   });
 
   it("falls back gracefully when the node is unknown / has no telemetry", () => {
@@ -117,20 +117,20 @@ describe("machineTelemetryForRunner", () => {
 
   it("uses memory.percent when total_gb is absent", () => {
     const t = machineTelemetryForRunner(
-      { name: "d-sorg-local-OGLaptop-1" },
-      { oglaptop: { system: { memory: { percent: 40 } } } },
+      { name: "d-sorg-local-node-b-1" },
+      { "node-b": { system: { memory: { percent: 40 } } } },
     );
     expect(t.memory).toBe(40);
   });
 });
 
 describe("runnerCurrentRun", () => {
-  const RUNNER = { name: "DeskComputer-runner-2", id: 77 };
+  const RUNNER = { name: "hub-a-runner-2", id: 77 };
 
   it("matches an in_progress run by runner name", () => {
     const runs = [
-      { status: "completed", runner_name: "DeskComputer-runner-2" },
-      { status: "in_progress", runner_name: "DeskComputer-runner-2", id: 1 },
+      { status: "completed", runner_name: "hub-a-runner-2" },
+      { status: "in_progress", runner_name: "hub-a-runner-2", id: 1 },
     ];
     expect(runnerCurrentRun(RUNNER, runs)).toEqual(runs[1]);
   });
@@ -141,7 +141,7 @@ describe("runnerCurrentRun", () => {
   });
 
   it("treats a run with no conclusion and non-completed status as active", () => {
-    const runs = [{ status: "waiting", runner_name: "DeskComputer-runner-2" }];
+    const runs = [{ status: "waiting", runner_name: "hub-a-runner-2" }];
     expect(runnerCurrentRun(RUNNER, runs)).toEqual(runs[0]);
   });
 
@@ -149,7 +149,7 @@ describe("runnerCurrentRun", () => {
     expect(runnerCurrentRun(RUNNER, [])).toBeUndefined();
     expect(
       runnerCurrentRun(RUNNER, [
-        { status: "completed", conclusion: "success", runner_name: "DeskComputer-runner-2" },
+        { status: "completed", conclusion: "success", runner_name: "hub-a-runner-2" },
       ]),
     ).toBeUndefined();
   });

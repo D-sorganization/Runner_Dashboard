@@ -51,7 +51,7 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
+      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
     outputs:
       runner: ${{ steps.select.outputs.runner }}
@@ -87,6 +87,7 @@ jobs:
         env:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
           CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
+          CI_PR_RUNNER_MODE: ${{ vars.CI_PR_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
           EVENT_NAME: ${{ github.event_name }}
@@ -116,6 +117,12 @@ jobs:
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-queue" >> "$GITHUB_OUTPUT"
             echo "Merge queue on GitHub-hosted runners (CI_QUEUE_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$CI_PR_RUNNER_MODE" = "hosted" ]; then
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "mode=hosted-pr" >> "$GITHUB_OUTPUT"
+            echo "PR checks on GitHub-hosted runners (CI_PR_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
