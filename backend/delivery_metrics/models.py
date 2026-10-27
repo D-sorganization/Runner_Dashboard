@@ -69,6 +69,7 @@ class CheckRunSnapshot:
     completed_at: datetime | None
     details_url: str
     app_slug: str
+    workflow_run_id: int | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,4 +83,5 @@ class CheckRunSnapshot:
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "details_url": self.details_url,
             "app_slug": self.app_slug,
+            "workflow_run_id": self.workflow_run_id,
         }
