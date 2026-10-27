@@ -1,4 +1,4 @@
-# ruff: noqa: B008
+# ruff: noqa: B008, I001
 #!/usr/bin/env python3
 """
 D-sorganization Runner Dashboard — FastAPI Backend
@@ -37,16 +37,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-# systemd watchdog / ready notification (issue #391 AC-3)
-try:
-    from systemd.daemon import notify as _sd_notify
-except ImportError:
-    _sd_notify = None
-
 import httpx
-from browser_ingress_guard import BrowserIngressMiddleware
-from browser_sessions import BrowserSessionMiddleware
-from cloudflare_access import CloudflareAccessValidator
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,18 +47,24 @@ from fastapi.responses import (
     JSONResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from identity import Principal, require_scope  # noqa: B008
-from middleware import MaxBodySizeMiddleware
 from pydantic import BaseModel, Field
-from routers import admin as admin_router
-from routers import auth as auth_router
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-from tailnet_identity import build_asgi_app
 
+# Add the backend module directory before imports of its sibling modules so
+# both ``python backend/server.py`` and ``python -m backend.server`` work.
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
+
+from browser_ingress_guard import BrowserIngressMiddleware  # noqa: E402
+from browser_sessions import BrowserSessionMiddleware  # noqa: E402
+from cloudflare_access import CloudflareAccessValidator  # noqa: E402
+from identity import Principal, require_scope  # noqa: B008, E402
+from middleware import MaxBodySizeMiddleware  # noqa: E402
+from routers import admin as admin_router  # noqa: E402
+from routers import auth as auth_router  # noqa: E402
+from tailnet_identity import build_asgi_app  # noqa: E402
 
 import agent_dispatch_router as agent_dispatch_router  # noqa: E402
 import agent_remediation as agent_remediation  # noqa: E402
@@ -196,6 +193,12 @@ from system_utils import get_system_metrics_snapshot  # noqa: E402
 from workflows.run_enrichment import (  # noqa: E402
     _get_recent_org_repos,
 )
+
+# systemd watchdog / ready notification (issue #391 AC-3)
+try:
+    from systemd.daemon import notify as _sd_notify
+except ImportError:
+    _sd_notify = None
 
 # datetime.UTC added in Python 3.11; fall back to timezone.utc on older runtimes.
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017

@@ -7,6 +7,15 @@
 # of slow CPython 3.14 source builds.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
+FROM node:24.20.0-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS frontend-build
+
+WORKDIR /app
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci
+COPY vite.config.ts tsconfig*.json ./
+COPY frontend/ ./frontend/
+RUN npm run build
+
 FROM python:3.13-slim@sha256:7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4
 
 WORKDIR /app
@@ -58,6 +67,7 @@ RUN pip install --no-cache-dir --upgrade \
 COPY --chown=appuser:appuser backend/ ./backend/
 COPY --chown=appuser:appuser config/ ./config/
 COPY --chown=appuser:appuser frontend/ ./frontend/
+COPY --from=frontend-build --chown=appuser:appuser /app/dist ./dist
 
 # Environment defaults
 ENV PYTHONPATH=/app

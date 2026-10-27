@@ -106,7 +106,7 @@ Open http://localhost:8321 in your browser.
 
 On a clean checkout `start-dashboard.sh` provisions a project-local `.venv` from
 the repo-root `requirements.txt` and builds the frontend bundle
-(`frontend/dist/`) via `npm ci && npm run build`. It exits non-zero with
+(`dist/`) via `npm ci && npm run build`. It exits non-zero with
 instructions if the dependencies or a working `npm` are unavailable, rather than
 starting a broken server.
 
