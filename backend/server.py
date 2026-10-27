@@ -2880,6 +2880,7 @@ async def _startup() -> None:
 @app.on_event("shutdown")
 async def _shutdown() -> None:
     """Close pooled HTTP clients on shutdown (issue #364)."""
+    _usage_metrics_router.get_usage_tracker().flush()
     await shutdown_http_clients()
     _BROWSER_ACCESS_VALIDATOR.close()
     log.info("Closed pooled HTTP clients")
