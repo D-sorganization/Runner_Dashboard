@@ -16,6 +16,7 @@ from delivery_metrics.attribution import (
 from delivery_metrics.load import check_runs_for_heads, get_pull, list_pulls_between
 from delivery_metrics.rollup import aggregate_window, build_pr_rollup, weekly_trends
 
+
 def _checks_index(
     conn: sqlite3.Connection,
     pulls: tuple,

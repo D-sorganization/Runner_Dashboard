@@ -48,6 +48,8 @@ def build_attribution_index(
     )
     index: dict[tuple[str, int], PrAttribution] = {}
     for run in ordered:
+        if run.pr_number is None:
+            continue
         repo_full = normalize_repo_full(run.repo, org=org)
         key = (repo_full, int(run.pr_number))
         index[key] = PrAttribution(
