@@ -404,10 +404,11 @@ def validate_registry(entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY) ->
     assert all(conductor_ids), "every entry needs a non-empty conductor_id"
     assert len(dashboard_ids) == len(set(dashboard_ids)), "duplicate dashboard_id"
     assert len(conductor_ids) == len(set(conductor_ids)), "duplicate conductor_id"
+    canonical_dashboard_ids = {entry.dashboard_id for entry in PROVIDER_REGISTRY}
     for alias, target in PROVIDER_ID_COMPATIBILITY.items():
         assert alias == alias.strip().lower(), f"provider alias must be normalized: {alias!r}"
-        assert alias not in dashboard_ids, f"provider alias shadows a canonical id: {alias!r}"
-        assert target in dashboard_ids, f"provider alias targets unknown id: {target!r}"
+        assert alias not in canonical_dashboard_ids, f"provider alias shadows a canonical id: {alias!r}"
+        assert target in canonical_dashboard_ids, f"provider alias targets unknown id: {target!r}"
     for e in entries:
         assert e.auth_mode in AUTH_KINDS, f"{e.dashboard_id}: bad auth_mode {e.auth_mode!r}"
         assert e.resource in RESOURCES, f"{e.dashboard_id}: bad resource {e.resource!r}"
