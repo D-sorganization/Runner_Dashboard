@@ -778,6 +778,12 @@
       "BoardRoutingCriteria": {
         "description": "Explicit requester-declared or system-extracted routing flags.",
         "properties": {
+          "confidential_data_egress": {
+            "default": false,
+            "description": "Confidential data egress; requires user sign-off before Board routing.",
+            "title": "Confidential Data Egress",
+            "type": "boolean"
+          },
           "cross_repo_contract": {
             "default": false,
             "title": "Cross Repo Contract",
@@ -787,11 +793,6 @@
             "default": 0,
             "title": "Estimated Child Issues",
             "type": "integer"
-          },
-          "inentec_data_egress": {
-            "default": false,
-            "title": "Inentec Data Egress",
-            "type": "boolean"
           },
           "new_dependency_or_egress": {
             "default": false,
@@ -2872,6 +2873,35 @@
         },
         "required": ["holds"],
         "title": "HoldsBody",
+        "type": "object"
+      },
+      "HostSettingsPutBody": {
+        "properties": {
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "global": {
+            "additionalProperties": true,
+            "title": "Global",
+            "type": "object"
+          },
+          "roles": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Roles",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "title": "HostSettingsPutBody",
         "type": "object"
       },
       "InitializeExecutorPayload": {
@@ -18352,6 +18382,82 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/host-settings": {
+      "get": {
+        "operationId": "get_host_settings_api_staff_host_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Settings Api Staff Host Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Host Settings",
+        "tags": ["staff"]
+      },
+      "put": {
+        "operationId": "put_host_settings_api_staff_host_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostSettingsPutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Host Settings Api Staff Host Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Host Settings",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/inbox": {
       "get": {
         "description": "Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.",
@@ -25084,6 +25190,82 @@
         ],
         "summary": "Put Holds V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/host-settings": {
+      "get": {
+        "operationId": "get_host_settings_api_v1_staff_host_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Settings Api V1 Staff Host Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Host Settings",
+        "tags": ["staff"]
+      },
+      "put": {
+        "operationId": "put_host_settings_api_v1_staff_host_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostSettingsPutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Host Settings Api V1 Staff Host Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Host Settings",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/inbox": {

@@ -59,6 +59,7 @@ jobs:
               "Agent-Redundant-PR-Closer.yml",
               "Verify-Issue-Closure.yml",
               "agent-panel-review.yml",
+<<<<<<< HEAD
               "apply-required-checks-supplement.yml",
               "arm-cap-reconcile.yml",
               "ci-nightly.yml",
@@ -71,6 +72,8 @@ jobs:
               "maxwell-contract-drift.yml",
               "reusable-pr-cap.yml",
               "taxonomy-rollout.yml",
+=======
+>>>>>>> origin/main
               "ci-secrets.yml",
               "ci-spec-check.yml",
               "docker-build.yml",
