@@ -23,6 +23,8 @@ import {
   type PullRequest,
 } from "./remediationDispatch";
 import { buildBulkPRRequest, dispatchBulkByRepo, keepFailedSelected } from "./Remediation/remediationBulkRequest";
+import type { ProviderRegistry } from "../lib/useProviderRegistry";
+import { useProviderRegistry } from "../lib/useProviderRegistry";
 
 export type { PullRequest } from "./remediationDispatch";
 
@@ -41,16 +43,8 @@ interface DispatchModalState {
 export interface RemediationPRsProps {
   /** Name recorded as the dispatch `approved_by`; defaults to "anonymous". */
   principalName?: string;
+  registry?: ProviderRegistry | null;
 }
-
-const PROVIDERS: ReadonlyArray<readonly [string, string]> = [
-  ["jules_api", "Jules API"],
-  ["codex_cli", "Codex CLI"],
-  ["claude_code_cli", "Claude Code CLI"],
-  ["gemini_cli", "Gemini CLI"],
-  ["ollama", "Ollama"],
-  ["cline", "Cline"],
-];
 
 const sortAccessors = {
   repo: (pr: PullRequest) => pr.repo || pr.repository || pr.full_name || "",
@@ -64,7 +58,11 @@ const sortAccessors = {
 
 export function RemediationPRsSubTab({
   principalName,
+  registry: registryProp,
 }: RemediationPRsProps = {}): React.ReactElement {
+  const { registry: fetchedRegistry } = useProviderRegistry();
+  const registry = registryProp ?? fetchedRegistry;
+  const providerOptions = registry?.selectableProviders ?? [];
   const [prs, setPrs] = useState<PullRequest[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -653,9 +651,9 @@ export function RemediationPRsSubTab({
                   boxSizing: "border-box",
                 }}
               >
-                {PROVIDERS.map((entry) => (
-                  <option key={entry[0]} value={entry[0]}>
-                    {entry[1]}
+                {providerOptions.map((p) => (
+                  <option key={p.dashboardId} value={p.dashboardId}>
+                    {p.label}
                   </option>
                 ))}
               </select>

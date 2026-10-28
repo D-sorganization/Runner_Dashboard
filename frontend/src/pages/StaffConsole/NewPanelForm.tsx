@@ -4,7 +4,7 @@
  * Implements topic, mode, rounds (1-6), 3-4 expert rows with preset picker,
  * inline validation, and cost-guard confirmation with re-submission.
  */
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TouchButton } from "../../primitives/TouchButton";
 import { GroupCostConfirm } from "./GroupCostConfirm";
 import {
@@ -40,21 +40,55 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
   const [presets, setPresets] = useState<PanelPreset[]>([]);
   const [providers, setProviders] = useState<string[]>(DEFAULT_PROVIDERS);
   const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [seatNotes, setSeatNotes] = useState<string[]>([]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [costError, setCostError] = useState<{ estimate: PanelCostEstimate | null; message: string } | null>(null);
+  const presetCatalogKey = useMemo(() => presets.map((preset) => preset.id).join("\0"), [presets]);
+  const selectedPresetIdRef = useRef(selectedPresetId);
+  selectedPresetIdRef.current = selectedPresetId;
+
+  const applyPresetExperts = useCallback(
+    (found: PanelPreset, providerList: string[] = providers) => {
+      const defaultProvider = providerList[0] || "claude";
+      setExperts(
+        found.experts.map((e) => ({
+          name: e.name,
+          perspective: e.perspective,
+          provider: defaultProvider,
+          model: "",
+        })),
+      );
+    },
+    [providers],
+  );
 
   useEffect(() => {
     let cancelled = false;
     fetchPanelPresets()
       .then((data) => {
-        if (!cancelled) {
-          setPresets(data.presets || []);
-          if (data.providers && data.providers.length > 0) {
-            setProviders(data.providers);
-          }
+        if (cancelled) return;
+        const loadedPresets = data.presets || [];
+        const providerList =
+          data.providers && data.providers.length > 0 ? data.providers : DEFAULT_PROVIDERS;
+        setPresets(loadedPresets);
+        if (data.providers && data.providers.length > 0) {
+          setProviders(data.providers);
         }
+        const presetId = selectedPresetIdRef.current;
+        if (!presetId) return;
+        const found = loadedPresets.find((preset) => preset.id === presetId);
+        if (!found) return;
+        const defaultProvider = providerList[0] || "claude";
+        setExperts(
+          found.experts.map((expert) => ({
+            name: expert.name,
+            perspective: expert.perspective,
+            provider: defaultProvider,
+            model: "",
+          })),
+        );
       })
       .catch(() => {
         // fail-open with defaults
@@ -75,19 +109,35 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
 
   const handleSelectPreset = (presetId: string) => {
     setSelectedPresetId(presetId);
+    setSeatNotes([]);
     if (!presetId) return;
     const found = presets.find((p) => p.id === presetId);
     if (!found) return;
 
     const defaultProvider = providers[0] || "claude";
-    const mapped: PanelFormExpert[] = found.experts.map((e) => ({
-      name: e.name,
-      perspective: e.perspective,
-      provider: defaultProvider,
-      model: "",
-    }));
+    const notes: string[] = [];
+    const mapped: PanelFormExpert[] = found.experts.map((e) => {
+      if (!e.provider) return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
+      if (e.available === false || !providers.includes(e.provider)) {
+        // Never swap silently: say which seat fell back, to what, and what it was meant to be.
+        notes.push(
+          `${e.name}: ${e.provider}${e.model ? ` (${e.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
+        );
+        return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
+      }
+      return { name: e.name, perspective: e.perspective, provider: e.provider, model: e.model ?? "" };
+    });
+    setSeatNotes(notes);
     setExperts(mapped);
   };
+
+  // Preset pick can beat fetchPanelPresets on a slow runner; apply when the catalog arrives.
+  useEffect(() => {
+    if (!selectedPresetId) return;
+    const found = presets.find((p) => p.id === selectedPresetId);
+    if (!found) return;
+    applyPresetExperts(found);
+  }, [applyPresetExperts, presetCatalogKey, presets, selectedPresetId]);
 
   const handleUpdateExpert = (index: number, patch: Partial<PanelFormExpert>) => {
     setExperts((prev) => {
@@ -120,6 +170,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
       confirm_cost: confirmCost,
       pack_id: "cartographer" as const,
       preload_codebase: true,
+      ground_repos: true,
       moderator_provider: providers[0] || "claude",
       experts: experts.map((e) => ({
         name: e.name.trim(),
@@ -174,6 +225,12 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
           onChange={(e) => handleSelectPreset(e.target.value)}
         >
           <option value="">Custom panel line-up…</option>
+          {selectedPresetId &&
+            !presets.some((preset) => preset.id === selectedPresetId) && (
+              <option value={selectedPresetId} disabled hidden>
+                {selectedPresetId}
+              </option>
+            )}
           {presets.map((preset) => (
             <option key={preset.id} value={preset.id}>
               {preset.title}
@@ -181,6 +238,16 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
           ))}
         </select>
       </div>
+
+      {seatNotes.length > 0 && (
+        <div role="status" aria-label="Preset seat fallback" className="panel-form__submit-error">
+          <ul>
+            {seatNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Topic Textarea */}
       <div className="panel-form__field">
