@@ -454,7 +454,10 @@ def restore_encrypted(
     anything is written; success adds one "restore" audit entry.
     """
     try:
-        plaintext = Fernet(key).decrypt(backup_path.read_bytes())
+        raw_token = backup_path.read_bytes()
+        if len(raw_token) % 4 != 0 or b"=" in raw_token.rstrip(b"="):
+            raise InvalidToken
+        plaintext = Fernet(key).decrypt(raw_token)
     except (OSError, InvalidToken, ValueError) as exc:
         log.warning("Private-context audit restore rejected: %s", exc)
         return False
