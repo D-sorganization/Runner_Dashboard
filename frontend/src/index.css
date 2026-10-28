@@ -154,6 +154,46 @@
      so the dashboard renders unchanged where a display face isn't installed. */
   --font-display-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI",
     Helvetica, Arial, sans-serif;
+
+  /* Legacy / component aliases (issue #3174) — mirror design/semanticCssVars.ts */
+  --fg: var(--text-primary);
+  --fg-muted: var(--text-muted);
+  --text-link: var(--accent-blue);
+  --text-accent: var(--accent-blue);
+  --text-danger: var(--accent-red);
+  --text-warning: var(--accent-yellow);
+  --text-tertiary: var(--text-secondary);
+  --border-color: var(--border);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-muted: #6e7681;
+  --border-active: var(--accent-blue);
+  --border-blue: var(--accent-blue);
+  --border-danger: var(--accent-red);
+  --border-warning: var(--accent-yellow);
+  --border-green: var(--accent-green);
+  --border-red: var(--accent-red);
+  --border-yellow: var(--accent-yellow);
+  --card-bg: var(--bg-card);
+  --bg-input: var(--bg-secondary);
+  --bg-overlay: var(--bg-secondary);
+  --bg-active: color-mix(in srgb, var(--accent-blue) 20%, transparent);
+  --bg-danger-subtle: rgba(248, 81, 73, 0.1);
+  --bg-warning-subtle: rgba(210, 153, 34, 0.15);
+  --accent-amber: var(--accent-orange);
+  --accent-red-bg: var(--badge-danger-bg);
+  --badge-success-text: var(--badge-success-fg);
+  --badge-warning-text: var(--badge-warning-fg);
+  --badge-danger-text: var(--badge-danger-fg);
+  --badge-neutral-text: var(--text-secondary);
+  --btn-primary-bg: var(--accent-green);
+  --btn-primary-text: var(--text-on-accent);
+  --color-fg-on-emphasis: var(--text-on-accent);
+  --color-text-secondary: var(--text-secondary);
+  --status-danger: var(--accent-red);
+  --shadow-sm: var(--shadow-soft);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono-family: var(--font-mono);
+  --font-body-family: var(--font-display-family);
 }
 
 /* Light-theme shadow re-tune (issue #827). useTheme sets data-theme=light for
@@ -206,6 +246,15 @@
   --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.10);
   --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.10), 0 4px 8px rgba(16, 24, 40, 0.08);
   --shadow-modal: 0 8px 24px rgba(16, 24, 40, 0.12), 0 20px 48px rgba(16, 24, 40, 0.16);
+
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-muted: #8c959f;
+  --bg-input: var(--bg-primary);
+  --bg-overlay: var(--bg-secondary);
+  --bg-active: color-mix(in srgb, var(--accent-blue) 20%, transparent);
+  --bg-danger-subtle: rgba(207, 34, 46, 0.08);
+  --bg-warning-subtle: rgba(154, 103, 0, 0.12);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.10);
 }
 
 @media (prefers-color-scheme: light) {
@@ -1742,7 +1791,7 @@ table, .tabular {
   padding: 14px;
 }
 .stat-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1772,7 +1821,7 @@ table, .tabular {
   color: var(--accent-yellow);
 }
 .stat-sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
   margin-top: 2px;
   /* Bound the sub-line so a long error message (e.g. raw Windows scheduled
@@ -2135,7 +2184,7 @@ table, .tabular {
 }
 .mobile-kpi-label {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.2;
 }
 .mobile-kpi-value {
@@ -2173,7 +2222,7 @@ table, .tabular {
   flex-wrap: wrap;
   margin-top: 7px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .mobile-run-actions {
   display: flex;
@@ -2618,11 +2667,34 @@ table, .tabular {
   height: 14px;
   border-radius: 4px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 12px;
 }
 th.sortable.active .sort-indicator {
   color: var(--accent-blue);
   background: rgba(88, 166, 255, 0.12);
+}
+
+/*
+ * #2989: Fleet KPI/runner-card/status-pill text is set inline in
+ * pages/Fleet/{KpiHeader,RunnerCard,StatusPill}.tsx. #2826 is mid-flight
+ * against those same files, so these are CSS overrides (not component
+ * edits) to avoid merge conflicts; fold them into the components once
+ * #2826 lands. `!important` is required to beat the inline `style`.
+ */
+.kpi-label {
+  font-size: 12px !important;
+}
+.mini-bar-label {
+  font-size: 12px !important;
+}
+.runner-actions .touch-button {
+  font-size: 12px !important;
+}
+.status-pill-label {
+  /* opacity: .85 on top of the already-dim fg token pushed contrast to
+   * ~3.7:1; removing it restores >= 4.5:1 (verified against every
+   * --badge-*-fg/--badge-*-bg pair in both themes). */
+  opacity: 1 !important;
 }
 .data-table td {
   padding: 8px 12px;

@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from pathlib import Path
 from typing import Any, Protocol
 
 log = logging.getLogger("dashboard.coordination.postman")
@@ -126,6 +127,21 @@ class PostmanState:
     def from_json(cls, text: str) -> PostmanState:
         data = json.loads(text)
         return cls(board_issue=int(data["board_issue"]), delivered=[str(k) for k in data.get("delivered", [])])
+
+    def save(self, path: Path) -> None:
+        """Persist the cursor to ``path`` (JSON), atomically — a crash mid-write cannot corrupt it."""
+        tmp = path.with_suffix(f"{path.suffix}.tmp")
+        tmp.write_text(self.to_json(), encoding="utf-8")
+        tmp.replace(path)
+
+    @classmethod
+    def load(cls, path: Path, *, default_board_issue: int) -> PostmanState:
+        """Read the cursor from ``path``; a missing file starts fresh at ``default_board_issue``."""
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return cls(board_issue=default_board_issue)
+        return cls.from_json(text)
 
 
 def _parse_time(value: object) -> datetime | None:

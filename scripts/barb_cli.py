@@ -123,13 +123,30 @@ def build_cli() -> BarbCli:
     return BarbCli(FleetClient(token=token or None, agent=agent), agent=agent, token=token or None)
 
 
+def _one_line_reason(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip()) and "\n" not in value
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """``barb_cli.py {send|ask-barb|inbox|peers} ['{"to": ..., "kind": ..., "summary": ...}']``."""
+    """``barb_cli.py {send|ask-barb|inbox|peers} ['{"to": ..., "kind": ..., "summary": ...}'] [--reason LINE]``."""
     parser = argparse.ArgumentParser(description="rd-threads client (args are one JSON object)")
     parser.add_argument("verb", choices=("send", "ask-barb", "inbox", "peers"))
     parser.add_argument("args", nargs="?", default="{}", help="JSON object of verb arguments")
+    parser.add_argument("--reason", default="", help="one-line recommendation_reason (required for ask-barb)")
     ns = parser.parse_args(argv)
-    print(json.dumps(result := dispatch(build_cli(), ns.verb, json.loads(ns.args)), sort_keys=True, default=str))
+    payload = json.loads(ns.args)
+    if ns.verb == "ask-barb":
+        reason = (ns.reason or "").strip() or str(payload.get("recommendation_reason") or "").strip()
+        if not _one_line_reason(reason):
+            out = {
+                "ok": False,
+                "error": "missing_reason",
+                "message": "ask-barb requires a one-line --reason (or recommendation_reason in JSON)",
+            }
+            print(json.dumps(out, sort_keys=True, default=str))
+            return 1
+        payload["recommendation_reason"] = reason
+    print(json.dumps(result := dispatch(build_cli(), ns.verb, payload), sort_keys=True, default=str))
     return 0 if result["ok"] else 1
 
 

@@ -119,10 +119,12 @@ def test_oauth_callback_network_error_returns_502() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_oauth_callback_non_member_rejected_with_403() -> None:
-    """Non-org member is rejected with 403 for the production org."""
+def test_oauth_callback_checks_the_configured_org_for_membership(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The configured org, rather than a source constant, controls admission."""
     from fastapi import HTTPException
     from routers.auth import github_callback
+
+    monkeypatch.setenv("GITHUB_ORG", "example-org")
 
     token_bundle = {
         "access_token": "ghu_" + "T" * 36,
@@ -151,7 +153,8 @@ def test_oauth_callback_non_member_rejected_with_403() -> None:
                 asyncio.run(github_callback(req, code="code", state="st4"))
 
     assert exc_info.value.status_code == 403
-    assert "D-sorganization" in exc_info.value.detail
+    assert "example-org" in exc_info.value.detail
+    assert mock_client.get.await_args_list[1].args[0] == "https://api.github.com/orgs/example-org/members/outsider"
     assert "oauth_state" not in req.session
 
 
