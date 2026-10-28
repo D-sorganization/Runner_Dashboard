@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +133,18 @@ def test_pre_push_pytest_is_diff_scoped_in_the_repo_environment() -> None:
     # RM#1912: an isolated `language: python` venv cannot import the app.
     assert hook["language"] == "system"
     assert hook.get("pass_filenames") is False
+
+
+def test_pre_push_pytest_excludes_posix_only_tests() -> None:
+    hook = _pre_push_hook("pytest-unit")
+    args = " ".join(hook.get("args", []))
+    assert "not requires_posix" in args
+
+
+def test_requires_posix_marker_is_registered() -> None:
+    config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    markers = config["tool"]["pytest"]["ini_options"]["markers"]
+    assert any(marker.startswith("requires_posix:") for marker in markers)
 
 
 @pytest.mark.parametrize("hook_id", _HEAVY_SCANS)

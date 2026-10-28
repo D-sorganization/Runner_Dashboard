@@ -23,7 +23,12 @@ import { apiRequest, legacyFetch } from "../lib/api";
 import { isAnalysisTabKey } from "../lib/analysisTabs";
 import { HistoryTab } from "./History";
 import { ChartGlyph } from "./decompIcons";
-import { DeliveryMetricsPanel } from "./DeliveryMetrics/DeliveryMetricsPanel";
+
+// Lazy: the Delivery sub-tab is one of five mutually-exclusive panels below,
+// so keeping it out of the entry chunk costs nothing on first paint (#3282).
+const DeliveryMetricsPanel = React.lazy(() =>
+  import("./DeliveryMetrics/DeliveryMetricsPanel").then((m) => ({ default: m.DeliveryMetricsPanel })),
+);
 
 // ── Shared helper ────────────────────────────────────────────────────────────
 
@@ -937,7 +942,7 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
     subTab === "outcomes"
       ? h(AnalysisOutcomesTab, null)
       : subTab === "delivery"
-        ? h(DeliveryMetricsPanel, null)
+        ? h(React.Suspense, { fallback: null }, h(DeliveryMetricsPanel, null))
         : subTab === "stats"
           ? h(StatsTab, null)
           : subTab === "history"

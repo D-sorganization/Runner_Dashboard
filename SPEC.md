@@ -3348,7 +3348,7 @@ The `/api/agent-launcher/*` routes (Cline Launcher scheduler, #920) were retired
 | Variable                          | Default                                                  | Description                                                                         |
 | --------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `GITHUB_TOKEN`                    | (required)                                               | GitHub PAT or App token with org runner/workflow scopes                             |
-| `GITHUB_ORG`                      | `D-sorganization`                                        | GitHub organization name                                                            |
+| `GITHUB_ORG`                      | `D-sorganization` for fleet API calls; required for OAuth sign-in | GitHub organization whose members may sign in                                      |
 | `DASHBOARD_PORT`                  | `8321`                                                   | HTTP port the server listens on                                                     |
 | `DISPLAY_NAME`                    | `hostname`                                               | Display name shown in the UI header                                                 |
 | `NUM_RUNNERS`                     | `12`                                                     | Target number of self-hosted runners                                                |
@@ -3872,7 +3872,7 @@ invariants hold:
 - `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` are non-placeholder-like,
   whitespace-free values; `SESSION_SECRET` is explicitly configured with at
   least 32 whitespace-free characters.
-- `GITHUB_ORG` is exactly `D-sorganization`.
+- `GITHUB_ORG` is a valid GitHub organization name and is explicitly set when OAuth sign-in is enabled.
 - `DASHBOARD_PUBLIC_ORIGIN` is an HTTPS MagicDNS origin for a machine with
   `role: hub` in `machine_registry.yml`, or listed in
   `DASHBOARD_OAUTH_ALLOWED_ORIGINS` (comma-separated). When unset, the hub

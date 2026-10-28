@@ -55,6 +55,7 @@ ALLOWED_ACTIONS = frozenset(
         "email_intake",
         "intake_proposal_create",
         "intake_proposal_decide",
+        "host_flip",
     }
 )
 
@@ -79,6 +80,7 @@ MUTATING_ACTIONS = frozenset(
         "intake_proposal_create",
         "intake_proposal_decide",
         "email_intake",
+        "host_flip",
     }
 )
 
