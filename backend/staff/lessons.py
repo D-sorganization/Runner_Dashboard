@@ -13,6 +13,7 @@ from memory.expiry import expiry_is_future
 from memory.models import MemoryEntry
 from memory.redact import contains_secret
 from memory.store import get_memory_store, new_entry_id
+from staff.lesson_provenance import completed_lesson_run
 from staff.standards_registry import LESSONS_TOKEN_CAP, estimate_tokens
 from staff.store import RunRecord, RunStore
 
@@ -72,6 +73,10 @@ def file_proposed_lessons(
     """File STAFF_LESSON lines as proposed lesson entries for cleanly exited runs."""
     if rec.status != "succeeded" or (rec.exit_code is not None and rec.exit_code != 0):
         return []
+    authoritative = completed_lesson_run(run_store, rec)
+    if authoritative is None:
+        return []
+    rec = authoritative
 
     input_data: list[dict[str, Any]] | str = ""
     if transcript_path and transcript_path.is_file():
@@ -89,6 +94,7 @@ def file_proposed_lessons(
         return []
 
     from memory.service import _validate_and_resolve_expires_at
+    from staff.lesson_locator import locate_lesson_evidence
 
     mem_store = get_memory_store()
     now_str = datetime.now(UTC).isoformat()
@@ -104,6 +110,12 @@ def file_proposed_lessons(
             "commit": getattr(rec, "commit", "") or getattr(rec, "head_ref", "") or "",
             "standards_version": rec.standards_version,
         }
+        try:
+            locator = locate_lesson_evidence(run_store, rec.id, rec.repo, text)
+        except ValueError:
+            locator = None
+        if locator is not None:
+            body["locator"] = locator
         try:
             enforce_entry_size(body, "lesson")
         except HTTPException:
@@ -155,7 +167,13 @@ def select_repo_lessons(
         return RepoLessonsResult("", (), {}, 0)
 
     store = memory_store or get_memory_store()
-    all_entries = store.list_entries(entry_type="lesson", repo=repo, limit=100)
+    all_entries: list[MemoryEntry] = []
+    cursor: tuple[str, str] | None = None
+    while True:
+        page, cursor = store.list_entries_page(entry_type="lesson", repo=repo, cursor=cursor)
+        all_entries.extend(page)
+        if cursor is None:
+            break
 
     now_iso = datetime.now(UTC).isoformat()
     eligible: list[MemoryEntry] = []

@@ -145,7 +145,6 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
     const Icon = item.Icon;
     const itemBtn = (
       <button
-        key={item.id}
         type="button"
         data-nav-item="true"
         title={railCollapsed ? undefined : item.tooltip}
@@ -197,14 +196,20 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
       </button>
     );
 
-    if (railCollapsed) {
-      return (
-        <Tooltip key={item.id} content={item.label} placement="right">
-          {itemBtn}
-        </Tooltip>
-      );
-    }
-    return itemBtn;
+    // The parent nav list uses role="list" (see below); axe-core's
+    // `list` rule requires every direct child to carry role="listitem".
+    // The button keeps its own button semantics inside the wrapper.
+    return (
+      <div role="listitem" key={item.id}>
+        {railCollapsed ? (
+          <Tooltip content={item.label} placement="right">
+            {itemBtn}
+          </Tooltip>
+        ) : (
+          itemBtn
+        )}
+      </div>
+    );
   };
 
   return (

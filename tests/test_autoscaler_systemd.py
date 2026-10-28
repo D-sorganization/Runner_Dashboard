@@ -28,6 +28,8 @@ def _cp(stdout: str = "", returncode: int = 0) -> MagicMock:
 def _prevent_host_runner_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
     """Never let lifecycle unit tests clean lockfiles in real runner homes."""
     monkeypatch.setattr("runner_state_cleanup.cleanup_runner_state", MagicMock())
+    # Lifecycle tests model idle runners; probe/race behavior has its own suite.
+    monkeypatch.setattr("autoscaler_busy._runner_is_busy", lambda unit: False)
 
 
 class TestListRunnerUnits:
@@ -262,8 +264,13 @@ class TestStartUnit:
             assert sd._start_unit("actions.runner.org.r.service") is True
 
     def test_failure(self) -> None:
+        from runner_control_health import get_runner_control_health, reset_runner_control_health
+
+        reset_runner_control_health()
         with patch("subprocess.run", return_value=_cp(returncode=1)):
             assert sd._start_unit("actions.runner.org.r.service") is False
+        assert get_runner_control_health() == {"status": "degraded", "last_action": "start"}
+        reset_runner_control_health()
 
     def test_start_uses_no_block_and_timeout(self) -> None:
         """Issue #935: start must use the helper's non-blocking operation."""

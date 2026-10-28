@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from staff.model_tiers import validate_role_tier
+from staff.provider_failover_config import (
+    FailoverStep,
+    parse_role_failover_chain,
+    validate_failover_chain,
+)
 from staff.provider_fallback import (
     ProviderFallbackRule,
     parse_provider_fallback_rules,
@@ -46,12 +51,14 @@ class RoleSpec:
     retired_reason: str = ""
     strategy: dict[str, Any] = field(default_factory=dict)
     persona: dict[str, Any] | str = ""
+    avatar: str | None = None
     chat: dict[str, Any] = field(default_factory=dict)
     tools: tuple[str, ...] = ()
     group: str | None = None
     max_attempts: int = 2
     fallback_providers: tuple[str, ...] = ()
     provider_fallbacks: tuple[ProviderFallbackRule, ...] = ()
+    failover_chain: tuple[FailoverStep, ...] = ()
     valid: bool = True
     errors: tuple[str, ...] = ()
     source_path: str = ""
@@ -65,6 +72,11 @@ class RoleSpec:
     def code_read_only(self) -> bool:
         """Unattended runs of this role are code-read-only (explicit ``permissions.code_read_only``; #1659)."""
         return self.permissions.get("code_read_only") is True
+
+    @property
+    def library_read(self) -> bool:
+        """Mints the ``library.read`` token scope (explicit ``permissions.library_read``; #2623)."""
+        return self.permissions.get("library_read") is True
 
     @property
     def fleet_actions(self) -> tuple[str, ...]:
@@ -143,11 +155,13 @@ class RoleSpec:
                 }
                 for r in self.provider_fallbacks
             ],
+            "failover_chain": [{"provider": s.provider, "model": s.model} for s in self.failover_chain],
             "valid": self.valid,
             "errors": list(self.errors),
             "error": self.errors[0] if self.errors else None,
             "dispatchable": self.dispatchable,
             "source_path": self.source_path,
+            "avatar": self.avatar,
         }
 
 
@@ -180,6 +194,7 @@ def parse_role(
     source_path: str = "",
     *,
     errors: tuple[str, ...] = (),
+    avatars_dir: Path | None = None,
 ) -> RoleSpec:
     """Build a RoleSpec from a parsed YAML mapping."""
     name = str(data.get("name") or (Path(source_path).stem if source_path else "")).strip()
@@ -238,8 +253,29 @@ def parse_role(
         max_att = 2
     fallback_provs = _as_tuple(retry_cfg.get("fallback_providers") or data.get("fallback_providers"))
     provider_fallback_rules = parse_provider_fallback_rules(data)
+    avatar_raw = data.get("avatar")
+    avatar: str | None = None
+    if avatar_raw not in (None, ""):
+        avatar = str(avatar_raw).strip()
+
     merged_errors = list(errors)
+    if avatar is not None:
+        from staff.role_avatar_paths import staff_avatars_dir_for_roles, validate_avatar_yaml_path
+
+        resolved_avatars = avatars_dir
+        if resolved_avatars is None and source_path not in ("", "<builtin>", "<inline>"):
+            try:
+                role_path = Path(source_path)
+                if role_path.suffix in (".yml", ".yaml"):
+                    resolved_avatars = staff_avatars_dir_for_roles(role_path.parent)
+            except OSError:
+                resolved_avatars = None
+        avatar_err = validate_avatar_yaml_path(avatar, avatars_dir=resolved_avatars)
+        if avatar_err:
+            merged_errors.append(avatar_err)
     merged_errors.extend(validate_provider_fallback_rules(provider_fallback_rules, _as_tuple(data.get("providers"))))
+    failover_chain = parse_role_failover_chain(data) or ()
+    merged_errors.extend(validate_failover_chain(failover_chain, _as_tuple(data.get("providers"))))
     role_tier = str(data.get("tier") or "routine").strip().lower()
     merged_errors.extend(validate_role_tier(role_tier))
     allow_escalation = bool(data.get("allow_tier_escalation", False))
@@ -276,12 +312,14 @@ def parse_role(
         retired_reason=retired_reason,
         strategy=dict(strategy) if isinstance(strategy, dict) else {},
         persona=persona,
+        avatar=avatar,
         chat=chat,
         tools=tools,
         group=group,
         max_attempts=max_att,
         fallback_providers=fallback_provs,
         provider_fallbacks=provider_fallback_rules,
+        failover_chain=failover_chain,
         valid=len(merged_errors) == 0,
         errors=tuple(merged_errors),
         source_path=source_path,
@@ -324,4 +362,11 @@ def read_and_parse_role_file(path: Path) -> RoleSpec:
             source_path=str(path),
         )
     errs = validate_role_data(data)
-    return parse_role(data, str(path), errors=tuple(errs))
+    from staff.role_avatar_paths import staff_avatars_dir_for_roles
+
+    return parse_role(
+        data,
+        str(path),
+        errors=tuple(errs),
+        avatars_dir=staff_avatars_dir_for_roles(path.parent),
+    )

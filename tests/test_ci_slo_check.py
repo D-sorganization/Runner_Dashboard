@@ -99,3 +99,25 @@ def test_stall_alarm_windows() -> None:
     )
     assert slo.stall_alarm(stalled)[0] and slo.run_check(stalled, mode="stall") == 1
     assert not slo.stall_alarm(healthy)[0] and slo.run_check(healthy, mode="stall") == 0
+
+
+class _Proc:
+    returncode = 0
+    stdout = "[]\n"
+    stderr = ""
+
+
+def test_gh_api_reads_with_get_even_with_query_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `gh api -f k=v` switches the method to POST unless told otherwise, which
+    # turned every live read into a create call ("gh: Invalid request").
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    seen: list[list[str]] = []
+
+    def runner(cmd: list[str]) -> _Proc:
+        seen.append(list(cmd))
+        return _Proc()
+
+    slo.gh_api("repos/o/r/pulls", runner=runner, params={"state": "open"})
+    cmd = seen[0]
+    assert cmd[cmd.index("--method") + 1] == "GET"
+    assert "state=open" in cmd

@@ -108,6 +108,58 @@ def test_idempotency_insert_failure_rolls_back_entry(store: AssistantMemoryStore
     )
 
 
+def test_list_entries_page_orders_by_created_at_then_id_descending(store: AssistantMemoryStore) -> None:
+    store.append(_entry(id="mem_b", created_at="2026-10-21T12:00:00Z"))
+    store.append(_entry(id="mem_a", created_at="2026-10-21T12:00:00Z"))
+    store.append(_entry(id="mem_c", created_at="2026-10-21T13:00:00Z"))
+
+    entries, next_cursor = store.list_entries_page(entry_type="session_digest", limit=10)
+
+    assert [e.id for e in entries] == ["mem_c", "mem_b", "mem_a"]
+    assert next_cursor is None
+
+
+def test_list_entries_page_cursor_continues_without_gap_or_duplicate(store: AssistantMemoryStore) -> None:
+    for i in range(5):
+        store.append(_entry(id=f"mem_{i}", created_at=f"2026-10-21T12:00:0{i}Z"))
+
+    first_page, cursor1 = store.list_entries_page(entry_type="session_digest", limit=2)
+    assert [e.id for e in first_page] == ["mem_4", "mem_3"]
+    assert cursor1 == ("2026-10-21T12:00:03Z", "mem_3")
+
+    second_page, cursor2 = store.list_entries_page(entry_type="session_digest", cursor=cursor1, limit=2)
+    assert [e.id for e in second_page] == ["mem_2", "mem_1"]
+
+    third_page, cursor3 = store.list_entries_page(entry_type="session_digest", cursor=cursor2, limit=2)
+    assert [e.id for e in third_page] == ["mem_0"]
+    assert cursor3 is None
+
+
+def test_list_entries_page_cursor_breaks_ties_on_id(store: AssistantMemoryStore) -> None:
+    store.append(_entry(id="mem_b", created_at="2026-10-21T12:00:00Z"))
+    store.append(_entry(id="mem_a", created_at="2026-10-21T12:00:00Z"))
+    store.append(_entry(id="mem_z", created_at="2026-10-21T12:00:00Z"))
+
+    first_page, cursor1 = store.list_entries_page(entry_type="session_digest", limit=1)
+    assert [e.id for e in first_page] == ["mem_z"]
+
+    second_page, cursor2 = store.list_entries_page(entry_type="session_digest", cursor=cursor1, limit=1)
+    assert [e.id for e in second_page] == ["mem_b"]
+
+    third_page, cursor3 = store.list_entries_page(entry_type="session_digest", cursor=cursor2, limit=1)
+    assert [e.id for e in third_page] == ["mem_a"]
+    assert cursor3 is None
+
+
+def test_list_entries_page_respects_filters_like_list_entries(store: AssistantMemoryStore) -> None:
+    store.append(_entry(id="mem_lesson", entry_type="lesson", repo="RD", review_status="accepted"))
+    store.append(_entry(id="mem_other", entry_type="session_digest"))
+
+    entries, _ = store.list_entries_page(entry_type="lesson", repo="RD", review_status="accepted", limit=10)
+
+    assert [e.id for e in entries] == ["mem_lesson"]
+
+
 def test_unicode_digest_bytes_count_toward_later_generic_write_cap(
     store: AssistantMemoryStore, monkeypatch: pytest.MonkeyPatch
 ) -> None:

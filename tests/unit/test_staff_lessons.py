@@ -96,6 +96,7 @@ def test_file_proposed_lessons_clean_run_and_provenance(tmp_path: Path) -> None:
     t_file = tmp_path / "transcript.log"
     t_file.write_text("STAFF_LESSON: Always use Conventional Commits.\n", encoding="utf-8")
     run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
 
     filed = file_proposed_lessons(run_store, rec, transcript_path=t_file)
     assert len(filed) == 1
@@ -140,13 +141,75 @@ def test_file_proposed_lessons_skips_oversize_and_files_valid_neighbor_at_limit(
         encoding="utf-8",
     )
 
-    filed = file_proposed_lessons(RunStore(tmp_path / "runs.db"), rec, transcript_path=transcript)
+    run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
+    filed = file_proposed_lessons(run_store, rec, transcript_path=transcript)
 
     assert len(filed) == 1
     entry = mem_store.get(filed[0])
     assert entry is not None
     assert entry.body["text"] == "y" * 390
     assert mem_store.list_entries(entry_type="lesson") == [entry]
+
+
+def test_file_proposed_lessons_attaches_verifiable_locator_for_marked_evidence(tmp_path: Path) -> None:
+    from staff.lesson_locator import locate_lesson_evidence
+
+    mem_store = get_memory_store()
+    rec = RunRecord(
+        id="run-marked",
+        role="ad-hoc",
+        provider="claude",
+        model="sonnet",
+        machine="host",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="10",
+        prompt="Fix",
+        status="succeeded",
+        exit_code=0,
+        standards_version="1.0.0",
+        requested_by="operator-1",
+    )
+    run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
+    run_store.append_event(
+        "run-marked", "assistant", "STAFF_LESSON: Use real locator.", lesson_evidence="assistant_answer"
+    )
+
+    filed = file_proposed_lessons(run_store, rec)
+    assert len(filed) == 1
+    entry = mem_store.get(filed[0])
+    assert entry is not None
+    assert entry.body["locator"] == locate_lesson_evidence(run_store, "run-marked", "Tools", "Use real locator.")
+
+
+def test_file_proposed_lessons_omits_locator_without_marked_evidence(tmp_path: Path) -> None:
+    mem_store = get_memory_store()
+    rec = RunRecord(
+        id="run-unmarked",
+        role="ad-hoc",
+        provider="claude",
+        model="sonnet",
+        machine="host",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="10",
+        prompt="Fix",
+        status="succeeded",
+        exit_code=0,
+        standards_version="1.0.0",
+        requested_by="operator-1",
+    )
+    t_file = tmp_path / "transcript.log"
+    t_file.write_text("STAFF_LESSON: No marked evidence behind this one.\n", encoding="utf-8")
+    run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
+
+    filed = file_proposed_lessons(run_store, rec, transcript_path=t_file)
+    assert len(filed) == 1
+    entry = mem_store.get(filed[0])
+    assert entry is not None and "locator" not in entry.body
 
 
 def test_select_repo_lessons_filtering() -> None:
@@ -166,6 +229,16 @@ def test_select_repo_lessons_filtering() -> None:
     assert res.skipped_ids.get("les-03") == "expired"
     assert res.skipped_ids.get("les-04") == "conflict"
     assert "les-06" not in res.injected_ids and "les-07" not in res.injected_ids
+
+
+def test_select_repo_lessons_pages_past_more_than_one_page_of_noise() -> None:
+    s = get_memory_store()
+    _add(s, "les-old-accepted", text="Old accepted lesson that must survive paging.")
+    for i in range(150):
+        _add(s, f"les-noise-{i:03d}", status="proposed", text=f"noise {i}")
+
+    res = select_repo_lessons("Tools", memory_store=s)
+    assert res.injected_ids == ("les-old-accepted",)
 
 
 def test_select_repo_lessons_budget_and_whole_selection() -> None:

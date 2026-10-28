@@ -197,10 +197,13 @@ export function useStaffConsole({
     newThreadFromThisConsole.current = null;
     let cancelled = false;
     const revision = beginSelection("restore", initialRole);
-    let request = initialRoleThreads.current.get(initialRole);
+    // A newly selected id may have been created by another mounted console.
+    // Re-read its authorized role list instead of restoring from a stale snapshot.
+    const restoreKey = JSON.stringify([initialRole, preferredRoleThreadId ?? null]);
+    let request = initialRoleThreads.current.get(restoreKey);
     if (!request) {
       request = threadApi.listThreads(initialRole);
-      initialRoleThreads.current.set(initialRole, request);
+      initialRoleThreads.current.set(restoreKey, request);
     }
     setOpeningRole(initialRole);
     request

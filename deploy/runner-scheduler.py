@@ -485,6 +485,8 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
 
 
 def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list[dict]:
+    if [u.num for u in units] != sorted(u.num for u in units):
+        raise ValueError("runner units must be sorted by slot number")
     actions: list[dict] = []
     desired = max(0, min(desired, len(units)))
     active = [unit for unit in units if unit.active]
@@ -493,8 +495,7 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
             actions.append({"runner": unit.num, "unit": unit.unit, "action": "start"})
             if not dry_run:
                 run_cmd(["systemctl", "start", unit.unit])
-    if len(active) > desired:
-        needed = len(active) - desired
+    if (needed := len(active) - desired) > 0:
         stopped = 0
         for unit in sorted((u for u in active if not u.busy), key=lambda item: item.num, reverse=True):
             if stopped >= needed:
@@ -508,6 +509,14 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
                 continue
             actions.append({"runner": unit.num, "unit": unit.unit, "action": "stop"})
             stopped += 1
+    if len(active) == desired:
+        missing = next((u for u in units[:desired] if not u.active and not u.busy), None)
+        surplus = next((u for u in reversed(active) if u not in units[:desired] and not u.busy), None)
+        if missing and surplus and _confirmed_idle(surplus, not dry_run, cleanup_stale=not dry_run):
+            if dry_run or run_cmd(["systemctl", "start", missing.unit]).returncode == 0:
+                actions.append({"runner": missing.num, "unit": missing.unit, "action": "start"})
+                if dry_run or stop_runner_safely(surplus):
+                    actions.append({"runner": surplus.num, "unit": surplus.unit, "action": "stop"})
     return actions
 
 

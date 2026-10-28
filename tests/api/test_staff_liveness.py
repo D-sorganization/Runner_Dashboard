@@ -11,9 +11,9 @@ import json
 import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
@@ -24,6 +24,7 @@ from staff import fleet as fleet_mod
 from staff import liveness as liveness_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
@@ -121,9 +122,19 @@ def test_only_dispatchable_scheduled_roles_are_reported(store: store_mod.RunStor
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("age_seconds", "expected"),
-    [(3600, "ok"), (int(1.5 * DAY), "ok"), (int(1.5 * DAY) + 1, "late"), (3 * DAY, "late"), (3 * DAY + 1, "dead")],
+    [
+        (3600, "ok"),
+        (int(1.5 * DAY), "ok"),
+        (int(1.5 * DAY) + 1, "late"),
+        (3 * DAY, "late"),
+        (3 * DAY + 1, "dead"),
+        (10 * DAY, "dead"),
+        (10 * DAY + 1, "retired"),
+    ],
 )
-def test_last_success_age_drives_ok_late_dead(store: store_mod.RunStore, age_seconds: int, expected: str) -> None:
+def test_last_success_age_drives_ok_late_dead_retired(
+    store: store_mod.RunStore, age_seconds: int, expected: str
+) -> None:
     _run(store, "night-watch", "succeeded", age_seconds, "s1")
     _run(store, "night-watch", "failed", 60, "f1")  # a newer failure does not reset the clock
     row = next(r for r in liveness_mod.compute_liveness(_roles(), store, {}, NOW) if r["role"] == "night-watch")
@@ -146,6 +157,17 @@ def test_fired_but_never_succeeded_is_dead_unless_attempt_still_active(store: st
 
 
 @pytest.mark.unit
+def test_fired_but_never_succeeded_retires_after_ten_intervals(store: store_mod.RunStore) -> None:
+    """Regression #3315: a role whose scheduling moved to another node (leader election)
+
+    must stop paging forever just because this node's stale ``last_fired`` is old.
+    """
+    state = {"night-watch": {"cursor": _iso(NOW), "last_fired": _iso(NOW - timedelta(days=10, seconds=1))}}
+    row = liveness_mod.compute_liveness(_roles(), store, state, NOW)[1]
+    assert row["status"] == "retired"
+
+
+@pytest.mark.unit
 def test_load_scheduler_state_tolerates_missing_and_bad_files(tmp_path: Path) -> None:
     assert liveness_mod.load_scheduler_state(tmp_path / "missing.json") == {}
     bad = tmp_path / "bad.json"
@@ -161,6 +183,20 @@ def test_load_scheduler_state_tolerates_missing_and_bad_files(tmp_path: Path) ->
 def test_fleet_event_accepts_staff_role_dead_kind() -> None:
     ev = FleetEvent(ts=1, severity="warning", kind="staff_role_dead", title="x", node="Desk")
     assert ev.to_dict()["kind"] == "staff_role_dead"
+
+
+@pytest.mark.unit
+def test_retired_rows_are_excluded_from_alerts_and_do_not_notify(monkeypatch: pytest.MonkeyPatch) -> None:
+    events = EventStore(capacity=10)
+    monkeypatch.setattr(liveness_mod, "get_event_store", lambda: events)
+    rows: list[dict[str, Any]] = [
+        {"role": "night-watch", "status": "retired", "schedule": "0 22 * * *", "last_success": None},
+        {"role": "hourly", "status": "dead", "schedule": "0 * * * *", "last_success": None},
+    ]
+    assert liveness_mod.alerts(rows, "ControlTower") == [
+        {"role": "hourly", "status": "dead", "schedule": "0 * * * *", "last_success": None, "machine": "ControlTower"}
+    ]
+    assert liveness_mod.notify_dead(rows, "ControlTower", clock=1_000_000.0) == ["hourly"]
 
 
 @pytest.mark.unit
@@ -201,18 +237,18 @@ async def test_aggregate_board_carries_liveness_and_alerts_from_online_nodes(mon
 
     async def fake_get(url: str, headers: dict[str, str]) -> dict[str, Any]:
         if "og:" in url:
-            return _board("OGLaptop", [dead, ok])
+            return _board("node-b", [dead, ok])
         raise ConnectionError("boom")
 
     monkeypatch.setattr(fleet_mod, "get_json", fake_get)
     merged = await fleet_mod.aggregate_board(
         _board("Desk", [{"role": "hourly", "status": "late"}]),
-        {"OGLaptop": "http://og:8321", "ControlTower": "http://ct:8321"},
+        {"node-b": "http://og:8321", "node-a": "http://ct:8321"},
     )
-    assert merged["machines"]["OGLaptop"]["liveness"] == [dead, ok]
+    assert merged["machines"]["node-b"]["liveness"] == [dead, ok]
     assert merged["liveness_alerts"] == [
         {"role": "hourly", "status": "late", "machine": "Desk"},
-        {"role": "night-watch", "status": "dead", "machine": "OGLaptop"},
+        {"role": "night-watch", "status": "dead", "machine": "node-b"},
     ]
 
 
@@ -231,7 +267,7 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     adapters = {**adapters_mod.ADAPTERS, "claude": fake}
     r = runner_mod.StaffRunner(store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="Desk")
     monkeypatch.setattr(r, "roles", _roles)
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -258,8 +294,9 @@ def test_board_and_summary_expose_liveness(
     monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {})
     events = EventStore(capacity=10)
     monkeypatch.setattr(liveness_mod, "get_event_store", lambda: events)
+    stale = _iso(datetime.now(UTC) - timedelta(days=5)).replace("Z", "+00:00")
     (tmp_path / "state.json").write_text(
-        json.dumps({"night-watch": {"cursor": "2026-09-01T00:00:00+00:00", "last_fired": "2026-09-01T00:00:00+00:00"}}),
+        json.dumps({"night-watch": {"cursor": stale, "last_fired": stale}}),
         encoding="utf-8",
     )
     board = client.get("/api/staff/board").json()
