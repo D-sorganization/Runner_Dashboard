@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from overlay_contract import overlay_companion_dir
 from staff.store import _config_dir
 
 HostPreference = Literal["grokbot-first", "rd-first", "both"]
@@ -21,7 +22,6 @@ DEFAULT_PREFERENCE: HostPreference = "grokbot-first"
 SCHEMA_VERSION = 1
 _log = logging.getLogger("dashboard.staff.host_settings")
 _HOST_SETTINGS_FILE = "host_settings.json"
-OVERLAY_PATH_ENV = "RD_OVERLAY_PATH"
 HOST_SETTINGS_PATH_ENV = "RD_HOST_SETTINGS_PATH"
 _persist_lock = threading.RLock()
 
@@ -168,9 +168,9 @@ def host_settings_path() -> Path:
     override = os.environ.get(HOST_SETTINGS_PATH_ENV, "").strip()
     if override:
         return Path(override).expanduser()
-    overlay = os.environ.get(OVERLAY_PATH_ENV, "").strip()
-    if overlay:
-        return Path(overlay).expanduser().parent / _HOST_SETTINGS_FILE
+    overlay_dir = overlay_companion_dir()
+    if overlay_dir is not None:
+        return overlay_dir / _HOST_SETTINGS_FILE
     return _config_dir() / _HOST_SETTINGS_FILE
 
 
