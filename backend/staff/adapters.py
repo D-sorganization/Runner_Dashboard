@@ -12,11 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_remediation.provider_registry import (
-    _ANTIGRAVITY_MODELS,
-    _CURSOR_AGENT_MODELS,
-    canonical_provider_id,
-)
+from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS, canonical_provider_id
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -42,9 +38,7 @@ from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
 
-# Provider ids used by staff roles. They intentionally match the
-# ``dashboard_id`` values in agent_remediation/provider_registry.py where an
-# entry exists there (claude_code_cli → "claude", codex_cli → "codex").
+# Provider ids used by staff roles (mapped to provider_registry.py via canonical_provider_id).
 ProviderId = str
 
 # ``agy`` is a Windows binary reached through WSL interop, whose command line is capped near 32 K
