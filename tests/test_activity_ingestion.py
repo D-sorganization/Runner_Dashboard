@@ -242,6 +242,25 @@ def test_checkin_route_accepts_strict_kinds_and_rejects_unknown(store, monkeypat
             json=[checkin_event(5, kind="pr_opened", pr=42, principal="cursor-cloud-1").model_dump(mode="json")],
         )
         assert has_pr.status_code == 200
+        wrong_source = client.post(
+            "/api/v1/activity/checkins",
+            json=[
+                checkin_event(6, source="recorder", kind="heartbeat", principal="cursor-cloud-1").model_dump(
+                    mode="json"
+                )
+            ],
+        )
+        assert wrong_source.status_code == 422
+        missing_issue = client.post(
+            "/api/v1/activity/checkins",
+            json=[checkin_event(7, kind="claimed", principal="cursor-cloud-1").model_dump(mode="json")],
+        )
+        assert missing_issue.status_code == 422
+        missing_branch = client.post(
+            "/api/v1/activity/checkins",
+            json=[checkin_event(8, kind="pushed", principal="cursor-cloud-1").model_dump(mode="json")],
+        )
+        assert missing_branch.status_code == 422
 
 
 def test_checkin_route_enforces_tighter_quota_than_events(store, monkeypatch):
@@ -261,6 +280,8 @@ def test_checkin_route_enforces_tighter_quota_than_events(store, monkeypatch):
     with TestClient(app) as client:
         response = client.post("/api/v1/activity/checkins", json=[item.model_dump(mode="json") for item in batch])
         assert response.status_code == 429
+        oversize = client.post("/api/v1/activity/checkins", content=b" " * (activity._CHECKIN_MAX_BYTES + 1))
+        assert oversize.status_code == 413
 
 
 def test_checkin_scope_cannot_read_or_write_other_activity_routes(store, monkeypatch):
@@ -269,7 +290,10 @@ def test_checkin_scope_cannot_read_or_write_other_activity_routes(store, monkeyp
     from identity import Principal, principal_has_scope
     from routers import activity
 
-    checkin_only = Principal(id="cursor-cloud-3", type="bot", name="fixture", scopes=["activity.checkin"])
+    checkin_only = Principal(
+        id="cursor-cloud-3", type="bot", name="fixture", roles=["checkin-only"], scopes=["activity.checkin"]
+    )
+    assert principal_has_scope(checkin_only, "activity.checkin")
     for other_scope in ("activity.read", "activity.write", "staff.read", "staff.chat", "assistant.chat"):
         assert not principal_has_scope(checkin_only, other_scope)
 
@@ -281,5 +305,6 @@ def test_checkin_scope_cannot_read_or_write_other_activity_routes(store, monkeyp
     monkeypatch.setattr(identity, "_resolve_principal_optional", lambda *_args: checkin_only)
     with TestClient(app) as client:
         assert client.get("/api/v1/activity").status_code == 403
+        assert client.get("/api/v1/activity/sessions").status_code == 403
         response = client.post("/api/v1/activity/events", json=[event().model_dump(mode="json")])
         assert response.status_code == 403
