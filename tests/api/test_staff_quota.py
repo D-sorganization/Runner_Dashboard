@@ -1,6 +1,6 @@
 """Live subscription quota for staff providers (issue #1587).
 
-Payload shapes below were captured on OGLaptop on 2026-09-26: a Claude Code
+Payload shapes below were captured on node-b on 2026-09-26: a Claude Code
 2.1.280 ``rate_limit_event`` from ``claude -p --output-format stream-json``, a
 Claude status-line ``rate_limits`` block, and a Codex 0.156.1 session-log
 ``token_count`` event.

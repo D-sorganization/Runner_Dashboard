@@ -15,6 +15,7 @@ import { CredentialsPage } from "../CredentialsPage";
 import { LinearSetup } from "../LinearSetup";
 import { PrincipalsTab } from "../Principals";
 import PushSettings from "../PushSettings";
+import { HostSettingsPanel } from "./HostSettingsPanel";
 
 export interface SettingsSection {
   id: string;
@@ -35,6 +36,7 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "principals", title: "Principals", render: () => <PrincipalsTab /> },
   { id: "theme", title: "Theme", render: () => <ThemeSettings /> },
   { id: "vault", title: "Secure Vault", render: () => <VaultPanel /> },
+  { id: "host-settings", title: "Host settings", render: () => <HostSettingsPanel /> },
 ];
 
 function scrollToHash(): void {
