@@ -44,12 +44,13 @@ jobs:
       (needs.pr-guard.result == 'success' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.result == 'failure')
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
     steps:
       - name: Require all applicable frontend checks
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
           import json
@@ -67,18 +68,31 @@ jobs:
           if scope["result"] != "success" or any(flag not in ("true", "false") for flag in flags):
               sys.exit("Frontend scope failed or did not report explicit scope decisions")
           frontend, staff = (flag == "true" for flag in flags)
-          required = {
-              "typecheck": True,
-              "vitest": frontend,
-              "perf-budget": frontend,
-              "playwright-e2e": frontend,
-              "staff-console-e2e": staff,
-          }
+          if os.environ.get("GITHUB_EVENT_NAME") == "merge_group":
+              required = {
+                  "typecheck": True,
+                  "vitest": frontend,
+                  "perf-budget": False,
+                  "playwright-e2e": False,
+                  "staff-console-e2e": False,
+              }
+          else:
+              required = {
+                  "typecheck": True,
+                  "vitest": frontend,
+                  "perf-budget": frontend,
+                  "playwright-e2e": frontend,
+                  "staff-console-e2e": staff,
+              }
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          merge_group = event_name == "merge_group"
           failed = []
           for job, applicable in required.items():
               result = needs[job]["result"]
-              allowed = {"success"} if applicable else {"success", "skipped"}
-              if result not in allowed:
+              if applicable:
+                  if result != "success":
+                      failed.append(f"{job}={result}")
+              elif result not in {"success", "skipped"}:
                   failed.append(f"{job}={result}")
           if failed:
               sys.exit("Frontend checks did not succeed: " + ", ".join(failed))
@@ -94,7 +108,7 @@ jobs:
       needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
@@ -109,6 +123,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            {
+              echo "run_frontend_tests=true"
+              echo "run_staff_e2e=false"
+              echo "run_api_contract=true"
+            } >> "$GITHUB_OUTPUT"
+            echo "merge_group: slim frontend gate (tsc + Vitest only)."
+            exit 0
+          fi
           if [ "$EVENT_NAME" != "pull_request" ]; then
             {
               echo "run_frontend_tests=true"
@@ -176,7 +199,7 @@ jobs:
     needs: frontend-scope
     # Required on main: never skip the job — gate heavy steps so the context
     # always reports (docs-only PRs and merge_group included).
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - name: Note when TypeScript validation is out of scope
@@ -231,7 +254,7 @@ jobs:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -265,8 +288,9 @@ jobs:
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -302,6 +326,7 @@ jobs:
       - vitest
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -314,7 +339,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers (Chromium only)
-        run: npx playwright install chromium --with-deps
+        run: bash scripts/ci_install_playwright_browsers.sh chromium
 
       - name: Set up Python for backend
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -348,19 +373,9 @@ jobs:
 
       - name: Start dashboard backend
         run: |
-          cd backend
-          GH_TOKEN=dummy DASHBOARD_PORT="$DASHBOARD_PORT" DASHBOARD_LOOPBACK_AUTH=1 python server.py &
-          echo "$!" > "$RUNNER_TEMP/dashboard-backend.pid"
-          # Wait for backend to be ready
-          for i in $(seq 1 30); do
-            if curl -sf "http://localhost:${DASHBOARD_PORT}/api/health" > /dev/null 2>&1; then
-              echo "Backend ready after ${i}s"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Backend did not become ready on port ${DASHBOARD_PORT}" >&2
-          exit 1
+          # Hermetic launcher: isolated HOME/config, no fleet derivation, temp
+          # leader lock, 90s readiness budget, backend log tail on failure (#2943).
+          python scripts/start_e2e_backend.py             --port "$DASHBOARD_PORT"             --root "$RUNNER_TEMP/e2e-backend"             --pid-file "$RUNNER_TEMP/dashboard-backend.pid"
 
       - name: Run Playwright e2e smoke tests
         run: |
@@ -393,6 +408,7 @@ jobs:
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       (needs.frontend-scope.outputs.run_staff_e2e == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -409,7 +425,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers (Chromium only)
-        run: npx playwright install chromium --with-deps
+        run: bash scripts/ci_install_playwright_browsers.sh chromium
 
       - name: Install backend dependencies
         run: |

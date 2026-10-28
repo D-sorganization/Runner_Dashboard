@@ -21,6 +21,10 @@ on:
   # Merge queue (Repository_Management#1890): `quality-gate` and `tests` must
   # report on the queue's merge commit. Non-PR events run full validation.
   merge_group:
+  schedule:
+    # Nightly bandit / pip-audit / security-scan (issue #2891); PRs run the same
+    # steps in Python scope. merge_group omits heavy scanners.
+    - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
       force_local:
@@ -54,42 +58,97 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet') }}
+      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
     outputs:
       runner: ${{ steps.select.outputs.runner }}
       mode: ${{ steps.select.outputs.mode }}
     steps:
+      - id: detect-expedite
+        name: Detect priority:expedite on this PR
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          PR_LABELS: ${{ toJson(github.event.pull_request.labels) }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          label='priority:expedite'
+          has=false
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "$PR_LABELS" | grep -q "\"name\": \"$label\"" && has=true || true
+          elif [ "$EVENT_NAME" = "merge_group" ] && [ -n "$MERGE_HEAD_REF" ]; then
+            pr=$(echo "$MERGE_HEAD_REF" | sed -n 's|.*/pr-\([0-9][0-9]*\)-.*|\1|p')
+            if [ -n "$pr" ]; then
+              names=$(gh pr view "$pr" --repo "$REPO" --json labels -q '.labels[].name' 2>/dev/null || true)
+              echo "$names" | grep -qx "$label" && has=true || true
+            fi
+          fi
+          echo "has_expedite=$has" >> "$GITHUB_OUTPUT"
+
       - id: select
         name: Select runner without API polling
         shell: bash
         env:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
+          CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
+          CI_PR_RUNNER_MODE: ${{ vars.CI_PR_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
+          EVENT_NAME: ${{ github.event_name }}
+          HAS_EXPEDITE: ${{ steps.detect-expedite.outputs.has_expedite }}
           FORK_PR: ${{ github.event.pull_request &&
             github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
           if [ "$FORK_PR" = "true" ]; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
-            echo "Fork PR - never routed to the self-hosted fleet (RM#1989)"
+            echo "Fork PR - never routed to the self-hosted fleet (RM#1989)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          if [ "$FORCE_LOCAL" = "true" ] || [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
+          if [ "$FORCE_LOCAL" = "true" ]; then
             echo "runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
             echo "mode=local" >> "$GITHUB_OUTPUT"
+            echo "Forced local fleet via workflow_dispatch input" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$HAS_EXPEDITE" = "true" ] && { [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "merge_group" ]; }; then
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "mode=hosted-expedite" >> "$GITHUB_OUTPUT"
+            echo "priority:expedite — GitHub-hosted runners (escalation lane #2952)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "mode=hosted-queue" >> "$GITHUB_OUTPUT"
+            echo "Merge queue on GitHub-hosted runners (CI_QUEUE_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$CI_PR_RUNNER_MODE" = "hosted" ]; then
+            echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            echo "mode=hosted-pr" >> "$GITHUB_OUTPUT"
+            echo "PR checks on GitHub-hosted runners (CI_PR_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
+            echo "runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
+            echo "mode=local" >> "$GITHUB_OUTPUT"
+            echo "Private repo or CI_RUNNER_MODE=local — routed to d-sorg-fleet" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
+            echo "Public repo hosted runner (CI_RUNNER_MODE not local)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ── Event tier + docs-only fast path (issue #1864, RM#1915) ─────────────
   # Decides how much of this workflow an event needs:
-  #   pull_request -> tier=pr: lint, format, type check and fast tests. The
-  #                   scope detector below may also skip the Python lane when
-  #                   the PR touches no Python surface (docs-only fast path).
-  #   merge_group  -> tier=full: the whole suite, heavy scans and coverage.
+  #   pull_request -> tier=pr: lint, format, type check, fast tests and heavy
+  #                   security scans when the Python lane is in scope. The scope
+  #                   detector below may skip the Python lane (docs-only path).
+  #   merge_group  -> tier=merge-group: slim gate (issue #2891): lint, fast
+  #                   tests and required aggregates only; heavy scans run on PR.
   #                   Never skipped: a queue group can mix several PRs.
   #   push (main)  -> tier=post-merge: no duplicate heavy jobs. Main only
   #                   moves through the merge queue with squash merges, so the
@@ -124,6 +183,11 @@ jobs:
               # run_python_tests comes from the python-scope step below.
               echo "tier=pr" >> "$GITHUB_OUTPUT"
               echo "full_suite=false" >> "$GITHUB_OUTPUT"
+              ;;
+            merge_group)
+              echo "tier=merge-group" >> "$GITHUB_OUTPUT"
+              echo "full_suite=false" >> "$GITHUB_OUTPUT"
+              echo "run_python_tests=true" >> "$GITHUB_OUTPUT"
               ;;
             push)
               echo "tier=post-merge" >> "$GITHUB_OUTPUT"
@@ -286,7 +350,51 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|security.py|maxwell.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts|api-types.ts|identity.py|machine_registry.py"
+          # RD-33: exact repo-relative paths, matched whole-line (grep -vxF).
+          # The old unanchored regex let look-alikes slip through uncapped
+          # (e.g. "queue.py" also matched backend/staff/board_queue.py;
+          # "identity.py" also matched backend/tailnet_identity.py). Kept
+          # inline (not an external file) so the list travels with the step
+          # and can't go missing out from under it. Both branches below filter
+          # the file list *before* counting lines, so there's no "total"
+          # summary line to special-case either.
+          EXEMPT_PATHS=$(cat <<'PATHS'
+          backend/server.py
+          backend/dispatch_contract.py
+          backend/agent_dispatch_router.py
+          backend/routers/credentials.py
+          backend/security.py
+          backend/routers/maxwell.py
+          backend/routers/queue.py
+          backend/routers/remediation.py
+          backend/routers/diagnostics.py
+          backend/gh_client.py
+          backend/system_utils.py
+          backend/runner_autoscaler.py
+          backend/queue_cleanup.py
+          backend/identity.py
+          backend/machine_registry.py
+          frontend/src/pages/Queue/index.tsx
+          frontend/src/lib/api-types.ts
+          frontend/src/shell/navRegistry.ts
+          frontend/src/pages/Principals.tsx
+          frontend/src/pages/Analysis.tsx
+          frontend/src/pages/RemediationPRs.tsx
+          frontend/src/pages/Machines.tsx
+          frontend/src/pages/FleetTab.tsx
+          frontend/src/pages/FleetOrchestration.tsx
+          frontend/src/pages/FeatureRequests.tsx
+          frontend/src/pages/RemediationTab.tsx
+          frontend/src/pages/Workflows.tsx
+          frontend/src/pages/RemediationIssues.tsx
+          frontend/src/pages/Queue/__tests__/Mobile.test.tsx
+          frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx
+          frontend/src/pages/Fleet/__tests__/Mobile.test.tsx
+          frontend/src/pages/Credentials/__tests__/Mobile.test.tsx
+          frontend/src/pages/Remediation/__tests__/Mobile.test.tsx
+          frontend/src/pages/Reports/__tests__/Mobile.test.tsx
+          PATHS
+          )
           if [ "$EVENT_NAME" = "pull_request" ]; then
             # Fail CLOSED (RD#2730): a shallow checkout has no merge base, so
             # fetch the exact base commit and diff it against HEAD directly
@@ -302,14 +410,16 @@ jobs:
             printf '%s\n' "$CHANGED"
             FILES=$(printf '%s\n' "$CHANGED" \
               | { grep -E '\.(py|ts|tsx|js)$' || true; } \
-              | { grep -vE "$EXEMPT" || true; })
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; })
             if [ -z "$FILES" ]; then
               echo "No changed source files require line-cap enforcement."
               exit 0
             fi
             OVER=$(printf '%s\n' "$FILES" | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           else
-            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "$EXEMPT" | awk '$1 > 500 {print $1, $2}')
+            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) \
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; } \
+              | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           fi
           if [ -n "$OVER" ]; then
             echo "::error::Files exceeding 500-line soft cap found:"
@@ -445,8 +555,12 @@ jobs:
       - name: Runner disk guard vendored manifest
         run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
       - name: Run bandit security scan
-        # Full tier only (merge_group / workflow_dispatch, issue #1864).
-        if: needs.changes.outputs.full_suite == 'true'
+        # pull_request (in scope), schedule, or workflow_dispatch — not merge_group.
+        if: >-
+          github.event_name != 'merge_group' &&
+          needs.changes.outputs.run_python_tests == 'true' &&
+          (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
+          needs.changes.outputs.full_suite == 'true')
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
         # MEDIUM findings are allow-listed in bandit.yaml with rationale per finding.
         # Exits non-zero on HIGH; MEDIUM/LOW are suppressed via config.
@@ -458,7 +572,12 @@ jobs:
         # continue-on-error here so the job fails on HIGH findings.
 
       - name: Upload bandit report
-        if: always() && needs.changes.outputs.full_suite == 'true'
+        if: >-
+          always() &&
+          github.event_name != 'merge_group' &&
+          needs.changes.outputs.run_python_tests == 'true' &&
+          (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
+          needs.changes.outputs.full_suite == 'true')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0
         with:
           name: bandit-security-report
@@ -485,8 +604,12 @@ jobs:
           fi
           echo "Documentation freshness check passed."
       - name: Security Audit (pip-audit)
-        # Full tier only (merge_group / workflow_dispatch, issue #1864).
-        if: needs.changes.outputs.full_suite == 'true'
+        # pull_request (in scope), schedule, or workflow_dispatch — not merge_group.
+        if: >-
+          github.event_name != 'merge_group' &&
+          needs.changes.outputs.run_python_tests == 'true' &&
+          (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
+          needs.changes.outputs.full_suite == 'true')
         # Blocking for CRITICAL/HIGH CVEs.
         # Known LOW/MEDIUM CVEs are allow-listed in requirements-audit-ignore.txt
         # with rationale and expiry date per entry.
@@ -514,10 +637,12 @@ jobs:
 
   security-scan:
     needs: [pick-runner, changes, ci-health-check, pr-guard]
-    # Heavy scan: full tier only (merge_group / workflow_dispatch, issue #1864).
+    # pull_request (in scope), schedule, or workflow_dispatch — not merge_group (#2891).
     if: >-
+      github.event_name != 'merge_group' &&
       needs.changes.outputs.run_python_tests == 'true' &&
-      needs.changes.outputs.full_suite == 'true' &&
+      (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
+      needs.changes.outputs.full_suite == 'true') &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
@@ -697,6 +822,9 @@ jobs:
           HEALTH: ${{ needs.ci-health-check.result }}
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ "$PR_GUARD_RESULT" = "skipped" ]; then
             echo "::notice::tests-required: pr-guard skipped on $GITHUB_EVENT_NAME"
@@ -704,13 +832,46 @@ jobs:
             echo "::notice::tests-required skipped heavy CI ($GUARD_REASON)"
             exit 0
           fi
+          pr_supersession_lane() { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; }
+          merge_queue_lane() { [ "${GITHUB_EVENT_NAME:-}" = "merge_group" ]; }
+          pr_superseded_cancel() {
+            [ "$1" = "cancelled" ] || return 1
+            if merge_queue_lane; then
+              echo "::error::$2 reported 'cancelled' on merge_group; cannot merge untested."
+              return 0
+            fi
+            pr_supersession_lane || return 1
+            if [ -z "${PR_HEAD_SHA:-}" ] || [ -z "${RUN_HEAD_SHA:-}" ]; then
+              echo "::error::$2 cancelled but PR/run head sha is missing; cannot treat as superseded."
+              return 0
+            fi
+            if [ "$(echo "$RUN_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" = "$(echo "$PR_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" ]; then
+              echo "::error::$2 cancelled on the current PR head; not superseded."
+              return 0
+            fi
+            echo "::notice::$2 cancelled (superseded by a newer workflow run)."
+            return 0
+          }
+          handle_cancelled_upstream() {
+            pr_superseded_cancel "$1" "$2" || return 1
+            if pr_supersession_lane; then
+              exit 0
+            fi
+            exit 1
+          }
           echo "changes: $CHANGES (tier=$TIER, run_python_tests=$RUN_PYTHON_TESTS)"
           echo "ci-health-check: $HEALTH"
           echo "tests: $TESTS"
+          if merge_queue_lane && [ "$TESTS" != "success" ]; then
+            echo "::error::Python test matrix reported '$TESTS' on merge_group; cannot merge untested."
+            exit 1
+          fi
+          if handle_cancelled_upstream "$CHANGES" changes; then exit; fi
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES'; cannot trust the tier decision."
             exit 1
           fi
+          if handle_cancelled_upstream "$HEALTH" ci-health-check; then exit; fi
           if [ "$HEALTH" != "success" ]; then
             echo "::error::ci-health-check reported '$HEALTH'; cannot trust the Python scope decision."
             exit 1
@@ -723,6 +884,7 @@ jobs:
             fi
             exit 0
           fi
+          if handle_cancelled_upstream "$TESTS" tests; then exit; fi
           if [ "$TESTS" != "success" ]; then
             echo "::error::Python test matrix reported '$TESTS', expected 'success'."
             exit 1
@@ -776,7 +938,23 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TESTS: ${{ needs.tests-required.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          RUN_HEAD_SHA: ${{ github.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          pr_supersession_lane() { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; }
+          merge_queue_lane() { [ "${GITHUB_EVENT_NAME:-}" = "merge_group" ]; }
+          pr_superseded_cancel() {
+            [ "$1" = "cancelled" ] || return 1
+            if merge_queue_lane; then
+              return 0
+            fi
+            pr_supersession_lane || return 1
+            if [ -z "${PR_HEAD_SHA:-}" ] || [ -z "${RUN_HEAD_SHA:-}" ]; then
+              return 0
+            fi
+            [ "$(echo "$RUN_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" != "$(echo "$PR_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" ]
+          }
           failed=0
           if [ "$PR_GUARD_RESULT" = "skipped" ]; then
             echo "::notice::quality-gate: pr-guard skipped on $GITHUB_EVENT_NAME"
@@ -785,11 +963,27 @@ jobs:
             exit 0
           fi
           echo "changes: $CHANGES (tier=$TIER, full_suite=$FULL_SUITE, run_python_tests=$RUN_PYTHON_TESTS)"
+          if [ "$CHANGES" = "cancelled" ] && pr_supersession_lane; then
+            if pr_superseded_cancel cancelled changes; then
+              echo "::notice::changes cancelled (superseded by a newer workflow run)."
+              exit 0
+            fi
+            echo "::error::changes cancelled on the current PR head; not superseded."
+            exit 1
+          fi
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES', expected 'success'."
             failed=1
           fi
           echo "ci-health-check: $HEALTH"
+          if [ "$HEALTH" = "cancelled" ] && pr_supersession_lane; then
+            if pr_superseded_cancel cancelled ci-health-check; then
+              echo "::notice::ci-health-check cancelled (superseded by a newer workflow run)."
+              exit 0
+            fi
+            echo "::error::ci-health-check cancelled on the current PR head; not superseded."
+            exit 1
+          fi
           if [ "$HEALTH" != "success" ]; then
             echo "::error::ci-health-check reported '$HEALTH', expected 'success'."
             failed=1
@@ -801,6 +995,24 @@ jobs:
             if [ "$result" = "success" ]; then
               continue
             fi
+            if [ "$result" = "cancelled" ] && pr_supersession_lane; then
+              if pr_superseded_cancel cancelled "$job"; then
+                echo "::notice::$job cancelled (superseded by a newer workflow run)."
+                continue
+              fi
+              echo "::error::$job cancelled on the current PR head; not superseded."
+              failed=1
+              continue
+            fi
+            if merge_queue_lane; then
+              if [ "$job" = "security-scan" ] && [ "$result" = "skipped" ]; then
+                echo "::notice::security-scan not run on merge_group slim gate."
+                continue
+              fi
+              echo "::error::$job reported '$result' on merge_group; cannot merge untested."
+              failed=1
+              continue
+            fi
             # Nothing may skip in the full tier. Otherwise lint and
             # security-scan skip by design when the Python lane is off
             # (docs-only PR, post-merge push); tests-required always runs and
@@ -808,10 +1020,6 @@ jobs:
             if [ "$result" = "skipped" ] && [ "$TIER" != "full" ]; then
               if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$job" != "tests" ]; then
                 echo "::notice::$job skipped: Python lane is off for tier '$TIER'."
-                continue
-              fi
-              if [ "$job" = "security-scan" ] && [ "$FULL_SUITE" != "true" ]; then
-                echo "::notice::security-scan skipped: heavy scans run in the merge_group tier."
                 continue
               fi
             fi

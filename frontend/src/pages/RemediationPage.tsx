@@ -3,6 +3,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { RemediationTab } from "./RemediationTab";
 import { legacyFetch } from "../lib/api";
 import { buildPrefilledRemediationUrl } from "./Remediation/remediationPrefill";
+import { coerceRemediationProvider } from "../lib/remediationProviders";
+import { useProviderRegistry } from "../lib/useProviderRegistry";
 
 interface RemediationContext {
   repository: string;
@@ -73,7 +75,8 @@ export function RemediationPage(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [provider, setProvider] = useState("jules_api");
+  const { registry } = useProviderRegistry();
+  const [provider, setProvider] = useState("codex_cli");
   const [model, setModel] = useState("");
   const [plan, setPlan] = useState<any>(null);
   const [dispatchState, setDispatchState] = useState<any>(null);
@@ -103,9 +106,12 @@ export function RemediationPage(): React.ReactElement {
           setHistory(normalizeArrayPayload(historyPayload, "history"));
           setRuns(enriched.length ? enriched : fallbackRuns);
           setProvider(
-            nextConfig.policy && nextConfig.policy.default_provider
-              ? String(nextConfig.policy.default_provider)
-              : "jules_api",
+            coerceRemediationProvider(
+              registry,
+              nextConfig.policy && nextConfig.policy.default_provider
+                ? String(nextConfig.policy.default_provider)
+                : null,
+            ),
           );
         })
         .catch((err: unknown) => {
@@ -120,7 +126,7 @@ export function RemediationPage(): React.ReactElement {
           if (!signal?.aborted) setLoading(false);
         });
     },
-    [],
+    [registry],
   );
 
   useEffect(() => {
@@ -141,9 +147,12 @@ export function RemediationPage(): React.ReactElement {
         const nextConfig = normalizeObject(payload);
         setConfig(nextConfig);
         setProvider(
-          nextConfig.policy && nextConfig.policy.default_provider
-            ? String(nextConfig.policy.default_provider)
-            : "jules_api",
+          coerceRemediationProvider(
+            registry,
+            nextConfig.policy && nextConfig.policy.default_provider
+              ? String(nextConfig.policy.default_provider)
+              : null,
+          ),
         );
         setError(null);
         return nextConfig;
@@ -153,7 +162,7 @@ export function RemediationPage(): React.ReactElement {
         throw err;
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [registry]);
 
   const preview = useCallback(
     (run: any) => {
@@ -218,6 +227,7 @@ export function RemediationPage(): React.ReactElement {
       onDispatch={dispatch}
       history={history}
       principalName="dashboard"
+      registry={registry}
     />
   );
 }

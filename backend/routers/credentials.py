@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as _dt_mod
+import json
 import logging
 import os
 import platform
@@ -386,70 +387,83 @@ def _probe_claude_code_cli() -> dict[str, Any]:
     }
 
 
-def _resolve_cline_detail(
-    by_path: bool,
-    by_ext: bool,
-    skipped: bool,
-    vscode_found: bool,
-    compatible_key: bool,
-    installed: bool,
-) -> str:
-    """Build user-facing diagnostic detail for Cline extension."""
-    if installed and compatible_key:
-        return "VS Code extension + compatible API key found"
-    if installed:
-        return "VS Code extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
-    if by_path:
-        return "VS Code extension installed (globalStorage)"
-    if by_ext:
-        return "VS Code extension installed (code --list-extensions)"
-    if skipped:
-        return "VS Code CLI probe skipped to avoid launching the desktop UI"
-    if vscode_found:
-        return "VS Code found but Cline not installed"
-    return "VS Code not found"
+_CLINE_AUTH_ENV_KEYS = ("CLINE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY")
+_CLINE_CREDENTIAL_KEY_RE = re.compile(r"api[_-]?key|access[_-]?token|refresh[_-]?token", re.IGNORECASE)
 
 
-async def _probe_cline() -> dict[str, Any]:
-    """Probe Cline VS Code extension installation and API key configuration."""
-    _cline_storage = Path.home() / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
-    _cline_by_path = _cline_storage.exists()
-    _vscode_binary = _resolve_vscode_cli()
-    _cline_by_ext = False
-    if _vscode_binary and not _cline_by_path:
-        ext_check = await _vscode_has_extension("saoudrizwan.claude-dev")
-        _cline_by_ext = bool(ext_check)
-    cline_installed = _cline_by_path or _cline_by_ext
-    vscode_cli_probe_skipped = _vscode_binary is not None and not _should_probe_vscode_cli(_vscode_binary)
-    _cline_compatible_key = _env_present("ANTHROPIC_API_KEY") or _env_present("OPENAI_API_KEY")
-    detail = _resolve_cline_detail(
-        by_path=_cline_by_path,
-        by_ext=_cline_by_ext,
-        skipped=vscode_cli_probe_skipped,
-        vscode_found=_vscode_binary is not None,
-        compatible_key=_cline_compatible_key,
-        installed=cline_installed,
-    )
+def _cline_config_root() -> Path:
+    override = os.environ.get("CLINE_DIR", "").strip()
+    return Path(override) if override else Path.home() / ".cline"
+
+
+def _cline_providers_json_path() -> Path:
+    return _cline_config_root() / "data" / "settings" / "providers.json"
+
+
+def _json_has_credential_signal(node: object) -> bool:
+    """True when a parsed providers.json tree contains a non-empty credential field (values never read)."""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if isinstance(value, str) and value.strip() and _CLINE_CREDENTIAL_KEY_RE.search(key):
+                return True
+            if _json_has_credential_signal(value):
+                return True
+    elif isinstance(node, list):
+        for item in node:
+            if _json_has_credential_signal(item):
+                return True
+    return False
+
+
+def _cline_auth_configured() -> bool:
+    """Whether Cline CLI likely has provider credentials (env or ~/.cline providers.json)."""
+    if any(_env_present_anywhere(key) for key in _CLINE_AUTH_ENV_KEYS):
+        return True
+    providers_path = _cline_providers_json_path()
+    if not providers_path.is_file():
+        return False
+    try:
+        payload = json.loads(providers_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return _json_has_credential_signal(payload)
+
+
+def _resolve_cline_detail(binary: str | None, authenticated: bool) -> str:
+    """Build user-facing diagnostic detail for the Cline CLI."""
+    if binary and authenticated:
+        return "Ready (cline auth)"
+    if binary:
+        return "not signed in: run `cline auth`"
+    return "cline not found on PATH"
+
+
+def _probe_cline() -> dict[str, Any]:
+    """Probe Cline CLI presence and authentication configuration."""
+    cline_binary = shutil.which("cline")
+    authenticated = cline_binary is not None and _cline_auth_configured()
+    detail = _resolve_cline_detail(cline_binary, authenticated)
+    if cline_binary and authenticated:
+        status = "ready"
+    elif cline_binary:
+        status = "missing_key"
+    else:
+        status = "not_installed"
+    usable = cline_binary is not None and authenticated
     return {
         "id": "cline",
-        "label": "Cline (VS Code)",
-        "icon": "vscode",
-        "installed": cline_installed,
-        "vscode_found": _vscode_binary is not None,
-        "vscode_cli_probe_skipped": vscode_cli_probe_skipped,
-        "compatible_key_set": _cline_compatible_key,
-        "authenticated": cline_installed and _cline_compatible_key,
-        "reachable": cline_installed,
-        "usable": cline_installed and _cline_compatible_key,
-        "status": (
-            "ready"
-            if (cline_installed and _cline_compatible_key)
-            else ("extension_installed" if cline_installed else "not_installed")
-        ),
+        "label": "Cline CLI",
+        "icon": "terminal",
+        "installed": cline_binary is not None,
+        "authenticated": authenticated,
+        "reachable": usable,
+        "usable": usable,
+        "binary_found": cline_binary is not None,
+        "status": status,
         "detail": detail,
-        "config_source": "vscode" if cline_installed else "unavailable",
-        "docs_url": "https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev",
-        "setup_hint": "Install Cline extension in VS Code: ext install saoudrizwan.claude-dev",
+        "config_source": "system" if cline_binary else "unavailable",
+        "docs_url": "https://docs.cline.bot/cli/cli-reference",
+        "setup_hint": "npm install -g cline, then run `cline auth`",
     }
 
 
@@ -490,7 +504,7 @@ def _probe_ollama() -> dict[str, Any]:
     ollama_binary = shutil.which("ollama")
     return {
         "id": "ollama",
-        "label": "Ollama (Local)",
+        "label": "Ollama",
         "icon": "ollama",
         "installed": ollama_binary is not None,
         "authenticated": True,
@@ -609,9 +623,8 @@ async def _probe_linear_workspaces() -> list[dict[str, Any]]:
 
 async def _collect_all_probes() -> list[dict[str, Any]]:
     """Collect all provider and integration probes."""
-    gh_probe, cline_probe, linear_probes = await asyncio.gather(
+    gh_probe, linear_probes = await asyncio.gather(
         _probe_github_cli(),
-        _probe_cline(),
         _probe_linear_workspaces(),
     )
     probes: list[dict[str, Any]] = [
@@ -620,7 +633,7 @@ async def _collect_all_probes() -> list[dict[str, Any]]:
         _probe_jules_api(),
         _probe_codex_cli(),
         _probe_claude_code_cli(),
-        cline_probe,
+        _probe_cline(),
         _probe_gemini_cli(),
         _probe_ollama(),
         _probe_antigravity_cli(),
@@ -659,27 +672,14 @@ async def get_credentials(request: Request) -> dict[str, Any]:
 
 @router.get("/cline/status")
 async def get_cline_status(request: Request) -> dict[str, Any]:
-    """Return Cline extension detection status."""
+    """Return Cline CLI detection status."""
     _require_local_request(request)
-    probe = await _probe_cline()
+    probe = _probe_cline()
     return {
-        "status": (
-            "extension_installed"
-            if (probe["installed"] and probe["compatible_key_set"])
-            else ("extension_installed" if probe["installed"] else "not_installed")
-        ),
-        "vscode_found": probe["vscode_found"],
-        "vscode_cli_probe_skipped": probe["vscode_cli_probe_skipped"],
-        "compatible_key_set": probe["compatible_key_set"],
-        "detail": (
-            "Cline extension installed + compatible API key found"
-            if (probe["installed"] and probe["compatible_key_set"])
-            else (
-                "Cline extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
-                if probe["installed"]
-                else probe["detail"]
-            )
-        ),
+        "status": probe["status"],
+        "binary_found": probe.get("binary_found", probe["installed"]),
+        "authenticated": probe["authenticated"],
+        "detail": probe["detail"],
     }
 
 

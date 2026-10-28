@@ -417,9 +417,9 @@ async def apply_claim(run_id: str, repo: str, issue: int, role: str, *, write: A
 
 def _live_store() -> Any:
     """The process runner's store when one exists (never constructs a runner)."""
-    from staff import runner as runner_mod  # noqa: PLC0415
+    from staff import runner_registry  # noqa: PLC0415
 
-    live = runner_mod._runner  # noqa: SLF001
+    live = runner_registry._runner  # noqa: SLF001
     return live.store if live is not None else None
 
 

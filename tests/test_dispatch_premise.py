@@ -93,6 +93,55 @@ async def test_open_pr_skips_dispatch():
 
 
 @pytest.mark.asyncio
+async def test_open_pr_requires_closing_reference_or_issue_branch():
+    """Incidental issue mentions do not make an open PR own the issue."""
+    fixture_pr = {
+        "number": 2981,
+        "title": "dispatch maintenance",
+        "body": "Closes #2980 while remaining blocked by #2976.",
+        "head": {"ref": "feature/dispatch-maintenance"},
+    }
+
+    async def mock_gh_get(endpoint: str) -> list[dict]:
+        if "pulls" in endpoint:
+            return [
+                fixture_pr,
+            ]
+        return []
+
+    has_blocked_pr, blocked_pr_info = await check_issue_has_open_pr(
+        "D-sorganization/Runner_Dashboard", 2976, gh_get_fn=mock_gh_get
+    )
+    assert has_blocked_pr is False
+    assert blocked_pr_info is None
+
+    has_pr, pr_info = await check_issue_has_open_pr("D-sorganization/Runner_Dashboard", 2980, gh_get_fn=mock_gh_get)
+    assert has_pr is True
+    assert pr_info is not None and pr_info["number"] == 2981
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["Mentions #2980 for context.", "Blocked by #2980."])
+async def test_open_pr_ignores_bare_issue_mentions(body: str):
+    async def mock_gh_get(endpoint: str) -> list[dict]:
+        return [{"number": 2983, "title": "Unrelated", "body": body, "head": {"ref": "feature/other"}}]
+
+    has_pr, pr_info = await check_issue_has_open_pr("D-sorganization/Runner_Dashboard", 2980, gh_get_fn=mock_gh_get)
+    assert has_pr is False
+    assert pr_info is None
+
+
+@pytest.mark.asyncio
+async def test_open_pr_head_branch_naming_issue_counts():
+    async def mock_gh_get(endpoint: str) -> list[dict]:
+        return [{"number": 2984, "title": "Maintenance", "body": "", "head": {"ref": "claude/2976-foo"}}]
+
+    has_pr, pr_info = await check_issue_has_open_pr("D-sorganization/Runner_Dashboard", 2976, gh_get_fn=mock_gh_get)
+    assert has_pr is True
+    assert pr_info is not None and pr_info["number"] == 2984
+
+
+@pytest.mark.asyncio
 async def test_active_claim_lease_skips_dispatch():
     """If an active claim:* lease or label exists, dispatch is skipped."""
 

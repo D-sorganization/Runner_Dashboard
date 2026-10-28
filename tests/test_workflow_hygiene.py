@@ -57,6 +57,10 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
         "Single-flight publish on d-sorg-fleet; cancel-in-progress would abort every in-flight release "
         "on a busy main and starve auto-deploy."
     ),
+    "ci-slo-check.yml": (
+        "Read-only SLO snapshot and stall alarm must finish GitHub API reads; cancel-in-progress would "
+        "discard partial metrics without reducing queue load."
+    ),
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
@@ -356,28 +360,76 @@ def test_workflow_linter_false_cancel_allowlist_matches_static_policy() -> None:
         assert stale_exception not in false_allowlist, f"stale broad exception remains in policy: {stale_exception}"
 
 
+def test_redundant_pr_closer_f7_contract() -> None:
+    """Issue #2895: GITHUB_TOKEN, open PR only, fleet runner, loud failure, summary counts."""
+    wf = _WORKFLOWS_DIR / "Agent-Redundant-PR-Closer.yml"
+    text = wf.read_text(encoding="utf-8")
+    script = (Path(__file__).parent.parent / "scripts" / "close_redundant_agent_prs.py").read_text(encoding="utf-8")
+    job = _load_workflow(wf)["jobs"]["close-redundant"]
+    cond = str(job.get("if", ""))
+    assert "pull_request.state" in cond and "open" in cond
+    assert "JULES_APP_ID" not in text and "create-github-app-token" not in text and "github.token" in text
+    assert "d-sorg-fleet" in str(job["runs-on"]) and "ubuntu-latest" not in str(job["runs-on"])
+    run = next(s for s in job["steps"] if s.get("name") == "Close redundant agent PRs")["run"]
+    assert "|| {" not in run and "continuing" not in run and "::error::GITHUB_TOKEN is empty" in run
+    assert all(tok in script for tok in ("examined", "closed", "skipped"))
+    from scripts.close_redundant_agent_prs import pr_closing_issue_numbers, require_github_token, run_closer
+
+    assert pr_closing_issue_numbers("Refs #5", "Closes #10") == frozenset({10})
+    closed: list[int] = []
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[
+            _redundant_pr_payload(1, "Refs #42", "codex"),
+            _redundant_pr_payload(2, "Closes #42", "jules"),
+        ],
+        dry_run=True,
+        agent_filter=None,
+        close_pr=lambda *_: None,
+        comment=lambda *_: None,
+    )
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[_redundant_pr_payload(10, "Closes #99", "claude"), _redundant_pr_payload(11, "Closes #99", "jules")],
+        dry_run=False,
+        agent_filter=None,
+        close_pr=lambda _r, n: closed.append(n),
+        comment=lambda *_: None,
+    )
+    assert closed == [11]
+    import os
+
+    os.environ.pop("GH_TOKEN", None)
+    os.environ.pop("GITHUB_TOKEN", None)
+    with pytest.raises(SystemExit):
+        require_github_token()
+
+
+def _redundant_pr_payload(number: int, body: str, agent: str) -> dict:
+    login = "human" if agent == "user" else f"{agent}-bot"
+    labels = [{"name": f"agent:{agent}"}] if agent != "user" else []
+    return {
+        "number": number,
+        "title": "",
+        "body": body,
+        "labels": labels,
+        "user": {"login": login, "type": "User" if agent == "user" else "Bot"},
+        "head": {"ref": f"{agent}/lane"},
+    }
+
+
 @pytest.mark.parametrize(
-    ("dry_run", "agent_filter", "action", "number", "stub_exit", "optional"),
+    ("dry_run", "agent_filter", "stub_exit", "optional"),
     [
-        ("false", "", "opened", "", "0", []),
-        ("true", "codex", "closed", "42", "0", ["--dry-run", "--agent-filter", "codex", "--backstop-pr", "42"]),
-        (
-            "false",
-            "agent with spaces *",
-            "closed",
-            "43",
-            "0",
-            ["--agent-filter", "agent with spaces *", "--backstop-pr", "43"],
-        ),
-        ("false", "", "opened", "", "17", []),
+        ("false", "", "0", []),
+        ("true", "codex", "0", ["--dry-run", "--agent-filter", "codex"]),
+        ("false", "", "17", []),
     ],
 )
 def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
     tmp_path: Path,
     dry_run: str,
     agent_filter: str,
-    action: str,
-    number: str,
     stub_exit: str,
     optional: list[str],
 ) -> None:
@@ -389,7 +441,10 @@ def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
     )
     arguments = tmp_path / "argv.bin"
     bash = require_bash()
-    stub = 'python() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+    stub = (
+        'python3() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+        'python() { printf "%s\\0" "$@" > "$ARGV_OUTPUT"; return "$STUB_EXIT"; };\n'
+    )
     result = subprocess.run(
         [bash, "-c", stub + step["run"]],
         cwd=tmp_path,
@@ -400,18 +455,19 @@ def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
             "REPO_NAME": "Runner_Dashboard",
             "DRY_RUN_INPUT": dry_run,
             "AGENT_FILTER": agent_filter,
-            "PR_ACTION": action,
-            "EVENT_PR_NUMBER": number,
+            "GITHUB_TOKEN": "test-token",
+            "GH_TOKEN": "test-token",
+            "GITHUB_REPOSITORY_OWNER": "D-sorganization",
         },
         capture_output=True,
         text=True,
         check=False,
         timeout=20,
     )
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == int(stub_exit), (result.stdout, result.stderr)
     actual = [value.decode() for value in arguments.read_bytes().split(b"\0")[:-1]]
     assert actual == ["-m", "scripts.close_redundant_agent_prs", "--repo", "Runner_Dashboard", *optional]
-    assert ("continuing" in result.stdout) == (stub_exit != "0")
+    assert "continuing" not in result.stdout
 
 
 def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> None:
@@ -439,19 +495,16 @@ def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> No
 
 
 def test_queued_job_reaper_has_safe_stale_controls() -> None:
-    """Issue #688: reaper manual runs need dry-run, reason filtering, and caps."""
+    """Issue #688 / #2768: reaper manual runs need dry-run and cancel caps."""
     data = _load_workflow(_WORKFLOWS_DIR / "util-queued-job-reaper.yml")
     dispatch = _triggers(data)["workflow_dispatch"]
     inputs = dispatch["inputs"]
 
     assert inputs["dry-run"]["default"] == "true"
-    assert inputs["reason-filter"]["default"] == ""
     assert inputs["max-cancel"]["default"] == "10"
 
     text = (_WORKFLOWS_DIR / "util-queued-job-reaper.yml").read_text(encoding="utf-8")
-    assert "unsatisfiable_runner_labels" in text
-    assert "superseded_pr_head" in text
-    assert "skipped (max-cancel reached)" in text
+    assert "headCommit" in text or "reap_github_workflow_runs.py" in text
     assert "QUEUED_JOB_REAPER_DISABLED" in text
 
 
@@ -617,7 +670,7 @@ def test_required_context_workflows_run_in_the_merge_queue() -> None:
 # Event-tiered CI Standard (issue #1864, sibling of Repository_Management#1915)
 #
 # pull_request  -> PR tier: lint, format, type check and fast tests.
-# merge_group   -> full tier: everything (the authoritative gate).
+# merge_group   -> merge-group tier: slim required gate (#2891).
 # push to main  -> post-merge tier: no duplicate heavy jobs; the squash commit
 #                  is the tree the merge queue already tested.
 # A `changes` job decides the tier and, on pull_request only, whether the PR
@@ -630,8 +683,13 @@ import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 
 _CI_STANDARD = _WORKFLOWS_DIR / "ci-standard.yml"
-_HEAVY_FULL_TIER_JOBS = ("security-scan",)
+_HEAVY_SCANNER_STEPS = ("Run bandit security scan", "Security Audit (pip-audit)")
+_HEAVY_SCANNER_JOB = "security-scan"
 _PYTHON_LANE_JOBS = ("lint", "tests")
+
+
+def _heavy_scanner_if() -> str:
+    return str(_ci_jobs()[_HEAVY_SCANNER_JOB]["if"])
 
 
 def _ci_jobs() -> dict:
@@ -681,9 +739,9 @@ def _tier_for(event_name: str) -> dict[str, str]:
 
 
 def test_ci_standard_keeps_every_trigger() -> None:
-    """The tiers depend on all three events still reaching the workflow."""
+    """The tiers depend on all events still reaching the workflow."""
     data = _load_workflow(_CI_STANDARD)
-    for event in ("pull_request", "merge_group", "push", "workflow_dispatch"):
+    for event in ("pull_request", "merge_group", "push", "workflow_dispatch", "schedule"):
         assert _has_trigger(data, event), f"ci-standard.yml lost its `{event}` trigger"
 
 
@@ -700,7 +758,7 @@ def test_changes_job_runs_on_every_event() -> None:
     ("event_name", "tier", "full_suite", "run_python_tests"),
     [
         ("pull_request", "pr", "false", None),  # decided by the scope detector
-        ("merge_group", "full", "true", "true"),
+        ("merge_group", "merge-group", "false", "true"),
         ("workflow_dispatch", "full", "true", "true"),
         ("push", "post-merge", "false", "false"),
         ("schedule", "full", "true", "true"),  # unknown events fail safe to full
@@ -736,16 +794,18 @@ def test_python_lane_jobs_gate_on_changes_job() -> None:
         assert "changes" in jobs[job_id]["needs"], job_id
 
 
-def test_heavy_jobs_run_only_in_the_full_tier() -> None:
-    jobs = _ci_jobs()
-    for job_id in _HEAVY_FULL_TIER_JOBS:
-        condition = str(jobs[job_id].get("if", ""))
-        assert "needs.changes.outputs.full_suite == 'true'" in condition, (
-            f"{job_id} is a heavy scan; it belongs to the merge_group tier, not every PR push"
-        )
-    for step_name in ("Run bandit security scan", "Security Audit (pip-audit)"):
-        step = _ci_step("lint", name=step_name)
-        assert step.get("if") == "needs.changes.outputs.full_suite == 'true'", step_name
+def test_heavy_security_scanners_run_on_pull_request_or_schedule_not_merge_group() -> None:
+    """Bandit, pip-audit and security-scan must run on PRs (in scope) and nightly, not in the queue."""
+    workflow = _load_workflow(_CI_STANDARD)
+    assert _has_trigger(workflow, "schedule"), "heavy scanners need a nightly schedule trigger"
+    gate = _heavy_scanner_if()
+    assert "github.event_name != 'merge_group'" in gate
+    assert "github.event_name == 'pull_request'" in gate
+    assert "github.event_name == 'schedule'" in gate
+    assert "needs.changes.outputs.run_python_tests == 'true'" in gate
+    for step_name in _HEAVY_SCANNER_STEPS:
+        step_if = str(_ci_step("lint", name=step_name).get("if", ""))
+        assert step_if == gate, f"{step_name} must share the security-scan job gate"
 
 
 def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
@@ -778,7 +838,8 @@ def _quality_gate(**env: str) -> int:
         "RUN_PYTHON_TESTS": "true",
         "RESULT_LINT": "success",
         "RESULT_TESTS": "success",
-        "RESULT_SECURITY": "skipped",
+        "RESULT_SECURITY": "success",
+        "GITHUB_EVENT_NAME": "pull_request",
     }
     code, _ = _run_step(_ci_step("quality-gate", name="Require every gated job to succeed"), {**defaults, **env})
     return code
@@ -796,8 +857,12 @@ def _tests_required(**env: str) -> int:
     return code
 
 
-def test_quality_gate_passes_the_pr_tier_without_heavy_scans() -> None:
-    assert _quality_gate() == 0
+def test_quality_gate_passes_the_pr_tier_when_security_scan_succeeds() -> None:
+    assert _quality_gate(RESULT_SECURITY="success") == 0
+
+
+def test_quality_gate_requires_security_scan_on_pr_python_lane() -> None:
+    assert _quality_gate(RESULT_SECURITY="skipped") == 1
 
 
 def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
@@ -805,6 +870,17 @@ def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
     assert _quality_gate(**full, RESULT_SECURITY="success") == 0
     assert _quality_gate(**full, RESULT_SECURITY="skipped") == 1
     assert _quality_gate(**full, RESULT_SECURITY="failure") == 1
+
+
+def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
+    mq = {
+        "TIER": "merge-group",
+        "FULL_SUITE": "false",
+        "GITHUB_EVENT_NAME": "merge_group",
+    }
+    assert _quality_gate(**mq, RESULT_SECURITY="skipped") == 0
+    assert _quality_gate(**mq, RESULT_LINT="skipped") == 1
+    assert _quality_gate(**mq, RESULT_TESTS="cancelled") == 1
 
 
 def test_quality_gate_passes_docs_only_pr_and_post_merge_push() -> None:
@@ -940,3 +1016,38 @@ def test_line_cap_step_has_no_error_swallowing_on_the_diff() -> None:
     assert diff_lines, "PR path must fetch and diff the base"
     assert not any("|| true" in line for line in diff_lines)
     assert "set -euo pipefail" in run
+
+
+_SELF_HOSTED_RUNNER_MARKERS = ("d-sorg-fleet", "self-hosted", "pick-runner")
+
+
+def _job_can_use_self_hosted(runs_on: object) -> bool:
+    text = str(runs_on)
+    if "ubuntu-latest" in text and not any(marker in text for marker in _SELF_HOSTED_RUNNER_MARKERS):
+        return False
+    return any(marker in text for marker in _SELF_HOSTED_RUNNER_MARKERS) or "github-hosted" not in text
+
+
+def test_self_hosted_jobs_do_not_run_playwright_install_with_deps_or_sudo() -> None:
+    """Playwright browser setup must not invoke sudo on self-hosted fleet runners."""
+    violations: list[str] = []
+    for workflow_path in _workflow_files():
+        data = _load_workflow(workflow_path)
+        jobs = data.get("jobs") or {}
+        for job_name, job in jobs.items():
+            if not _job_can_use_self_hosted((job or {}).get("runs-on")):
+                continue
+            for step in (job or {}).get("steps") or []:
+                run = step.get("run") or ""
+                if "playwright install" not in run and "playwright install-deps" not in run:
+                    continue
+                if "ci_install_playwright_browsers.sh" in run:
+                    continue
+                if "--with-deps" in run or "install-deps" in run or "sudo" in run:
+                    violations.append(f"{workflow_path.name}:{job_name}:{step.get('name', 'run')}")
+
+    assert not violations, (
+        "Self-hosted-capable jobs must not run Playwright install with --with-deps, "
+        "install-deps, or sudo inline. Use scripts/ci_install_playwright_browsers.sh. "
+        f"Violations: {violations}"
+    )

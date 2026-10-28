@@ -1,5 +1,5 @@
 # docker-build.yml — Build the runner-dashboard Docker image and run Trivy security scan.
-# PRs run only when Docker-relevant paths change; merge_group always builds.
+# PRs run only when Docker-relevant paths change; merge_group skips (#2891).
 name: Docker Build & Trivy Scan
 
 permissions:
@@ -102,6 +102,7 @@ jobs:
       BUILDX_BUILDER: rd-ci-${{ github.run_id }}-${{ github.run_attempt }}
     needs: decide-docker-scope
     if: >-
+      github.event_name != 'merge_group' &&
       needs.decide-docker-scope.outputs.run_docker == 'true' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
@@ -198,6 +199,7 @@ jobs:
       - docker-image
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       always() &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
@@ -238,6 +240,7 @@ jobs:
       - docker-image
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.decide-docker-scope.outputs.run_docker == 'true' &&

@@ -53,6 +53,7 @@ _UNCLASSIFIED: dict[str, str] = {
     "reusable-pr-freshness-guard.yml": (
         "Reusable workflow_call guard; fleet placement is set on the guard job, not workflow-wide."
     ),
+    "ci-slo-check.yml": "Neutral d-sorg-fleet placement; scheduled read-only queue SLO metrics.",
 }
 
 
