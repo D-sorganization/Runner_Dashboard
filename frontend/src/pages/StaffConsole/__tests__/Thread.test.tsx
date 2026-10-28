@@ -6,7 +6,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 const api = vi.hoisted(() => ({ getActionProposal: vi.fn() }));
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
@@ -74,7 +74,7 @@ describe("Thread Component", () => {
     expect(screen.getAllByRole("separator")).toHaveLength(2);
   });
 
-  it("virtualizes long histories while allowing the user to scroll to earlier messages", () => {
+  it("virtualizes long histories while allowing the user to scroll to earlier messages", async () => {
     const longHistory = Array.from({ length: 120 }, (_, index): ThreadMessage => ({
       id: `long-${index}`,
       thread_id: MOCK_THREAD.id,
@@ -88,17 +88,27 @@ describe("Thread Component", () => {
     }));
     render(<Thread thread={MOCK_THREAD} messages={longHistory} />);
 
-    const window = screen.getByTestId("thread-virtual-window");
-    expect(Number(window.getAttribute("data-total-items"))).toBeGreaterThan(120);
-    expect(window.querySelectorAll(".thread-virtual-row").length).toBeLessThan(40);
+    const virtualWindow = screen.getByTestId("thread-virtual-window");
+    expect(Number(virtualWindow.getAttribute("data-total-items"))).toBeGreaterThan(120);
+    expect(virtualWindow.querySelectorAll(".thread-virtual-row").length).toBeLessThan(40);
+    const totalVirtualHeight = Number.parseInt(virtualWindow.style.height, 10);
     const scrollArea = screen.getByRole("log", { name: "Conversation messages" });
-    Object.defineProperty(scrollArea, "scrollHeight", { configurable: true, value: 24000 });
+    Object.defineProperty(scrollArea, "scrollHeight", { configurable: true, value: totalVirtualHeight });
     Object.defineProperty(scrollArea, "clientHeight", { configurable: true, value: 600 });
-    fireEvent.scroll(scrollArea, { target: { scrollTop: 0 } });
+    const midScroll = Math.max(0, Math.floor(totalVirtualHeight * 0.5) - 300);
+    await act(async () => {
+      scrollArea.scrollTop = 0;
+      fireEvent.scroll(scrollArea);
+    });
     expect(screen.getByText("Virtual history message 0")).toBeInTheDocument();
 
-    fireEvent.scroll(scrollArea, { target: { scrollTop: 10000 } });
-    expect(screen.getByText("Virtual history message 60")).toBeInTheDocument();
+    await act(async () => {
+      scrollArea.scrollTop = midScroll;
+      fireEvent.scroll(scrollArea);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Virtual history message 60")).toBeInTheDocument();
+    });
     expect(screen.queryByText("Virtual history message 0")).toBeNull();
   });
 

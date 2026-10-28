@@ -237,6 +237,26 @@ def test_parse_role_with_fleet_actions_and_approvals() -> None:
 
 
 @pytest.mark.unit
+def test_role_without_library_read_gets_no_library_scope() -> None:
+    """#2623: default-off; nothing turns this on implicitly."""
+    from staff.role_spec import RoleSpec
+
+    assert RoleSpec(name="r", title="R").library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"code_read_only": True}).library_read is False
+
+
+@pytest.mark.unit
+def test_library_read_requires_literal_true() -> None:
+    """#2623: only the literal ``True`` enables the capability; default-deny otherwise."""
+    from staff.role_spec import RoleSpec
+
+    assert RoleSpec(name="r", title="R", permissions={"library_read": "yes"}).library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"library_read": 1}).library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"library_read": False}).library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"library_read": True}).library_read is True
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(("level", "ok"), [("owner", True), ("confirm", False), ("auto", False)])
 def test_vhdx_compaction_default_approval_is_owner(level: str, ok: bool) -> None:
     """#1332: a role may not approve a disk-compaction request below owner level."""

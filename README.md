@@ -26,6 +26,25 @@ contract is in
 The Maxwell tab calls Maxwell-Daemon over HTTP using the contract documented
 in the sibling-repos doc. Maxwell-Daemon never calls back into the dashboard.
 
+## Capability matrix
+
+The core repo runs **standalone** by default; a private **overlay** (see
+[`docs/architecture/overlay-contract.md`](docs/architecture/overlay-contract.md))
+supplies operator-specific config without the core ever naming private hosts,
+people, or paths.
+
+| Capability                                      | Standalone (no overlay) | With overlay (`RD_OVERLAY_PATH` set) |
+| ------------------------------------------------ | ------------------------ | ------------------------------------- |
+| Dashboard UI, API, auth, sessions                | ✅ full                  | ✅ full                               |
+| Runner monitoring and lifecycle control          | ✅ full                  | ✅ full                               |
+| Named self-hosted hosts / tailnet addresses      | — (operator supplies via env/config directly) | ✅ sourced from the overlay |
+| Agent token file paths, per-agent config          | — (operator supplies directly)                | ✅ sourced from the overlay |
+| Private roles, policy, and internal docs          | — (not present)                                | ✅ sourced from the overlay |
+
+Until `RD_OVERLAY_PATH` is set, behaviour is unchanged from today; setting it
+loads and validates the overlay at startup and the core refuses to start on an
+invalid overlay rather than running with partial private config.
+
 ## Architecture
 
 - **C4 Architecture Map**: See [docs/architecture/C4.md](docs/architecture/C4.md) for system context, container boundaries, and feature mappings.

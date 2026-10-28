@@ -16,9 +16,10 @@ import {
   tryRefreshSession,
 } from './lib/sessionExpired'
 import { installWheelValueGuard } from './lib/wheelValueGuard'
-import { initWebVitals } from './lib/webVitals'
 import { loadFonts } from './lib/loadFonts'
-import { DemoOverview } from './pages/DemoOverview'
+const DemoOverview = React.lazy(() =>
+  import('./pages/DemoOverview').then((m) => ({ default: m.DemoOverview })),
+)
 import './index.css'
 
 // Global guards the Classic layout used to install (#1345): credential API
@@ -30,8 +31,11 @@ const DEMO_MODE = import.meta.env.VITE_RUNNER_DASHBOARD_DEMO === '1'
 if (!DEMO_MODE) {
   installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
   installWheelValueGuard(document)
-  // Web Vitals — send metrics to backend (issues #385, #1550)
-  initWebVitals()
+  // Optional telemetry stays outside the render-critical entry bundle (#3282).
+  // Web Vitals uses buffered observers, so early paint metrics are still captured.
+  void import('./lib/webVitals').then(({ initWebVitals }) => initWebVitals()).catch(() => {
+    // A telemetry chunk failure must not prevent the dashboard from starting.
+  })
 }
 
 // Service Worker Registration
