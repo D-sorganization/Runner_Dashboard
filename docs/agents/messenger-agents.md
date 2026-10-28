@@ -113,7 +113,8 @@ Dieter (2026-10-28) wants one primary Barb and the others still working and spli
   primary. The lookup reads the continuity store on the authority node; the postman never guesses.
 - Each delivery records the holder and lease epoch it resolved to. If the lease moves before the
   message is read, the postman re-delivers it to the new holder once, marked as moved.
-- Barbs off the tailnet send lease and inventory changes as envelopes addressed to rd-barb. The
+- Barbs off the tailnet send lease and inventory changes as envelopes addressed to rd-barb; Dieter
+  decided on 2026-10-28 that they reach the dashboard only through rd-barb, never directly. The
   postman only delivers them; rd-barb applies them and replies with the new epoch. The postman never
   takes, renews or releases a Barb lease itself.
 
