@@ -20038,9 +20038,40 @@
         "tags": ["activity"]
       }
     },
+    "/api/v1/activity/checkins": {
+      "post": {
+        "description": "Write-only tier for agents off the tailnet (Cursor cloud, unconnected boxes).\n\nThe ``activity.checkin`` scope is never combined with a read or chat scope,\nso a check-in credential cannot read activity, staff threads or anything else.",
+        "operationId": "checkin_activity_api_v1_activity_checkins_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityEnvelope"
+                  },
+                  "title": "Response Checkin Activity Api V1 Activity Checkins Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Checkin Activity",
+        "tags": ["activity"]
+      }
+    },
     "/api/v1/activity/events": {
       "post": {
-        "description": "Bound the wire body before parsing; never trust source-side redaction.",
         "operationId": "ingest_activity_api_v1_activity_events_post",
         "responses": {
           "200": {
