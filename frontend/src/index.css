@@ -4996,7 +4996,8 @@ th.sortable.active .sort-indicator {
 }
 
 .mobile-shell__ask-barb {
-  min-height: 34px;
+  min-height: 44px;
+  min-width: 44px;
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
