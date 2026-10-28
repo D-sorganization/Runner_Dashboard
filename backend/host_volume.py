@@ -3,7 +3,7 @@
 WSL2 and guest distros cannot see the host disk volume into which their backing
 VHDX expands. When a host volume runs out of free space mid-write, the distro's
 filesystem and package databases are corrupted (near-miss 2026-09-05 on
-ControlTower F:; prior total pool losses on NVMe and SSD).
+node-a F:; prior total pool losses on NVMe and SSD).
 
 This module:
 1. Identifies the host backing volume (`runner_backing_drive`) per host/pool from
