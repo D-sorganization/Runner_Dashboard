@@ -67,10 +67,11 @@ def _as_shared_envelope(msg: dict[str, Any]) -> dict[str, Any]:
 def validate(msg: Any) -> list[str]:
     """Return every contract problem with ``msg``; an empty list means valid.
 
-    Shape and enum rules (kind, urgency, question options, alert recommended_action)
-    are delegated to the shared ``rd_threads_envelope`` contract (#3072) so rd-barb's
+    Shape and enum rules (kind, urgency, question options, alert recommended_action,
+    the required one-line ``recommendation_reason`` on questions per #3137) are
+    delegated to the shared ``rd_threads_envelope`` contract (#3072) so rd-barb's
     messages, barb_cli and the MCP server validate identically (#3112). ``dedupe_key``
-    and the optional ``recommendation_reason`` are notify-specific and stay here.
+    is notify-specific and stays here.
     """
     if not isinstance(msg, dict):
         return ["message must be a JSON object"]
@@ -82,10 +83,6 @@ def validate(msg: Any) -> list[str]:
         errors.extend(_envelope.validate(_as_shared_envelope(msg)))
     if not _one_line(msg.get("dedupe_key")):
         errors.append("dedupe_key must be one non-empty line")
-    if kind == "question":
-        reason = msg.get("recommendation_reason")
-        if reason is not None and not _one_line(reason):
-            errors.append("recommendation_reason must be one non-empty line when present")
     return errors
 
 

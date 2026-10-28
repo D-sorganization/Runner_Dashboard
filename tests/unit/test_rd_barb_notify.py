@@ -184,10 +184,11 @@ def test_update_kind_is_accepted_as_the_canonical_alias_of_fyi(tmp_path: Path, r
     assert _notifier(tmp_path, rec).notify(msg)["status"] == "queued_for_digest"
 
 
-def test_recommendation_reason_is_optional_but_must_be_one_line_when_present() -> None:
+def test_recommendation_reason_is_required_and_must_be_one_line() -> None:
+    """Required unconditionally since #3137; rd_barb_notify delegates to the shared envelope."""
     omitted = _question()
     del omitted["recommendation_reason"]
-    assert rn.validate(omitted) == []
+    assert any("recommendation_reason" in p for p in rn.validate(omitted))
     assert any("recommendation_reason" in p for p in rn.validate(_question(recommendation_reason="")))
 
 
