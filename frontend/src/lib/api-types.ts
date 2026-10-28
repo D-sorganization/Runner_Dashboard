@@ -2726,296 +2726,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/maxwell/backends": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Backends
-         * @description Proxy GET /api/v1/backends from Maxwell-Daemon (contract-filtered; secrets stripped).
-         */
-        get: operations["get_maxwell_backends_api_maxwell_backends_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Chat
-         * @description Proxy chat messages to Maxwell-Daemon and surface the answer text (#957).
-         *
-         *     MD's ``/api/chat`` is a request/response JSON endpoint (``ChatResponse``);
-         *     it does not stream and now *rejects* the legacy ``history``/``stream`` fields
-         *     with a 422 (``extra="forbid"``, MD #995). This proxy therefore:
-         *
-         *     * carries multi-turn context in MD's ``messages[]`` (translated from the UI's
-         *       history) so chat is no longer amnesiac;
-         *     * parses the JSON ``ChatResponse`` and emits its ``content`` (not the raw
-         *       JSON serialization the UI previously rendered);
-         *     * routes codebase-scoped chat to MD's dedicated ``/api/chat/codebase`` route.
-         *
-         *     The browser still consumes a ``text/plain`` body via a stream reader, so the
-         *     answer text is delivered as a single chunk — no frontend change required
-         *     (the response is single-turn / non-incremental until MD advertises streaming
-         *     as a negotiated capability).
-         */
-        post: operations["maxwell_chat_api_maxwell_chat_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/control": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Control
-         * @description Start or stop Maxwell-Daemon service (confirmation required).
-         */
-        post: operations["maxwell_control_api_maxwell_control_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/cost": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Cost
-         * @description Proxy GET /api/v1/cost from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_cost_api_maxwell_cost_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/daemon-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Daemon Status Detail
-         * @description Proxy GET /api/status from Maxwell-Daemon (pipeline state + counts, #955).
-         */
-        get: operations["get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/dispatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Dispatch Task
-         * @description Proxy POST /api/dispatch to Maxwell-Daemon (issues #349, #953).
-         *
-         *     Posts to MD's confirmation-gated, idempotent ``POST /api/dispatch`` — the
-         *     endpoint that actually enforces ``hmac.compare_digest`` on
-         *     ``confirmation_token`` and keys idempotency on ``idempotency_key``. The
-         *     previous target, ``POST /api/v1/tasks``, silently discarded both fields
-         *     (Pydantic ``extra="ignore"``), so the confirmation gate was security theatre
-         *     and retries created duplicate tasks (#953). Caller must supply
-         *     ``confirmation_token`` and ``prompt``; server-side injection of the token is
-         *     not done so the dashboard cannot bypass the daemon-side gate.
-         */
-        post: operations["maxwell_dispatch_task_api_maxwell_dispatch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/pipeline-control/{action}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Pipeline Control
-         * @description Proxy POST /api/control/{action} to Maxwell-Daemon (issue #349).
-         *
-         *     Caller must provide ``confirmation_token``; server-side injection removed.
-         */
-        post: operations["maxwell_pipeline_control_api_maxwell_pipeline_control__action__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/pipeline-state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Pipeline State
-         * @description Proxy GET /api/status (pipeline state + counts) from Maxwell-Daemon (#955).
-         */
-        get: operations["get_maxwell_pipeline_state_api_maxwell_pipeline_state_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Status
-         * @description Probe Maxwell-Daemon status and connectivity (Dashboard-facing).
-         */
-        get: operations["get_maxwell_status_api_maxwell_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Tasks
-         * @description Proxy GET /api/tasks from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_tasks_api_maxwell_tasks_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/tasks/{task_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Task Detail
-         * @description Proxy GET /api/tasks/{task_id} from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_task_detail_api_maxwell_tasks__task_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Version
-         * @description Proxy GET /api/version from Maxwell-Daemon (contract-negotiated, #956).
-         *
-         *     Surfaces the daemon's real version and its advertised contract version, plus a
-         *     ``contract_compatible`` flag the Maxwell tab uses to show a degraded-mode
-         *     banner on a major-version mismatch instead of rendering defaulted data.
-         */
-        get: operations["get_maxwell_version_api_maxwell_version_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/workers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Workers
-         * @description Proxy GET /api/v1/workers from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_workers_api_maxwell_workers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/metrics/web-vitals": {
         parameters: {
             query?: never;
@@ -4173,6 +3883,26 @@ export interface paths {
         get: operations["get_matlab_runner_health_api_runners_matlab_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runners/slot-health/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Slot Health
+         * @description Read-only slot-health analysis; optional publish to hub events and Barb lane.
+         */
+        post: operations["evaluate_slot_health_api_runners_slot_health_evaluate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9913,29 +9643,6 @@ export interface components {
             source_id: string;
             /** Work Id */
             work_id: number;
-        };
-        /**
-         * MaxwellChatBody
-         * @description Request body for POST /api/maxwell/chat.
-         *
-         *     ``repo``/``repo_root`` (issue #838) scope a codebase Q&A session to a single
-         *     repository. Both are optional so the existing fleet-status chat keeps working
-         *     unchanged; when supplied they are forwarded to Maxwell-Daemon, which jails its
-         *     agentic tools (read_file/grep_files/glob_files/run_bash) to that root. The
-         *     daemon-side capability is tracked in Maxwell_Daemon#948; until it ships the
-         *     daemon may answer 501 Not Implemented, which this proxy degrades gracefully.
-         */
-        MaxwellChatBody: {
-            /** History */
-            history?: {
-                [key: string]: unknown;
-            }[];
-            /** Message */
-            message: string;
-            /** Repo */
-            repo?: string | null;
-            /** Repo Root */
-            repo_root?: string | null;
         };
         /** MemoryAppendRequest */
         MemoryAppendRequest: {
@@ -16616,337 +16323,6 @@ export interface operations {
             };
         };
     };
-    get_maxwell_backends_api_maxwell_backends_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_chat_api_maxwell_chat_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MaxwellChatBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    maxwell_control_api_maxwell_control_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_cost_api_maxwell_cost_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_dispatch_task_api_maxwell_dispatch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_pipeline_control_api_maxwell_pipeline_control__action__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                action: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_pipeline_state_api_maxwell_pipeline_state_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_status_api_maxwell_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_tasks_api_maxwell_tasks_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_task_detail_api_maxwell_tasks__task_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_version_api_maxwell_version_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_workers_api_maxwell_workers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
     get_web_vitals_aggregated_api_metrics_web_vitals_get: {
         parameters: {
             query?: never;
@@ -18467,6 +17843,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    evaluate_slot_health_api_runners_slot_health_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
