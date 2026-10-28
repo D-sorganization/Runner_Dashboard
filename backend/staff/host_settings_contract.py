@@ -8,7 +8,7 @@ import os
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from staff.store import _config_dir
 
@@ -139,7 +139,7 @@ def resolve_role_leader(role: str, doc: HostSettingsDocument | None = None) -> R
     block = doc.roles.get(role) if doc else None
     block = block or (doc.global_default if doc else HostSettingsBlock.default())
     enabled_list: list[HostId] = []
-    for hid in ("grokbot", "rd"):
+    for hid in cast(tuple[HostId, HostId], ("grokbot", "rd")):
         if block.hosts[hid].enabled:
             enabled_list.append(hid)
     enabled = tuple(enabled_list)
