@@ -91,66 +91,46 @@ class _Opener:
         return self.response
 
 
-def test_staff_activity_combines_authenticated_api_sample_with_full_database(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_fetch_staff_activity_uses_summary_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import node_auto_deploy.activity as activity
+
+    database = tmp_path / "staff.sqlite3"
+    _database(database).close()
+    opener = _Opener(_Response({"active": 2, "queued": 1, "pending_chat": 0, "generated_at": "2026-10-27T00:00:00Z"}))
+    monkeypatch.setattr(activity, "build_opener", lambda *_handlers: opener)
+
+    assert fetch_staff_activity("http://127.0.0.1:8321", "node-token", database) == 2
+    assert opener.request.full_url == "http://127.0.0.1:8321/api/staff/activity/summary"
+    assert "runs?limit=" not in opener.request.full_url
+    assert opener.request.get_header("Authorization") == "Bearer node-token"
+
+
+def test_fetch_staff_activity_takes_max_with_local_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import node_auto_deploy.activity as activity
 
     database = tmp_path / "staff.sqlite3"
     connection = _database(database)
-    connection.executemany(
-        "INSERT INTO runs VALUES (?, ?)",
-        [(f"done-{index}", "succeeded") for index in range(55)] + [("busy", "running")],
-    )
+    connection.execute("INSERT INTO runs VALUES ('busy', 'running')")
     connection.commit()
     connection.close()
-    opener = _Opener(_Response({"runs": [{"status": "succeeded"}] * 50, "count": 50}))
+    opener = _Opener(_Response({"active": 0, "queued": 0, "pending_chat": 0, "generated_at": "x"}))
     monkeypatch.setattr(activity, "build_opener", lambda *_handlers: opener)
 
     assert fetch_staff_activity("http://127.0.0.1:8321", "node-token", database) == 1
-    assert opener.request.full_url == "http://127.0.0.1:8321/api/staff/runs?limit=50"
-    assert opener.request.get_header("Authorization") == "Bearer node-token"
-
-
-def test_staff_activity_reports_active_api_sample_when_database_is_idle(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import node_auto_deploy.activity as activity
-
-    database = tmp_path / "staff.sqlite3"
-    _database(database).close()
-    opener = _Opener(_Response({"runs": [{"status": "preparing"}], "count": 1}))
-    monkeypatch.setattr(activity, "build_opener", lambda *_handlers: opener)
-
-    assert fetch_staff_activity("http://127.0.0.1:8321", "node-token", database) == 1
-
-
-def test_staff_activity_accepts_timed_out_terminal_run_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import node_auto_deploy.activity as activity
-
-    database = tmp_path / "staff.sqlite3"
-    _database(database).close()
-    monkeypatch.setattr(
-        activity,
-        "build_opener",
-        lambda *_handlers: _Opener(_Response({"runs": [{"status": "timed_out"}], "count": 1})),
-    )
-
-    assert fetch_staff_activity("http://127.0.0.1:8321", "node-token", database) == 0
 
 
 @pytest.mark.parametrize(
     "payload",
     [
-        {"runs": [], "count": 1},
-        {"runs": [{"status": "not-a-status"}], "count": 1},
-        {"runs": [{"status": []}], "count": 1},
-        {"runs": "none", "count": 0},
-        {"runs": [], "count": True},
+        {"active": "two", "queued": 0, "pending_chat": 0},
+        {"active": -1, "queued": 0, "pending_chat": 0},
+        {"active": True, "queued": 0, "pending_chat": 0},
+        {"queued": 0, "pending_chat": 0},
+        "not-a-dict",
     ],
 )
-def test_staff_activity_rejects_malformed_api_payloads_fail_closed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: dict
+def test_fetch_staff_activity_fails_closed_on_404_auth_or_malformed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: object
 ) -> None:
     import node_auto_deploy.activity as activity
 
@@ -158,11 +138,11 @@ def test_staff_activity_rejects_malformed_api_payloads_fail_closed(
     _database(database).close()
     monkeypatch.setattr(activity, "build_opener", lambda *_handlers: _Opener(_Response(payload)))
 
-    with pytest.raises(ActivityUnavailableError, match="staff runs"):
+    with pytest.raises(ActivityUnavailableError, match="activity summary"):
         fetch_staff_activity("http://127.0.0.1:8321", "node-token", database)
 
 
-@pytest.mark.parametrize("status", [401, 403, 503])
+@pytest.mark.parametrize("status", [401, 403, 404, 503])
 def test_staff_activity_rejects_http_auth_and_service_failures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int
 ) -> None:
@@ -172,7 +152,7 @@ def test_staff_activity_rejects_http_auth_and_service_failures(
     _database(database).close()
     monkeypatch.setattr(activity, "build_opener", lambda *_handlers: _Opener(_Response({}, status=status)))
 
-    with pytest.raises(ActivityUnavailableError, match="staff runs"):
+    with pytest.raises(ActivityUnavailableError, match="activity summary"):
         fetch_staff_activity("http://127.0.0.1:8321", "node-token", database)
 
 
@@ -187,7 +167,7 @@ def test_staff_activity_transport_failure_does_not_fall_back_to_database_idle(
     _database(database).close()
     monkeypatch.setattr(activity, "build_opener", lambda *_handlers: _Opener(URLError("offline")))
 
-    with pytest.raises(ActivityUnavailableError, match="staff runs"):
+    with pytest.raises(ActivityUnavailableError, match="activity summary"):
         fetch_staff_activity("http://127.0.0.1:8321", "node-token", database)
 
 

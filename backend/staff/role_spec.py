@@ -74,6 +74,11 @@ class RoleSpec:
         return self.permissions.get("code_read_only") is True
 
     @property
+    def library_read(self) -> bool:
+        """Mints the ``library.read`` token scope (explicit ``permissions.library_read``; #2623)."""
+        return self.permissions.get("library_read") is True
+
+    @property
     def fleet_actions(self) -> tuple[str, ...]:
         """Allowed fleet maintenance actions (RM#1734, RD#1310)."""
         actions = self.permissions.get("fleet_actions")

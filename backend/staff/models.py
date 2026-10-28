@@ -446,3 +446,23 @@ class StaffUsageExportResponse(BaseModel):
     totals: dict[str, Any] | None = None
 
     model_config = ConfigDict(extra="allow")
+
+
+class StaffUsageSnapshotIngestResponse(BaseModel):
+    """Response model for POST /api/staff/usage/snapshot (#3042)."""
+
+    kept: bool
+
+    model_config = ConfigDict(extra="allow")
+
+
+class StaffUsageSnapshotResponse(BaseModel):
+    """Response model for GET /api/staff/usage/snapshot (#3042): fleet quota + staleness."""
+
+    checked_at: str | None = None
+    received_at: str | None = None
+    snapshot_age_seconds: float | None = None
+    snapshot_stale: bool
+    providers: list[dict[str, Any]] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="allow")
