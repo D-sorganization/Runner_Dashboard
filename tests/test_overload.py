@@ -1,15 +1,27 @@
-"""Tests for per-repo swarm overload detection (issue #3293, slice 1 of 4)."""
+"""Tests for per-repo swarm overload detection and auto-DRAIN mode (issue #3293, slices 1-2)."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import coordination.overload as overload_mod
 import gh_client
 import pr_inventory
 import pytest
-from coordination.overload import CONSECUTIVE_WINDOWS_THRESHOLD, DEFAULT_OPEN_COUNT_THRESHOLD, build_overload_snapshot
+from coordination.overload import (
+    CONSECUTIVE_WINDOWS_THRESHOLD,
+    DEFAULT_DRAIN_EXCEPTIONS,
+    DEFAULT_OPEN_COUNT_THRESHOLD,
+    MODE_DRAIN,
+    MODE_NORMAL,
+    build_overload_snapshot,
+    is_drain_open_pr_allowed,
+    read_drain_state_file,
+    reset_drain_state,
+    write_drain_state_file,
+)
 from delivery_metrics.adapters.github import GhClientDeliveryCollector
 from delivery_metrics.models import PrSnapshot
 
@@ -56,6 +68,7 @@ def _isolated_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     import cache_utils
 
     monkeypatch.setattr(cache_utils, "_main_cache", cache_utils.Cache("overload-unit"))
+    reset_drain_state()
 
 
 @pytest.fixture(autouse=True)
@@ -256,3 +269,97 @@ def test_get_fleet_overload_returns_snapshot(client: Any) -> None:
 def test_get_fleet_overload_rejects_bad_input(client: Any, params: dict[str, str]) -> None:
     resp = client.get("/api/v1/fleet/overload", params=params)
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_auto_drain_publishes_when_overloaded_and_clears_after_full_recovery_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    open_prs: list[dict[str, int]] = [{"number": i} for i in range(20)]
+    history_prs: tuple[PrSnapshot, ...] = ()
+
+    async def _fake_fetch_repo_prs(_repo: str) -> tuple[list[dict[str, int]], str | None]:
+        return open_prs, None
+
+    async def _fake_list_pulls_updated_since(
+        self: Any, _repo: str, _since: datetime, *, max_pages: int = 3
+    ) -> tuple[PrSnapshot, ...]:
+        return history_prs
+
+    monkeypatch.setattr(pr_inventory, "fetch_repo_prs", _fake_fetch_repo_prs)
+    monkeypatch.setattr(GhClientDeliveryCollector, "list_pulls_updated_since", _fake_list_pulls_updated_since)
+
+    # Step 1: Overloaded -> enters DRAIN mode and publishes lane_notice + dispatch_directive.
+    snap1 = await build_overload_snapshot(REPO, open_count_threshold=15)
+    assert snap1["overloaded"] is True
+    assert snap1["mode"] == MODE_DRAIN
+    assert snap1["drain"]["active"] is True
+    assert snap1["drain"]["mode"] == MODE_DRAIN
+    assert snap1["drain"]["open_pr_exceptions"] == list(DEFAULT_DRAIN_EXCEPTIONS)
+    assert f"OVERLOAD_MODE=DRAIN repo={REPO}" in snap1["lane_notice"]
+    assert "rebase,fix,arm-only" in snap1["lane_notice"]
+    assert snap1["dispatch_directive"]["allow_new_prs"] is False
+
+    # Step 2: Open count drops below threshold, but 1h merge_rate == open_rate (not >) -> stays in DRAIN.
+    open_prs = [{"number": 1}, {"number": 2}]
+    history_prs = (
+        _pr(number=10, created_at=now - timedelta(minutes=20)),
+        _pr(number=11, created_at=now - timedelta(hours=2), merged_at=now - timedelta(minutes=15)),
+    )
+    snap2 = await build_overload_snapshot(REPO, open_count_threshold=15)
+    assert snap2["overloaded"] is False
+    assert snap2["mode"] == MODE_DRAIN
+    assert snap2["drain"]["active"] is True
+    assert snap2["drain"]["latched"] is True
+
+    # Step 3: 1h merge_rate > open_rate for a full window while not overloaded -> DRAIN clears automatically.
+    history_prs = (
+        _pr(number=10, created_at=now - timedelta(minutes=20)),
+        _pr(number=11, created_at=now - timedelta(hours=2), merged_at=now - timedelta(minutes=15)),
+        _pr(number=12, created_at=now - timedelta(hours=3), merged_at=now - timedelta(minutes=5)),
+    )
+    snap3 = await build_overload_snapshot(REPO, open_count_threshold=15)
+    assert snap3["overloaded"] is False
+    assert snap3["mode"] == MODE_NORMAL
+    assert snap3["drain"]["active"] is False
+    assert snap3["drain"]["cleared"] is True
+    assert snap3["lane_notice"] == f"OVERLOAD_MODE=NORMAL repo={REPO}"
+    assert snap3["dispatch_directive"]["allow_new_prs"] is True
+
+
+@pytest.mark.asyncio
+async def test_configurable_drain_exceptions_and_admission(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_fetch_repo_prs(_repo: str) -> tuple[list[dict[str, int]], str | None]:
+        return [{"number": i} for i in range(20)], None
+
+    monkeypatch.setattr(pr_inventory, "fetch_repo_prs", _fake_fetch_repo_prs)
+    monkeypatch.setenv("RD_OVERLOAD_DRAIN_EXCEPTIONS", "ci-unblock, security , work-report")
+
+    snap = await build_overload_snapshot(REPO, open_count_threshold=15)
+    assert snap["drain"]["open_pr_exceptions"] == ["ci-unblock", "security", "work-report"]
+    assert is_drain_open_pr_allowed(snap, category=None) is False
+    assert is_drain_open_pr_allowed(snap, category="feature") is False
+    assert is_drain_open_pr_allowed(snap, category="ci-unblock") is True
+    assert is_drain_open_pr_allowed(snap, category="SECURITY") is True
+
+    with pytest.raises(ValueError, match="drain_exceptions"):
+        await build_overload_snapshot(REPO, drain_exceptions=("",))
+
+
+@pytest.mark.asyncio
+async def test_drain_state_file_roundtrip_for_lane_reader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_fetch_repo_prs(_repo: str) -> tuple[list[dict[str, int]], str | None]:
+        return [{"number": i} for i in range(18)], None
+
+    monkeypatch.setattr(pr_inventory, "fetch_repo_prs", _fake_fetch_repo_prs)
+    snap = await build_overload_snapshot(REPO, open_count_threshold=15)
+
+    state_file = tmp_path / "overload-drain.json"
+    written = write_drain_state_file(state_file, snap)
+    assert written == state_file
+    loaded = read_drain_state_file(state_file)
+    assert loaded["repo"] == REPO
+    assert loaded["mode"] == MODE_DRAIN
+    assert loaded["drain"]["active"] is True
+    assert loaded["lane_notice"] == snap["lane_notice"]
