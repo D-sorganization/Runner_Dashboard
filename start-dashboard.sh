@@ -21,8 +21,10 @@ BACKEND_DIR="${SCRIPT_DIR}/backend"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 # Issue #945: Python deps live in the repo-root requirements.txt, not backend/.
 REQUIREMENTS_FILE="${SCRIPT_DIR}/requirements.txt"
-FRONTEND_DIR="${SCRIPT_DIR}/frontend"
-DIST_DIR="${FRONTEND_DIR}/dist"
+# Vite's outDir is '../dist' relative to root 'frontend' (vite.config.ts), and
+# backend/server.py serves Path(__file__).parent.parent / "dist" — both the
+# repo-root dist/, not frontend/dist/ (#3177).
+DIST_DIR="${SCRIPT_DIR}/dist"
 INSTALL_STAMP="${VENV_DIR}/.installed-stamp"
 PORT="${DASHBOARD_PORT:-8321}"
 HOST="${DASHBOARD_HOST:-127.0.0.1}"
@@ -100,10 +102,10 @@ if [[ ! -f "${INSTALL_STAMP}" ]] || [[ "${REQUIREMENTS_FILE}" -nt "${INSTALL_STA
     touch "${INSTALL_STAMP}"
 fi
 
-# Issue #945: the backend serves the SPA from frontend/dist/ (gitignored). On a
-# clean checkout that directory is absent and the server falls back to a bare
-# "Frontend index.html not found" page. Build it (or fail with instructions)
-# so the documented Quick Start yields a working app.
+# Issue #945: the backend serves the SPA from the repo-root dist/ (gitignored).
+# On a clean checkout that directory is absent and the server falls back to a
+# bare "Frontend index.html not found" page. Build it (or fail with
+# instructions) so the documented Quick Start yields a working app.
 if [[ "$DEMO" == "true" ]] || [[ ! -f "${DIST_DIR}/index.html" ]]; then
     echo "[INFO] Building frontend bundle at ${DIST_DIR}"
     if command -v npm >/dev/null 2>&1; then

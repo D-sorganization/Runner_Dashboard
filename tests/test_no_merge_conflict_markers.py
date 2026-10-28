@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("backend", "frontend/src", "deploy", "scripts", "tests")
+SOURCE_ROOTS = ("backend", "frontend/src", "deploy", "scripts", "tests", ".github")
 # Built from parts so this file never matches its own pattern.
 MARKER = re.compile("^(" + "<" * 7 + "|" + ">" * 7 + ")( |$)")
 
