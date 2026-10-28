@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import threading
-import time
+from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
+from staff import provider_cooldown
 from staff.provider_cooldown import (
     cooldown_file_path,
     cooldown_snapshot,
@@ -17,16 +19,20 @@ from staff.provider_cooldown import (
     reset_provider_cooldowns,
 )
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(autouse=True)
 def _reset() -> None:
     reset_provider_cooldowns()
 
 
-def test_cooldown_expires() -> None:
-    mark_provider_cooldown("codex", "provider_capacity", message="retry after 1 seconds")
+def test_cooldown_expires(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Long window + injected clock: no real sleep, immune to slow disks (#2909).
+    mark_provider_cooldown("codex", "provider_capacity", message="retry after 600 seconds")
     assert provider_in_cooldown("codex")
-    time.sleep(1.1)
+    until_epoch = datetime.fromisoformat(str(provider_cooldown_until("codex")).replace("Z", "+00:00")).timestamp()
+    monkeypatch.setattr(provider_cooldown, "time", SimpleNamespace(time=lambda: until_epoch + 1.0))
     assert not provider_in_cooldown("codex")
 
 

@@ -304,6 +304,12 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
     if degraded_by_hub_circuit:
         responses = {**responses, "_degraded": True}
         response.headers["X-Dashboard-Degraded"] = "hub-circuit-open"
+    try:
+        from email_intake.health import email_intake_status
+
+        responses["_email_intake"] = email_intake_status()
+    except Exception as exc:  # pragma: no cover - observability only
+        log.debug("email intake status skipped: %s", exc)
     return responses
 
 

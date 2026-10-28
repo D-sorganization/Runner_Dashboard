@@ -23,17 +23,22 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any, Protocol
-from urllib.parse import quote
+from typing import TYPE_CHECKING, Any
 
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
 from staff.roles import AD_HOC_ROLE, load_roles
-from staff.workspace import ORG
+from staff.verification_probe import GhCliPrProbe
+from staff.verification_types import (
+    GH_TIMEOUT_SECONDS,
+    GitHubLookupError,
+    PrProbe,
+    PullRequest,
+    Verdict,
+    ci_state,
+)
 
 if TYPE_CHECKING:
     from staff.store import RunRecord, RunStore
@@ -53,45 +58,6 @@ SKIP_MARKERS = ("staff_skip", "skip", "no work", "nothing to do", "no-op", "noop
 RESULT_PREFIX = "STAFF_RESULT:"
 CI_RED_DETAIL = "head CI is failing"
 RECHECK_BATCH = 20
-GH_TIMEOUT_SECONDS = 30
-
-# Check-run conclusions that fail the head. ``cancelled``/``stale`` runs were superseded
-# and neither pass nor fail it; ``success``/``neutral``/``skipped`` pass.
-_RED_CONCLUSIONS = frozenset({"failure", "timed_out", "action_required", "startup_failure"})
-_IGNORED_CONCLUSIONS = frozenset({"cancelled", "stale"})
-
-
-class GitHubLookupError(RuntimeError):
-    """GitHub could not answer; the run stays ``unverified``."""
-
-
-@dataclass(frozen=True)
-class PullRequest:
-    """The PR for a run's branch. ``state``: open | merged | closed; ``ci``: green | pending | red."""
-
-    number: int
-    state: str
-    ci: str
-
-
-@dataclass(frozen=True)
-class Verdict:
-    verification: str
-    detail: str
-    pr_number: int | None = None
-    artifact: str = ""  # typed completion evidence (#1808): pr_open | pr_merged | ""
-    ci_red: bool = False  # failed because head CI is red (the run's work may still be good)
-
-
-class PrProbe(Protocol):
-    def find(self, repo: str, branch: str) -> PullRequest | None:
-        """The newest PR whose head is ``branch`` in ``repo``, or None. Raises GitHubLookupError."""
-
-    def get(self, repo: str, number: int) -> PullRequest:
-        """PR ``number`` in ``repo`` with head CI state. Raises GitHubLookupError."""
-
-    def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
-        """Commits ``branch`` is ahead of ``base`` on the remote (0 if absent). Raises GitHubLookupError."""
 
 
 def verify_mode() -> str:
@@ -120,16 +86,6 @@ def is_skip_result(result_text: str) -> bool:
     lines = rest.strip().splitlines()
     summary = lines[0].strip().lower().lstrip("[(*_ ") if lines else ""
     return bool(summary) and summary.startswith(SKIP_MARKERS)
-
-
-def ci_state(check_runs: Iterable[Mapping[str, Any]]) -> str:
-    """``red`` if any head check failed, else ``pending`` until all counted checks completed."""
-    counted = [r for r in check_runs if r.get("conclusion") not in _IGNORED_CONCLUSIONS]
-    if any(r.get("conclusion") in _RED_CONCLUSIONS for r in counted):
-        return "red"
-    if not counted or any(r.get("status") != "completed" for r in counted):
-        return "pending"
-    return "green"
 
 
 def decide(
@@ -198,6 +154,18 @@ def _target_pr_number(rec: RunRecord) -> int | None:
         digits = ref[4:].strip()
         return int(digits) if digits.isdigit() else None
     return None
+
+
+def remote_deliverable_present(rec: RunRecord, probe: PrProbe) -> bool:
+    """True when the run's staff branch has an open/merged PR or unpushed remote commits (#2773)."""
+    if not rec.repo or not rec.branch:
+        return False
+    try:
+        if probe.find(rec.repo, rec.branch) is not None:
+            return True
+        return probe.remote_ahead_by(rec.repo, rec.branch) > 0
+    except GitHubLookupError:
+        return False
 
 
 def evaluate(
@@ -431,62 +399,12 @@ def recheck_runs(
     return [rec.id for rec in runs]
 
 
-Runner = Callable[..., "subprocess.CompletedProcess[str]"]
-
-
-class GhCliPrProbe:
-    """Finds a run's PR with two scoped ``gh api`` REST calls (the PR, then its head's check runs).
-
-    Uses the ``gh`` CLI so it works from the runner's plain worker threads, where the
-    event-loop-bound ``gh_client`` is unreachable (same approach as ``consolidation``).
-    """
-
-    def __init__(self, org: str = ORG, run: Runner = subprocess.run) -> None:
-        self.org, self._run = org, run
-
-    def _api(self, path: str) -> Any:
-        try:
-            proc = self._run(
-                ["gh", "api", path], capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS, check=False
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise GitHubLookupError(f"gh api {path}: {exc}") from exc
-        if proc.returncode != 0:
-            raise GitHubLookupError((proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[:300])
-        try:
-            return json.loads(proc.stdout)
-        except ValueError as exc:
-            raise GitHubLookupError(f"gh api {path}: invalid JSON") from exc
-
-    def _full(self, repo: str) -> str:
-        return repo if "/" in repo else f"{self.org}/{repo}"
-
-    def _with_ci(self, full: str, pr: Mapping[str, Any]) -> PullRequest:
-        state = "merged" if pr.get("merged_at") else str(pr.get("state") or "open")
-        checks = self._api(f"/repos/{full}/commits/{pr['head']['sha']}/check-runs?per_page=100")
-        return PullRequest(number=int(pr["number"]), state=state, ci=ci_state(checks.get("check_runs") or []))
-
-    def find(self, repo: str, branch: str) -> PullRequest | None:
-        full = self._full(repo)
-        owner = full.split("/", 1)[0]
-        head = quote(f"{owner}:{branch}", safe=":")
-        pulls = self._api(f"/repos/{full}/pulls?head={head}&state=all&per_page=1")
-        return self._with_ci(full, pulls[0]) if pulls else None
-
-    def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
-        """How many commits ``branch`` is ahead of ``base`` on the remote (0 if the branch is missing)."""
-        full = self._full(repo)
-        path = f"/repos/{full}/compare/{quote(base, safe='')}...{quote(branch, safe='')}"
-        try:
-            body = self._api(path)
-        except GitHubLookupError as exc:
-            msg = str(exc).lower()
-            if "404" in msg or "not found" in msg:
-                return 0
-            raise
-        return int(body.get("ahead_by") or 0)
-
-    def get(self, repo: str, number: int) -> PullRequest:
-        """PR ``number`` in ``repo`` with its head CI state (the Code Request acceptance check, #1605)."""
-        full = self._full(repo)
-        return self._with_ci(full, self._api(f"/repos/{full}/pulls/{int(number)}"))
+__all__ = [
+    "GH_TIMEOUT_SECONDS",
+    "GhCliPrProbe",
+    "GitHubLookupError",
+    "PrProbe",
+    "PullRequest",
+    "Verdict",
+    "ci_state",
+]

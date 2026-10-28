@@ -21,14 +21,14 @@ _FAKE_REGISTRY = {
     "version": 1,
     "machines": [
         {
-            "name": "ControlTower",
+            "name": "node-a",
             "aliases": [],
             "runner_pools": [
                 {
-                    "name": "ControlTower-NVMe",
-                    "parent_machine": "ControlTower",
+                    "name": "node-a-NVMe",
+                    "parent_machine": "node-a",
                     "storage_tier": "nvme",
-                    "runner_base_dir": "/home/dieterolson/actions-runners-nvme",
+                    "runner_base_dir": "/home/fleet-operator/actions-runners-nvme",
                     "storage": {
                         "host_drive": "C:",
                         "vhdx_path": "C:\\WSL\\ext4.vhdx",
@@ -37,10 +37,10 @@ _FAKE_REGISTRY = {
                     },
                 },
                 {
-                    "name": "ControlTower-HDD",
-                    "parent_machine": "ControlTower",
+                    "name": "node-a-HDD",
+                    "parent_machine": "node-a",
                     "storage_tier": "hdd",
-                    "runner_base_dir": "/home/dieterolson/actions-runners",
+                    "runner_base_dir": "/home/fleet-operator/actions-runners",
                     "storage": {
                         "host_drive": "D:",
                         "vhdx_path": "D:\\WSL\\ext4.vhdx",
@@ -106,7 +106,7 @@ def test_pool_pressure_nvme_pool_has_correct_backing_disk(monkeypatch) -> None:
 
         result = asyncio.run(metrics_module.get_pool_disk_pressure())
 
-    nvme_pool = next(p for p in result["pools"] if p["pool_name"] == "ControlTower-NVMe")
+    nvme_pool = next(p for p in result["pools"] if p["pool_name"] == "node-a-NVMe")
     assert nvme_pool["backing_disk"] == "/mnt/c"
     assert nvme_pool["storage_tier"] == "nvme"
     assert nvme_pool["disk_bus"] == "NVMe"
@@ -131,7 +131,7 @@ def test_pool_pressure_hdd_pool_maps_to_d_drive(monkeypatch) -> None:
 
         result = asyncio.run(metrics_module.get_pool_disk_pressure())
 
-    hdd_pool = next(p for p in result["pools"] if p["pool_name"] == "ControlTower-HDD")
+    hdd_pool = next(p for p in result["pools"] if p["pool_name"] == "node-a-HDD")
     assert hdd_pool["backing_disk"] == "/mnt/d"
     assert hdd_pool["storage_tier"] == "hdd"
 
@@ -179,7 +179,7 @@ def test_pool_pressure_nvme_io_saturation_escalates(monkeypatch) -> None:
 
         result = asyncio.run(metrics_module.get_pool_disk_pressure())
 
-    nvme_pool = next(p for p in result["pools"] if p["pool_name"] == "ControlTower-NVMe")
+    nvme_pool = next(p for p in result["pools"] if p["pool_name"] == "node-a-NVMe")
     assert nvme_pool["pressure"]["status"] in ("medium", "high", "critical")
     assert nvme_pool["pressure"]["binding_constraint"] == "io"
 
@@ -203,7 +203,7 @@ def test_pool_pressure_hdd_io_saturation_does_not_cause_critical(monkeypatch) ->
 
         result = asyncio.run(metrics_module.get_pool_disk_pressure())
 
-    hdd_pool = next(p for p in result["pools"] if p["pool_name"] == "ControlTower-HDD")
+    hdd_pool = next(p for p in result["pools"] if p["pool_name"] == "node-a-HDD")
     # HDD IO alone should not go to critical — capacity must be the primary trigger
     assert hdd_pool["pressure"]["status"] in ("low", "medium")
 

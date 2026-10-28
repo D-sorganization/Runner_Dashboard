@@ -259,6 +259,7 @@
       ]
     },
     "group": { "type": ["string", "null"] },
+    "avatar": { "type": "string", "description": "Persona avatar identifier or path (#2680)." },
     "chat": {
       "type": "object",
       "properties": {
@@ -297,6 +298,32 @@
               "claude-ollama",
               "grok-chat"
             ]
+          }
+        },
+        "failover_chain": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Ordered provider failover for this role; every step must be in providers (#3064).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["provider"],
+            "properties": {
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "claude",
+                  "codex",
+                  "antigravity",
+                  "gemini",
+                  "cursor-agent",
+                  "ollama",
+                  "claude-ollama",
+                  "grok-chat"
+                ]
+              },
+              "model": { "type": ["string", "null"], "minLength": 1 }
+            }
           }
         },
         "provider_fallbacks": {

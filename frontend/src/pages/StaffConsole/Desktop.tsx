@@ -182,6 +182,7 @@ export function StaffConsoleDesktop({
                 <Dropdown
                   label="Export"
                   tooltip="Download this thread as Markdown or JSON"
+                  triggerClassName="staff-console__export-btn"
                   items={[
                     {
                       id: "export-md",

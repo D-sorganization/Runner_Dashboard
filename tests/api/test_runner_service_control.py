@@ -29,7 +29,7 @@ from runners.service_control import (  # noqa: E402
 # Issue #943: service_control reads its config from dashboard_config (the single
 # source of truth) rather than re-deriving it, so these tests patch the canonical
 # location. The override now correctly flows to both metrics scanning and the
-# sudo-executed svc.sh path.
+# runner systemd service lookup.
 
 # ---------------------------------------------------------------------------
 # RunnerUnit model
@@ -87,8 +87,32 @@ async def test_run_runner_svc_calls_run_cmd(monkeypatch: pytest.MonkeyPatch, tmp
     assert code == 0
     assert "sudo" in captured["cmd"]
     assert "start" in captured["cmd"]
-    # cwd should be the parent directory of svc.sh
-    assert captured["cwd"] == tmp_path / "runner-2"
+    expected_unit = f"actions.runner.{dc.ORG}.d-sorg-local-{dc.HOSTNAME}-2.service"
+    assert captured["cmd"] == ["sudo", "/usr/bin/systemctl", "start", expected_unit]
+    assert captured["cwd"] is None
+
+
+async def test_run_runner_svc_rejects_unsupported_action(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def unexpected_run_cmd(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("unsupported action reached command boundary")
+
+    monkeypatch.setattr(sc, "run_cmd", unexpected_run_cmd)
+    with pytest.raises(AssertionError, match="unsupported runner service action"):
+        await run_runner_svc(1, "status")
+
+
+async def test_run_runner_svc_rejects_untrusted_unit_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(dc, "RUNNER_BASE_DIR", tmp_path)
+    runner_dir = tmp_path / "runner-1"
+    runner_dir.mkdir()
+    (runner_dir / ".service").write_text("unrelated.service\n", encoding="utf-8")
+
+    async def unexpected_run_cmd(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("untrusted unit reached command boundary")
+
+    monkeypatch.setattr(sc, "run_cmd", unexpected_run_cmd)
+    with pytest.raises(AssertionError, match="local runner systemd unit"):
+        await run_runner_svc(1, "start")
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +122,7 @@ async def test_run_runner_svc_calls_run_cmd(monkeypatch: pytest.MonkeyPatch, tmp
 
 def test_runner_num_from_id_matches_local_runner(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "myhost")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
     runners = [{"id": 42, "name": "d-sorg-local-myhost-3"}]
     result = runner_num_from_id(42, runners)
@@ -106,6 +131,7 @@ def test_runner_num_from_id_matches_local_runner(monkeypatch: pytest.MonkeyPatch
 
 def test_runner_num_from_id_wrong_machine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "myhost")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
     runners = [{"id": 42, "name": "d-sorg-local-otherhost-3"}]
     result = runner_num_from_id(42, runners)
@@ -114,6 +140,7 @@ def test_runner_num_from_id_wrong_machine(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_runner_num_from_id_no_match(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "myhost")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
     runners = [{"id": 99, "name": "d-sorg-local-myhost-3"}]
     result = runner_num_from_id(42, runners)
@@ -122,10 +149,35 @@ def test_runner_num_from_id_no_match(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_runner_num_from_id_alias_match(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dc, "HOSTNAME", "primary")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
     monkeypatch.setattr(dc, "RUNNER_ALIASES", ["alias1", "alias2"])
     runners = [{"id": 7, "name": "d-sorg-local-alias1-5"}]
     result = runner_num_from_id(7, runners)
     assert result == 5
+
+
+def test_runner_num_from_id_ignores_platform_node_without_display_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Self-hosted CI hosts must not treat foreign names as local when HOSTNAME is patched."""
+    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", None)
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "DeskComputer")
+    monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+    runners = [{"id": 1, "name": "d-sorg-local-DeskComputer-1"}]
+    assert runner_num_from_id(1, runners) is None
+
+
+def test_runner_num_from_id_accepts_platform_node_when_display_name_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Split-pool DISPLAY_NAME labels still resolve legacy d-sorg-local-<node>-N names."""
+    monkeypatch.setattr(dc, "DISPLAY_NAME", "ControlTower-NVMe")
+    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower-NVMe")
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "ControlTower")
+    monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
+    runners = [{"id": 1, "name": "d-sorg-local-ControlTower-1"}]
+    assert runner_num_from_id(1, runners) == 1
 
 
 # ---------------------------------------------------------------------------

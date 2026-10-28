@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -84,10 +84,16 @@ def test_summary_and_pull_drill_down(app: FastAPI) -> None:
     assert summary.status_code == 200
     body = summary.json()
     assert body["summary"]["prs"] >= 1
+    assert body["groupings"]["by_role"]
     assert body["pr_drill_down"]
     trends = client.get("/api/v1/metrics/trends", params={"repo_full": REPO}, headers=_XHR)
     assert trends.status_code == 200
     assert trends.json()["weekly_trends"]
     pull = client.get("/api/v1/metrics/pull", params={"repo_full": REPO, "number": 2111}, headers=_XHR)
     assert pull.status_code == 200
-    assert pull.json()["check_runs"]
+    pull_body = pull.json()
+    assert pull_body["check_runs"]
+    workflow_runs = pull_body["workflow_runs"]
+    assert workflow_runs
+    assert workflow_runs[0]["workflow_run_id"]
+    assert "actions/runs/" in workflow_runs[0]["html_url"]

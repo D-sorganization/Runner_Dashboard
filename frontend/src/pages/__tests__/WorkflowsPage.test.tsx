@@ -100,7 +100,7 @@ describe("WorkflowsPage", () => {
 
     render(<WorkflowsPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Run workflow CI/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Run workflow/i }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm dispatch" }));
     fireEvent.click(screen.getByRole("button", { name: /Dispatch workflow now/i }));
 
