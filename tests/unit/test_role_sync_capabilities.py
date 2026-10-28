@@ -6,7 +6,6 @@ import time
 from typing import Any
 
 import pytest
-from scripts import rd_threads_envelope as rd_env
 from staff.role_sync_host import (
     CapabilityCategory,
     HostKind,
@@ -21,6 +20,8 @@ from staff.role_sync_host import (
     snapshot_for_host_flip,
     snapshot_to_dict,
 )
+
+from scripts import rd_threads_envelope as rd_env
 
 GROK, RD = HostKind.GROKBOT, HostKind.RUNNER_DASHBOARD
 _GROKBOT_CATS = (
@@ -56,7 +57,8 @@ def test_household_data_refused_on_rd_without_opt_in() -> None:
 
 
 def test_household_data_allowed_on_rd_with_opt_in() -> None:
-    assert host_has_capability(RD, CapabilityCategory.HOUSEHOLD_PERSONAL_DATA, config=RoleSyncConfig(household_data_opt_in=True))
+    cfg = RoleSyncConfig(household_data_opt_in=True)
+    assert host_has_capability(RD, CapabilityCategory.HOUSEHOLD_PERSONAL_DATA, config=cfg)
 
 
 class _RecordingRelay:
@@ -78,7 +80,8 @@ def test_approved_relay_routes_via_rd_threads_client() -> None:
         active_host=RD,
         config=RoleSyncConfig(relay_handoff_approved=True),
     )
-    assert relay_capability_miss(relay, decline=decline, from_agent="agent-test", to_role="night-watch", now=1.7e9)["ok"]
+    result = relay_capability_miss(relay, decline=decline, from_agent="agent-test", to_role="night-watch", now=1.7e9)
+    assert result["ok"]
     env = relay.calls[0]
     assert not rd_env.validate(env) and env["kind"] == "update" and env["to"] == "night-watch"
 
