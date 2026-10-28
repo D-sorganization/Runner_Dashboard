@@ -491,4 +491,8 @@ def __getattr__(name: str) -> Any:
         import private_mode_emit as _pme  # noqa: PLC0415
 
         return getattr(_pme, name)
+    import private_mode_approvals as _pma  # noqa: PLC0415
+
+    if name in _pma.EXPORTS:
+        return getattr(_pma, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
