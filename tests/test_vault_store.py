@@ -77,6 +77,7 @@ def test_vault_encrypts_at_rest_and_never_leaks_canary_across_surfaces(
     assert canary not in audit_res.text
 
 
+@pytest.mark.requires_posix
 def test_vault_fails_closed_when_master_key_permissions_are_unsafe(
     vault_env: tuple[TestClient, Path, Path],
 ) -> None:

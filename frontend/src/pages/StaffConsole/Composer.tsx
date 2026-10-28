@@ -6,6 +6,7 @@
  * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Workstream B (#1720).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useComposerAutosize } from "../../hooks/useComposerAutosize";
 import { useVoiceInput } from "../../hooks/useVoiceInput";
 import type { ComposerAttachment, ComposerProps as BaseComposerProps, IntakeSensitivity, SlashCommand } from "./threadTypes";
 import type { StaffRoleItem } from "./types";
@@ -30,6 +31,10 @@ interface ComposerComponentProps extends BaseComposerProps {
   prefillSeq?: number;
   conversationOpening?: boolean;
 }
+
+// #2654: textarea grows to fit wrapped content (typing, prefill, draft restore,
+// container width changes) up to this cap, then scrolls instead of clipping.
+const COMPOSER_MAX_HEIGHT_PX = 220;
 
 export const Composer: React.FC<ComposerComponentProps> = ({
   threadId,
@@ -126,6 +131,8 @@ export const Composer: React.FC<ComposerComponentProps> = ({
     },
     onError: (err) => setVoiceError(err),
   });
+
+  useComposerAutosize(textareaRef, text, ".staff-composer__box", COMPOSER_MAX_HEIGHT_PX);
 
   const getCaretPos = useCallback(() => {
     if (!textareaRef.current) return text.length;
@@ -410,10 +417,6 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           rows={rows}
           aria-label="Staff conversation input"
           className="staff-composer__textarea"
-          style={{
-            overflowY: rows >= 10 ? "auto" : "hidden",
-            maxHeight: "220px",
-          }}
         />
 
         <div className="staff-composer__footer">
