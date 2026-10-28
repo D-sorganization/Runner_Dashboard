@@ -13,6 +13,16 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 scripts/wrappers/claude_barb_hook.py"
+          }
+        ]
+      }
     ]
   }
 }

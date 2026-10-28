@@ -8,7 +8,7 @@ from email_intake.verify import dmarc_pass_aligned, verify_inbound
 def _msg(**kwargs: object) -> InboundMessage:
     defaults = {
         "message_id": "<1@test>",
-        "from_address": "fleet-operator@example.com",
+        "from_address": "user@example.com",
         "from_domain": "example.com",
         "to_addresses": ("intake@test",),
         "subject": "hi",
@@ -32,7 +32,7 @@ def test_quarantine_when_dmarc_fails() -> None:
         max_age_hours=72,
         rate_limit_per_sender_per_hour=10,
         max_message_bytes=10000,
-        allowed_senders=(AllowedSender("fleet-operator@example.com", True),),
+        allowed_senders=(AllowedSender("user@example.com", True),),
     )
     outcome = verify_inbound(_msg(authentication_results="dmarc=fail"), policy)
     assert outcome.disposition.value == "quarantine"
