@@ -10,8 +10,22 @@ operation.
 ## Overview
 
 The Runner Dashboard is a FastAPI backend + React SPA frontend that runs as a
-**systemd service** (`runner-dashboard.service`) on each fleet machine. It
-exposes a web UI on port 8321 and proxies the GitHub API for runner and workflow
+**systemd service** (`runner-dashboard.service`) on each fleet machine. Most WSL
+fleet nodes install the unit under **system** scope (`/etc/systemd/system/`).
+Native Linux nodes such as **Brick** use a **user** unit
+(`~/.config/systemd/user/runner-dashboard.service` with `systemctl --user`).
+`deploy/setup.sh` detects an existing user install and refreshes that unit in
+place instead of creating a duplicate system service. Use `--system-service` only
+on a clean host or after disabling the user unit; use `--user-service` to force
+user scope on a fresh install.
+
+Spoke nodes derive the fleet hub URL from `machine_registry.yml` (currently
+DeskComputer). A stale `HUB_URL=` line in `~/.config/runner-dashboard/env`
+(for example still pointing at ControlTower) makes `setup.sh` and dashboard
+startup **fail closed** until you remove the line or set
+`HUB_URL_REGISTRY_OVERRIDE=1` (or pass `--allow-hub-url-override` to setup).
+
+It exposes a web UI on port 8321 and proxies the GitHub API for runner and workflow
 management.
 
 The service is long-lived: you update it in-place using the deploy scripts rather
@@ -515,8 +529,21 @@ and machine name per host):
 ```bash
 cd ~/actions-runners/dashboard
 ./deploy/setup.sh --runners 8 --machine-name DeskComputer   # hub (DeskComputer)
-./deploy/setup.sh --runners 4 --machine-name Brick          # node (Brick)
+./deploy/setup.sh --runners 4 --machine-name Brick          # node (Brick, user systemd)
 ```
+
+On Brick, manage the dashboard with user systemd:
+
+```bash
+systemctl --user status runner-dashboard
+systemctl --user restart runner-dashboard
+journalctl --user -u runner-dashboard -f
+```
+
+If `setup.sh` refuses to run because `HUB_URL` disagrees with the registry, edit
+`~/.config/runner-dashboard/env` and delete the stale `HUB_URL=` line (preferred)
+or add `HUB_URL_REGISTRY_OVERRIDE=1` only when you intentionally proxy through a
+non-registry hub.
 
 Updates are deployed per-machine. There is no fleet-wide push mechanism built
 into the deploy scripts; use the Fleet Orchestration tab in the dashboard UI

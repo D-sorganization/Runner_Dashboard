@@ -91,4 +91,9 @@ def test_summary_and_pull_drill_down(app: FastAPI) -> None:
     assert trends.json()["weekly_trends"]
     pull = client.get("/api/v1/metrics/pull", params={"repo_full": REPO, "number": 2111}, headers=_XHR)
     assert pull.status_code == 200
-    assert pull.json()["check_runs"]
+    pull_body = pull.json()
+    assert pull_body["check_runs"]
+    workflow_runs = pull_body["workflow_runs"]
+    assert workflow_runs
+    assert workflow_runs[0]["workflow_run_id"]
+    assert "actions/runs/" in workflow_runs[0]["html_url"]
