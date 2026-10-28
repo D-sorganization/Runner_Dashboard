@@ -155,6 +155,44 @@ def _local_action_violations(workflow_path: Path) -> list[str]:
     return violations
 
 
+_GUARD_ACTION = "./.github/actions/merge-queue-ref-guard"
+
+
+def _composite_guard_followed_by_repo_steps(workflow_path: Path) -> list[str]:
+    """The guard composite sparse-checkouts; later repo steps would see an empty tree."""
+    data = _load_workflow(workflow_path)
+    violations: list[str] = []
+    for job_id, job in (data.get("jobs") or {}).items():
+        if _is_reusable_caller(job or {}):
+            continue
+        steps = (job or {}).get("steps") or []
+        for index, step in enumerate(steps):
+            if _GUARD_ACTION not in str(step.get("uses", "")):
+                continue
+            for later in steps[index + 1 :]:
+                if later.get("run") or str(later.get("uses", "")).startswith(_LOCAL_ACTION_PREFIX):
+                    violations.append(
+                        f"{workflow_path.name}::{job_id}::{step.get('name', _GUARD_ACTION)}"
+                    )
+                    break
+    return violations
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_merge_queue_ref_guard_composite_is_not_followed_by_repo_steps(workflow_path: Path) -> None:
+    """Guard composite re-sparse-checkouts; inline bash when later steps need the tree (#2886)."""
+    violations = _composite_guard_followed_by_repo_steps(workflow_path)
+    assert not violations, (
+        "merge-queue-ref-guard composite sparse-checkouts the workspace; use inline "
+        "bash .github/scripts/merge-queue-ref-guard.sh after a full checkout instead. "
+        f"Violations: {violations}"
+    )
+
+
 @pytest.mark.parametrize(
     "workflow_path",
     _workflow_files(),

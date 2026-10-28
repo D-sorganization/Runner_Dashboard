@@ -212,8 +212,17 @@ def test_workflow_does_not_grant_actions_write_globally(name: str) -> None:
 
 
 def test_ci_standard_tests_job_can_self_cancel_on_merge_group_recheck() -> None:
-    perms = _load_workflow("ci-standard.yml")["jobs"]["tests"]["permissions"]
-    assert perms == {"actions": "write", "contents": "read"}
+    job = _load_workflow("ci-standard.yml")["jobs"]["tests"]
+    assert job["permissions"] == {"actions": "write", "contents": "read"}
+    steps = job["steps"]
+    checkout_idx = next(i for i, s in enumerate(steps) if "actions/checkout" in str(s.get("uses", "")))
+    recheck = next(s for s in steps if "Re-check merge queue entry" in str(s.get("name", "")))
+    recheck_idx = steps.index(recheck)
+    assert recheck_idx > checkout_idx
+    assert _ACTION not in str(recheck.get("uses", ""))
+    assert "merge-queue-ref-guard.sh" in str(recheck.get("run", ""))
+    run_tests_idx = next(i for i, s in enumerate(steps) if s.get("name") == "Run Python tests")
+    assert recheck_idx > run_tests_idx
 
 
 def test_frontend_scope_guard_preserves_pull_request_files_read_permission() -> None:

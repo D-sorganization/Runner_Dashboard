@@ -716,11 +716,6 @@ jobs:
           - "3.11"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Re-check merge queue entry during long tests
-        if: github.event_name == 'merge_group'
-        uses: ./.github/actions/merge-queue-ref-guard
-        with:
-          merge_group_head_ref: ${{ github.event.merge_group.head_ref }}
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python }}
@@ -781,6 +776,12 @@ jobs:
           else
             pytest tests/ --tb=short -n auto -m "not integration and not playwright and not slow"
           fi
+      - name: Re-check merge queue entry during long tests
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - name: Upload coverage artifact
         if: always() && hashFiles('coverage.xml') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0
