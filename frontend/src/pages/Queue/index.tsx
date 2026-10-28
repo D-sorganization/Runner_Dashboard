@@ -429,7 +429,9 @@ export function QueueTab(p: QueueTabProps) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th></th>
+                  <th scope="col">
+                    <span className="visually-hidden">Status</span>
+                  </th>
                   <SortTh
                     label="Workflow"
                     sortKey="workflow"
@@ -460,7 +462,9 @@ export function QueueTab(p: QueueTabProps) {
                     sort={ipSort}
                     setSort={setIpSort}
                   />
-                  <th></th>
+                  <th scope="col">
+                    <span className="visually-hidden">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -615,7 +619,9 @@ export function QueueTab(p: QueueTabProps) {
                       sort={queueSort}
                       setSort={setQueueSort}
                     />
-                    <th></th>
+                    <th scope="col">
+                      <span className="visually-hidden">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

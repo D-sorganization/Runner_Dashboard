@@ -309,7 +309,9 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             <button type="button" className="staff-mobile__details-btn" onClick={() => setView("roster")}>Choose staff</button>
           </header>
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
-          <main className="staff-mobile__main-content staff-mobile__home-content">
+          {/* A <div>, not <main>: the page already has one <main> landmark
+              (MobileShell's #main-content); a second here would duplicate it. */}
+          <div className="staff-mobile__main-content staff-mobile__home-content">
             <section className="staff-mobile__home-intro" aria-labelledby="staff-mobile-home-title">
               <span className="staff-mobile__home-eyebrow">Your fleet, one conversation away</span>
               <h2 id="staff-mobile-home-title">What would you like to work on?</h2>
@@ -322,7 +324,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 </button>
               ))}
             </div>
-          </main>
+          </div>
           <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
             <GroupCostConfirm guard={sc.costGuard} />
             <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} prefillSeq={prefillSeq} />

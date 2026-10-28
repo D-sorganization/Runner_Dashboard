@@ -217,7 +217,6 @@ export function Toaster({ children }: ToasterProps = {}) {
     <ToastContext.Provider value={api}>
       {children}
       <div
-        aria-label="Notifications"
         className="toaster-region toaster-region-polite"
         data-touch-primitive="Toaster"
         style={toasterRegionStyle}
