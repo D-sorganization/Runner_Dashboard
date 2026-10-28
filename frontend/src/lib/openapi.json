@@ -3606,6 +3606,22 @@
             ],
             "title": "Quorum"
           },
+          "refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refs"
+          },
           "repos": {
             "anyOf": [
               {
@@ -3916,6 +3932,45 @@
         },
         "required": ["body"],
         "title": "PostMessageRequest",
+        "type": "object"
+      },
+      "PrHygieneItem": {
+        "properties": {
+          "pr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr",
+            "type": "integer"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr"],
+        "title": "PrHygieneItem",
+        "type": "object"
+      },
+      "PrHygieneRequest": {
+        "properties": {
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrHygieneItem"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": ["items"],
+        "title": "PrHygieneRequest",
         "type": "object"
       },
       "PresenceBody": {
@@ -5732,6 +5787,105 @@
         "title": "SessionDigestAppendResponse",
         "type": "object"
       },
+      "SessionSummary": {
+        "description": "The latest known state of one ``(source, session_id)`` activity session.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "last_event_at": {
+            "format": "date-time",
+            "title": "Last Event At",
+            "type": "string"
+          },
+          "last_event_id": {
+            "title": "Last Event Id",
+            "type": "string"
+          },
+          "last_kind": {
+            "title": "Last Kind",
+            "type": "string"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "session_id",
+          "node",
+          "status",
+          "repo",
+          "branch",
+          "issue",
+          "pr",
+          "last_kind",
+          "last_seq",
+          "last_event_id",
+          "last_event_at"
+        ],
+        "title": "SessionSummary",
+        "type": "object"
+      },
       "SessionTelemetryPayload": {
         "description": "Session telemetry payload (issue #1849 / RD-4).",
         "properties": {
@@ -5859,6 +6013,29 @@
         },
         "required": ["session_id"],
         "title": "SessionTelemetryPayload",
+        "type": "object"
+      },
+      "SessionsPage": {
+        "description": "A bounded page of :class:`SessionSummary` rows.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "scan_limit": {
+            "title": "Scan Limit",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": ["items", "scan_limit", "truncated"],
+        "title": "SessionsPage",
         "type": "object"
       },
       "StaffAuditListResponse": {
@@ -20038,9 +20215,40 @@
         "tags": ["activity"]
       }
     },
+    "/api/v1/activity/checkins": {
+      "post": {
+        "description": "Write-only tier for agents off the tailnet (Cursor cloud, unconnected boxes).\n\nThe ``activity.checkin`` scope is never combined with a read or chat scope,\nso a check-in credential cannot read activity, staff threads or anything else.",
+        "operationId": "checkin_activity_api_v1_activity_checkins_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityEnvelope"
+                  },
+                  "title": "Response Checkin Activity Api V1 Activity Checkins Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Checkin Activity",
+        "tags": ["activity"]
+      }
+    },
     "/api/v1/activity/events": {
       "post": {
-        "description": "Bound the wire body before parsing; never trust source-side redaction.",
         "operationId": "ingest_activity_api_v1_activity_events_post",
         "responses": {
           "200": {
@@ -20067,6 +20275,109 @@
           }
         ],
         "summary": "Ingest Activity",
+        "tags": ["activity"]
+      }
+    },
+    "/api/v1/activity/sessions": {
+      "get": {
+        "description": "Every agent/session checked into the fleet, grouped by node and status (#2860).\n\nStatus is derived entirely from persisted activity-log events (never from an\nin-memory cache), so this is identical after a restart. See\n``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.",
+        "operationId": "read_activity_sessions_api_v1_activity_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Activity Sessions",
         "tags": ["activity"]
       }
     },
@@ -20538,6 +20849,85 @@
         "tags": ["diagnostics"]
       }
     },
+    "/api/v1/fleet/brief": {
+      "get": {
+        "operationId": "get_fleet_brief_api_v1_fleet_brief_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|markdown)$",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Fleet Brief Api V1 Fleet Brief Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet Brief",
+        "tags": ["fleet-brief"]
+      }
+    },
     "/api/v1/fleet/friction": {
       "get": {
         "operationId": "list_friction_api_v1_fleet_friction_get",
@@ -20773,6 +21163,67 @@
         ],
         "summary": "Friction Recurrence",
         "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/overload": {
+      "get": {
+        "operationId": "get_fleet_overload_api_v1_fleet_overload_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "open_count_threshold",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Open Count Threshold",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Fleet Overload Api V1 Fleet Overload Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet Overload",
+        "tags": ["fleet-overload"]
       }
     },
     "/api/v1/fleet/owner-questions": {
@@ -25505,6 +25956,74 @@
       }
     },
     "/api/v1/staff/panels": {
+      "get": {
+        "description": "Recent panel threads with status and progress; newest activity first.",
+        "operationId": "list_panels_api_v1_staff_panels_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Panels Api V1 Staff Panels Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List recent expert panels",
+        "tags": ["staff-panels"]
+      },
       "post": {
         "description": "Create a panel thread and run it in the background.\n\nPre: ``body`` passed :class:`PanelCreateRequest`; fewer than ``MAX_ACTIVE_PANELS`` are running;\nthe estimate is under the group cost threshold or ``confirm_cost`` is true.\nPost: 202 with the thread and the estimate; the turns arrive on the thread's stream.",
         "operationId": "create_panel_api_v1_staff_panels_post",
@@ -25633,6 +26152,157 @@
         ],
         "summary": "Expert panel state",
         "tags": ["staff-panels"]
+      }
+    },
+    "/api/v1/staff/panels/{thread_id}/digest": {
+      "get": {
+        "description": "Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel.",
+        "operationId": "get_panel_digest_api_v1_staff_panels__thread_id__digest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Panel Digest Api V1 Staff Panels  Thread Id  Digest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Expert panel verdict digest",
+        "tags": ["staff-panels"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene": {
+      "post": {
+        "description": "Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run reruns only the failed\nruns it planned to rerun, and the batch is always audited.",
+        "operationId": "pr_hygiene_api_v1_staff_pr_hygiene_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Api V1 Staff Pr Hygiene Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene/closes-refs": {
+      "post": {
+        "description": "Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run retexts only the flagged\n``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.",
+        "operationId": "pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Closes Refs Api V1 Staff Pr Hygiene Closes Refs Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene Closes Refs",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
       }
     },
     "/api/v1/staff/projects": {

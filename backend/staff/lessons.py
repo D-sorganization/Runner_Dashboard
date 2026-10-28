@@ -94,6 +94,7 @@ def file_proposed_lessons(
         return []
 
     from memory.service import _validate_and_resolve_expires_at
+    from staff.lesson_locator import locate_lesson_evidence
 
     mem_store = get_memory_store()
     now_str = datetime.now(UTC).isoformat()
@@ -109,6 +110,12 @@ def file_proposed_lessons(
             "commit": getattr(rec, "commit", "") or getattr(rec, "head_ref", "") or "",
             "standards_version": rec.standards_version,
         }
+        try:
+            locator = locate_lesson_evidence(run_store, rec.id, rec.repo, text)
+        except ValueError:
+            locator = None
+        if locator is not None:
+            body["locator"] = locator
         try:
             enforce_entry_size(body, "lesson")
         except HTTPException:

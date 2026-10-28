@@ -297,6 +297,8 @@ export class TabErrorBoundary extends Component<TabErrorBoundaryProps, State> {
           <button
             type="button"
             className="btn"
+            title="Copy error details to clipboard"
+            aria-label="Copy error details to clipboard"
             onClick={() => this.copyDetails()}
             style={{
               padding: "0.5rem 1.25rem",

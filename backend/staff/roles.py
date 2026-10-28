@@ -17,7 +17,9 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from overlay_contract import get_overlay, overlay_companion_dir
 from staff.role_spec import RoleSpec, parse_role, read_and_parse_role_file
+from staff.workspace import is_standalone_mode
 
 log = logging.getLogger("dashboard.staff.roles")
 
@@ -39,12 +41,40 @@ __all__ = [
 ]
 
 
+def _overlay_roles_dir() -> Path | None:
+    """Role directory declared by the private overlay (optional; #3082 cat. 3).
+
+    Resolved relative to the overlay's companion directory (LoD: this module
+    only asks ``get_overlay()``/``overlay_companion_dir()``, never reads the
+    overlay file itself). A declared dir that doesn't exist is skipped with a
+    warning rather than a hard failure, matching the sibling-checkout
+    fallback below, which already degrades gracefully when nothing is there.
+    """
+    overlay = get_overlay()
+    if overlay is None:
+        return None
+    companion = overlay_companion_dir()
+    if companion is None:
+        return None
+    candidate = companion / overlay.roles_dir
+    if not candidate.is_dir():
+        log.warning("overlay roles_dir does not exist; falling back")
+        return None
+    return candidate
+
+
 def roles_dir() -> Path | None:
     """Resolve the role directory. Returns None when nothing is found."""
     override = os.environ.get(ROLES_DIR_ENV)
     if override:
         p = Path(override).expanduser()
         return p if p.is_dir() else None
+    # Overlay-declared roles dir takes priority over the sibling-checkout
+    # search: the overlay is what category 3 moves this config behind (#3082).
+    if (overlay_dir := _overlay_roles_dir()) is not None:
+        return overlay_dir
+    if is_standalone_mode():
+        return None
     here = Path(__file__).resolve()
     candidates: list[Path] = []
     for parent in (here.parents[2], here.parents[3]) if len(here.parents) > 3 else (here.parents[2],):
@@ -73,6 +103,8 @@ def schema_path() -> Path:
         parent_schema = r_dir.parent / "schema.json"
         if parent_schema.is_file():
             return parent_schema
+    if is_standalone_mode():
+        return _LOCAL_SCHEMA_PATH
     here = Path(__file__).resolve()
     candidates: list[Path] = []
     for parent in (here.parents[2], here.parents[3]) if len(here.parents) > 3 else (here.parents[2],):

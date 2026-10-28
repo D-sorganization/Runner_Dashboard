@@ -17,9 +17,10 @@ directly.
 
 ## Generic schema (illustrative)
 
-The shape below is descriptive, for documentation and the sample overlay
-only — PM-1 is the slice that defines and consumes the real, versioned
-schema. Every value here is a placeholder.
+The shape below is validated and consumed by `backend/private_mode.py`
+(`parse_classification_policy`, `load_classification_policy`,
+`load_overlay_classification_policy`, and `resolve` — issue #3251, PM-1).
+Every value here is a placeholder.
 
 ```json
 {

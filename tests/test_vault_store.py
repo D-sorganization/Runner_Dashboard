@@ -9,8 +9,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from identity import Principal
+from platform_utils import vault_key_permissions
+from platform_utils.vault_key_permissions import assert_master_key_file_permissions, enforces_posix_mode_bits
 from routers import vault as vault_router
-from vault_store import resolve_vault_handle
+from vault_store import load_or_create_master_key, resolve_vault_handle
 
 
 @pytest.fixture()
@@ -48,8 +50,12 @@ def test_vault_encrypts_at_rest_and_never_leaks_canary_across_surfaces(
     assert body["masked_value"] == "••••••••"
     assert canary not in res.text
 
-    # Master key created with strict 0600 mode
-    assert (key_path.stat().st_mode & 0o777) == 0o600
+    # Master key created with strict 0600 mode on POSIX; Windows NTFS skips mode-bit semantics
+    if enforces_posix_mode_bits():
+        assert (key_path.stat().st_mode & 0o777) == 0o600
+    else:
+        assert key_path.is_file()
+        assert len(key_path.read_bytes()) == 32
     # Raw SQLite file on disk must not contain plaintext canary
     assert canary.encode("utf-8") not in db_path.read_bytes()
 
@@ -91,3 +97,35 @@ def test_vault_fails_closed_when_master_key_permissions_are_unsafe(
     )
     assert res.status_code == 503
     assert "unsafe permissions" in res.text
+
+
+def test_assert_master_key_file_permissions_fails_closed_when_posix_mode_bits_unsafe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(vault_key_permissions.sys, "platform", "linux")
+    key_path = tmp_path / "vault.key"
+    key_path.write_bytes(os.urandom(32))
+    os.chmod(key_path, 0o644)
+    with pytest.raises(PermissionError, match="unsafe permissions"):
+        assert_master_key_file_permissions(key_path)
+
+
+def test_assert_master_key_file_permissions_skips_mode_bits_on_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(vault_key_permissions.sys, "platform", "win32")
+    key_path = tmp_path / "vault.key"
+    key_path.write_bytes(os.urandom(32))
+    os.chmod(key_path, 0o644)
+    assert_master_key_file_permissions(key_path)
+
+
+def test_load_or_create_master_key_accepts_lax_mode_bits_when_platform_is_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(vault_key_permissions.sys, "platform", "win32")
+    key_path = tmp_path / "vault.key"
+    key_path.write_bytes(os.urandom(32))
+    os.chmod(key_path, 0o644)
+    key = load_or_create_master_key(key_path)
+    assert len(key) == 32

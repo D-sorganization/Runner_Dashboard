@@ -200,6 +200,7 @@ export function OperationsRunnerHoursSection({
             type="button"
             onClick={() => load()}
             disabled={loading || saving}
+            title="Reload runner-hours schedule from the server"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -217,6 +218,7 @@ export function OperationsRunnerHoursSection({
             type="button"
             onClick={() => handleSave(false)}
             disabled={loading || saving || !canSaveSchedule}
+            title="Save runner-hours schedule changes"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",

@@ -10,6 +10,8 @@ Verifies:
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -234,11 +236,33 @@ def test_get_host_volume_metrics_no_conflation() -> None:
     assert "hard_floor_hit" in metrics
 
 
-def test_machine_registry_preserves_runner_backing_drive() -> None:
-    """machine_registry.py normalizes and preserves runner_backing_drive."""
+def test_machine_registry_preserves_runner_backing_drive(tmp_path: Path) -> None:
+    """machine_registry.py normalizes and preserves runner_backing_drive.
+
+    The shipped machine_registry.yml carries no live topology (#3082); this
+    exercises the loader against a registry shaped like a real deployment
+    instead of the (now-empty) shipped file.
+    """
     from machine_registry import load_machine_registry
 
-    reg = load_machine_registry()
+    registry = {
+        "version": 1,
+        "machines": [
+            {
+                "name": "ControlTower",
+                "storage": {"runner_backing_drive": "F:"},
+                "runner_pools": [
+                    {"name": "ControlTower-Runner", "storage": {"runner_backing_drive": "F:"}},
+                ],
+            },
+            {"name": "OGLaptop", "storage": {"runner_backing_drive": "C:"}},
+            {"name": "DeskComputer", "storage": {"runner_backing_drive": "D:"}},
+        ],
+    }
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    with patch("machine_registry.validate_config_path", return_value=registry_path):
+        reg = load_machine_registry(path=registry_path)
     machines = {m["name"]: m for m in reg.get("machines", [])}
 
     assert "ControlTower" in machines

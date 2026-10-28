@@ -5236,7 +5236,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/activity/events": {
+    "/api/v1/activity/checkins": {
         parameters: {
             query?: never;
             header?: never;
@@ -5246,10 +5246,54 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Ingest Activity
-         * @description Bound the wire body before parsing; never trust source-side redaction.
+         * Checkin Activity
+         * @description Write-only tier for agents off the tailnet (Cursor cloud, unconnected boxes).
+         *
+         *     The ``activity.checkin`` scope is never combined with a read or chat scope,
+         *     so a check-in credential cannot read activity, staff threads or anything else.
          */
+        post: operations["checkin_activity_api_v1_activity_checkins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Activity */
         post: operations["ingest_activity_api_v1_activity_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Activity Sessions
+         * @description Every agent/session checked into the fleet, grouped by node and status (#2860).
+         *
+         *     Status is derived entirely from persisted activity-log events (never from an
+         *     in-memory cache), so this is identical after a restart. See
+         *     ``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.
+         */
+        get: operations["read_activity_sessions_api_v1_activity_sessions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5429,6 +5473,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fleet/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Brief */
+        get: operations["get_fleet_brief_api_v1_fleet_brief_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fleet/friction": {
         parameters: {
             query?: never;
@@ -5478,6 +5539,23 @@ export interface paths {
          * @description Detectors call this when a closed or open friction recurs: increments the count, stamps last_seen_at.
          */
         post: operations["friction_recurrence_api_v1_fleet_friction__friction_id__recurrence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/overload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Overload */
+        get: operations["get_fleet_overload_api_v1_fleet_overload_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6822,7 +6900,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List recent expert panels
+         * @description Recent panel threads with status and progress; newest activity first.
+         */
+        get: operations["list_panels_api_v1_staff_panels_get"];
         put?: never;
         /**
          * Start an expert panel
@@ -6873,6 +6955,74 @@ export interface paths {
         get: operations["get_panel_api_v1_staff_panels__thread_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/panels/{thread_id}/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expert panel verdict digest
+         * @description Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel.
+         */
+        get: operations["get_panel_digest_api_v1_staff_panels__thread_id__digest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pr-hygiene": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene
+         * @description Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run reruns only the failed
+         *     runs it planned to rerun, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_api_v1_staff_pr_hygiene_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pr-hygiene/closes-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene Closes Refs
+         * @description Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run retexts only the flagged
+         *     ``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9830,6 +9980,8 @@ export interface components {
             preload_codebase: boolean;
             /** Quorum */
             quorum?: number | null;
+            /** Refs */
+            refs?: string[] | null;
             /** Repos */
             repos?: string[] | null;
             /**
@@ -9962,6 +10114,23 @@ export interface components {
             meta?: {
                 [key: string]: unknown;
             };
+        };
+        /** PrHygieneItem */
+        PrHygieneItem: {
+            /** Pr */
+            pr: number;
+            /** Repo */
+            repo: string;
+        };
+        /** PrHygieneRequest */
+        PrHygieneRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Items */
+            items: components["schemas"]["PrHygieneItem"][];
         };
         /**
          * PresenceBody
@@ -10786,6 +10955,42 @@ export interface components {
             replayed: boolean;
         };
         /**
+         * SessionSummary
+         * @description The latest known state of one ``(source, session_id)`` activity session.
+         */
+        SessionSummary: {
+            /** Branch */
+            branch: string | null;
+            /** Issue */
+            issue: number | null;
+            /**
+             * Last Event At
+             * Format: date-time
+             */
+            last_event_at: string;
+            /** Last Event Id */
+            last_event_id: string;
+            /** Last Kind */
+            last_kind: string;
+            /** Last Seq */
+            last_seq: number;
+            /** Node */
+            node: string;
+            /** Pr */
+            pr: number | null;
+            /** Repo */
+            repo: string | null;
+            /** Session Id */
+            session_id: string;
+            /** Source */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "idle" | "stale" | "ended" | "uncaptured";
+        };
+        /**
          * SessionTelemetryPayload
          * @description Session telemetry payload (issue #1849 / RD-4).
          */
@@ -10876,6 +11081,18 @@ export interface components {
              * @default 0
              */
             wakeups_count: number;
+        };
+        /**
+         * SessionsPage
+         * @description A bounded page of :class:`SessionSummary` rows.
+         */
+        SessionsPage: {
+            /** Items */
+            items: components["schemas"]["SessionSummary"][];
+            /** Scan Limit */
+            scan_limit: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * StaffAuditListResponse
@@ -19904,6 +20121,26 @@ export interface operations {
             };
         };
     };
+    checkin_activity_api_v1_activity_checkins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEnvelope"][];
+                };
+            };
+        };
+    };
     ingest_activity_api_v1_activity_events_post: {
         parameters: {
             query?: never;
@@ -19920,6 +20157,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityEnvelope"][];
+                };
+            };
+        };
+    };
+    read_activity_sessions_api_v1_activity_sessions_get: {
+        parameters: {
+            query?: {
+                node?: string | null;
+                status?: ("live" | "idle" | "stale" | "ended" | "uncaptured") | null;
+                repo?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -20247,6 +20518,39 @@ export interface operations {
             };
         };
     };
+    get_fleet_brief_api_v1_fleet_brief_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+                limit?: number;
+                format?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_friction_api_v1_fleet_friction_get: {
         parameters: {
             query?: {
@@ -20366,6 +20670,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FrictionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fleet_overload_api_v1_fleet_overload_get: {
+        parameters: {
+            query: {
+                repo: string;
+                open_count_threshold?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -23091,6 +23427,40 @@ export interface operations {
             };
         };
     };
+    list_panels_api_v1_staff_panels_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_panel_api_v1_staff_panels_post: {
         parameters: {
             query?: never;
@@ -23158,6 +23528,109 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_panel_digest_api_v1_staff_panels__thread_id__digest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_api_v1_staff_pr_hygiene_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

@@ -18,6 +18,7 @@ from memory.contract import (
     enforce_entry_size,
     validate_status_transition,
 )
+from memory.expiry import expiry_is_future
 from memory.models import (
     MemoryAppendRequest,
     MemoryContextPack,
@@ -29,8 +30,10 @@ from memory.redact import contains_secret, redact_memory_text
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
+from staff import store as run_stores
 from staff.barb_lease_fence import is_barb_seat
-from staff.lesson_provenance import authenticated_lesson_run
+from staff.lesson_locator import verify_lesson_evidence
+from staff.lesson_provenance import authenticated_lesson_run, completed_run_for_review
 from staff.store import _now  # noqa: PLC2701
 
 
@@ -160,10 +163,26 @@ def review_entry(principal: Principal, entry_id: str, req: MemoryReviewRequest) 
         raise HTTPException(status_code=422, detail="promotion requires trusted merged-promotion evidence")
     validate_status_transition(entry.review_status, req.review_status)
     target = validate_lesson_acceptance(entry, store) if req.review_status == "accepted" else req.review_status
+    if target == "accepted":
+        if not expiry_is_future(entry.expires_at, _now()):
+            raise HTTPException(status_code=409, detail="lesson proposal expired before review")
+        if entry.source_run and completed_run_for_review(run_stores.get_store(), entry.source_run) is None:
+            raise HTTPException(status_code=409, detail="lesson run has not reached authoritative completion")
+        locator = entry.body.get("locator")
+        if locator is not None and entry.source_run:
+            text = entry.body.get("text")
+            verified = isinstance(text, str) and verify_lesson_evidence(
+                run_stores.get_store(), entry.source_run, entry.repo or "", text, locator
+            )
+            if not verified:
+                raise HTTPException(status_code=409, detail="lesson evidence locator no longer verifies")
     exp = _validate_and_resolve_expires_at(req.expires_at) if req.expires_at or target == "accepted" else None
     acc = _now() if target == "accepted" else entry.accepted_at
     kw = {"review_status": target, "reviewed_by": format_caller(principal), "accepted_at": acc, "expires_at": exp}
-    return store.update_review(entry_id, **kw)  # type: ignore[arg-type]
+    try:
+        return store.update_review(entry_id, expected_review_status=entry.review_status or "proposed", **kw)  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="lesson review is stale; reload and retry") from exc
 
 
 def append_session_digest(principal: Principal, req: SessionDigestAppendRequest) -> tuple[MemoryEntry, bool]:
