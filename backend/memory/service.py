@@ -61,7 +61,7 @@ def extract_authenticated_run(p: Principal) -> str | None:
 
 
 _FLEET_CONFLICT_RE = re.compile(
-    r"\b(request(?:ing)? human review|assign(?:ing)? dieterolson|human-approval|require human reviewer|"
+    r"\b(request(?:ing)? human review|assign(?:ing)? fleet-operator|human-approval|require human reviewer|"
     r"pay-per-use|OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|GOOGLE_API_KEY|create draft pr|stack(?:ed)? prs?)\b",
     re.I,
 )

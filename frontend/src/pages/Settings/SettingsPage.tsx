@@ -16,6 +16,7 @@ import { LinearSetup } from "../LinearSetup";
 import { LocalAppsPage } from "../LocalApps";
 import { PrincipalsTab } from "../Principals";
 import PushSettings from "../PushSettings";
+import { HostSettingsPanel } from "./HostSettingsPanel";
 
 export interface SettingsSection {
   id: string;
@@ -37,6 +38,7 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "theme", title: "Theme", render: () => <ThemeSettings /> },
   { id: "local-tools", title: "Local Tools", render: () => <LocalAppsPage /> },
   { id: "vault", title: "Secure Vault", render: () => <VaultPanel /> },
+  { id: "host-settings", title: "Host settings", render: () => <HostSettingsPanel /> },
 ];
 
 function scrollToHash(): void {

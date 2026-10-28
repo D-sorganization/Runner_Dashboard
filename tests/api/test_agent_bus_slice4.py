@@ -32,7 +32,7 @@ def test_overview_lists_live_agent_and_recent_activity(client: TestClient, bus_e
             "session": sess,
             "role": "local",
             "provider": "cursor",
-            "node": "Brick",
+            "node": "node-c",
             "lease_seconds": 600,
         },
     )
