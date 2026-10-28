@@ -51,6 +51,49 @@ def test_resolve_registry_path_falls_back_to_shipped_example(tmp_path: Path, mon
 
 
 # ---------------------------------------------------------------------------
+# resolve_registry_source (#3380 — diagnostics must agree with the loader)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_registry_source_reports_local_when_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    local = tmp_path / "machine_registry.yml"
+    local.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", local)
+    path, source = mr.resolve_registry_source(None)
+    assert path == local
+    assert source == "local"
+
+
+def test_resolve_registry_source_reports_env_when_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    custom = tmp_path / "custom.yml"
+    custom.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.setenv("MACHINE_REGISTRY_PATH", str(custom))
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", tmp_path / "unused.yml")
+    path, source = mr.resolve_registry_source(None)
+    assert path == custom
+    assert source == "env"
+
+
+def test_resolve_registry_source_reports_shipped_when_neither_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "missing.yml"
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing)
+    path, source = mr.resolve_registry_source(None)
+    assert path == mr.DEFAULT_REGISTRY_PATH
+    assert source == "shipped"
+
+
+def test_resolve_registry_source_reports_explicit_for_a_direct_path(tmp_path: Path) -> None:
+    explicit = tmp_path / "explicit.yml"
+    path, source = mr.resolve_registry_source(str(explicit))
+    assert path == explicit
+    assert source == "explicit"
+
+
+# ---------------------------------------------------------------------------
 # _normalize_token
 # ---------------------------------------------------------------------------
 

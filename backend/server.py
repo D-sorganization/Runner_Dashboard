@@ -2266,12 +2266,13 @@ async def log_requests(request: Request, call_next):
 
 def _diagnostics_payload() -> dict:
     """Build the /api/diagnostics body. Pure-ish — only safe local I/O."""
-    from machine_registry import load_machine_registry  # local import to avoid cycle
+    from machine_registry import load_machine_registry, resolve_registry_source  # local import to avoid cycle
 
     # Registry load status
     registry_status: dict[str, object]
     registry_err: str | None = None
     machines_count = 0
+    _registry_path, _registry_source = resolve_registry_source(None)
     try:
         _registry = load_machine_registry()
         machines_count = len(_registry.get("machines", []))
@@ -2279,14 +2280,16 @@ def _diagnostics_payload() -> dict:
             "loaded": True,
             "machines": machines_count,
             "version": _registry.get("version"),
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
     except Exception as exc:  # noqa: BLE001
         registry_err = str(exc)
         registry_status = {
             "loaded": False,
             "error": registry_err,
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
 
     # Fleet federation status (config only — peer reachability is /api/fleet/nodes)

@@ -28,17 +28,30 @@ DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
 
 
+def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
+    """Pick the registry file and report which source supplied it.
+
+    Order: explicit ``path`` argument, then ``$MACHINE_REGISTRY_PATH``, then the
+    local operator config, then the shipped default. Callers that only need the
+    path (loading, diagnostics) should go through this one resolver rather than
+    reimplementing the lookup, so they can never disagree about which file is
+    actually in effect.
+    """
+
+    if path is not None:
+        return Path(path), "explicit"
+    env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
+    if env_path:
+        return Path(env_path), "env"
+    if LOCAL_REGISTRY_PATH.is_file():
+        return LOCAL_REGISTRY_PATH, "local"
+    return DEFAULT_REGISTRY_PATH, "shipped"
+
+
 def _resolve_registry_path(path: str | Path | None) -> Path:
     """Pick the registry file: env override, local config, then shipped default."""
 
-    if path is not None:
-        return Path(path)
-    env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
-    if env_path:
-        return Path(env_path)
-    if LOCAL_REGISTRY_PATH.is_file():
-        return LOCAL_REGISTRY_PATH
-    return DEFAULT_REGISTRY_PATH
+    return resolve_registry_source(path)[0]
 
 
 _DOCUMENTATION_TOPOLOGY = "documentation"
