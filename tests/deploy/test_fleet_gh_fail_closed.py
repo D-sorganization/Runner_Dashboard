@@ -53,6 +53,19 @@ def test_mint_failure_raises(gh_app: Any) -> None:
 
 
 @pytest.mark.unit
+def test_apply_fleet_app_token_never_falls_back_to_personal_gh_token(gh_app: Any) -> None:
+    """App mint failure must not surface an inherited operator ``ghp_`` token (#3000)."""
+    inherited = {
+        "PATH": "/bin",
+        "GH_TOKEN": _FAKE_GHP,
+        "GITHUB_TOKEN": _FAKE_GHP,
+    }
+    with patch.object(gh_app, "mint_fleet_app_token", side_effect=gh_app.FleetGhMintError(_MINT_ERR)):
+        with pytest.raises(gh_app.FleetGhMintError, match=_MINT_ERR):
+            gh_app.apply_fleet_app_token(dict(inherited))
+
+
+@pytest.mark.unit
 def test_gh_shim_exits_nonzero_on_mint_failure(gh_app: Any) -> None:
     with patch.object(gh_app, "mint_fleet_app_token", side_effect=gh_app.FleetGhMintError(_MINT_ERR)):
         proc = subprocess.run(
@@ -99,6 +112,26 @@ def test_git_credential_helper_fails_closed_on_mint_failure(gh_app: Any) -> None
         code = cred.main(stdin=stdin, stdout=out)
     assert code == 1
     assert out.getvalue() == ""
+
+
+@pytest.mark.unit
+def test_git_credential_helper_fails_closed_when_minter_is_unavailable(gh_app: Any) -> None:
+    cred = _load_module("git_credential_fleet_gh", _GIT_CRED)
+    with patch.object(gh_app, "_backend_root", return_value=None):
+        stdin = io.StringIO("protocol=https\nhost=github.com\n\n")
+        out = io.StringIO()
+        code = cred.main(stdin=stdin, stdout=out)
+    assert code != 0
+    assert out.getvalue() == ""
+
+
+@pytest.mark.unit
+def test_installer_removes_existing_github_credential_helpers_before_installing_fleet_helper() -> None:
+    text = _INSTALLER.read_text(encoding="utf-8")
+    reset = "git config --global --unset-all credential.https://github.com.helper"
+    install = 'git config --global credential.https://github.com.helper "${BIN_DIR}/git-credential-fleet-gh"'
+    assert reset in text
+    assert text.index(reset) < text.index(install)
 
 
 @pytest.mark.unit
