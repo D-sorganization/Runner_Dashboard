@@ -56,10 +56,10 @@ def test_custom_chain_from_config() -> None:
     assert [s.provider for s in rp.chain(cfg)] == ["codex", "claude"]
 
 
-def test_switch_notice_is_fyi_with_recommendation() -> None:
+def test_switch_notice_is_update_with_recommendation() -> None:
     d = rp.select({}, current="claude", failure_class="auth_expired")
     msg = rp.switch_notice(d, failure_class="auth_expired", run_id="r1")
-    assert msg["kind"] == "fyi" and "codex" in msg["summary"]
+    assert msg["kind"] == "update" and "codex" in msg["summary"]
     assert "Recommendation:" in msg["body"] and "claude" in msg["body"]
     assert msg["dedupe_key"].startswith("rd-barb-provider-")
 
@@ -80,4 +80,4 @@ def test_main_prints_decision_and_sends_notice(capsys: pytest.CaptureFixture[str
     rc = rp.main(["next", "--current", "claude", "--failure", "rate_limited"], config={}, notify=sent.append)
     out = capsys.readouterr().out
     assert rc == 0 and '"provider": "codex"' in out
-    assert sent and sent[0]["kind"] == "fyi"
+    assert sent and sent[0]["kind"] == "update"

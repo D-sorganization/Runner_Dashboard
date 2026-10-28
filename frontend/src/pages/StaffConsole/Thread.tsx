@@ -197,11 +197,12 @@ export const Thread: React.FC<ThreadProps> = ({
     });
     resizeObserverRef.current = observer;
     observer.observe(container);
-    for (const row of observedRowsRef.current.values()) observer.observe(row);
+    const observedRows = observedRowsRef.current;
+    for (const row of observedRows.values()) observer.observe(row);
     return () => {
       observer.disconnect();
       resizeObserverRef.current = null;
-      observedRowsRef.current.clear();
+      observedRows.clear();
     };
   }, []);
 
@@ -289,9 +290,8 @@ export const Thread: React.FC<ThreadProps> = ({
     }
   }, [messages, userScrolledUp, totalVirtualHeight]);
 
-  const handleScroll = () => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
     if (useVirtualization) setVirtualScrollTop(el.scrollTop);
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     setUserScrolledUp(!isAtBottom);

@@ -11,10 +11,10 @@ def test_load_config_reads_credential_file(tmp_path: Path, monkeypatch: pytest.M
     cred_path = tmp_path / "imap.cred"
     cred_path.write_text("xyzzy-fixed-test-value\n", encoding="utf-8")
     monkeypatch.setenv("MAIL_INTAKE_ENABLED", "1")
-    monkeypatch.setenv("MAIL_INTAKE_ADDRESS", "intake@work.affinedrift.com")
-    monkeypatch.setenv("MAIL_INTAKE_DOMAIN", "work.affinedrift.com")
+    monkeypatch.setenv("MAIL_INTAKE_ADDRESS", "intake@mail.example.com")
+    monkeypatch.setenv("MAIL_INTAKE_DOMAIN", "mail.example.com")
     monkeypatch.setenv("MAIL_INTAKE_IMAP_HOST", "imap.example.com")
-    monkeypatch.setenv("MAIL_INTAKE_IMAP_USER", "intake@work.affinedrift.com")
+    monkeypatch.setenv("MAIL_INTAKE_IMAP_USER", "intake@mail.example.com")
     file_env = "MAIL_INTAKE_IMAP_" + "PASSWORD_FILE"
     monkeypatch.setenv(file_env, str(cred_path))
     cfg = load_email_intake_config()

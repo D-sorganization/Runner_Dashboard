@@ -15,9 +15,9 @@ import logging
 import sys
 from pathlib import Path
 
-from agent_bus.store import AgentBusStore
-from coordination.postman import CycleReport, Postman, PostmanState
-from coordination.postman_adapters import AgentBus, ConfigBoardSource, RmBoard
+from coordination.hub_thread_bus import build_hub_thread_bus
+from coordination.postman import BARB, CycleReport, Postman, PostmanState
+from coordination.postman_adapters import ConfigBoardSource, RmBoard
 from coordination.roster import agent_ids
 
 log = logging.getLogger("dashboard.coordination.postman_run")
@@ -41,8 +41,10 @@ def _report_dict(report: CycleReport) -> dict[str, object]:
 
 def build_postman(state_path: Path, *, roster: tuple[str, ...] | None = None) -> Postman:
     source = ConfigBoardSource()
+    agents = roster or default_roster()
     state = PostmanState.load(state_path, default_board_issue=source.board_issue())
-    return Postman(RmBoard(), AgentBus(AgentBusStore()), source, roster or default_roster(), state)
+    bus = build_hub_thread_bus(roster=frozenset(agents) | {BARB})
+    return Postman(RmBoard(), bus, source, agents, state, guard=bus.guard)
 
 
 def run(pm: Postman, state_path: Path, *, live: bool) -> CycleReport:

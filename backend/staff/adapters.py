@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS
+from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS, canonical_provider_id
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -38,13 +38,16 @@ from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
 
-# Provider ids used by staff roles. They intentionally match the
-# ``dashboard_id`` values in agent_remediation/provider_registry.py where an
-# entry exists there (claude_code_cli → "claude", codex_cli → "codex").
+# Provider ids used by staff roles (mapped to provider_registry.py via canonical_provider_id).
 ProviderId = str
+
+# ``agy`` is a Windows binary reached through WSL interop, whose command line is capped near 32 K
+# characters; a longer argv fails with ``agy: Invalid argument`` (#2744). Longer prompts go on stdin.
+AGY_MAX_ARGV_PROMPT_CHARS = 16_000
 
 __all__ = [
     "ADAPTERS",
+    "AGY_MAX_ARGV_PROMPT_CHARS",
     "CHAT_READ_ONLY_TOOLS",
     "CLAUDE_WRITE_TOOLS",
     "ChatReadOnlyUnsupportedError",
@@ -239,16 +242,8 @@ class ProviderAdapter:
             if session_id:
                 cmd += ["--session", session_id]
         elif self.provider_id == "antigravity":
-            cmd = [
-                self.executable,
-                "--print",
-                prompt,
-                "--output-format",
-                "stream-json",
-                "--add-dir",
-                workdir,
-            ]
-            cmd += read_only
+            cmd = [self.executable, *(["--print", prompt] if self.chat_stdin(prompt) is None else [])]
+            cmd += ["--output-format", "stream-json", "--add-dir", workdir, *read_only]
             if session_id:
                 cmd += ["--conversation", session_id]
         elif self.provider_id == "cursor-agent":
@@ -275,6 +270,16 @@ class ProviderAdapter:
             cmd.append(prompt)
         assert not _CHAT_BYPASS_FLAGS & set(cmd), "chat argv must never bypass permissions"  # noqa: S101
         return cmd
+
+    def chat_stdin(self, prompt: str) -> str | None:
+        """Return the text to pipe on stdin for a chat turn, or None when the prompt rides in argv.
+
+        Post: only antigravity with a prompt over :data:`AGY_MAX_ARGV_PROMPT_CHARS` returns the prompt
+        (and :meth:`chat_argv` then omits ``--print <prompt>``); every other case returns None.
+        """
+        if self.provider_id == "antigravity" and len(prompt) > AGY_MAX_ARGV_PROMPT_CHARS:
+            return prompt
+        return None
 
     def parse_line(self, line: str) -> dict[str, Any]:
         """Turn one stdout line into a flat event.
@@ -473,8 +478,11 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
 
 
 def get_adapter(provider_id: str) -> ProviderAdapter:
-    """Return the adapter for ``provider_id`` or raise ``KeyError``."""
-    return ADAPTERS[provider_id]
+    """Return an adapter by legacy or canonical id, preferring the primary launch path."""
+    if provider_id in ADAPTERS:
+        return ADAPTERS[provider_id]
+    canonical_id = canonical_provider_id(provider_id)
+    return next(adapter for key, adapter in ADAPTERS.items() if canonical_provider_id(key) == canonical_id)
 
 
 def available_providers() -> dict[str, bool]:

@@ -27,7 +27,7 @@ def api_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     # Mock runner
     mock_runner = MagicMock()
-    mock_runner.machine = "DeskComputer"
+    mock_runner.machine = "hub-a"
     mock_runner.roles.return_value = {}
     mock_runner.store.active_runs.return_value = []
     mock_runner.store.list_runs.return_value = []

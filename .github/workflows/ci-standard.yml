@@ -38,8 +38,9 @@ on:
         type: string
 
 # Main-push and live merge_group runs are never concurrency-cancelled. Only
-# pull_request runs cancel in progress. merge_group supersession uses
-# merge_queue_cancel_safety (GraphQL entries) before any bot cancel.
+# pull_request runs cancel in progress. Obsolete merge_group runs self-cancel
+# when their gh-readonly-queue ref is deleted (queue-entry-alive); bots use
+# merge_queue_cancel_safety (GraphQL entries) before cancelling anything else.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -53,6 +54,9 @@ jobs:
       github.event.pull_request.head.repo.full_name != github.repository &&
       'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
     outputs:
       runner: ${{ steps.select.outputs.runner }}
       mode: ${{ steps.select.outputs.mode }}
@@ -81,6 +85,17 @@ jobs:
           fi
           echo "has_expedite=$has" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
+          sparse-checkout-cone-mode: false
+      - name: Stop obsolete merge queue entries
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - id: select
         name: Select runner without API polling
         shell: bash
@@ -486,6 +501,8 @@ jobs:
             pip install -r requirements.txt
             echo "$RUNNER_TEMP/ci-tools/bin" >> "$GITHUB_PATH"
           fi
+      - name: Validate private CI gate manifest
+        run: python -m backend.ci.private_gate_manifest --validate
       - name: Check Tool Version Consistency
         run: |
           echo "Validating tool versions match .pre-commit-config.yaml..."
@@ -539,6 +556,11 @@ jobs:
           mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
       - name: Runner disk guard vendored manifest
         run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
+      - name: Grok role bundle drift (fixture canary)
+        if: needs.changes.outputs.run_python_tests == 'true'
+        run: >
+          python -m scripts.export_grok_role_bundles --check
+          --roles-dir tests/fixtures/grok_role_sync/roles
       - name: Run bandit security scan
         # pull_request (in scope), schedule, or workflow_dispatch — not merge_group.
         if: >-
@@ -676,6 +698,9 @@ jobs:
       - ci-health-check
       - pick-runner
     if: needs.changes.outputs.run_python_tests == 'true'
+    permissions:
+      actions: write
+      contents: read
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -763,6 +788,12 @@ jobs:
           else
             pytest tests/ --tb=short -n auto -m "$FAST_MARKER"
           fi
+      - name: Re-check merge queue entry during long tests
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - name: Upload coverage artifact
         if: always() && hashFiles('coverage.xml') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0

@@ -19,6 +19,12 @@ import pytest
 import runner_autoscaler as ra
 
 
+@pytest.fixture(autouse=True)
+def _idle_stop_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep stop admission off the host; busy detection itself uses the facade."""
+    monkeypatch.setattr("autoscaler_busy._runner_is_busy", lambda unit: False)
+
+
 def test_main_identity_failure_exits_before_lock_or_poll(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ra, "AUTOSCALER_EXPECTED_WSL_DISTRO", "Ubuntu-22.04")
     monkeypatch.setattr(ra, "psutil", object())

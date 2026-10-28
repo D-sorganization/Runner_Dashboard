@@ -20,16 +20,75 @@ In the fleet topology, **Barb** is the single front door:
 
 ### Remote Ingress (ADR 0007: local-only)
 
-Direct connections use the local network or Tailscale address (`http://deskcomputer:8321`). **Cloud-hosted Grok instances outside the private network are not supported** ([ADR 0007](../adr/0007-agent-client-ingress-local-only.md)): the dashboard has no Funnel, connector or outbound relay path. Grok connects through its local-exec tool on a fleet machine, over the tailnet; that is a local process calling a cloud model, not cloud ingress. See [Supported Clients and Networks](connect.md#supported-clients-and-networks). Any future cloud ingress is a separate Board decision.
+Direct connections use the local network or Tailscale address (`http://hub-a:8321`). **Cloud-hosted Grok instances outside the private network are not supported** ([ADR 0007](../adr/0007-agent-client-ingress-local-only.md)): the dashboard has no Funnel, connector or outbound relay path. Grok connects through its local-exec tool on a fleet machine, over the tailnet; that is a local process calling a cloud model, not cloud ingress. See [Supported Clients and Networks](connect.md#supported-clients-and-networks). Any future cloud ingress is a separate Board decision.
 
 ---
+
+## Dispatcher-First Protocol
+
+Grok handles conversation, decisions, holds and owner questions itself. Route other
+work through RD, subject to the existing proposal-confirmation and cost gates
+below. A dispatch refusal never grants permission to bypass a hold.
+
+1. Read the coordination briefing and claim the issue on RM #2376 before starting
+   work. Check for an existing run and live RD lease for the same request key.
+2. Probe the hub, then dispatch through `fleetctl dispatch` with a stable
+   `Idempotency-Key`. Reuse the key on retries: it identifies the role, repository,
+   issue, prompt digest and UTC date. Never create a new key just to evade a lease.
+   The ordered `FLEET_API_URLS` health-probe/failover client is pending #3051;
+   confirm that implementation has landed before using this planned invocation:
+
+   ```bash
+   python3 clients/fleet/fleetctl.py dispatch --role ROLE \
+     --repo Runner_Dashboard --issue ISSUE --prompt-file PROMPT_FILE
+   ```
+
+   Until then, use the approved Barb proposal path below. Do not treat a missing
+   CLI subcommand as proof that the hub is unavailable.
+3. Wait without polling: use `staff_thread_wait` with a long timeout, or consume
+   the terminal run-card when the notifier (#3052) is available. A wait timeout
+   alone is not a failed run. Keep stream/transcript reads out of Grok's context.
+4. Fall back only for one of these named reasons:
+
+   | Reason | Required evidence |
+   | --- | --- |
+   | `hub_unreachable` | two probes fail to reach the configured hub service |
+   | `run_failed_twice` | the run terminally failed twice; a pending run does not qualify |
+   | `no_provider` | RD reports no provider available |
+   | `small_task` | the task takes less than about 5 minutes and run-cards are not live |
+
+   Never fall back while a live RD lease for the same key exists. If lease status
+   cannot be verified, wait or escalate through Barb. Use a local subscription CLI
+   on a fleet machine first (claude, codex, agy or cursor); use Grok itself last.
+   A `held` or `rejected` response is a refusal, not a reason to try another hub.
+5. Every fallback writes a ledger/check-in record with its reason and task
+   identity. Use the shared check-in/spool once #2874/#2875 land and the dispatch
+   ledger from #3051/#3054 when available; do not build a parallel spool. Until
+   those paths land, record the fallback in the existing session digest and link
+   its result back to the RD thread when reachable.
+6. Relay only the verified outcome and links to Dieter. Check the resulting PR,
+   tests or artifact; a terminal success flag alone does not verify the work.
+
+These gates apply to RD dispatch and every fallback:
+
+| Hold | Required behavior |
+| --- | --- |
+| #2657 | No RD deploy or release while the hold remains active |
+| Sidekick packaging | Keep packaging work held |
+| Assessment Board | Preserve the Assessment Board gate |
+| C3 | Preserve the C3 gate |
+
+Keep Gasification_Model private/work content out of public issues, comments,
+digests and Pages. Use authenticated private records for sensitive context; never
+include tokens in a ledger, prompt log or error report. Subscription CLIs only;
+no pay-per-use model APIs.
 
 ## 2. Authentication & Environment
 
 Set environment variables in Grok's execution context:
 
 ```bash
-export FLEET_API_URL="http://deskcomputer:8321"
+export FLEET_API_URL="http://hub-a:8321"
 export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-grok.token)"
 export FLEET_AGENT="grok"
 ```
@@ -88,7 +147,7 @@ The first live contract is the `/api/v1/staff` threads API with the `agent-grok`
   `/api/v1/staff/proposals/{id}/decide`). Chat turns (including Barb) operate in read-only mode and cannot
   dispatch runs directly or accept chat confirmations. Saying "yes" in chat does not dispatch; the owner must
   accept the proposal card in the Staff Console. The cost guard still applies; a cost-guard overrun needs its own approval.
-  - The supervised dry run gate is met. The first dry run (2026-09-27, DeskComputer) showed that Barb's run plan
+  - The supervised dry run gate is met. The first dry run (2026-09-27, hub-a) showed that Barb's run plan
     carried write tools and push/PR rules. That was fixed by the opt-in `permissions.code_read_only` (#1659,
     Repository_Management#1822) and by removing Barb's directive-write recipe (Repository_Management#1818).
   - The re-run on `dfbd139d` passed: a read-only tool allowlist, no draft-PR rules, no directive write, and

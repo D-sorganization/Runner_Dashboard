@@ -366,10 +366,10 @@ def test_default_url(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_default_url_is_the_barb_authority_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     """BR-06 (#1800): every enrolled computer reads the same threads from the one authority by default."""
     monkeypatch.delenv("FLEET_API_URL", raising=False)
-    monkeypatch.setenv("BARB_AUTHORITY_URL", "http://controltower:8321/")
-    assert FleetClient().base_url == "http://controltower:8321"
-    monkeypatch.setenv("FLEET_API_URL", "http://deskcomputer:8321")
-    assert FleetClient().base_url == "http://deskcomputer:8321"  # an explicit endpoint still wins
+    monkeypatch.setenv("BARB_AUTHORITY_URL", "http://node-a:8321/")
+    assert FleetClient().base_url == "http://node-a:8321"
+    monkeypatch.setenv("FLEET_API_URL", "http://hub-a:8321")
+    assert FleetClient().base_url == "http://hub-a:8321"  # an explicit endpoint still wins
     assert FleetClient("http://other:8321").base_url == "http://other:8321"
 
 
@@ -419,7 +419,7 @@ def test_client_session_prefix_rule_matches_the_server() -> None:
     from coordination.auth import ImpersonationError as ServerRejects  # noqa: PLC0415
 
     bot = Caller(label="principal:agent-codex", restricted=True, agent="codex")
-    derived = fc.default_session("codex", "DeskComputer")
+    derived = fc.default_session("codex", "hub-a")
     bot.check_session(derived)  # the server accepts what the client derives
     with pytest.raises(ServerRejects):
         bot.check_session("codexfoo-1")  # ...and rejects what the client rejects
@@ -521,8 +521,8 @@ def test_default_session_is_agent_host_date() -> None:
 
     day = dt.date(2026, 9, 23)
     assert (
-        fc.default_session("claude", "DeskComputer.tail1234.ts.net", day, "ab12cd")
-        == "claude-DeskComputer-20260923-ab12cd"
+        fc.default_session("claude", "hub-a.fleet-example.ts.net", day, "ab12cd")
+        == "claude-hub-a-20260923-ab12cd"
     )
     assert fc.default_session("codex", "my host!", day, "ab12cd") == "codex-my-host--20260923-ab12cd"
     long = fc.default_session("grok", "h" * 300, day)
