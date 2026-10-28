@@ -119,7 +119,7 @@ Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runn
   ```ini
   [user]
       name = Dieter Olson
-      email = dieterolson@users.noreply.github.com
+      email = fleet-operator@users.noreply.github.com
   [credential "https://github.com"]
       helper = !gh auth token
   [credential "https://gist.github.com"]

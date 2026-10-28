@@ -8831,7 +8831,7 @@ export interface components {
         BoardRoutingCriteria: {
             /**
              * Confidential Data Egress
-             * @description Confidential data egress; requires user sign-off before Board routing.
+             * @description Confidential partner data egress; requires user sign-off before Board routing.
              * @default false
              */
             confidential_data_egress: boolean;
