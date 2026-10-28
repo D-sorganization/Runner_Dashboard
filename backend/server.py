@@ -76,28 +76,6 @@ try:
 except ImportError:
     _sd_notify = None
 
-import httpx
-from browser_ingress_guard import BrowserIngressMiddleware
-from browser_sessions import BrowserSessionMiddleware
-from cloudflare_access import CloudflareAccessValidator
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import (
-    FileResponse,
-    HTMLResponse,
-    JSONResponse,
-)
-from fastapi.staticfiles import StaticFiles
-from identity import Principal, require_scope  # noqa: B008
-from middleware import MaxBodySizeMiddleware
-from pydantic import BaseModel, Field
-from routers import admin as admin_router
-from routers import auth as auth_router
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from tailnet_identity import build_asgi_app
-
 import agent_dispatch_router as agent_dispatch_router  # noqa: E402
 import agent_remediation as agent_remediation  # noqa: E402
 import auth_webauthn as _auth_webauthn_router  # noqa: E402
@@ -107,6 +85,7 @@ import deployment_drift as deployment_drift  # noqa: E402
 import dispatch_contract as dispatch_contract  # noqa: E402
 import gh_utils as gh_utils  # noqa: E402
 import health as _health_router  # noqa: E402
+import httpx
 import issue_inventory as issue_inventory  # noqa: E402
 import lease_synchronizer as lease_synchronizer  # noqa: E402
 import linear_inventory as linear_inventory  # noqa: E402
@@ -120,9 +99,12 @@ import push as _push_router  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
 import unified_issue_inventory as unified_issue_inventory  # noqa: E402
 import usage_monitoring as usage_monitoring  # noqa: E402
+from browser_ingress_guard import BrowserIngressMiddleware
+from browser_sessions import BrowserSessionMiddleware
 from cache_utils import cache_delete as _cache_delete  # noqa: E402
 from cache_utils import cache_get as _cache_get  # noqa: E402
 from cache_utils import cache_set as _cache_set  # noqa: E402
+from cloudflare_access import CloudflareAccessValidator
 from dashboard_config import FLEET_NODES  # noqa: E402
 from dashboard_config import runner_limit as _runner_limit  # noqa: E402
 from dashboard_config.cache_ttls import CacheTtl  # noqa: E402
@@ -145,17 +127,28 @@ from error_models import (  # noqa: E402
     internal_error,
     validation_error,
 )
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+)
+from fastapi.staticfiles import StaticFiles
 from fleet_autoconfig import (  # noqa: E402
     apply_fleet_identity_from_registry,
     derive_fleet_nodes_from_registry,
 )
 from http_clients import initialize_http_clients, shutdown_http_clients  # noqa: E402
+from identity import Principal, require_scope  # noqa: B008
 from local_app_monitoring import collect_local_apps  # noqa: E402
 from machine_registry import (  # noqa: E402
     load_machine_registry,
     merge_registry_with_live_nodes,
 )
 from middleware import (  # noqa: E402
+    MaxBodySizeMiddleware,
     add_security_headers,
     auth_perimeter_check,
     csrf_check,
@@ -163,12 +156,15 @@ from middleware import (  # noqa: E402
 )
 from models.requests import HelpChatRequest  # noqa: E402
 from platform_utils.wsl_paths import windows_repositories_root  # noqa: E402
+from pydantic import BaseModel, Field
 from request_context import RequestIdMiddleware, configure_json_logging  # noqa: E402
+from routers import admin as admin_router
 from routers import agent_profiles as _agent_profiles_router  # noqa: E402
 from routers import assessments as _assessments_router  # noqa: E402
 
 # parse_report_metrics and sanitize_report_date moved to routers/reports.py (issue #358)
 from routers import assistant as _assistant_router  # noqa: E402
+from routers import auth as auth_router
 from routers import (  # noqa: E402
     autoscaler_pools as _autoscaler_pools_router,
 )  # issue #755
@@ -221,7 +217,10 @@ from security import (  # noqa: E402
     sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
 )
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from system_utils import get_system_metrics_snapshot  # noqa: E402
+from tailnet_identity import build_asgi_app
 from workflows.run_enrichment import (  # noqa: E402
     _get_recent_org_repos,
 )
