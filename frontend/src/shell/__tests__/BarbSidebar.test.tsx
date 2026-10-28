@@ -256,3 +256,25 @@ describe("BarbSidebar", () => {
     );
   });
 });
+
+
+it("shows named project starters in an active Barb thread and after New chat without sending or navigating", async () => {
+  const thread = { id: "barb-active", title: "Active Barb", kind: "auto", participants: ["barb"], status: "active" };
+  const onThreadSelected = vi.fn();
+  const newConversation = vi.fn().mockResolvedValue({ ...thread, id: "barb-new" });
+  mockUseStaffConsole.mockReturnValue(staffConsoleState({ activeThread: thread, newConversation }));
+  const view = render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} onThreadSelected={onThreadSelected} />);
+  for (const project of ["UpstreamDrift", "AffineDrift"]) {
+    fireEvent.click(screen.getByRole("button", { name: `Start ${project}` }));
+    expect((screen.getByRole("textbox", { name: /staff conversation input/i }) as HTMLTextAreaElement).value).toContain(`Triage ${project}`);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(onThreadSelected).not.toHaveBeenCalled();
+    expect(newConversation).not.toHaveBeenCalled();
+  }
+  fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+  await waitFor(() => expect(newConversation).toHaveBeenCalledOnce());
+  mockUseStaffConsole.mockReturnValue(staffConsoleState({ activeThread: { ...thread, id: "barb-new" }, newConversation }));
+  view.rerender(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} onThreadSelected={onThreadSelected} />);
+  expect(screen.getByRole("button", { name: "Start UpstreamDrift" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Start AffineDrift" })).toBeInTheDocument();
+});
