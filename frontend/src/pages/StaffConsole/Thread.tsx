@@ -86,6 +86,15 @@ export const Thread: React.FC<ThreadProps> = ({
 
   const isPanel = isPanelThread(thread);
 
+  // Role name -> persona avatar URL (#2680), for the thread's message headers.
+  const avatarByRole = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const role of roles) {
+      if (role.avatar) map.set(role.name, role.avatar);
+    }
+    return map;
+  }, [roles]);
+
   // Group messages by date or by round (for panel threads)
   const groupedItems = useMemo(() => {
     if (isPanel) {
@@ -269,6 +278,7 @@ export const Thread: React.FC<ThreadProps> = ({
           onAnswerRun={onAnswerRun}
           onRerouteHandoff={onRerouteHandoff}
           onFollowHandoff={onFollowHandoff}
+          avatarUrl={item.message.author ? avatarByRole.get(item.message.author) : undefined}
         />
       </div>
     );

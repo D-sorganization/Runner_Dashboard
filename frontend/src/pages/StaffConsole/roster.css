@@ -359,6 +359,10 @@
   border: 1px solid var(--accent-blue);
 }
 
+.roster-avatar--image {
+  object-fit: cover;
+}
+
 .roster-status-dot-anchor {
   position: absolute;
   bottom: -2px;

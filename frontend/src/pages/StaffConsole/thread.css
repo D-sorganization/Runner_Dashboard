@@ -127,6 +127,10 @@
   border: 1px solid var(--border);
 }
 
+.thread-avatar--image {
+  object-fit: cover;
+}
+
 .thread-author-name {
   font-weight: 600;
   color: var(--text-primary);

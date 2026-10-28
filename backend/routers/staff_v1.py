@@ -18,7 +18,7 @@ import shutil
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel
 from routers.staff import (
@@ -63,6 +63,7 @@ from staff.models import (
 )
 from staff.pagination import CursorPage, paginate_items
 from staff.pricing import price_table_rows
+from staff.role_avatar_paths import avatar_url_for, staff_avatars_dir, validate_avatar_yaml_path
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
 
@@ -196,14 +197,32 @@ async def roster_v1(
     runner = get_runner()
     roles, active = runner.roles(), runner.store.active_runs()
     per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
+    role_dicts = []
+    for name, spec in sorted(roles.items()):
+        role_dict = {**spec.to_dict(), "active_runs": per_role.get(name, 0)}
+        if role_dict.get("avatar"):
+            role_dict["avatar"] = avatar_url_for(role_dict["avatar"])
+        role_dicts.append(role_dict)
     return {
         "machine": runner.machine,
-        "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
+        "roles": role_dicts,
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "chat_only_providers": chat_only_providers(),
         "active_runs": len(active),
     }
+
+
+@router.get("/avatars/{avatar_rel:path}")
+async def avatar_v1(
+    avatar_rel: str,
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> FileResponse:
+    """Serve a role's persona image from RM ``staff/avatars/`` (#2680)."""
+    avatars_dir = staff_avatars_dir()
+    if avatars_dir is None or validate_avatar_yaml_path(avatar_rel, avatars_dir=avatars_dir):
+        raise HTTPException(status_code=404, detail="avatar not found")
+    return FileResponse(avatars_dir / avatar_rel, media_type="image/webp")
 
 
 @router.get("/providers", response_model=StaffProvidersResponse, response_model_exclude_none=True)
