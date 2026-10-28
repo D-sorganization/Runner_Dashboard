@@ -3,7 +3,7 @@
  * NewPanelForm.test.tsx — Unit tests for NewPanelForm component (SC-D/Issue #1635).
  */
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NewPanelForm } from "../NewPanelForm";
 import type { PanelCostEstimate, PanelPresetsResponse } from "../panelApi";
@@ -24,6 +24,30 @@ const mockPresets: PanelPresetsResponse = {
   ],
   providers: ["claude", "codex", "antigravity"],
 };
+
+function fleetPresets(opts: { argonAvailable?: boolean } = {}): PanelPresetsResponse {
+  const argonAvailable = opts.argonAvailable ?? true;
+  return {
+    presets: [
+      {
+        id: "fleet-decision",
+        title: "Fleet decision panel (Argon / Astra / Fable)",
+        experts: [
+          {
+            name: "Argon",
+            perspective: "Systems efficiency.",
+            provider: "antigravity",
+            model: "gemini-4-argon-high",
+            available: argonAvailable,
+          },
+          { name: "Astra", perspective: "Architecture.", provider: "codex", model: "gpt-6-astra", available: true },
+          { name: "Fable", perspective: "Skeptic.", provider: "claude", model: "claude-fable-5-1", available: true },
+        ],
+      },
+    ],
+    providers: argonAvailable ? ["codex", "antigravity", "claude"] : ["codex", "claude"],
+  };
+}
 
 const mockThread: ThreadInfo = {
   id: "thread-panel-1",
@@ -109,20 +133,54 @@ describe("NewPanelForm", () => {
     render(<NewPanelForm onCreated={vi.fn()} />);
 
     await waitFor(() => {
-      expect(panelApiMock.fetchPanelPresets).toHaveBeenCalled();
+      expect(screen.getByRole("option", { name: /engineering design review/i })).toBeInTheDocument();
     });
 
     const presetSelect = screen.getByLabelText(/preset/i);
     fireEvent.change(presetSelect, { target: { value: "engineering-review" } });
 
-    const nameInputs = screen.getAllByLabelText(/expert name/i);
-    expect(nameInputs).toHaveLength(3);
-    expect(nameInputs[0]).toHaveValue("Architect");
-    expect(nameInputs[1]).toHaveValue("Skeptic");
-    expect(nameInputs[2]).toHaveValue("Operator");
+    await waitFor(() => {
+      const nameInputs = screen.getAllByLabelText(/expert name/i);
+      expect(nameInputs).toHaveLength(3);
+      expect(nameInputs[0]).toHaveValue("Architect");
+      expect(nameInputs[1]).toHaveValue("Skeptic");
+      expect(nameInputs[2]).toHaveValue("Operator");
+    });
 
     const perspectiveInputs = screen.getAllByLabelText(/expert perspective/i);
     expect(perspectiveInputs[0]).toHaveValue("System architecture and maintainability.");
+  });
+
+  it("fills expert rows when a preset is chosen before the catalog promise resolves", async () => {
+    let resolvePresets!: (value: PanelPresetsResponse) => void;
+    panelApiMock.fetchPanelPresets.mockImplementation(
+      () =>
+        new Promise<PanelPresetsResponse>((resolve) => {
+          resolvePresets = resolve;
+        }),
+    );
+
+    render(<NewPanelForm onCreated={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(panelApiMock.fetchPanelPresets).toHaveBeenCalled();
+    });
+
+    const presetSelect = screen.getByLabelText(/preset/i);
+    const pendingOption = document.createElement("option");
+    pendingOption.value = "engineering-review";
+    presetSelect.appendChild(pendingOption);
+    await act(async () => {
+      fireEvent.change(presetSelect, { target: { value: "engineering-review" } });
+    });
+
+    await act(async () => {
+      resolvePresets(mockPresets);
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText(/expert name/i)[0]).toHaveValue("Architect");
+    });
   });
 
   it("shows the estimate on PanelCostRequired and Confirm resubmits with confirm_cost true", async () => {
@@ -215,5 +273,45 @@ describe("NewPanelForm", () => {
     await waitFor(() => {
       expect(screen.getByText(/2 panels are already running/i)).toBeInTheDocument();
     });
+  });
+
+  it("prefills provider and model per seat from the fleet-decision preset", async () => {
+    panelApiMock.fetchPanelPresets.mockResolvedValue(fleetPresets());
+    render(<NewPanelForm onCreated={vi.fn()} />);
+    await waitFor(() => expect(panelApiMock.fetchPanelPresets).toHaveBeenCalled());
+    await screen.findByRole("option", { name: /fleet decision panel/i });
+
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: "fleet-decision" } });
+
+    expect(screen.getAllByLabelText(/expert name/i).map((el) => (el as HTMLInputElement).value)).toEqual([
+      "Argon",
+      "Astra",
+      "Fable",
+    ]);
+    expect(screen.getAllByLabelText(/expert provider/i).map((el) => (el as HTMLSelectElement).value)).toEqual([
+      "antigravity",
+      "codex",
+      "claude",
+    ]);
+    expect(screen.getAllByLabelText(/expert model/i).map((el) => (el as HTMLInputElement).value)).toEqual([
+      "gemini-4-argon-high",
+      "gpt-6-astra",
+      "claude-fable-5-1",
+    ]);
+    expect(screen.queryByRole("status", { name: /fallback/i })).not.toBeInTheDocument();
+  });
+
+  it("falls back visibly, not silently, when a preset seat's provider is unavailable", async () => {
+    panelApiMock.fetchPanelPresets.mockResolvedValue(fleetPresets({ argonAvailable: false }));
+    render(<NewPanelForm onCreated={vi.fn()} />);
+    await screen.findByRole("option", { name: /fleet decision panel/i });
+
+    fireEvent.change(screen.getByLabelText(/preset/i), { target: { value: "fleet-decision" } });
+
+    const providers = screen.getAllByLabelText(/expert provider/i).map((el) => (el as HTMLSelectElement).value);
+    expect(providers).toEqual(["codex", "codex", "claude"]);
+    expect(screen.getAllByLabelText(/expert model/i)[0]).toHaveValue("");
+    const note = screen.getByRole("status", { name: /fallback/i });
+    expect(note).toHaveTextContent(/Argon: antigravity \(gemini-4-argon-high\) is unavailable/);
   });
 });

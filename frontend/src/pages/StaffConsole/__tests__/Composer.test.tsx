@@ -438,3 +438,54 @@ describe("Composer Component", () => {
     fetchMock.mockRestore();
   });
 });
+
+// #2654: autosize cap/resize-loop mechanics are unit-tested against the hook
+// directly in hooks/__tests__/useComposerAutosize.test.tsx. This covers the
+// Composer-specific integration: draft and focus retention across a resize.
+// jsdom never computes layout, so scrollHeight is mocked for the duration of
+// this test on HTMLTextAreaElement.prototype (restored in `finally`).
+it("Composer preserves focus and draft text across an autosize resize (#2654)", () => {
+  type ResizeCallback = (entries: Array<{ contentRect: { width: number } }>) => void;
+  let capturedCb: ResizeCallback | null = null;
+  let mockScrollHeight = 60;
+  class FakeResizeObserver {
+    constructor(cb: ResizeCallback) {
+      capturedCb = cb;
+    }
+    observe(): void {}
+    disconnect(): void {}
+  }
+  const originalScrollHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "scrollHeight");
+  const originalResizeObserver = globalThis.ResizeObserver;
+  Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+    configurable: true,
+    get: () => mockScrollHeight,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).ResizeObserver = FakeResizeObserver;
+
+  try {
+    localStorage.clear();
+    render(<Composer threadId="thread-resize-focus" roles={MOCK_ROLES} onSendMessage={vi.fn()} />);
+    const textarea = screen.getByPlaceholderText(/message barb/i) as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "Mid-resize draft" } });
+    textarea.focus();
+    expect(textarea).toHaveFocus();
+
+    mockScrollHeight = 95;
+    capturedCb!([{ contentRect: { width: 600 } }]);
+
+    expect(textarea).toHaveFocus();
+    expect(textarea).toHaveValue("Mid-resize draft");
+    expect(localStorage.getItem("staff-console:draft:thread-resize-focus")).toBe("Mid-resize draft");
+  } finally {
+    globalThis.ResizeObserver = originalResizeObserver;
+    if (originalScrollHeightDescriptor) {
+      Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", originalScrollHeightDescriptor);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (HTMLTextAreaElement.prototype as any).scrollHeight;
+    }
+  }
+});

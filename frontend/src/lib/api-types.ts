@@ -1055,7 +1055,7 @@ export interface paths {
         };
         /**
          * Get Cline Status
-         * @description Return Cline extension detection status.
+         * @description Return Cline CLI detection status.
          */
         get: operations["get_cline_status_api_cline_status_get"];
         put?: never;
@@ -2193,6 +2193,26 @@ export interface paths {
          *     Privileged actions must include a ``confirmation`` sub-object.
          */
         post: operations["validate_dispatch_envelope_api_fleet_dispatch_validate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/escalation-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Escalation Event
+         * @description Record a label guard outcome from a fleet repository workflow.
+         */
+        post: operations["ingest_escalation_event_api_fleet_escalation_events_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4669,6 +4689,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Staff Escalate Merge Queue
+         * @description Jump a green, unheld PR to the front of the merge queue (never skips required checks).
+         */
+        post: operations["staff_escalate_merge_queue_api_staff_escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/escalations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Escalations
+         * @description Active expedited PRs (latest hub event ``applied``) and recent audit rows.
+         */
+        get: operations["list_escalations_api_staff_escalations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/exclusions": {
         parameters: {
             query?: never;
@@ -5004,6 +5064,26 @@ export interface paths {
         get: operations["get_schedule_api_staff_schedule_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/schedule/leader-lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Leader Lease
+         * @description Acquire or renew the scheduler leader lease (fleet peer internal contract).
+         */
+        post: operations["post_leader_lease_api_staff_schedule_leader_lease_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5417,6 +5497,26 @@ export interface paths {
         };
         /** Get Usage Table */
         get: operations["get_usage_table_api_usage_table_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Activity
+         * @description Return a bounded cursor page; readers cannot mutate stored metadata.
+         */
+        get: operations["read_activity_api_v1_activity_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6999,7 +7099,7 @@ export interface paths {
         };
         /**
          * Expert panel presets
-         * @description Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.
+         * @description Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).
          */
         get: operations["get_panel_presets_api_v1_staff_panels_presets_get"];
         put?: never;
@@ -8413,6 +8513,60 @@ export interface components {
          * @enum {string}
          */
         ActionRiskLevel: "low" | "medium" | "high" | "critical";
+        /**
+         * ActivityEnvelope
+         * @description Canonical v1 metadata record. Extra fields fail closed.
+         */
+        ActivityEnvelope: {
+            /** Branch */
+            branch?: string | null;
+            /** Event Id */
+            event_id: string;
+            /** Issue */
+            issue?: number | null;
+            /** Kind */
+            kind: string;
+            /** Node */
+            node: string;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Pr */
+            pr?: number | null;
+            /** Principal */
+            principal: string;
+            /** Redaction Version */
+            redaction_version: number;
+            /** Repo */
+            repo?: string | null;
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
+            /** Seq */
+            seq: number;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "checkin" | "job_board" | "github";
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
+        };
+        /** ActivityPage */
+        ActivityPage: {
+            /** Items */
+            items: components["schemas"]["ActivityEnvelope"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+        };
         /** AnswerNeedsInputRequest */
         AnswerNeedsInputRequest: {
             /** Answer */
@@ -9139,8 +9293,18 @@ export interface components {
              * @default direct
              */
             kind: string;
+            /**
+             * No Auto Reply
+             * @default false
+             */
+            no_auto_reply: boolean;
             /** Participants */
             participants?: string[];
+            /**
+             * Participants Only
+             * @default false
+             */
+            participants_only: boolean;
             /** Role */
             role?: string | null;
             /** Title */
@@ -9288,6 +9452,27 @@ export interface components {
             plan: {
                 [key: string]: unknown;
             };
+        };
+        /** EscalationIngestBody */
+        EscalationIngestBody: {
+            /** Concurrent Cap */
+            concurrent_cap?: number | null;
+            /** Github Actor */
+            github_actor: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "applied" | "stripped" | "refused";
+            /** Pr Number */
+            pr_number: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Repo */
+            repo: string;
         };
         /** EvaluateBoardPayload */
         EvaluateBoardPayload: {
@@ -9618,6 +9803,13 @@ export interface components {
              */
             provider: string;
         };
+        /** LeaderLeaseBody */
+        LeaderLeaseBody: {
+            /** Machine */
+            machine: string;
+            /** Ttl Seconds */
+            ttl_seconds?: number | null;
+        };
         /**
          * LeaseRequest
          * @description Conductor's request for a CI dispatch slot.
@@ -9874,6 +10066,11 @@ export interface components {
             confirm_cost: boolean;
             /** Experts */
             experts: components["schemas"]["PanelExpert"][];
+            /**
+             * Ground Repos
+             * @default true
+             */
+            ground_repos: boolean;
             /**
              * Mode
              * @default debate
@@ -11141,6 +11338,15 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** StaffEscalateBody */
+        StaffEscalateBody: {
+            /** Pr */
+            pr: number;
+            /** Reason */
+            reason: string;
+            /** Repo */
+            repo: string;
+        };
         /**
          * StaffHold
          * @description One policy hold.
@@ -12073,6 +12279,18 @@ export interface components {
             attention?: {
                 [key: string]: unknown;
             }[];
+            /**
+             * Board Sessions
+             * @description Agent sessions with live coordination-board presence, incl. desktop CLI agents (#2980)
+             */
+            board_sessions?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Board Sessions Warning
+             * @description Why board_sessions may be empty
+             */
+            board_sessions_warning?: string | null;
             /**
              * Exclusions Active
              * @description Active dispatch exclusions (repo/issue lanes)
@@ -15648,6 +15866,41 @@ export interface operations {
             };
         };
     };
+    ingest_escalation_event_api_fleet_escalation_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EscalationIngestBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_fleet_hardware_api_fleet_hardware_get: {
         parameters: {
             query?: never;
@@ -18859,6 +19112,63 @@ export interface operations {
             };
         };
     };
+    staff_escalate_merge_queue_api_staff_escalate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffEscalateBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_escalations_api_staff_escalations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     list_exclusions_api_staff_exclusions_get: {
         parameters: {
             query?: never;
@@ -19414,6 +19724,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffScheduleResponse"];
+                };
+            };
+        };
+    };
+    post_leader_lease_api_staff_schedule_leader_lease_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaderLeaseBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -20011,6 +20356,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    read_activity_api_v1_activity_get: {
+        parameters: {
+            query?: {
+                since?: number;
+                repo?: string | null;
+                node?: string | null;
+                session_id?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -22994,6 +23374,7 @@ export interface operations {
                 /** @description Include superseded passages */
                 include_superseded?: boolean;
                 run_id?: string | null;
+                repo?: string | null;
             };
             header?: never;
             path: {

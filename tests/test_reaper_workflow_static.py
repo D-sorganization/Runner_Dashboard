@@ -27,22 +27,23 @@ def test_reaper_workflow_inputs() -> None:
     dispatch = triggers["workflow_dispatch"] or {}
     inputs = dispatch.get("inputs", {})
 
-    # Check for inputs
     assert "dry-run" in inputs
     assert "min-age-minutes" in inputs
-    assert "reason-filter" in inputs
     assert "max-cancel" in inputs
-    assert "safe-to-cancel-only" in inputs
 
-    # Verify dry-run defaults to true
     assert inputs["dry-run"].get("default") == "true"
-    assert inputs["dry-run"].get("type") == "choice"
-    assert "true" in inputs["dry-run"].get("options", [])
-    assert "false" in inputs["dry-run"].get("options", [])
-
-    # Check types and details
     assert inputs["min-age-minutes"].get("default") == "20"
-    assert inputs["safe-to-cancel-only"].get("default") == "true"
+    assert inputs["max-cancel"].get("default") == "10"
+
+
+def test_reaper_workflow_uses_github_token_not_jules_app() -> None:
+    text = _REAPER_WF_PATH.read_text(encoding="utf-8")
+    assert "JULES_APP" not in text
+    assert "reap_github_workflow_runs.py" in text
+    data = yaml.safe_load(text)
+    perms = data.get("permissions") or {}
+    assert perms.get("actions") == "write"
+    assert perms.get("pull-requests") == "read"
 
 
 def test_reaper_workflow_kill_switch() -> None:

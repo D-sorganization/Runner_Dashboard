@@ -221,7 +221,7 @@ def test_feature_request_clean_inputs_ok(client: TestClient) -> None:
         "inputs": {"extra": "value"},
     }
     with (
-        patch("routers.feature_requests.run_cmd", new=AsyncMock(side_effect=_ok_run)),
+        patch("routers.code_requests.run_cmd", new=AsyncMock(side_effect=_ok_run)),
         patch(
             "agent_remediation.probe_provider_availability",
             return_value={"jules_api": type("_A", (), {"available": True, "detail": "ready"})()},

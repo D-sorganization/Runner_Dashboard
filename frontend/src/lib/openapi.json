@@ -115,6 +115,168 @@
         "title": "ActionRiskLevel",
         "type": "string"
       },
+      "ActivityEnvelope": {
+        "additionalProperties": false,
+        "description": "Canonical v1 metadata record. Extra fields fail closed.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "event_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Event Id",
+            "type": "string"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "kind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Node",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "principal": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Principal",
+            "type": "string"
+          },
+          "redaction_version": {
+            "minimum": 1.0,
+            "title": "Redaction Version",
+            "type": "integer"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "staff_run",
+              "coordination",
+              "agent_bus",
+              "recorder",
+              "desktop_adapter",
+              "checkin",
+              "job_board",
+              "github"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "event_id",
+          "source",
+          "principal",
+          "node",
+          "session_id",
+          "seq",
+          "ts",
+          "kind",
+          "redaction_version"
+        ],
+        "title": "ActivityEnvelope",
+        "type": "object"
+      },
+      "ActivityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityEnvelope"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": ["items", "next_cursor"],
+        "title": "ActivityPage",
+        "type": "object"
+      },
       "AnswerNeedsInputRequest": {
         "properties": {
           "answer": {
@@ -1611,12 +1773,22 @@
             "title": "Kind",
             "type": "string"
           },
+          "no_auto_reply": {
+            "default": false,
+            "title": "No Auto Reply",
+            "type": "boolean"
+          },
           "participants": {
             "items": {
               "type": "string"
             },
             "title": "Participants",
             "type": "array"
+          },
+          "participants_only": {
+            "default": false,
+            "title": "Participants Only",
+            "type": "boolean"
           },
           "role": {
             "anyOf": [
@@ -1982,6 +2154,55 @@
         },
         "required": ["plan"],
         "title": "DraftEdit",
+        "type": "object"
+      },
+      "EscalationIngestBody": {
+        "properties": {
+          "concurrent_cap": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concurrent Cap"
+          },
+          "github_actor": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Github Actor",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": ["applied", "stripped", "refused"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "pr_number": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr Number",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr_number", "github_actor", "outcome"],
+        "title": "EscalationIngestBody",
         "type": "object"
       },
       "EvaluateBoardPayload": {
@@ -2708,6 +2929,32 @@
         "title": "LaunchAuthRequest",
         "type": "object"
       },
+      "LeaderLeaseBody": {
+        "properties": {
+          "machine": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 3600.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Seconds"
+          }
+        },
+        "required": ["machine"],
+        "title": "LeaderLeaseBody",
+        "type": "object"
+      },
       "LeaseRequest": {
         "description": "Conductor's request for a CI dispatch slot.",
         "properties": {
@@ -2905,6 +3152,52 @@
           "citation"
         ],
         "title": "LibraryRunReference",
+        "type": "object"
+      },
+      "MaxwellChatBody": {
+        "description": "Request body for POST /api/maxwell/chat.\n\n``repo``/``repo_root`` (issue #838) scope a codebase Q&A session to a single\nrepository. Both are optional so the existing fleet-status chat keeps working\nunchanged; when supplied they are forwarded to Maxwell-Daemon, which jails its\nagentic tools (read_file/grep_files/glob_files/run_bash) to that root. The\ndaemon-side capability is tracked in Maxwell_Daemon#948; until it ships the\ndaemon may answer 501 Not Implemented, which this proxy degrades gracefully.",
+        "properties": {
+          "history": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 20,
+            "title": "History",
+            "type": "array"
+          },
+          "message": {
+            "maxLength": 4000,
+            "title": "Message",
+            "type": "string"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "repo_root": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo Root"
+          }
+        },
+        "required": ["message"],
+        "title": "MaxwellChatBody",
         "type": "object"
       },
       "MemoryAppendRequest": {
@@ -3295,6 +3588,11 @@
             "minItems": 3,
             "title": "Experts",
             "type": "array"
+          },
+          "ground_repos": {
+            "default": true,
+            "title": "Ground Repos",
+            "type": "boolean"
           },
           "mode": {
             "default": "debate",
@@ -6021,6 +6319,30 @@
         "title": "StaffDispatchResponse",
         "type": "object"
       },
+      "StaffEscalateBody": {
+        "properties": {
+          "pr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr",
+            "type": "integer"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr", "reason"],
+        "title": "StaffEscalateBody",
+        "type": "object"
+      },
       "StaffHold": {
         "additionalProperties": true,
         "description": "One policy hold.\n\n``kind``: ``\"guardrail\"`` (seeded from a role's YAML ``holds:`` list;\nstays in the role prompt, shown in the UI as a standing rule, never\nblocks scheduling) or ``\"schedule\"`` (created via the Holds tab, the\nholds API, or a ``staff.hold`` action; blocks scheduling). Owner\ndecision, issue #1726.",
@@ -7729,6 +8051,27 @@
             },
             "title": "Attention",
             "type": "array"
+          },
+          "board_sessions": {
+            "description": "Agent sessions with live coordination-board presence, incl. desktop CLI agents (#2980)",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Board Sessions",
+            "type": "array"
+          },
+          "board_sessions_warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why board_sessions may be empty",
+            "title": "Board Sessions Warning"
           },
           "exclusions_active": {
             "default": 0,
@@ -10511,7 +10854,7 @@
     },
     "/api/cline/status": {
       "get": {
-        "description": "Return Cline extension detection status.",
+        "description": "Return Cline CLI detection status.",
         "operationId": "get_cline_status_api_cline_status_get",
         "responses": {
           "200": {
@@ -12896,6 +13239,56 @@
         "tags": ["dispatch"]
       }
     },
+    "/api/fleet/escalation-events": {
+      "post": {
+        "description": "Record a label guard outcome from a fleet repository workflow.",
+        "operationId": "ingest_escalation_event_api_fleet_escalation_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalationIngestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ingest Escalation Event Api Fleet Escalation Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Escalation Event",
+        "tags": ["escalation"]
+      }
+    },
     "/api/fleet/hardware": {
       "get": {
         "description": "Return centralized fleet hardware specs for workload placement.",
@@ -13951,6 +14344,420 @@
           }
         },
         "summary": "Get Local Apps"
+      }
+    },
+    "/api/maxwell/backends": {
+      "get": {
+        "description": "Proxy GET /api/v1/backends from Maxwell-Daemon (contract-filtered; secrets stripped).",
+        "operationId": "get_maxwell_backends_api_maxwell_backends_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Backends Api Maxwell Backends Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Maxwell Backends",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/chat": {
+      "post": {
+        "description": "Proxy chat messages to Maxwell-Daemon and surface the answer text (#957).\n\nMD's ``/api/chat`` is a request/response JSON endpoint (``ChatResponse``);\nit does not stream and now *rejects* the legacy ``history``/``stream`` fields\nwith a 422 (``extra=\"forbid\"``, MD #995). This proxy therefore:\n\n* carries multi-turn context in MD's ``messages[]`` (translated from the UI's\n  history) so chat is no longer amnesiac;\n* parses the JSON ``ChatResponse`` and emits its ``content`` (not the raw\n  JSON serialization the UI previously rendered);\n* routes codebase-scoped chat to MD's dedicated ``/api/chat/codebase`` route.\n\nThe browser still consumes a ``text/plain`` body via a stream reader, so the\nanswer text is delivered as a single chunk \u2014 no frontend change required\n(the response is single-turn / non-incremental until MD advertises streaming\nas a negotiated capability).",
+        "operationId": "maxwell_chat_api_maxwell_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaxwellChatBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Maxwell Chat",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/control": {
+      "post": {
+        "description": "Start or stop Maxwell-Daemon service (confirmation required).",
+        "operationId": "maxwell_control_api_maxwell_control_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Maxwell Control Api Maxwell Control Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Maxwell Control",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/cost": {
+      "get": {
+        "description": "Proxy GET /api/v1/cost from Maxwell-Daemon (contract-filtered).",
+        "operationId": "get_maxwell_cost_api_maxwell_cost_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Cost Api Maxwell Cost Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Maxwell Cost",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/daemon-status": {
+      "get": {
+        "description": "Proxy GET /api/status from Maxwell-Daemon (pipeline state + counts, #955).",
+        "operationId": "get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Daemon Status Detail Api Maxwell Daemon Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Maxwell Daemon Status Detail",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/dispatch": {
+      "post": {
+        "description": "Proxy POST /api/dispatch to Maxwell-Daemon (issues #349, #953).\n\nPosts to MD's confirmation-gated, idempotent ``POST /api/dispatch`` \u2014 the\nendpoint that actually enforces ``hmac.compare_digest`` on\n``confirmation_token`` and keys idempotency on ``idempotency_key``. The\nprevious target, ``POST /api/v1/tasks``, silently discarded both fields\n(Pydantic ``extra=\"ignore\"``), so the confirmation gate was security theatre\nand retries created duplicate tasks (#953). Caller must supply\n``confirmation_token`` and ``prompt``; server-side injection of the token is\nnot done so the dashboard cannot bypass the daemon-side gate.",
+        "operationId": "maxwell_dispatch_task_api_maxwell_dispatch_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Maxwell Dispatch Task Api Maxwell Dispatch Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Maxwell Dispatch Task",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/pipeline-control/{action}": {
+      "post": {
+        "description": "Proxy POST /api/control/{action} to Maxwell-Daemon (issue #349).\n\nCaller must provide ``confirmation_token``; server-side injection removed.",
+        "operationId": "maxwell_pipeline_control_api_maxwell_pipeline_control__action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Maxwell Pipeline Control Api Maxwell Pipeline Control  Action  Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Maxwell Pipeline Control",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/pipeline-state": {
+      "get": {
+        "description": "Proxy GET /api/status (pipeline state + counts) from Maxwell-Daemon (#955).",
+        "operationId": "get_maxwell_pipeline_state_api_maxwell_pipeline_state_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Pipeline State Api Maxwell Pipeline State Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Maxwell Pipeline State",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/status": {
+      "get": {
+        "description": "Probe Maxwell-Daemon status and connectivity (Dashboard-facing).",
+        "operationId": "get_maxwell_status_api_maxwell_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Status Api Maxwell Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Maxwell Status",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/tasks": {
+      "get": {
+        "description": "Proxy GET /api/tasks from Maxwell-Daemon (contract-filtered).",
+        "operationId": "get_maxwell_tasks_api_maxwell_tasks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Tasks Api Maxwell Tasks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Maxwell Tasks",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/tasks/{task_id}": {
+      "get": {
+        "description": "Proxy GET /api/tasks/{task_id} from Maxwell-Daemon (contract-filtered).",
+        "operationId": "get_maxwell_task_detail_api_maxwell_tasks__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Task Detail Api Maxwell Tasks  Task Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Maxwell Task Detail",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/version": {
+      "get": {
+        "description": "Proxy GET /api/version from Maxwell-Daemon (contract-negotiated, #956).\n\nSurfaces the daemon's real version and its advertised contract version, plus a\n``contract_compatible`` flag the Maxwell tab uses to show a degraded-mode\nbanner on a major-version mismatch instead of rendering defaulted data.",
+        "operationId": "get_maxwell_version_api_maxwell_version_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Version Api Maxwell Version Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Maxwell Version",
+        "tags": ["maxwell"]
+      }
+    },
+    "/api/maxwell/workers": {
+      "get": {
+        "description": "Proxy GET /api/v1/workers from Maxwell-Daemon (contract-filtered).",
+        "operationId": "get_maxwell_workers_api_maxwell_workers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Maxwell Workers Api Maxwell Workers Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Maxwell Workers",
+        "tags": ["maxwell"]
       }
     },
     "/api/metrics/web-vitals": {
@@ -17392,6 +18199,86 @@
         "tags": ["staff-inbox"]
       }
     },
+    "/api/staff/escalate": {
+      "post": {
+        "description": "Jump a green, unheld PR to the front of the merge queue (never skips required checks).",
+        "operationId": "staff_escalate_merge_queue_api_staff_escalate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffEscalateBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Staff Escalate Merge Queue Api Staff Escalate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Staff Escalate Merge Queue",
+        "tags": ["escalation"]
+      }
+    },
+    "/api/staff/escalations": {
+      "get": {
+        "description": "Active expedited PRs (latest hub event ``applied``) and recent audit rows.",
+        "operationId": "list_escalations_api_staff_escalations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Escalations Api Staff Escalations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Escalations",
+        "tags": ["escalation"]
+      }
+    },
     "/api/staff/exclusions": {
       "get": {
         "operationId": "list_exclusions_api_staff_exclusions_get",
@@ -18393,6 +19280,56 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/schedule/leader-lease": {
+      "post": {
+        "description": "Acquire or renew the scheduler leader lease (fleet peer internal contract).",
+        "operationId": "post_leader_lease_api_staff_schedule_leader_lease_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderLeaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Leader Lease Api Staff Schedule Leader Lease Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Leader Lease",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/schedule/toggle": {
       "post": {
         "description": "Toggle the background scheduler on or off (SC-A8, Issue #1298).",
@@ -19260,6 +20197,120 @@
         },
         "summary": "Get Usage Table",
         "tags": ["usage-metrics"]
+      }
+    },
+    "/api/v1/activity": {
+      "get": {
+        "description": "Return a bounded cursor page; readers cannot mutate stored metadata.",
+        "operationId": "read_activity_api_v1_activity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Activity",
+        "tags": ["activity"]
       }
     },
     "/api/v1/agent/backlog": {
@@ -24340,6 +25391,24 @@
               ],
               "title": "Run Id"
             }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
           }
         ],
         "responses": {
@@ -24654,7 +25723,7 @@
     },
     "/api/v1/staff/panels/presets": {
       "get": {
-        "description": "Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.",
+        "description": "Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).",
         "operationId": "get_panel_presets_api_v1_staff_panels_presets_get",
         "responses": {
           "200": {
