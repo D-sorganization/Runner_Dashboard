@@ -138,7 +138,6 @@ class RoleSpec:
             "retired_reason": self.retired_reason,
             "strategy": dict(self.strategy),
             "persona": self.persona,
-            "avatar": self.avatar,
             "chat": dict(self.chat),
             "tools": list(self.tools),
             "group": self.group,
