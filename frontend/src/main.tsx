@@ -25,8 +25,11 @@ import './index.css'
 // focused number input.
 installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
 installWheelValueGuard(document)
-// Web Vitals — defer so the reporter stays out of the entry chunk (issue #831).
-void import('./lib/webVitals').then(({ initWebVitals }) => initWebVitals())
+// Optional telemetry stays outside the render-critical entry bundle (#3282).
+// Web Vitals uses buffered observers, so early paint metrics are still captured.
+void import('./lib/webVitals').then(({ initWebVitals }) => initWebVitals()).catch(() => {
+  // A telemetry chunk failure must not prevent the dashboard from starting.
+})
 
 // Service Worker Registration
 // Provides offline support, caching, and PWA installability.
