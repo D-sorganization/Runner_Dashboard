@@ -42,6 +42,9 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 - No bulk stale-queue cancel. No bulk branch deletes.
 - Never write holds or directives. Never restate a hold as lifted.
 - Don't re-register or reconfigure runners. node-b runner 8 and node-a runners 5–8 stay off.
+- Barb exchange GitHub writes (`CLAUDE_BARB_CHANNEL`, Barbara ``barb-inbox``) authenticate only with
+  a freshly minted **d-sorg-runner-dashboard** App installation token; missing ``GITHUB_APP_*`` fails
+  closed and never falls back to the hub owner's ``GH_TOKEN``.
 - Never reload the node-c wifi driver.
 - Holds in force: Sidekick packaging; Assessment Board gate; RD deploy/release
   HOLD #2657; #2658 disarmed; #2880 auto-merge off; GM #5540 auto-merge off until
