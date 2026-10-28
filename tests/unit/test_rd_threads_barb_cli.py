@@ -15,6 +15,7 @@ from scripts import barb_cli
 
 SECRET = "svc_TOPSECRET_never_print_me"  # pragma: allowlist secret
 OPTS = [{"label": "Merge", "recommended": True}, {"label": "Hold"}]
+REASON = "Required checks are green."
 
 
 class FakeHub:
@@ -67,7 +68,7 @@ def test_send_returns_correlation_id_fast_without_waiting_on_a_model() -> None:
 
 def test_ask_barb_question_board_broadcast_and_invalid_rejected_before_io() -> None:
     hub = FakeHub()
-    assert _cli(hub).ask_barb(summary="Merge #9?", options=OPTS)["ok"]
+    assert _cli(hub).ask_barb(summary="Merge #9?", options=OPTS, recommendation_reason=REASON)["ok"]
     env = _posted(hub)[0]
     assert (env["kind"], env["to"], env["recommended"], env["ack_required"]) == ("question", "barb", "Merge", True)
     _cli(hub).send(to="*", kind="update", summary="queue drained")
@@ -75,6 +76,8 @@ def test_ask_barb_question_board_broadcast_and_invalid_rejected_before_io() -> N
     calls = len(hub.calls)
     bad = _cli(hub).send(to="dieter", kind="question", summary="?", options=[{"label": "A"}, {"label": "B"}])
     assert bad["error"] == "invalid_envelope" and len(hub.calls) == calls
+    no_reason = _cli(hub).ask_barb(summary="Merge #9?", options=OPTS)
+    assert no_reason["error"] == "invalid_envelope" and any("recommendation_reason" in p for p in no_reason["problems"])
 
 
 def test_same_payload_in_window_posts_once_and_returns_same_correlation_id() -> None:
@@ -123,3 +126,11 @@ def test_peers_and_main_parse_verbs(monkeypatch: pytest.MonkeyPatch, capsys: pyt
     assert json.loads(capsys.readouterr().out)["ok"] is True
     assert barb_cli.main(["peers"]) == 0 and json.loads(capsys.readouterr().out)["peers"][0]["agent"] == "codex"
     assert barb_cli.main(["inbox", '{"bogus": 1}']) == 1
+
+
+def test_ask_barb_main_requires_reason_flag(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(barb_cli, "build_cli", lambda: _cli(FakeHub()))
+    opts = json.dumps(OPTS)
+    assert barb_cli.main(["ask-barb", f'{{"summary": "?", "options": {opts}}}', "--reason", REASON]) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    assert barb_cli.main(["ask-barb", f'{{"summary": "?", "options": {opts}}}']) == 1

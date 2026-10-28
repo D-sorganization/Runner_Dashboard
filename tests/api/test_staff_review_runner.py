@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from staff import adapters as adapters_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 from staff import workspace as workspace_mod
 from staff.review import prepare_review_params
@@ -59,7 +60,7 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     r = runner_mod.StaffRunner(
         store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="TestNode"
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()

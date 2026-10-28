@@ -18,8 +18,8 @@ Issue: [#1800](https://github.com/D-sorganization/Runner_Dashboard/issues/1800) 
 
 | Setting                | Every node                             | Notes                                          |
 | ---------------------- | -------------------------------------- | ---------------------------------------------- |
-| `BARB_AUTHORITY_NODE`  | `node-a` (the registry `hub`)    | The node that commits threads.                 |
-| `BARB_AUTHORITY_URL`   | `http://node-a:8321`             | The authority's stable private URL.            |
+| `BARB_AUTHORITY_NODE`  | `node-a` (the registry `hub`)          | The node that commits threads.                 |
+| `BARB_AUTHORITY_URL`   | `http://node-a:8321`                   | The authority's stable private URL.            |
 | `BARB_AUTHORITY_EPOCH` | current epoch (starts at `1`)          | Bumped on every failover.                      |
 | `FLEET_API_URL`        | same as `BARB_AUTHORITY_URL`, or unset | Fleet clients default to `BARB_AUTHORITY_URL`. |
 

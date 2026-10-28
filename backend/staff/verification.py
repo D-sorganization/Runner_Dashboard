@@ -156,6 +156,18 @@ def _target_pr_number(rec: RunRecord) -> int | None:
     return None
 
 
+def remote_deliverable_present(rec: RunRecord, probe: PrProbe) -> bool:
+    """True when the run's staff branch has an open/merged PR or unpushed remote commits (#2773)."""
+    if not rec.repo or not rec.branch:
+        return False
+    try:
+        if probe.find(rec.repo, rec.branch) is not None:
+            return True
+        return probe.remote_ahead_by(rec.repo, rec.branch) > 0
+    except GitHubLookupError:
+        return False
+
+
 def evaluate(
     rec: RunRecord,
     *,
