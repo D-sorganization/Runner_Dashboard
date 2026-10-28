@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from fleet_autoconfig import assert_hub_url_env_matches_registry
+from fleet_hub_env_guard import assert_hub_url_env_matches_registry
 
 from tests.test_fleet_hub_topology import _REGISTRY_HUB_DESK
 

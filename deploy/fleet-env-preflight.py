@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     sys.path.insert(0, str(backend))
-    from fleet_autoconfig import assert_hub_url_env_matches_registry
+    from fleet_hub_env_guard import assert_hub_url_env_matches_registry
 
     try:
         registry = yaml.safe_load(registry_path.read_text(encoding="utf-8"))

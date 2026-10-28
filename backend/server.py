@@ -1052,7 +1052,8 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
 
 try:
     _topology_registry = load_machine_registry()
-    from fleet_autoconfig import assert_fleet_identity_no_self_loop, assert_hub_url_env_matches_registry
+    from fleet_autoconfig import assert_fleet_identity_no_self_loop
+    from fleet_hub_env_guard import assert_hub_url_env_matches_registry
 
     _hub_override_ok = os.environ.get("HUB_URL_REGISTRY_OVERRIDE", "").strip().lower() in {
         "1",
