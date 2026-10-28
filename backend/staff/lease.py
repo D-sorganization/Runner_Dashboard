@@ -9,6 +9,7 @@ subprocess helper is shared with the coordination API (``coordination.rm_scripts
 from __future__ import annotations
 
 from coordination.rm_scripts import run_module
+from staff import claim_guard
 from staff.store import RunStore
 from staff.workspace import rm_root
 
@@ -39,6 +40,7 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
             ended_at=_now(),
             error="issue claim held by another agent",
         )
+        claim_guard.release_claim(run_id, "blocked")
         store.append_event(run_id, "blocked", "issue claim held by another agent; not starting")
         return None
     res = run_module(

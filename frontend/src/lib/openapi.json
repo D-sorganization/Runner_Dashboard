@@ -317,31 +317,6 @@
         "title": "AssertCompleteRequest",
         "type": "object"
       },
-      "AssistantChatResponse": {
-        "description": "AI assistant response.",
-        "properties": {
-          "context_used": {
-            "additionalProperties": true,
-            "title": "Context Used",
-            "type": "object"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "response": {
-            "title": "Response",
-            "type": "string"
-          },
-          "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
-          }
-        },
-        "required": ["response", "provider", "context_used", "timestamp"],
-        "title": "AssistantChatResponse",
-        "type": "object"
-      },
       "AuditHistoryResponse": {
         "description": "Paginated audit history for assistant tool executions.",
         "properties": {
@@ -9439,32 +9414,6 @@
         "tags": ["remediation", "agents"]
       }
     },
-    "/api/agent-remediation/dispatch-jules": {
-      "post": {
-        "description": "Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
-        "operationId": "dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Dispatch Jules Workflow",
-        "tags": ["remediation", "agents", "remediation"]
-      }
-    },
     "/api/agent-remediation/history": {
       "get": {
         "description": "Return recent remediation dispatch history.",
@@ -9559,32 +9508,6 @@
         },
         "summary": "Get Agent Providers",
         "tags": ["remediation", "agents"]
-      }
-    },
-    "/api/agents/quick-dispatch": {
-      "post": {
-        "description": "Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
-        "operationId": "api_quick_dispatch_api_agents_quick_dispatch_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Api Quick Dispatch",
-        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/analysis/workflow-machines": {
@@ -9730,34 +9653,6 @@
           }
         },
         "summary": "Get Tool Audit History",
-        "tags": ["assistant", "assistant"]
-      }
-    },
-    "/api/assistant/chat": {
-      "post": {
-        "description": "Retired endpoint (SC-D11, issue #1330).\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console\nconversation API at /api/v1/staff/threads.",
-        "operationId": "assistant_chat_api_assistant_chat_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AssistantChatResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Assistant Chat",
         "tags": ["assistant", "assistant"]
       }
     },
