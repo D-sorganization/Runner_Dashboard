@@ -19,6 +19,9 @@ from coordination.queue_batching import (
     build_queue_batching_summary,
     fetch_completed_merge_group_runs,
 )
+from coordination.queue_batching import (
+    ensure_repo_slug as _ensure_repo_slug,
+)
 from delivery_metrics.adapters.github import GhClientDeliveryCollector
 from delivery_metrics.models import PrSnapshot
 
@@ -35,13 +38,6 @@ _HISTORY_HOURS = max(max(WINDOW_HOURS), CONSECUTIVE_WINDOWS_THRESHOLD)
 _MERGE_QUEUE_RULE_TYPE = "merge_queue"
 _MAX_QUEUE_RUNS_SCANNED = 300
 _drain_latched_since: dict[str, str] = {}
-
-
-def _ensure_repo_slug(repo: str) -> str:
-    """Defensive precondition for direct/unit-test callers."""
-    if not repo or "/" not in repo:
-        raise ValueError(f"repo must be an 'owner/name' slug, got {repo!r}")
-    return repo
 
 
 async def _fetch_open_prs(repo: str) -> tuple[list[dict[str, Any]], str | None]:

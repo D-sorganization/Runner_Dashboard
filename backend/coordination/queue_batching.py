@@ -29,7 +29,8 @@ MERGE_QUEUE_PARAM_KEYS: tuple[str, ...] = (
 DEFAULT_MAX_COMPLETED_GROUP_RUNS = 100
 
 
-def _ensure_repo_slug(repo: str) -> str:
+def ensure_repo_slug(repo: str) -> str:
+    """Defensive precondition for direct/unit-test callers; ensures an ``owner/name`` slug."""
     if not repo or "/" not in repo:
         raise ValueError(f"repo must be an 'owner/name' slug, got {repo!r}")
     return repo
@@ -52,7 +53,7 @@ async def fetch_completed_merge_group_runs(
     repo: str, *, max_runs: int = DEFAULT_MAX_COMPLETED_GROUP_RUNS
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Fetch recent completed ``merge_group`` workflow runs for ``repo`` (read-only)."""
-    _ensure_repo_slug(repo)
+    ensure_repo_slug(repo)
     if max_runs <= 0:
         raise ValueError(f"max_runs must be positive, got {max_runs!r}")
 
