@@ -44,6 +44,7 @@ ENDPOINTS = {
     "friction": "GET|POST /api/v1/fleet/friction",
     "owner_questions": "GET|POST /api/v1/fleet/owner-questions",
     "brief": "GET /api/v1/fleet/brief?repo=&limit=&format=json|markdown",
+    "activity_checkins": "POST /api/v1/activity/checkins",
 }
 
 

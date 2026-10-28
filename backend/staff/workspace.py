@@ -57,7 +57,9 @@ def dashboard_api_note() -> str:
         "Live fleet facts (machines online, runs in flight, holds, schedules, spend) come from the local "
         f"Runner Dashboard API, never from memory: `curl -s {base}/staff/summary` is the one-call brief; "
         f"`{base}/staff/board` and `{base}/staff/runs` have detail. Fleet actions send "
-        '`-H "Authorization: Bearer $FLEET_API_TOKEN"`.'
+        '`-H "Authorization: Bearer $FLEET_API_TOKEN"`. '
+        "Unconnected-tier agents report milestones with `fleetctl checkin "
+        "{started,claimed,pushed,pr_opened,blocked,done} --repo <repo>` (spooled offline when unreachable)."
     )
 
 
