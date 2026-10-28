@@ -215,3 +215,40 @@ def test_the_panel_state_exposes_tally_and_quorum(client: TestClient, monkeypatc
     assert result["tally"] == {"participated": 2, "abstained": 1}
     assert result["abstentions"] == [{"expert": "Cy", "reason": "boom"}]
     assert result["quorum_met"] is True and result["status"] == "complete"
+
+
+def _presets_by_id(client: TestClient) -> dict[str, Any]:
+    return {p["id"]: p for p in client.get("/api/v1/staff/panels/presets").json()["presets"]}
+
+
+@pytest.mark.unit
+def test_fleet_decision_preset_pins_a_provider_and_model_per_seat(client: TestClient) -> None:
+    presets = _presets_by_id(client)
+    seats = {e["name"]: e for e in presets["fleet-decision"]["experts"]}
+    assert presets["fleet-decision"]["title"] == "Fleet decision panel (Argon / Astra / Fable)"
+    assert (seats["Argon"]["provider"], seats["Argon"]["model"]) == ("antigravity", "gemini-4-argon-high")
+    assert (seats["Astra"]["provider"], seats["Astra"]["model"]) == ("codex", "gpt-6-astra")
+    assert (seats["Fable"]["provider"], seats["Fable"]["model"]) == ("claude", "claude-fable-5-1")
+    assert all(e["available"] for e in seats.values())
+    # Older presets stay valid: provider defaults to claude, model is null.
+    assert presets["science"]["experts"][0]["provider"] == "claude"
+    assert presets["science"]["experts"][0]["model"] is None
+
+
+@pytest.mark.unit
+def test_a_disabled_provider_marks_its_seat_unavailable_without_swapping_it(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
+    seats = {e["name"]: e for e in _presets_by_id(client)["fleet-decision"]["experts"]}
+    assert seats["Argon"]["available"] is False
+    assert seats["Argon"]["provider"] == "antigravity"  # visible, not silently replaced
+    assert seats["Astra"]["available"] is True and seats["Fable"]["available"] is True
+
+
+@pytest.mark.unit
+def test_the_fleet_decision_experts_are_a_valid_panel_request(client: TestClient) -> None:
+    keys = ("name", "perspective", "provider", "model")
+    experts = [{k: e[k] for k in keys} for e in _presets_by_id(client)["fleet-decision"]["experts"]]
+    res = client.post("/api/v1/staff/panels", json={**BODY, "experts": experts})
+    assert res.status_code == 202, res.text

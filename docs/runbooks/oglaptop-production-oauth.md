@@ -59,8 +59,9 @@ In **GitHub → Organization → GitHub Apps → [fleet Runner Dashboard app]**:
 5. **Installation private key** — hub only (`GITHUB_APP_PRIVATE_KEY_FILE`); never
    on spoke nodes. See [github-app-auth.md](github-app-auth.md).
 
-Authorization uses scope `read:user` in the dashboard authorize URL; org membership
-(`D-sorganization`) and `config/principals.yml` admission are unchanged.
+Authorization uses scope `read:user` in the dashboard authorize URL; membership
+in the `GITHUB_ORG` configured for this deployment and `config/principals.yml`
+admission are both required.
 
 ## Hub environment (DeskComputer)
 
@@ -78,7 +79,7 @@ Required keys for browser OAuth (names only):
 ```dotenv
 GITHUB_CLIENT_ID=<fleet-github-app-client-id>
 GITHUB_CLIENT_SECRET=<fleet-github-app-client-secret>
-GITHUB_ORG=D-sorganization
+GITHUB_ORG=your-github-organization
 DASHBOARD_TLS=1
 SESSION_SECRET=<at-least-32-chars>
 ```
@@ -145,7 +146,8 @@ redacted `operator_sessions`. Reason codes (no secret values):
 | ------ | ----------------- |
 | `github_client_id_invalid` | Set fleet App Client ID on hub. |
 | `github_client_secret_invalid` | Set or rotate App client secret on hub. |
-| `github_org_mismatch` | `GITHUB_ORG=D-sorganization`. |
+| `github_org_missing` | Set `GITHUB_ORG` to the organization whose members may sign in. |
+| `github_org_invalid` | Use a valid GitHub organization name in `GITHUB_ORG`. |
 | `public_origin_mismatch` | Use an active registry hub HTTPS origin or add a planned HTTPS origin to the explicit allowlist. |
 | `callback_url_mismatch` | Set the callback to `{origin}/api/auth/callback` and register it in GitHub App settings. |
 | `session_secret_invalid` | Explicit `SESSION_SECRET` ≥32 chars. |

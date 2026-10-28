@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ from fastapi.testclient import TestClient
 from staff import adapters as adapters_mod
 from staff import fleet as fleet_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -59,6 +61,36 @@ def test_choose_machine_prefers_least_loaded_with_provider_and_ties_to_local() -
     board["machines"]["OG"]["running"] = board["machines"]["Desk"]["running"]
     assert fleet_mod.choose_machine(board, "claude", "Desk") == "Desk"  # tie → local
     assert fleet_mod.choose_machine(board, "gemini", "Desk") == "Desk"  # nothing qualifies → local
+
+
+@pytest.mark.unit
+def test_scheduler_watchdog_alerts_when_no_host_running() -> None:
+    machines = {
+        "DeskComputer": {"status": "online", "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30}},
+        "OGLaptop": {"status": "online", "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30}},
+    }
+    alerts = fleet_mod.scheduler_watchdog_alerts(machines, now=datetime.now(UTC))
+    assert len(alerts) == 1
+    assert alerts[0]["key"] == "no-running-scheduler"
+
+
+@pytest.mark.unit
+def test_scheduler_watchdog_alerts_when_next_fire_stale() -> None:
+    stale = (datetime.now(UTC) - timedelta(minutes=3)).isoformat()
+    machines = {
+        "DeskComputer": {
+            "status": "online",
+            "scheduler": {
+                "enabled": True,
+                "running": True,
+                "tick_seconds": 30,
+                "roles": [{"role": "issue-remediator", "enabled": True, "next_fire": stale}],
+            },
+        }
+    }
+    alerts = fleet_mod.scheduler_watchdog_alerts(machines, now=datetime.now(UTC))
+    assert len(alerts) == 1
+    assert alerts[0]["key"].startswith("stale-next-fire:DeskComputer:issue-remediator")
 
 
 @pytest.mark.unit
@@ -110,7 +142,7 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     store_mod.reset_store()
     runner_mod.reset_runner()
     r = runner_mod.StaffRunner(store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="Desk")
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()
