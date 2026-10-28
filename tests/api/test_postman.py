@@ -203,6 +203,16 @@ def test_failed_send_is_not_marked_delivered() -> None:
     assert state.delivered == [] and any(a.kind == "error" for a in report.actions)
 
 
+def test_relay_guard_refuses_a_secret_body_instead_of_delivering_it() -> None:
+    board, bus = FakeBoard(), FakeBus()
+    board.live("lane-x", "claude", 100)
+    board.inboxes["lane-x"] = [msg("m1", "lane-y", "lane-x", "token: " + "ghp_" + "a" * 36)]
+    state = PostmanState(board_issue=2376)
+    report = make(board, bus, state=state).cycle()
+    assert delivered_to(bus, "lane-x") == []
+    assert state.delivered == [] and any(a.kind == "error" for a in report.actions)
+
+
 def test_state_roundtrip_is_bounded() -> None:
     state = PostmanState(board_issue=2376)
     for i in range(postman.MAX_DELIVERED + 50):

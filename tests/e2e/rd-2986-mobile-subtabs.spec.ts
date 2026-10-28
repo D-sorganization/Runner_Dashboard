@@ -15,8 +15,8 @@ async function installReadOnlyApiFixtures(page: Page): Promise<void> {
     const payload = path === "/api/fleet/nodes"
       ? {
         nodes: [
-          { name: "ControlTower-fixture-a", online: true, system: { hostname: "fixture-a" } },
-          { name: "ControlTower-fixture-b", online: true, system: { hostname: "fixture-b" } },
+          { name: "node-a-fixture-a", online: true, system: { hostname: "fixture-a" } },
+          { name: "node-a-fixture-b", online: true, system: { hostname: "fixture-b" } },
         ],
       }
       : path === "/api/queue/status"

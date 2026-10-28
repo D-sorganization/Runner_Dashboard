@@ -11,9 +11,9 @@ import json
 import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
@@ -24,6 +24,7 @@ from staff import fleet as fleet_mod
 from staff import liveness as liveness_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
@@ -201,18 +202,18 @@ async def test_aggregate_board_carries_liveness_and_alerts_from_online_nodes(mon
 
     async def fake_get(url: str, headers: dict[str, str]) -> dict[str, Any]:
         if "og:" in url:
-            return _board("OGLaptop", [dead, ok])
+            return _board("node-b", [dead, ok])
         raise ConnectionError("boom")
 
     monkeypatch.setattr(fleet_mod, "get_json", fake_get)
     merged = await fleet_mod.aggregate_board(
         _board("Desk", [{"role": "hourly", "status": "late"}]),
-        {"OGLaptop": "http://og:8321", "ControlTower": "http://ct:8321"},
+        {"node-b": "http://og:8321", "node-a": "http://ct:8321"},
     )
-    assert merged["machines"]["OGLaptop"]["liveness"] == [dead, ok]
+    assert merged["machines"]["node-b"]["liveness"] == [dead, ok]
     assert merged["liveness_alerts"] == [
         {"role": "hourly", "status": "late", "machine": "Desk"},
-        {"role": "night-watch", "status": "dead", "machine": "OGLaptop"},
+        {"role": "night-watch", "status": "dead", "machine": "node-b"},
     ]
 
 
@@ -231,7 +232,7 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     adapters = {**adapters_mod.ADAPTERS, "claude": fake}
     r = runner_mod.StaffRunner(store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="Desk")
     monkeypatch.setattr(r, "roles", _roles)
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()

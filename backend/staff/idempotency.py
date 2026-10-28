@@ -31,6 +31,8 @@ DEFAULT_TTL_HOURS = 24
 # How long a reservation may stay pending before its outcome is treated as unknown.
 DEFAULT_LEASE_SECONDS = 600
 
+MutationResult = Literal["ok", "not-owner"]
+
 ReservationState = Literal["acquired", "replay", "in_progress", "mismatch", "unknown_outcome"]
 
 # Columns added for atomic reservation (#1795); legacy rows are completed receipts.
@@ -232,34 +234,57 @@ class IdempotencyStore:
         response_headers: dict[str, str],
         response_body: str,
         ttl_seconds: int | None = None,
-    ) -> None:
-        """Record the final receipt of a reservation this caller acquired."""
+        *,
+        operation_id: str,
+    ) -> MutationResult:
+        """Record a receipt only while this operation owns the pending reservation."""
+        if not isinstance(operation_id, str) or not operation_id.strip():
+            raise ValueError("operation_id must identify the reserved operation")
         ttl = ttl_seconds if ttl_seconds is not None else DEFAULT_TTL_HOURS * 3600
         skip_headers = ("content-length", "transfer-encoding")
         clean_headers = {k: v for k, v in response_headers.items() if k.lower() not in skip_headers}
         try:
             with self._lock:
-                self._conn.execute(
+                changed = self._conn.execute(
                     """
                     UPDATE idempotency_keys
                     SET state = 'done', status_code = ?, response_headers = ?, response_body = ?, expires_at = ?
-                    WHERE key = ? AND endpoint = ? AND principal = ?
+                    WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending' AND operation_id = ?
                     """,
-                    (status_code, json.dumps(clean_headers), response_body, _iso_in(ttl), key, endpoint, principal),
-                )
+                    (
+                        status_code,
+                        json.dumps(clean_headers),
+                        response_body,
+                        _iso_in(ttl),
+                        key,
+                        endpoint,
+                        principal,
+                        operation_id,
+                    ),
+                ).rowcount
+            if changed:
+                return "ok"
+            log.warning("Idempotency completion rejected: caller does not own pending reservation")
+            return "not-owner"
         except Exception as exc:
             log.error("Idempotency complete error: %s", exc)
             raise IdempotencyStoreError(f"Idempotency completion failed: {exc}") from exc
 
-    def release(self, key: str, endpoint: str, principal: str) -> None:
-        """Drop a pending reservation whose action failed before any effect."""
+    def release(self, key: str, endpoint: str, principal: str, *, operation_id: str) -> MutationResult:
+        """Drop only the pending reservation this operation owns."""
+        if not isinstance(operation_id, str) or not operation_id.strip():
+            raise ValueError("operation_id must identify the reserved operation")
         try:
             with self._lock:
-                self._conn.execute(
+                changed = self._conn.execute(
                     "DELETE FROM idempotency_keys"
-                    " WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending'",
-                    (key, endpoint, principal),
-                )
+                    " WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending' AND operation_id = ?",
+                    (key, endpoint, principal, operation_id),
+                ).rowcount
+            if changed:
+                return "ok"
+            log.warning("Idempotency release rejected: caller does not own pending reservation")
+            return "not-owner"
         except Exception as exc:
             log.error("Idempotency release error: %s", exc)
             raise IdempotencyStoreError(f"Idempotency release failed: {exc}") from exc
