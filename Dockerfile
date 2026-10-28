@@ -30,9 +30,12 @@ RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u3' \
     openssl-provider-legacy="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user and group
+# Create non-root user and group. appuser needs a writable home: dashboard_config
+# persists SESSION_SECRET to ~/.config/runner-dashboard at import when SESSION_SECRET
+# is unset (Docker smoke test and default container startup).
 RUN groupadd --gid 10001 appuser \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /sbin/nologin appuser
+    && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/appuser --shell /sbin/nologin appuser \
+    && install -d -o appuser -g appuser -m 700 /home/appuser/.config/runner-dashboard
 
 # Copy requirements first for layer caching; install with hash verification.
 COPY requirements.lock.txt .
