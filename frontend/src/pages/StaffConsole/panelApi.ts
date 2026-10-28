@@ -27,6 +27,11 @@ export interface PanelCreateResponse {
 export interface PanelPresetExpert {
   name: string;
   perspective: string;
+  /** Pinned CLI seat; absent on older servers (the form then uses its default provider). */
+  provider?: string;
+  model?: string | null;
+  /** False when the seat's provider is switched off on this node. */
+  available?: boolean;
 }
 
 export interface PanelPreset {
