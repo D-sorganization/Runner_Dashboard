@@ -1,7 +1,8 @@
 """Real ports for the postman engine (issue #2940, follow-up to #2930/#2941).
 
 ``RmBoard`` is a ``BoardPort`` over ``coordination.board``; ``AgentBus`` is a ``BusPort`` over
-``agent_bus.store.AgentBusStore``; ``ConfigBoardSource`` is a ``BoardSource`` that reads RM's
+``agent_bus.store.AgentBusStore``; ``HubThreadBus`` (in ``coordination.hub_thread_bus``) is the
+canonical ``BusPort`` over hub threads for the relay (#3235); ``ConfigBoardSource`` is a ``BoardSource`` that reads RM's
 ``config/agent_communication.json`` ``board_issue``. Each one is a thin translation layer (LoD):
 no message storage or idempotency logic is duplicated here, it all lives in ``coordination.postman``,
 ``coordination.board`` and ``agent_bus.store``.

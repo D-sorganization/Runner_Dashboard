@@ -271,6 +271,7 @@ auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
 
 def _loopback_auth_enabled() -> bool:
+    # Trusted Host validation runs in middleware before this path (#3010).
     return os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1"
 
 

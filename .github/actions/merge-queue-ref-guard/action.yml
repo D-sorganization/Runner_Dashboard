@@ -1,0 +1,22 @@
+name: Merge queue ref guard
+description: >-
+  On merge_group only, self-cancel this workflow run when the gh-readonly-queue
+  ref was deleted. No-op on other events; callers must gate with
+  if: github.event_name == 'merge_group'.
+inputs:
+  merge_group_head_ref:
+    description: Queue head ref (github.event.merge_group.head_ref)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
+        sparse-checkout-cone-mode: false
+    - name: Stop obsolete merge queue entries
+      shell: bash
+      env:
+        MERGE_GROUP_HEAD_REF: ${{ inputs.merge_group_head_ref }}
+      run: bash .github/scripts/merge-queue-ref-guard.sh
