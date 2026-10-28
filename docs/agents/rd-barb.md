@@ -107,25 +107,32 @@ reuses `staff.provider_failover_config.resolve_failover_chain`.
   restarts on the printed provider, and the script sends a "switched provider"
   fyi with a recommendation. An exhausted chain sends an `alert`.
 
-## `/barb` and `@barb` per-CLI wrappers (#3067, #3070)
+## `/barb` and `@barb` per-CLI wrappers (#3067, #3070, #3071)
 
 Every fleet CLI gets the same `/barb` slash command, rendered from one shared
 template (`scripts/wrappers/barb_command_template.py`, synced per provider by
-`scripts/wrappers/sync_barb_commands.py`). In both cases `/barb <message>`
-relays `<message>` to rd-barb (async, returns a `correlation_id` immediately)
-and `/barb chat` opens or continues the conversation in rd-barb's RD staff
+`scripts/wrappers/sync_barb_commands.py`). `/barb <message>` relays
+`<message>` to rd-barb (async, returns a `correlation_id` immediately);
+`/barb chat` opens or continues the conversation in rd-barb's RD staff
 thread.
 
 - On Claude Code: read with `@barb` mention-wake —
-  `scripts/wrappers/claude_barb_hook.py` is a `UserPromptSubmit` hook.
+  `scripts/wrappers/claude_barb_hook.py` is a `UserPromptSubmit` hook that
+  calls the shared `barb_cli.inbox()` entrypoint and injects unread items
+  addressed to this agent into context.
 - On Cursor: `.cursor/commands/barb.md` / `.cursor/rules/barb.mdc` handle
   `@barb` mentions the same way via `scripts/wrappers/cursor_barb_hook.py`, a
   `beforeSubmitPrompt` hook (registered in `.cursor/hooks.json`).
+- For Tools Sidekick: Sidekick packaging/dispatch is on HOLD (docs/triage
+  only), so this repo ships no Sidekick-side command surface -- only the
+  RD-side contract Tools implements against. `scripts/wrappers/sidekick_barb_hook.py`
+  is a generic entrypoint Sidekick can shell out to for `@barb` mention-wake
+  (it calls the shared `barb_cli.inbox()` entrypoint and prints unread items
+  addressed to `sidekick`, or nothing). The actual Sidekick-side
+  action/mention-handler registration is filed in Tools.
 
-Both hooks only call the shared `barb_cli.inbox()` entrypoint and inject
-unread items addressed to this agent into context; both wrappers only call
-`scripts/barb_cli.py`, and auth is the calling agent's own principal — the
-token is never printed or logged.
+All wrappers only call `scripts/barb_cli.py`; auth is the calling agent's
+own principal and the token is never printed or logged.
 
 ## Config on hub-a (never committed)
 

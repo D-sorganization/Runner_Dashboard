@@ -121,6 +121,22 @@ of this stack, not a replacement for it.
 
 ## Quick Start
 
+### Try the Offline Demo
+
+The demo starts with fictional sample runners and workflow runs. It needs no
+GitHub credentials, makes no GitHub requests, and disables API access:
+
+```bash
+git clone https://github.com/D-sorganization/Runner_Dashboard.git
+cd Runner_Dashboard
+bash start-dashboard.sh --demo
+```
+
+Open http://localhost:8321. The page is marked **DEMO DATA · READ ONLY**.
+Python 3.11+, Node.js 18+, and npm are required for a clean checkout.
+
+### Connect a Real Dashboard
+
 ```bash
 git clone git@github.com:D-sorganization/runner-dashboard.git
 cd runner-dashboard
@@ -137,7 +153,8 @@ instructions if the dependencies or a working `npm` are unavailable, rather than
 starting a broken server.
 
 **Requirements:** Python 3.11+, Node.js 18+/npm (for the frontend build), and a
-GitHub PAT with `repo` and `admin:org` scopes.
+GitHub PAT with `repo` and `admin:org` scopes. Use the offline demo above to
+explore the interface without credentials.
 
 ### Cold-start check
 
