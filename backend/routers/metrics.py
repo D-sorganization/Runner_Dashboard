@@ -89,6 +89,13 @@ def collect_metrics_snapshot() -> dict[str, Any]:
     liveness = board.get("liveness") or []
     liveness_alerts = [item for item in liveness if isinstance(item, dict) and item.get("state") in ("late", "dead")]
     ci_slo = cache_get("ci_slo_metrics", 86400.0) or {}
+    activity: dict[str, Any] = {}
+    try:
+        from activity_transcript import activity_metrics_snapshot  # noqa: PLC0415
+
+        activity = activity_metrics_snapshot()
+    except Exception:
+        activity = {}
     return {
         "nodes": nodes,
         "in_flight": len(board.get("running", [])) + len(board.get("queued", [])),
@@ -98,6 +105,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "liveness_alerts": len(liveness_alerts),
         "holds_active": len(staff_fleet.holds_snapshot()),
         "ci_slo": ci_slo if isinstance(ci_slo, dict) else {},
+        "activity": activity,
     }
 
 
@@ -169,6 +177,23 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
         ]
     )
     ci_slo = snapshot.get("ci_slo") or {}
+    activity = snapshot.get("activity") or {}
+    if isinstance(activity, dict) and activity:
+        lines += [
+            "# HELP rd_activity_ingest_events_total Activity transcript chunks accepted.",
+            "# TYPE rd_activity_ingest_events_total counter",
+            f"rd_activity_ingest_events_total {int(activity.get('ingest_events', 0))}",
+            "# TYPE rd_activity_spool_bytes gauge",
+            f"rd_activity_spool_bytes {int(activity.get('store_bytes', 0))}",
+            "# TYPE rd_activity_spool_depth gauge",
+            f"rd_activity_spool_depth {int(activity.get('spool_depth', 0))}",
+            "# TYPE rd_activity_gaps_total counter",
+            f"rd_activity_gaps_total {int(activity.get('gaps_total', 0))}",
+        ]
+        lines += [
+            f'rd_activity_ingest_rejects_total{{code="{code}"}} {int(activity.get(f"reject_{code}", 0))}'
+            for code in ("413", "429", "409")
+        ]
     if isinstance(ci_slo, dict) and ci_slo.get("metrics"):
         lines.extend(
             [
