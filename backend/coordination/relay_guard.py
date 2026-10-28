@@ -114,6 +114,24 @@ class RelayGuard:
         if isinstance(text, str) and redact_sensitive_content(text) != text:
             raise RelayRejected("text holds a secret and is refused, not redacted or logged")
 
+    def inspect_outbound(self, msg: dict[str, Any]) -> dict[str, Any]:
+        """Pre-send checks for postman→thread delivery; does not record replay state (#3235)."""
+        envelope_id = self._envelope_id(msg)
+        self._refuse_secrets(msg)
+        self._check_recipient(msg)
+        self._check_stale(msg, envelope_id)
+        self._check_hops(msg, envelope_id)
+        return msg
+
+    def note_delivered(self, envelope_id: str) -> None:
+        """Record a successfully written envelope id so a later relay replay is refused."""
+        if envelope_id.strip():
+            self._seen.add(envelope_id)
+
+    def record_transport_failure(self, envelope_id: str, reason: str) -> None:
+        """After bounded retries are exhausted, record a hard failure (never message content)."""
+        self._dead_letters.append(DeadLetter(envelope_id, reason, self._clock().isoformat()))
+
     def _envelope_id(self, msg: dict[str, Any]) -> str:
         msg_id = msg.get("id")
         if isinstance(msg_id, str) and msg_id.strip():

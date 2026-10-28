@@ -28,13 +28,35 @@ permissions:
   contents: read
 
 # Main-push and live merge_group runs are never concurrency-cancelled. Only
-# pull_request runs cancel in progress. merge_group supersession uses
-# merge_queue_cancel_safety (GraphQL entries) before any bot cancel.
+# pull_request runs cancel in progress. Obsolete merge_group runs self-cancel
+# when their gh-readonly-queue ref is deleted (queue-entry-alive).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  queue-entry-alive:
+    name: Merge queue ref guard
+    if: >-
+      github.event_name == 'merge_group' &&
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: d-sorg-fleet
+    timeout-minutes: 3
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
+          sparse-checkout-cone-mode: false
+      - name: Stop obsolete merge queue entries
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
+
   auto-deploy-regression:
     name: Auto-deploy live regression
     if: >-
