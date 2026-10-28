@@ -166,6 +166,8 @@ def select_repo_lessons(
     if not repo:
         return RepoLessonsResult("", (), {}, 0)
 
+    from memory.service import _lesson_evidence_still_verifies
+
     store = memory_store or get_memory_store()
     all_entries: list[MemoryEntry] = []
     cursor: tuple[str, str] | None = None
@@ -189,6 +191,9 @@ def select_repo_lessons(
             continue
         if not expiry_is_future(e.expires_at, now_iso):
             skipped_ids[e.id] = "expired"
+            continue
+        if not _lesson_evidence_still_verifies(e):
+            skipped_ids[e.id] = "evidence"
             continue
         eligible.append(e)
 
