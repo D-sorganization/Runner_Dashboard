@@ -45,6 +45,23 @@ the neutral `d-sorg-fleet` label. The audit is intentionally conservative:
 
 That keeps current CI stable while making the future label migration concrete.
 
+## Merge Queue on GitHub-Hosted Runners (private repo)
+
+`ci-standard.yml` stays on `d-sorg-fleet` while the repository is private unless
+you opt in merge-queue runs to `ubuntu-latest`:
+
+```bash
+gh variable set CI_QUEUE_RUNNER_MODE --body hosted
+```
+
+Revert to the fleet default for merge-group checks:
+
+```bash
+gh variable delete CI_QUEUE_RUNNER_MODE
+```
+
+PR and push events are unchanged; only `merge_group` honors this variable.
+
 ## Merge Queue Reservation
 
 `d-sorg-fleet-queue` is a dedicated routing label for merge-group checks. Add
