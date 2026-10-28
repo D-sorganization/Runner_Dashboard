@@ -1,9 +1,10 @@
-"""Per-repo swarm overload detection and auto-DRAIN mode (issue #3293, slices 1-2).
+"""Per-repo swarm overload detection, auto-DRAIN mode, and PR consolidation (issue #3293, slices 1-3).
 
 Computes open/merge rate over rolling 1h/6h windows, open-PR count,
 merge-queue depth, an ``overloaded`` flag, merge-queue ruleset settings,
-and auto-DRAIN mode with recovery hysteresis, configurable open-PR
-exceptions, lane-notice lines, and state-file helpers for ``rd-lane.sh``.
+auto-DRAIN mode with recovery hysteresis, and read-only PR consolidation
+suggestions grouped by linked issue, branch prefix, and overlapping paths
+under the PR size cap.
 Each GitHub sub-source degrades independently into a ``warnings`` entry.
 """
 
@@ -27,6 +28,7 @@ log = logging.getLogger("dashboard.coordination.overload")
 WINDOW_HOURS: tuple[int, ...] = (1, 6)  #: rolling-rate windows reported
 CONSECUTIVE_WINDOWS_THRESHOLD = 3  #: trailing 1h buckets of open>merge before overload fires
 DEFAULT_OPEN_COUNT_THRESHOLD = 15  #: open-PR count that alone triggers OVERLOADED
+DEFAULT_PR_SIZE_CAP = 500  #: max combined changed lines (additions + deletions) per consolidated PR
 MODE_NORMAL = "NORMAL"
 MODE_DRAIN = "DRAIN"
 RECOVERY_WINDOW_KEY = "1h"
@@ -58,14 +60,19 @@ def _ensure_repo_slug(repo: str) -> str:
     return repo
 
 
-async def _fetch_open_count(repo: str) -> tuple[int, str | None]:
+async def _fetch_open_prs(repo: str) -> tuple[list[dict[str, Any]], str | None]:
     try:
         items, err = await pr_inventory.fetch_repo_prs(repo)
     except Exception as exc:  # noqa: BLE001 — orthogonality: one source must not break the rest
-        return 0, f"open PR count unavailable: {exc}"
+        return [], f"open PR count unavailable: {exc}"
     if err:
-        return 0, f"open PR count unavailable: {err}"
-    return len(items), None
+        return [], f"open PR count unavailable: {err}"
+    return [dict(item) for item in items if isinstance(item, Mapping)], None
+
+
+async def _fetch_open_count(repo: str) -> tuple[int, str | None]:
+    items, err = await _fetch_open_prs(repo)
+    return len(items), err
 
 
 async def _fetch_recent_prs(repo: str) -> tuple[tuple[PrSnapshot, ...], str | None]:
@@ -301,11 +308,187 @@ def read_drain_state_file(path: Path | str) -> dict[str, Any]:
     return data
 
 
+def _normalize_branch_prefix(head_ref: str) -> str | None:
+    """Derive a topic-scoped branch prefix for consolidation grouping."""
+    if not head_ref or not head_ref.strip():
+        return None
+    slash_parts = [part.strip().lower() for part in head_ref.strip().split("/") if part.strip()]
+    if not slash_parts:
+        return None
+    slug = slash_parts[-1]
+    tokens = [tok for tok in slug.split("-") if tok]
+    if len(tokens) < 2:
+        return None
+    if tokens[0].isdigit():
+        return f"{tokens[0]}-{tokens[1]}"
+    alpha_tokens = [tok for tok in tokens if tok.isalpha()]
+    if len(alpha_tokens) < 2:
+        return None
+    stem = f"{alpha_tokens[0]}-{alpha_tokens[1]}"
+    return f"{slash_parts[0]}/{stem}" if len(slash_parts) >= 2 else stem
+
+
+def _normalize_open_pr_for_consolidation(
+    raw: Mapping[str, Any], recent_by_number: Mapping[int, PrSnapshot]
+) -> dict[str, Any] | None:
+    number = raw.get("number")
+    if not isinstance(number, int) or isinstance(number, bool) or number < 0:
+        return None
+    if "changed_lines" in raw and raw["changed_lines"] is not None:
+        changed_lines = int(raw["changed_lines"])
+    elif "additions" in raw or "deletions" in raw:
+        changed_lines = int(raw.get("additions") or 0) + int(raw.get("deletions") or 0)
+    elif number in recent_by_number:
+        snap = recent_by_number[number]
+        changed_lines = int(snap.additions) + int(snap.deletions)
+    else:
+        changed_lines = 0
+    if changed_lines < 0:
+        raise ValueError(f"changed_lines must be non-negative for PR #{number}, got {changed_lines!r}")
+
+    head_ref = str(raw.get("head_ref") or raw.get("headRefName") or raw.get("branch") or "").strip()
+    raw_issues = raw.get("linked_issues")
+    if isinstance(raw_issues, Sequence) and not isinstance(raw_issues, (str, bytes)):
+        linked_issues = sorted({int(i) for i in raw_issues if isinstance(i, int) and not isinstance(i, bool)})
+    else:
+        linked_issues = pr_inventory._parse_linked_issues(raw.get("body"))
+
+    raw_paths = raw.get("changed_paths") or raw.get("paths") or raw.get("files") or ()
+    changed_paths = sorted({str(p).strip() for p in raw_paths if isinstance(p, str) and str(p).strip()})
+    return {
+        "number": number,
+        "title": str(raw.get("title") or ""),
+        "head_ref": head_ref,
+        "branch_prefix": _normalize_branch_prefix(head_ref),
+        "linked_issues": linked_issues,
+        "changed_paths": changed_paths,
+        "changed_lines": changed_lines,
+        "draft": bool(raw.get("draft", False)),
+    }
+
+
+def suggest_pr_consolidations(
+    open_prs: Sequence[Mapping[str, Any]],
+    *,
+    recent_prs: Sequence[PrSnapshot] = (),
+    size_cap: int = DEFAULT_PR_SIZE_CAP,
+) -> list[dict[str, Any]]:
+    """Suggest surviving + absorbed open PR groups under ``size_cap`` (read-only)."""
+    if size_cap <= 0:
+        raise ValueError(f"size_cap must be positive, got {size_cap!r}")
+
+    recent_by_number = {pr.number: pr for pr in recent_prs}
+    normalized: list[dict[str, Any]] = []
+    for item in open_prs:
+        if not isinstance(item, Mapping):
+            continue
+        norm = _normalize_open_pr_for_consolidation(item, recent_by_number)
+        if norm is not None:
+            normalized.append(norm)
+
+    by_issue: dict[int, list[dict[str, Any]]] = {}
+    by_prefix: dict[str, list[dict[str, Any]]] = {}
+    by_path: dict[str, list[dict[str, Any]]] = {}
+    for pr in normalized:
+        for issue_num in pr["linked_issues"]:
+            by_issue.setdefault(issue_num, []).append(pr)
+        if pr["branch_prefix"]:
+            by_prefix.setdefault(pr["branch_prefix"], []).append(pr)
+        for path in pr["changed_paths"]:
+            by_path.setdefault(path, []).append(pr)
+
+    candidate_groups: list[tuple[str, str, list[dict[str, Any]]]] = []
+    for issue_num in sorted(by_issue):
+        if len(by_issue[issue_num]) >= 2:
+            candidate_groups.append(("linked_issue", f"#{issue_num}", by_issue[issue_num]))
+    for prefix in sorted(by_prefix):
+        if len(by_prefix[prefix]) >= 2:
+            candidate_groups.append(("branch_prefix", prefix, by_prefix[prefix]))
+    for path in sorted(by_path):
+        if len(by_path[path]) >= 2:
+            candidate_groups.append(("overlapping_paths", path, by_path[path]))
+
+    assigned_prs: set[int] = set()
+    suggestions: list[dict[str, Any]] = []
+    for group_by, group_key, members in candidate_groups:
+        available = sorted(
+            (m for m in members if m["number"] not in assigned_prs),
+            key=lambda m: (m["draft"], m["number"]),
+        )
+        if len(available) < 2:
+            continue
+        surviving = next((m for m in available if m["changed_lines"] <= size_cap), None)
+        if surviving is None:
+            continue
+        combined_lines = surviving["changed_lines"]
+        absorbed: list[dict[str, Any]] = []
+        skipped_over_cap: list[int] = []
+        for cand in available:
+            if cand["number"] == surviving["number"]:
+                continue
+            if combined_lines + cand["changed_lines"] <= size_cap:
+                absorbed.append(cand)
+                combined_lines += cand["changed_lines"]
+            else:
+                skipped_over_cap.append(cand["number"])
+        if not absorbed:
+            continue
+
+        chosen = [surviving, *absorbed]
+        for pr in chosen:
+            assigned_prs.add(pr["number"])
+
+        issue_counts: dict[int, int] = {}
+        path_counts: dict[str, int] = {}
+        prefix_counts: dict[str, int] = {}
+        for pr in chosen:
+            for issue_num in pr["linked_issues"]:
+                issue_counts[issue_num] = issue_counts.get(issue_num, 0) + 1
+            for path in pr["changed_paths"]:
+                path_counts[path] = path_counts.get(path, 0) + 1
+            if pr["branch_prefix"]:
+                bp = str(pr["branch_prefix"])
+                prefix_counts[bp] = prefix_counts.get(bp, 0) + 1
+
+        shared_issues = sorted(k for k, count in issue_counts.items() if count >= 2)
+        shared_paths = sorted(k for k, count in path_counts.items() if count >= 2)
+        shared_prefixes = sorted(k for k, count in prefix_counts.items() if count >= 2)
+        reasons = (
+            [f"linked_issue:#{i}" for i in shared_issues]
+            + [f"branch_prefix:{p}" for p in shared_prefixes]
+            + [f"overlapping_paths:{p}" for p in shared_paths]
+        )
+        absorbed_nums = [p["number"] for p in absorbed]
+        suggestions.append(
+            {
+                "group_by": group_by,
+                "group_key": group_key,
+                "reasons": reasons,
+                "surviving_pr": surviving["number"],
+                "absorbed_prs": absorbed_nums,
+                "skipped_over_cap_prs": skipped_over_cap,
+                "combined_changed_lines": combined_lines,
+                "size_cap": size_cap,
+                "shared_issues": shared_issues,
+                "shared_paths": shared_paths,
+                "branch_prefix": shared_prefixes[0] if shared_prefixes else surviving["branch_prefix"],
+                "auto_close": False,
+                "action": (
+                    f"Keep #{surviving['number']}; manually close "
+                    f"{', '.join(f'#{n}' for n in absorbed_nums)} as absorbed into #{surviving['number']}"
+                ),
+            }
+        )
+
+    return suggestions
+
+
 async def build_overload_snapshot(
     repo: str,
     *,
     open_count_threshold: int = DEFAULT_OPEN_COUNT_THRESHOLD,
     drain_exceptions: Sequence[str] | None = None,
+    pr_size_cap: int = DEFAULT_PR_SIZE_CAP,
 ) -> dict[str, Any]:
     """Pre: ``repo`` is an ``owner/name`` slug, ``open_count_threshold`` > 0.
     Post: result always has ``overloaded``/``overload_reasons`` and ``drain``;
@@ -313,12 +496,15 @@ async def build_overload_snapshot(
     _ensure_repo_slug(repo)
     if open_count_threshold <= 0:
         raise ValueError(f"open_count_threshold must be positive, got {open_count_threshold!r}")
+    if pr_size_cap <= 0:
+        raise ValueError(f"pr_size_cap must be positive, got {pr_size_cap!r}")
     resolved_exceptions = resolve_drain_exceptions(drain_exceptions)
 
     now = datetime.now(UTC)
     warnings: list[str] = []
 
-    open_count, open_err = await _fetch_open_count(repo)
+    open_prs, open_err = await _fetch_open_prs(repo)
+    open_count = len(open_prs)
     if open_err:
         warnings.append(open_err)
     recent_prs, history_err = await _fetch_recent_prs(repo)
@@ -356,6 +542,11 @@ async def build_overload_snapshot(
         "open_pr_exceptions": list(resolved_exceptions),
         "notice_line": notice_line,
     }
+    consolidation_suggestions = suggest_pr_consolidations(
+        open_prs,
+        recent_prs=recent_prs,
+        size_cap=pr_size_cap,
+    )
 
     return {
         "repo": repo,
@@ -370,6 +561,8 @@ async def build_overload_snapshot(
         "drain": drain_state,
         "lane_notice": notice_line,
         "dispatch_directive": dispatch_directive,
+        "consolidation_suggestions": consolidation_suggestions,
+        "pr_size_cap": pr_size_cap,
         "open_count_threshold": open_count_threshold,
         "consecutive_windows_threshold": CONSECUTIVE_WINDOWS_THRESHOLD,
         "warnings": warnings,
