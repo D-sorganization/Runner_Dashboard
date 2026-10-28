@@ -69,6 +69,8 @@ EOF
 fi
 
 if [[ "${DRY_RUN}" != "1" ]]; then
+    # A failed App helper must not fall through to an existing personal helper.
+    git config --global --unset-all credential.https://github.com.helper || true
     git config --global credential.https://github.com.helper "${BIN_DIR}/git-credential-fleet-gh" || true
 fi
 
