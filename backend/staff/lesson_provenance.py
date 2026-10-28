@@ -37,6 +37,14 @@ def authenticated_lesson_run(principal: Principal, source_run: str | None, repo:
     return rec
 
 
+def completed_run_for_review(store: RunStore, run_id: str) -> RunRecord | None:
+    """Reload a lesson's bound run and require authoritative completion before acceptance."""
+    rec = stored_lesson_run(store, run_id)
+    if rec is None or rec.status != "succeeded" or rec.exit_code != 0:
+        return None
+    return rec
+
+
 def completed_lesson_run(store: RunStore, caller: RunRecord) -> RunRecord | None:
     """Reload completion and compare caller identity before internal filing."""
     rec = stored_lesson_run(store, caller.id)

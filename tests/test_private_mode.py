@@ -75,3 +75,194 @@ def test_config_is_immutable() -> None:
     config = pm.parse_private_mode(None)
     with pytest.raises(AttributeError):
         config.enabled = True  # type: ignore[misc]
+
+
+# --- PM-1 (#3251): classification resolver (repo/path globs, operator marks, max-join) ---
+
+
+def _sample_policy() -> pm.ClassificationPolicy:
+    return pm.parse_classification_policy(
+        {
+            "default_level": "INTERNAL",
+            "repos": [
+                {"repo": "example-corp/widgets-public", "level": "PUBLIC"},
+                {"repo": "example-corp/widgets-internal", "level": "INTERNAL"},
+                {"repo": "example-corp/widgets-sensitive", "level": "SENSITIVE"},
+            ],
+            "path_globs": [
+                {"glob": "docs/public/**", "level": "PUBLIC"},
+                {"glob": "secrets/**", "level": "SENSITIVE"},
+                {"glob": "internal/*.yml", "level": "INTERNAL"},
+            ],
+            "operator_marks": {
+                "example-corp/widgets-public#42": "SENSITIVE",
+                "example-corp/widgets-internal#7": "SENSITIVE",
+            },
+        }
+    )
+
+
+def test_max_join_lattice_properties() -> None:
+    levels = tuple(pm.Level)
+    for a in levels:
+        assert pm.max_join(a) is a
+        assert pm.max_join(a, a) is a
+        for b in levels:
+            assert pm.max_join(a, b) is pm.max_join(b, a)
+            assert pm.max_join(a, b) >= a
+            assert pm.max_join(a, b) >= b
+            for c in levels:
+                assert pm.max_join(pm.max_join(a, b), c) is pm.max_join(a, pm.max_join(b, c))
+    assert pm.max_join() is pm.Level.PUBLIC
+
+
+def test_flag_off_resolve_is_always_public() -> None:
+    policy = _sample_policy()
+    inp = pm.ClassificationInput(
+        repo="example-corp/widgets-sensitive",
+        paths=("secrets/key.pem",),
+        target_id="example-corp/widgets-public#42",
+        operator_mark=pm.Level.SENSITIVE,
+        prior_level=pm.Level.SENSITIVE,
+        is_legacy_thread=True,
+    )
+    assert pm.resolve(inp, config=pm.DISABLED, policy=policy) is pm.Level.PUBLIC
+    assert pm.resolve(inp, config=pm.DISABLED, policy=None) is pm.Level.PUBLIC
+
+
+def test_unknown_repo_defaults_to_internal() -> None:
+    enabled = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
+    policy = _sample_policy()
+    inp = pm.ClassificationInput(repo="example-corp/unknown-repo")
+    assert pm.resolve(inp, config=enabled, policy=policy) is pm.Level.INTERNAL
+    assert pm.resolve(pm.ClassificationInput(), config=enabled, policy=policy) is pm.Level.INTERNAL
+
+
+def test_known_repo_and_path_globs_max_join() -> None:
+    enabled = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
+    policy = _sample_policy()
+    pub_inp = pm.ClassificationInput(repo="example-corp/widgets-public", paths=("README.md",))
+    assert pm.resolve(pub_inp, config=enabled, policy=policy) is pm.Level.PUBLIC
+
+    elevated = pm.ClassificationInput(
+        repo="example-corp/widgets-public",
+        paths=("README.md", "secrets/prod.env"),
+    )
+    assert pm.resolve(elevated, config=enabled, policy=policy) is pm.Level.SENSITIVE
+
+
+def test_operator_marks_join_via_policy_and_input() -> None:
+    enabled = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
+    policy = _sample_policy()
+    marked_target = pm.ClassificationInput(
+        repo="example-corp/widgets-public",
+        target_id="example-corp/widgets-public#42",
+    )
+    assert pm.resolve(marked_target, config=enabled, policy=policy) is pm.Level.SENSITIVE
+
+    direct_mark = pm.ClassificationInput(
+        repo="example-corp/widgets-public",
+        operator_mark=pm.Level.INTERNAL,
+    )
+    assert pm.resolve(direct_mark, config=enabled, policy=policy) is pm.Level.INTERNAL
+
+
+def test_legacy_threads_migrate_to_internal_never_public() -> None:
+    enabled = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.PUBLIC)
+    policy = _sample_policy()
+    legacy = pm.ClassificationInput(
+        repo="example-corp/widgets-public",
+        is_legacy_thread=True,
+    )
+    assert pm.resolve(legacy, config=enabled, policy=policy) is pm.Level.INTERNAL
+
+
+def test_downgrade_attempt_is_refused() -> None:
+    enabled = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
+    policy = _sample_policy()
+    downgrade = pm.ClassificationInput(
+        repo="example-corp/widgets-public",
+        prior_level=pm.Level.SENSITIVE,
+    )
+    with pytest.raises(pm.ClassificationError, match="downgrade"):
+        pm.resolve(downgrade, config=enabled, policy=policy)
+
+    downgrade_mark = pm.ClassificationInput(
+        repo="example-corp/widgets-sensitive",
+        operator_mark=pm.Level.PUBLIC,
+    )
+    with pytest.raises(pm.ClassificationError, match="downgrade"):
+        pm.resolve(downgrade_mark, config=enabled, policy=policy)
+
+
+def test_missing_or_invalid_policy_blocks_private_execution(tmp_path: Path) -> None:
+    enabled = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
+    with pytest.raises(pm.ClassificationError, match="policy is required"):
+        pm.resolve(pm.ClassificationInput(repo="example-corp/widgets-public"), config=enabled, policy=None)
+
+    sentinel = "SENTINEL-policy-secret"
+    with pytest.raises(pm.ClassificationError) as exc:
+        pm.parse_classification_policy({"default_level": sentinel, "repos": [], "path_globs": [], "operator_marks": {}})
+    assert sentinel not in str(exc.value)
+
+    with pytest.raises(pm.ClassificationError, match="does not exist") as exc2:
+        pm.load_classification_policy(tmp_path / f"{sentinel}.json")
+    assert sentinel not in str(exc2.value)
+
+    with pytest.raises(pm.ClassificationError, match="policy_dir"):
+        pm.load_overlay_classification_policy(None)
+
+    policy_dir = tmp_path / "policy"
+    policy_dir.mkdir()
+    (policy_dir / pm.POLICY_FILENAME).write_text(
+        '{"default_level": "INTERNAL", "repos": [{"repo": "example-corp/widgets", "level": "SENSITIVE"}], '
+        '"path_globs": [], "operator_marks": {}}',
+        encoding="utf-8",
+    )
+
+    class _StubOverlay:
+        policy_dir = "policy"
+
+    loaded = pm.load_overlay_classification_policy(_StubOverlay(), base_dir=tmp_path)
+    assert loaded.repos["example-corp/widgets"] is pm.Level.SENSITIVE
+
+
+@pytest.mark.parametrize(
+    ("bad_policy", "match"),
+    [
+        (["not-a-dict"], "top level must be an object"),
+        ({"default_level": "INTERNAL"}, "missing required key"),
+        (
+            {"default_level": "INTERNAL", "repos": [], "path_globs": [], "operator_marks": {}, "extra": 1},
+            "unknown key",
+        ),
+        (
+            {"default_level": "PUBLIC", "repos": [], "path_globs": [], "operator_marks": {}},
+            "at least INTERNAL",
+        ),
+        (
+            {
+                "default_level": "INTERNAL",
+                "repos": [
+                    {"repo": "example-corp/dup", "level": "PUBLIC"},
+                    {"repo": "example-corp/dup", "level": "INTERNAL"},
+                ],
+                "path_globs": [],
+                "operator_marks": {},
+            },
+            "duplicate repo",
+        ),
+        (
+            {
+                "default_level": "INTERNAL",
+                "repos": [],
+                "path_globs": [{"glob": "", "level": "SENSITIVE"}],
+                "operator_marks": {},
+            },
+            "non-empty str",
+        ),
+    ],
+)
+def test_invalid_classification_policy_variants_fail_closed(bad_policy: object, match: str) -> None:
+    with pytest.raises(pm.ClassificationError, match=match):
+        pm.parse_classification_policy(bad_policy)

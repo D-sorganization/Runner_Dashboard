@@ -229,18 +229,31 @@ class AssistantMemoryStore:
         self,
         entry_id: str,
         *,
+        expected_review_status: str,
         review_status: str,
         reviewed_by: str,
         accepted_at: str | None = None,
         expires_at: str | None = None,
     ) -> MemoryEntry:
+        """Conditional transition: rejects a review racing a concurrent, stale read."""
         with self._lock:
             q = (
                 "UPDATE memory_entries SET review_status = ?, reviewed_by = ?, accepted_at = ?"
-                f"{', expires_at = ?' if expires_at else ''} WHERE id = ?"
+                f"{', expires_at = ?' if expires_at else ''} WHERE id = ? AND review_status = ?"
             )
-            v = (review_status, reviewed_by, accepted_at, *((expires_at,) if expires_at else ()), entry_id)
-            self._db.execute(q, v)
+            v = (
+                review_status,
+                reviewed_by,
+                accepted_at,
+                *((expires_at,) if expires_at else ()),
+                entry_id,
+                expected_review_status,
+            )
+            cur = self._db.execute(q, v)
+            if cur.rowcount == 0:
+                if self.get(entry_id) is None:
+                    raise KeyError(f"memory entry {entry_id} not found")
+                raise ValueError("stale_review_conflict")
         if not (updated := self.get(entry_id)):
             raise KeyError(f"memory entry {entry_id} not found")
         return updated

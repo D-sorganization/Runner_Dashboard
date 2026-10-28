@@ -1,10 +1,12 @@
 """FastAPI router for expert panels (#1634, epic #1633). Mounted under ``/api/v1/staff``.
 
 Routes:
-  POST /panels                 Start a panel (3-4 experts, N rounds, debate or brainstorm).
-  GET  /panels                 Recent panel threads with compact status (#3313).
-  GET  /panels/presets         Ready-made expert line-ups and the providers a seat may use.
-  GET  /panels/{thread_id}     Turns, stances, consensus and the moderator's synthesis.
+  POST /panels                     Start a panel (3-4 experts, N rounds, debate or brainstorm).
+                                    ``refs: [repo#n]`` has RD fetch each issue/PR's own facts (#3313).
+  GET  /panels                     Recent panel threads with compact status (#3313).
+  GET  /panels/presets             Ready-made expert line-ups and the providers a seat may use.
+  GET  /panels/{thread_id}         Turns, stances, consensus and the moderator's synthesis.
+  GET  /panels/{thread_id}/digest  Compact verdict only, at most 4 KB (#3313).
 """
 
 # ruff: noqa: B008
@@ -14,6 +16,7 @@ import asyncio
 import logging
 from typing import Any
 
+import gh_client
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from identity import Principal, format_caller, require_scope
 from staff.audit import record_audit
@@ -25,11 +28,13 @@ from staff.panel import (
     default_turn_runner,
     estimate_panel_cost,
     list_panel_summaries,
+    panel_digest,
     panel_result,
     run_panel,
     start_panel_thread,
 )
 from staff.panel_models import MAX_ACTIVE_PANELS, PanelCreateRequest, enabled_panel_providers, preset_view
+from staff.panel_refs import fetch_refs_facts
 from staff.rate_limit import check_rate_limit
 
 log = logging.getLogger("dashboard.staff.panels_router")
@@ -60,6 +65,17 @@ async def create_panel(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"code": "panel_limit", "message": f"{MAX_ACTIVE_PANELS} panels are already running"},
         )
+    if body.refs:
+        try:
+            facts = await fetch_refs_facts(body.refs)
+        except gh_client.GhNotFound as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"ref not found: {exc}") from exc
+        except gh_client.GhClientError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"GitHub unavailable: {exc}"
+            ) from exc
+        title = body.title or f"Panel: {body.topic[:80]}"
+        body = body.model_copy(update={"topic": f"{facts}\n\n---\n\n{body.topic}", "title": title})
     estimate = estimate_panel_cost(body)
     if estimate.exceeds_threshold and not body.confirm_cost:
         raise HTTPException(
@@ -136,3 +152,15 @@ async def get_panel(
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"panel '{thread_id}' not found")
     return result
+
+
+@router.get("/panels/{thread_id}/digest", summary="Expert panel verdict digest")
+async def get_panel_digest(
+    thread_id: str,
+    _caller: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel."""
+    digest = panel_digest(get_conversation_store(), thread_id)
+    if digest is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"panel '{thread_id}' not found")
+    return digest
