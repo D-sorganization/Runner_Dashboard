@@ -3606,6 +3606,22 @@
             ],
             "title": "Quorum"
           },
+          "refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refs"
+          },
           "repos": {
             "anyOf": [
               {
