@@ -55,6 +55,21 @@ unavailable" and refuse context-dependent work, never as empty context.
 Encrypted template fixtures and the host key are test-only (`tmp_path`);
 nothing under `tests/fixtures/` holds a real store or key.
 
+### `private_mode` (optional, issue #3250)
+
+One additional, optional top-level key. Omitting it (every overlay before
+#3250, and any overlay that doesn't want it) validates exactly as before.
+
+| Key             | Type | Meaning                                                  |
+| ---------------- | ---- | --------------------------------------------------------- |
+| `enabled`        | bool | Private Mode on for this overlay.                          |
+| `default_level`  | string | One of `PUBLIC`, `INTERNAL`, `SENSITIVE` (`backend/private_mode.py`). Unknown names fail closed. |
+
+Absent, or `{"enabled": false, "default_level": "PUBLIC"}` — the same thing —
+resolves to `private_mode.DISABLED`: classification stays `PUBLIC`
+everywhere. See `docs/adr/0009-private-mode-classification-levels.md` and
+`docs/architecture/private-mode-threat-model.md`.
+
 ## Startup behaviour
 
 | `RD_OVERLAY_PATH` | `RD_OVERLAY_REQUIRED` | Result                           |
