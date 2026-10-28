@@ -218,15 +218,34 @@ export function DeliveryMetricsPanel(): React.ReactElement {
           {pullLoading ? <p role="status">Loading check runs…</p> : null}
           {pullError ? <EmptyState variant="error" title="Pull detail failed" description={pullError} /> : null}
           {pullDetail ? (
-            <ul>
-              {pullDetail.check_runs.map((run) => (
-                <li key={run.name}>
-                  <a href={run.details_url} target="_blank" rel="noreferrer">{run.name}</a>
-                  {" — "}
-                  {run.conclusion ?? run.status}
-                </li>
-              ))}
-            </ul>
+            <>
+              {pullDetail.workflow_runs.length > 0 ? (
+                <div data-testid="delivery-workflow-runs">
+                  <h4 style={{ marginBottom: 8 }}>Actions workflow runs</h4>
+                  <ul>
+                    {pullDetail.workflow_runs.map((wr) => (
+                      <li key={wr.workflow_run_id}>
+                        <a href={wr.html_url} target="_blank" rel="noreferrer">
+                          Run {wr.workflow_run_id}
+                        </a>
+                        {" — "}
+                        {wr.jobs.length} job{wr.jobs.length === 1 ? "" : "s"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <h4 style={{ marginBottom: 8 }}>Check runs</h4>
+              <ul>
+                {pullDetail.check_runs.map((run) => (
+                  <li key={run.name}>
+                    <a href={run.details_url} target="_blank" rel="noreferrer">{run.name}</a>
+                    {" — "}
+                    {run.conclusion ?? run.status}
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : null}
         </div>
       )}
