@@ -4724,6 +4724,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_staff_host_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/inbox": {
         parameters: {
             query?: never;
@@ -6855,6 +6873,24 @@ export interface paths {
         get: operations["get_holds_v1_api_v1_staff_holds_get"];
         /** Put Holds V1 */
         put: operations["put_holds_v1_api_v1_staff_holds_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_v1_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_v1_staff_host_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -9687,6 +9723,29 @@ export interface components {
         HoldsBody: {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
+        };
+        /** HostSettingsPutBody */
+        HostSettingsPutBody: {
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Global */
+            global?: {
+                [key: string]: unknown;
+            };
+            /** Roles */
+            roles?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
         };
         /**
          * InitializeExecutorPayload
@@ -19137,6 +19196,63 @@ export interface operations {
             };
         };
     };
+    get_host_settings_api_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_staff_inbox_api_staff_inbox_get: {
         parameters: {
             query?: never;
@@ -23101,6 +23217,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffHoldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_host_settings_api_v1_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_v1_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
