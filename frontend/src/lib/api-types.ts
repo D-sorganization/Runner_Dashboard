@@ -11433,6 +11433,8 @@ export interface components {
              * @default 0
              */
             active_runs: number;
+            /** Avatar */
+            avatar?: string | null;
             budget: components["schemas"]["StaffRoleBudget"];
             /** Chat */
             chat?: {

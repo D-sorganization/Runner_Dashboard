@@ -142,7 +142,6 @@ class RoleSpec:
             "retired_reason": self.retired_reason,
             "strategy": dict(self.strategy),
             "persona": self.persona,
-            "avatar": self.avatar,
             "chat": dict(self.chat),
             "tools": list(self.tools),
             "group": self.group,
@@ -162,6 +161,7 @@ class RoleSpec:
             "error": self.errors[0] if self.errors else None,
             "dispatchable": self.dispatchable,
             "source_path": self.source_path,
+            "avatar": self.avatar,
         }
 
 
@@ -194,6 +194,7 @@ def parse_role(
     source_path: str = "",
     *,
     errors: tuple[str, ...] = (),
+    avatars_dir: Path | None = None,
 ) -> RoleSpec:
     """Build a RoleSpec from a parsed YAML mapping."""
     name = str(data.get("name") or (Path(source_path).stem if source_path else "")).strip()
@@ -252,7 +253,26 @@ def parse_role(
         max_att = 2
     fallback_provs = _as_tuple(retry_cfg.get("fallback_providers") or data.get("fallback_providers"))
     provider_fallback_rules = parse_provider_fallback_rules(data)
+    avatar_raw = data.get("avatar")
+    avatar: str | None = None
+    if avatar_raw not in (None, ""):
+        avatar = str(avatar_raw).strip()
+
     merged_errors = list(errors)
+    if avatar is not None:
+        from staff.role_avatar_paths import staff_avatars_dir_for_roles, validate_avatar_yaml_path
+
+        resolved_avatars = avatars_dir
+        if resolved_avatars is None and source_path not in ("", "<builtin>", "<inline>"):
+            try:
+                role_path = Path(source_path)
+                if role_path.suffix in (".yml", ".yaml"):
+                    resolved_avatars = staff_avatars_dir_for_roles(role_path.parent)
+            except OSError:
+                resolved_avatars = None
+        avatar_err = validate_avatar_yaml_path(avatar, avatars_dir=resolved_avatars)
+        if avatar_err:
+            merged_errors.append(avatar_err)
     merged_errors.extend(validate_provider_fallback_rules(provider_fallback_rules, _as_tuple(data.get("providers"))))
     failover_chain = parse_role_failover_chain(data) or ()
     merged_errors.extend(validate_failover_chain(failover_chain, _as_tuple(data.get("providers"))))
@@ -292,7 +312,7 @@ def parse_role(
         retired_reason=retired_reason,
         strategy=dict(strategy) if isinstance(strategy, dict) else {},
         persona=persona,
-        avatar=(str(data["avatar"]) if data.get("avatar") not in (None, "") else None),
+        avatar=avatar,
         chat=chat,
         tools=tools,
         group=group,
@@ -342,4 +362,11 @@ def read_and_parse_role_file(path: Path) -> RoleSpec:
             source_path=str(path),
         )
     errs = validate_role_data(data)
-    return parse_role(data, str(path), errors=tuple(errs))
+    from staff.role_avatar_paths import staff_avatars_dir_for_roles
+
+    return parse_role(
+        data,
+        str(path),
+        errors=tuple(errs),
+        avatars_dir=staff_avatars_dir_for_roles(path.parent),
+    )
