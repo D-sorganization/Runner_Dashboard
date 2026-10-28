@@ -45,12 +45,18 @@ agents:
   - id: agent-codex
     kind: codex
     name: Codex CLI agent
+    scopes:
+      - fleet.read
   - id: agent-claude
     kind: claude
     name: Claude agent
+    scopes:
+      - fleet.read
   - id: agent-gemini
     kind: other
     name: Gemini agent
+    scopes:
+      - fleet.read
   - id: email-intake
     name: Verified email intake
     roles:

@@ -285,6 +285,10 @@ machines:
       - brick
     display_name: Brick
     role: node
+    # Portable laptop that travels and is often offline (Dieter, #3323): opt-in,
+    # best-effort only. No staff role is scheduled or required here, and the
+    # staff scheduler's leader lease refuses to grant Brick leadership.
+    portable: true
     dashboard_url: http://brick.tail2bbcc7.ts.net:8321
     tailscale_nodes:
       - name: brick
