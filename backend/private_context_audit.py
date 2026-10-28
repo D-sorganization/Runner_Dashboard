@@ -10,16 +10,19 @@ trail. A failed write fails closed (see ``private_roles.read_private_context``).
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import logging
 import os
 import sqlite3
 import threading
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
+from private_mode import DISABLED, Level, PrivateModeConfig
 from staff.conversation_migrations import _online_backup
 from staff.store import _config_dir, _now, first_touch_lock
 
@@ -42,10 +45,89 @@ OUTCOMES: frozenset[str] = frozenset(
 )
 
 DEFAULT_RETENTION_DAYS = 180
+GENESIS_HASH = "0" * 64
+_FORBIDDEN_META_KEYS = frozenset(
+    {"body", "content", "prompt", "transcript", "secret", "token", "password", "plaintext", "raw"}
+)
 
 
 class PrivateContextAuditError(RuntimeError):
     """An audit write failed; the caller must fail closed."""
+
+
+@dataclass(frozen=True)
+class PrivateModeAuditEvent:
+    """One metadata-only Private Mode decision event (issue #3260, PM-9)."""
+
+    action: str
+    actor: str
+    target_id: str
+    level: Level
+    outcome: str
+    metadata: Mapping[str, str | int | bool] = field(default_factory=dict)
+    ts: str = field(default_factory=_now)
+    seq: int = 0
+    prev_hash: str = ""
+    entry_hash: str = ""
+
+    def __post_init__(self) -> None:
+        for name, val in (
+            ("action", self.action),
+            ("actor", self.actor),
+            ("target_id", self.target_id),
+            ("outcome", self.outcome),
+        ):
+            if not isinstance(val, str) or not val.strip():
+                raise ValueError(f"private_mode_audit: {name} must be a non-empty str")
+        if not isinstance(self.level, Level):
+            raise ValueError("private_mode_audit: level must be a Level")
+        if not isinstance(self.metadata, Mapping):
+            raise ValueError("private_mode_audit: metadata must be a mapping")
+        for k, v in self.metadata.items():
+            if not isinstance(k, str) or k.lower() in _FORBIDDEN_META_KEYS:
+                raise ValueError("private_mode_audit: forbidden content key in metadata")
+            if not isinstance(v, (str, int, bool)) or (isinstance(v, str) and len(v) > 256):
+                raise ValueError("private_mode_audit: metadata values must be short scalars")
+
+
+@dataclass(frozen=True)
+class AuditDecisionResult:
+    """Outcome of recording a Private Mode audit decision."""
+
+    row_id: int
+    parked: bool
+    state: str
+    reason: str = ""
+    entry_hash: str = ""
+
+
+@dataclass(frozen=True)
+class ChainVerificationResult:
+    """Result of verifying the hash chain and independent checkpoint."""
+
+    ok: bool
+    checked_count: int
+    reason: str = ""
+
+
+def resolve_retention_days(env: Mapping[str, str] | None = None) -> int:
+    """Resolve and validate audit retention days from environment mapping."""
+    source = os.environ if env is None else env
+    raw = source.get("RD_PRIVATE_AUDIT_RETENTION_DAYS")
+    if raw is None or not raw.strip():
+        return DEFAULT_RETENTION_DAYS
+    try:
+        days = int(raw.strip())
+    except ValueError as exc:
+        raise ValueError("private_mode_audit: retention days must be an int") from exc
+    if days < 1 or days > 3650:
+        raise ValueError("private_mode_audit: retention days must be between 1 and 3650")
+    return days
+
+
+def _compute_entry_hash(parts: Sequence[object]) -> str:
+    payload = json.dumps(list(parts), separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -76,6 +158,11 @@ CREATE TABLE IF NOT EXISTS private_context_audit (
 );
 CREATE INDEX IF NOT EXISTS private_context_audit_ts_idx ON private_context_audit(ts);
 CREATE INDEX IF NOT EXISTS private_context_audit_role_idx ON private_context_audit(role_id);
+CREATE TABLE IF NOT EXISTS private_mode_audit (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, action TEXT NOT NULL,
+    actor TEXT NOT NULL, target_id TEXT NOT NULL, level TEXT NOT NULL, outcome TEXT NOT NULL,
+    metadata_json TEXT NOT NULL, prev_hash TEXT NOT NULL, entry_hash TEXT NOT NULL
+);
 """
 
 
@@ -88,8 +175,9 @@ def default_audit_db_path() -> Path:
 class PrivateContextAuditStore:
     """Thread-safe, append-only SQLite store. Every write fails closed."""
 
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, *, checkpoint_path: Path | None = None) -> None:
         self.path = path or default_audit_db_path()
+        self.checkpoint_path = checkpoint_path or self.path.with_suffix(".checkpoint.json")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         with first_touch_lock(self.path), self._lock:
@@ -113,6 +201,129 @@ class PrivateContextAuditStore:
         except Exception as exc:
             log.error("Private-context audit write failed (failing closed): %s", exc)
             raise PrivateContextAuditError(f"private-context audit write failed: {exc}") from exc
+
+    def record_decisions_batch(
+        self, events: Sequence[PrivateModeAuditEvent], *, config: PrivateModeConfig = DISABLED
+    ) -> list[AuditDecisionResult]:
+        """Group-commit a batch of Private Mode decisions; fail closed for SENSITIVE only."""
+        if not isinstance(config, PrivateModeConfig):
+            raise ValueError("private_mode_audit: config must be a PrivateModeConfig")
+        if not all(isinstance(ev, PrivateModeAuditEvent) for ev in events):
+            raise ValueError("private_mode_audit: all items must be PrivateModeAuditEvent")
+        if not config.enabled:
+            return [AuditDecisionResult(row_id=0, parked=False, state="DISABLED") for _ in events]
+        if not events:
+            return []
+        try:
+            with self._lock:
+                last_row = self._conn.execute(
+                    "SELECT seq, entry_hash FROM private_mode_audit ORDER BY seq DESC LIMIT 1"
+                ).fetchone()
+                prev_seq = int(last_row["seq"]) if last_row else 0
+                prev_hash = str(last_row["entry_hash"]) if last_row else GENESIS_HASH
+                results: list[AuditDecisionResult] = []
+                self._conn.execute("BEGIN IMMEDIATE")
+                try:
+                    for idx, ev in enumerate(events, start=1):
+                        seq = prev_seq + idx
+                        meta_json = json.dumps(dict(ev.metadata), sort_keys=True, separators=(",", ":"))
+                        parts = (
+                            seq,
+                            ev.ts,
+                            ev.action,
+                            ev.actor,
+                            ev.target_id,
+                            ev.level.name,
+                            ev.outcome,
+                            meta_json,
+                            prev_hash,
+                        )
+                        ehash = _compute_entry_hash(parts)
+                        self._conn.execute(
+                            "INSERT INTO private_mode_audit VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            (*parts, ehash),
+                        )
+                        prev_hash = ehash
+                        results.append(AuditDecisionResult(row_id=seq, parked=False, state="OK", entry_hash=ehash))
+                    self._conn.execute("COMMIT")
+                except Exception:
+                    self._conn.execute("ROLLBACK")
+                    raise
+                cp_data = {"last_seq": prev_seq + len(events), "last_hash": prev_hash, "ts": events[-1].ts}
+                self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+                self.checkpoint_path.write_text(json.dumps(cp_data, separators=(",", ":")), encoding="utf-8")
+                return results
+        except Exception as exc:
+            log.error("Private Mode audit batch write failed: %s", exc)
+            return [
+                AuditDecisionResult(row_id=0, parked=True, state="PARKED_AUDIT", reason="audit-unavailable")
+                if ev.level >= Level.SENSITIVE
+                else AuditDecisionResult(row_id=0, parked=False, state="OK", reason="audit-degraded-non-sensitive")
+                for ev in events
+            ]
+
+    def record_decision(
+        self, event: PrivateModeAuditEvent, *, config: PrivateModeConfig = DISABLED
+    ) -> AuditDecisionResult:
+        """Record a single Private Mode decision via the shared writer."""
+        return self.record_decisions_batch([event], config=config)[0]
+
+    def list_decisions(self, *, limit: int = 100) -> list[PrivateModeAuditEvent]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM private_mode_audit ORDER BY seq ASC LIMIT ?", (int(limit),)
+            ).fetchall()
+        return [
+            PrivateModeAuditEvent(
+                action=r["action"],
+                actor=r["actor"],
+                target_id=r["target_id"],
+                level=Level[r["level"]],
+                outcome=r["outcome"],
+                metadata=json.loads(r["metadata_json"]),
+                ts=r["ts"],
+                seq=int(r["seq"]),
+                prev_hash=r["prev_hash"],
+                entry_hash=r["entry_hash"],
+            )
+            for r in rows
+        ]
+
+    def verify_chain(self) -> ChainVerificationResult:
+        """Verify hash-chain continuity and compare against the independent checkpoint."""
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM private_mode_audit ORDER BY seq ASC").fetchall()
+        prev_hash = GENESIS_HASH
+        last_seq = 0
+        for idx, r in enumerate(rows, start=1):
+            seq = int(r["seq"])
+            if seq != idx or r["prev_hash"] != prev_hash:
+                return ChainVerificationResult(ok=False, checked_count=idx - 1, reason="hash chain discontinuity")
+            parts = (
+                seq,
+                r["ts"],
+                r["action"],
+                r["actor"],
+                r["target_id"],
+                r["level"],
+                r["outcome"],
+                r["metadata_json"],
+                prev_hash,
+            )
+            expected = _compute_entry_hash(parts)
+            if r["entry_hash"] != expected:
+                return ChainVerificationResult(ok=False, checked_count=idx - 1, reason="entry hash tamper detected")
+            prev_hash = expected
+            last_seq = seq
+        if self.checkpoint_path.exists():
+            cp = json.loads(self.checkpoint_path.read_text(encoding="utf-8"))
+            if int(cp.get("last_seq", 0)) > last_seq or (
+                int(cp.get("last_seq", 0)) == last_seq and cp.get("last_hash") != prev_hash
+            ):
+                return ChainVerificationResult(
+                    ok=False, checked_count=len(rows), reason="tail truncation or checkpoint mismatch"
+                )
+        return ChainVerificationResult(ok=True, checked_count=len(rows))
 
     def list_entries(self, *, role_id: str | None = None, limit: int = 100) -> list[PrivateContextAuditRecord]:
         clauses: list[str] = []
@@ -243,7 +454,10 @@ def restore_encrypted(
     anything is written; success adds one "restore" audit entry.
     """
     try:
-        plaintext = Fernet(key).decrypt(backup_path.read_bytes())
+        raw_token = backup_path.read_bytes()
+        if len(raw_token) % 4 != 0 or b"=" in raw_token.rstrip(b"="):
+            raise InvalidToken
+        plaintext = Fernet(key).decrypt(raw_token)
     except (OSError, InvalidToken, ValueError) as exc:
         log.warning("Private-context audit restore rejected: %s", exc)
         return False
