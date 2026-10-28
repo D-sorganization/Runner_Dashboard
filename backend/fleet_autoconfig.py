@@ -417,6 +417,7 @@ def assert_fleet_identity_no_self_loop(
             "which causes hub-spoke self-proxy loops. Unset HUB_URL on the hub host."
         )
 
+
 # Public alias for callers that name the resolution step explicitly (issue #2022).
 derive_machine_role_and_hub_url = apply_fleet_identity_from_registry
 
