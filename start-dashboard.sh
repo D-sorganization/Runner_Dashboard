@@ -20,8 +20,7 @@ BACKEND_DIR="${SCRIPT_DIR}/backend"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 # Issue #945: Python deps live in the repo-root requirements.txt, not backend/.
 REQUIREMENTS_FILE="${SCRIPT_DIR}/requirements.txt"
-FRONTEND_DIR="${SCRIPT_DIR}/frontend"
-DIST_DIR="${FRONTEND_DIR}/dist"
+DIST_DIR="${SCRIPT_DIR}/dist"
 INSTALL_STAMP="${VENV_DIR}/.installed-stamp"
 PORT="${DASHBOARD_PORT:-8321}"
 HOST="${DASHBOARD_HOST:-127.0.0.1}"
@@ -91,7 +90,7 @@ if [[ ! -f "${INSTALL_STAMP}" ]] || [[ "${REQUIREMENTS_FILE}" -nt "${INSTALL_STA
     touch "${INSTALL_STAMP}"
 fi
 
-# Issue #945: the backend serves the SPA from frontend/dist/ (gitignored). On a
+# Issue #945: the backend serves the SPA from repo-root dist/ (gitignored). On a
 # clean checkout that directory is absent and the server falls back to a bare
 # "Frontend index.html not found" page. Build it (or fail with instructions)
 # so the documented Quick Start yields a working app.

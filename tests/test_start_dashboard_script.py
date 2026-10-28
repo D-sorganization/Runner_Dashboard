@@ -43,7 +43,7 @@ def test_no_silent_fastapi_only_fallback() -> None:
 
 def test_script_builds_or_demands_frontend_bundle() -> None:
     text = _script_text()
-    # The backend serves the SPA from frontend/dist/; the script must build it
+    # The backend serves the SPA from repo-root dist/; the script must build it
     # (or fail with instructions) so Quick Start yields a working app.
     assert "dist" in text and "npm run build" in text
 

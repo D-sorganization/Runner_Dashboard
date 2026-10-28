@@ -38,6 +38,10 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 
 def _require_single_worker() -> None:
     """Refuse unsafe worker counts before importing process-local state (#3029)."""
@@ -93,10 +97,6 @@ from routers import auth as auth_router
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from tailnet_identity import build_asgi_app
-
-BACKEND_DIR = Path(__file__).resolve().parent
-if str(BACKEND_DIR) not in sys.path:
-    sys.path.insert(0, str(BACKEND_DIR))
 
 import agent_dispatch_router as agent_dispatch_router  # noqa: E402
 import agent_remediation as agent_remediation  # noqa: E402

@@ -7,6 +7,15 @@
 # of slow CPython 3.14 source builds.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
+FROM node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea AS frontend-builder
+
+WORKDIR /app
+COPY package.json package-lock.json .npmrc ./
+RUN npm ci
+COPY vite.config.ts ./vite.config.ts
+COPY frontend/ ./frontend/
+RUN npm run build
+
 FROM python:3.13-slim@sha256:7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4
 
 WORKDIR /app
@@ -32,7 +41,7 @@ RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u3' \
 
 # Create non-root user and group
 RUN groupadd --gid 10001 appuser \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /sbin/nologin appuser
+    && useradd --uid 10001 --gid 10001 --create-home --shell /sbin/nologin appuser
 
 # Copy requirements first for layer caching; install with hash verification.
 COPY requirements.lock.txt .
@@ -58,6 +67,7 @@ RUN pip install --no-cache-dir --upgrade \
 COPY --chown=appuser:appuser backend/ ./backend/
 COPY --chown=appuser:appuser config/ ./config/
 COPY --chown=appuser:appuser frontend/ ./frontend/
+COPY --from=frontend-builder --chown=appuser:appuser /app/dist/ ./dist/
 
 # Environment defaults
 ENV PYTHONPATH=/app
