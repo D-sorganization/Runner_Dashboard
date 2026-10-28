@@ -74,7 +74,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install test runner
-        run: python3.12 -m pip install --quiet pytest cryptography
+        run: |
+          python3.12 -m pip install --quiet --upgrade pip
+          python3.12 -m pip install --quiet pytest==9.0.3 pytest-asyncio==1.3.0
+          python3.12 -m pip install --quiet -r requirements.txt
 
       - name: Private-roles redaction gate suite (#3095)
         run: >-
