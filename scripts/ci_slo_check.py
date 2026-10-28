@@ -191,7 +191,8 @@ def gh_api(
     if not (os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN") or "").strip():
         gh_error("GITHUB_TOKEN (or GH_TOKEN) is required for live GitHub reads")
         raise SystemExit(2)
-    cmd = ["gh", "api", path, "--paginate"]
+    # GET explicitly: `gh api -f` otherwise sends POST, which creates instead of reads.
+    cmd = ["gh", "api", "--method", "GET", path, "--paginate"]
     for key, value in (params or {}).items():
         cmd.extend(["-f", f"{key}={value}"])
     proc = runner(cmd)
