@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -32,6 +32,9 @@ async def test_dispatch_refuses_expired_antigravity_oauth() -> None:
 
     with (
         patch("staff.dispatch_service.get_runner") as mock_runner,
+        # Hermetic: without this, check_duplicate_pr_or_run's open/merged-PR preflight
+        # reaches real GitHub data for repo="Runner_Dashboard" issue=1 (#3111).
+        patch("gh_utils.gh_api", new=AsyncMock(return_value=None)),
         patch(
             "staff.provider_dispatch_preflight.refusal_for_provider_auth",
             return_value=type(

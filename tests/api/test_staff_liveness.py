@@ -11,9 +11,9 @@ import json
 import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi import FastAPI
@@ -24,6 +24,7 @@ from staff import fleet as fleet_mod
 from staff import liveness as liveness_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 NOW = datetime(2026, 9, 22, 12, 0, tzinfo=UTC)
@@ -231,7 +232,7 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     adapters = {**adapters_mod.ADAPTERS, "claude": fake}
     r = runner_mod.StaffRunner(store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="Desk")
     monkeypatch.setattr(r, "roles", _roles)
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()

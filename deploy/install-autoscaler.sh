@@ -92,6 +92,8 @@ install -Dm 0644 "$PROJECT_ROOT/backend/autoscaler_config.py" \
     "$DASHBOARD_DIR/backend/autoscaler_config.py"
 install -Dm 0644 "$PROJECT_ROOT/backend/autoscaler_identity.py" \
     "$DASHBOARD_DIR/backend/autoscaler_identity.py"
+install -Dm 0644 "$PROJECT_ROOT/backend/runner_control_health.py" \
+    "$DASHBOARD_DIR/backend/runner_control_health.py"
 
 # 2. Ensure psutil is available for the system python that will run it
 if ! python3 -c "import psutil" 2>/dev/null; then

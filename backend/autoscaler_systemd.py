@@ -16,6 +16,7 @@ from autoscaler_config import (
     _SYSTEMCTL_TIMEOUT_S,
     DRY_RUN,
 )
+from runner_control_health import record_runner_control_result
 
 log = logging.getLogger("runner-autoscaler")
 _MIN_SAFE_STOP_TIMEOUT_SECONDS = 120
@@ -221,6 +222,7 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
         log.info("[dry-run] would stop %s", unit)
         return True
     if not _unit_has_safe_stop_contract(unit):
+        record_runner_control_result("stop", succeeded=False)
         return False
     # Issue #935: stop with ``--no-block``. The #640/#679 drain contract lets a
     # busy runner legally hold systemd's stop for up to TimeoutStopUSec (>=120s),
@@ -253,6 +255,8 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
         # attempt — and report failure.
         log.warning("Failed to enqueue stop for %s: %s", unit, exc)
         success = False
+
+    record_runner_control_result("stop", succeeded=success)
 
     # Recovery half of the stop contract — best-effort, never raises.
     try:
@@ -288,9 +292,12 @@ def _start_unit(unit: str) -> bool:
         )
     except (OSError, subprocess.SubprocessError) as exc:
         log.warning("Failed to enqueue start for %s: %s", unit, exc)
+        record_runner_control_result("start", succeeded=False)
         return False
     if r.returncode != 0:
         log.warning("Failed to start %s: %s", unit, r.stderr.strip()[:200])
+        record_runner_control_result("start", succeeded=False)
         return False
+    record_runner_control_result("start", succeeded=True)
     log.info("Autoscaler STARTED %s (host recovered)", unit)
     return True

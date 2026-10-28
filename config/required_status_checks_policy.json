@@ -37,6 +37,12 @@
       "source_workflow": "CI Secrets",
       "job_id": "detect-secrets",
       "reason": "Baseline diff secret scan. Must run on fork PRs (ubuntu-latest) and on merge_group so required protection never waits for a missing context. Applied on main via config/repository_rulesets/required-status-checks-supplement.json."
+    },
+    {
+      "context": "api-contract-regeneration",
+      "source_workflow": "API Contract Regeneration",
+      "job_id": "api-contract-regeneration",
+      "reason": "Fails when frontend/src/lib/openapi.json or api-types.ts drift from a fresh OpenAPI export. Complements Frontend Tests typecheck; applies on merge_group so backend-only PRs cannot merge with a stale contract."
     }
   ],
   "require_branches_up_to_date": false,
