@@ -17,6 +17,11 @@ Contract (DbC):
 
 Error messages name keys and reasons only. They never echo overlay values or
 the overlay path, because both may be private.
+
+The optional ``private_mode`` key (issue #3250, epic #3249) is additive: an
+overlay that omits it validates exactly as it did before #3250, and
+``Overlay.private_mode`` resolves to ``private_mode.DISABLED``. See
+``backend/private_mode.py`` for the ``Level`` enum and the field's shape.
 """
 
 from __future__ import annotations
@@ -27,6 +32,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from private_mode import PrivateModeConfig
+from private_mode import parse_private_mode as _parse_private_mode
 
 OVERLAY_PATH_ENV = "RD_OVERLAY_PATH"
 OVERLAY_REQUIRED_ENV = "RD_OVERLAY_REQUIRED"
@@ -39,8 +47,12 @@ _TOP_LEVEL_KEYS: dict[str, type] = {
     "roles_dir": str,
     "policy_dir": str,
     "private_docs_dir": str,
+    "private_roles": list,
 }
 _HOST_KEYS: dict[str, type] = {"name": str, "address": str}
+_PRIVATE_ROLE_KEYS = frozenset(
+    {"role_id", "allowed_templates", "providers", "context_store_dir", "store_schema_version"}
+)
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
@@ -55,6 +67,17 @@ class OverlayHost:
 
 
 @dataclass(frozen=True)
+class PrivateRole:
+    """A private-role definition (issue #3094). Lives only in the overlay."""
+
+    role_id: str
+    allowed_templates: tuple[str, ...]
+    providers: Mapping[str, tuple[str, ...]]
+    context_store_dir: str
+    store_schema_version: int
+
+
+@dataclass(frozen=True)
 class Overlay:
     """A validated private overlay. Construct only via :func:`parse_overlay`."""
 
@@ -64,9 +87,63 @@ class Overlay:
     roles_dir: str
     policy_dir: str
     private_docs_dir: str
+    private_roles: tuple[PrivateRole, ...]
+    private_mode: PrivateModeConfig
 
     def host_names(self) -> tuple[str, ...]:
         return tuple(h.name for h in self.hosts)
+
+    def private_role(self, role_id: str) -> PrivateRole | None:
+        return next((r for r in self.private_roles if r.role_id == role_id), None)
+
+
+def _non_empty_str_list(value: object, where: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+        raise OverlayError(f"{where} must be a list of non-empty strings")
+    return tuple(value)
+
+
+def _parse_private_role(raw: object, index: int) -> PrivateRole:
+    where = f"overlay private_roles[{index}]"
+    if not isinstance(raw, dict):
+        raise OverlayError(f"{where}: must be an object")
+    missing = sorted(_PRIVATE_ROLE_KEYS - set(raw))
+    unknown = sorted(set(raw) - _PRIVATE_ROLE_KEYS)
+    if missing:
+        raise OverlayError(f"{where}: missing required key(s): {', '.join(missing)}")
+    if unknown:
+        raise OverlayError(f"{where}: unknown key(s): {', '.join(unknown)}")
+    role_id = raw["role_id"]
+    if not isinstance(role_id, str) or not role_id:
+        raise OverlayError(f"{where}: role_id must be a non-empty string")
+    templates = _non_empty_str_list(raw["allowed_templates"], f"{where}: allowed_templates")
+    providers_raw = raw["providers"]
+    if not isinstance(providers_raw, dict):
+        raise OverlayError(f"{where}: providers must be an object")
+    providers = {host: _non_empty_str_list(clis, f"{where}: providers[{host}]") for host, clis in providers_raw.items()}
+    store_dir = raw["context_store_dir"]
+    if not isinstance(store_dir, str) or not store_dir:
+        raise OverlayError(f"{where}: context_store_dir must be a non-empty string")
+    version = raw["store_schema_version"]
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise OverlayError(f"{where}: store_schema_version must be an int")
+    return PrivateRole(
+        role_id=role_id,
+        allowed_templates=templates,
+        providers=providers,
+        context_store_dir=store_dir,
+        store_schema_version=version,
+    )
+
+
+def _parse_private_roles(data: object) -> tuple[PrivateRole, ...]:
+    if not isinstance(data, list):
+        raise OverlayError("overlay private_roles: must be a list")
+    roles = tuple(_parse_private_role(raw, i) for i, raw in enumerate(data))
+    ids = [r.role_id for r in roles]
+    if len(set(ids)) != len(ids):
+        raise OverlayError("overlay private_roles: duplicate role_id")
+    return roles
 
 
 def _check_keys(data: Mapping[str, Any], spec: Mapping[str, type], where: str) -> None:
@@ -91,7 +168,14 @@ def parse_overlay(data: object) -> Overlay:
     version = data.get("schema_version")
     if version != OVERLAY_SCHEMA_VERSION or isinstance(version, bool):
         raise OverlayError(f"overlay: unsupported schema_version (expected {OVERLAY_SCHEMA_VERSION})")
-    _check_keys(data, _TOP_LEVEL_KEYS, "root")
+    # `private_mode` (issue #3250) is optional and additive: strip it before the
+    # required/unknown-key check so existing overlays validate unchanged.
+    required_body = {k: v for k, v in data.items() if k != "private_mode"}
+    _check_keys(required_body, _TOP_LEVEL_KEYS, "root")
+    try:
+        private_mode = _parse_private_mode(data.get("private_mode"))
+    except ValueError as exc:
+        raise OverlayError(f"overlay {exc}") from exc
     hosts: list[OverlayHost] = []
     for i, raw in enumerate(data["hosts"]):
         if not isinstance(raw, dict):
@@ -111,6 +195,8 @@ def parse_overlay(data: object) -> Overlay:
         roles_dir=data["roles_dir"],
         policy_dir=data["policy_dir"],
         private_docs_dir=data["private_docs_dir"],
+        private_roles=_parse_private_roles(data["private_roles"]),
+        private_mode=private_mode,
     )
 
 
@@ -151,3 +237,12 @@ def get_overlay(env: Mapping[str, str] | None = None) -> Overlay | None:
 def assert_overlay_ready(env: Mapping[str, str] | None = None) -> None:
     """Startup gate: raise :class:`OverlayError` so the server refuses to start."""
     get_overlay(env)
+
+
+def overlay_companion_dir(env: Mapping[str, str] | None = None) -> Path | None:
+    """Parent directory of the overlay file for companion private settings (e.g. host_settings.json)."""
+    env = os.environ if env is None else env
+    raw_path = env.get(OVERLAY_PATH_ENV, "").strip()
+    if not raw_path:
+        return None
+    return Path(raw_path).expanduser().parent

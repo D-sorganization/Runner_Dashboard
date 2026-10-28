@@ -31,7 +31,7 @@ def _clean(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         reset()
 
 
-def _crash(cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+def _crash(cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None) -> MagicMock:
     proc = MagicMock()
     proc.returncode = 1
     proc.stdout = iter([])
@@ -74,7 +74,9 @@ async def test_exhausted_chain_keeps_most_specific_classified_failure() -> None:
     user_msg = store.add_message(thread.id, author_kind="user", author="alice", body_md="hello")
     placeholder = store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
-    def _auth_then_ollama_fail(cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+    def _auth_then_ollama_fail(
+        cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None
+    ) -> MagicMock:
         proc = MagicMock()
         proc.returncode = 1
         proc.stdout = iter([])
@@ -121,7 +123,9 @@ async def test_exhausted_chain_crash_beats_subsequent_unavailable_fallback() -> 
     user_msg = store.add_message(thread.id, author_kind="user", author="alice", body_md="hello")
     placeholder = store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
-    def _crash_then_ollama_fail(cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+    def _crash_then_ollama_fail(
+        cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None
+    ) -> MagicMock:
         proc = MagicMock()
         proc.returncode = 1
         proc.stdout = iter([])
@@ -167,7 +171,7 @@ async def test_exhausted_chain_preserves_primary_provider_on_equal_specificity()
     user_msg = store.add_message(thread.id, author_kind="user", author="alice", body_md="hello")
     placeholder = store.add_message(thread.id, author_kind="role", author="barb", delivery="pending")
 
-    def _all_auth_fail(cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+    def _all_auth_fail(cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None) -> MagicMock:
         proc = MagicMock()
         proc.returncode = 1
         proc.stdout = iter([])

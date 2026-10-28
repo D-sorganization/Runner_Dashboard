@@ -16,6 +16,7 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 import overlay_contract as oc  # noqa: E402
+import private_mode as pm  # noqa: E402
 
 MOCK = _ROOT / "tests" / "fixtures" / "overlay" / "mock-overlay.json"
 SENTINEL = "SENTINEL-private-value-do-not-echo"
@@ -140,6 +141,36 @@ def test_only_the_accessor_reads_the_overlay() -> None:
             offenders.append(f"{path.relative_to(_ROOT)}: reads overlay env directly")
         offenders += [f"{path.relative_to(_ROOT)}: hard-codes an overlay value" for v in mock_values if v in text]
     assert offenders == []
+
+
+def test_private_mode_absent_is_disabled_public_everywhere() -> None:
+    """Flag absent -> PUBLIC everywhere (issue #3250, the safe-disable contract)."""
+    overlay = oc.load_overlay(MOCK)
+    assert overlay.private_mode == pm.DISABLED
+    assert overlay.private_mode.default_level is pm.Level.PUBLIC
+
+
+def test_private_mode_flag_off_snapshot_unchanged() -> None:
+    """A flag-off overlay still validates exactly as it did before #3250."""
+    overlay = oc.load_overlay(MOCK)
+    assert overlay.host_names() == ("mock-hub", "mock-node")
+    assert overlay.roles_dir == "roles"
+
+
+def test_private_mode_can_be_enabled(tmp_path: Path) -> None:
+    data = _mock()
+    data["private_mode"] = {"enabled": True, "default_level": "INTERNAL"}
+    overlay = oc.load_overlay(_write(tmp_path, data))
+    assert overlay.private_mode.enabled is True
+    assert overlay.private_mode.default_level is pm.Level.INTERNAL
+
+
+def test_private_mode_rejects_unknown_level(tmp_path: Path) -> None:
+    data = _mock()
+    data["private_mode"] = {"enabled": True, "default_level": SENTINEL}
+    with pytest.raises(oc.OverlayError, match="unsupported level") as exc:
+        oc.load_overlay(_write(tmp_path, data))
+    _assert_no_echo(exc)
 
 
 def test_server_startup_runs_the_overlay_gate() -> None:

@@ -30,7 +30,7 @@ from github_app_user_oauth import (  # noqa: E402
     load_credentials,
     save_credentials,
 )
-from oauth_config import EXPECTED_GITHUB_ORG, OAUTH_CALLBACK_PATH  # noqa: E402
+from oauth_config import OAUTH_CALLBACK_PATH  # noqa: E402
 
 _HUB_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
 _HUB_CALLBACK = f"{_HUB_ORIGIN}{OAUTH_CALLBACK_PATH}"
@@ -44,7 +44,7 @@ def _oauth_env() -> dict[str, str]:
     return {
         "GITHUB_CLIENT_ID": "Iv1.githubAppClient",
         "GITHUB_CLIENT_SECRET": "x" * 40,  # pragma: allowlist secret
-        "GITHUB_ORG": EXPECTED_GITHUB_ORG,
+        "GITHUB_ORG": "D-sorganization",
         "DASHBOARD_PUBLIC_ORIGIN": _HUB_ORIGIN,
         "GITHUB_OAUTH_CALLBACK_URL": _HUB_CALLBACK,
         "SESSION_SECRET": "s" * 64,  # pragma: allowlist secret

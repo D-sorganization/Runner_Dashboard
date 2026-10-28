@@ -43,6 +43,19 @@ export const DateSeparator: React.FC<{ label: string }> = ({ label }) => {
   );
 };
 
+type GroupedThreadItem = {
+  type: "separator" | "message" | "round_header";
+  key: string;
+  label?: string;
+  round?: number;
+  message?: ThreadMessage;
+};
+
+const VIRTUALIZE_AFTER_MESSAGES = 80;
+const VIRTUAL_OVERSCAN_PX = 640;
+const ESTIMATED_MESSAGE_HEIGHT = 176;
+const ESTIMATED_SEPARATOR_HEIGHT = 48;
+
 export const Thread: React.FC<ThreadProps> = ({
   thread,
   messages = [],
@@ -64,6 +77,12 @@ export const Thread: React.FC<ThreadProps> = ({
   const unreadTargetRef = useRef<HTMLDivElement>(null);
   const [showJumpToUnread, setShowJumpToUnread] = useState<boolean>(false);
   const [userScrolledUp, setUserScrolledUp] = useState<boolean>(false);
+  const [virtualScrollTop, setVirtualScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(600);
+  const [measuredHeights, setMeasuredHeights] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const observedRowsRef = useRef(new Map<string, HTMLDivElement>());
+  const rowRefCache = useRef(new Map<string, (node: HTMLDivElement | null) => void>());
 
   const isPanel = isPanelThread(thread);
 
@@ -82,13 +101,7 @@ export const Thread: React.FC<ThreadProps> = ({
         messageToRoundStart.set(msgId, r);
       }
 
-      const elements: Array<{
-        type: "separator" | "message" | "round_header";
-        key: string;
-        label?: string;
-        round?: number;
-        message?: ThreadMessage;
-      }> = [];
+      const elements: GroupedThreadItem[] = [];
 
       for (let i = 0; i < messages.length; i++) {
         const msg = messages[i];
@@ -110,13 +123,7 @@ export const Thread: React.FC<ThreadProps> = ({
       return elements;
     }
 
-    const elements: Array<{
-      type: "separator" | "message" | "round_header";
-      key: string;
-      label?: string;
-      round?: number;
-      message?: ThreadMessage;
-    }> = [];
+    const elements: GroupedThreadItem[] = [];
     let lastDateKey = "";
 
     for (let i = 0; i < messages.length; i++) {
@@ -142,11 +149,131 @@ export const Thread: React.FC<ThreadProps> = ({
     return elements;
   }, [messages, isPanel]);
 
+  const itemOffsets = useMemo(() => {
+    const offsets = [0];
+    for (const item of groupedItems) {
+      const measured = measuredHeights.get(item.key);
+      const estimate = item.message
+        ? ESTIMATED_MESSAGE_HEIGHT + Math.min(800, Math.ceil((item.message.body_md?.length || 0) / 240) * 24)
+        : ESTIMATED_SEPARATOR_HEIGHT;
+      offsets.push(offsets[offsets.length - 1] + (measured || estimate));
+    }
+    return offsets;
+  }, [groupedItems, measuredHeights]);
+
+  const useVirtualization = messages.length > VIRTUALIZE_AFTER_MESSAGES;
+  const totalVirtualHeight = itemOffsets[itemOffsets.length - 1] || 0;
+  let virtualStart = 0;
+  let virtualEnd = groupedItems.length;
+  if (useVirtualization) {
+    const startAt = Math.max(0, virtualScrollTop - VIRTUAL_OVERSCAN_PX);
+    const endAt = virtualScrollTop + viewportHeight + VIRTUAL_OVERSCAN_PX;
+    while (virtualStart < groupedItems.length - 1 && itemOffsets[virtualStart + 1] < startAt) virtualStart += 1;
+    virtualEnd = virtualStart;
+    while (virtualEnd < groupedItems.length && itemOffsets[virtualEnd] < endAt) virtualEnd += 1;
+  }
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const observedRows = observedRowsRef.current;
+    if (!container) return;
+    setViewportHeight(container.clientHeight || 600);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      if (entries.some((entry) => entry.target === container)) {
+        setViewportHeight(container.clientHeight || 600);
+      }
+      setMeasuredHeights((current) => {
+        let next: Map<string, number> | null = null;
+        for (const entry of entries) {
+          if (entry.target === container) continue;
+          const key = (entry.target as HTMLElement).dataset.threadVirtualItem;
+          const height = (entry.target as HTMLElement).getBoundingClientRect().height;
+          if (!key || height <= 0 || Math.abs((current.get(key) || 0) - height) < 1) continue;
+          next ??= new Map(current);
+          next.set(key, height);
+        }
+        return next || current;
+      });
+    });
+    resizeObserverRef.current = observer;
+    observer.observe(container);
+    const observedRows = observedRowsRef.current;
+    for (const row of observedRows.values()) observer.observe(row);
+    return () => {
+      observer.disconnect();
+      resizeObserverRef.current = null;
+      observedRows.clear();
+    };
+  }, []);
+
+  const virtualRowRef = (key: string) => {
+    let callback = rowRefCache.current.get(key);
+    if (!callback) {
+      callback = (node) => {
+        const previous = observedRowsRef.current.get(key);
+        if (previous && previous !== node) {
+          resizeObserverRef.current?.unobserve(previous);
+          observedRowsRef.current.delete(key);
+        }
+        if (node) {
+          observedRowsRef.current.set(key, node);
+          resizeObserverRef.current?.observe(node);
+        }
+      };
+      rowRefCache.current.set(key, callback);
+    }
+    return callback;
+  };
+
   // Check if unread messages exist
   const firstUnread = useMemo(() => {
     if (unreadSeqThreshold === undefined) return null;
     return messages.find((m) => (m.seq ?? 0) >= unreadSeqThreshold) || null;
   }, [messages, unreadSeqThreshold]);
+
+  const renderGroupedItem = (item: GroupedThreadItem) => {
+    if (item.type === "round_header" && item.round != null) {
+      return <RoundHeader key={item.key} round={item.round} />;
+    }
+    if (item.type === "separator") {
+      return <DateSeparator key={item.key} label={item.label || ""} />;
+    }
+    if (!item.message) return null;
+
+    const isUnreadTarget = firstUnread && item.message.id === firstUnread.id;
+    const msgIndex = messages.findIndex((message) => message.id === item.message?.id);
+    const prevMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
+    const isSameAuthor = prevMsg && prevMsg.author === item.message.author;
+    const timeDiffMs =
+      prevMsg && item.message.created_at && prevMsg.created_at
+        ? Math.abs(new Date(item.message.created_at).getTime() - new Date(prevMsg.created_at).getTime())
+        : Infinity;
+    const showHeader = !(isSameAuthor && timeDiffMs < 5 * 60 * 1000);
+
+    return (
+      <div
+        key={item.key}
+        ref={isUnreadTarget ? unreadTargetRef : undefined}
+        className={isUnreadTarget ? "thread-unread-target" : undefined}
+        style={{ width: "100%" }}
+      >
+        <MessageItem
+          message={item.message}
+          isStreaming={item.message.streaming}
+          showHeader={showHeader}
+          onStopStreaming={onStopStreaming}
+          onRetry={onRetryMessage}
+          onApproveProposal={onApproveProposal}
+          onDenyProposal={onDenyProposal}
+          onCancelRun={onCancelRun}
+          onAnswerRun={onAnswerRun}
+          onRerouteHandoff={onRerouteHandoff}
+          onFollowHandoff={onFollowHandoff}
+        />
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (firstUnread) {
@@ -160,12 +287,13 @@ export const Thread: React.FC<ThreadProps> = ({
   useEffect(() => {
     if (!userScrolledUp && scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+      setVirtualScrollTop(scrollContainerRef.current.scrollTop);
     }
-  }, [messages, userScrolledUp]);
+  }, [messages, userScrolledUp, totalVirtualHeight]);
 
-  const handleScroll = () => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    if (useVirtualization) setVirtualScrollTop(el.scrollTop);
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     setUserScrolledUp(!isAtBottom);
 
@@ -179,6 +307,12 @@ export const Thread: React.FC<ThreadProps> = ({
     const behavior = scrollBehavior();
     if (unreadTargetRef.current && typeof unreadTargetRef.current.scrollIntoView === "function") {
       unreadTargetRef.current.scrollIntoView({ behavior, block: "start" });
+    } else if (useVirtualization && firstUnread && scrollContainerRef.current) {
+      const index = groupedItems.findIndex((item) => item.message?.id === firstUnread.id);
+      if (index >= 0) {
+        scrollContainerRef.current.scrollTop = itemOffsets[index];
+        setVirtualScrollTop(itemOffsets[index]);
+      }
     } else if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
@@ -242,54 +376,33 @@ export const Thread: React.FC<ThreadProps> = ({
         onKeyDown={handleLogKeyDown}
         className="thread-messages-scroll"
       >
-        <div className="thread-messages-container">
-          {groupedItems.map((item) => {
-            if (item.type === "round_header" && item.round != null) {
-              return <RoundHeader key={item.key} round={item.round} />;
-            }
-
-            if (item.type === "separator") {
-              return <DateSeparator key={item.key} label={item.label || ""} />;
-            }
-
-            if (item.message) {
-              const isUnreadTarget = firstUnread && item.message.id === firstUnread.id;
-              const msgIndex = messages.findIndex((m) => m.id === item.message?.id);
-              const prevMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
-              const isSameAuthor = prevMsg && prevMsg.author === item.message.author;
-              const timeDiffMs =
-                prevMsg && item.message.created_at && prevMsg.created_at
-                  ? Math.abs(new Date(item.message.created_at).getTime() - new Date(prevMsg.created_at).getTime())
-                  : Infinity;
-              const showHeader = !(isSameAuthor && timeDiffMs < 5 * 60 * 1000);
-
+        {useVirtualization ? (
+          <div
+            className="thread-messages-container thread-messages-container--virtual"
+            data-testid="thread-virtual-window"
+            data-total-items={groupedItems.length}
+            style={{ height: totalVirtualHeight }}
+          >
+            {groupedItems.slice(virtualStart, virtualEnd).map((item, visibleIndex) => {
+              const index = virtualStart + visibleIndex;
               return (
                 <div
                   key={item.key}
-                  ref={isUnreadTarget ? unreadTargetRef : undefined}
-                  className={isUnreadTarget ? "thread-unread-target" : undefined}
-                  style={{ width: "100%" }}
+                  ref={virtualRowRef(item.key)}
+                  className="thread-virtual-row"
+                  data-thread-virtual-item={item.key}
+                  style={{ top: itemOffsets[index] }}
                 >
-                  <MessageItem
-                    message={item.message}
-                    isStreaming={item.message.streaming}
-                    showHeader={showHeader}
-                    onStopStreaming={onStopStreaming}
-                    onRetry={onRetryMessage}
-                    onApproveProposal={onApproveProposal}
-                    onDenyProposal={onDenyProposal}
-                    onCancelRun={onCancelRun}
-                    onAnswerRun={onAnswerRun}
-                    onRerouteHandoff={onRerouteHandoff}
-                    onFollowHandoff={onFollowHandoff}
-                  />
+                  {renderGroupedItem(item)}
                 </div>
               );
-            }
-
-            return null;
-          })}
-        </div>
+            })}
+          </div>
+        ) : (
+          <div className="thread-messages-container">
+            {groupedItems.map(renderGroupedItem)}
+          </div>
+        )}
       </div>
 
       {/* Floating Jump to Unread Button */}

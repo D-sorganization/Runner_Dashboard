@@ -2,7 +2,7 @@
 import React from "react";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
-import { formatDuration, uniqueRepos } from "./deliveryMetricsApi";
+import { formatDuration, uniqueField, uniqueRepos } from "./deliveryMetricsApi";
 import { useDeliveryMetrics } from "./useDeliveryMetrics";
 
 export function DeliveryMetricsPanel(): React.ReactElement {
@@ -10,6 +10,12 @@ export function DeliveryMetricsPanel(): React.ReactElement {
     state,
     repoFilter,
     setRepoFilter,
+    roleFilter,
+    setRoleFilter,
+    agentFilter,
+    setAgentFilter,
+    modelFilter,
+    setModelFilter,
     refetch,
     pullDetail,
     pullLoading,
@@ -48,13 +54,21 @@ export function DeliveryMetricsPanel(): React.ReactElement {
 
   const { data } = state;
   const repos = uniqueRepos(data.pr_drill_down);
-  const rows = repoFilter ? data.pr_drill_down.filter((r) => r.repo_full === repoFilter) : data.pr_drill_down;
+  const roles = uniqueField(data.pr_drill_down, "role");
+  const agents = uniqueField(data.pr_drill_down, "agent");
+  const models = uniqueField(data.pr_drill_down, "model");
+  const rows = data.pr_drill_down.filter((r) => {
+    if (repoFilter && r.repo_full !== repoFilter) return false;
+    if (roleFilter && r.role !== roleFilter) return false;
+    if (agentFilter && r.agent !== agentFilter) return false;
+    if (modelFilter && r.model !== modelFilter) return false;
+    return true;
+  });
 
   return (
     <div data-testid="delivery-metrics-panel" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <p className="staff-muted" data-testid="delivery-metrics-posture">
-        Weekly delivery trends — not leaderboards. Repo filter is live; role and model filters ship with the weekly
-        summary (#2123).
+        Weekly delivery trends — not leaderboards. Filter by repo, staff role, agent (provider), or model.
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <label>
@@ -68,6 +82,48 @@ export function DeliveryMetricsPanel(): React.ReactElement {
             <option value="">All tracked repos</option>
             {repos.map((repo) => (
               <option key={repo} value={repo}>{repo}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Role
+          <select
+            aria-label="Filter by staff role"
+            value={roleFilter ?? ""}
+            onChange={(e) => setRoleFilter(e.target.value || null)}
+            style={{ marginLeft: 8 }}
+          >
+            <option value="">All roles</option>
+            {roles.map((role) => (
+              <option key={role} value={role}>{role}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Agent
+          <select
+            aria-label="Filter by agent provider"
+            value={agentFilter ?? ""}
+            onChange={(e) => setAgentFilter(e.target.value || null)}
+            style={{ marginLeft: 8 }}
+          >
+            <option value="">All agents</option>
+            {agents.map((agent) => (
+              <option key={agent} value={agent}>{agent}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Model
+          <select
+            aria-label="Filter by model"
+            value={modelFilter ?? ""}
+            onChange={(e) => setModelFilter(e.target.value || null)}
+            style={{ marginLeft: 8 }}
+          >
+            <option value="">All models</option>
+            {models.map((model) => (
+              <option key={model} value={model}>{model}</option>
             ))}
           </select>
         </label>
@@ -162,15 +218,34 @@ export function DeliveryMetricsPanel(): React.ReactElement {
           {pullLoading ? <p role="status">Loading check runs…</p> : null}
           {pullError ? <EmptyState variant="error" title="Pull detail failed" description={pullError} /> : null}
           {pullDetail ? (
-            <ul>
-              {pullDetail.check_runs.map((run) => (
-                <li key={run.name}>
-                  <a href={run.details_url} target="_blank" rel="noreferrer">{run.name}</a>
-                  {" — "}
-                  {run.conclusion ?? run.status}
-                </li>
-              ))}
-            </ul>
+            <>
+              {pullDetail.workflow_runs.length > 0 ? (
+                <div data-testid="delivery-workflow-runs">
+                  <h4 style={{ marginBottom: 8 }}>Actions workflow runs</h4>
+                  <ul>
+                    {pullDetail.workflow_runs.map((wr) => (
+                      <li key={wr.workflow_run_id}>
+                        <a href={wr.html_url} target="_blank" rel="noreferrer">
+                          Run {wr.workflow_run_id}
+                        </a>
+                        {" — "}
+                        {wr.jobs.length} job{wr.jobs.length === 1 ? "" : "s"}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <h4 style={{ marginBottom: 8 }}>Check runs</h4>
+              <ul>
+                {pullDetail.check_runs.map((run) => (
+                  <li key={run.name}>
+                    <a href={run.details_url} target="_blank" rel="noreferrer">{run.name}</a>
+                    {" — "}
+                    {run.conclusion ?? run.status}
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : null}
         </div>
       )}

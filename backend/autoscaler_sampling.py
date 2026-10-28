@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -71,38 +72,96 @@ def _leases_path() -> Path:
     return _default_config_dir() / "leases.yml"
 
 
-def _leased_runners() -> set[str]:
-    """Return the set of currently-leased runner_ids from the shared leases file.
+_VIRTUAL_LEASE_PREFIXES = ("virtual-", "github-claim-")
+_LEASE_PIN_KEYS = ("runner_name", "pinned_runner", "runner")
+
+
+@dataclass(frozen=True)
+class LeaseScaleDownGuard:
+    """Scale-down protection derived from active leases (issue #3025).
+
+    ``protected_runner_names`` are runner names that must never be stopped.
+    ``block_scale_down`` is set when an active virtual/github-claim lease cannot
+    be resolved to a runner: scale-down is then suspended for the tick (fail
+    closed) instead of ignoring the lease.
+    """
+
+    protected_runner_names: frozenset[str] = frozenset()
+    block_scale_down: bool = False
+
+
+def _is_virtual_lease_runner_id(runner_id: str) -> bool:
+    """True for lease ids that are not runner names (virtual-*, github-claim-*)."""
+    return runner_id.startswith(_VIRTUAL_LEASE_PREFIXES)
+
+
+def _runner_name_from_lease_record(lease_rec: Any) -> str | None:
+    """Resolve a lease record to the runner name it pins, or None if unresolvable.
+
+    Pre: ``lease_rec`` is a mapping with ``runner_id`` (KeyError/TypeError otherwise).
+    Direct ids are runner names; virtual ids resolve via ``metadata`` pin keys.
+    """
+    runner_id = str(lease_rec["runner_id"])
+    if not _is_virtual_lease_runner_id(runner_id):
+        return runner_id
+    metadata = lease_rec.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    for key in _LEASE_PIN_KEYS:
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _lease_scale_down_guard() -> LeaseScaleDownGuard:
+    """Read the shared leases file and return the resolved scale-down guard.
 
     Reads the same ``leases.yml`` the LeaseManager writes (issue #932). Each
     record is validated independently: a single malformed entry is skipped and
-    logged, but the remaining valid leases are still honoured (issue #937c) —
-    one bad record must never disable protection for every leased runner.
+    logged, but the remaining valid leases are still honoured (issue #937c).
+    Post: protected names exclude nothing that an active lease pins; an active
+    unpinned virtual lease sets ``block_scale_down``.
     """
     path = _leases_path()
     if not path.exists():
-        return set()
+        return LeaseScaleDownGuard()
     try:
         with open(path) as f:
             data = yaml.safe_load(f)
     except Exception as exc:
         log.warning("Failed to read leases: %s", exc)
-        return set()
+        return LeaseScaleDownGuard()
     if not data or "leases" not in data:
-        return set()
+        return LeaseScaleDownGuard()
 
     now = time.time()
-    leased: set[str] = set()
+    protected: set[str] = set()
+    block = False
     for lease_rec in data["leases"]:
         try:
-            runner_id = str(lease_rec["runner_id"])
             expires_at = lease_rec.get("expires_at")
-            if expires_at is None or float(expires_at) > now:
-                leased.add(runner_id)
-        except (KeyError, TypeError, ValueError) as exc:
+            if expires_at is not None and float(expires_at) <= now:
+                continue
+            name = _runner_name_from_lease_record(lease_rec)
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
             log.warning("Skipping malformed lease record %r: %s", lease_rec, exc)
             continue
-    return leased
+        if name is None:
+            log.warning(
+                "Active lease %r has no runner pin (metadata runner_name/pinned_runner/runner); "
+                "blocking scale-down this tick",
+                lease_rec.get("runner_id"),
+            )
+            block = True
+        else:
+            protected.add(name)
+    return LeaseScaleDownGuard(frozenset(protected), block)
+
+
+def _leased_runners() -> set[str]:
+    """Return runner names currently protected by active leases."""
+    return set(_lease_scale_down_guard().protected_runner_names)
 
 
 def _scheduled_desired_count(default: int) -> int:
@@ -193,7 +252,7 @@ def _io_pressure_snapshot(path: str = "/proc/pressure/io") -> dict[str, float] |
     """Return Linux IO pressure stall metrics when available.
 
     The values are percentages over the kernel's rolling windows. ``full_avg10``
-    is the critical ControlTower signal: during recent outages it stayed above
+    is the critical node-a signal: during recent outages it stayed above
     60%, meaning all runnable work was blocked on I/O for most of the window.
     """
     try:

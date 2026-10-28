@@ -51,6 +51,7 @@ class RoleSpec:
     retired_reason: str = ""
     strategy: dict[str, Any] = field(default_factory=dict)
     persona: dict[str, Any] | str = ""
+    avatar: str | None = None
     chat: dict[str, Any] = field(default_factory=dict)
     tools: tuple[str, ...] = ()
     group: str | None = None
@@ -71,6 +72,11 @@ class RoleSpec:
     def code_read_only(self) -> bool:
         """Unattended runs of this role are code-read-only (explicit ``permissions.code_read_only``; #1659)."""
         return self.permissions.get("code_read_only") is True
+
+    @property
+    def library_read(self) -> bool:
+        """Mints the ``library.read`` token scope (explicit ``permissions.library_read``; #2623)."""
+        return self.permissions.get("library_read") is True
 
     @property
     def fleet_actions(self) -> tuple[str, ...]:
@@ -136,6 +142,7 @@ class RoleSpec:
             "retired_reason": self.retired_reason,
             "strategy": dict(self.strategy),
             "persona": self.persona,
+            "avatar": self.avatar,
             "chat": dict(self.chat),
             "tools": list(self.tools),
             "group": self.group,
@@ -285,6 +292,7 @@ def parse_role(
         retired_reason=retired_reason,
         strategy=dict(strategy) if isinstance(strategy, dict) else {},
         persona=persona,
+        avatar=(str(data["avatar"]) if data.get("avatar") not in (None, "") else None),
         chat=chat,
         tools=tools,
         group=group,
