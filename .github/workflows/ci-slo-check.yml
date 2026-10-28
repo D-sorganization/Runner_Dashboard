@@ -13,7 +13,11 @@ concurrency:
   cancel-in-progress: false
 jobs:
   slo:
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     timeout-minutes: 20
     env:
       PYTHONPATH: backend

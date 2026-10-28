@@ -17,7 +17,10 @@ concurrency:
 
 jobs:
   upgrade:
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
