@@ -103,16 +103,21 @@ def test_cancel_in_progress_limited_to_pull_request() -> None:
 
 
 def _cancel_in_progress_for_event(expr: str, event_name: str) -> bool:
-    """Evaluate the fixed-shape ``${{ github.event_name == '<literal>' }}`` expression."""
+    """Evaluate concurrency cancel-in-progress expressions for a given event."""
     body = expr.strip()
     assert body.startswith("${{") and body.endswith("}}"), expr
-    lhs, op, rhs = body[3:-2].split()
-    assert (lhs, op) == ("github.event_name", "=="), expr
-    return event_name == rhs.strip("'")
+    for clause in body[3:-2].split("||"):
+        conjuncts = [part.strip() for part in clause.split("&&")]
+        lhs, op, rhs = conjuncts[0].split()
+        assert (lhs, op) == ("github.event_name", "=="), expr
+        if event_name == rhs.strip("'"):
+            return True
+    return False
 
 
 @pytest.mark.parametrize("name", ["ci-standard.yml", "frontend-tests.yml", "ci-secrets.yml"])
 @pytest.mark.parametrize("event_name", ["merge_group", "push"])
 def test_merge_group_and_push_never_cancel_in_progress(name: str, event_name: str) -> None:
     expr = _load(name)["concurrency"]["cancel-in-progress"]
-    assert _cancel_in_progress_for_event(expr, event_name) is False
+    expected = name == _CI_STANDARD and event_name == "push"
+    assert _cancel_in_progress_for_event(expr, event_name) is expected

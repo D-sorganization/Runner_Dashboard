@@ -39,8 +39,7 @@ CI_STANDARD_WORKFLOW_CONCURRENCY_GROUP_EXPR = (
 )
 
 CI_STANDARD_CANCEL_IN_PROGRESS_EXPR = (
-    "${{ github.event_name == 'pull_request' || "
-    "github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+    "${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
 )
 
 
