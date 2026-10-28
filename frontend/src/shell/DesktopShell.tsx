@@ -19,11 +19,12 @@ import { CommandPalette, type Command } from "../primitives/CommandPalette";
 import { NAV_ITEMS, NAV_GROUPS } from "./navRegistry";
 import { ChatGlyph } from "../pages/decompIcons";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BarbSidebarLoader = () => Promise<{ default: React.ComponentType<any> }>;
+
 function loadBarbSidebar() {
   return import("./BarbSidebar").then(({ BarbSidebar }) => ({ default: BarbSidebar }));
 }
-
-const LazyBarbSidebar = React.lazy(loadBarbSidebar);
 
 function warmBarbSidebar(): void {
   void loadBarbSidebar().catch(() => undefined);
@@ -33,10 +34,12 @@ function BarbSidebarLoading({
   open,
   onClose,
   failed = false,
+  onRetry,
 }: {
   open: boolean;
   onClose: () => void;
   failed?: boolean;
+  onRetry?: () => void;
 }): React.ReactElement {
   const panelRef = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
@@ -77,9 +80,9 @@ function BarbSidebarLoading({
         {failed ? (
           <div className="barb-sidebar__welcome" role="alert">
             <h3>Ask Barb could not load</h3>
-            <p>Reload the dashboard to try again.</p>
-            <button type="button" className="barb-sidebar__new" onClick={() => window.location.reload()}>
-              Reload dashboard
+            <p>Retry, or reload the dashboard.</p>
+            <button type="button" className="barb-sidebar__new" onClick={onRetry}>
+              Retry
             </button>
           </div>
         ) : (
@@ -90,11 +93,20 @@ function BarbSidebarLoading({
   );
 }
 
-class BarbSidebarErrorBoundary extends React.Component<
-  { open: boolean; onClose: () => void; children: React.ReactNode },
-  { failed: boolean }
+export class BarbSidebarErrorBoundary extends React.Component<
+  {
+    open: boolean;
+    onClose: () => void;
+    loader: BarbSidebarLoader;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    children: (Lazy: React.ComponentType<any>) => React.ReactNode;
+  },
+  { failed: boolean; attempt: number }
 > {
-  state = { failed: false };
+  state = { failed: false, attempt: 0 };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  lazyComponent: React.ComponentType<any> = React.lazy(this.props.loader);
 
   static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
@@ -105,15 +117,36 @@ class BarbSidebarErrorBoundary extends React.Component<
     console.error("Ask Barb sidebar failed to load", error);
   }
 
+  componentDidUpdate(prevProps: { open: boolean }): void {
+    if (this.state.failed && this.props.open && !prevProps.open) {
+      this.retry();
+    }
+  }
+
+  retry = (): void => {
+    // A rejected dynamic import is cached by the module loader, so retrying
+    // requires a fresh React.lazy() (and thus a fresh import()) per attempt.
+    this.lazyComponent = React.lazy(this.props.loader);
+    this.setState((prev) => ({ failed: false, attempt: prev.attempt + 1 }));
+  };
+
   render(): React.ReactNode {
     if (this.state.failed) {
-      return <BarbSidebarLoading open={this.props.open} onClose={this.props.onClose} failed />;
+      return (
+        <BarbSidebarLoading
+          open={this.props.open}
+          onClose={this.props.onClose}
+          failed
+          onRetry={this.retry}
+        />
+      );
     }
     return (
       <React.Suspense
+        key={this.state.attempt}
         fallback={<BarbSidebarLoading open={this.props.open} onClose={this.props.onClose} />}
       >
-        {this.props.children}
+        {this.props.children(this.lazyComponent)}
       </React.Suspense>
     );
   }
@@ -424,14 +457,16 @@ export function DesktopShell({
         onOpenChange={setPaletteOpen}
       />
       {barbMounted ? (
-        <BarbSidebarErrorBoundary open={barbOpen} onClose={closeBarb}>
-          <LazyBarbSidebar
-            open={barbOpen}
-            onClose={closeBarb}
-            onNavigate={onSelect}
-            onThreadSelected={onThreadSelected}
-            restoreFocusTargetRef={barbToggleRef}
-          />
+        <BarbSidebarErrorBoundary open={barbOpen} onClose={closeBarb} loader={loadBarbSidebar}>
+          {(Lazy) => (
+            <Lazy
+              open={barbOpen}
+              onClose={closeBarb}
+              onNavigate={onSelect}
+              onThreadSelected={onThreadSelected}
+              restoreFocusTargetRef={barbToggleRef}
+            />
+          )}
         </BarbSidebarErrorBoundary>
       ) : null}
     </div>

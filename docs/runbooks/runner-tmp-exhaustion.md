@@ -55,11 +55,11 @@ is `exit-code` with an empty journal, are both actionable.
 **WSL distro names are per-host — parameterize every scripted step**
 (RD#1159, measured `wsl -l -q` 2026-09-03):
 
-| host         | WSL distros                                                                           |
-| ------------ | ------------------------------------------------------------------------------------- |
-| node-b     | `Ubuntu`                                                                              |
+| host   | WSL distros                                                               |
+| ------ | ------------------------------------------------------------------------- |
+| node-b | `Ubuntu`                                                                  |
 | node-a | `node-a-Runner`, `node-a-SSD` (the corrupt one, RM #1453), `OllamaServer` |
-| hub-a | `Ubuntu-22.04`                                                                        |
+| hub-a  | `Ubuntu-22.04`                                                            |
 
 `wsl -d Ubuntu` probes against node-a/hub-a return nothing for
 exactly this reason; passing the distro explicitly
@@ -111,12 +111,12 @@ step on this runbook.
 
 ## Prevention (what is in the repos, and the one-time host step)
 
-| Control                                                                                                     | Where                                                                                       | State                                                                                                                          |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Control                                                                                                     | Where                                                                                       | State                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `/tmp` litter GC, hourly (`--disk-guard`) + daily, allow-listed patterns, 6 h window, 30 min under pressure | Runner_Dashboard `deploy/runner-cleanup.sh` (`cleanup_tmp`)                                 | merged (RD#1155); deployed and verified on node-b 2026-09-03 — node-a/hub-a deployment **unverified** (RD#1159) |
-| `tmp*` / `pymp-*` patterns added; GC extended to each runner's relocated `TMPDIR` while idle                | Runner_Dashboard `deploy/runner-cleanup.sh` (`cleanup_litter_in`, `cleanup_runner_tmpdirs`) | this change                                                                                                                    |
-| `TMPDIR=<runner>/_work/_tmp` per runner, so scratch lands on the data disk, never in RAM                    | Runner_Dashboard `deploy/configure-runner-tmpdir.sh`                                        | this change — **needs the host step below**                                                                                    |
-| Fail fast on ENOSPC with a host diagnosis instead of four retries                                           | RM `scripts/ci/pip_install_resilient.sh`                                                    | this change                                                                                                                    |
+| `tmp*` / `pymp-*` patterns added; GC extended to each runner's relocated `TMPDIR` while idle                | Runner_Dashboard `deploy/runner-cleanup.sh` (`cleanup_litter_in`, `cleanup_runner_tmpdirs`) | this change                                                                                                     |
+| `TMPDIR=<runner>/_work/_tmp` per runner, so scratch lands on the data disk, never in RAM                    | Runner_Dashboard `deploy/configure-runner-tmpdir.sh`                                        | this change — **needs the host step below**                                                                     |
+| Fail fast on ENOSPC with a host diagnosis instead of four retries                                           | RM `scripts/ci/pip_install_resilient.sh`                                                    | this change                                                                                                     |
 
 **Host step (once per host, owner):**
 

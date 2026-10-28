@@ -37,11 +37,10 @@ def test_build_claude_remote_argv() -> None:
     assert spec.is_workflow is False
 
 
-def test_build_codex_cloud_argv_includes_model_when_set() -> None:
+def test_build_codex_cloud_argv_includes_model_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("STAFF_CODEX_CLOUD_ENV", "fleet-env")
     spec = build_cloud_dispatch("codex", "ship it", model="gpt-5.2")
-    assert spec.argv[:3] == ["codex", "cloud", "--json"]
-    assert "--model" in spec.argv
-    assert spec.argv[-1] == "ship it"
+    assert spec.argv == ["codex", "cloud", "exec", "--env", "fleet-env", "ship it"]
 
 
 def test_build_cursor_workflow_dispatch() -> None:

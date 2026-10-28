@@ -339,7 +339,51 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|security.py|maxwell.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts|api-types.ts|identity.py|machine_registry.py"
+          # RD-33: exact repo-relative paths, matched whole-line (grep -vxF).
+          # The old unanchored regex let look-alikes slip through uncapped
+          # (e.g. "queue.py" also matched backend/staff/board_queue.py;
+          # "identity.py" also matched backend/tailnet_identity.py). Kept
+          # inline (not an external file) so the list travels with the step
+          # and can't go missing out from under it. Both branches below filter
+          # the file list *before* counting lines, so there's no "total"
+          # summary line to special-case either.
+          EXEMPT_PATHS=$(cat <<'PATHS'
+          backend/server.py
+          backend/dispatch_contract.py
+          backend/agent_dispatch_router.py
+          backend/routers/credentials.py
+          backend/security.py
+          backend/routers/maxwell.py
+          backend/routers/queue.py
+          backend/routers/remediation.py
+          backend/routers/diagnostics.py
+          backend/gh_client.py
+          backend/system_utils.py
+          backend/runner_autoscaler.py
+          backend/queue_cleanup.py
+          backend/identity.py
+          backend/machine_registry.py
+          frontend/src/pages/Queue/index.tsx
+          frontend/src/lib/api-types.ts
+          frontend/src/shell/navRegistry.ts
+          frontend/src/pages/Principals.tsx
+          frontend/src/pages/Analysis.tsx
+          frontend/src/pages/RemediationPRs.tsx
+          frontend/src/pages/Machines.tsx
+          frontend/src/pages/FleetTab.tsx
+          frontend/src/pages/FleetOrchestration.tsx
+          frontend/src/pages/FeatureRequests.tsx
+          frontend/src/pages/RemediationTab.tsx
+          frontend/src/pages/Workflows.tsx
+          frontend/src/pages/RemediationIssues.tsx
+          frontend/src/pages/Queue/__tests__/Mobile.test.tsx
+          frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx
+          frontend/src/pages/Fleet/__tests__/Mobile.test.tsx
+          frontend/src/pages/Credentials/__tests__/Mobile.test.tsx
+          frontend/src/pages/Remediation/__tests__/Mobile.test.tsx
+          frontend/src/pages/Reports/__tests__/Mobile.test.tsx
+          PATHS
+          )
           if [ "$EVENT_NAME" = "pull_request" ]; then
             # Fail CLOSED (RD#2730): a shallow checkout has no merge base, so
             # fetch the exact base commit and diff it against HEAD directly
@@ -355,14 +399,16 @@ jobs:
             printf '%s\n' "$CHANGED"
             FILES=$(printf '%s\n' "$CHANGED" \
               | { grep -E '\.(py|ts|tsx|js)$' || true; } \
-              | { grep -vE "$EXEMPT" || true; })
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; })
             if [ -z "$FILES" ]; then
               echo "No changed source files require line-cap enforcement."
               exit 0
             fi
             OVER=$(printf '%s\n' "$FILES" | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           else
-            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "$EXEMPT" | awk '$1 > 500 {print $1, $2}')
+            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) \
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; } \
+              | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           fi
           if [ -n "$OVER" ]; then
             echo "::error::Files exceeding 500-line soft cap found:"

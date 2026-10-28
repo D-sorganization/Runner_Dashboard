@@ -317,6 +317,27 @@ def test_validator_rejects_malformed_tool_and_scope_grants(key: str, value: obje
 
 
 @pytest.mark.unit
+def test_validator_accepts_avatar_field() -> None:
+    """RM roles may carry an optional ``avatar`` string (#2680, #3092)."""
+    from staff.validator import validate_role_data
+
+    role_dict = dict(_VALID_ROLE_DICT, avatar="barb.png")
+    assert validate_role_data(role_dict) == []
+
+
+@pytest.mark.unit
+def test_parse_role_carries_avatar_through_to_dict() -> None:
+    """RoleSpec and to_dict round-trip the optional ``avatar`` field (#3092)."""
+    spec = roles_mod.parse_role(dict(_VALID_ROLE_DICT, avatar="barb.png"), source_path="/path/barb.yml")
+    assert spec.avatar == "barb.png"
+    assert spec.to_dict()["avatar"] == "barb.png"
+
+    spec_no_avatar = roles_mod.parse_role(_VALID_ROLE_DICT, source_path="/path/cartographer.yml")
+    assert spec_no_avatar.avatar is None
+    assert spec_no_avatar.to_dict()["avatar"] is None
+
+
+@pytest.mark.unit
 def test_every_schema_property_is_known_to_the_validator() -> None:
     """The schema and the hand-written validator must name the same top-level fields."""
     import json
