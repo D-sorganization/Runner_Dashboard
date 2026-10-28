@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from activity_producers import emit_activity
+from activity_producers import record_staff_run_activity
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
@@ -422,27 +422,8 @@ class RunStore:
                     "UPDATE runs SET last_line = ? WHERE id = ?",
                     (text.strip()[:300], run_id),
                 )
-        self._record_activity(run_id, seq, kind, text)
+        record_staff_run_activity(self.get_run(run_id), seq, kind, text)
         return seq
-
-    def _record_activity(self, run_id: str, seq: int, kind: str, text: str) -> None:
-        """Feed the fleet Activity Log (#2859) from this run's own event stream.
-
-        Reuses this event's own seq so the adapter stays idempotent on a retry.
-        """
-        rec = self.get_run(run_id)
-        if rec is None:
-            return
-        emit_activity(
-            source="staff_run",
-            session_id=run_id,
-            node=rec.machine,
-            kind=kind,
-            seq=seq,
-            repo=rec.repo or None,
-            branch=rec.branch or None,
-            payload={"text": text[:2000]} if text.strip() else {},
-        )
 
     def last_result_line(self, run_id: str) -> str:
         """The newest event text containing ``STAFF_RESULT:`` for the run ('' when none)."""

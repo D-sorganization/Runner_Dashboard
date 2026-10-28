@@ -11,9 +11,12 @@ from __future__ import annotations
 import logging
 import threading
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from activity import ActivityEnvelope, ActivitySource, get_activity_store
+
+if TYPE_CHECKING:
+    from staff.store import RunRecord
 
 log = logging.getLogger("dashboard.activity_producers")
 
@@ -80,3 +83,22 @@ def emit_activity(
         log.warning(
             "activity adapter failed for source=%s session_id=%s kind=%s", source, session_id, kind, exc_info=True
         )
+
+
+def record_staff_run_activity(rec: RunRecord | None, seq: int, kind: str, text: str) -> None:
+    """Feed the activity log from a staff run's own event stream (#2859); no-op if the run is gone.
+
+    Reuses the event's own seq so the adapter stays idempotent on a retry.
+    """
+    if rec is None:
+        return
+    emit_activity(
+        source="staff_run",
+        session_id=rec.id,
+        node=rec.machine,
+        kind=kind,
+        seq=seq,
+        repo=rec.repo or None,
+        branch=rec.branch or None,
+        payload={"text": text[:2000]} if text.strip() else {},
+    )
