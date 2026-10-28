@@ -1,0 +1,84 @@
+# Standing required gate for the private-roles deny-by-default redaction suite
+# (#3095, epic #3093 slice 2). Runs the adversarial fixture suite on every PR
+# that touches a redaction path, private-role code, or a shared-surface
+# writer, so a future change to any of those paths cannot silently regress
+# the deny-by-default guarantee -- not a one-time check (see issue scope).
+name: Private roles redaction gate
+
+on:
+  pull_request:
+    paths:
+      - "backend/staff/redaction.py"
+      - "backend/staff/private_surface_gate.py"
+      - "backend/staff/conversations.py"
+      - "backend/staff/conversation_proposals.py"
+      - "backend/staff/store.py"
+      - "backend/staff/runner.py"
+      - "backend/staff/runner_ops.py"
+      - "backend/staff/runner_stream.py"
+      - "backend/staff/run_events.py"
+      - "backend/staff/barb_continuity.py"
+      - "backend/staff/barb_task_inventory.py"
+      - "backend/staff/panel.py"
+      - "backend/private_mode.py"
+      - "backend/overlay_contract.py"
+      - "backend/private_roles.py"
+      - "tests/unit/test_private_roles_redaction_gate.py"
+      - "tests/unit/test_staff_redaction_everywhere.py"
+      - ".github/workflows/ci-private-roles-redaction-gate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/staff/redaction.py"
+      - "backend/staff/private_surface_gate.py"
+      - "backend/staff/conversations.py"
+      - "backend/staff/conversation_proposals.py"
+      - "backend/staff/store.py"
+      - "backend/staff/runner.py"
+      - "backend/staff/runner_ops.py"
+      - "backend/staff/runner_stream.py"
+      - "backend/staff/run_events.py"
+      - "backend/staff/barb_continuity.py"
+      - "backend/staff/barb_task_inventory.py"
+      - "backend/staff/panel.py"
+      - "backend/private_mode.py"
+      - "backend/overlay_contract.py"
+      - "backend/private_roles.py"
+      - "tests/unit/test_private_roles_redaction_gate.py"
+      - "tests/unit/test_staff_redaction_everywhere.py"
+      - ".github/workflows/ci-private-roles-redaction-gate.yml"
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  redaction-gate:
+    name: Adversarial redaction gate fixtures
+    if: >-
+      !github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Install test runner
+        run: python3.12 -m pip install --quiet pytest cryptography
+
+      - name: Private-roles redaction gate suite (#3095)
+        run: >-
+          PYTHONPATH=backend python3.12 -m pytest
+          tests/unit/test_private_roles_redaction_gate.py
+          tests/unit/test_staff_redaction_everywhere.py
+          tests/test_private_roles.py -q
