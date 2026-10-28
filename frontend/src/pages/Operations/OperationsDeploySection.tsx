@@ -90,7 +90,7 @@ export function OperationsDeploySection({
         "X-Requested-With": "XMLHttpRequest",
       },
       body: JSON.stringify({
-        machine: deployMachine || (deployData?.machines?.[0]?.name ?? "controltower"),
+        machine: deployMachine || (deployData?.machines?.[0]?.name ?? "node-a"),
         action: deployAction,
         confirmed: deployConfirmed,
       }),
