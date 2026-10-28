@@ -843,6 +843,10 @@ from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
 
+from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+
+app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)
@@ -2370,6 +2374,15 @@ def _diagnostics_payload() -> dict:
 
     wsl_vhdx_status = _diagnostics_router.get_cached_wsl_vhdx_status() if _diagnostics_router else []
 
+    # Optional-integration availability for the standalone/no-fleet profile (#3180)
+    integrations_status: dict[str, Any]
+    try:
+        from integration_health import check_all_integration_availability
+
+        integrations_status = check_all_integration_availability()
+    except Exception as exc:  # noqa: BLE001
+        integrations_status = {"error": str(exc)}
+
     # Overall health summary so deploy-check.sh can grep one field
     fleet_node_count_raw = fleet_status.get("node_count", 0)
     fleet_node_count = fleet_node_count_raw if isinstance(fleet_node_count_raw, int) else 0
@@ -2390,6 +2403,7 @@ def _diagnostics_payload() -> dict:
         "cache": cache_status,
         "wsl_vhdx_status": wsl_vhdx_status,
         "storage_handle_incident": storage_handle_incident,
+        "integrations": integrations_status,
     }
 
 

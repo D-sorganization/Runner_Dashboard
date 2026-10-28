@@ -318,6 +318,29 @@ def _probe_jules_api() -> dict[str, Any]:
     }
 
 
+def _probe_anthropic_api() -> dict[str, Any]:
+    """Probe the anthropic-api key (#3123 slice 4). Ships inert: no key exists yet."""
+    from staff.anthropic_api_provider import key_env_var, load_api_key, provider_state  # noqa: PLC0415
+
+    env_var = key_env_var()
+    state = provider_state(api_key=load_api_key())
+    ready = state.status == "ready"
+    return {
+        "id": "anthropic_api",
+        "label": "Anthropic API",
+        "icon": "anthropic",
+        "installed": True,
+        "authenticated": ready,
+        "reachable": ready,
+        "usable": ready,
+        "status": "ready" if ready else "missing_key",
+        "detail": state.detail,
+        "config_source": (_env_source(env_var) if ready else "unavailable"),
+        "docs_url": "https://docs.anthropic.com/en/api/getting-started",
+        "setup_hint": f"Set {env_var} in ~/.config/runner-dashboard/env or the encrypted vault",
+    }
+
+
 def _probe_codex_cli() -> dict[str, Any]:
     """Probe OpenAI Codex CLI presence and ChatGPT subscription login."""
     codex_binary = _find_binary("codex")
@@ -631,6 +654,7 @@ async def _collect_all_probes() -> list[dict[str, Any]]:
         gh_probe,
         _probe_jules_cli(),
         _probe_jules_api(),
+        _probe_anthropic_api(),
         _probe_codex_cli(),
         _probe_claude_code_cli(),
         _probe_cline(),

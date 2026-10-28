@@ -2,6 +2,7 @@
 
 - POST /api/v1/staff/panels creates a ``kind="panel"`` thread and runs the panel in the background.
 - The cost guard reuses ``group_cost_guard_threshold_exceeded`` and is bypassed by ``confirm_cost``.
+- GET /api/v1/staff/panels lists recent panel threads with compact status (#3313).
 - GET /api/v1/staff/panels/{id} returns turns, stances, consensus and synthesis; 404 for other threads.
 - Posting into a panel thread is a 409; a panel thread is never created through POST /threads.
 """
@@ -131,6 +132,39 @@ def test_bad_panels_are_422(client: TestClient, patch: dict[str, Any]) -> None:
 def test_too_many_running_panels_is_429(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(staff_panels, "active_panel_count", lambda: 2)
     assert client.post("/api/v1/staff/panels", json=BODY).status_code == 429
+
+
+@pytest.mark.unit
+def test_list_panels_returns_recent_panel_threads(client: TestClient) -> None:
+    empty = client.get("/api/v1/staff/panels")
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["items"] == []
+
+    started = client.post("/api/v1/staff/panels", json=BODY)
+    assert started.status_code == 202, started.text
+    thread_id = started.json()["thread"]["id"]
+
+    running = client.get("/api/v1/staff/panels")
+    assert running.status_code == 200
+    items = running.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+    assert row["thread_id"] == thread_id
+    assert row["status"] in {"running", "complete"}
+    assert row["mode"] == "debate"
+    assert row["rounds"] == BODY["rounds"]
+    assert "created_at" in row and "updated_at" in row
+
+    if row["status"] == "running":
+        assert row["consensus"] is False
+        _wait_done(client, thread_id)
+
+    done = client.get("/api/v1/staff/panels").json()["items"][0]
+    assert done["status"] == "complete" and done["consensus"] is True and done["rounds_used"] == 1
+
+    chat = get_conversation_store().create_thread(title="not a panel", kind="direct")
+    listed_ids = {item["thread_id"] for item in client.get("/api/v1/staff/panels").json()["items"]}
+    assert thread_id in listed_ids and chat.id not in listed_ids
 
 
 @pytest.mark.unit

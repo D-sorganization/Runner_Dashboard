@@ -20538,6 +20538,85 @@
         "tags": ["diagnostics"]
       }
     },
+    "/api/v1/fleet/brief": {
+      "get": {
+        "operationId": "get_fleet_brief_api_v1_fleet_brief_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|markdown)$",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Fleet Brief Api V1 Fleet Brief Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet Brief",
+        "tags": ["fleet-brief"]
+      }
+    },
     "/api/v1/fleet/friction": {
       "get": {
         "operationId": "list_friction_api_v1_fleet_friction_get",
@@ -25505,6 +25584,74 @@
       }
     },
     "/api/v1/staff/panels": {
+      "get": {
+        "description": "Recent panel threads with status and progress; newest activity first.",
+        "operationId": "list_panels_api_v1_staff_panels_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Panels Api V1 Staff Panels Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List recent expert panels",
+        "tags": ["staff-panels"]
+      },
       "post": {
         "description": "Create a panel thread and run it in the background.\n\nPre: ``body`` passed :class:`PanelCreateRequest`; fewer than ``MAX_ACTIVE_PANELS`` are running;\nthe estimate is under the group cost threshold or ``confirm_cost`` is true.\nPost: 202 with the thread and the estimate; the turns arrive on the thread's stream.",
         "operationId": "create_panel_api_v1_staff_panels_post",
