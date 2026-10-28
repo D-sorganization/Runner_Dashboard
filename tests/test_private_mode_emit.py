@@ -35,6 +35,7 @@ def test_sensitive_payload_returns_projection_only_and_never_runs_regex(monkeypa
     monkeypatch.setattr(pme, "_redact_for_non_sensitive", _boom_redact)
     delivered: list[dict[str, Any]] = []
 
+    fake_token = "ghp_" + ("C" * 36)
     projection = pm.emit_shared(
         "board",
         {
@@ -44,7 +45,7 @@ def test_sensitive_payload_returns_projection_only_and_never_runs_regex(monkeypa
             "attempt": 2,
             "ok": False,
             "title": f"Fix {SENTINEL} in Example Corp",
-            "body": f"Secret token ghp_123456789012345678901234567890123456 and {SENTINEL}",
+            "body": f"Secret token {fake_token} and {SENTINEL}",
             "unlisted_field": SENTINEL,
         },
         level=pm.Level.SENSITIVE,
