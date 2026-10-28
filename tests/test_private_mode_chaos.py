@@ -10,8 +10,9 @@ from pathlib import Path
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT / "backend") not in sys.path:
-    sys.path.insert(0, str(_ROOT / "backend"))
+for _p in (_ROOT, _ROOT / "backend"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 try:
     import fastapi  # noqa: F401

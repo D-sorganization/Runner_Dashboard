@@ -10,7 +10,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from ci.private_required_check import PrivateRequiredCheckWiring, RequiredCheckResult
+try:
+    from backend.ci.private_required_check import PrivateRequiredCheckWiring, RequiredCheckResult
+except ModuleNotFoundError:  # pragma: no cover
+    from ci.private_required_check import PrivateRequiredCheckWiring, RequiredCheckResult
 from private_mode import (
     DISABLED,
     POLICY_FILENAME,
