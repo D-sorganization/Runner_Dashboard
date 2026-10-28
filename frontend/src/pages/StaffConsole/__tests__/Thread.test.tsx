@@ -74,6 +74,34 @@ describe("Thread Component", () => {
     expect(screen.getAllByRole("separator")).toHaveLength(2);
   });
 
+  it("virtualizes long histories while allowing the user to scroll to earlier messages", () => {
+    const longHistory = Array.from({ length: 120 }, (_, index): ThreadMessage => ({
+      id: `long-${index}`,
+      thread_id: MOCK_THREAD.id,
+      author: index % 2 ? "barb" : "user",
+      author_kind: index % 2 ? "staff" : "user",
+      kind: "text",
+      body_md: `Virtual history message ${index}`,
+      delivery: "complete",
+      created_at: `2026-09-${String(1 + Math.floor(index / 24)).padStart(2, "0")}T10:00:00Z`,
+      seq: index + 1,
+    }));
+    render(<Thread thread={MOCK_THREAD} messages={longHistory} />);
+
+    const window = screen.getByTestId("thread-virtual-window");
+    expect(Number(window.getAttribute("data-total-items"))).toBeGreaterThan(120);
+    expect(window.querySelectorAll(".thread-virtual-row").length).toBeLessThan(40);
+    const scrollArea = screen.getByRole("log", { name: "Conversation messages" });
+    Object.defineProperty(scrollArea, "scrollHeight", { configurable: true, value: 24000 });
+    Object.defineProperty(scrollArea, "clientHeight", { configurable: true, value: 600 });
+    fireEvent.scroll(scrollArea, { target: { scrollTop: 0 } });
+    expect(screen.getByText("Virtual history message 0")).toBeInTheDocument();
+
+    fireEvent.scroll(scrollArea, { target: { scrollTop: 10000 } });
+    expect(screen.getByText("Virtual history message 60")).toBeInTheDocument();
+    expect(screen.queryByText("Virtual history message 0")).toBeNull();
+  });
+
   it("shows jump to unread button and scrolls when clicked", () => {
     const unreadMessages: ThreadMessage[] = [
       ...MOCK_MESSAGES,

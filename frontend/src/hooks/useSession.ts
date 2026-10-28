@@ -1,107 +1,141 @@
-/**
- * useSession — reactive dashboard-session probe (issue #842).
- *
- * Background: `buildShellActions()` in `main.tsx` previously read
- * `document.cookie` exactly once at render time, so the topbar could show
- * "Login" while authenticated (or "Logout" after signing out) until a manual
- * reload. This hook turns that one-shot read into reactive state.
- *
- * Strategy: the dashboard session is carried by the `dashboard_session`
- * cookie. The cookie is not observable via an event, so we (a) read it on
- * mount, (b) re-read on `focus` / `visibilitychange` (covers the common case:
- * the user completes the GitHub OAuth round-trip in the same tab and returns),
- * and (c) re-read on a light interval. `refresh()` is exposed so callers can
- * force a re-read immediately after a logout fetch resolves.
- *
- * LoD: callers receive a flat `{ loggedIn, refresh }` — they never parse the
- * cookie themselves. `readCookie` is injectable so tests drive the hook
- * deterministically without touching `document.cookie`.
- */
+/** useSession — identity from GET /api/auth/me (#3232, #842). */
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/** The cookie whose presence indicates an authenticated dashboard session. */
-export const SESSION_COOKIE = "dashboard_session";
+export interface DashboardPrincipal {
+  id: string;
+  type: string;
+  name: string;
+  roles?: string[];
+  scopes?: string[];
+  github_username?: string | null;
+}
 
-/** Default poll interval for the cookie re-read (ms). */
+export type AuthMethod = "github" | "tailscale" | "loopback";
+
+interface SessionPresentation {
+  authMethod: AuthMethod;
+  displayName: string;
+  signInLabel: string;
+  loopbackHint: string | null;
+}
+
+const LOOPBACK_ADMIN_HINT =
+  "Loopback access is development-only. Open the dashboard on its Tailscale URL for full admin.";
+
+function authMethodForPrincipal(principal: DashboardPrincipal): AuthMethod {
+  if (principal.id === "__loopback__") return "loopback";
+  if (principal.id.startsWith("tailscale:")) return "tailscale";
+  return "github";
+}
+
+function presentSession(principal: DashboardPrincipal): SessionPresentation {
+  const authMethod = authMethodForPrincipal(principal);
+  const tailscaleLogin =
+    authMethod === "tailscale" ? principal.id.slice("tailscale:".length) : null;
+  return {
+    authMethod,
+    displayName:
+      authMethod === "github"
+        ? (principal.github_username ?? principal.name ?? principal.id)
+        : (tailscaleLogin ?? principal.name ?? principal.id),
+    signInLabel:
+      authMethod === "github"
+        ? "Signed in with GitHub"
+        : authMethod === "tailscale"
+          ? "Signed in with Tailscale"
+          : "Signed in via loopback (development)",
+    loopbackHint: authMethod === "loopback" ? LOOPBACK_ADMIN_HINT : null,
+  };
+}
+
+export type SessionProbeResult =
+  | { loggedIn: false }
+  | { loggedIn: true; principal: DashboardPrincipal; presentation: SessionPresentation };
+
+export async function probeDashboardSession(
+  fetchFn: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<SessionProbeResult> {
+  const response = await fetchFn("/api/auth/me", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    signal,
+    headers: { "X-Requested-With": "XMLHttpRequest" },
+  });
+  if (response.status === 401 || !response.ok) return { loggedIn: false };
+  const principal = (await response.json()) as DashboardPrincipal;
+  return { loggedIn: true, principal, presentation: presentSession(principal) };
+}
+
 export const SESSION_POLL_MS = 5000;
 
-/** Read the raw cookie string from the document (overridable in tests). */
-export type CookieReader = () => string;
-
-function defaultReadCookie(): string {
-  return typeof document !== "undefined" ? document.cookie : "";
-}
-
-/**
- * Whether a `dashboard_session` cookie is present in a cookie string.
- *
- * Contract: matches the cookie by name boundary so a cookie merely *containing*
- * the substring (e.g. `not_dashboard_session_x`) does not produce a false
- * positive — the old substring check (`document.cookie.includes(...)`) was
- * loose. Postcondition: returns a boolean.
- */
-export function hasSessionCookie(cookie: string): boolean {
-  if (!cookie) return false;
-  return cookie
-    .split(";")
-    .map((part) => part.trim())
-    .some((part) => {
-      const eq = part.indexOf("=");
-      const name = eq === -1 ? part : part.slice(0, eq);
-      return name === SESSION_COOKIE;
-    });
-}
+export type SessionProbe = (
+  fetchFn?: typeof fetch,
+  signal?: AbortSignal,
+) => Promise<SessionProbeResult>;
 
 export interface SessionState {
-  /** True when a dashboard session cookie is currently present. */
+  loading: boolean;
   loggedIn: boolean;
-  /** Force an immediate re-read of the cookie (e.g. after logout resolves). */
+  authMethod?: AuthMethod;
+  displayName?: string;
+  signInLabel?: string;
+  loopbackHint?: string | null;
   refresh: () => void;
 }
 
 export interface UseSessionOptions {
-  /** Injectable cookie reader (tests). Defaults to `document.cookie`. */
-  readCookie?: CookieReader;
-  /** Poll interval in ms. Pass 0 to disable interval polling (tests). */
+  probe?: SessionProbe;
   pollMs?: number;
 }
 
-/**
- * Reactive dashboard-session hook. Re-evaluates the session cookie on mount,
- * on window focus / tab visibility changes, and on a light interval, so the
- * topbar Login/Logout label stays correct without a full page reload.
- */
+function applyProbe(result: SessionProbeResult) {
+  if (!result.loggedIn) {
+    return {
+      loggedIn: false as const,
+      authMethod: undefined,
+      displayName: undefined,
+      signInLabel: undefined,
+      loopbackHint: null,
+    };
+  }
+  const { presentation } = result;
+  return {
+    loggedIn: true as const,
+    authMethod: presentation.authMethod,
+    displayName: presentation.displayName,
+    signInLabel: presentation.signInLabel,
+    loopbackHint: presentation.loopbackHint,
+  };
+}
+
 export function useSession(options: UseSessionOptions = {}): SessionState {
-  const readCookie = options.readCookie ?? defaultReadCookie;
+  const probe = options.probe ?? probeDashboardSession;
   const pollMs = options.pollMs ?? SESSION_POLL_MS;
+  const probeRef = useRef(probe);
+  probeRef.current = probe;
 
-  // Keep the reader in a ref so the effect below does not re-subscribe when an
-  // inline reader function identity changes between renders.
-  const readerRef = useRef(readCookie);
-  readerRef.current = readCookie;
+  const [loading, setLoading] = useState(true);
+  const [identity, setIdentity] = useState(() => applyProbe({ loggedIn: false }));
 
-  const [loggedIn, setLoggedIn] = useState<boolean>(() =>
-    hasSessionCookie(readCookie()),
-  );
-
-  const refresh = useCallback(() => {
-    setLoggedIn(hasSessionCookie(readerRef.current()));
+  const runProbe = useCallback(async () => {
+    setIdentity(applyProbe(await probeRef.current()));
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    // Re-read immediately on mount (covers SSR/hydration and reader changes).
-    refresh();
+  const refresh = useCallback(() => {
+    void runProbe();
+  }, [runProbe]);
 
-    const onFocus = () => refresh();
+  useEffect(() => {
+    void runProbe();
+    const onFocus = () => void runProbe();
     const onVisibility = () => {
-      if (
-        typeof document === "undefined" ||
-        document.visibilityState === "visible"
-      ) {
-        refresh();
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        void runProbe();
       }
     };
-
     if (typeof window !== "undefined") {
       window.addEventListener("focus", onFocus);
       window.addEventListener("pageshow", onFocus);
@@ -109,12 +143,7 @@ export function useSession(options: UseSessionOptions = {}): SessionState {
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", onVisibility);
     }
-
-    let timer: ReturnType<typeof setInterval> | undefined;
-    if (pollMs > 0) {
-      timer = setInterval(refresh, pollMs);
-    }
-
+    const timer = pollMs > 0 ? setInterval(() => void runProbe(), pollMs) : undefined;
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("focus", onFocus);
@@ -125,7 +154,7 @@ export function useSession(options: UseSessionOptions = {}): SessionState {
       }
       if (timer) clearInterval(timer);
     };
-  }, [refresh, pollMs]);
+  }, [runProbe, pollMs]);
 
-  return { loggedIn, refresh };
+  return { loading, ...identity, refresh };
 }

@@ -43,6 +43,16 @@ def parse_stance(text: str) -> tuple[str | None, str | None]:
     return stance, position or None
 
 
+def _tool_brief(grounded_repos: tuple[str, ...]) -> str:
+    if not grounded_repos:
+        return "Do not use tools or edit files; answer from your own knowledge."
+    return (
+        "Your working directory holds read-only snapshots of origin/main, one folder per repository: "
+        f"{', '.join(grounded_repos)}. Read files there to verify any code you cite and give file paths. "
+        "Never edit files or run commands that change anything."
+    )
+
+
 def _transcript(turns: list[dict[str, Any]]) -> str:
     if not turns:
         return "(no one has spoken yet; you open the discussion)"
@@ -61,6 +71,7 @@ def build_turn_prompt(
     round_no: int,
     turns: list[dict[str, Any]],
     codebase_context: str = "",
+    grounded_repos: tuple[str, ...] = (),
 ) -> str:
     """The prompt for one expert turn: persona, mode, round, topic and the whole discussion so far."""
     others = ", ".join(f"{e.name} ({e.perspective})" for e in request.experts if e.name != speaker.name)
@@ -70,7 +81,7 @@ def build_turn_prompt(
         f"The other panelists: {others}.\n\n"
         f"{_MODE_BRIEF[request.mode]}\n\n"
         f"This is round {round_no} of {request.rounds}. Keep your turn under 300 words. "
-        "Do not use tools or edit files; answer from your own knowledge.\n\n"
+        f"{_tool_brief(grounded_repos)}\n\n"
         f"## Topic\n{request.topic}\n\n"
         f"{codebase_context}\n\n"
         f"## Discussion so far\n{_transcript(turns)}\n\n"
