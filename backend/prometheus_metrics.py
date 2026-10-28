@@ -13,6 +13,7 @@ the ``prometheus_client`` library.  Metrics collected:
 - ``dashboard_cache_misses_total``            – Cache misses by cache name
 - ``dashboard_health_checks_total``           – Dashboard health outcomes
 - ``dashboard_health_check_duration_seconds`` – Dashboard health-check latency
+- ``dashboard_barb_unclaimed_writes_total``   – Barb-principal writes without lease claim headers (#3279)
 """
 
 from __future__ import annotations
@@ -156,6 +157,13 @@ if _PROMETHEUS_AVAILABLE:
         ["action", "unit"],
     )
 
+    # Barb lease fence (#3279): writes by a Barb principal that carried no X-Barb-* claim
+    BARB_UNCLAIMED_WRITES_TOTAL = Counter(
+        "dashboard_barb_unclaimed_writes_total",
+        "Barb-principal writes that arrived without lease claim headers, by write surface",
+        ["surface"],
+    )
+
 else:  # pragma: no cover
     # Stub objects so imports don't fail when prometheus_client is absent
     class _Stub:  # type: ignore[override]
@@ -197,6 +205,7 @@ else:  # pragma: no cover
     AUTOSCALER_BUSY_CHECK_DURATION = _stub  # type: ignore[assignment]
     AUTOSCALER_DECISION_LOOP_DURATION = _stub  # type: ignore[assignment]
     AUTOSCALER_SYSTEMD_ERRORS_TOTAL = _stub  # type: ignore[assignment]
+    BARB_UNCLAIMED_WRITES_TOTAL = _stub  # type: ignore[assignment]
 
 
 # ─── Helpers for external callers ─────────────────────────────────────────────
@@ -278,6 +287,15 @@ def record_autoscaler_systemd_error(action: str, unit: str) -> None:
     assert action, "action must be non-empty"
     assert unit, "unit must be non-empty"
     AUTOSCALER_SYSTEMD_ERRORS_TOTAL.labels(action=action, unit=unit).inc()
+
+
+def record_barb_unclaimed_write(surface: str) -> None:
+    """Count a Barb-principal write that carried no lease claim (#3279).
+
+    Pre-condition: surface must be a non-empty string.
+    """
+    assert surface, "surface must be non-empty"
+    BARB_UNCLAIMED_WRITES_TOTAL.labels(surface=surface).inc()
 
 
 # ─── ASGI middleware ──────────────────────────────────────────────────────────
