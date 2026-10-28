@@ -305,8 +305,8 @@ def clear_split_brain(*, role_id: str, store_dir: Path | None = None) -> None:
 
 def notify_dieter_relay_stub(conflict: LeaseConflict) -> None:
     """Seam for surfacing a split-brain conflict to Dieter via the not-yet-wired #3064
-    relay. Logs one category-only line (role id, host count -- never content or keys).
-    TODO(#3064): send a ``scripts.rd_threads_envelope`` alert instead, drop this stub."""
+    relay (future work: route through ``scripts.rd_threads_envelope`` and drop this
+    stub). Logs one category-only line (role id, host count -- never content or keys)."""
     log.warning(
         "private-role-lease split-brain: role=%s conflicting_hosts=%d",
         conflict.role_id,
