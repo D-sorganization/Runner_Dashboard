@@ -2,7 +2,7 @@
 
 Origin: Repository_Management#2071 (survey 2026-10-11). Under sustained CI load
 every WSL VM sat at its `memory=` cap because of Linux page cache, not real use
-(ControlTower 48 GB of 128 GB cache for 9 GB real use). `autoMemoryReclaim` only
+(node-a 48 GB of 128 GB cache for 9 GB real use). `autoMemoryReclaim` only
 fires when the VM is idle, which runner hosts never are.
 
 ## wsl-cache-trim (every runner distro)
@@ -27,7 +27,7 @@ fires when the VM is idle, which runner hosts never are.
 `deploy/windows/install-vendor-leak-restart-task.ps1` registers the SYSTEM task
 `Fleet-Dell-ServiceShell-Restart` (restart `DellClientManagementService` every
 2 days at 04:30, log to `C:\ProgramData\fleet-dell-restart.log`). It exits
-without changes on hosts that lack the service (only ControlTower has it).
+without changes on hosts that lack the service (only node-a has it).
 Run once per host from an elevated PowerShell; it is not part of the WSL deploy
 path. `-Remove` unregisters the task; `-WhatIf` previews.
 
@@ -36,6 +36,6 @@ path. `-Remove` unregisters the task; `-WhatIf` previews.
 `runner-scheduler` is copied to `/usr/local/bin/runner-scheduler` only by
 `install-runner-maintenance.sh` (via `deploy-host.sh` / `setup.sh`). The routine
 dashboard update, `update-deployed.sh`, never runs it, so a host updated only
-that way keeps a stale scheduler (ControlTower stayed on the pre-#1922 copy).
-Run `deploy/deploy-host.sh` after scheduler changes. The qualified OGLaptop
+that way keeps a stale scheduler (node-a stayed on the pre-#1922 copy).
+Run `deploy/deploy-host.sh` after scheduler changes. The qualified node-b
 release path runs the scheduler from its release directory instead.
