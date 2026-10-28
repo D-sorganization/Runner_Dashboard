@@ -44,9 +44,9 @@ BOT_PRINCIPAL = Principal(
 )
 
 HUMAN_PRINCIPAL = Principal(
-    id="dieterolson",
+    id="fleet-operator",
     type="human",
-    name="Dieter Olson",
+    name="Fleet Operator",
     roles=["admin", "operator"],
     scopes=["staff.chat", "staff.dispatch", "staff.read"],
 )
@@ -148,7 +148,7 @@ def test_token_bucket_store_failure_fails_open_for_human_and_closed_for_bot() ->
     limiter._simulate_store_failure = True  # type: ignore[attr-defined]
 
     # Human user fails open
-    ok_human, retry_human = limiter.acquire("dieterolson", "messages", principal_type="human")
+    ok_human, retry_human = limiter.acquire("fleet-operator", "messages", principal_type="human")
     assert ok_human is True
     assert retry_human == 0.0
 
