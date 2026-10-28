@@ -774,6 +774,7 @@ from routers import staff_exclusions as _staff_exclusions_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
+from routers import staff_host_settings as _staff_host_settings_router  # noqa: E402
 from routers import staff_inbox as _staff_inbox_router  # noqa: E402
 from routers import staff_local_runs as _staff_local_runs_router  # noqa: E402
 from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
@@ -806,6 +807,8 @@ app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_exclusions_router.router, prefix="/api/staff")  # dispatch exclusions
 app.include_router(_staff_exclusions_router.router, prefix="/api/v1/staff")
+app.include_router(_staff_host_settings_router.router, prefix="/api/staff")  # host settings (#3101)
+app.include_router(_staff_host_settings_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
@@ -935,6 +938,19 @@ app.add_middleware(StaffV1Middleware)
 # Starlette's GZipMiddleware passes text/event-stream through unbuffered.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+# Validate Host before auth and routing. Public hostnames come from the same
+# registry and explicit origin allowlist used by browser sign-in. The
+# registry is loaded once (disk I/O); env-derived origins are re-read on
+# every request so config set after this module's first import (tests
+# monkeypatching origin env vars) still takes effect.
+from trusted_hosts import IPv6AwareTrustedHostMiddleware, trusted_hosts_from_env  # noqa: E402
+
+_trusted_hosts_registry = load_machine_registry()
+app.add_middleware(
+    IPv6AwareTrustedHostMiddleware,
+    hosts_provider=lambda: trusted_hosts_from_env(registry=_trusted_hosts_registry),
+)
+
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────
 BOOT_TIME = time.time()
@@ -979,7 +995,7 @@ def _deployment_info() -> dict:
 # entries for every *other* machine in the fleet.  The hub always includes
 # itself automatically — do not list it in FLEET_NODES.
 #
-# Example (in /etc/systemd/system/runner-dashboard.service on ControlTower):
+# Example (in /etc/systemd/system/runner-dashboard.service on node-a):
 #   Environment=MACHINE_ROLE=hub
 #   Environment=FLEET_NODES=envy:http://100.x.x.x:8321,thinkpad:http://100.x.x.x:8321
 MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
@@ -1063,6 +1079,19 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
 try:
     _topology_registry = load_machine_registry()
     from fleet_autoconfig import assert_fleet_identity_no_self_loop
+    from fleet_hub_env_guard import assert_hub_url_env_matches_registry
+
+    _hub_override_ok = os.environ.get("HUB_URL_REGISTRY_OVERRIDE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    assert_hub_url_env_matches_registry(
+        _topology_registry,
+        hub_url_env=os.environ.get("HUB_URL"),
+        allow_registry_override=_hub_override_ok,
+    )
 
     _fleet_identity = apply_fleet_identity_from_registry(
         _topology_registry,
