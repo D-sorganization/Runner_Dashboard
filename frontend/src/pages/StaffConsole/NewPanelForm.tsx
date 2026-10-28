@@ -102,7 +102,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mapPresetExperts]);
 
   const formState: PanelFormState = {
     topic,
