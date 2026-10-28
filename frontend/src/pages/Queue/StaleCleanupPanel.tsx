@@ -427,7 +427,9 @@ export function StaleCleanupPanel({ onRefresh }: StaleCleanupPanelProps) {
                     <th>Safe</th>
                     <th>Current SHA</th>
                     <th>Run SHA</th>
-                    <th></th>
+                    <th>
+                      <span className="visually-hidden">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>{runs.map((run) => renderRun(run, false))}</tbody>
