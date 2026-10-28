@@ -778,6 +778,12 @@
       "BoardRoutingCriteria": {
         "description": "Explicit requester-declared or system-extracted routing flags.",
         "properties": {
+          "confidential_data_egress": {
+            "default": false,
+            "description": "Confidential data egress; requires user sign-off before Board routing.",
+            "title": "Confidential Data Egress",
+            "type": "boolean"
+          },
           "cross_repo_contract": {
             "default": false,
             "title": "Cross Repo Contract",
@@ -787,11 +793,6 @@
             "default": 0,
             "title": "Estimated Child Issues",
             "type": "integer"
-          },
-          "inentec_data_egress": {
-            "default": false,
-            "title": "Inentec Data Egress",
-            "type": "boolean"
           },
           "new_dependency_or_egress": {
             "default": false,
