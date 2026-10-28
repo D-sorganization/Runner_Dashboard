@@ -175,7 +175,10 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         runner_count = 0
 
     github_api = "connected" if gh_ok else "unreachable"
-    status = "healthy" if gh_ok else "degraded"
+    from runner_control_health import get_runner_control_health  # noqa: PLC0415
+
+    runner_control = get_runner_control_health()
+    status = "healthy" if gh_ok and runner_control["status"] == "healthy" else "degraded"
     duration_s = time.perf_counter() - start
     record_dashboard_health(status, github_api, duration_s)
     hub_circuit_open = hub_in_cooldown()
@@ -195,6 +198,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         "github_error_type": github_error_type,
         "github_auth_source": github_auth.get("auth_source", "unknown"),
         "github_auth_status": github_auth.get("status", "unknown"),
+        "runner_control": runner_control,
         "github_check_seconds": round(duration_s, 3),
         "hub_circuit_open": hub_circuit_open,
         "runners_registered": runner_count,

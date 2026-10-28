@@ -701,6 +701,14 @@ External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) int
 - [**Codex CLI Guide**](agents/codex.md) — `config.toml` MCP configuration, bot principals, and work-item tracking.
 - [**Grok Bot Guide**](agents/grok.md) — Local-exec `curl` recipes, active Barb/Orchestrator roles, and remote connector notes.
 
+## Panel repo grounding (#2511)
+
+When a panel request includes `repos`, each expert seat runs with its working directory set to a disposable, read-only snapshot of `origin/main` (`git archive`: tracked files only, no `.git`, one folder per repo) and may use only read tools (Read, Grep, Glob; the CLI keeps its read-only flag), so it can verify the code it cites. The moderator still gets no tools. The snapshot is deleted when the panel ends. Set `ground_repos: false` to keep the old prompt-only behaviour (the Cartographer excerpt preload is unaffected). A repo with no local checkout, or an oversized one (> 400 MB), is skipped with a log line.
+
+```bash
+curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Bearer $DASHBOARD_TOKEN" -H "Content-Type: application/json" -H "X-Requested-With: XMLHttpRequest" -d '{"topic": "Does the heater model match the data?", "rounds": 2, "mode": "debate", "confirm_cost": true, "repos": ["Runner_Dashboard"], "experts": [{"name": "Ada", "perspective": "numerical methods"}, {"name": "Brook", "perspective": "experiments"}, {"name": "Cy", "perspective": "operations"}]}'
+```
+
 ## Not yet here (tracked in the epic)
 
 The fleet deploy (#1201).

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -180,3 +181,46 @@ def test_retention_window_pruning(tmp_path: Path) -> None:
 
     # Pruned old date from persisted structure
     assert old_date not in tracker._data["daily"]
+
+
+def test_debounced_persistence_no_write_until_flush(tmp_path: Path) -> None:
+    """Per-request recording must not rewrite the JSON file (issue #3173)."""
+    data_file = tmp_path / "usage_metrics.json"
+    tracker = UsageTracker(
+        data_file=data_file,
+        retention_days=14,
+        enabled=True,
+        flush_interval_seconds=3600,
+    )
+    tracker.record_api_call("GET", "/api/system")
+    tracker.record_page_view("overview")
+    assert not data_file.exists()
+
+    in_memory = tracker.get_summary()
+    assert in_memory["endpoint_calls"]["GET /api/system"] == 1
+    assert in_memory["page_views"]["overview"] == 1
+
+    tracker.flush()
+    assert data_file.is_file()
+
+    reloaded = UsageTracker(data_file=data_file, enabled=True, flush_interval_seconds=3600)
+    persisted = reloaded.get_summary()
+    assert persisted["endpoint_calls"]["GET /api/system"] == 1
+    assert persisted["page_views"]["overview"] == 1
+    reloaded.flush()
+
+
+def test_scheduled_flush_persists_after_interval(tmp_path: Path) -> None:
+    """Timer flush writes pending counts without a manual flush call."""
+    data_file = tmp_path / "usage_metrics.json"
+    tracker = UsageTracker(
+        data_file=data_file,
+        enabled=True,
+        flush_interval_seconds=0.1,
+    )
+    tracker.record_api_call("GET", "/api/ping")
+    deadline = time.monotonic() + 2.0
+    while not data_file.is_file() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert data_file.is_file(), "expected debounced flush to create metrics file"
+    tracker.flush()
