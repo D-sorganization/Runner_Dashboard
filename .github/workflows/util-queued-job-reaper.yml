@@ -41,7 +41,11 @@ concurrency:
 
 jobs:
   reap:
-    runs-on: [self-hosted, d-sorg-fleet]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: read
     timeout-minutes: 13
     steps:
       - name: Checkout
