@@ -1,82 +1,75 @@
-/**
- * Tests for useSession — reactive dashboard-session probe (#842).
- *
- * TDD: authored alongside the hook. Verifies the cookie name-boundary match,
- * the reactive re-read on focus, and the `refresh()` escape hatch.
- */
+/** useSession tests — signed-out, GitHub, Tailscale, loopback (#3232). */
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useSession, hasSessionCookie } from "../useSession";
+import { renderHook, act, waitFor } from "@testing-library/react";
+import { useSession, type DashboardPrincipal } from "../useSession";
 
-describe("hasSessionCookie", () => {
-  it("matches the dashboard_session cookie by name boundary", () => {
-    expect(hasSessionCookie("dashboard_session=abc")).toBe(true);
-    expect(hasSessionCookie("foo=1; dashboard_session=abc; bar=2")).toBe(true);
-  });
+const github: DashboardPrincipal = {
+  id: "owner",
+  type: "human",
+  name: "Fleet Owner",
+  github_username: "fleet-owner",
+};
+const tailscale: DashboardPrincipal = {
+  id: "tailscale:alice",
+  type: "human",
+  name: "Alice",
+};
+const loopback: DashboardPrincipal = {
+  id: "__loopback__",
+  type: "human",
+  name: "Loopback development admin",
+};
 
-  it("does not false-positive on a substring match", () => {
-    expect(hasSessionCookie("not_dashboard_session_x=1")).toBe(false);
-    expect(hasSessionCookie("")).toBe(false);
-    expect(hasSessionCookie("other=1")).toBe(false);
+function mockMe(principal: DashboardPrincipal | null) {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (!url.includes("/api/auth/me")) return new Response(null, { status: 404 });
+    return principal
+      ? Response.json(principal)
+      : new Response(null, { status: 401 });
   });
-});
+}
 
 describe("useSession", () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  it("reflects the initial cookie state", () => {
-    const { result } = renderHook(() =>
-      useSession({ readCookie: () => "dashboard_session=x", pollMs: 0 }),
-    );
-    expect(result.current.loggedIn).toBe(true);
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
-  it("reports logged-out when no session cookie is present", () => {
-    const { result } = renderHook(() =>
-      useSession({ readCookie: () => "theme=dark", pollMs: 0 }),
-    );
+  it("reports signed-out when /api/auth/me returns 401", async () => {
+    mockMe(null);
+    const { result } = renderHook(() => useSession({ pollMs: 0 }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.loggedIn).toBe(false);
   });
 
-  it("re-reads the cookie when refresh() is called (no reload needed)", () => {
-    let cookie = "theme=dark";
-    const { result } = renderHook(() =>
-      useSession({ readCookie: () => cookie, pollMs: 0 }),
-    );
-    expect(result.current.loggedIn).toBe(false);
-
-    cookie = "dashboard_session=signed-in";
-    act(() => result.current.refresh());
-    expect(result.current.loggedIn).toBe(true);
-
-    cookie = "theme=dark";
-    act(() => result.current.refresh());
-    expect(result.current.loggedIn).toBe(false);
+  it.each([
+    [github, "github", "fleet-owner"],
+    [tailscale, "tailscale", "alice"],
+    [loopback, "loopback", "Loopback development admin"],
+  ] as const)("reports %s auth from /api/auth/me", async (principal, method, displayName) => {
+    mockMe(principal);
+    const { result } = renderHook(() => useSession({ pollMs: 0 }));
+    await waitFor(() => expect(result.current.loggedIn).toBe(true));
+    expect(result.current.authMethod).toBe(method);
+    expect(result.current.displayName).toBe(displayName);
+    if (method === "loopback") {
+      expect(result.current.loopbackHint).toMatch(/Tailscale URL/i);
+    }
   });
 
-  it("re-reads on window focus", () => {
-    let cookie = "theme=dark";
-    const { result } = renderHook(() =>
-      useSession({ readCookie: () => cookie, pollMs: 0 }),
-    );
-    cookie = "dashboard_session=x";
-    act(() => {
-      window.dispatchEvent(new Event("focus"));
+  it("re-probes on refresh after logout", async () => {
+    let principal: DashboardPrincipal | null = github;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (!String(input).includes("/api/auth/me")) return new Response(null, { status: 404 });
+      return principal ? Response.json(principal) : new Response(null, { status: 401 });
     });
-    expect(result.current.loggedIn).toBe(true);
-  });
-
-  it("re-reads on the poll interval", () => {
-    let cookie = "theme=dark";
-    const { result } = renderHook(() =>
-      useSession({ readCookie: () => cookie, pollMs: 1000 }),
-    );
-    cookie = "dashboard_session=x";
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(result.current.loggedIn).toBe(true);
+    const { result } = renderHook(() => useSession({ pollMs: 0 }));
+    await waitFor(() => expect(result.current.loggedIn).toBe(true));
+    principal = null;
+    await act(async () => result.current.refresh());
+    await waitFor(() => expect(result.current.loggedIn).toBe(false));
   });
 });

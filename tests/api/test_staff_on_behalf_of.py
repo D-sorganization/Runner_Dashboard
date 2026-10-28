@@ -20,6 +20,7 @@ from staff import adapters as adapters_mod
 from staff import audit as audit_mod
 from staff import fleet as fleet_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -56,7 +57,7 @@ def client(tmp_path: Any, monkeypatch: pytest.MonkeyPatch, tmp_audit_db: store_m
         store=store,
         adapters=adapters,
     )
-    monkeypatch.setattr(runner_mod, "_runner", runner)
+    monkeypatch.setattr(runner_registry, "_runner", runner)
     app = FastAPI()
     app.include_router(staff_router.router)
     app.dependency_overrides[staff_router.get_runner] = lambda: runner

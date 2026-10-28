@@ -47,8 +47,12 @@ _TOP_LEVEL_KEYS: dict[str, type] = {
     "roles_dir": str,
     "policy_dir": str,
     "private_docs_dir": str,
+    "private_roles": list,
 }
 _HOST_KEYS: dict[str, type] = {"name": str, "address": str}
+_PRIVATE_ROLE_KEYS = frozenset(
+    {"role_id", "allowed_templates", "providers", "context_store_dir", "store_schema_version"}
+)
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
@@ -63,6 +67,17 @@ class OverlayHost:
 
 
 @dataclass(frozen=True)
+class PrivateRole:
+    """A private-role definition (issue #3094). Lives only in the overlay."""
+
+    role_id: str
+    allowed_templates: tuple[str, ...]
+    providers: Mapping[str, tuple[str, ...]]
+    context_store_dir: str
+    store_schema_version: int
+
+
+@dataclass(frozen=True)
 class Overlay:
     """A validated private overlay. Construct only via :func:`parse_overlay`."""
 
@@ -72,10 +87,63 @@ class Overlay:
     roles_dir: str
     policy_dir: str
     private_docs_dir: str
+    private_roles: tuple[PrivateRole, ...]
     private_mode: PrivateModeConfig
 
     def host_names(self) -> tuple[str, ...]:
         return tuple(h.name for h in self.hosts)
+
+    def private_role(self, role_id: str) -> PrivateRole | None:
+        return next((r for r in self.private_roles if r.role_id == role_id), None)
+
+
+def _non_empty_str_list(value: object, where: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+        raise OverlayError(f"{where} must be a list of non-empty strings")
+    return tuple(value)
+
+
+def _parse_private_role(raw: object, index: int) -> PrivateRole:
+    where = f"overlay private_roles[{index}]"
+    if not isinstance(raw, dict):
+        raise OverlayError(f"{where}: must be an object")
+    missing = sorted(_PRIVATE_ROLE_KEYS - set(raw))
+    unknown = sorted(set(raw) - _PRIVATE_ROLE_KEYS)
+    if missing:
+        raise OverlayError(f"{where}: missing required key(s): {', '.join(missing)}")
+    if unknown:
+        raise OverlayError(f"{where}: unknown key(s): {', '.join(unknown)}")
+    role_id = raw["role_id"]
+    if not isinstance(role_id, str) or not role_id:
+        raise OverlayError(f"{where}: role_id must be a non-empty string")
+    templates = _non_empty_str_list(raw["allowed_templates"], f"{where}: allowed_templates")
+    providers_raw = raw["providers"]
+    if not isinstance(providers_raw, dict):
+        raise OverlayError(f"{where}: providers must be an object")
+    providers = {host: _non_empty_str_list(clis, f"{where}: providers[{host}]") for host, clis in providers_raw.items()}
+    store_dir = raw["context_store_dir"]
+    if not isinstance(store_dir, str) or not store_dir:
+        raise OverlayError(f"{where}: context_store_dir must be a non-empty string")
+    version = raw["store_schema_version"]
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise OverlayError(f"{where}: store_schema_version must be an int")
+    return PrivateRole(
+        role_id=role_id,
+        allowed_templates=templates,
+        providers=providers,
+        context_store_dir=store_dir,
+        store_schema_version=version,
+    )
+
+
+def _parse_private_roles(data: object) -> tuple[PrivateRole, ...]:
+    if not isinstance(data, list):
+        raise OverlayError("overlay private_roles: must be a list")
+    roles = tuple(_parse_private_role(raw, i) for i, raw in enumerate(data))
+    ids = [r.role_id for r in roles]
+    if len(set(ids)) != len(ids):
+        raise OverlayError("overlay private_roles: duplicate role_id")
+    return roles
 
 
 def _check_keys(data: Mapping[str, Any], spec: Mapping[str, type], where: str) -> None:
@@ -127,6 +195,7 @@ def parse_overlay(data: object) -> Overlay:
         roles_dir=data["roles_dir"],
         policy_dir=data["policy_dir"],
         private_docs_dir=data["private_docs_dir"],
+        private_roles=_parse_private_roles(data["private_roles"]),
         private_mode=private_mode,
     )
 
