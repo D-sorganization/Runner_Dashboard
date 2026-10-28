@@ -225,6 +225,48 @@ def test_review_rejects_lesson_whose_locator_no_longer_verifies(
     assert unchanged.review_status == "proposed" and unchanged.accepted_at is None
 
 
+def test_prompt_lessons_pages_past_tampered_evidence_without_starving_older_valid_lesson(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A single-page fetch that filters after the fact would drop mem_c entirely once the
+    page is filled by newer, now-invalid lessons; get_prompt_lessons must keep paging past
+    them until it either fills the requested budget or exhausts the source."""
+    from staff.lesson_locator import locate_lesson_evidence
+
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    run_store = run_stores.get_store()
+    texts = ("Lesson A.", "Lesson B.", "Lesson C.")
+    for text in texts:
+        run_store.append_event("run-1", "assistant", f"STAFF_LESSON: {text}", lesson_evidence="assistant_answer")
+    locators = {text: locate_lesson_evidence(run_store, "run-1", "RD", text) for text in texts}
+
+    store = AssistantMemoryStore(db)
+    now = datetime.now(UTC)
+    for offset, (eid, text) in enumerate(zip(("mem_a", "mem_b", "mem_c"), texts, strict=True)):
+        store.append(
+            MemoryEntry(
+                id=eid,
+                entry_type="lesson",
+                author_principal="a",
+                source_product="d",
+                repo="RD",
+                review_status="accepted",
+                source_run="run-1",
+                created_at=(now - timedelta(seconds=offset)).isoformat(),
+                body={"text": text, "locator": locators[text]},
+            )
+        )
+
+    # Tamper the two newest lessons' underlying evidence after the fact; only mem_c's
+    # locator still verifies.
+    run_store._conn.execute("UPDATE events SET text = 'STAFF_LESSON: Tampered A.' WHERE seq = 1")  # noqa: SLF001
+    run_store._conn.execute("UPDATE events SET text = 'STAFF_LESSON: Tampered B.' WHERE seq = 2")  # noqa: SLF001
+
+    assert [e.id for e in get_prompt_lessons(store=store, repo="RD", limit=1)] == ["mem_c"]
+
+
 def test_append_derives_locator_from_persisted_evidence_ignoring_client_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

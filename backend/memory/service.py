@@ -182,14 +182,8 @@ def review_entry(principal: Principal, entry_id: str, req: MemoryReviewRequest) 
             raise HTTPException(status_code=409, detail="lesson proposal expired before review")
         if entry.source_run and completed_run_for_review(run_stores.get_store(), entry.source_run) is None:
             raise HTTPException(status_code=409, detail="lesson run has not reached authoritative completion")
-        locator = entry.body.get("locator")
-        if locator is not None and entry.source_run:
-            text = entry.body.get("text")
-            verified = isinstance(text, str) and verify_lesson_evidence(
-                run_stores.get_store(), entry.source_run, entry.repo or "", text, locator
-            )
-            if not verified:
-                raise HTTPException(status_code=409, detail="lesson evidence locator no longer verifies")
+        if not _lesson_evidence_still_verifies(entry):
+            raise HTTPException(status_code=409, detail="lesson evidence locator no longer verifies")
     exp = _validate_and_resolve_expires_at(req.expires_at) if req.expires_at or target == "accepted" else None
     acc = _now() if target == "accepted" else entry.accepted_at
     kw = {"review_status": target, "reviewed_by": format_caller(principal), "accepted_at": acc, "expires_at": exp}
@@ -250,20 +244,46 @@ def _open_tasks(entries: list[MemoryEntry]) -> list[MemoryEntry]:
     return open_entries[:CONTEXT_TASK_LIMIT]
 
 
+def _lesson_evidence_still_verifies(entry: MemoryEntry) -> bool:
+    """A lesson with no locator/source_run was never evidence-bound; nothing to re-check."""
+    locator = entry.body.get("locator")
+    if locator is None or not entry.source_run:
+        return True
+    text = entry.body.get("text")
+    return isinstance(text, str) and verify_lesson_evidence(
+        run_stores.get_store(), entry.source_run, entry.repo or "", text, locator
+    )
+
+
 def get_prompt_lessons(
     store: AssistantMemoryStore | None = None,
     repo: str | None = None,
     principal: Principal | None = None,
     limit: int = 10,
 ) -> list[MemoryEntry]:
-    return (store or get_memory_store()).list_entries(
-        entry_type="lesson",
-        repo=repo,
-        review_status="accepted",
-        include_barb_only=is_barb_principal(principal),
-        active_only=True,
-        limit=limit,
-    )
+    """Fill up to `limit` lessons whose evidence still verifies, paging deterministically.
+
+    A single-page fetch followed by post-hoc filtering would starve an older, still-valid
+    lesson whenever enough newer lessons on that same page have since gone stale — keep
+    paging past stale entries until the budget is filled or the source is exhausted.
+    """
+    store = store or get_memory_store()
+    results: list[MemoryEntry] = []
+    cursor: tuple[str, str] | None = None
+    while len(results) < limit:
+        page, cursor = store.list_entries_page(
+            cursor=cursor,
+            entry_type="lesson",
+            repo=repo,
+            review_status="accepted",
+            include_barb_only=is_barb_principal(principal),
+            active_only=True,
+            limit=limit,
+        )
+        results.extend(entry for entry in page if _lesson_evidence_still_verifies(entry))
+        if cursor is None:
+            break
+    return results[:limit]
 
 
 def build_context_pack() -> MemoryContextPack:
