@@ -18,6 +18,7 @@ _fleet_dir = Path(__file__).resolve().parents[2] / "clients" / "fleet"
 if str(_fleet_dir) not in sys.path:
     sys.path.insert(0, str(_fleet_dir))
 
+from activity_producers import emit_activity  # noqa: E402
 from fleet_client import FleetAPIError, FleetClient  # noqa: E402
 from fleet_validators import short_host  # noqa: E402
 
@@ -137,6 +138,13 @@ def session_start(
             )
         except Exception:  # noqa: BLE001
             log.debug("skills export at session start failed", exc_info=True)
+        emit_activity(
+            source="agent_bus",
+            session_id=session,
+            node=node or _node(short_host),
+            kind="session_start",
+            payload={"role": resolved_role, "inbox_count": count},
+        )
         return summary
     except FleetAPIError as exc:
         if exc.status == 0:
@@ -156,6 +164,13 @@ def pre_push(client: Any | None = None, *, lease_seconds: int = DEFAULT_LEASE_SE
         messages = inbox.get("messages", []) if isinstance(inbox, dict) else []
         count = len(messages) if isinstance(messages, list) else 0
         log.info("agent bus pre-push: session=%s inbox=%d", state["session"], count)
+        emit_activity(
+            source="agent_bus",
+            session_id=str(state["session"]),
+            node=_node(short_host),
+            kind="pre_push_heartbeat",
+            payload={"inbox_count": count},
+        )
         return {"heartbeat": True, "inbox_count": count, "offline": False}
     except FleetAPIError as exc:
         if exc.status == 0:
