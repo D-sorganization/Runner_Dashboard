@@ -154,3 +154,93 @@ def test_import_ban_passes_on_backend_and_fails_on_direct_sink_write(tmp_path: P
         encoding="utf-8",
     )
     assert len(pme.find_shared_sink_import_violations(tmp_path)) == 2
+
+
+CANARY_PM5 = "CANARY-" + "example-corp-pm5-do-not-leak"
+
+
+@pytest.mark.parametrize("form", ["raw", "base64", "url_encoded", "split"])
+@pytest.mark.parametrize("surface", sorted(pm.SHARED_SURFACES))
+def test_pm5_canary_absent_from_every_emit_shared_sink(surface: str, form: str) -> None:
+    """PM-5 (#3255): raw, base64, URL-encoded, and split canaries never leak from any shared sink."""
+    variants = pm.build_canary_variants(CANARY_PM5)
+    planted = variants.for_form(form)
+    if isinstance(planted, tuple):
+        part_a, part_b = planted
+        payload: dict[str, Any] = {
+            "id": f"example-corp/{part_a}",
+            "repo": f"example-corp/{part_b}",
+            "status": part_a,
+            "outcome": part_b,
+            "title": f"Example Corp {part_a}",
+            "summary": f"Example Corp {part_b}",
+        }
+    else:
+        payload = {
+            "id": f"example-corp/{planted}",
+            "repo": "example-corp/widgets",
+            "status": planted,
+            "outcome": "completed",
+            "title": f"Example Corp {planted}",
+            "summary": planted,
+        }
+
+    delivered: list[dict[str, Any]] = []
+    projection = pm.emit_shared(
+        surface,
+        payload,
+        level=pm.Level.SENSITIVE,
+        config=_enabled_config(),
+        sink=delivered.append,
+    )
+    assert pm.detect_canary_leaks(projection.to_dict(), CANARY_PM5) == ()
+    pm.assert_no_canary_leak(projection.to_dict(), CANARY_PM5, sink_name=surface)
+    assert len(delivered) == 1
+    pm.assert_no_canary_leak(delivered[0], CANARY_PM5, sink_name=surface)
+
+
+@pytest.mark.parametrize("form", ["raw", "base64", "url_encoded", "split"])
+def test_pm5_bypass_fixture_makes_canary_gate_fail(form: str) -> None:
+    """Canary-of-the-canary (#3255): a bypass sink that leaks any form fails the gate."""
+    variants = pm.build_canary_variants(CANARY_PM5)
+    planted = variants.for_form(form)
+    bypass_output = (
+        {"first": planted[0], "second": planted[1]}
+        if isinstance(planted, tuple)
+        else {"leaked": f"Example Corp {planted}"}
+    )
+    leaks = pm.detect_canary_leaks(bypass_output, CANARY_PM5)
+    assert form in leaks
+    with pytest.raises(pm.CanaryLeakError, match=form):
+        pm.assert_no_canary_leak(bypass_output, CANARY_PM5, sink_name="bypass_fixture")
+
+
+def test_pm5_canary_dbc_and_flag_off_contract() -> None:
+    """DbC preconditions on canary helpers and flag-off preservation (#3255)."""
+    with pytest.raises(pm.ClassificationError, match="canary"):
+        pm.build_canary_variants("short")
+    with pytest.raises(pm.ClassificationError, match="canary"):
+        pm.build_canary_variants(123)  # type: ignore[arg-type]
+    variants = pm.build_canary_variants(CANARY_PM5)
+    with pytest.raises(pm.ClassificationError, match="form"):
+        variants.for_form("rot13")
+
+    for surface in sorted(pm.SHARED_SURFACES):
+        proj = pm.emit_shared(
+            surface,
+            {"id": "example-corp/widgets#1", "status": "ok", "summary": "Example Corp public note"},
+            level=pm.Level.SENSITIVE,
+            config=pm.DISABLED,
+        )
+        assert proj.level is pm.Level.PUBLIC and proj.withheld is False
+        assert proj.content["summary"] == "Example Corp public note"
+
+
+def test_private_mode_getattr_only_imports_emit_for_exported_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Probing unknown attributes on private_mode must not import private_mode_emit (avoids circular import)."""
+    monkeypatch.delitem(sys.modules, "private_mode_emit", raising=False)
+    with pytest.raises(AttributeError):
+        _ = pm.__nonexistent_probe_attr__
+    assert "private_mode_emit" not in sys.modules
+    assert pm.CANARY_FORMS == ("raw", "base64", "url_encoded", "split")
+    assert "private_mode_emit" in sys.modules
