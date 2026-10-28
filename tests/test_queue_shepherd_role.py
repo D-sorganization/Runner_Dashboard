@@ -14,7 +14,7 @@ import yaml
 from staff.role_spec import parse_role
 from staff.validator import validate_role_data
 
-ROLE_PATH = Path(__file__).resolve().parents[1] / "staff" / "roles" / "queue-shepherd.yml"
+ROLE_PATH = Path(__file__).resolve().parents[1] / "docs" / "agents" / "role-drafts" / "queue-shepherd.yml"
 
 
 @pytest.fixture

@@ -6,7 +6,13 @@ path-conflict checks (`shared_scripts/queue_shepherd_logic.py`) through
 slice 2's read-only GraphQL poll (`shared_scripts/queue_shepherd_poll.py`) and
 reports its findings — it never acts on them.
 
-Role file: `staff/roles/queue-shepherd.yml`.
+Role file: `docs/agents/role-drafts/queue-shepherd.yml` — a schema-valid draft in
+this repo; the fleet's real role source is `Repository_Management/staff/roles/`
+(see `backend/staff/roles.py`), so publishing it there is a follow-up for the
+operator/coordinator. (Not placed at this repo's own root `staff/roles/`: that
+path would create a top-level `staff/` directory that collides with the
+`backend/staff` package's import namespace and breaks `ruff`'s import sorting
+across every `from staff...` import in `backend/`.)
 
 ## What it does
 
