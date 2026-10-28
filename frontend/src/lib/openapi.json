@@ -24129,7 +24129,7 @@
           }
         ],
         "summary": "Avatar V1",
-        "tags": ["staff-v1"]
+        "tags": ["staff-v1", "staff-avatars"]
       }
     },
     "/api/v1/staff/barb/classify-surface": {
@@ -24977,7 +24977,7 @@
           }
         ],
         "summary": "Context Agents Sync V1",
-        "tags": ["staff-v1"]
+        "tags": ["staff-v1", "staff-context"]
       }
     },
     "/api/v1/staff/exclusions": {
