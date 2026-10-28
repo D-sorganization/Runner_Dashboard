@@ -197,11 +197,12 @@ export const Thread: React.FC<ThreadProps> = ({
     });
     resizeObserverRef.current = observer;
     observer.observe(container);
-    for (const row of observedRowsRef.current.values()) observer.observe(row);
+    const observedRows = observedRowsRef.current;
+    for (const row of observedRows.values()) observer.observe(row);
     return () => {
       observer.disconnect();
       resizeObserverRef.current = null;
-      observedRowsRef.current.clear();
+      observedRows.clear();
     };
   }, []);
 
