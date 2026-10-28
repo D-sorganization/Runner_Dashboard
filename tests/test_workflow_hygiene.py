@@ -126,6 +126,88 @@ def _is_reusable_caller(job_body: dict) -> bool:
     return "uses" in job_body and "steps" not in job_body
 
 
+_LOCAL_ACTION_PREFIX = "./.github/actions/"
+_CHECKOUT_ACTION_MARKERS = (
+    "actions/checkout",
+    "actions/checkout@v",
+)
+
+
+def _step_is_checkout(step: dict) -> bool:
+    uses = str(step.get("uses", ""))
+    return any(marker in uses for marker in _CHECKOUT_ACTION_MARKERS)
+
+
+def _local_action_violations(workflow_path: Path) -> list[str]:
+    """Local composite actions require a prior checkout on the runner workspace."""
+    data = _load_workflow(workflow_path)
+    violations: list[str] = []
+    for job_id, job in (data.get("jobs") or {}).items():
+        if _is_reusable_caller(job or {}):
+            continue
+        saw_checkout = False
+        for step in (job or {}).get("steps") or []:
+            if _step_is_checkout(step):
+                saw_checkout = True
+            uses = str(step.get("uses", ""))
+            if uses.startswith(_LOCAL_ACTION_PREFIX) and not saw_checkout:
+                violations.append(f"{workflow_path.name}::{job_id}::{step.get('name', uses)}")
+    return violations
+
+
+_GUARD_ACTION = "./.github/actions/merge-queue-ref-guard"
+
+
+def _composite_guard_followed_by_repo_steps(workflow_path: Path) -> list[str]:
+    """The guard composite sparse-checkouts; later repo steps would see an empty tree."""
+    data = _load_workflow(workflow_path)
+    violations: list[str] = []
+    for job_id, job in (data.get("jobs") or {}).items():
+        if _is_reusable_caller(job or {}):
+            continue
+        steps = (job or {}).get("steps") or []
+        for index, step in enumerate(steps):
+            if _GUARD_ACTION not in str(step.get("uses", "")):
+                continue
+            for later in steps[index + 1 :]:
+                if later.get("run") or str(later.get("uses", "")).startswith(_LOCAL_ACTION_PREFIX):
+                    violations.append(
+                        f"{workflow_path.name}::{job_id}::{step.get('name', _GUARD_ACTION)}"
+                    )
+                    break
+    return violations
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_merge_queue_ref_guard_composite_is_not_followed_by_repo_steps(workflow_path: Path) -> None:
+    """Guard composite re-sparse-checkouts; inline bash when later steps need the tree (#2886)."""
+    violations = _composite_guard_followed_by_repo_steps(workflow_path)
+    assert not violations, (
+        "merge-queue-ref-guard composite sparse-checkouts the workspace; use inline "
+        "bash .github/scripts/merge-queue-ref-guard.sh after a full checkout instead. "
+        f"Violations: {violations}"
+    )
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_checkout_precedes_local_github_actions(workflow_path: Path) -> None:
+    """``uses: ./.github/actions/*`` must run only after ``actions/checkout`` (#2886)."""
+    violations = _local_action_violations(workflow_path)
+    assert not violations, (
+        "Local composite actions need action.yml on disk; checkout (sparse "
+        "``.github/actions`` is fine) must come first, or inline the script. "
+        f"Violations: {violations}"
+    )
+
+
 @pytest.mark.parametrize(
     "workflow_path",
     _workflow_files(),
@@ -369,7 +451,7 @@ def test_redundant_pr_closer_f7_contract() -> None:
     cond = str(job.get("if", ""))
     assert "pull_request.state" in cond and "open" in cond
     assert "JULES_APP_ID" not in text and "create-github-app-token" not in text and "github.token" in text
-    assert "d-sorg-fleet" in str(job["runs-on"]) and "ubuntu-latest" not in str(job["runs-on"])
+    assert "ubuntu-latest" in str(job["runs-on"]) and "d-sorg-fleet" not in str(job["runs-on"])
     run = next(s for s in job["steps"] if s.get("name") == "Close redundant agent PRs")["run"]
     assert "|| {" not in run and "continuing" not in run and "::error::GITHUB_TOKEN is empty" in run
     assert all(tok in script for tok in ("examined", "closed", "skipped"))
@@ -472,7 +554,8 @@ def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
 
 def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> None:
     workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
-    step = workflow["jobs"]["frontend-scope"]["steps"][0]
+    steps = workflow["jobs"]["frontend-scope"]["steps"]
+    step = next(s for s in steps if s.get("id") == "scope")
     output = tmp_path / "github-output"
     bash = require_bash()
     # A stub also prevents executing Python if this branch accidentally falls through.
@@ -565,11 +648,17 @@ def test_commit_stage_gitleaks_scans_staged_changes_only() -> None:
     assert "--source" not in command
 
 
-def test_ci_secrets_keeps_the_full_history_gitleaks_scan() -> None:
+def test_ci_secrets_gitleaks_pr_range_and_full_history() -> None:
+    """PR gitleaks scans base..head only; main push keeps full history."""
     text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" in text
-    assert '/gitleaks" detect' in text
+    assert "gitleaks\" detect" in text or '/gitleaks" detect' in text
     assert "--no-git" not in text
+    assert "--log-opts" in text
+    assert "pull_request.base.sha" in text
+    assert "pull_request.head.sha" in text
+    assert "gitleaks (full history scan)" in text
+    assert "gitleaks (PR commit range)" in text
 
 
 def test_required_typecheck_job_always_reports_context() -> None:

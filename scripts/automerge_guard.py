@@ -6,7 +6,7 @@ Fleet automation arms auto-merge using the repository owner's credentials, so
 its arm is indistinguishable from a human's. That makes a reviewer's
 ``gh pr merge <n> --disable-auto`` unenforceable: the next automation pass just
 re-arms it. Measured in ``Gasification_Model`` on 2026-08-14, every event
-attributed to ``dieterolson`` (``type=User``, not a bot):
+attributed to ``fleet-operator`` (``type=User``, not a bot):
 
 ===== ================= ================= ======
 PR    disarmed          re-armed          gap

@@ -11,7 +11,7 @@ Dashboard Fleet API: staff, coordination and priorities (epic #1192, #1228).
 | `fleet_mcp.py`    | The MCP stdio server (JSON-RPC 2.0, protocol `2025-06-18`), with 16 `fleet_*` tools. |
 
 ```bash
-export FLEET_API_URL=http://deskcomputer:8321 FLEET_API_TOKEN=svc_... FLEET_AGENT=claude
+export FLEET_API_URL=http://hub-a:8321 FLEET_API_TOKEN=svc_... FLEET_AGENT=claude
 python3 clients/fleet/fleetctl.py briefing --repo Runner_Dashboard
 python3 clients/fleet/fleetctl.py dispatch night-watch --repo Runner_Dashboard --prompt "sweep" --dry-run
 ```
@@ -35,7 +35,7 @@ except FleetAPIError as exc:
 python3 clients/fleet/fleetctl.py library sources
 python3 clients/fleet/fleetctl.py library search "energy transfer" --k 3 --run-id run-123
 python3 clients/fleet/fleetctl.py library search "energy transfer" --scope local
-python3 clients/fleet/fleetctl.py library fetch '[ref:DeskComputer:shared:w1:p3#sha256=1234abcd:p.3-3]' --run-id run-123
+python3 clients/fleet/fleetctl.py library fetch '[ref:hub-a:shared:w1:p3#sha256=1234abcd:p.3-3]' --run-id run-123
 python3 clients/fleet/fleetctl.py library fetch desk-x9-library 42 --page 3
 python3 clients/fleet/fleetctl.py library fetch desk-x9-library 42 --page 3 --scope federated --run-id run-123
 python3 clients/fleet/fleetctl.py library verify --file docs/report.md --run-id run-123
