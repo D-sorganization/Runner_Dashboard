@@ -56,6 +56,38 @@ def test_search_returns_canonical_committed_citation_and_bounded_unicode(fixture
     assert data["stale"] is False
 
 
+def test_cartographer_repo_filter_applies_before_top_k(fixture: SearchFixture, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, root, knowledge = fixture
+    other = root.parent / "AnotherRepo"
+    other.mkdir()
+    (other / "SPEC.md").write_text("# Energy energy energy\nEnergy energy powers the system.\n")
+    git(other, "init", "-q")
+    git(other, "add", ".")
+    git(other, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "fixture")
+    build_cartographer_pack({"UpstreamDrift": root, "AnotherRepo": other}, knowledge / "cartographer.sqlite")
+    roots = {"UpstreamDrift": root, "AnotherRepo": other}
+    monkeypatch.setattr("staff.workspace.find_repo_checkout", lambda repo: roots.get(repo))
+
+    unscoped = client.get("/api/v1/staff/knowledge/cartographer/search", params={"q": "energy", "k": 1})
+    assert unscoped.json()["passages"][0]["repo"] == "AnotherRepo"
+
+    scoped = client.get(
+        "/api/v1/staff/knowledge/cartographer/search", params={"q": "energy", "k": 1, "repo": "UpstreamDrift"}
+    )
+    assert scoped.status_code == 200
+    assert [passage["repo"] for passage in scoped.json()["passages"]] == ["UpstreamDrift"]
+
+    missing = client.get("/api/v1/staff/knowledge/cartographer/search", params={"q": "energy", "repo": "UnknownRepo"})
+    assert missing.status_code == 200
+    assert missing.json()["passages"] == []
+
+
+def test_repo_filter_is_rejected_for_non_cartographer_search(fixture: SearchFixture) -> None:
+    client, _, _ = fixture
+    response = client.get("/api/v1/staff/knowledge/notes/search", params={"q": "energy", "repo": "UpstreamDrift"})
+    assert response.status_code == 422
+
+
 def test_commit_only_change_is_reported_stale_without_fabricating_new_reference(fixture: SearchFixture) -> None:
     client, root, _ = fixture
     old = git(root, "rev-parse", "HEAD")

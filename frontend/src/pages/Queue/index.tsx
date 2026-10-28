@@ -16,6 +16,7 @@ import { Stat } from "../../components/Stat";
 import { SortTh } from "../../components/SortTh";
 import { useToast } from "../../primitives/Toaster";
 import { formatDuration } from "../../components/formatters";
+import { api } from "../../lib/api";
 
 import { DiagnosePanel } from "./DiagnosePanel";
 import { FleetMergeSettingsPanel } from "./FleetMergeSettingsPanel";
@@ -232,11 +233,8 @@ export function QueueTab(p: QueueTabProps) {
   function cancelRun(repo: string, runId: WorkflowRun["id"]): void {
     const key = repo + "/" + runId;
     setCancelKey(key, "pending");
-    fetch("/api/runs/" + repo + "/cancel/" + runId, {
-      method: "POST",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-    })
-      .then((r) => r.json())
+    api.runs
+      .cancel({ repo, run_id: runId })
       .then(() => {
         setCancelKey(key, "done");
         if (onRefresh) setTimeout(onRefresh, REFRESH_DELAY_MS);
