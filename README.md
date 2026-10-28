@@ -41,6 +41,10 @@ people, or paths.
 | Agent token file paths, per-agent config          | — (operator supplies directly)                | ✅ sourced from the overlay |
 | Private roles, policy, and internal docs          | — (not present)                                | ✅ sourced from the overlay |
 
+The dashboard itself is also usable without a sibling `Repository_Management`
+checkout; see [`docs/standalone-profile.md`](docs/standalone-profile.md) for
+what degrades and how that's tested.
+
 Until `RD_OVERLAY_PATH` is set, behaviour is unchanged from today; setting it
 loads and validates the overlay at startup and the core refuses to start on an
 invalid overlay rather than running with partial private config.
