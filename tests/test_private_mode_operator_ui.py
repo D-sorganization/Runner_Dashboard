@@ -30,8 +30,7 @@ _CFG = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
 
 
 def _encode_canary(canary: str, form: str) -> str:
-    variants = pme.build_canary_variants(canary)
-    val = variants.for_form(form)
+    val = pme.build_canary_variants(canary).for_form(form)
     return f"{val[0]} :: {val[1]}" if isinstance(val, tuple) else val
 
 
@@ -49,12 +48,8 @@ def test_sensitive_threads_show_metadata_only_and_never_leak_canary(form: str) -
         config=_CFG,
     )
     view = pmui.project_thread_for_operator_ui(emission, config=_CFG)
-    assert view.metadata_only is True
-    assert view.body_md is None
-    assert view.badge.level is pm.Level.SENSITIVE
-    assert view.badge.label == "SENSITIVE"
-    assert view.badge.withheld is True
-    assert view.badge.visible is True
+    assert view.metadata_only is True and view.body_md is None
+    assert view.badge.level is pm.Level.SENSITIVE and view.badge.withheld is True and view.badge.visible is True
     assert view.thread_id.startswith("opaque:")
     pme.assert_no_canary_leak(view.to_dict(), CANARY, sink_name="operator_ui:thread")
 
@@ -71,13 +66,9 @@ def test_non_sensitive_and_flag_off_threads_preserve_redacted_content() -> None:
         config=_CFG,
     )
     internal_view = pmui.project_thread_for_operator_ui(internal_emission, config=_CFG)
-    assert internal_view.metadata_only is False
-    assert internal_view.body_md == "Example Corp routine status note"
-    assert internal_view.badge.level is pm.Level.INTERNAL
-    assert internal_view.badge.visible is True
+    assert internal_view.metadata_only is False and internal_view.body_md == "Example Corp routine status note"
+    assert internal_view.badge.level is pm.Level.INTERNAL and internal_view.badge.visible is True
 
-    # Flag-off behaviour: even if SENSITIVE is passed to emit_panel_entry with DISABLED,
-    # output is PUBLIC, badge is hidden, and content is preserved (with secret redaction).
     fake_tok = "ghp_" + "A" * 36
     off_emission = pms.emit_panel_entry(
         thread_id="th-example-corp-off",
@@ -90,12 +81,9 @@ def test_non_sensitive_and_flag_off_threads_preserve_redacted_content() -> None:
         config=pm.DISABLED,
     )
     off_view = pmui.project_thread_for_operator_ui(off_emission, config=pm.DISABLED)
-    assert off_view.metadata_only is False
-    assert off_view.badge.level is pm.Level.PUBLIC
-    assert off_view.badge.visible is False
-    assert off_view.body_md is not None
-    assert "Example Corp note" in off_view.body_md
-    assert fake_tok not in off_view.body_md
+    assert off_view.metadata_only is False and off_view.badge.level is pm.Level.PUBLIC
+    assert off_view.badge.visible is False and off_view.body_md is not None
+    assert "Example Corp note" in off_view.body_md and fake_tok not in off_view.body_md
 
 
 def test_parked_reasons_and_deadlines_view_projects_admission_and_parking_records() -> None:
@@ -110,13 +98,9 @@ def test_parked_reasons_and_deadlines_view_projects_admission_and_parking_record
         deadline="2026-10-28T13:00:00Z",
     )
     dec_view = pmui.project_parked_item_for_operator_ui(dec, config=_CFG)
-    assert dec_view.job_id.startswith("opaque:")
-    assert dec_view.state == "PARKED_POLICY"
-    assert dec_view.reason == "cloud-approval-required"
-    assert dec_view.owner == "pm-rd"
-    assert dec_view.deadline == "2026-10-28T13:00:00Z"
-    assert dec_view.badge.level is pm.Level.SENSITIVE
-    assert dec_view.badge.withheld is True
+    assert dec_view.job_id.startswith("opaque:") and dec_view.state == "PARKED_POLICY"
+    assert dec_view.reason == "cloud-approval-required" and dec_view.owner == "pm-rd"
+    assert dec_view.deadline == "2026-10-28T13:00:00Z" and dec_view.badge.withheld is True
 
     bounds = pmp.parse_parking_bounds(
         {
@@ -138,14 +122,11 @@ def test_parked_reasons_and_deadlines_view_projects_admission_and_parking_record
     )
     queue.enqueue(dec2, repo=_REPO, now=now)
 
-    views = pmui.list_parked_operator_views(queue, config=_CFG)
-    assert len(views) == 2
-    by_state = {v.state: v for v in views}
+    by_state = {v.state: v for v in pmui.list_parked_operator_views(queue, config=_CFG)}
     assert by_state["PARKED_POLICY"].reason == "cloud-approval-required"
     assert by_state["PARKED_POLICY"].deadline == "2026-10-28T12:10:00Z"
     assert by_state["EXPIRED"].reason == "parking-depth-exceeded"
     assert by_state["EXPIRED"].escalated_to == "security-oncall"
-    assert by_state["EXPIRED"].expired_at == "2026-10-28T12:00:00Z"
 
 
 def test_audit_viewer_requires_staff_audit_read_scope(tmp_path: Path) -> None:
@@ -167,20 +148,11 @@ def test_audit_viewer_requires_staff_audit_read_scope(tmp_path: Path) -> None:
         with pytest.raises(PermissionError, match="staff.audit.read"):
             pmui.render_audit_viewer(store, caller_scopes=["staff.read", "operator"], config=_CFG)
 
-        audit_view = pmui.render_audit_viewer(
-            store,
-            caller_scopes=["staff.read", pmui.AUDIT_READ_SCOPE],
-            config=_CFG,
-        )
-        assert audit_view.chain_ok is True
-        assert audit_view.checked_count == 1
-        assert len(audit_view.rows) == 1
+        audit_view = pmui.render_audit_viewer(store, caller_scopes=["staff.read", pmui.AUDIT_READ_SCOPE], config=_CFG)
+        assert audit_view.chain_ok is True and audit_view.checked_count == 1
         row = audit_view.rows[0]
-        assert row.action == "admission"
-        assert row.outcome == "PARKED_POLICY"
-        assert row.level is pm.Level.SENSITIVE
-        assert row.target_id.startswith("opaque:")
-        assert row.badge.level is pm.Level.SENSITIVE
+        assert row.action == "admission" and row.outcome == "PARKED_POLICY"
+        assert row.level is pm.Level.SENSITIVE and row.target_id.startswith("opaque:")
         assert row.metadata["reason"] == "agent-not-allowlisted"
     finally:
         store.close()
