@@ -33,7 +33,7 @@ from typing import Any, Protocol
 if __package__ in (None, ""):  # run as a file: make ``scripts`` and ``backend`` importable
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from backend.staff.redaction import redact_value
+from staff.redaction import redact_value
 from scripts import rd_threads_envelope as envelope
 
 log = logging.getLogger("claude_barb.channel")
