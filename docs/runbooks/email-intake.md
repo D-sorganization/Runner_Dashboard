@@ -11,13 +11,8 @@ Production mailbox: **`dashboard@example.com`** (root domain; provision this add
 
 The hub receives mail via your provider’s IMAP settings for that mailbox. For **outbound senders**
 (allowlisted in RM `staff/mail_policy.yml`), DMARC alignment uses the **From** domain — typically
-<<<<<<< HEAD
 `@example.com`, `@work.example.com`, etc. Ensure **example.com** publishes correct SPF, DKIM, and
 DMARC if anyone sends From `@work.example.com`.
-=======
-`@example.com`, `@affinedrift.com`, etc. Ensure **affinedrift.com** publishes correct SPF, DKIM, and
-DMARC if anyone sends From `@affinedrift.com`.
->>>>>>> origin/main
 
 | Type | Name | Purpose |
 | --- | --- | --- |
