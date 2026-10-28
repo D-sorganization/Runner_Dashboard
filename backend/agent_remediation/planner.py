@@ -16,11 +16,10 @@ from .policy import (
     AttemptRecord,
     FailureContext,
     RemediationPolicy,
-    _attempts_for_fingerprint,
-    _attempts_for_provider,
     build_failure_fingerprint,
     classify_workflow_type,
 )
+from .policy_attempts import _attempts_for_fingerprint, _attempts_for_provider
 from .providers import PROVIDERS, ProviderAvailability
 
 

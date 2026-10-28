@@ -353,14 +353,10 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
             attempt_window_hours=24,
             provider_order=DEFAULT_PROVIDER_ORDER,
             enabled_providers=DEFAULT_PROVIDER_ORDER,
-<<<<<<< HEAD
-            default_provider="jules_api",
+            default_provider="codex_cli",
             cursor_branch_prefixes=DEFAULT_CURSOR_BRANCH_PREFIXES,
             cursor_branch_provider=DEFAULT_CURSOR_BRANCH_PROVIDER,
             blocked_pr_labels=DEFAULT_BLOCKED_PR_LABELS,
-=======
-            default_provider="codex_cli",
->>>>>>> origin/main
             workflow_type_rules=_default_workflow_type_rules(),
         )
     payload = json.loads(resolved.read_text(encoding="utf-8"))
@@ -372,17 +368,13 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
         attempt_window_hours=int(payload.get("attempt_window_hours", 24)),
         provider_order=_as_tuple_strings(payload.get("provider_order"), fallback=DEFAULT_PROVIDER_ORDER),
         enabled_providers=_as_tuple_strings(payload.get("enabled_providers"), fallback=DEFAULT_PROVIDER_ORDER),
-<<<<<<< HEAD
-        default_provider=str(payload.get("default_provider") or "jules_api"),
+        default_provider=str(payload.get("default_provider") or "codex_cli"),
         cursor_branch_prefixes=_as_tuple_strings(
             payload.get("cursor_branch_prefixes"),
             fallback=DEFAULT_CURSOR_BRANCH_PREFIXES,
         ),
         cursor_branch_provider=str(payload.get("cursor_branch_provider") or DEFAULT_CURSOR_BRANCH_PROVIDER),
         blocked_pr_labels=_as_tuple_strings(payload.get("blocked_pr_labels"), fallback=DEFAULT_BLOCKED_PR_LABELS),
-=======
-        default_provider=str(payload.get("default_provider") or "codex_cli"),
->>>>>>> origin/main
         workflow_type_rules=_load_workflow_type_rules(payload.get("workflow_type_rules")),
     )
 
@@ -473,43 +465,3 @@ def build_failure_fingerprint(context: FailureContext) -> str:
 
     raw = f"{context.repository}|{context.workflow_name}|{context.failure_reason[:200]}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
-
-
-def _parse_timestamp(value: str) -> datetime | None:
-    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S+00:00"):
-        try:
-            return datetime.strptime(value, fmt).replace(tzinfo=UTC)
-        except ValueError:
-            continue
-    return None
-
-
-def _attempts_for_fingerprint(
-    fingerprint: str,
-    attempts: list[AttemptRecord],
-    *,
-    window_hours: int,
-) -> list[AttemptRecord]:
-    cutoff = datetime.now(UTC) - _dt_mod.timedelta(hours=window_hours)
-    result = []
-    for a in attempts:
-        if a.fingerprint != fingerprint:
-            continue
-        ts = _parse_timestamp(a.created_at)
-        if ts is None or ts >= cutoff:
-            result.append(a)
-    return result
-
-
-def _attempts_for_provider(
-    fingerprint: str,
-    provider_id: str,
-    attempts: list[AttemptRecord],
-    *,
-    window_hours: int,
-) -> list[AttemptRecord]:
-    return [
-        a
-        for a in _attempts_for_fingerprint(fingerprint, attempts, window_hours=window_hours)
-        if a.provider_id == provider_id
-    ]
