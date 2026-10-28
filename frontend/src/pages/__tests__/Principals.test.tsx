@@ -41,7 +41,7 @@ const PRINCIPALS = {
       quotas: { max_runners: 4, agent_spend_usd_day: 10, local_app_slots: 2 },
     },
     {
-      id: "dieterolson",
+      id: "fleet-operator",
       type: "user",
       roles: ["admin"],
       quotas: { max_runners: 8, agent_spend_usd_day: 50, local_app_slots: 4 },
@@ -112,9 +112,9 @@ describe("PrincipalsTab", () => {
   it("renders the principals table from the API", async () => {
     mockFetchByUrl({ principals: PRINCIPALS, tokens: TOKENS });
     render(<PrincipalsTab />);
-    // "dieterolson" is unique to the principal table (not a token principal_id).
+    // "fleet-operator" is unique to the principal table (not a token principal_id).
     await waitFor(() =>
-      expect(screen.getByText("dieterolson")).toBeInTheDocument(),
+      expect(screen.getByText("fleet-operator")).toBeInTheDocument(),
     );
     // "maxwell-daemon" appears in both the principal table and as a token's
     // principal_id, so assert it is present at least once.
@@ -136,7 +136,7 @@ describe("PrincipalsTab", () => {
     mockFetchByUrl({ principals: PRINCIPALS, tokens: TOKENS });
     render(<PrincipalsTab />);
     await waitFor(() =>
-      expect(screen.getByText("dieterolson")).toBeInTheDocument(),
+      expect(screen.getByText("fleet-operator")).toBeInTheDocument(),
     );
     fireEvent.click(screen.getAllByRole("button", { name: /edit quota/i })[0]);
     expect(screen.getByText(/Edit Quota: maxwell-daemon/i)).toBeInTheDocument();

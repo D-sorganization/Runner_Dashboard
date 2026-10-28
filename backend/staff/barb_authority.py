@@ -2,7 +2,7 @@
 
 Defaults recorded for the owner (RM#1853 ruling 2026-10-11; pending owner confirmation):
 
-* the authority is the machine-registry ``hub`` (ControlTower), configurable via
+* the authority is the machine-registry ``hub`` (node-a), configurable via
   ``BARB_AUTHORITY_NODE`` / ``BARB_AUTHORITY_URL`` / ``BARB_AUTHORITY_EPOCH`` or a
   ``barb_authority`` key in the fleet manifest (:func:`registry_hub`);
 * RPO = 0 means "an acknowledged write is durably committed at the authority"

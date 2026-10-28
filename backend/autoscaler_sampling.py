@@ -252,7 +252,7 @@ def _io_pressure_snapshot(path: str = "/proc/pressure/io") -> dict[str, float] |
     """Return Linux IO pressure stall metrics when available.
 
     The values are percentages over the kernel's rolling windows. ``full_avg10``
-    is the critical ControlTower signal: during recent outages it stayed above
+    is the critical node-a signal: during recent outages it stayed above
     60%, meaning all runnable work was blocked on I/O for most of the window.
     """
     try:
