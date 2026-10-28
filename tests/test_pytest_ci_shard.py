@@ -8,6 +8,7 @@ from scripts.pytest_ci_shard import (
     _collect_node_ids,
     _parse_collected_node_ids,
     pytest_collection_modifyitems,
+    pytest_runtest_teardown,
     select_shard,
 )
 
@@ -121,3 +122,16 @@ def test_tests_job_does_not_wait_on_lint() -> None:
     needs = workflow["jobs"]["tests"]["needs"]
     assert "lint" not in needs
     assert "ci-health-check" in needs
+
+
+def test_runtest_teardown_resets_runner_control_health_when_loaded(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+    import types
+    from unittest.mock import MagicMock
+
+    reset_mock = MagicMock()
+    fake_mod = types.SimpleNamespace(reset_runner_control_health=reset_mock)
+    monkeypatch.setitem(sys.modules, "runner_control_health", fake_mod)
+
+    pytest_runtest_teardown(MagicMock())
+    reset_mock.assert_called_once_with()

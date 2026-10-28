@@ -98,6 +98,16 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     items[:] = selected
 
 
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item: pytest.Item) -> None:
+    del item
+    health_mod = sys.modules.get("runner_control_health")
+    if health_mod is not None:
+        reset = getattr(health_mod, "reset_runner_control_health", None)
+        if callable(reset):
+            reset()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="List pytest node ids for one CI shard.")
     parser.add_argument("--groups", type=int, required=True)
