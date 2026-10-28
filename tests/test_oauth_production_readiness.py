@@ -119,6 +119,22 @@ def test_missing_oauth_configuration_never_redirects_to_dev_login(
     assert "administrator" in exc_info.value.detail["hint"].lower()
 
 
+def test_missing_github_org_has_actionable_fail_closed_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+    from routers.auth import github_login
+
+    for name, value in _production_env().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("GITHUB_ORG")
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(github_login(_request()))
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail["reason"] == "github_org_missing"
+    assert "GITHUB_ORG" in exc_info.value.detail["hint"]
+
+
 def test_login_redirect_uses_exact_callback_and_least_privilege_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

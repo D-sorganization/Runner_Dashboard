@@ -278,10 +278,10 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
     ProviderEntry(
         dashboard_id="cline",
         conductor_id="cline-cli",
-        label="Cline",
-        execution_mode="local_plugin",
+        label="Cline CLI",
+        execution_mode="local_exec",
         dispatch_mode="future",
-        auth_mode="github_app",
+        auth_mode="local",
         resource="runner",
         capabilities=(
             "code_edit",
@@ -295,10 +295,13 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         max_concurrency=1,
         availability_probe=("cline",),
         credential_id="cline",
-        setup_hint="Install Cline extension in VS Code: ext install saoudrizwan.claude-dev",
+        setup_hint="npm install -g cline, then run `cline auth`",
         editable=False,
         experimental=True,
-        notes=("Reserved for future plugin-driven local remediation; no stable CLI contract is assumed here yet."),
+        notes=(
+            "Uses the `cline` CLI for local remediation; provider credentials live in "
+            "`~/.cline/data/settings/providers.json` or standard API-key env vars."
+        ),
     ),
     # --- Provider registry v2 (#1193) -----------------------------------------
     ProviderEntry(

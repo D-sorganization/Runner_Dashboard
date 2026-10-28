@@ -154,6 +154,46 @@
      so the dashboard renders unchanged where a display face isn't installed. */
   --font-display-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI",
     Helvetica, Arial, sans-serif;
+
+  /* Legacy / component aliases (issue #3174) — mirror design/semanticCssVars.ts */
+  --fg: var(--text-primary);
+  --fg-muted: var(--text-muted);
+  --text-link: var(--accent-blue);
+  --text-accent: var(--accent-blue);
+  --text-danger: var(--accent-red);
+  --text-warning: var(--accent-yellow);
+  --text-tertiary: var(--text-secondary);
+  --border-color: var(--border);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-muted: #6e7681;
+  --border-active: var(--accent-blue);
+  --border-blue: var(--accent-blue);
+  --border-danger: var(--accent-red);
+  --border-warning: var(--accent-yellow);
+  --border-green: var(--accent-green);
+  --border-red: var(--accent-red);
+  --border-yellow: var(--accent-yellow);
+  --card-bg: var(--bg-card);
+  --bg-input: var(--bg-secondary);
+  --bg-overlay: var(--bg-secondary);
+  --bg-active: color-mix(in srgb, var(--accent-blue) 20%, transparent);
+  --bg-danger-subtle: rgba(248, 81, 73, 0.1);
+  --bg-warning-subtle: rgba(210, 153, 34, 0.15);
+  --accent-amber: var(--accent-orange);
+  --accent-red-bg: var(--badge-danger-bg);
+  --badge-success-text: var(--badge-success-fg);
+  --badge-warning-text: var(--badge-warning-fg);
+  --badge-danger-text: var(--badge-danger-fg);
+  --badge-neutral-text: var(--text-secondary);
+  --btn-primary-bg: var(--accent-green);
+  --btn-primary-text: var(--text-on-accent);
+  --color-fg-on-emphasis: var(--text-on-accent);
+  --color-text-secondary: var(--text-secondary);
+  --status-danger: var(--accent-red);
+  --shadow-sm: var(--shadow-soft);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-mono-family: var(--font-mono);
+  --font-body-family: var(--font-display-family);
 }
 
 /* Light-theme shadow re-tune (issue #827). useTheme sets data-theme=light for
@@ -206,6 +246,15 @@
   --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.10);
   --shadow-card: 0 1px 3px rgba(16, 24, 40, 0.10), 0 4px 8px rgba(16, 24, 40, 0.08);
   --shadow-modal: 0 8px 24px rgba(16, 24, 40, 0.12), 0 20px 48px rgba(16, 24, 40, 0.16);
+
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-muted: #8c959f;
+  --bg-input: var(--bg-primary);
+  --bg-overlay: var(--bg-secondary);
+  --bg-active: color-mix(in srgb, var(--accent-blue) 20%, transparent);
+  --bg-danger-subtle: rgba(207, 34, 46, 0.08);
+  --bg-warning-subtle: rgba(154, 103, 0, 0.12);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.10);
 }
 
 @media (prefers-color-scheme: light) {
@@ -948,6 +997,31 @@ table, .tabular {
 .desktop-shell__main--staff > .staff {
   flex: 1;
   height: auto;
+}
+
+.shell-session-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  max-width: min(240px, 28vw);
+  margin-inline-end: 4px;
+  line-height: 1.2;
+}
+.shell-session-identity__user {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.shell-session-identity__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: right;
 }
 
 .shell-action {
