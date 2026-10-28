@@ -42,15 +42,7 @@ import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { useBreakpoint } from "../hooks/useBreakpoint";
 import { ShellDensityControl } from "./ShellDensityControl";
 import { ShellThemeControl } from "./ShellThemeControl";
-import { QueueMobile } from "../pages/Queue";
 import type { InFlightDispatch } from "../pages/Remediation/Mobile";
-import { AnalysisTab } from "../pages/Analysis";
-import { EventsTab } from "../pages/Events";
-import { CodeRequestsPage } from "../pages/CodeRequestsPage";
-import { RunnerAuditPage } from "../pages/RunnerAudit";
-import { RunnerSchedulePage } from "../pages/RunnerSchedule";
-import { WorkflowsPage } from "../pages/WorkflowsPage";
-import { SettingsPage } from "../pages/Settings/SettingsPage";
 import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
 import { navItemById } from "./navRegistry";
@@ -74,9 +66,6 @@ const LazyEventsTab = React.lazy(() =>
 const LazyCodeRequestsPage = React.lazy(() =>
   import("../pages/CodeRequestsPage").then(({ CodeRequestsPage }) => ({ default: CodeRequestsPage })),
 );
-const LazyMachinesPage = React.lazy(() =>
-  import("../pages/Machines").then(({ MachinesPage }) => ({ default: MachinesPage })),
-);
 const LazyRunnerSchedulePage = React.lazy(() =>
   import("../pages/RunnerSchedule").then(({ RunnerSchedulePage }) => ({ default: RunnerSchedulePage })),
 );
@@ -88,9 +77,6 @@ const LazySettingsPage = React.lazy(() =>
 );
 const LazyWorkflowsPage = React.lazy(() =>
   import("../pages/WorkflowsPage").then(({ WorkflowsPage }) => ({ default: WorkflowsPage })),
-);
-const LazyQueueTab = React.lazy(() =>
-  import("../pages/Queue").then(({ QueueTab }) => ({ default: QueueTab })),
 );
 // #2990: mobile Fleet/Remediation views are lazy so they stay out of the entry chunk.
 const LazyFleetMobile = React.lazy(() =>
