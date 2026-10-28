@@ -8,9 +8,9 @@ rate_limit_per_sender_per_hour: 12
 max_message_bytes: 262144
 
 allowed_senders:
-  - address: fleet-operator@example.com
+  - address: dieterolson@gmail.com
     enabled: true
-  - address: fleet-operator@affinedrift.com
+  - address: dieterolson@affinedrift.com
     enabled: true
   - address: dolson@inentec.com
     enabled: false
