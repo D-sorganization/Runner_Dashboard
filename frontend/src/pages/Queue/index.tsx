@@ -119,6 +119,13 @@ function CancelButton({
     <button
       onClick={onClick}
       disabled={!!cstate}
+      title={
+        cstate === "done"
+          ? "This run was cancelled"
+          : isConfirming
+            ? confirmingLabel
+            : "Cancel this queued workflow run (click twice to confirm)"
+      }
       style={{
         ...cancelButtonBase,
         background: isConfirming ? "var(--accent-red)" : "none",
@@ -548,6 +555,11 @@ export function QueueTab(p: QueueTabProps) {
                     <button
                       key={name}
                       onClick={() => cancelWorkflow(name)}
+                      title={
+                        isPending
+                          ? `Confirm bulk cancel of all ${name} workflow runs`
+                          : `Start bulk cancel for workflow ${name}`
+                      }
                       style={{
                         fontSize: 11,
                         padding: "3px 10px",
@@ -712,6 +724,11 @@ export function QueueTab(p: QueueTabProps) {
                           className="btn"
                           onClick={() => requestCancelRun(repo, r.id)}
                           disabled={!!cstate}
+                          title={
+                            isConfirming
+                              ? "Confirm cancellation of this run"
+                              : "Cancel this queued run (requires confirmation)"
+                          }
                           style={{
                             background: isConfirming
                               ? "var(--accent-red)"

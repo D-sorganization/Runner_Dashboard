@@ -30,8 +30,20 @@ export function AttachmentList({ attachments, onRemove }: AttachmentListProps) {
         <span key={attachment.id} className={`staff-composer__chip staff-composer__chip--${attachment.status}`} data-testid={`composer-attachment-${attachment.filename}`}>
           <span className="staff-composer__chip-filename">{attachment.filename}</span>
           <button type="button" className="staff-composer__chip-remove" aria-label={`Remove ${attachment.filename}`} onClick={() => onRemove(attachment.id)}>Remove</button>
-          <span className="staff-composer__chip-meta"><span className="staff-composer__chip-badge">{sensitivityLabel(attachment.sensitivity)}</span></span>
-          <span className={`staff-composer__chip-status${attachment.error ? " staff-composer__chip-status--error" : ""}`} role="status" aria-live="polite">
+          <span className="staff-composer__chip-meta">
+            <span
+              className="staff-composer__chip-badge"
+              title={`Attachment sensitivity: ${sensitivityLabel(attachment.sensitivity)}`}
+            >
+              {sensitivityLabel(attachment.sensitivity)}
+            </span>
+          </span>
+          <span
+            className={`staff-composer__chip-status${attachment.error ? " staff-composer__chip-status--error" : ""}`}
+            role="status"
+            aria-live="polite"
+            title={`Upload status: ${statusLabel(attachment.status)}${attachment.error ? ` (${attachment.error})` : ""}`}
+          >
             {statusLabel(attachment.status)}{attachment.error ? `: ${attachment.error}` : ""}
           </span>
         </span>

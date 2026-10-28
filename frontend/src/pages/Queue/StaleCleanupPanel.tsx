@@ -214,6 +214,7 @@ export function StaleCleanupPanel({ onRefresh }: StaleCleanupPanelProps) {
             onClick={() =>
               setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
             }
+            title={open ? "Collapse stale run details" : "Expand stale run details"}
             style={{
               width: "100%",
               textAlign: "left",
@@ -336,13 +337,19 @@ export function StaleCleanupPanel({ onRefresh }: StaleCleanupPanelProps) {
           {renderInput("Repo filter", repoFilter, setRepoFilter)}
           {renderInput("Workflow filter", workflowFilter, setWorkflowFilter)}
           {renderInput("Max cancellations", maxCount, setMaxCount, "number")}
-          <button className="btn" onClick={previewStale} disabled={loading}>
+          <button
+            className="btn"
+            onClick={previewStale}
+            disabled={loading}
+            title="Preview which queued runs match the stale filters"
+          >
             {loading ? <span className="spinner" /> : "Preview stale"}
           </button>
           <button
             className="btn"
             onClick={purgeStale}
             disabled={purging || purgeTargets.length === 0}
+            title="Cancel the selected stale workflow runs"
             style={{
               border: "1px solid var(--accent-red)",
               color: confirming ? "#fff" : "var(--accent-red)",
