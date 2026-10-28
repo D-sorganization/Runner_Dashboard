@@ -140,7 +140,7 @@ def test_exception_with_sensitive_args_logs_no_values(caplog: pytest.LogCaptureF
 
     caplog.set_level(logging.ERROR)
     token = classification_level_ctx.set(ClassificationLevel.SENSITIVE)
-    secret = "Example-Corp-ultra-secret-token"
+    secret = "Example-Corp-ultra-secret-token"  # pragma: allowlist secret
     try:
         try:
             raise ValueError(secret, "metadata-only")
