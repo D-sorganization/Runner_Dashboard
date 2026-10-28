@@ -103,6 +103,7 @@ const LazyFleetCommandPage = React.lazy(
   () => import("../pages/FleetCommand/FleetCommandPage"),
 );
 const LazyAgentBusPage = React.lazy(() => import("../pages/AgentBus/AgentBusPage"));
+const LazyActivityPage = React.lazy(() => import("../pages/Activity/ActivityPage"));
 const LazyLibraryPage = React.lazy(() => import("../pages/Library/LibraryPage"));
 const LazyContextPage = React.lazy(() => import("../pages/Context/ContextPage"));
 const LazyOperationsPage = React.lazy(
@@ -160,6 +161,8 @@ function nativeDesktopTabContent(tabId: string, onThreadSelected?: (threadId: st
       return <LazyFleetCommandPage />;
     case "agent-bus":
       return <LazyAgentBusPage />;
+    case "activity":
+      return <LazyActivityPage />;
     case "library":
       return <LazyLibraryPage />;
     case "context":
