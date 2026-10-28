@@ -24085,6 +24085,53 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/avatars/{avatar_rel}": {
+      "get": {
+        "description": "Serve a role's persona image from RM ``staff/avatars/`` (#2680).",
+        "operationId": "avatar_v1_api_v1_staff_avatars__avatar_rel__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "avatar_rel",
+            "required": true,
+            "schema": {
+              "title": "Avatar Rel",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Avatar V1",
+        "tags": ["staff-v1"]
+      }
+    },
     "/api/v1/staff/barb/classify-surface": {
       "post": {
         "operationId": "post_barb_classify_surface_api_v1_staff_barb_classify_surface_post",
