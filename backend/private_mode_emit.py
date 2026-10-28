@@ -68,6 +68,21 @@ _SAFE_SENSITIVE_META_TOKENS: frozenset[str] = frozenset(
 _MIN_MAC_KEY_BYTES = 16
 _MIN_CANARY_LEN = 8
 CANARY_FORMS: tuple[str, ...] = ("raw", "base64", "url_encoded", "split")
+EMIT_EXPORTS: frozenset[str] = frozenset(
+    {
+        "CANARY_FORMS",
+        "CanaryLeakError",
+        "CanaryVariants",
+        "SHARED_SURFACES",
+        "SURFACE_ALLOWLISTS",
+        "SharedProjection",
+        "assert_no_canary_leak",
+        "build_canary_variants",
+        "detect_canary_leaks",
+        "emit_shared",
+        "opaque_identifier",
+    }
+)
 
 
 class CanaryLeakError(ClassificationError):

@@ -487,20 +487,8 @@ def check_mid_run_upgrade(
 
 
 def __getattr__(name: str) -> Any:
-    if name in {
-        "CANARY_FORMS",
-        "CanaryLeakError",
-        "CanaryVariants",
-        "SHARED_SURFACES",
-        "SURFACE_ALLOWLISTS",
-        "SharedProjection",
-        "assert_no_canary_leak",
-        "build_canary_variants",
-        "detect_canary_leaks",
-        "emit_shared",
-        "opaque_identifier",
-    }:
-        import private_mode_emit as _pme  # noqa: PLC0415
+    import private_mode_emit as _pme  # noqa: PLC0415
 
+    if name in _pme.EMIT_EXPORTS:
         return getattr(_pme, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
