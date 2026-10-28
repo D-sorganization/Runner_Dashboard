@@ -18,8 +18,8 @@ port**.
 
 | Host | Role | Registry `dashboard_url` (HTTP, direct) | HTTPS origin (Serve) | OAuth callback (register on GitHub App) |
 | ---- | ---- | --------------------------------------- | -------------------- | --------------------------------------- |
-| **DeskComputer** | Fleet hub (production operator UI) | `http://deskcomputer.tail2bbcc7.ts.net:8321` | `https://deskcomputer.tail2bbcc7.ts.net` | `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback` |
-| **OGLaptop** | Worker (not a hub origin by default) | `http://oglaptop.tail2bbcc7.ts.net:8321` | `https://oglaptop.tail2bbcc7.ts.net` | `https://oglaptop.tail2bbcc7.ts.net/api/auth/callback` |
+| **DeskComputer** | Fleet hub (production operator UI) | `http://hub-a.fleet-example.ts.net:8321` | `https://hub-a.fleet-example.ts.net` | `https://hub-a.fleet-example.ts.net/api/auth/callback` |
+| **OGLaptop** | Worker (not a hub origin by default) | `http://node-b.fleet-example.ts.net:8321` | `https://node-b.fleet-example.ts.net` | `https://node-b.fleet-example.ts.net/api/auth/callback` |
 
 GitHub Apps permit multiple user authorization callback URLs. Register the
 callback for each HTTPS origin that is deliberately served and configured; do
@@ -46,7 +46,7 @@ In **GitHub → Organization → GitHub Apps → [fleet Runner Dashboard app]**:
 2. **User authorization callback URL(s)** — inspect the existing registration
    first and confirm it contains the callback for the active registry hub HTTPS
    origin (currently DeskComputer):
-   `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback`. If it is absent,
+   `https://hub-a.fleet-example.ts.net/api/auth/callback`. If it is absent,
    stop before attempting login and have an authorized GitHub App owner decide
    whether to add it. Add a worker callback only for an approved, deliberately
    served and allowlisted migration; do not request broader OAuth scopes.
@@ -111,7 +111,7 @@ on spoke nodes.
 ## Current Hub Snapshot (Checked 2026-10-23)
 
 The active DeskComputer deployment reports a healthy dashboard and the current
-Tailscale Serve route is `https://deskcomputer.tail2bbcc7.ts.net` proxying to the
+Tailscale Serve route is `https://hub-a.fleet-example.ts.net` proxying to the
 local dashboard on port 8321. OAuth is separately blocked: `/api/health` reports
 `github_client_id_invalid`, `github_client_secret_invalid`,
 `session_secret_invalid`, `tls_required`, and

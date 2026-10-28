@@ -59,18 +59,45 @@ def test_host_rejects_invalid_fields(overrides: dict[str, object], needle: str) 
 
 
 def test_registry_hosts_cover_every_live_runner_pool() -> None:
-    hosts = {h.name: h for h in fsg.hosts_from_registry(load_machine_registry(), runner_user=RUNNER_USER)}
-    assert set(hosts) == {"ControlTower-Runner", "OGLaptop", "DeskComputer"}
+    registry = {
+        "machines": [
+            {
+                "name": "node-a",
+                "tailscale_nodes": [{"name": "node-a", "preferred": True}],
+                "runner_pools": [
+                    {
+                        "name": "node-a-Runner",
+                        "runner_base_dir": "/home/fleet-operator/actions-runners",
+                        "storage": {"wsl_distro": "node-a-Runner"},
+                    }
+                ],
+            },
+            {
+                "name": "node-b",
+                "tailscale_nodes": [{"name": "node-b", "preferred": True}],
+                "storage": {"wsl_distro": "Ubuntu"},
+                "runner_pools": [],
+            },
+            {
+                "name": "hub-a",
+                "tailscale_nodes": [{"name": "hub-a", "preferred": True}],
+                "storage": {"wsl_distro": "Ubuntu-22.04"},
+                "runner_pools": [],
+            },
+        ]
+    }
+    hosts = {h.name: h for h in fsg.hosts_from_registry(registry, runner_user=RUNNER_USER)}
+    assert set(hosts) == {"node-a-Runner", "node-b", "hub-a"}
 
-    ct = hosts["ControlTower-Runner"]
+    ct = hosts["node-a-Runner"]
     assert (ct.ssh, ct.distro, ct.runner_roots) == (
-        "controltower",
-        "ControlTower-Runner",
-        ("/home/dieterolson/actions-runners",),
+        "node-a",
+        "node-a-Runner",
+        ("/home/fleet-operator/actions-runners",),
     )
-    assert hosts["OGLaptop"].distro == "Ubuntu"
-    assert hosts["OGLaptop"].runner_roots == ("/home/dieterolson/actions-runners",)
-    assert hosts["DeskComputer"].distro == "Ubuntu-22.04"
+    assert hosts["node-b"].distro == "Ubuntu"
+    assert hosts["node-b"].runner_roots == ("/home/dieterolson/actions-runners",)
+    assert hosts["hub-a"].distro == "Ubuntu-22.04"
     assert all(h.profile == "runner" for h in hosts.values())
 
 

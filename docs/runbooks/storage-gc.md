@@ -26,7 +26,7 @@ python deploy/fleet_storage_gc.py --list          # inventory (registry + config
 python deploy/fleet_storage_gc.py --verify-only   # read-only drift check, exit 1 on any drift
 python deploy/fleet_storage_gc.py --dry-run       # what an install would change
 python deploy/fleet_storage_gc.py                 # install + verify everywhere
-python deploy/fleet_storage_gc.py --hosts brick   # one host
+python deploy/fleet_storage_gc.py --hosts node-c   # one host
 ```
 
 Per-host statuses:

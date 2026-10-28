@@ -13,6 +13,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+import yaml
 from host_volume import (
     DEFAULT_HOST_VOLUME_MIN_FREE_GB,
     DEFAULT_HOST_VOLUME_MIN_FREE_PERCENT,
@@ -234,27 +235,51 @@ def test_get_host_volume_metrics_no_conflation() -> None:
     assert "hard_floor_hit" in metrics
 
 
-def test_machine_registry_preserves_runner_backing_drive() -> None:
+def test_machine_registry_preserves_runner_backing_drive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """machine_registry.py normalizes and preserves runner_backing_drive."""
     from machine_registry import load_machine_registry
 
-    reg = load_machine_registry()
+    registry_path = tmp_path / "machine_registry.yml"
+    registry_path.write_text(
+        """
+version: 1
+machines:
+  - name: node-a
+    storage:
+      runner_backing_drive: "F:"
+    runner_pools:
+      - name: node-a-SSD
+        storage:
+          runner_backing_drive: "F:"
+  - name: node-b
+    storage:
+      runner_backing_drive: "C:"
+  - name: hub-a
+    storage:
+      runner_backing_drive: "D:"
+""".lstrip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MACHINE_REGISTRY_PATH", str(registry_path))
+    with (
+        patch("machine_registry.validate_config_path", return_value=registry_path),
+        patch("machine_registry.safe_yaml_load", return_value=yaml.safe_load(registry_path.read_text(encoding="utf-8"))),
+    ):
+        reg = load_machine_registry()
     machines = {m["name"]: m for m in reg.get("machines", [])}
 
-    assert "ControlTower" in machines
-    assert "OGLaptop" in machines
-    assert "DeskComputer" in machines
+    assert "node-a" in machines
+    assert "node-b" in machines
+    assert "hub-a" in machines
 
-    # ControlTower storage and pool
-    assert machines["ControlTower"]["storage"].get("runner_backing_drive") == "F:"
-    ct_pools = {p["name"]: p for p in machines["ControlTower"].get("runner_pools", [])}
-    active_pool = ct_pools.get("ControlTower-Runner") or ct_pools.get("ControlTower-SSD")
+    assert machines["node-a"]["storage"].get("runner_backing_drive") == "F:"
+    ct_pools = {p["name"]: p for p in machines["node-a"].get("runner_pools", [])}
+    active_pool = ct_pools.get("node-a-SSD")
     assert active_pool is not None
     assert active_pool["storage"].get("runner_backing_drive") == "F:"
 
-    # OGLaptop and DeskComputer storage
-    assert machines["OGLaptop"]["storage"].get("runner_backing_drive") == "C:"
-    assert machines["DeskComputer"]["storage"].get("runner_backing_drive") == "D:"
+    assert machines["node-b"]["storage"].get("runner_backing_drive") == "C:"
+    assert machines["hub-a"]["storage"].get("runner_backing_drive") == "D:"
 
 
 def test_resource_offline_reason_flags_host_volume_critical() -> None:

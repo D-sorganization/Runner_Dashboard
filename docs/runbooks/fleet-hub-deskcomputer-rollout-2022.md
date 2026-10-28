@@ -7,7 +7,7 @@ per-host env is override-only.
 ## Before you restart any dashboard
 
 **DeskComputer interim state (2026-10-20):** operator edits may set
-`HUB_URL=http://deskcomputer.tail2bbcc7.ts.net:8321` and an explicit
+`HUB_URL=http://hub-a.fleet-example.ts.net:8321` and an explicit
 `FLEET_NODES=...` in `~/.config/runner-dashboard/env`. An explicit `FLEET_NODES`
 **disables** registry autoderive. Either remove those lines (restore from
 `*.bak-20261020-211149` if needed) or reconcile so they match the registry
@@ -26,7 +26,7 @@ before restarting.
 
    ```bash
    cd ~/actions-runners/dashboard
-   ./deploy/setup.sh --runners 8 --machine-name DeskComputer
+   ./deploy/setup.sh --runners 8 --machine-name hub-a
    ```
 
 4. Confirm the unit has **no** `Environment=MACHINE_ROLE=` line unless you
@@ -58,10 +58,10 @@ before restarting.
 
    ```bash
    cd ~/actions-runners/dashboard
-   ./deploy/setup.sh --runners 4 --machine-name Brick
+   ./deploy/setup.sh --runners 4 --machine-name node-c
    ```
 
-4. Dry-run dispatch to `machine: Brick` from the hub.
+4. Dry-run dispatch to `machine: node-c` from the hub.
 
 ## Codex default model
 

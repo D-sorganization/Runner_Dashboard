@@ -45,13 +45,28 @@ def test_resolve_registry_path_uses_local_config_when_present(
     assert mr._resolve_registry_path(None) == local
 
 
-def test_resolve_registry_path_falls_back_to_shipped_example(
+def test_resolve_registry_path_falls_back_to_local_canonical_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    missing = tmp_path / "missing.yml"
+    missing_local = tmp_path / "local" / "machine_registry.yml"
+    missing_deploy = tmp_path / "deploy" / "machine_registry.yml"
     monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
-    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing)
-    assert mr._resolve_registry_path(None) == mr.DEFAULT_REGISTRY_PATH
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing_local)
+    monkeypatch.setattr(mr, "DEPLOYED_REGISTRY_PATH", missing_deploy)
+    assert mr._resolve_registry_path(None) == missing_local
+
+
+def test_resolve_registry_path_uses_deployed_copy_when_local_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_local = tmp_path / "local" / "machine_registry.yml"
+    deployed = tmp_path / "deploy" / "machine_registry.yml"
+    deployed.parent.mkdir(parents=True)
+    deployed.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing_local)
+    monkeypatch.setattr(mr, "DEPLOYED_REGISTRY_PATH", deployed)
+    assert mr._resolve_registry_path(None) == deployed
 
 
 # ---------------------------------------------------------------------------

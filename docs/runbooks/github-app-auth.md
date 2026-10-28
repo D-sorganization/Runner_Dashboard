@@ -47,7 +47,7 @@ Older `GH_APP_*` names are legacy and should not be used for new deployments.
 
 ## Secret Storage Rules
 
-Keep the downloaded GitHub App PEM outside the repository. On ControlTower, the
+Keep the downloaded GitHub App PEM outside the repository. On node-a, the
 host-level Codex setup may keep the source PEM under
 `C:\ProgramData\CodexGithubApp\codex-github-app.pem` with restricted ACLs. That
 host path is a source of truth for Codex scheduled-task auth and can be used to
@@ -97,11 +97,11 @@ sudo systemctl restart runner-dashboard.service
 ```
 
 Repeat this on each WSL dashboard instance that calls GitHub directly, including
-`WSL` / ControlTower-NVMe and `ControlTower-SSD`.
+`WSL` / node-a-NVMe and `ControlTower-SSD`.
 
-### ControlTower dual-distro pattern
+### node-a dual-distro pattern
 
-ControlTower runs two dashboard-backed WSL environments. Configure both with the
+node-a runs two dashboard-backed WSL environments. Configure both with the
 same GitHub App installation, but keep each distro's env file and PEM copy local
 to that distro.
 

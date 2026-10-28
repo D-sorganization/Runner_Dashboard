@@ -24,12 +24,15 @@ except ImportError:  # pragma: no cover - deployment installs PyYAML
 from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.machine_registry")
-DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
+EXAMPLE_REGISTRY_PATH = Path(__file__).with_name("machine_registry.example.yml")
+DEPLOYED_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
+# Back-compat for callers that referenced the old shipped default path constant.
+DEFAULT_REGISTRY_PATH = LOCAL_REGISTRY_PATH
 
 
 def _resolve_registry_path(path: str | Path | None) -> Path:
-    """Pick the registry file: env override, local config, then shipped default."""
+    """Pick the registry file: env override, local config, then on-disk deploy copy."""
 
     if path is not None:
         return Path(path)
@@ -38,7 +41,9 @@ def _resolve_registry_path(path: str | Path | None) -> Path:
         return Path(env_path)
     if LOCAL_REGISTRY_PATH.is_file():
         return LOCAL_REGISTRY_PATH
-    return DEFAULT_REGISTRY_PATH
+    if DEPLOYED_REGISTRY_PATH.is_file():
+        return DEPLOYED_REGISTRY_PATH
+    return LOCAL_REGISTRY_PATH
 
 
 _DOCUMENTATION_TOPOLOGY = "documentation"
@@ -79,8 +84,9 @@ def assert_safe_registry_source(registry_path: Path, registry: dict[str, Any]) -
     """
 
     resolved = registry_path.expanduser().resolve()
-    default_resolved = DEFAULT_REGISTRY_PATH.resolve()
     local_resolved = LOCAL_REGISTRY_PATH.expanduser().resolve()
+    example_resolved = EXAMPLE_REGISTRY_PATH.resolve()
+    deployed_resolved = DEPLOYED_REGISTRY_PATH.resolve()
 
     if _require_local_registry_env() and not local_resolved.is_file():
         raise RuntimeError(
@@ -89,9 +95,16 @@ def assert_safe_registry_source(registry_path: Path, registry: dict[str, Any]) -
             "before starting the dashboard (see docs/runbooks/local-fleet-topology.md)."
         )
 
-    if resolved == default_resolved and _registry_contains_documentation_machines(registry):
+    if resolved == example_resolved and _registry_contains_documentation_machines(registry):
         raise RuntimeError(
-            "The shipped machine_registry.yml contains documentation-only fleet nodes. "
+            "machine_registry.example.yml is documentation-only; do not point "
+            "MACHINE_REGISTRY_PATH at the example file. Install live topology at "
+            f"{LOCAL_REGISTRY_PATH} or set MACHINE_REGISTRY_PATH to your operator copy."
+        )
+
+    if resolved == deployed_resolved and _registry_contains_documentation_machines(registry):
+        raise RuntimeError(
+            "The deployed machine_registry.yml contains documentation-only fleet nodes. "
             f"Install live topology at {LOCAL_REGISTRY_PATH} or set MACHINE_REGISTRY_PATH."
         )
 

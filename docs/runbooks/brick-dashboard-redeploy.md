@@ -1,11 +1,11 @@
 # Brick Dashboard Redeploy
 
-Native Linux fleet node **Brick** (`brick.tail2bbcc7.ts.net`, dashboard port **8321**).
+Native Linux fleet node **Brick** (`node-c.fleet-example.ts.net`, dashboard port **8321**).
 The dashboard directory is a deployed artifact and does not contain a Git checkout.
 
 ## Preconditions
 
-- Tailscale is connected on Brick (`tailscale status` shows `100.93.80.7`).
+- Tailscale is connected on Brick (`tailscale status` shows an address in `100.64.0.0/10`).
 - SSH or console access is available as the dashboard operator user.
 - The `runner-dashboard.service` user unit is installed and the user's systemd manager is reachable.
 - In a headless shell, set `XDG_RUNTIME_DIR` before invoking the updater. Set
@@ -66,19 +66,19 @@ authentication acceptance.
 
 ## 2. Register Runners
 
-Use the approved runner installation procedure and Brick's labels from
+Use the approved runner installation procedure and node-c's labels from
 `machine_registry.yml` (`d-sorg-fleet`, `d-sorg-fleet-docker`, and others).
-After registration, `/api/runners` should list active runners on Brick.
+After registration, `/api/runners` should list active runners on node-c.
 
 ## 3. Verify Dispatch With a Dry Run
 
-From the **hub** (DeskComputer) Staff Console or API:
+From the **hub** (hub-a) Staff Console or API:
 
 ```bash
-curl -sS -X POST "http://deskcomputer.tail2bbcc7.ts.net:8321/api/staff/ad-hoc/run" \
+curl -sS -X POST "http://hub-a.fleet-example.ts.net:8321/api/staff/ad-hoc/run" \
   -H "Content-Type: application/json" \
   -H "X-Requested-With: XMLHttpRequest" \
-  -d '{"prompt":"registry smoke","provider":"codex","machine":"Brick","dry_run":true}'
+  -d '{"prompt":"registry smoke","provider":"codex","machine":"node-c","dry_run":true}'
 ```
 
 Expect a planned run targeting machine `Brick` without executing on the hub.

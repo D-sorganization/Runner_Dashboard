@@ -11,8 +11,8 @@ and fleet health monitor exit before recovery side effects while the drain
 marker exists or the enable marker is absent:
 
 ```powershell
-C:\Users\diete\runner_fleet_monitor\deskcomputer-runner-drained.flag
-C:\Users\diete\runner_fleet_monitor\deskcomputer-runner-enabled.flag
+C:\Users\fleet-operator\runner_fleet_monitor\hub-a-runner-drained.flag
+C:\Users\fleet-operator\runner_fleet_monitor\hub-a-runner-enabled.flag
 ```
 
 1. Stop accepting new jobs by moving surplus runners to the no-access

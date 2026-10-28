@@ -46,6 +46,11 @@ config/principals.yml
 config/tokens.yml
 backend/data/
 
+# Live fleet topology (issue #3304 go-public). Copy machine_registry.example.yml to
+# ~/.config/runner-dashboard/machine_registry.yml or backend/machine_registry.yml on hosts.
+backend/machine_registry.yml
+backend/machine_registry.json
+
 # Reject root-level scratch/debug files matching *_<number>.py
 /*_[0-9]*.py
 *.pyo
