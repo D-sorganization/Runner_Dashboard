@@ -10,12 +10,14 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[1]
 _BACKEND = _ROOT / "backend"
-if str(_BACKEND) not in sys.path:
-    sys.path.insert(0, str(_BACKEND))
+for _p in (str(_BACKEND), str(_ROOT / "scripts")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import private_mode as pm  # noqa: E402
 import private_mode_emit as pme  # noqa: E402
 import private_mode_sinks as pms  # noqa: E402
+import publish_guard as pg  # noqa: E402
 from activity import ActivityEnvelope  # noqa: E402
 
 CANARY = "CANARY-" + "example-corp-pm6-sink-secret"
@@ -181,7 +183,12 @@ def test_adapters_delegate_to_emit_shared_and_pass_guards(monkeypatch: pytest.Mo
     assert pme.find_shared_sink_import_violations(_BACKEND) == []
     seen: list[str] = []
     real_emit = pms.emit_shared
-    monkeypatch.setattr(pms, "emit_shared", lambda s, p, **kw: (seen.append(s), real_emit(s, p, **kw))[1])
+
+    def _spy(s: str, p: Any, **kw: Any) -> pm.SharedProjection:
+        seen.append(s)
+        return real_emit(s, p, **kw)
+
+    monkeypatch.setattr(pms, "emit_shared", _spy)
     for sink_name in sorted(pms.PM6_SINKS):
         _invoke_sink_adapter(sink_name, "Example Corp trace", level=pm.Level.INTERNAL, config=_CFG, delivered=[])
     assert sorted(seen) == sorted(pms.PM6_SINKS)
@@ -200,14 +207,4 @@ def test_adapters_delegate_to_emit_shared_and_pass_guards(monkeypatch: pytest.Mo
         pms.emit_activity_envelope("not-an-envelope", level=pm.Level.PUBLIC, config=_CFG)  # type: ignore[arg-type]
     with pytest.raises(pm.ClassificationError, match="unsupported option"):
         pms.emit_board_entry(entry_id="b-1", repo=_REPO, author="op", status="ok", body="hi", config=_CFG, bogus_opt=1)
-
-    if str(_ROOT) not in sys.path:
-        sys.path.insert(0, str(_ROOT))
-    from scripts import publish_guard  # noqa: PLC0415
-
-    assert (
-        publish_guard.check(
-            _ROOT, ["backend/private_mode_sinks.py", "tests/test_private_mode_sinks.py"], publish_guard.load_rules()
-        )
-        == []
-    )
+    assert pg.check(_ROOT, ["backend/private_mode_sinks.py", "tests/test_private_mode_sinks.py"], pg.load_rules()) == []
