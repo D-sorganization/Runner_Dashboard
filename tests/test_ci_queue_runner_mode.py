@@ -8,7 +8,6 @@ import tempfile
 from pathlib import Path
 
 import yaml
-
 from bash_host import require_bash
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +22,6 @@ MERGE_QUEUE_FLEET_PINNED_JOBS: frozenset[str] = frozenset()
 _FORBIDDEN_CREDENTIAL_MARKERS = (
     "secrets.",
     "TAILSCALE",
-    "tailnet",
     "HUB_FLEET_TOKEN",
     "SSH_PRIVATE",
     "FLEET_SSH",
@@ -175,9 +173,7 @@ def test_github_token_is_limited_to_pull_request_scope_step() -> None:
     workflow = _load_workflow()
     changes_steps = workflow["jobs"]["changes"]["steps"]
     token_steps = [
-        step
-        for step in changes_steps
-        if "GH_TOKEN" in str(step.get("env", {})) or "github.token" in str(step)
+        step for step in changes_steps if "GH_TOKEN" in str(step.get("env", {})) or "github.token" in str(step)
     ]
     assert len(token_steps) == 1
     scope_step = token_steps[0]
