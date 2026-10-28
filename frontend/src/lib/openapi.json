@@ -5771,6 +5771,105 @@
         "title": "SessionDigestAppendResponse",
         "type": "object"
       },
+      "SessionSummary": {
+        "description": "The latest known state of one ``(source, session_id)`` activity session.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "last_event_at": {
+            "format": "date-time",
+            "title": "Last Event At",
+            "type": "string"
+          },
+          "last_event_id": {
+            "title": "Last Event Id",
+            "type": "string"
+          },
+          "last_kind": {
+            "title": "Last Kind",
+            "type": "string"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "session_id",
+          "node",
+          "status",
+          "repo",
+          "branch",
+          "issue",
+          "pr",
+          "last_kind",
+          "last_seq",
+          "last_event_id",
+          "last_event_at"
+        ],
+        "title": "SessionSummary",
+        "type": "object"
+      },
       "SessionTelemetryPayload": {
         "description": "Session telemetry payload (issue #1849 / RD-4).",
         "properties": {
@@ -5898,6 +5997,29 @@
         },
         "required": ["session_id"],
         "title": "SessionTelemetryPayload",
+        "type": "object"
+      },
+      "SessionsPage": {
+        "description": "A bounded page of :class:`SessionSummary` rows.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "scan_limit": {
+            "title": "Scan Limit",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": ["items", "scan_limit", "truncated"],
+        "title": "SessionsPage",
         "type": "object"
       },
       "StaffAuditListResponse": {
@@ -20137,6 +20259,109 @@
           }
         ],
         "summary": "Ingest Activity",
+        "tags": ["activity"]
+      }
+    },
+    "/api/v1/activity/sessions": {
+      "get": {
+        "description": "Every agent/session checked into the fleet, grouped by node and status (#2860).\n\nStatus is derived entirely from persisted activity-log events (never from an\nin-memory cache), so this is identical after a restart. See\n``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.",
+        "operationId": "read_activity_sessions_api_v1_activity_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Activity Sessions",
         "tags": ["activity"]
       }
     },
