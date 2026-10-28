@@ -24,7 +24,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from ci.private_gate_manifest import load_manifest
 from vuln_scan.docker_ops import docker_ids, image_digest, inspect_argv
 from vuln_scan.sandbox import (
     MAX_OUTPUT_BYTES,
@@ -37,6 +36,8 @@ from vuln_scan.sandbox import (
     validate_argv,
 )
 from vuln_scan.watch import ScanAborted
+
+from .private_gate_manifest import load_manifest
 
 SANDBOX_LABEL = "fleet.private_ci.sandbox=1"
 TOOLCHAIN_ROOT = "/opt/toolchain"
