@@ -70,24 +70,34 @@ def _list_runner_units() -> list[str]:
 
 
 def _unit_is_active(unit: str) -> bool:
-    """Return True when *unit* is currently active (running) according to systemd."""
-    r = subprocess.run(
-        _systemctl_command("is-active", "--quiet", unit),
-        check=False,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-    )
+    """Count active or uninspectable units as active; never replace an unknown unit."""
+    try:
+        r = subprocess.run(
+            _systemctl_command("is-active", "--quiet", unit),
+            check=False,
+            timeout=_SYSTEMCTL_TIMEOUT_S,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("Active-state query failed for %s; treating as active: %s", unit, exc)
+        return True
     return r.returncode == 0
 
 
 def _unit_state(unit: str) -> tuple[str, str]:
-    """Return (ActiveState, SubState) for *unit* from systemctl, or ('', '')."""
-    r = subprocess.run(
-        _systemctl_command("show", unit, "--property=ActiveState,SubState"),
-        capture_output=True,
-        text=True,
-        timeout=_SYSTEMCTL_TIMEOUT_S,
-        check=False,
-    )
+    """Return (ActiveState, SubState), or explicit unknowns if inspection fails."""
+    try:
+        r = subprocess.run(
+            _systemctl_command("show", unit, "--property=ActiveState,SubState"),
+            capture_output=True,
+            text=True,
+            timeout=_SYSTEMCTL_TIMEOUT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("Unit-state query failed for %s: %s", unit, exc)
+        return "unknown", "unknown"
+    if r.returncode != 0:
+        return "unknown", "unknown"
     active_state = ""
     sub_state = ""
     for line in (r.stdout or "").splitlines():
@@ -223,6 +233,12 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
         return True
     if not _unit_has_safe_stop_contract(unit):
         record_runner_control_result("stop", succeeded=False)
+        return False
+    # Import lazily: busy detection reuses this module's state/workdir helpers.
+    from autoscaler_busy import _runner_is_busy
+
+    if _runner_is_busy(unit):
+        log.info("Refusing to stop %s: busy or idleness could not be confirmed", unit)
         return False
     # Issue #935: stop with ``--no-block``. The #640/#679 drain contract lets a
     # busy runner legally hold systemd's stop for up to TimeoutStopUSec (>=120s),

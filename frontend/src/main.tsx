@@ -17,23 +17,30 @@ import {
 } from './lib/sessionExpired'
 import { installWheelValueGuard } from './lib/wheelValueGuard'
 import { loadFonts } from './lib/loadFonts'
+const DemoOverview = React.lazy(() =>
+  import('./pages/DemoOverview').then((m) => ({ default: m.DemoOverview })),
+)
 import './index.css'
 
 // Global guards the Classic layout used to install (#1345): credential API
 // responses bypass the service-worker cache, a 401 tries a silent refresh and
 // then opens the Session Expired dialog, and the mouse wheel never changes a
 // focused number input.
-installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
-installWheelValueGuard(document)
-// Optional telemetry stays outside the render-critical entry bundle (#3282).
-// Web Vitals uses buffered observers, so early paint metrics are still captured.
-void import('./lib/webVitals').then(({ initWebVitals }) => initWebVitals()).catch(() => {
-  // A telemetry chunk failure must not prevent the dashboard from starting.
-})
+const DEMO_MODE = import.meta.env.VITE_RUNNER_DASHBOARD_DEMO === '1'
+
+if (!DEMO_MODE) {
+  installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
+  installWheelValueGuard(document)
+  // Optional telemetry stays outside the render-critical entry bundle (#3282).
+  // Web Vitals uses buffered observers, so early paint metrics are still captured.
+  void import('./lib/webVitals').then(({ initWebVitals }) => initWebVitals()).catch(() => {
+    // A telemetry chunk failure must not prevent the dashboard from starting.
+  })
+}
 
 // Service Worker Registration
 // Provides offline support, caching, and PWA installability.
-if ('serviceWorker' in navigator) {
+if (!DEMO_MODE && 'serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const toaster = (window as any).__toaster
@@ -119,6 +126,7 @@ _win.triggerInstallPrompt = triggerInstallPrompt
  * (issue #831).
  */
 export function AppRoutes() {
+  if (DEMO_MODE) return <DemoOverview />
   return (
     <Routes>
       <Route path="/t/:tabId" element={<RoutedShell />} />
@@ -137,7 +145,7 @@ export function AppRoutes() {
   )
 }
 
-loadFonts()
+if (!DEMO_MODE) loadFonts()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
