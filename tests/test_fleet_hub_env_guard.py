@@ -20,7 +20,7 @@ def test_stale_controltower_hub_url_fails_without_override() -> None:
 def test_matching_hub_url_env_is_allowed() -> None:
     assert_hub_url_env_matches_registry(
         _REGISTRY_HUB_DESK,
-        hub_url_env="http://deskcomputer.tail2bbcc7.ts.net:8321",
+        hub_url_env="http://hub-a.fleet-example.ts.net:8321",
         allow_registry_override=False,
     )
 

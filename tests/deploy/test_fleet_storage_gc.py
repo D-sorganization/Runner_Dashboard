@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import sys
 import tarfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -19,9 +21,40 @@ sys.path.insert(0, str(REPO / "deploy"))
 sys.path.insert(0, str(REPO / "backend"))
 
 import fleet_storage_gc as fsg  # noqa: E402
-from machine_registry import load_machine_registry  # noqa: E402
 
 RUNNER_USER = "dieterolson"
+
+# The shipped machine_registry.yml carries no live topology (#3082); these
+# tests exercise hosts_from_registry's pool/distro/path transformation against
+# a registry shaped like a real deployment instead of the (now-empty) shipped
+# file.
+_SYNTHETIC_REGISTRY: dict[str, object] = {
+    "version": 1,
+    "machines": [
+        {
+            "name": "ControlTower-Runner",
+            "tailscale_nodes": [{"name": "controltower", "preferred": True}],
+            "storage": {},
+            "runner_pools": [
+                {
+                    "name": "ControlTower-Runner",
+                    "runner_base_dir": f"/home/{RUNNER_USER}/actions-runners",
+                    "storage": {"wsl_distro": "ControlTower-Runner"},
+                }
+            ],
+        },
+        {
+            "name": "OGLaptop",
+            "tailscale_nodes": [{"name": "oglaptop", "preferred": True}],
+            "storage": {"wsl_distro": "Ubuntu"},
+        },
+        {
+            "name": "DeskComputer",
+            "tailscale_nodes": [{"name": "deskcomputer", "preferred": True}],
+            "storage": {"wsl_distro": "Ubuntu-22.04"},
+        },
+    ],
+}
 
 
 def _host(**overrides: object) -> fsg.Host:
@@ -59,7 +92,7 @@ def test_host_rejects_invalid_fields(overrides: dict[str, object], needle: str) 
 
 
 def test_registry_hosts_cover_every_live_runner_pool() -> None:
-    hosts = {h.name: h for h in fsg.hosts_from_registry(load_machine_registry(), runner_user=RUNNER_USER)}
+    hosts = {h.name: h for h in fsg.hosts_from_registry(_SYNTHETIC_REGISTRY, runner_user=RUNNER_USER)}
     assert set(hosts) == {"ControlTower-Runner", "OGLaptop", "DeskComputer"}
 
     ct = hosts["ControlTower-Runner"]
@@ -229,8 +262,11 @@ def test_main_rejects_unknown_host_filter(capsys: pytest.CaptureFixture[str]) ->
     assert "nonexistent-host" in capsys.readouterr().err
 
 
-def test_main_list_prints_inventory(capsys: pytest.CaptureFixture[str]) -> None:
-    assert fsg.main(["--list"]) == 0
+def test_main_list_prints_inventory(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(_SYNTHETIC_REGISTRY), encoding="utf-8")
+    with patch("machine_registry.validate_config_path", return_value=registry_path):
+        assert fsg.main(["--list", "--registry", str(registry_path)]) == 0
     out = capsys.readouterr().out
     for name in ("ControlTower-Runner", "OGLaptop", "DeskComputer", "brick", "raspberrypi"):
         assert name in out

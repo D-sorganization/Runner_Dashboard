@@ -22,9 +22,11 @@ from oauth_config import (  # noqa: E402
     allowed_public_origins,
 )
 
-_DESK_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
+
+_DESK_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _DESK_CALLBACK = f"{_DESK_ORIGIN}{OAUTH_CALLBACK_PATH}"
-_OGLAPTOP_ORIGIN = "https://oglaptop.tail2bbcc7.ts.net"
+_OGLAPTOP_ORIGIN = "https://node-b.fleet-example.ts.net"
 _OGLAPTOP_CALLBACK = f"{_OGLAPTOP_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 
@@ -41,21 +43,21 @@ def _credentials_env(**updates: str) -> dict[str, str]:
 
 
 def test_dashboard_url_to_tailscale_https_origin_strips_port() -> None:
-    assert dashboard_url_to_tailscale_https_origin("http://deskcomputer.tail2bbcc7.ts.net:8321") == _DESK_ORIGIN
+    assert dashboard_url_to_tailscale_https_origin("http://hub-a.fleet-example.ts.net:8321") == _DESK_ORIGIN
 
 
 def test_hub_public_origins_from_registry_lists_only_hubs() -> None:
     registry = {
         "machines": [
             {
-                "name": "DeskComputer",
+                "name": "hub-a",
                 "role": "hub",
-                "dashboard_url": "http://deskcomputer.tail2bbcc7.ts.net:8321",
+                "dashboard_url": "http://hub-a.fleet-example.ts.net:8321",
             },
             {
-                "name": "OGLaptop",
+                "name": "node-b",
                 "role": "node",
-                "dashboard_url": "http://oglaptop.tail2bbcc7.ts.net:8321",
+                "dashboard_url": "http://node-b.fleet-example.ts.net:8321",
             },
         ]
     }
@@ -119,7 +121,7 @@ def test_explicit_allowlist_rejects_non_origin_values(origin: str) -> None:
 def test_callback_must_match_origin_plus_path() -> None:
     env = _credentials_env(
         DASHBOARD_PUBLIC_ORIGIN=_DESK_ORIGIN,
-        GITHUB_OAUTH_CALLBACK_URL="https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback/evil",
+        GITHUB_OAUTH_CALLBACK_URL="https://hub-a.fleet-example.ts.net/api/auth/callback/evil",
     )
     diagnostic = OAuthConfig.from_env(env).diagnostic()
     assert diagnostic["ready"] is False

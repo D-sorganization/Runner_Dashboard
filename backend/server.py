@@ -460,6 +460,17 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
+from demo_mode import demo_api_block  # noqa: E402
+
+
+@app.middleware("http")
+async def _demo_api_guard(request: Request, call_next):
+    blocked = demo_api_block(
+        request.url.path,
+        enabled=os.environ.get("RUNNER_DASHBOARD_DEMO") == "1",
+    )
+    return blocked if blocked is not None else await call_next(request)
+
 
 @app.exception_handler(gh_utils.RateLimitedError)
 async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimitedError) -> JSONResponse:
@@ -831,6 +842,14 @@ app.include_router(_coordination_router.router)
 from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
+
+from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+
+app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
+from routers import overload as _fleet_overload_router  # noqa: E402
+
+app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
 
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
@@ -2359,6 +2378,15 @@ def _diagnostics_payload() -> dict:
 
     wsl_vhdx_status = _diagnostics_router.get_cached_wsl_vhdx_status() if _diagnostics_router else []
 
+    # Optional-integration availability for the standalone/no-fleet profile (#3180)
+    integrations_status: dict[str, Any]
+    try:
+        from integration_health import check_all_integration_availability
+
+        integrations_status = check_all_integration_availability()
+    except Exception as exc:  # noqa: BLE001
+        integrations_status = {"error": str(exc)}
+
     # Overall health summary so deploy-check.sh can grep one field
     fleet_node_count_raw = fleet_status.get("node_count", 0)
     fleet_node_count = fleet_node_count_raw if isinstance(fleet_node_count_raw, int) else 0
@@ -2379,6 +2407,7 @@ def _diagnostics_payload() -> dict:
         "cache": cache_status,
         "wsl_vhdx_status": wsl_vhdx_status,
         "storage_handle_incident": storage_handle_incident,
+        "integrations": integrations_status,
     }
 
 
@@ -2837,6 +2866,9 @@ def _acquire_leader_lock() -> bool:
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    if os.environ.get("RUNNER_DASHBOARD_DEMO") == "1":
+        log.info("Demo mode enabled; skipping external clients and background workers")
+        return
     from oauth_config import OAuthConfig, validate_oauth_startup
 
     validate_oauth_startup(OAuthConfig.from_env())
@@ -2974,6 +3006,13 @@ async def _startup() -> None:
     from vuln_scan.scan_service import start_schedule_loop  # noqa: PLC0415
 
     start_schedule_loop()
+
+    if dashboard_config.LIGHTWEIGHT_STARTUP:
+        log.info(
+            "DASHBOARD_LIGHTWEIGHT_STARTUP=1: skipping leader election and background hub tasks",
+        )
+        _runner_audit_router.set_org(ORG)
+        return
 
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from email_intake.models import InboundMessage
 from email_intake.policy import AllowedSender, MailPolicy

@@ -95,7 +95,9 @@ def test_claim_release(rm: FakeRM, client: TestClient) -> None:
     resp = client.post("/api/coordination/claims/release", json=body, headers=_BOT)
     assert resp.status_code == 200, resp.text
     argv = rm.calls()[0][1]
-    assert argv[argv.index("--reason") + 1] == "handed off"
+    # No PR/branch evidence in the fake GitHub (#3274): the agent's own "handed off" is kept
+    # as a note, not trusted as the outcome.
+    assert argv[argv.index("--reason") + 1] == "abandoned: no PR or branch found for #12; agent reported: handed off"
 
 
 # ── auth perimeter ───────────────────────────────────────────────────────

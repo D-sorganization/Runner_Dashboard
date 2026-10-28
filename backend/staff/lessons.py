@@ -13,6 +13,7 @@ from memory.expiry import expiry_is_future
 from memory.models import MemoryEntry
 from memory.redact import contains_secret
 from memory.store import get_memory_store, new_entry_id
+from staff.lesson_provenance import completed_lesson_run
 from staff.standards_registry import LESSONS_TOKEN_CAP, estimate_tokens
 from staff.store import RunRecord, RunStore
 
@@ -72,6 +73,10 @@ def file_proposed_lessons(
     """File STAFF_LESSON lines as proposed lesson entries for cleanly exited runs."""
     if rec.status != "succeeded" or (rec.exit_code is not None and rec.exit_code != 0):
         return []
+    authoritative = completed_lesson_run(run_store, rec)
+    if authoritative is None:
+        return []
+    rec = authoritative
 
     input_data: list[dict[str, Any]] | str = ""
     if transcript_path and transcript_path.is_file():

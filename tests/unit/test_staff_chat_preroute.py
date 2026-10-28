@@ -39,7 +39,7 @@ class _Bus:
 
 def _ask(store: ConversationStore, text: str, kind: str = "auto") -> tuple[Any, Any]:
     th = store.create_thread(title="Ask Barb", kind=kind, participants=["barb", "dieter"])
-    msg = store.add_message(thread_id=th.id, author_kind="user", author="dieter", body_md=text)
+    msg = store.add_message(thread_id=th.id, author_kind="user", author="operator", body_md=text)
     return th, msg
 
 
@@ -48,7 +48,7 @@ def _preroute(store: ConversationStore, bus: _Bus, text: str, **overrides: Any) 
     kwargs: dict[str, Any] = {
         "thread": thread,
         "user_msg": msg,
-        "caller_id": "dieter",
+        "caller_id": "operator",
         "store": store,
         "bus": bus,
         "known_roles": KNOWN,
@@ -188,17 +188,17 @@ def test_a_keyword_follow_up_after_a_barb_reply_is_not_confident() -> None:
     thread, first_msg = _ask(store, "hello, how is your day going?")
     asyncio.run(
         preroute_auto_message(
-            thread=thread, user_msg=first_msg, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+            thread=thread, user_msg=first_msg, caller_id="operator", store=store, bus=bus, known_roles=KNOWN
         )
     )
     _barb_reply(store, thread.id)
     follow_up = store.add_message(
-        thread_id=thread.id, author_kind="user", author="dieter", body_md="analyse the queue backlog"
+        thread_id=thread.id, author_kind="user", author="operator", body_md="analyse the queue backlog"
     )
 
     pre = asyncio.run(
         preroute_auto_message(
-            thread=thread, user_msg=follow_up, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+            thread=thread, user_msg=follow_up, caller_id="operator", store=store, bus=bus, known_roles=KNOWN
         )
     )
 
@@ -211,17 +211,17 @@ def test_an_explicit_mention_follow_up_after_a_barb_reply_still_routes() -> None
     thread, first_msg = _ask(store, "hello, how is your day going?")
     asyncio.run(
         preroute_auto_message(
-            thread=thread, user_msg=first_msg, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+            thread=thread, user_msg=first_msg, caller_id="operator", store=store, bus=bus, known_roles=KNOWN
         )
     )
     _barb_reply(store, thread.id)
     follow_up = store.add_message(
-        thread_id=thread.id, author_kind="user", author="dieter", body_md="@librarian please tidy this up"
+        thread_id=thread.id, author_kind="user", author="operator", body_md="@librarian please tidy this up"
     )
 
     pre = asyncio.run(
         preroute_auto_message(
-            thread=thread, user_msg=follow_up, caller_id="dieter", store=store, bus=bus, known_roles=KNOWN
+            thread=thread, user_msg=follow_up, caller_id="operator", store=store, bus=bus, known_roles=KNOWN
         )
     )
 

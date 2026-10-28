@@ -2,14 +2,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-
 from email_intake.intake_store import IntakeStore
 from email_intake.models import InboundMessage
 from email_intake.pipeline import process_inbound_message
 from email_intake.policy import AllowedSender, MailPolicy
 from intake_proposals.store import IntakeProposalStore
 from staff.roles import RoleSpec
-from staff.store import _config_dir
 
 
 @pytest.fixture
