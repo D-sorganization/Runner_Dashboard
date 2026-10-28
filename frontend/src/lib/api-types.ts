@@ -5236,7 +5236,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/activity/events": {
+    "/api/v1/activity/checkins": {
         parameters: {
             query?: never;
             header?: never;
@@ -5246,9 +5246,29 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Ingest Activity
-         * @description Bound the wire body before parsing; never trust source-side redaction.
+         * Checkin Activity
+         * @description Write-only tier for agents off the tailnet (Cursor cloud, unconnected boxes).
+         *
+         *     The ``activity.checkin`` scope is never combined with a read or chat scope,
+         *     so a check-in credential cannot read activity, staff threads or anything else.
          */
+        post: operations["checkin_activity_api_v1_activity_checkins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Activity */
         post: operations["ingest_activity_api_v1_activity_events_post"];
         delete?: never;
         options?: never;
@@ -19938,6 +19958,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    checkin_activity_api_v1_activity_checkins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEnvelope"][];
                 };
             };
         };
