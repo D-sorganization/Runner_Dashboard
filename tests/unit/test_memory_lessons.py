@@ -64,10 +64,15 @@ def _req(**kw: Any) -> MemoryAppendRequest:
 
 
 def _ent(eid: str, **kw: Any) -> MemoryEntry:
-    d = dict(entry_type="lesson", author_principal="a", source_product="d", repo="RD", review_status="accepted")
-    return MemoryEntry(
-        id=eid, created_at=datetime.now(UTC).isoformat(), source_run="run-1", body={"s": "x"}, **(d | kw)
+    d = dict(
+        entry_type="lesson",
+        author_principal="a",
+        source_product="d",
+        repo="RD",
+        review_status="accepted",
+        body={"s": "x"},
     )
+    return MemoryEntry(id=eid, created_at=datetime.now(UTC).isoformat(), source_run="run-1", **(d | kw))
 
 
 def test_librarian_cannot_accept_conflicting_lesson_on_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,6 +181,48 @@ def test_review_accepts_after_authoritative_completion(tmp_path: Path, monkeypat
 
     accepted = review_entry(_p("lib"), lesson.id, MemoryReviewRequest(review_status="accepted"))
     assert accepted.review_status == "accepted"
+
+
+def test_review_accepts_lesson_whose_locator_still_verifies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff.lesson_locator import locate_lesson_evidence
+
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    run_store = run_stores.get_store()
+    run_store.append_event("run-1", "assistant", "STAFF_LESSON: Use real locator.", lesson_evidence="assistant_answer")
+    locator = locate_lesson_evidence(run_store, "run-1", "RD", "Use real locator.")
+    store = AssistantMemoryStore(db)
+    store.append(_ent("located", review_status="proposed", body={"text": "Use real locator.", "locator": locator}))
+    run_store.update_run("run-1", status="succeeded", exit_code=0)
+
+    accepted = review_entry(_p("lib"), "located", MemoryReviewRequest(review_status="accepted"))
+    assert accepted.review_status == "accepted"
+
+
+def test_review_rejects_lesson_whose_locator_no_longer_verifies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff.lesson_locator import locate_lesson_evidence
+
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    run_store = run_stores.get_store()
+    run_store.append_event("run-1", "assistant", "STAFF_LESSON: Use real locator.", lesson_evidence="assistant_answer")
+    locator = locate_lesson_evidence(run_store, "run-1", "RD", "Use real locator.")
+    store = AssistantMemoryStore(db)
+    store.append(_ent("tampered", review_status="proposed", body={"text": "Use real locator.", "locator": locator}))
+    run_store.update_run("run-1", status="succeeded", exit_code=0)
+    run_store._conn.execute("UPDATE events SET text = 'STAFF_LESSON: Changed after filing.' WHERE seq = 1")  # noqa: SLF001
+
+    with pytest.raises(HTTPException) as exc:
+        review_entry(_p("lib"), "tampered", MemoryReviewRequest(review_status="accepted"))
+    assert exc.value.status_code == 409
+
+    unchanged = store.get("tampered")
+    assert unchanged is not None
+    assert unchanged.review_status == "proposed" and unchanged.accepted_at is None
 
 
 def test_review_rejects_a_stale_racing_status_transition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

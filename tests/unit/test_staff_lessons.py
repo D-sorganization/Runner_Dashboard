@@ -152,6 +152,66 @@ def test_file_proposed_lessons_skips_oversize_and_files_valid_neighbor_at_limit(
     assert mem_store.list_entries(entry_type="lesson") == [entry]
 
 
+def test_file_proposed_lessons_attaches_verifiable_locator_for_marked_evidence(tmp_path: Path) -> None:
+    from staff.lesson_locator import locate_lesson_evidence
+
+    mem_store = get_memory_store()
+    rec = RunRecord(
+        id="run-marked",
+        role="ad-hoc",
+        provider="claude",
+        model="sonnet",
+        machine="host",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="10",
+        prompt="Fix",
+        status="succeeded",
+        exit_code=0,
+        standards_version="1.0.0",
+        requested_by="operator-1",
+    )
+    run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
+    run_store.append_event(
+        "run-marked", "assistant", "STAFF_LESSON: Use real locator.", lesson_evidence="assistant_answer"
+    )
+
+    filed = file_proposed_lessons(run_store, rec)
+    assert len(filed) == 1
+    entry = mem_store.get(filed[0])
+    assert entry is not None
+    assert entry.body["locator"] == locate_lesson_evidence(run_store, "run-marked", "Tools", "Use real locator.")
+
+
+def test_file_proposed_lessons_omits_locator_without_marked_evidence(tmp_path: Path) -> None:
+    mem_store = get_memory_store()
+    rec = RunRecord(
+        id="run-unmarked",
+        role="ad-hoc",
+        provider="claude",
+        model="sonnet",
+        machine="host",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="10",
+        prompt="Fix",
+        status="succeeded",
+        exit_code=0,
+        standards_version="1.0.0",
+        requested_by="operator-1",
+    )
+    t_file = tmp_path / "transcript.log"
+    t_file.write_text("STAFF_LESSON: No marked evidence behind this one.\n", encoding="utf-8")
+    run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
+
+    filed = file_proposed_lessons(run_store, rec, transcript_path=t_file)
+    assert len(filed) == 1
+    entry = mem_store.get(filed[0])
+    assert entry is not None and "locator" not in entry.body
+
+
 def test_select_repo_lessons_filtering() -> None:
     now = datetime.now(UTC)
     s = get_memory_store()
