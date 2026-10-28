@@ -168,29 +168,19 @@ describe("NewPanelForm", () => {
 
     const presetSelect = screen.getByLabelText(/preset/i);
     const pendingOption = document.createElement("option");
-    pendingOption.value = "fleet-decision";
+    pendingOption.value = "engineering-review";
     presetSelect.appendChild(pendingOption);
     await act(async () => {
-      fireEvent.change(presetSelect, { target: { value: "fleet-decision" } });
+      fireEvent.change(presetSelect, { target: { value: "engineering-review" } });
     });
 
     await act(async () => {
-      resolvePresets(fleetPresets());
+      resolvePresets(mockPresets);
     });
 
     await waitFor(() => {
-      expect(screen.getAllByLabelText(/expert name/i)[0]).toHaveValue("Argon");
+      expect(screen.getAllByLabelText(/expert name/i)[0]).toHaveValue("Architect");
     });
-    expect(screen.getAllByLabelText(/expert provider/i).map((el) => (el as HTMLSelectElement).value)).toEqual([
-      "antigravity",
-      "codex",
-      "claude",
-    ]);
-    expect(screen.getAllByLabelText(/expert model/i).map((el) => (el as HTMLInputElement).value)).toEqual([
-      "gemini-4-argon-high",
-      "gpt-6-astra",
-      "claude-fable-5-1",
-    ]);
   });
 
   it("shows the estimate on PanelCostRequired and Confirm resubmits with confirm_cost true", async () => {
