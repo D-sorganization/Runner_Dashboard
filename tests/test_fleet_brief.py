@@ -59,6 +59,11 @@ async def test_build_fleet_brief_combines_every_source(monkeypatch: pytest.Monke
     monkeypatch.setattr(repos_mod, "_pr_inventory", _FakeInventory({"items": [1, 2]}))
     monkeypatch.setattr(repos_mod, "_issue_inventory", _FakeInventory({"items": [1]}))
     monkeypatch.setattr(brief_mod, "_queue_shepherd", lambda repo: _async_result({"repo": repo}, []))
+    monkeypatch.setattr(
+        brief_mod,
+        "_overload",
+        lambda repo: _async_result({"repo": repo, "overloaded": False, "mode": "NORMAL"}, []),
+    )
 
     brief = await brief_mod.build_fleet_brief("D-sorganization/Runner_Dashboard")
 
@@ -69,6 +74,7 @@ async def test_build_fleet_brief_combines_every_source(monkeypatch: pytest.Monke
     assert brief["issues"] == {"items": [1]}
     assert brief["holds"] == [{"text": "no deploy"}]
     assert brief["queue_shepherd"] == {"repo": "D-sorganization/Runner_Dashboard"}
+    assert brief["overload"] == {"repo": "D-sorganization/Runner_Dashboard", "overloaded": False, "mode": "NORMAL"}
     assert brief["warnings"] == []
 
 
@@ -85,6 +91,7 @@ async def test_build_fleet_brief_degrades_independently_on_a_failing_source(monk
     monkeypatch.setattr(repos_mod, "_pr_inventory", _FakeInventory({"items": []}))
     monkeypatch.setattr(repos_mod, "_issue_inventory", _FakeInventory({"items": []}))
     monkeypatch.setattr(brief_mod, "_queue_shepherd", lambda repo: _async_result({}, []))
+    monkeypatch.setattr(brief_mod, "_overload", lambda repo: _async_result({}, []))
 
     brief = await brief_mod.build_fleet_brief("D-sorganization/Runner_Dashboard")
 
@@ -138,6 +145,20 @@ async def test_queue_shepherd_section_skips_when_no_repo_given() -> None:
     assert section == {} and warnings == []
 
 
+@pytest.mark.asyncio
+async def test_overload_section_degrades_and_skips_when_no_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    section, warnings = await brief_mod._overload(None)
+    assert section == {} and warnings == []
+
+    async def _boom(repo: str) -> dict[str, Any]:
+        raise RuntimeError("overload failed")
+
+    monkeypatch.setattr("coordination.overload.build_overload_snapshot", _boom)
+    section2, warnings2 = await brief_mod._overload("D-sorganization/Runner_Dashboard")
+    assert section2 == {}
+    assert any("overload unavailable" in w for w in warnings2)
+
+
 def test_render_markdown_reports_counts_and_warnings() -> None:
     brief = {
         "repo": "D-sorganization/Runner_Dashboard",
@@ -149,6 +170,13 @@ def test_render_markdown_reports_counts_and_warnings() -> None:
         "staff_runs": [{"status": "running"}, {"status": "succeeded"}],
         "hub_status": {"node-a": {"status": "offline"}},
         "queue_shepherd": {"queue_depth": 4, "dependency_violations": [1], "path_conflicts": []},
+        "overload": {
+            "overloaded": True,
+            "mode": "DRAIN",
+            "lane_notice": "OVERLOAD_MODE=DRAIN repo=D-sorganization/Runner_Dashboard action=rebase,fix,arm-only",
+            "consolidation_suggestions": [{"surviving_pr": 10, "absorbed_prs": [11]}],
+            "queue_batching": {"observed_group_minutes": 14.5, "merges_per_hour_1h": 3.0},
+        },
         "warnings": ["queue unavailable: boom"],
     }
 
@@ -162,6 +190,8 @@ def test_render_markdown_reports_counts_and_warnings() -> None:
     assert "Active staff runs: 1" in md  # only the running one counts
     assert "Hub nodes offline: 1 (node-a)" in md
     assert "Queue-shepherd: depth=4, 1 dependency issue(s), 0 conflict(s)" in md
+    assert "Swarm overload: OVERLOADED (mode=DRAIN)" in md
+    assert "14.5m" in md
     assert "queue unavailable: boom" in md
 
 
