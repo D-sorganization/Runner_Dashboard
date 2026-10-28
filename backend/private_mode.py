@@ -1,30 +1,10 @@
 """Private Mode classification levels (issue #3250, epic #3249/#3077).
 
-Defines the total-ordered :class:`Level` enum and the ``private_mode``
-overlay schema field (#3079). An overlay with no ``private_mode`` key, or no
-overlay at all, resolves to :data:`DISABLED` (``enabled=False``,
-``default_level=Level.PUBLIC``): classification never diverges from today's
-PUBLIC-everywhere behaviour. That is the safe-disable contract this slice
-ships; every later Private Mode slice builds on it without changing it.
-
-Level semantics:
-
-* ``PUBLIC`` -- may appear on any surface: hub logs, transcripts, panel
-  threads, board posts, metrics, GitHub logs and artifacts. Today's only
-  level; unchanged while the flag is off.
-* ``INTERNAL`` -- fleet-internal. Stays off public surfaces (public repo
-  mirrors, public GitHub issues/PRs/comments, OSS artifacts) but may still
-  reach the fleet's own private hub logs, transcripts and board. The level
-  for private-but-not-sensitive content; a later slice (PM-1) migrates
-  legacy, pre-flag threads here rather than leaving them PUBLIC.
-* ``SENSITIVE`` -- must never reach *any* shared surface at all: not hub
-  logs, not transcripts, not panel threads, not board posts, not metrics,
-  not GitHub logs or artifacts. Confined to private, ephemeral, RD-owned
-  infrastructure built out in later slices of this epic.
-
-Validation error messages name keys and reasons only; they never echo the
-rejected value, because an operator-supplied ``default_level`` may be a
-placeholder for something private.
+Defines the total-ordered :class:`Level` enum (``PUBLIC < INTERNAL < SENSITIVE``)
+and the ``private_mode`` overlay schema field (#3079). An overlay with no
+``private_mode`` key, or no overlay at all, resolves to :data:`DISABLED`
+(``enabled=False``, ``default_level=Level.PUBLIC``). Validation error messages
+name keys and reasons only; they never echo rejected values.
 """
 
 from __future__ import annotations
