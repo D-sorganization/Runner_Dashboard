@@ -1,4 +1,4 @@
-"""Per-repo swarm overload detection, auto-DRAIN mode, and PR consolidation (issue #3293, slices 1-3)."""
+"""Per-repo swarm overload detection, auto-DRAIN, PR consolidation, and queue batching (issue #3293)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,13 @@ from typing import Any
 
 import gh_client
 import pr_inventory
+from coordination.queue_batching import (
+    MERGE_QUEUE_PARAM_KEYS as _MERGE_QUEUE_PARAM_KEYS,
+)
+from coordination.queue_batching import (
+    build_queue_batching_summary,
+    fetch_completed_merge_group_runs,
+)
 from delivery_metrics.adapters.github import GhClientDeliveryCollector
 from delivery_metrics.models import PrSnapshot
 
@@ -26,13 +33,6 @@ DEFAULT_DRAIN_EXCEPTIONS: tuple[str, ...] = ("ci-unblock", "runner-unblock", "se
 
 _HISTORY_HOURS = max(max(WINDOW_HOURS), CONSECUTIVE_WINDOWS_THRESHOLD)
 _MERGE_QUEUE_RULE_TYPE = "merge_queue"
-_MERGE_QUEUE_PARAM_KEYS = (
-    "max_entries_to_build",
-    "max_entries_to_merge",
-    "min_entries_to_merge",
-    "min_entries_to_merge_wait_minutes",
-    "check_response_timeout_minutes",
-)
 _MAX_QUEUE_RUNS_SCANNED = 300
 _drain_latched_since: dict[str, str] = {}
 
@@ -191,26 +191,20 @@ def evaluate_drain_mode(
     recovery = windows.get(RECOVERY_WINDOW_KEY) or {}
     open_rate = float(recovery.get("open_rate_per_hour", 0.0))
     merge_rate = float(recovery.get("merge_rate_per_hour", 0.0))
-    recovered = merge_rate > open_rate
-
-    latched, cleared, active = False, False, False
-    latched_at: str | None = None
-    reason = ""
+    latched, cleared, active, latched_at, reason = False, False, False, None, ""
     if overloaded:
-        latched_at = _drain_latched_since.setdefault(repo, now.isoformat())
-        active = True
+        latched_at, active = _drain_latched_since.setdefault(repo, now.isoformat()), True
         reason = "; ".join(overload_reasons) or "repo is OVERLOADED"
     elif repo in _drain_latched_since:
-        if recovered:
+        if merge_rate > open_rate:
             _drain_latched_since.pop(repo, None)
-            cleared = True
-            reason = f"drain cleared: {RECOVERY_WINDOW_KEY} merge_rate ({merge_rate}/h) > open_rate ({open_rate}/h)"
+            cleared, reason = (
+                True,
+                f"drain cleared: {RECOVERY_WINDOW_KEY} merge_rate ({merge_rate}/h) > open_rate ({open_rate}/h)",
+            )
         else:
             latched_at, active, latched = _drain_latched_since[repo], True, True
-            reason = (
-                f"holding DRAIN until {RECOVERY_WINDOW_KEY} merge_rate ({merge_rate}/h) "
-                f"exceeds open_rate ({open_rate}/h)"
-            )
+            reason = f"holding DRAIN: {RECOVERY_WINDOW_KEY} merge_rate ({merge_rate}/h) <= open_rate ({open_rate}/h)"
 
     return {
         "active": active,
@@ -444,7 +438,8 @@ async def build_overload_snapshot(
     recent_prs, history_err = await _fetch_recent_prs(repo)
     queue_depth, queue_err = await _fetch_queue_depth(repo)
     merge_queue_settings, settings_err = await _fetch_merge_queue_settings(repo)
-    warnings = [err for err in (open_err, history_err, queue_err, settings_err) if err]
+    completed_group_runs, group_runs_err = await fetch_completed_merge_group_runs(repo)
+    warnings = [err for err in (open_err, history_err, queue_err, settings_err, group_runs_err) if err]
 
     reasons: list[str] = []
     if _consecutive_overloaded_buckets(recent_prs, now=now):
@@ -472,6 +467,13 @@ async def build_overload_snapshot(
         "notice_line": notice_line,
     }
     consolidation_suggestions = suggest_pr_consolidations(open_prs, recent_prs=recent_prs, size_cap=pr_size_cap)
+    queue_batching = build_queue_batching_summary(
+        settings=merge_queue_settings,
+        windows=win,
+        queue_depth=queue_depth,
+        completed_runs=completed_group_runs,
+        since=now - timedelta(hours=_HISTORY_HOURS),
+    )
 
     return {
         "repo": repo,
@@ -480,6 +482,7 @@ async def build_overload_snapshot(
         "windows": win,
         "merge_queue_depth": queue_depth,
         "merge_queue_settings": merge_queue_settings,
+        "queue_batching": queue_batching,
         "overloaded": overloaded,
         "overload_reasons": reasons,
         "mode": drain_state["mode"],
