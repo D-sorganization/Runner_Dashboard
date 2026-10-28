@@ -189,6 +189,29 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         ),
     ),
     ProviderEntry(
+        dashboard_id="anthropic_api",
+        conductor_id="anthropic-api",
+        label="Anthropic API",
+        execution_mode="remote_session",
+        dispatch_mode="future",
+        auth_mode="api_key",
+        resource="runner",
+        capabilities=("code_edit", "ci_fix", "test_fix"),
+        cost_per_task=0.0,
+        max_concurrency=1,
+        required_env=("ANTHROPIC_API_KEY",),
+        credential_id="anthropic_api",
+        setup_hint="Set ANTHROPIC_API_KEY (or ANTHROPIC_API_KEY_ENV_VAR) in the runner-dashboard env or vault",
+        editable=False,
+        remote=True,
+        enabled=False,
+        notes=(
+            "Issue #3123: a subscription-included $200/month credit, separate from the CLI seats above. Ships "
+            "inert — no key exists yet and dispatch_mode stays 'future' until the non-CLI (Messages API) dispatch "
+            "path exists; listed here for status visibility only (requirement 1), not yet selectable for a run."
+        ),
+    ),
+    ProviderEntry(
         dashboard_id="codex_cli",
         conductor_id="codex-cli",
         label="Codex CLI",

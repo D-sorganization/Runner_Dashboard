@@ -2,6 +2,7 @@
 
 Routes:
   POST /panels                 Start a panel (3-4 experts, N rounds, debate or brainstorm).
+  GET  /panels                 Recent panel threads with compact status (#3313).
   GET  /panels/presets         Ready-made expert line-ups and the providers a seat may use.
   GET  /panels/{thread_id}     Turns, stances, consensus and the moderator's synthesis.
 """
@@ -13,15 +14,17 @@ import asyncio
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from identity import Principal, format_caller, require_scope
 from staff.audit import record_audit
 from staff.conversations import ConversationsUnavailableError, get_conversation_store
+from staff.pagination import paginate_items
 from staff.panel import (
     TurnRunner,
     active_panel_count,
     default_turn_runner,
     estimate_panel_cost,
+    list_panel_summaries,
     panel_result,
     run_panel,
     start_panel_thread,
@@ -86,6 +89,33 @@ async def create_panel(
         fail_closed=False,
     )
     return {"thread": thread.to_dict(), "estimate": estimate.to_dict()}
+
+
+@router.get("/panels", summary="List recent expert panels", response_model_exclude_none=True)
+async def list_panels(
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: str | None = Query(default=None),
+    _caller: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Recent panel threads with status and progress; newest activity first."""
+    try:
+        store = get_conversation_store()
+        summaries = list_panel_summaries(store, limit=200)
+    except ConversationsUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    page = paginate_items(
+        summaries,
+        cursor=cursor,
+        limit=limit,
+        key_fn=lambda row: (str(row.get("updated_at") or row.get("created_at") or ""), str(row["thread_id"])),
+    )
+    return {
+        "items": page.items,
+        "panels": page.items,
+        "next_cursor": page.next_cursor,
+        "prev_cursor": page.prev_cursor,
+        "has_more": page.has_more,
+    }
 
 
 @router.get("/panels/presets", summary="Expert panel presets")
