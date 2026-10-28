@@ -122,19 +122,17 @@ class HubThreadBus:
             raise
         envelope_id = str(sealed["id"])
         thread_id = self._hub.thread_for(delivery.to)
-        last_exc: Exception | None = None
         for delay in (*self._retry_delays, None):
             try:
                 message_id = self._hub.write_message(thread_id, sealed, delivery.idempotency_key)
                 self.guard.note_delivered(envelope_id)
                 return message_id
             except Exception as exc:  # noqa: BLE001 — retry transient hub/store failures
-                last_exc = exc
                 if delay is None:
                     self.guard.record_transport_failure(envelope_id, str(exc))
-                    raise
+                    raise exc
                 self._sleep(delay)
-        raise last_exc  # pragma: no cover
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def ack(self, to: str, message_id: str) -> None:
         key = (to, message_id)
