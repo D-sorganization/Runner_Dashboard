@@ -6,6 +6,7 @@ import sqlite3
 from datetime import datetime
 
 from delivery_metrics.models import CheckRunSnapshot, PrSnapshot
+from delivery_metrics.workflow_runs import workflow_run_id_from_url
 from time_utils import parse_github_ts
 
 
@@ -50,6 +51,7 @@ def _row_check(row: sqlite3.Row) -> CheckRunSnapshot:
         completed_at=parse_github_ts(row["completed_at"]),
         details_url=row["details_url"],
         app_slug=row["app_slug"],
+        workflow_run_id=workflow_run_id_from_url(row["details_url"]),
     )
 
 

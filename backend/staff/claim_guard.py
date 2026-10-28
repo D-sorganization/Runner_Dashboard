@@ -39,7 +39,7 @@ CLAIM_PREFIX = "claim:"
 STAFF_LABEL = "claim:staff"
 ROLE_LABELS = frozenset({"claim:issue-remediator", "claim:pr-remediator"})
 OWN_LABELS = frozenset({STAFF_LABEL}) | ROLE_LABELS
-TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled", "blocked"})
 OVERRIDE_SCOPE = "staff.admin"
 DEFAULT_ORG = "D-sorganization"
 PULLS_TTL_SECONDS = 30.0
@@ -417,9 +417,9 @@ async def apply_claim(run_id: str, repo: str, issue: int, role: str, *, write: A
 
 def _live_store() -> Any:
     """The process runner's store when one exists (never constructs a runner)."""
-    from staff import runner as runner_mod  # noqa: PLC0415
+    from staff import runner_registry  # noqa: PLC0415
 
-    live = runner_mod._runner  # noqa: SLF001
+    live = runner_registry._runner  # noqa: SLF001
     return live.store if live is not None else None
 
 

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "_comment": "rd-barb node-leader topology (#3117, part of #3064). Exactly one leader; at most one warm standby; every other node forwards only and never leads.",
+  "nodes": [
+    { "name": "DeskComputer", "role": "leader", "priority": 1 },
+    { "name": "ControlTower", "role": "standby", "priority": 2 },
+    { "name": "Brick", "role": "forwarder" },
+    { "name": "OGLaptop", "role": "forwarder" }
+  ]
+}

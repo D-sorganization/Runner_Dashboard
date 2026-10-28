@@ -28,7 +28,7 @@ class FakeNext:
     def __call__(self, current: str | None = None, failure: str | None = None, run_id: str | None = None) -> wd.Pick:
         self.calls.append((current, failure))
         if current is None:
-            return wd.Pick("claude", "claude-opus-5-5")
+            return wd.Pick("claude", "opus")
         idx = CHAIN.index(current) + 1
         return wd.Pick(CHAIN[idx], None) if idx < len(CHAIN) else wd.Pick(None, None)
 
@@ -63,7 +63,7 @@ def test_clean_exit_does_not_restart() -> None:
     nxt = FakeNext()
     seen, launch = _launcher([(0, "ok")])
     assert wd.supervise(launch=launch, next_provider=nxt, sleep=lambda _s: None) == 0
-    assert seen == [("claude", "claude-opus-5-5")]
+    assert seen == [("claude", "opus")]
     assert nxt.calls == [(None, None)]
 
 
@@ -71,7 +71,7 @@ def test_auth_expired_restarts_on_next_provider_via_next() -> None:
     nxt = FakeNext()
     seen, launch = _launcher([(1, "authentication expired"), (0, "ok")])
     assert wd.supervise(launch=launch, next_provider=nxt, sleep=lambda _s: None) == 0
-    assert seen == [("claude", "claude-opus-5-5"), ("codex", None)]
+    assert seen == [("claude", "opus"), ("codex", None)]
     assert nxt.calls == [(None, None), ("claude", "auth_expired")]
 
 
@@ -148,7 +148,7 @@ def test_main_fails_closed_without_launch_cmd(capsys: pytest.CaptureFixture[str]
 def test_main_dry_run_prints_command_and_launches_nothing(capsys: pytest.CaptureFixture[str]) -> None:
     cfg = {"RD_BARB_LAUNCH_CMD": "bin/rd-barb-session {provider} {model}"}
     assert wd.main(["run", "--dry-run"], config=cfg, next_provider=FakeNext()) == 0
-    assert capsys.readouterr().out.strip() == "bin/rd-barb-session claude claude-opus-5-5"
+    assert capsys.readouterr().out.strip() == "bin/rd-barb-session claude opus"
 
 
 def test_tail_keeps_last_bytes_only() -> None:
@@ -159,7 +159,7 @@ def test_tail_keeps_last_bytes_only() -> None:
 def test_real_next_without_failure_picks_default_and_sends_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in ("RD_BARB_PROVIDER", "RD_BARB_MODEL", "RD_BARB_FAILOVER"):
         monkeypatch.delenv(key, raising=False)
-    assert wd.cli_next() == wd.Pick("claude", "claude-opus-5-5")
+    assert wd.cli_next() == wd.Pick("claude", "opus")
 
 
 def test_load_config_env_launch_cmd_wins_and_ignores_unrelated_keys() -> None:

@@ -44,6 +44,7 @@
         "lint-workflow-files.yml",
         "priority-expedite-guard.yml",
         "pr-cap.yml",
+        "publish-guard.yml",
         "rd-barb-hold-integrity.yml",
         "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",
@@ -65,6 +66,7 @@
         "ci-nightly.yml",
         "ci-standard.yml",
         "frontend-tests.yml",
+        "api-contract-regeneration.yml",
         "lockfile-upgrade.yml",
         "release.yml",
         "main-ci-auto-release.yml"

@@ -997,3 +997,76 @@ class TestGracefulDrainDropin:
         assert "systemctl kill" not in code_src, (
             "_stop_unit must not use systemctl kill; that bypasses the graceful-drain drop-in"
         )
+
+
+# ---------------------------------------------------------------------------
+# Scale-down honours virtual / github-claim leases (issue #3025)
+# ---------------------------------------------------------------------------
+
+
+class _StopLoop(BaseException):
+    """Escapes the poll loop's ``except Exception`` once the decision tick ran."""
+
+
+def _run_scale_down_tick(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, leases_yaml: str) -> list[str]:
+    """Drive ``_run_poll_loop`` for one decision tick; return the units it stopped."""
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir()
+    (config_dir / "leases.yml").write_text(leases_yaml, encoding="utf-8")
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config_dir))
+
+    units = [
+        "actions.runner.org.runner-a.service",
+        "actions.runner.org.runner-b.service",
+    ]
+    sample = {
+        "cpu": 1.0,
+        "mem": 1.0,
+        "load": 0.1,
+        "disk": 1.0,
+        "disk_free": 500.0,
+        "cache_pressure": 0.0,
+        "io_pressure": 0.0,
+    }
+    stopped: list[str] = []
+    sleeps = {"n": 0}
+
+    def fake_sleep(_secs: float) -> None:
+        sleeps["n"] += 1
+        if sleeps["n"] >= 3:
+            raise _StopLoop
+
+    monkeypatch.setattr(ra, "_notify_systemd", lambda _s: True)
+    monkeypatch.setattr(ra, "_send_watchdog", lambda: None)
+    monkeypatch.setattr(ra, "_sample_all_pools", lambda: {p: dict(sample) for p in ("default", "nvme", "hdd")})
+    monkeypatch.setattr(ra, "_list_runner_units", lambda: list(units))
+    monkeypatch.setattr(ra, "process_disk_full_cordon_tick", lambda *a, **k: False)
+    monkeypatch.setattr(ra, "_classify_unit", lambda _u: "default")
+    monkeypatch.setattr(ra, "_unit_is_active", lambda _u: True)
+    monkeypatch.setattr(ra, "_runner_is_busy", lambda _u: False)
+    monkeypatch.setattr(ra, "_get_scheduled_pool_desired", lambda _p, _n: 0)
+    monkeypatch.setattr(ra, "_is_stop_allowed", lambda _p: True)
+    monkeypatch.setattr(ra, "_stop_in_cooldown", lambda _p: False)
+    monkeypatch.setattr(ra, "_record_stop_action", lambda _p: None)
+    monkeypatch.setattr(ra, "_stop_unit", lambda u, reason="": stopped.append(u) or True)
+    monkeypatch.setattr(ra, "MAX_STEP", 5)
+    monkeypatch.setattr(ra.time, "sleep", fake_sleep)
+    with pytest.raises(_StopLoop):
+        ra._run_poll_loop()
+    return stopped
+
+
+def test_scale_down_respects_virtual_leases(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A runner pinned by a virtual-{env} lease is never chosen for scale-down."""
+    stopped = _run_scale_down_tick(
+        monkeypatch,
+        tmp_path,
+        "leases:\n  - runner_id: virtual-prod\n    metadata:\n      runner_name: runner-a\n",
+    )
+    assert stopped == ["actions.runner.org.runner-b.service"]
+
+
+def test_scale_down_blocked_by_unpinned_github_claim_lease(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An unresolvable github-claim lease fails closed: nothing is stopped this tick."""
+    stopped = _run_scale_down_tick(monkeypatch, tmp_path, "leases:\n  - runner_id: github-claim-42\n")
+    assert stopped == []
