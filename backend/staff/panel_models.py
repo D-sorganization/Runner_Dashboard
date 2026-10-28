@@ -40,6 +40,8 @@ def enabled_panel_providers() -> tuple[str, ...]:
 # A model id is appended to the provider CLI argv (``--model <id>``); this shape can never be a flag
 # (no leading '-'), a shell fragment or whitespace, so it cannot inject arguments.
 MODEL_ID_RE = re.compile(r"^[A-Za-z0-9._:/][A-Za-z0-9._:/-]{0,79}$")
+# ``repo#number``, e.g. "Runner_Dashboard#3313" (#3313).
+REF_RE = re.compile(r"^([A-Za-z][\w.-]*)#([0-9]+)$")
 
 
 def _check_model(model: str | None, seat: str) -> str | None:
@@ -111,6 +113,8 @@ class PanelCreateRequest(BaseModel):
     preload_codebase: bool = True
     # With ``repos``: seats read a read-only snapshot of origin/main for those repos (#2511).
     ground_repos: bool = True
+    # ``repo#n``: RD fetches each issue/PR's own facts and prepends them to the topic (#3313).
+    refs: list[str] | None = Field(default=None, min_length=1, max_length=4)
 
     @field_validator("repos")
     @classmethod
@@ -118,6 +122,19 @@ class PanelCreateRequest(BaseModel):
         if repos is not None and (len(set(repos)) != len(repos) or any(repo not in CODEBASE_REPOS for repo in repos)):
             raise ValueError("repos must contain unique configured fleet repository names")
         return repos
+
+    @field_validator("refs")
+    @classmethod
+    def _known_refs(cls, refs: list[str] | None) -> list[str] | None:
+        if refs is None:
+            return refs
+        if len(set(refs)) != len(refs):
+            raise ValueError("refs must be unique")
+        for ref in refs:
+            match = REF_RE.fullmatch(ref)
+            if not match or match.group(1) not in CODEBASE_REPOS:
+                raise ValueError(f"ref {ref!r} must be 'repo#number' naming a configured fleet repository")
+        return refs
 
     @field_validator("moderator_provider")
     @classmethod
