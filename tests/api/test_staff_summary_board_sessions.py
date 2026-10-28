@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from staff import adapters as adapters_mod
 from staff import fleet as fleet_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 SESSION = {
@@ -53,7 +54,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     r = runner_mod.StaffRunner(
         store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters={"claude": fake}, machine="Desk"
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     app = FastAPI()
     app.include_router(staff_router.router)
     app.dependency_overrides[require_fleet_peer] = lambda: "test-peer"

@@ -254,6 +254,16 @@ def test_label_removed_on_terminal_state() -> None:
     assert "run-1" not in claim_guard._applied
 
 
+def test_label_removed_when_lease_blocks_run() -> None:
+    claim_guard._applied["run-blocked"] = (REPO, 7, "claim:issue-remediator")
+    calls: list[tuple[str, str]] = []
+    claim_guard.release_claim(
+        "run-blocked", "blocked", write=lambda ep, method: calls.append((ep, method)), others_active=lambda *_: False
+    )
+    assert calls == [(f"/repos/{REPO}/issues/7/labels/claim%3Aissue-remediator", "DELETE")]
+    assert "run-blocked" not in claim_guard._applied
+
+
 def test_label_not_removed_while_non_terminal_or_shared() -> None:
     claim_guard._applied["run-1"] = (REPO, 7, "claim:staff")
     calls: list[Any] = []

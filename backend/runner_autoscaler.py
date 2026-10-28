@@ -111,6 +111,7 @@ from autoscaler_config import (
 )
 from autoscaler_sampling import (
     _io_pressure_snapshot,
+    _lease_scale_down_guard,
     _leased_runners,
     _sample,
     _sample_pool_disk,
@@ -693,7 +694,8 @@ def _run_poll_loop() -> None:
                 cls = _classify_unit(u)
                 classified_units[cls].append(u)
 
-            leased = _leased_runners()
+            lease_guard = _lease_scale_down_guard()
+            leased = lease_guard.protected_runner_names
             if leased:
                 log.info(
                     "Detected %d active leases: %s",
@@ -712,7 +714,11 @@ def _run_poll_loop() -> None:
                 pool_inactive = [u for u in pool_units if u not in pool_active]
                 pool_busy = {u for u in pool_active if _runner_is_busy(u)}
                 pool_idle_active = [
-                    u for u in pool_active if u not in pool_busy and _runner_name_for_unit(u) not in leased
+                    u
+                    for u in pool_active
+                    if u not in pool_busy
+                    and _runner_name_for_unit(u) not in leased
+                    and not lease_guard.block_scale_down
                 ]
 
                 hist = pool_samples[pool_name]

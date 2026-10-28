@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 from identity import Principal
-from staff import dispatch_service
+from staff import claim_guard, dispatch_service
 from staff import fleet as fleet_mod
 from staff import runner as runner_mod
 from staff.audit import AuditError, get_audit_store, reset_audit_store
@@ -110,19 +110,38 @@ async def test_launch_failure_leaves_a_failed_run_under_the_same_id(
     staff: runner_mod.StaffRunner,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    released: list[tuple[str, str]] = []
+
+    async def apply_claim(run_id: str, repo: str, issue: int, role: str) -> str:
+        claim_guard._applied[run_id] = (repo, issue, "claim:staff")
+        return "claim:staff"
+
+    async def clear_claim_check(cmd: Any, caller: Any) -> dict[str, str]:
+        return {"claim_check": "clear"}
+
+    real_release = claim_guard.release_claim
+
+    def release_claim(run_id: str, status: str) -> bool:
+        return real_release(run_id, status, write=lambda endpoint, method: released.append((endpoint, method)))
+
+    monkeypatch.setattr(claim_guard, "apply_claim", apply_claim)
+    monkeypatch.setattr(claim_guard, "release_claim", release_claim)
+    monkeypatch.setattr(claim_guard, "enforce_claim_guard", clear_claim_check)
+
     def no_threads(rec: Any, plan: Any) -> None:
         raise RuntimeError("can't start new thread")
 
     monkeypatch.setattr(staff, "launch", no_threads)
 
     with pytest.raises(HTTPException) as err:
-        await dispatch_staff_run(_cmd(operation_id="op-feedfacecafe"), CALLER)
+        await dispatch_staff_run(_cmd(operation_id="op-feedfacecafe", repo="Runner_Dashboard", issue=7), CALLER)
 
     assert err.value.status_code == 503
     assert err.value.detail["code"] == "launch_failed"
     assert err.value.detail["run_id"] == "run-feedfacecafe"
     rec = staff.store.get_run("run-feedfacecafe")
     assert rec is not None and rec.status == "failed" and rec.failure_class == "launch_failed"
+    assert released == [("/repos/Runner_Dashboard/issues/7/labels/claim%3Astaff", "DELETE")]
 
 
 @pytest.mark.unit
