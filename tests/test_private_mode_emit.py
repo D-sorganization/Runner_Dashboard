@@ -234,3 +234,13 @@ def test_pm5_canary_dbc_and_flag_off_contract() -> None:
         )
         assert proj.level is pm.Level.PUBLIC and proj.withheld is False
         assert proj.content["summary"] == "Example Corp public note"
+
+
+def test_private_mode_getattr_only_imports_emit_for_exported_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Probing unknown attributes on private_mode must not import private_mode_emit (avoids circular import)."""
+    monkeypatch.delitem(sys.modules, "private_mode_emit", raising=False)
+    with pytest.raises(AttributeError):
+        _ = pm.__nonexistent_probe_attr__
+    assert "private_mode_emit" not in sys.modules
+    assert pm.CANARY_FORMS == ("raw", "base64", "url_encoded", "split")
+    assert "private_mode_emit" in sys.modules

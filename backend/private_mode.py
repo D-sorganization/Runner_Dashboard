@@ -22,9 +22,6 @@ Level semantics:
   not GitHub logs or artifacts. Confined to private, ephemeral, RD-owned
   infrastructure built out in later slices of this epic.
 
-``Level`` is a total order (``PUBLIC < INTERNAL < SENSITIVE``): joining two
-levels for the same content always keeps the more restrictive one.
-
 Validation error messages name keys and reasons only; they never echo the
 rejected value, because an operator-supplied ``default_level`` may be a
 placeholder for something private.
@@ -486,9 +483,16 @@ def check_mid_run_upgrade(
     return UpgradeCheckResult(envelope=validated, requeue_required=False, checkpoint_id=checkpoint_id)
 
 
-def __getattr__(name: str) -> Any:
-    import private_mode_emit as _pme  # noqa: PLC0415
+_EMIT_EXPORTS = frozenset(
+    "CANARY_FORMS CanaryLeakError CanaryVariants SHARED_SURFACES SURFACE_ALLOWLISTS "
+    "SharedProjection assert_no_canary_leak build_canary_variants detect_canary_leaks "
+    "emit_shared opaque_identifier".split()
+)
 
-    if name in _pme.EMIT_EXPORTS:
+
+def __getattr__(name: str) -> Any:
+    if name in _EMIT_EXPORTS:
+        import private_mode_emit as _pme  # noqa: PLC0415
+
         return getattr(_pme, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
