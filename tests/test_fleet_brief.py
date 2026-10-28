@@ -12,6 +12,10 @@ import routers.queue as queue_mod
 import routers.repos as repos_mod
 
 
+async def _async_result(payload: dict[str, Any], warnings: list[str]) -> tuple[dict[str, Any], list[str]]:
+    return payload, warnings
+
+
 class _FakeInventory:
     def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload
@@ -54,6 +58,7 @@ async def test_build_fleet_brief_combines_every_source(monkeypatch: pytest.Monke
     monkeypatch.setattr(fleet_mod, "_collect_fleet_status", _fake_collect)
     monkeypatch.setattr(repos_mod, "_pr_inventory", _FakeInventory({"items": [1, 2]}))
     monkeypatch.setattr(repos_mod, "_issue_inventory", _FakeInventory({"items": [1]}))
+    monkeypatch.setattr(brief_mod, "_queue_shepherd", lambda repo: _async_result({"repo": repo}, []))
 
     brief = await brief_mod.build_fleet_brief("D-sorganization/Runner_Dashboard")
 
@@ -63,6 +68,7 @@ async def test_build_fleet_brief_combines_every_source(monkeypatch: pytest.Monke
     assert brief["prs"] == {"items": [1, 2]}
     assert brief["issues"] == {"items": [1]}
     assert brief["holds"] == [{"text": "no deploy"}]
+    assert brief["queue_shepherd"] == {"repo": "D-sorganization/Runner_Dashboard"}
     assert brief["warnings"] == []
 
 
@@ -78,12 +84,58 @@ async def test_build_fleet_brief_degrades_independently_on_a_failing_source(monk
     monkeypatch.setattr(fleet_mod, "_collect_fleet_status", _fake_collect)
     monkeypatch.setattr(repos_mod, "_pr_inventory", _FakeInventory({"items": []}))
     monkeypatch.setattr(repos_mod, "_issue_inventory", _FakeInventory({"items": []}))
+    monkeypatch.setattr(brief_mod, "_queue_shepherd", lambda repo: _async_result({}, []))
 
     brief = await brief_mod.build_fleet_brief("D-sorganization/Runner_Dashboard")
 
     assert brief["queue"] == {}
     assert any("queue unavailable" in w for w in brief["warnings"])
     assert brief["prs"] == {"items": []}  # the rest of the brief still assembled
+
+
+@pytest.mark.asyncio
+async def test_queue_shepherd_section_reports_depth_and_recommendations(monkeypatch: pytest.MonkeyPatch) -> None:
+    from shared_scripts.queue_shepherd_logic import DependencyViolation
+    from shared_scripts.queue_shepherd_poll import QueueShepherdReport
+
+    def _fake_poll_queue(owner: str, name: str) -> QueueShepherdReport:
+        assert (owner, name) == ("D-sorganization", "Runner_Dashboard")
+        return QueueShepherdReport(
+            repo=f"{owner}/{name}",
+            queue_depth=2,
+            dependency_violations=(DependencyViolation(2780, 1, 2775, 2),),
+        )
+
+    monkeypatch.setattr("shared_scripts.queue_shepherd_poll.poll_queue", _fake_poll_queue)
+
+    section, warnings = await brief_mod._queue_shepherd("D-sorganization/Runner_Dashboard")
+
+    assert warnings == []
+    assert section["queue_depth"] == 2
+    assert section["dependency_violations"] == [
+        {"pr": 2780, "pr_position": 1, "blocked_by": 2775, "blocked_by_position": 2}
+    ]
+    assert "recommend moving #2775" in section["brief"]
+
+
+@pytest.mark.asyncio
+async def test_queue_shepherd_section_degrades_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(owner: str, name: str) -> Any:
+        raise RuntimeError("gh unavailable")
+
+    monkeypatch.setattr("shared_scripts.queue_shepherd_poll.poll_queue", _boom)
+
+    section, warnings = await brief_mod._queue_shepherd("D-sorganization/Runner_Dashboard")
+
+    assert section == {}
+    assert any("queue-shepherd unavailable" in w for w in warnings)
+
+
+@pytest.mark.asyncio
+async def test_queue_shepherd_section_skips_when_no_repo_given() -> None:
+    section, warnings = await brief_mod._queue_shepherd(None)
+
+    assert section == {} and warnings == []
 
 
 def test_render_markdown_reports_counts_and_warnings() -> None:
@@ -96,6 +148,7 @@ def test_render_markdown_reports_counts_and_warnings() -> None:
         "holds": [{"text": "no deploy"}],
         "staff_runs": [{"status": "running"}, {"status": "succeeded"}],
         "hub_status": {"node-a": {"status": "offline"}},
+        "queue_shepherd": {"queue_depth": 4, "dependency_violations": [1], "path_conflicts": []},
         "warnings": ["queue unavailable: boom"],
     }
 
@@ -108,6 +161,7 @@ def test_render_markdown_reports_counts_and_warnings() -> None:
     assert "no deploy" in md
     assert "Active staff runs: 1" in md  # only the running one counts
     assert "Hub nodes offline: 1 (node-a)" in md
+    assert "Queue-shepherd: depth=4, 1 dependency issue(s), 0 conflict(s)" in md
     assert "queue unavailable: boom" in md
 
 

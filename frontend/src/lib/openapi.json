@@ -20854,6 +20854,67 @@
         "tags": ["fleet-friction"]
       }
     },
+    "/api/v1/fleet/overload": {
+      "get": {
+        "operationId": "get_fleet_overload_api_v1_fleet_overload_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "open_count_threshold",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Open Count Threshold",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Fleet Overload Api V1 Fleet Overload Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet Overload",
+        "tags": ["fleet-overload"]
+      }
+    },
     "/api/v1/fleet/owner-questions": {
       "get": {
         "operationId": "list_owner_questions_api_v1_fleet_owner_questions_get",

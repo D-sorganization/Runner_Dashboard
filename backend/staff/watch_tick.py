@@ -279,7 +279,17 @@ class WatchTickRunner:
             req = RunRequest(role=esc.role, repo=esc.repo, prompt=esc.reason, requested_by=self.IDEMPOTENCY_PRINCIPAL)
             self.submit(req)
         except Exception:
-            self.idempotency.release(key, self.IDEMPOTENCY_ENDPOINT, self.IDEMPOTENCY_PRINCIPAL)
+            self.idempotency.release(
+                key, self.IDEMPOTENCY_ENDPOINT, self.IDEMPOTENCY_PRINCIPAL, operation_id=reservation.operation_id
+            )
             raise
-        self.idempotency.complete(key, self.IDEMPOTENCY_ENDPOINT, self.IDEMPOTENCY_PRINCIPAL, 200, {}, "dispatched")
+        self.idempotency.complete(
+            key,
+            self.IDEMPOTENCY_ENDPOINT,
+            self.IDEMPOTENCY_PRINCIPAL,
+            200,
+            {},
+            "dispatched",
+            operation_id=reservation.operation_id,
+        )
         return True
