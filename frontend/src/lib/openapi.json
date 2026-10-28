@@ -7029,6 +7029,17 @@
             "title": "Active Runs",
             "type": "integer"
           },
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar"
+          },
           "budget": {
             "$ref": "#/components/schemas/StaffRoleBudget"
           },
@@ -20024,6 +20035,38 @@
           }
         ],
         "summary": "Read Activity",
+        "tags": ["activity"]
+      }
+    },
+    "/api/v1/activity/events": {
+      "post": {
+        "description": "Bound the wire body before parsing; never trust source-side redaction.",
+        "operationId": "ingest_activity_api_v1_activity_events_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityEnvelope"
+                  },
+                  "title": "Response Ingest Activity Api V1 Activity Events Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Activity",
         "tags": ["activity"]
       }
     },

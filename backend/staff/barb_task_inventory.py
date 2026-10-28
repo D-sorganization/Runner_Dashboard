@@ -11,6 +11,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from staff.redaction import redact_sensitive_content
+
 TASK_SURFACES: tuple[str, ...] = ("headless_cli", "desktop_app", "hybrid_handoff")
 HANDOFF_STATES: tuple[str, ...] = ("none", "needs_desktop", "desktop_claimed", "resume_ready", "completed")
 
@@ -98,7 +100,17 @@ class BarbTaskInventoryMixin:
         next_action: str = "",
         now: datetime | None = None,
     ) -> dict[str, Any]:
-        """Create or update an active task inventory item and its CLI<->Desktop handoff state."""
+        """Create or update an active task inventory item and its CLI<->Desktop handoff state.
+
+        The task inventory is a shared surface (#3095): free-text fields run
+        through the same deny-by-default gate as every other surface
+        (``staff.redaction.redact_sensitive_content``, which also resolves
+        private-role classification spans) before they are persisted.
+        """
+        title = redact_sensitive_content(title)
+        next_action = redact_sensitive_content(next_action)
+        handoff_request = redact_sensitive_content(handoff_request) if handoff_request is not None else None
+        handoff_resolution = redact_sensitive_content(handoff_resolution) if handoff_resolution is not None else None
         tid = (task_id or "").strip() or f"task-{uuid.uuid4().hex[:8]}"
         now_s = _now_iso(now)
         auto_cls = classify_task_surface(title, f"{next_action} {handoff_request or ''}")

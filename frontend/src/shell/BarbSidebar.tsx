@@ -33,7 +33,12 @@ export interface BarbSidebarProps {
 }
 
 export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef, onThreadSelected }: BarbSidebarProps): React.ReactElement {
-  const preferredRoleThreadId = selectedThreadFromUrl();
+  // Specialist navigation must not replace the last Barb selection. The hook
+  // still validates this id against Barb's authorized auto-thread list.
+  const preferredThreadRef = useRef(selectedThreadFromUrl());
+  const urlRole = new URLSearchParams(window.location.search).get("role");
+  if (!urlRole || urlRole === "barb") preferredThreadRef.current = selectedThreadFromUrl();
+  const preferredRoleThreadId = preferredThreadRef.current;
   const sc = useStaffConsole({
     initialRole: "barb",
     preferredRoleThreadId,

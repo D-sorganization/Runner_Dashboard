@@ -12,7 +12,7 @@
  * for RunDetail; dispatching from Assign jumps straight to the new run, and a
  * `?run=<id>` query opens that run directly (deep link from Fleet Command).
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SubTabs } from "../../components/SubTabs";
 import { StaffConsoleDesktop } from "../StaffConsole/Desktop";
 import {
@@ -114,7 +114,12 @@ function sectionFromUrl(): StaffSection | null {
   return null;
 }
 
-export function StaffPage() {
+export interface StaffPageProps {
+  routeThreadId?: string | null;
+  onThreadSelected?: (threadId: string, role: string) => void;
+}
+
+export function StaffPage({ routeThreadId, onThreadSelected }: StaffPageProps = {}) {
   const client = useResolvedQueryClient();
   const {
     data: roster = null,
@@ -130,6 +135,9 @@ export function StaffPage() {
   const [selectedThread, setSelectedThread] = useState<string | null>(
     threadFromUrl,
   );
+  useEffect(() => {
+    if (routeThreadId) setSelectedThread(routeThreadId);
+  }, [routeThreadId]);
   const [section, setSection] = useState<StaffSection>(
     () => sectionFromUrl() || (selectedRun ? "runs" : "console"),
   );
@@ -188,7 +196,7 @@ export function StaffPage() {
       {section !== "console" && activityPanel}
       <div className="staff__content">
         {section === "console" ? (
-          <StaffConsoleDesktop initialThreadId={selectedThread} chatFirst />
+          <StaffConsoleDesktop initialThreadId={selectedThread} onThreadSelected={onThreadSelected} chatFirst />
         ) : null}
         {section === "roster" ? (
           <Roster

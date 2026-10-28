@@ -802,7 +802,7 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
         "reports: (",
         "<LazyReportsMobile />",
         "const mobileFallback = mobileTabContent[mobileTab] ? null :",
-        "nativeDesktopTabContent(mobileTab)",
+        "nativeDesktopTabContent(mobileTab, onThreadSelected)",
     ]:
         assert marker in routed_shell
 
