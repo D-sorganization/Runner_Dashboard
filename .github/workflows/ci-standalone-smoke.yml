@@ -1,0 +1,47 @@
+name: Standalone Smoke (no Repository_Management)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Not a required check: this is a scoped smoke suite for the no-fleet profile
+# (#3180), not a replacement for the full backend test matrix.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  standalone-smoke:
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    name: Backend smoke test without a Repository_Management checkout
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 10
+    env:
+      # No sibling checkout exists on this runner at all, by construction --
+      # this is the exact condition the standalone profile must tolerate.
+      STAFF_REPOS_ROOT: /tmp/standalone-smoke-no-fleet-root
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt "pytest>=9.0.3,<9.2.0" "pytest-asyncio>=0.23.0" "httpx==0.28.1"
+
+      - name: Run the standalone smoke suite
+        env:
+          PYTHONPATH: backend
+        run: |
+          python -m pytest tests/test_standalone_smoke.py -v
