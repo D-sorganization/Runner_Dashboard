@@ -103,6 +103,7 @@ jobs:
     needs: [pr-guard]
     if: >-
       always() &&
+      !cancelled() &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')

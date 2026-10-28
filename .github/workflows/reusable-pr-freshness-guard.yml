@@ -18,7 +18,7 @@ on:
 concurrency:
   # Scope per caller workflow so parallel CI workflows do not cancel each other's guard.
   group: pr-freshness-guard-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   guard:

@@ -291,9 +291,11 @@ jobs:
   ci-health-check:
     needs: [pick-runner, changes, pr-guard]
     if: >-
-      github.event_name != 'pull_request' ||
+      always() &&
+      !cancelled() &&
+      (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
-      needs.pr-guard.outputs.skip_heavy != 'true'
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -479,6 +481,8 @@ jobs:
   lint:
     needs: [pick-runner, changes, ci-health-check, pr-guard]
     if: >-
+      always() &&
+      !cancelled() &&
       needs.changes.outputs.run_python_tests == 'true' &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
@@ -665,6 +669,8 @@ jobs:
     needs: [pick-runner, changes, ci-health-check, pr-guard]
     # pull_request (in scope), schedule, or workflow_dispatch — not merge_group (#2891).
     if: >-
+      always() &&
+      !cancelled() &&
       github.event_name != 'merge_group' &&
       needs.changes.outputs.run_python_tests == 'true' &&
       (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
@@ -722,6 +728,8 @@ jobs:
       - pick-runner
       - pr-guard
     if: >-
+      always() &&
+      !cancelled() &&
       needs.changes.outputs.run_python_tests == 'true' &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
@@ -863,7 +871,7 @@ jobs:
         run: |
           if [ "$PR_GUARD_RESULT" = "skipped" ]; then
             echo "::notice::tests-required: pr-guard skipped on $GITHUB_EVENT_NAME"
-          elif [ "$GUARD_SKIP" = "true" ]; then
+          elif [ "$PR_GUARD_RESULT" = "success" ] && [ "$GUARD_SKIP" = "true" ]; then
             echo "::notice::tests-required skipped heavy CI ($GUARD_REASON)"
             exit 0
           fi
@@ -993,7 +1001,7 @@ jobs:
           failed=0
           if [ "$PR_GUARD_RESULT" = "skipped" ]; then
             echo "::notice::quality-gate: pr-guard skipped on $GITHUB_EVENT_NAME"
-          elif [ "$GUARD_SKIP" = "true" ]; then
+          elif [ "$PR_GUARD_RESULT" = "success" ] && [ "$GUARD_SKIP" = "true" ]; then
             echo "::notice::quality-gate skipped heavy CI ($GUARD_REASON)"
             exit 0
           fi
