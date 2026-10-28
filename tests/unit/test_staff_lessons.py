@@ -96,6 +96,7 @@ def test_file_proposed_lessons_clean_run_and_provenance(tmp_path: Path) -> None:
     t_file = tmp_path / "transcript.log"
     t_file.write_text("STAFF_LESSON: Always use Conventional Commits.\n", encoding="utf-8")
     run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
 
     filed = file_proposed_lessons(run_store, rec, transcript_path=t_file)
     assert len(filed) == 1
@@ -140,7 +141,9 @@ def test_file_proposed_lessons_skips_oversize_and_files_valid_neighbor_at_limit(
         encoding="utf-8",
     )
 
-    filed = file_proposed_lessons(RunStore(tmp_path / "runs.db"), rec, transcript_path=transcript)
+    run_store = RunStore(tmp_path / "runs.db")
+    run_store.create_run(rec)
+    filed = file_proposed_lessons(run_store, rec, transcript_path=transcript)
 
     assert len(filed) == 1
     entry = mem_store.get(filed[0])

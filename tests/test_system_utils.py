@@ -198,7 +198,7 @@ def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkey
         lambda: type("Uname", (), {"release": "6.6.87.2-microsoft-standard-WSL2"})(),
     )
     # Pin the candidate list so the test does not depend on the runner's
-    # actual /mnt/* drives (e.g. ControlTower-SSD runners mount /mnt/d).
+    # actual /mnt/* drives (e.g. node-a-SSD runners mount /mnt/d).
     monkeypatch.setattr(
         system_utils,
         "get_powershell_candidates",
@@ -358,11 +358,11 @@ def test_wsl_base_path_probed_and_persisted_on_cold_cache(monkeypatch, tmp_path:
     monkeypatch.setattr(
         system_utils,
         "get_wsl_distro_registry_info",
-        lambda: {"BasePath": "D:\\WSL\\ControlTower"},
+        lambda: {"BasePath": "D:\\WSL\\node-a"},
     )
-    assert system_utils.get_cached_wsl_base_path() == "D:\\WSL\\ControlTower"
+    assert system_utils.get_cached_wsl_base_path() == "D:\\WSL\\node-a"
     persisted = json.loads(facts_file.read_text(encoding="utf-8"))
-    assert persisted["wsl_base_path"] == "D:\\WSL\\ControlTower"
+    assert persisted["wsl_base_path"] == "D:\\WSL\\node-a"
 
 
 def test_run_windows_powershell_respects_deadline(monkeypatch) -> None:
@@ -1039,7 +1039,7 @@ def test_get_host_disk_for_pool_from_host_drive() -> None:
 
 def test_get_host_disk_for_pool_from_vhdx_path_fallback() -> None:
     """Pool with no host_drive but vhdx_path on E: maps to /mnt/e."""
-    pool = {"storage": {"vhdx_path": "E:\\WSL\\ControlTower\\ext4.vhdx"}}
+    pool = {"storage": {"vhdx_path": "E:\\WSL\\node-a\\ext4.vhdx"}}
     result = system_utils.get_host_disk_for_pool(pool)
     assert result == "/mnt/e"
 

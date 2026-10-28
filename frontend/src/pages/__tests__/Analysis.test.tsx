@@ -187,7 +187,7 @@ describe("AnalysisOutcomesTab", () => {
           success_rate: 88,
           failure_reasons: { timeout: 3, oom: 1 },
           machines: [
-            { machine_name: "ControlTower", count: 50, success_rate: 90, avg_duration_seconds: 120 },
+            { machine_name: "node-a", count: 50, success_rate: 90, avg_duration_seconds: 120 },
           ],
           workflows: [
             {
@@ -204,7 +204,7 @@ describe("AnalysisOutcomesTab", () => {
               key: "rd/ci/ct",
               repo: "Runner_Dashboard",
               workflow_name: "CI",
-              machine_name: "ControlTower",
+              machine_name: "node-a",
               count: 30,
               success_rate: 92,
               avg_duration_seconds: 150,
@@ -214,8 +214,8 @@ describe("AnalysisOutcomesTab", () => {
       ],
     ]);
     render(<AnalysisOutcomesTab />);
-    // "ControlTower" appears in both the machine table and the matrix table.
-    await waitFor(() => expect(screen.getAllByText("ControlTower").length).toBeGreaterThan(0));
+    // "node-a" appears in both the machine table and the matrix table.
+    await waitFor(() => expect(screen.getAllByText("node-a").length).toBeGreaterThan(0));
     expect(screen.getByText("Recent enriched runs")).toBeInTheDocument();
     expect(screen.getByText("88%")).toBeInTheDocument();
     expect(screen.getByText("Machine Health From Jobs")).toBeInTheDocument();

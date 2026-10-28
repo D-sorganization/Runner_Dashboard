@@ -1,0 +1,16 @@
+[Unit]
+Description=Runner Dashboard out-of-band hub liveness sentinel (one shot)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@DASHBOARD_USER@
+Environment=HOME=@DASHBOARD_HOME@
+EnvironmentFile=-@ENV_FILE@
+Environment=HUB_URL=@HUB_URL@
+ExecStart=@PYTHON_BIN@ @DEPLOY_DIR@/deploy/hub_sentinel_cli.py
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

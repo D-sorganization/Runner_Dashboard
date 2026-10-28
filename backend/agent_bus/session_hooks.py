@@ -67,11 +67,18 @@ def _resolve_role(client: Any, explicit: str | None) -> str:
         return explicit
     if client.agent:
         return client.agent
+    from fleet_provider_identity import infer_fleet_agent  # noqa: PLC0415
+
+    inferred = infer_fleet_agent()
+    if inferred:
+        return inferred
     raise ValueError("role is required (FLEET_AGENT or argument)")
 
 
 def _provider() -> str:
-    return (os.environ.get("FLEET_PROVIDER") or os.environ.get("CURSOR_AGENT") or "unknown").strip()[:64]
+    from fleet_provider_identity import infer_provider_label  # noqa: PLC0415
+
+    return infer_provider_label()
 
 
 def _node(short_host: Any) -> str:

@@ -17,6 +17,10 @@ _test_config_root = Path.home() / ".config" / "runner-dashboard" / ".test-runs"
 _test_config_root.mkdir(parents=True, exist_ok=True)
 _test_config_dir = tempfile.TemporaryDirectory(prefix="pytest-", dir=_test_config_root, ignore_cleanup_errors=True)
 os.environ["RUNNER_DASHBOARD_CONFIG_DIR"] = _test_config_dir.name
+# Starlette TestClient defaults to Host: testserver; httpx.AsyncClient's
+# ASGITransport pattern used across this suite defaults to Host: test.
+# Allow both only under pytest.
+os.environ.setdefault("DASHBOARD_TRUSTED_EXTRA_HOSTS", "testserver,test")
 
 # C-extension thread safety. Many "xdist worker crashed" failures
 # come from MKL/OpenBLAS forking under xdist. Pin to single-threaded
@@ -290,6 +294,13 @@ def _reset_main_cache_between_tests():
     cache_clear()
 
 
+_HOST_DEVELOPMENT_AUTH_FLAGS = (
+    "DASHBOARD_DEV_LOGIN",
+    "DASHBOARD_LOOPBACK_AUTH",
+    "DASHBOARD_LOOPBACK_OPERATOR_WRITES",
+)
+
+
 @pytest.fixture(autouse=True)
 def _no_hub_proxy(monkeypatch):
     """Never forward a test's request to a live hub.
@@ -299,13 +310,28 @@ def _no_hub_proxy(monkeypatch):
     endpoints proxied to the real hub and returned live data. Every proxy path
     requires ``HUB_URL``, so clearing it is enough. Tests of the proxy itself
     set ``HUB_URL`` with ``patch.object``, which overrides this default.
+
+    Self-hosted runners also export ``HUB_FLEET_TOKEN`` and loopback OAuth
+    flags; those must not leak into the default test lane (#3000).
     """
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+    monkeypatch.delenv("HUB_URL", raising=False)
+    for name in _HOST_DEVELOPMENT_AUTH_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+
     try:
         import dashboard_config  # noqa: PLC0415
     except ImportError:
         return
 
     monkeypatch.setattr(dashboard_config, "HUB_URL", None)
+    try:
+        import staff.github_run_env as github_run_env  # noqa: PLC0415
+    except ImportError:
+        github_run_env = None
+    else:
+        monkeypatch.setattr(github_run_env, "HUB_URL", None)
+
     server = sys.modules.get("server")  # heavy: patch only when a test loaded it
     if server is not None and hasattr(server, "HUB_URL"):
         monkeypatch.setattr(server, "HUB_URL", None)
