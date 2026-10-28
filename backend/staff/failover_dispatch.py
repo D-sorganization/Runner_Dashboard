@@ -184,11 +184,10 @@ def try_chain_failover(
 
     mark_provider_cooldown(plan.provider, fc, message=latest.error or "")
     root_id = latest.retry_of or latest.id
-    from staff.failover_model import resolve_launch_model, role_base_tier, slot_key
-    from staff.model_tiers import normalize_tier
+    from staff.failover_model import resolve_launch_model, slot_key
+    from staff.model_tiers import next_tier_up, normalize_tier
 
-    raw_tier = (getattr(latest, "model_tier", None) or "").strip().lower()
-    active_tier = normalize_tier(raw_tier) if raw_tier in ("routine", "standard", "complex") else role_base_tier(role)
+    active_tier = normalize_tier(getattr(latest, "model_tier", None) or role.tier)
     append_chain_attempt(
         runner.store,
         root_id,
@@ -216,9 +215,12 @@ def try_chain_failover(
             break
         if next_step is not None:
             break
-        if not getattr(role, "allow_tier_escalation", False):
+        if not role.allow_tier_escalation:
             break
-        break  # tier escalation wiring lands in slice 5b
+        escalated = next_tier_up(next_tier)
+        if escalated is None:
+            break
+        next_tier = escalated
 
     if next_step is None:
         _mark_providers_exhausted(runner.store, latest, root_id, plan)

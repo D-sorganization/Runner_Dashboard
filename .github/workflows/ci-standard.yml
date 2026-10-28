@@ -38,8 +38,9 @@ on:
         type: string
 
 # Main-push and live merge_group runs are never concurrency-cancelled. Only
-# pull_request runs cancel in progress. merge_group supersession uses
-# merge_queue_cancel_safety (GraphQL entries) before any bot cancel.
+# pull_request runs cancel in progress. Obsolete merge_group runs self-cancel
+# when their gh-readonly-queue ref is deleted (queue-entry-alive); bots use
+# merge_queue_cancel_safety (GraphQL entries) before cancelling anything else.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -53,6 +54,9 @@ jobs:
       github.event.pull_request.head.repo.full_name != github.repository &&
       'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
     outputs:
       runner: ${{ steps.select.outputs.runner }}
       mode: ${{ steps.select.outputs.mode }}
@@ -81,6 +85,17 @@ jobs:
           fi
           echo "has_expedite=$has" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
+          sparse-checkout-cone-mode: false
+      - name: Stop obsolete merge queue entries
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - id: select
         name: Select runner without API polling
         shell: bash
@@ -339,7 +354,51 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|security.py|maxwell.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts|api-types.ts|identity.py|machine_registry.py"
+          # RD-33: exact repo-relative paths, matched whole-line (grep -vxF).
+          # The old unanchored regex let look-alikes slip through uncapped
+          # (e.g. "queue.py" also matched backend/staff/board_queue.py;
+          # "identity.py" also matched backend/tailnet_identity.py). Kept
+          # inline (not an external file) so the list travels with the step
+          # and can't go missing out from under it. Both branches below filter
+          # the file list *before* counting lines, so there's no "total"
+          # summary line to special-case either.
+          EXEMPT_PATHS=$(cat <<'PATHS'
+          backend/server.py
+          backend/dispatch_contract.py
+          backend/agent_dispatch_router.py
+          backend/routers/credentials.py
+          backend/security.py
+          backend/routers/maxwell.py
+          backend/routers/queue.py
+          backend/routers/remediation.py
+          backend/routers/diagnostics.py
+          backend/gh_client.py
+          backend/system_utils.py
+          backend/runner_autoscaler.py
+          backend/queue_cleanup.py
+          backend/identity.py
+          backend/machine_registry.py
+          frontend/src/pages/Queue/index.tsx
+          frontend/src/lib/api-types.ts
+          frontend/src/shell/navRegistry.ts
+          frontend/src/pages/Principals.tsx
+          frontend/src/pages/Analysis.tsx
+          frontend/src/pages/RemediationPRs.tsx
+          frontend/src/pages/Machines.tsx
+          frontend/src/pages/FleetTab.tsx
+          frontend/src/pages/FleetOrchestration.tsx
+          frontend/src/pages/FeatureRequests.tsx
+          frontend/src/pages/RemediationTab.tsx
+          frontend/src/pages/Workflows.tsx
+          frontend/src/pages/RemediationIssues.tsx
+          frontend/src/pages/Queue/__tests__/Mobile.test.tsx
+          frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx
+          frontend/src/pages/Fleet/__tests__/Mobile.test.tsx
+          frontend/src/pages/Credentials/__tests__/Mobile.test.tsx
+          frontend/src/pages/Remediation/__tests__/Mobile.test.tsx
+          frontend/src/pages/Reports/__tests__/Mobile.test.tsx
+          PATHS
+          )
           if [ "$EVENT_NAME" = "pull_request" ]; then
             # Fail CLOSED (RD#2730): a shallow checkout has no merge base, so
             # fetch the exact base commit and diff it against HEAD directly
@@ -355,14 +414,16 @@ jobs:
             printf '%s\n' "$CHANGED"
             FILES=$(printf '%s\n' "$CHANGED" \
               | { grep -E '\.(py|ts|tsx|js)$' || true; } \
-              | { grep -vE "$EXEMPT" || true; })
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; })
             if [ -z "$FILES" ]; then
               echo "No changed source files require line-cap enforcement."
               exit 0
             fi
             OVER=$(printf '%s\n' "$FILES" | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           else
-            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "$EXEMPT" | awk '$1 > 500 {print $1, $2}')
+            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) \
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; } \
+              | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           fi
           if [ -n "$OVER" ]; then
             echo "::error::Files exceeding 500-line soft cap found:"
@@ -493,6 +554,11 @@ jobs:
           mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
       - name: Runner disk guard vendored manifest
         run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
+      - name: Grok role bundle drift (fixture canary)
+        if: needs.changes.outputs.run_python_tests == 'true'
+        run: >
+          python -m scripts.export_grok_role_bundles --check
+          --roles-dir tests/fixtures/grok_role_sync/roles
       - name: Run bandit security scan
         # pull_request (in scope), schedule, or workflow_dispatch — not merge_group.
         if: >-
@@ -631,6 +697,9 @@ jobs:
       - lint
       - pick-runner
     if: needs.changes.outputs.run_python_tests == 'true'
+    permissions:
+      actions: write
+      contents: read
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -707,6 +776,12 @@ jobs:
           else
             pytest tests/ --tb=short -n auto -m "not integration and not playwright and not slow"
           fi
+      - name: Re-check merge queue entry during long tests
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - name: Upload coverage artifact
         if: always() && hashFiles('coverage.xml') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0

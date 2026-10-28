@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../hooks/useBreakpoint", () => ({ useBreakpoint: mocks.breakpoint }));
 vi.mock("../../hooks/useSession", () => ({
-  useSession: () => ({ loggedIn: false, refresh: vi.fn() }),
+  useSession: () => ({ loading: false, loggedIn: false, refresh: vi.fn() }),
 }));
 vi.mock("../../pages/Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../pages/Staff/staffApi")>()),

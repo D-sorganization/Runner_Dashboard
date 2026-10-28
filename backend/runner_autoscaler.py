@@ -111,6 +111,7 @@ from autoscaler_config import (
 )
 from autoscaler_sampling import (
     _io_pressure_snapshot,
+    _lease_scale_down_guard,
     _leased_runners,
     _sample,
     _sample_pool_disk,
@@ -231,7 +232,7 @@ def _default_pool_overloaded(
     contract can be unit-tested against fixed metric vectors. A *fully idle*
     host (low CPU, low memory, sub-unity per-core load, ample disk) MUST return
     False: the autoscaler must never read "overloaded" on a quiet machine. This
-    is the guard for the OGLaptop 2026-06-09 regression, where a host at load
+    is the guard for the node-b 2026-06-09 regression, where a host at load
     0.23 / 20 cores and 1 GB / 62 GB RAM was wrongly trimmed to the floor.
 
     Inputs are already time-averaged by the caller (``avg_*``) except
@@ -297,7 +298,7 @@ def _acquire_lock() -> None:
     hard-coded /var/run with a directory-existence check, which is wrong when
     the service runs as a non-root user: /run exists but isn't writable for
     the runner user, so open() failed → systemd crash-loop. See
-    d-sorg-local-ControlTower post-2026-05-18 deploy.
+    d-sorg-local-node-a post-2026-05-18 deploy.
     """
     global _lock_fd  # noqa: PLW0603
     try:
@@ -674,7 +675,8 @@ def _run_poll_loop() -> None:
                 cls = _classify_unit(u)
                 classified_units[cls].append(u)
 
-            leased = _leased_runners()
+            lease_guard = _lease_scale_down_guard()
+            leased = lease_guard.protected_runner_names
             if leased:
                 log.info(
                     "Detected %d active leases: %s",
@@ -693,7 +695,11 @@ def _run_poll_loop() -> None:
                 pool_inactive = [u for u in pool_units if u not in pool_active]
                 pool_busy = {u for u in pool_active if _runner_is_busy(u)}
                 pool_idle_active = [
-                    u for u in pool_active if u not in pool_busy and _runner_name_for_unit(u) not in leased
+                    u
+                    for u in pool_active
+                    if u not in pool_busy
+                    and _runner_name_for_unit(u) not in leased
+                    and not lease_guard.block_scale_down
                 ]
 
                 hist = pool_samples[pool_name]
@@ -892,7 +898,7 @@ def _run_poll_loop() -> None:
 # dependency (see backend/requirements.txt — only psutil is). On a host where it
 # isn't installed, `_sd_notify` is None; the old code then no-op'd the watchdog
 # beat entirely, so systemd SIGABRTed the process every WatchdogSec=120s
-# (OGLaptop 2026-06-09: NRestarts=93, status=6, crash-loop). We therefore prefer
+# (node-b 2026-06-09: NRestarts=93, status=6, crash-loop). We therefore prefer
 # the binding when present but fall back to writing the sd_notify datagram to
 # $NOTIFY_SOCKET ourselves — no extra dependency, and the unit already permits
 # AF_UNIX sockets and the @system-service syscall set.

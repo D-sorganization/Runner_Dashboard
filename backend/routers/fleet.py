@@ -262,6 +262,9 @@ async def _collect_fleet_status(*, exclude_pools: bool) -> dict[str, Any]:
 
     gathered = await asyncio.gather(*tasks)
     local_metrics = gathered[0]
+    from runner_control_health import get_runner_control_health  # noqa: PLC0415
+
+    local_metrics["runner_control"] = get_runner_control_health()
     local_metrics["deployment"] = get_deployment_info(VERSION, DEPLOYMENT_FILE)
     local_metrics["auto_deploy"] = read_auto_deploy_fleet_status()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"

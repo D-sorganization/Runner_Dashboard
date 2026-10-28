@@ -38,8 +38,8 @@ MERGE_GROUP_JOB_ALLOWLIST: dict[str, frozenset[str]] = {
         }
     ),
     "ci-secrets.yml": frozenset({"detect-secrets"}),
-    "docker-build.yml": frozenset(),
-    "ci-auto-deploy-regression.yml": frozenset(),
+    "docker-build.yml": frozenset({"queue-entry-alive"}),
+    "ci-auto-deploy-regression.yml": frozenset({"queue-entry-alive"}),
     "anti-phantom-merge.yml": frozenset(),
 }
 
