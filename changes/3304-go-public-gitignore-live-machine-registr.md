@@ -1,4 +1,4 @@
 ---
 issue: 3304
-summary: "Go-public: gitignore live machine_registry.yml, load from local/deploy path, sanitize deploy docs"
+summary: "Go-public: gitignore live registry, migrate deploy copy to ~/.config, empty-registry health/metrics"
 ---

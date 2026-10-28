@@ -13,8 +13,10 @@ import logging
 import os
 import platform
 import re
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 try:
     import yaml
@@ -29,6 +31,119 @@ DEPLOYED_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
 # Back-compat for callers that referenced the old shipped default path constant.
 DEFAULT_REGISTRY_PATH = LOCAL_REGISTRY_PATH
+
+_registry_empty = False
+
+MigrationOutcome = Literal["migrated", "skipped_local_exists", "skipped_env_override", "skipped_no_legacy"]
+
+
+@dataclass(frozen=True)
+class MachineRegistryLoadMeta:
+    empty: bool
+    resolved_path: Path
+    path_existed: bool
+
+
+def machine_registry_is_empty() -> bool:
+    """True when the most recent load returned zero machines."""
+
+    return _registry_empty
+
+
+def last_registry_load_meta() -> MachineRegistryLoadMeta | None:
+    return getattr(load_machine_registry, "_last_meta", None)
+
+
+def migrate_legacy_registry_to_local_config(
+    *,
+    deploy_backend_dir: Path | str | None = None,
+) -> MigrationOutcome:
+    """Copy ``backend/machine_registry.yml`` into the canonical local config path.
+
+    Used during go-public rollout so release tarballs without a tracked registry
+    still pick up topology from the prior live install. Never overwrites an
+    existing local file or runs when ``MACHINE_REGISTRY_PATH`` is set.
+    """
+
+    if os.environ.get("MACHINE_REGISTRY_PATH", "").strip():
+        return "skipped_env_override"
+    local_path = LOCAL_REGISTRY_PATH.expanduser()
+    if local_path.is_file():
+        return "skipped_local_exists"
+
+    legacy_candidates: list[Path] = []
+    if deploy_backend_dir is not None:
+        legacy_candidates.append(Path(deploy_backend_dir) / "machine_registry.yml")
+    module_legacy = DEPLOYED_REGISTRY_PATH.expanduser()
+    if module_legacy not in legacy_candidates:
+        legacy_candidates.append(module_legacy)
+
+    legacy_path: Path | None = None
+    for candidate in legacy_candidates:
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            legacy_path = candidate
+            break
+    if legacy_path is None:
+        return "skipped_no_legacy"
+
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.parent.chmod(0o700)
+    staging = local_path.with_suffix(local_path.suffix + ".migrate.tmp")
+    shutil.copy2(legacy_path, staging)
+    staging.chmod(0o600)
+    os.replace(staging, local_path)
+    log.warning(
+        "Migrated fleet machine registry from %s to %s (mode 600). "
+        "Future loads use the local config path; keep this file out of git.",
+        legacy_path,
+        local_path,
+    )
+    return "migrated"
+
+
+def _mark_registry_empty(*, path: Path, path_existed: bool) -> None:
+    global _registry_empty
+    _registry_empty = True
+    meta = MachineRegistryLoadMeta(empty=True, resolved_path=path, path_existed=path_existed)
+    load_machine_registry._last_meta = meta  # type: ignore[attr-defined]
+    log.warning(
+        "MACHINE REGISTRY EMPTY: no fleet machines loaded (path=%s, existed=%s). "
+        "Install live topology at %s or migrate from backend/machine_registry.yml "
+        "before hub federation and role detection silently degrade.",
+        path,
+        path_existed,
+        LOCAL_REGISTRY_PATH,
+    )
+    try:
+        from prometheus_metrics import set_machine_registry_empty  # noqa: PLC0415
+
+        set_machine_registry_empty(True)
+    except Exception:  # pragma: no cover - metrics optional in minimal envs
+        pass
+
+
+def _mark_registry_loaded(*, path: Path, path_existed: bool, machine_count: int) -> None:
+    global _registry_empty
+    _registry_empty = machine_count == 0
+    load_machine_registry._last_meta = MachineRegistryLoadMeta(  # type: ignore[attr-defined]
+        empty=_registry_empty,
+        resolved_path=path,
+        path_existed=path_existed,
+    )
+    if _registry_empty:
+        log.warning(
+            "MACHINE REGISTRY EMPTY: registry file present but lists zero machines "
+            "(path=%s). Fleet topology and hub role detection may be wrong until "
+            "operator topology is installed at %s.",
+            path,
+            LOCAL_REGISTRY_PATH,
+        )
+    try:
+        from prometheus_metrics import set_machine_registry_empty  # noqa: PLC0415
+
+        set_machine_registry_empty(_registry_empty)
+    except Exception:  # pragma: no cover
+        pass
 
 
 def _resolve_registry_path(path: str | Path | None) -> Path:
@@ -420,7 +535,9 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
 
     registry_path = _resolve_registry_path(path)
     if not registry_path.exists():
-        return {"version": 1, "machines": []}
+        empty = {"version": 1, "machines": []}
+        _mark_registry_empty(path=registry_path, path_existed=False)
+        return empty
 
     # Validate the path before loading (security check for issue #355).
     #
@@ -460,6 +577,11 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
             raise ValueError("Each machine registry entry must be a mapping")
         normalized["machines"].append(_normalize_machine_entry(entry))
     assert_safe_registry_source(registry_path, normalized)
+    _mark_registry_loaded(
+        path=registry_path,
+        path_existed=True,
+        machine_count=len(normalized.get("machines", [])),
+    )
     return normalized
 
 

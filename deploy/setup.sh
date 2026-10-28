@@ -146,16 +146,22 @@ systemctl is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_
 [[ -z "$MACHINE_NAME" ]] && MACHINE_NAME="$(hostname)"
 [[ -z "$DISPLAY_NAME_VAL" ]] && DISPLAY_NAME_VAL="$MACHINE_NAME"
 
+migrate_machine_registry_to_local() {
+    env PYTHONPATH="${SCRIPT_DIR}/backend" "${PYTHON_BIN}" -c "
+from pathlib import Path
+from machine_registry import migrate_legacy_registry_to_local_config
+print(migrate_legacy_registry_to_local_config(deploy_backend_dir=Path('${DEPLOY_DIR}') / 'backend'))
+" 2>/dev/null || true
+}
+
 registry_resolved_role() {
-    env -u MACHINE_ROLE PYTHONPATH="${SCRIPT_DIR}/backend" "${PYTHON_BIN}" -c "
+    env -u MACHINE_ROLE PYTHONPATH="${DEPLOY_DIR}/backend" "${PYTHON_BIN}" -c "
 from machine_registry import load_machine_registry, resolve_local_identity
 registry = load_machine_registry()
 identity = resolve_local_identity('${DISPLAY_NAME_VAL}', None, registry)
 print((identity.get('role') or 'node').strip().lower())
 " 2>/dev/null || echo "node"
 }
-
-EFFECTIVE_ROLE="${ROLE_ENV_OVERRIDE:-$(registry_resolved_role)}"
 
 header "Runner Dashboard Production Setup"
 echo "Source:       ${SCRIPT_DIR}"
@@ -166,11 +172,6 @@ echo "User:         ${USER}"
 echo "Machine:      ${MACHINE_NAME}"
 echo "Display:      ${DISPLAY_NAME_VAL}"
 [[ -n "$RUNNER_ALIASES_VAL" ]] && echo "Aliases:      ${RUNNER_ALIASES_VAL}"
-if [[ -n "${ROLE_ENV_OVERRIDE}" ]]; then
-    echo "Role:         ${EFFECTIVE_ROLE} (explicit --role override)"
-else
-    echo "Role:         ${EFFECTIVE_ROLE} (from machine_registry.yml at runtime)"
-fi
 echo "Runners:      ${NUM_RUNNERS}"
 echo "Schedule:     ${SCHEDULE_CONFIG_VAL}"
 echo "Python:       ${PYTHON_BIN}"
@@ -202,6 +203,8 @@ if [[ -z "${ARTIFACT_SOURCE}" ]]; then
     fi
     ok "backend dependencies installed into ${DEPLOY_DIR}/.venv"
 fi
+
+migrate_machine_registry_to_local
 
 # ── Step 2: Deploy dashboard files ───────────────────────────────────────────
 header "Step 2/5: Deploy Dashboard"
@@ -254,6 +257,13 @@ fi
 
 if [[ -n "${ARTIFACT_SOURCE}" ]]; then
     ok "Dashboard artifact deployed to ${DEPLOY_DIR}"
+fi
+
+EFFECTIVE_ROLE="${ROLE_ENV_OVERRIDE:-$(registry_resolved_role)}"
+if [[ -n "${ROLE_ENV_OVERRIDE}" ]]; then
+    info "Role: ${EFFECTIVE_ROLE} (explicit --role override)"
+else
+    info "Role: ${EFFECTIVE_ROLE} (from machine registry at runtime)"
 fi
 
 # ── Step 2.5: Token secrets file ─────────────────────────────────────────────

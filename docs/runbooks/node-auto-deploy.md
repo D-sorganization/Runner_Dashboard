@@ -67,6 +67,9 @@ candidate receives these operator/runtime paths when present:
 
 - all of `config/` (operator-modified config is retained while new artifact
   defaults are added), `backend/data/`, and `backend/machine_registry.yml`;
+- before the mutable snapshot, if `~/.config/runner-dashboard/machine_registry.yml`
+  is missing and the live install still has `backend/machine_registry.yml`, auto-deploy
+  copies it into the config dir (mode `600`) without overwriting an existing file;
 - `agent_profiles.json`, `local_apps.json`, and root-level SQLite files and
   sidecars (`.db`, `.sqlite`, `.sqlite3` and `-wal`, `-shm`, `-journal`);
 - root `.env` (retaining its private file mode) and matching runtime files

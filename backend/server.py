@@ -2230,6 +2230,7 @@ def _diagnostics_payload() -> dict:
         registry_status = {
             "loaded": True,
             "machines": machines_count,
+            "empty": machines_count == 0,
             "version": _registry.get("version"),
             "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
         }

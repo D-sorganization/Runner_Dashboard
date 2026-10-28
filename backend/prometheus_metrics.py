@@ -120,6 +120,10 @@ if _PROMETHEUS_AVAILABLE:
         "dashboard_lease_active_total",
         "Number of active (non-expired) runner leases",
     )
+    MACHINE_REGISTRY_EMPTY = Gauge(
+        "dashboard_machine_registry_empty",
+        "Whether the fleet machine registry loaded zero machines (1=empty)",
+    )
 
     # Autoscaler (issue #710)
     AUTOSCALER_SCALING_ACTIONS_TOTAL = Counter(
@@ -190,6 +194,7 @@ else:  # pragma: no cover
     DASHBOARD_HUB_CIRCUIT_OPEN = _stub  # type: ignore[assignment]
     LEASE_REAPER_PRUNED_TOTAL = _stub  # type: ignore[assignment]
     LEASE_ACTIVE_TOTAL = _stub  # type: ignore[assignment]
+    MACHINE_REGISTRY_EMPTY = _stub  # type: ignore[assignment]
     AUTOSCALER_SCALING_ACTIONS_TOTAL = _stub  # type: ignore[assignment]
     AUTOSCALER_BUSY_RUNNERS = _stub  # type: ignore[assignment]
     AUTOSCALER_ACTIVE_RUNNERS = _stub  # type: ignore[assignment]
@@ -252,6 +257,14 @@ def set_hub_circuit_open(is_open: bool) -> None:
 def update_lease_gauge(active_count: int) -> None:
     """Update the active runner leases gauge."""
     RUNNER_LEASES_ACTIVE.set(active_count)
+
+
+def set_machine_registry_empty(is_empty: bool) -> None:
+    """Expose whether the fleet registry loaded zero machines."""
+
+    if not _PROMETHEUS_AVAILABLE:  # pragma: no cover
+        return
+    MACHINE_REGISTRY_EMPTY.set(1.0 if is_empty else 0.0)
 
 
 def record_lease_expired(count: int = 1) -> None:
