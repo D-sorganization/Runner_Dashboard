@@ -8,12 +8,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
-    from backend.ci.private_required_check import PrivateRequiredCheckWiring, RequiredCheckResult
-except ModuleNotFoundError:  # pragma: no cover
+if TYPE_CHECKING:
     from ci.private_required_check import PrivateRequiredCheckWiring, RequiredCheckResult
+else:
+    try:
+        from backend.ci.private_required_check import PrivateRequiredCheckWiring, RequiredCheckResult
+    except ModuleNotFoundError:  # pragma: no cover
+        from ci.private_required_check import PrivateRequiredCheckWiring, RequiredCheckResult
 from private_mode import (
     DISABLED,
     POLICY_FILENAME,
@@ -34,7 +37,13 @@ from private_mode_admission import (
     parse_admission_policy,
 )
 from private_mode_emit import SharedProjection, assert_no_canary_leak, build_canary_variants, emit_shared
-from private_mode_parking import BoundedParkingQueue, ParkedJobRecord, ParkingBounds, parse_parking_bounds
+from private_mode_parking import (
+    BoundedParkingQueue,
+    ParkedJobRecord,
+    ParkingBounds,
+    _format_iso,
+    parse_parking_bounds,
+)
 
 CHAOS_FAULTS: tuple[str, ...] = ("pool_down", "policy_deny", "key_missing", "audit_down", "overlay_invalid")
 EXAMPLE_SENSITIVE_REPO = "example-corp/widgets-sensitive"
@@ -138,10 +147,6 @@ def _coerce_utc(ts: datetime | None) -> datetime:
     if not isinstance(base, datetime):
         raise ClassificationError("private_mode_chaos: now must be a datetime instance")
     return base.replace(tzinfo=UTC) if base.tzinfo is None else base.astimezone(UTC)
-
-
-def _format_iso(ts: datetime) -> str:
-    return ts.isoformat().replace("+00:00", "Z")
 
 
 def _emit_chaos_alert(
