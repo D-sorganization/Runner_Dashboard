@@ -9,5 +9,6 @@
   },
   "roles_dir": "roles",
   "policy_dir": "policy",
-  "private_docs_dir": "docs-private"
+  "private_docs_dir": "docs-private",
+  "private_roles": []
 }
