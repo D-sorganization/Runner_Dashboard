@@ -5126,6 +5126,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/usage/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage Snapshot
+         * @description Fleet-wide provider usage: newest Usage-Tracker snapshot, per-machine staleness (#3042).
+         */
+        get: operations["get_usage_snapshot_api_staff_usage_snapshot_get"];
+        put?: never;
+        /**
+         * Ingest Usage Snapshot
+         * @description Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042).
+         */
+        post: operations["ingest_usage_snapshot_api_staff_usage_snapshot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/{role}/run": {
         parameters: {
             query?: never;
@@ -12391,6 +12415,36 @@ export interface components {
             totals?: {
                 [key: string]: unknown;
             };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageSnapshotIngestResponse
+         * @description Response model for POST /api/staff/usage/snapshot (#3042).
+         */
+        StaffUsageSnapshotIngestResponse: {
+            /** Kept */
+            kept: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageSnapshotResponse
+         * @description Response model for GET /api/staff/usage/snapshot (#3042): fleet quota + staleness.
+         */
+        StaffUsageSnapshotResponse: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            }[];
+            /** Received At */
+            received_at?: string | null;
+            /** Snapshot Age Seconds */
+            snapshot_age_seconds?: number | null;
+            /** Snapshot Stale */
+            snapshot_stale: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -19804,6 +19858,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffPricingResponse"];
+                };
+            };
+        };
+    };
+    get_usage_snapshot_api_staff_usage_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotResponse"];
+                };
+            };
+        };
+    };
+    ingest_usage_snapshot_api_staff_usage_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotIngestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

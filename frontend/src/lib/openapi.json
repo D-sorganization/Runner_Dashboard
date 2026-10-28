@@ -8310,6 +8310,73 @@
         "title": "StaffUsageResponse",
         "type": "object"
       },
+      "StaffUsageSnapshotIngestResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/usage/snapshot (#3042).",
+        "properties": {
+          "kept": {
+            "title": "Kept",
+            "type": "boolean"
+          }
+        },
+        "required": ["kept"],
+        "title": "StaffUsageSnapshotIngestResponse",
+        "type": "object"
+      },
+      "StaffUsageSnapshotResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/usage/snapshot (#3042): fleet quota + staleness.",
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "providers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "snapshot_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Age Seconds"
+          },
+          "snapshot_stale": {
+            "title": "Snapshot Stale",
+            "type": "boolean"
+          }
+        },
+        "required": ["snapshot_stale"],
+        "title": "StaffUsageSnapshotResponse",
+        "type": "object"
+      },
       "StaffV1AuditPage": {
         "properties": {
           "count": {
@@ -19475,6 +19542,82 @@
           }
         ],
         "summary": "Get Pricing",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/usage/snapshot": {
+      "get": {
+        "description": "Fleet-wide provider usage: newest Usage-Tracker snapshot, per-machine staleness (#3042).",
+        "operationId": "get_usage_snapshot_api_staff_usage_snapshot_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffUsageSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Usage Snapshot",
+        "tags": ["staff"]
+      },
+      "post": {
+        "description": "Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042).",
+        "operationId": "ingest_usage_snapshot_api_staff_usage_snapshot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffUsageSnapshotIngestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Usage Snapshot",
         "tags": ["staff"]
       }
     },
