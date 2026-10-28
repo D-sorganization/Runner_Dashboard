@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from retired_route_sunset import RETIRED_ROUTE_HTTP_SUNSET
+
 
 def test_quick_dispatch_returns_410_gone(make_authed_client: Any, operator_principal: Any) -> None:
     """POST /api/agents/quick-dispatch must return HTTP 410 Gone with Link header pointing to /api/v1/staff/requests."""
@@ -28,7 +30,7 @@ def test_quick_dispatch_returns_410_gone(make_authed_client: Any, operator_princ
     assert link_header is not None
     assert "</api/v1/staff/requests>" in link_header
     assert 'rel="successor-version"' in link_header
-    assert "Sunset" in resp.headers
+    assert resp.headers.get("Sunset") == RETIRED_ROUTE_HTTP_SUNSET
 
     body = resp.json()
     detail = body.get("detail", "") or body.get("error", "")
@@ -50,7 +52,7 @@ def test_jules_dispatch_returns_410_gone(make_authed_client: Any, operator_princ
     assert link_header is not None
     assert "</api/v1/staff/requests>" in link_header
     assert 'rel="successor-version"' in link_header
-    assert "Sunset" in resp.headers
+    assert resp.headers.get("Sunset") == RETIRED_ROUTE_HTTP_SUNSET
 
     body = resp.json()
     detail = body.get("detail", "") or body.get("error", "")
