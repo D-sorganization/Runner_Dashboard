@@ -25,17 +25,16 @@ from ci_fix_dispatch import (
     build_ci_fix_prompt,
     classify_failure_type,
     count_consecutive_attempts,
-    count_stale_red_prs_without_fix_attempts,
     evaluate_ci_fix_trigger,
     extract_failing_test_names,
     failure_signature,
     pr_number_from_queue_ref,
     record_ci_fix_audit,
     route_ci_fix,
-    select_sweep_candidates,
     truncate_log_tail,
 )
 from ci_fix_events import ACCEPTED_RUN_CONCLUSIONS, FAILED_CONCLUSIONS, CIFixEvent
+from ci_fix_sweep import count_stale_red_prs_without_fix_attempts, select_sweep_candidates
 from dashboard_config import ORG
 from fastapi import HTTPException
 from identity import Principal
@@ -466,7 +465,7 @@ async def run_ci_fix_sweep(
     ``pr_provider`` returns open PR facts for ``repo``: ``number``, ``repo``, ``branch``,
     ``is_draft``, ``auto_merge_armed``, ``red_since`` (ISO timestamp or ``None``), ``labels``,
     ``workflow_name``, ``run_id``. This keeps the sweep's decision logic
-    (:func:`ci_fix_dispatch.select_sweep_candidates`) identical whether the facts came from a
+    (:func:`ci_fix_sweep.select_sweep_candidates`) identical whether the facts came from a
     live GitHub poll or a scheduled caller's own cache.
 
     Post: every selected candidate gets exactly one dispatch attempt — never silently skipped

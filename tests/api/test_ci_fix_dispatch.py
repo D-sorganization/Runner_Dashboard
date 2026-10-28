@@ -23,14 +23,13 @@ from backend.ci_fix_dispatch import (
     CIFixLockManager,
     build_ci_fix_prompt,
     classify_failure_type,
-    count_stale_red_prs_without_fix_attempts,
     evaluate_ci_fix_trigger,
     extract_failing_test_names,
     record_ci_fix_audit,
     route_ci_fix,
-    select_sweep_candidates,
     truncate_log_tail,
 )
+from backend.ci_fix_sweep import count_stale_red_prs_without_fix_attempts, select_sweep_candidates
 from backend.server import app
 
 OPERATOR = Principal(id="op", type="human", name="Op", roles=["operator"], scopes=["remediation.dispatch"])
