@@ -31,6 +31,32 @@ const INITIAL_EXPERTS: PanelFormExpert[] = [
   { name: "", perspective: "", provider: "claude", model: "" },
 ];
 
+function mapPresetExperts(
+  found: PanelPreset,
+  providerList: string[],
+): { experts: PanelFormExpert[]; seatNotes: string[] } {
+  const defaultProvider = providerList[0] || "claude";
+  const seatNotes: string[] = [];
+  const experts = found.experts.map((expert) => {
+    if (!expert.provider) {
+      return { name: expert.name, perspective: expert.perspective, provider: defaultProvider, model: "" };
+    }
+    if (expert.available === false || !providerList.includes(expert.provider)) {
+      seatNotes.push(
+        `${expert.name}: ${expert.provider}${expert.model ? ` (${expert.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
+      );
+      return { name: expert.name, perspective: expert.perspective, provider: defaultProvider, model: "" };
+    }
+    return {
+      name: expert.name,
+      perspective: expert.perspective,
+      provider: expert.provider,
+      model: expert.model ?? "",
+    };
+  });
+  return { experts, seatNotes };
+}
+
 export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
   const [topic, setTopic] = useState("");
   const [mode, setMode] = useState<"debate" | "brainstorm">("debate");
@@ -51,15 +77,9 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
 
   const applyPresetExperts = useCallback(
     (found: PanelPreset, providerList: string[] = providers) => {
-      const defaultProvider = providerList[0] || "claude";
-      setExperts(
-        found.experts.map((e) => ({
-          name: e.name,
-          perspective: e.perspective,
-          provider: defaultProvider,
-          model: "",
-        })),
-      );
+      const mapped = mapPresetExperts(found, providerList);
+      setSeatNotes(mapped.seatNotes);
+      setExperts(mapped.experts);
     },
     [providers],
   );
@@ -80,15 +100,9 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
         if (!presetId) return;
         const found = loadedPresets.find((preset) => preset.id === presetId);
         if (!found) return;
-        const defaultProvider = providerList[0] || "claude";
-        setExperts(
-          found.experts.map((expert) => ({
-            name: expert.name,
-            perspective: expert.perspective,
-            provider: defaultProvider,
-            model: "",
-          })),
-        );
+        const mapped = mapPresetExperts(found, providerList);
+        setSeatNotes(mapped.seatNotes);
+        setExperts(mapped.experts);
       })
       .catch(() => {
         // fail-open with defaults
@@ -114,21 +128,9 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
     const found = presets.find((p) => p.id === presetId);
     if (!found) return;
 
-    const defaultProvider = providers[0] || "claude";
-    const notes: string[] = [];
-    const mapped: PanelFormExpert[] = found.experts.map((e) => {
-      if (!e.provider) return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
-      if (e.available === false || !providers.includes(e.provider)) {
-        // Never swap silently: say which seat fell back, to what, and what it was meant to be.
-        notes.push(
-          `${e.name}: ${e.provider}${e.model ? ` (${e.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
-        );
-        return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
-      }
-      return { name: e.name, perspective: e.perspective, provider: e.provider, model: e.model ?? "" };
-    });
-    setSeatNotes(notes);
-    setExperts(mapped);
+    const mapped = mapPresetExperts(found, providers);
+    setSeatNotes(mapped.seatNotes);
+    setExperts(mapped.experts);
   };
 
   // Preset pick can beat fetchPanelPresets on a slow runner; apply when the catalog arrives.
