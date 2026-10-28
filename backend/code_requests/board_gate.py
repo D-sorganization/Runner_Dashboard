@@ -31,10 +31,10 @@ class BoardRoutingCriteria(BaseModel):
     confidential_data_egress: bool = Field(
         default=False,
         validation_alias=AliasChoices("confidential_data_egress", "inentec_data_egress"),
-        description="Confidential data egress; requires user sign-off before Board routing.",
+        description="Confidential partner data egress; requires user sign-off before Board routing.",
     )
     cross_repo_contract: bool = False  # Dispatch envelope, fleet-managed, shared modules
-    public_site_structure: bool = False  # Structural change to public site (e.g. AffineDrift IA)
+    public_site_structure: bool = False  # Structural change to public site information architecture
     estimated_child_issues: int = 0  # > 8 child issues triggers post-planning gate
     target_repos_count: int = 1  # > 1 repo triggers gate
     tagged_board: bool = False  # Explicitly tagged `board`
@@ -75,7 +75,7 @@ class RuleBasedBoardClassifier:
     ]
 
     EGRESS_KEYWORDS: list[re.Pattern[str]] = [
-        re.compile(r"\b(inentec|icr)\b", re.I),
+        re.compile(r"\b(?:confidential\s+partner\s+data|partner\s+data\s+egress)\b", re.I),
         re.compile(r"\b(?:confidential\s+data\s+egress|external\s+data\s+egress)\b", re.I),
     ]
 
@@ -107,7 +107,7 @@ class RuleBasedBoardClassifier:
         for pattern in self.EGRESS_KEYWORDS:
             if pattern.search(text):
                 matched.append("confidential_data_egress")
-                reasons.append("Confidential data egress (mandatory user sign-off)")
+                reasons.append("Confidential partner data egress (mandatory user sign-off)")
                 user_signoff = True
                 break
 
@@ -134,10 +134,11 @@ def evaluate_board_routing(
     """
     crit = criteria or BoardRoutingCriteria()
 
+    # Rule 0 (Critical Security/Confidentiality): partner data egress ALWAYS requires Board + User signoff
     if crit.confidential_data_egress:
         return BoardRoutingDecision(
             routes_to_board=True,
-            reasons=["Confidential data egress requires Board review and user sign-off."],
+            reasons=["Confidential partner data egress requires Board review and user sign-off."],
             criteria_matched=["confidential_data_egress"],
             requires_user_signoff=True,
         )
