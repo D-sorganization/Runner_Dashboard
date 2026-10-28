@@ -15,7 +15,7 @@ from scripts import rd_barb_direct_notify as dn
 from scripts import rd_barb_notify_email as em
 
 T0 = 1_800_000_000.0
-PASSWORD = "s3cret-pass-value"
+PASSWORD = "s3cret-pass-value"  # pragma: allowlist secret
 CFG = {
     "RD_BARB_DIRECT_CHANNEL": "email",
     "RD_BARB_EMAIL_HOST": "smtp.example.com",
@@ -135,7 +135,7 @@ def test_missing_password_env_and_bad_port_fail_closed() -> None:
 
 
 def test_password_env_name_is_configurable() -> None:
-    cfg = {**CFG, "RD_BARB_EMAIL_PASSWORD_ENV": "MY_SMTP_SECRET"}
+    cfg = {**CFG, "RD_BARB_EMAIL_PASSWORD_ENV": "MY_SMTP_SECRET"}  # pragma: allowlist secret
     assert _code(_channel(cfg)) == "email_not_configured"
     _channel(cfg, env={"MY_SMTP_SECRET": PASSWORD}).send(QUESTION)
 
