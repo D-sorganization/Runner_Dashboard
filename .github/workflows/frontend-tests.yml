@@ -12,8 +12,8 @@ permissions:
   pull-requests: read
 
 # Main-push and live merge_group runs are never concurrency-cancelled. Only
-# pull_request runs cancel in progress. merge_group supersession uses
-# merge_queue_cancel_safety (GraphQL entries) before any bot cancel.
+# pull_request runs cancel in progress. Obsolete merge_group runs self-cancel
+# when their gh-readonly-queue ref is deleted (queue-entry-alive).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -31,7 +31,7 @@ jobs:
         staff-console-e2e,
       ]
     if: always()
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 5
     steps:
       - name: Require all applicable frontend checks
@@ -85,13 +85,28 @@ jobs:
   frontend-scope:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
       run_staff_e2e: ${{ steps.scope.outputs.run_staff_e2e }}
       run_api_contract: ${{ steps.scope.outputs.run_api_contract }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
+          sparse-checkout-cone-mode: false
+      - name: Stop obsolete merge queue entries
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - name: Detect changed frontend surface
         id: scope
         env:
@@ -176,7 +191,7 @@ jobs:
     needs: frontend-scope
     # Required on main: never skip the job — gate heavy steps so the context
     # always reports (docs-only PRs and merge_group included).
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - name: Note when TypeScript validation is out of scope
@@ -231,7 +246,7 @@ jobs:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -267,7 +282,7 @@ jobs:
     if: >-
       github.event_name != 'merge_group' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -296,7 +311,7 @@ jobs:
 
   playwright-e2e:
     name: Playwright E2E smoke tests
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 20
     needs:
       - frontend-scope
@@ -380,7 +395,7 @@ jobs:
   staff-console-e2e:
     # Staff Console flows against the real backend with fake provider CLIs (#1341).
     name: Staff Console e2e (fake providers)
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 20
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).

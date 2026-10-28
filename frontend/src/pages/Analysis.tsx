@@ -19,11 +19,16 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { Stat } from "../components/Stat";
 import { SubTabs } from "../components/SubTabs";
-import { legacyFetch } from "../lib/api";
+import { apiRequest, legacyFetch } from "../lib/api";
 import { isAnalysisTabKey } from "../lib/analysisTabs";
 import { HistoryTab } from "./History";
 import { ChartGlyph } from "./decompIcons";
-import { DeliveryMetricsPanel } from "./DeliveryMetrics/DeliveryMetricsPanel";
+
+// Lazy: the Delivery sub-tab is one of five mutually-exclusive panels below,
+// so keeping it out of the entry chunk costs nothing on first paint (#3282).
+const DeliveryMetricsPanel = React.lazy(() =>
+  import("./DeliveryMetrics/DeliveryMetricsPanel").then((m) => ({ default: m.DeliveryMetricsPanel })),
+);
 
 // ── Shared helper ────────────────────────────────────────────────────────────
 
@@ -105,13 +110,12 @@ export function StatsTab(): React.ReactElement {
   }
   function collectNow(): void {
     setLoading(true);
-    legacyFetch("/api/stats/workflows/collect", {
-      method: "POST",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-    })
-      .then((r) => r.json())
+    apiRequest<unknown>("/api/stats/workflows/collect", { method: "POST" })
       .then(() => {
         refresh();
+      })
+      .catch(() => {
+        setLoading(false);
       });
   }
   useEffect(() => {
@@ -938,7 +942,7 @@ export function AnalysisTab(p: AnalysisTabProps): React.ReactElement {
     subTab === "outcomes"
       ? h(AnalysisOutcomesTab, null)
       : subTab === "delivery"
-        ? h(DeliveryMetricsPanel, null)
+        ? h(React.Suspense, { fallback: null }, h(DeliveryMetricsPanel, null))
         : subTab === "stats"
           ? h(StatsTab, null)
           : subTab === "history"

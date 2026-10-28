@@ -203,7 +203,7 @@ async def test_canonical_transport_uses_digest_only_and_rejects_errors(monkeypat
 @pytest.mark.asyncio
 @pytest.mark.parametrize("resume", [False, True])
 async def test_successful_turn_writes_with_original_requester_and_stable_message_key(monkeypatch, tmp_path, resume):
-    from staff import chat
+    from staff import chat_turn_runner as chat
     from staff.conversations import ConversationStore
     from staff.roles import RoleSpec
 

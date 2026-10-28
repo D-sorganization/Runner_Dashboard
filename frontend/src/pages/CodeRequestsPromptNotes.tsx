@@ -48,6 +48,7 @@ export function PromptNotesEditor({
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <input
             type="checkbox"
+            aria-label="Auto-inject prompt notes on every dispatch"
             checked={promptNotesEnabled}
             onChange={(e) => setPromptNotesEnabled(e.target.checked)}
             style={{ cursor: "pointer" }}
@@ -61,6 +62,7 @@ export function PromptNotesEditor({
         </div>
       </div>
       <textarea
+        aria-label="Global prompt notes text"
         value={editingPromptNotes}
         onChange={(e) => setEditingPromptNotes(e.target.value)}
         placeholder="Enter global prompt notes that will be auto-added to every dispatch…"

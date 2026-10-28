@@ -26,6 +26,7 @@ from routers.staff import (
     RunBody,
 )
 from routers.staff_knowledge import router as staff_knowledge_router
+from routers.staff_pr_hygiene import router as staff_pr_hygiene_router
 from routers.staff_projects import router as staff_projects_router
 from routers.staff_references import router as staff_references_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
@@ -71,6 +72,7 @@ router.include_router(staff_knowledge_router)
 router.include_router(staff_skills_router)
 router.include_router(staff_projects_router)
 router.include_router(staff_references_router)
+router.include_router(staff_pr_hygiene_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:
@@ -153,7 +155,7 @@ async def _handle_idempotent_post(
     except BaseException:
         # The action did not complete, so free the key for a retry.
         try:
-            store.release(key, endpoint, caller)
+            store.release(key, endpoint, caller, operation_id=reservation.operation_id)
         except IdempotencyStoreError:
             log.exception("could not release idempotency key %s for %s", key, endpoint)
         raise
@@ -162,28 +164,25 @@ async def _handle_idempotent_post(
     if isinstance(result, Response):
         body_json = bytes(result.body).decode("utf-8")
         status_code = result.status_code
-    elif isinstance(result, BaseModel):
-        body_json = json.dumps(result.model_dump())
-    elif isinstance(result, dict):
-        body_json = json.dumps(result)
+    elif isinstance(result, (BaseModel, dict)):
+        body_json = json.dumps(result.model_dump() if isinstance(result, BaseModel) else result)
     else:
         body_json = json.dumps({"result": result})
     resp_headers = {"Content-Type": "application/json"}
 
     try:
-        store.complete(key, endpoint, caller, status_code, resp_headers, body_json)
+        receipt = store.complete(
+            key, endpoint, caller, status_code, resp_headers, body_json, operation_id=reservation.operation_id
+        )
+        if receipt == "not-owner":
+            resp_headers["Idempotency-Receipt"] = "unrecorded"
     except IdempotencyStoreError:
         # The effect happened; report it. The reservation stays pending, so a retry is
         # answered with in-progress or unknown-outcome instead of running again.
         log.exception("could not record idempotent result for %s under key %s", endpoint, key)
         resp_headers["Idempotency-Receipt"] = "unrecorded"
 
-    return Response(
-        content=body_json,
-        status_code=status_code,
-        media_type="application/json",
-        headers=resp_headers,
-    )
+    return Response(content=body_json, status_code=status_code, media_type="application/json", headers=resp_headers)
 
 
 # ── Roster & Board ─────────────────────────────────────────────────────────────

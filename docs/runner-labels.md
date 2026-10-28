@@ -16,6 +16,7 @@ to the correct runner tier.
 | `d-sorg-fleet-docker`  | NVMe or SSD  | Docker image builds, Trivy scans, container-layer cache churn                                    | Lightweight maintenance workflows                              |
 | `d-sorg-fleet-bulk`    | HDD          | Governance, issue taxonomy sync, label sync, spec checks, secret scans, lease reaper, verify-tag | Docker builds, native-build CI, lockfile refreshes, Playwright |
 | `d-sorg-fleet-queue`   | Reserved slot | `merge_group` validation only, to keep merge-queue checks from waiting behind PR builds         | Pull-request builds, scheduled and manual jobs                |
+| `d-sorg-fleet-browser` | Playwright/Vitest-capable | Frontend/E2E jobs in `frontend-tests.yml`, opt-in via the `CI_BROWSER_RUNNER_LABEL` repo variable (#3045) | The Brick runners (Brick-1/-2); never assign this label to them |
 
 ## Neutral Labels (safe during transition)
 
@@ -64,6 +65,64 @@ one reserved runner slot before workflows route jobs to it. Do not assign it to
 PR builds or maintenance jobs; the reservation is what protects merge checks
 from the shared PR queue. Keep merge-queue cancellation disabled until the
 owner records approval in the enabling PR.
+
+## Opt-In Reserved-Runner Switch for merge_group (#3046, implements #2768)
+
+`vars.CI_QUEUE_RUNNER_LABEL` is a repo variable, separate from the
+`d-sorg-fleet-queue` taxonomy label above. When set (and
+`CI_QUEUE_RUNNER_MODE` is not `hosted`), every required `merge_group` job on
+`ci-standard.yml`, `frontend-tests.yml`, `ci-secrets.yml`,
+`anti-phantom-merge.yml`, and `ci-auto-deploy-regression.yml` requests that
+label instead of the shared `d-sorg-fleet` pool, so a merge group never waits
+behind PR work. `pull_request`, `push`, `schedule`, and `workflow_dispatch`
+jobs never request it. `CI_QUEUE_RUNNER_MODE=hosted` and `priority:expedite`
+still take precedence, and fork PRs still never reach the fleet.
+
+**Rollout:**
+
+1. Org admin registers one or more self-hosted runners carrying the label you
+   intend to put in `CI_QUEUE_RUNNER_LABEL` (for example `d-sorg-fleet-queue`)
+   — TODO for the org admin; this PR does not register runners or edit
+   organization runner labels.
+2. Set the repo variable `CI_QUEUE_RUNNER_LABEL` to that label. Until it is
+   set, every workflow in scope resolves exactly as it does today — the
+   switch is a no-op by default.
+3. Watch the next few merge-group runs: a job queues visibly on the reserved
+   label. If no runner is online for that label, the job queues (and times
+   out per its `timeout-minutes`) rather than silently falling back to the
+   shared `d-sorg-fleet` pool.
+
+**Rollback:** unset (or empty) the repo variable `CI_QUEUE_RUNNER_LABEL`.
+No workflow file change is needed — every merge_group job immediately
+resumes resolving to `d-sorg-fleet` on the next run.
+
+### Browser runner (opt-in switch, #3045)
+
+```yaml
+runs-on: [self-hosted, Linux, X64, d-sorg-fleet-browser]
+```
+
+`frontend-tests.yml` does not use this snippet directly: every job's
+`runs-on` already ends in `... || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet'`,
+so setting the `CI_BROWSER_RUNNER_LABEL` repository variable to
+`d-sorg-fleet-browser` is enough to opt every frontend/E2E job in at once. With
+the variable unset, those jobs resolve exactly as they do today (bare
+`d-sorg-fleet`).
+
+**Rollout order:**
+
+1. Org admin adds the `d-sorg-fleet-browser` label (Playwright system deps +
+   Node, never Brick-1/-2) to the runners that should carry it.
+2. Verify at least 8 of those runners are online and advertising the label.
+3. Set the repository variable `CI_BROWSER_RUNNER_LABEL=d-sorg-fleet-browser`.
+   Frontend/E2E jobs route to the new label on the next run; fork PRs and
+   hosted-mode PRs are unaffected (RM#1989).
+4. Restart Brick-1 and Brick-2 last, now that they no longer need to serve
+   frontend/E2E jobs under the bare `d-sorg-fleet` label.
+
+**Rollback:** unset `CI_BROWSER_RUNNER_LABEL` (frontend/E2E jobs fall back to
+`d-sorg-fleet` immediately); stop Brick-1/-2 again first if they were
+restarted into serving frontend/E2E traffic.
 
 ## Workflow Classes
 

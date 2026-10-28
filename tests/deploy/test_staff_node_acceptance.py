@@ -77,7 +77,7 @@ def _fake_node(tmp_path: Path, rm_status: str = "unchanged") -> tuple[Path, Path
         f"  */api/health) echo '{_HEALTH}' ;;\n"
         f"  */api/staff/board*) echo '{board}' ;;\n"
         f"  */api/staff/schedule) echo '{_SCHEDULE}' ;;\n"
-        '  */api/fleet/identity) echo \'{"name":"DeskComputer","role":"node","unregistered":false}\' ;;\n'
+        '  */api/fleet/identity) echo \'{"name":"hub-a","role":"node","unregistered":false}\' ;;\n'
         "  *) exit 22 ;;\n"
         "esac\n",
         newline="\n",
@@ -135,7 +135,7 @@ def test_expect_sha_mismatch_fails(tmp_path: Path) -> None:
 def test_fleet_identity_mismatch_fails(tmp_path: Path) -> None:
     assert BASH is not None
     fake, env, dropin = _fake_node(tmp_path)
-    # Set DISPLAY_NAME to WrongMachine so it mismatches DeskComputer returned by mock curl
+    # Set DISPLAY_NAME to WrongMachine so it mismatches hub-a returned by mock curl
     cmd = (
         f'DISPLAY_NAME="WrongMachine" PATH="{as_bash_path(fake)}:$PATH" exec bash "{as_bash_path(SCRIPT)}" '
         f'--role scheduler --env-file "{as_bash_path(env)}" --dropin-file "{as_bash_path(dropin)}" '
@@ -171,7 +171,7 @@ def test_unit_namespaces_allowing_cursor_sandbox_pass(tmp_path: Path) -> None:
 
 
 def test_unit_namespaces_missing_codex_pid_fails(tmp_path: Path) -> None:
-    """DeskComputer: shell unshare passes while the service denies bwrap --unshare-pid."""
+    """hub-a: shell unshare passes while the service denies bwrap --unshare-pid."""
     out = _run_with_systemctl(tmp_path, "ipc net mnt user uts")
     assert "[FAIL] Unit blocks cursor-agent sandbox namespaces" in out, out
     assert "missing: pid " in out, out
@@ -198,7 +198,7 @@ def test_run_ad_hoc_runs_antigravity_when_not_chat_only(tmp_path: Path) -> None:
         '"rm_source":{"status":"unchanged","check_age_seconds":120}}'
     )
     roster = (
-        '{"machine":"DeskComputer","roles":[],"providers":{"claude":true,"codex":true,"antigravity":true,'
+        '{"machine":"hub-a","roles":[],"providers":{"claude":true,"codex":true,"antigravity":true,'
         '"cursor-agent":true,"ollama":true,"claude-ollama":true},'
         '"chat_only_providers":[],'
         '"provider_versions":{},"active_runs":0}'
@@ -214,7 +214,7 @@ def test_run_ad_hoc_runs_antigravity_when_not_chat_only(tmp_path: Path) -> None:
         f"  */api/staff/board*) echo '{board}' ;;\n"
         f"  */api/staff/roster*) echo '{roster}' ;;\n"
         f"  */api/staff/schedule) echo '{_SCHEDULE}' ;;\n"
-        '  */api/fleet/identity) echo \'{"name":"DeskComputer","role":"node","unregistered":false}\' ;;\n'
+        '  */api/fleet/identity) echo \'{"name":"hub-a","role":"node","unregistered":false}\' ;;\n'
         '  */api/staff/ad-hoc/run) echo \'{"run":{"id":"run-adhoc-test"}}\' ;;\n'
         '  */api/staff/runs/*) echo \'{"run":{"id":"run-adhoc-test","status":"succeeded"}}\' ;;\n'
         "  *) exit 22 ;;\n"
@@ -222,7 +222,7 @@ def test_run_ad_hoc_runs_antigravity_when_not_chat_only(tmp_path: Path) -> None:
         newline="\n",
     )
     cmd = (
-        f'HOME="{as_bash_path(home)}" DISPLAY_NAME="DeskComputer" '
+        f'HOME="{as_bash_path(home)}" DISPLAY_NAME="hub-a" '
         f'PATH="{as_bash_path(fake)}:$PATH" exec bash "{as_bash_path(SCRIPT)}" --role scheduler '
         f'--env-file "{as_bash_path(env)}" --dropin-file "{as_bash_path(dropin)}" '
         "--skip-service --skip-network --run-ad-hoc"

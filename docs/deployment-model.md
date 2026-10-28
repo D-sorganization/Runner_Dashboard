@@ -46,14 +46,14 @@ Secrets are stored separately from the deploy tree:
 Run `setup.sh` once per machine. Provide the machine-specific flags:
 
 ```bash
-# ControlTower -- 16 local runners across NVMe and SSD pools, hub role
-bash deploy/setup.sh --runners 8 --machine-name ControlTower --role hub
+# node-a -- 16 local runners across NVMe and SSD pools, hub role
+bash deploy/setup.sh --runners 8 --machine-name node-a --role hub
 
-# OG-Laptop -- 4 runners, node role (default)
-bash deploy/setup.sh --runners 4 --machine-name OG-Laptop
+# node-b -- 4 runners, node role (default)
+bash deploy/setup.sh --runners 4 --machine-name node-b
 
-# DeskComputer -- schedule-controlled runner count
-bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases desktop
+# hub-a -- schedule-controlled runner count
+bash deploy/setup.sh --runners 8 --machine-name hub-a --runner-aliases desktop
 ```
 
 `setup.sh` will:
@@ -66,12 +66,12 @@ bash deploy/setup.sh --runners 8 --machine-name DeskComputer --runner-aliases de
 After all machines are running, add the fleet node list to the hub:
 
 ```bash
-bash deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-  --fleet-nodes "OG-Laptop:http://100.x.x.x:8321,DeskComputer:http://100.x.x.x:8321"
+bash deploy/setup.sh --runners 8 --machine-name node-a --role hub \
+  --fleet-nodes "node-b:http://100.x.x.x:8321,hub-a:http://100.x.x.x:8321"
 ```
 
-ControlTower's active local Linux capacity is split between the C: backed
-`ControlTower-NVMe` WSL pool and the F: backed `ControlTower-SSD` WSL pool.
+node-a's active local Linux capacity is split between the C: backed
+`node-a-NVMe` WSL pool and the F: backed `node-a-SSD` WSL pool.
 The old D: HDD pool and retired small Linux runner host should not be added
 to `FLEET_NODES`.
 
@@ -199,7 +199,7 @@ install -m 600 /path/to/downloaded-app-private-key.pem \
 cat >> ~/.config/runner-dashboard/env <<'EOF'
 GITHUB_APP_ID=123456
 GITHUB_APP_INSTALLATION_ID=98765432
-GITHUB_APP_PRIVATE_KEY_FILE=/home/dieterolson/.config/runner-dashboard/github-app-private-key.pem
+GITHUB_APP_PRIVATE_KEY_FILE=/home/fleet-operator/.config/runner-dashboard/github-app-private-key.pem
 EOF
 
 chmod 600 ~/.config/runner-dashboard/env \
@@ -316,7 +316,7 @@ gh auth refresh -s admin:org
 
 Each machine's `runner-schedule.json` may define `max_count`. The scheduler
 caps the default count, timed schedule entries, and manual targets at that
-value. The canonical DeskComputer policy uses one runner during weekday
+value. The canonical hub-a policy uses one runner during weekday
 daytime and two runners overnight and during weekend daytime, with a hard
 two-runner ceiling. Machine-specific deployment must retain that ceiling when
 the schedule is edited through the dashboard.
@@ -338,7 +338,7 @@ below its threshold, or memory PSI `some avg60` rises above its threshold, the
 scheduler lowers capacity to `runners`. It never raises capacity this way, and
 the state `reason` names the floor that was breached. Surplus runners leave
 through the busy-safe drain. Capacity returns on the first tick after the host
-recovers. A probe that cannot be read is not treated as a breach. OGLaptop uses
+recovers. A probe that cannot be read is not treated as a breach. node-b uses
 this block so it stays usable for interactive coding sessions.
 
 The scheduler treats a runner as busy when any of these independent signals is
@@ -455,12 +455,12 @@ The `--artifact` flag delegates file installation to
 deploy directory. The backup, dependency install, and service restart steps
 still run normally.
 
-### Qualified OGLaptop deployment
+### Qualified node-b deployment
 
-Production OGLaptop releases use the manual, exact-release workflow described
+Production node-b releases use the manual, exact-release workflow described
 in [`docs/runbooks/qualified-release-deploy.md`](runbooks/qualified-release-deploy.md).
 It is deliberately separate from `setup.sh` and `update-deployed.sh`: a
-protected `oglaptop-production` environment supplies the human approval gate
+protected `node-b-production` environment supplies the human approval gate
 and a no-fallback credential with organization-runner-read authority. The
 protected-main, root-owned helper validates the published checksum, cosign
 bundle, build-attestation contract, archive, metadata, runtime ABI, complete
@@ -491,7 +491,7 @@ Build artifacts are described in `deploy/ARTIFACT_BUILD.md`.
 
 Each fleet machine runs its own dashboard instance independently. There is no
 shared database or central coordinator -- the hub machine (``role: hub`` in
-``machine_registry.yml``, currently DeskComputer) aggregates status from the
+``machine_registry.yml``, currently hub-a) aggregates status from the
 other nodes via the `/api/fleet/nodes` endpoint using Tailscale IPs.
 
 The systemd unit must **not** set ``MACHINE_ROLE``; the dashboard derives role
@@ -514,8 +514,8 @@ and machine name per host):
 
 ```bash
 cd ~/actions-runners/dashboard
-./deploy/setup.sh --runners 8 --machine-name DeskComputer   # hub (DeskComputer)
-./deploy/setup.sh --runners 4 --machine-name Brick          # node (Brick)
+./deploy/setup.sh --runners 8 --machine-name hub-a   # hub (hub-a)
+./deploy/setup.sh --runners 4 --machine-name node-c          # node (node-c)
 ```
 
 Updates are deployed per-machine. There is no fleet-wide push mechanism built

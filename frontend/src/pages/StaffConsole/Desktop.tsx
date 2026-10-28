@@ -5,7 +5,7 @@
  * State comes from `useStaffConsole`, shared with the mobile layout. Nothing
  * is fetched or created until the user picks a role.
  */
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Composer } from "./Composer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { ContextPane } from "./ContextPane";
@@ -18,8 +18,11 @@ import type { StaffRoleItem } from "./types";
 import { useRoleContext, useRosterReadiness } from "./useRoleContext";
 import { useStaffConsole } from "./useStaffConsole";
 import { Dropdown } from "../../primitives/Dropdown";
-import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import "./desktop.css";
+
+const ProjectStarterActions = lazy(() =>
+  import("./ProjectStarterActions").then((module) => ({ default: module.ProjectStarterActions })),
+);
 
 export interface StaffConsoleDesktopProps {
   /** Seed roster (tests); the console loads `/api/v1/staff/roster` when absent. */
@@ -29,6 +32,7 @@ export interface StaffConsoleDesktopProps {
   initialThreadId?: string | null;
   /** Give the home conversation the full canvas; staff/context stay on demand. */
   chatFirst?: boolean;
+  onThreadSelected?: (threadId: string, role: string) => void;
 }
 
 /** True when the console is below the three-column width (see desktop.css). */
@@ -51,6 +55,7 @@ export function StaffConsoleDesktop({
   threadApi,
   initialThreadId,
   chatFirst = false,
+  onThreadSelected,
 }: StaffConsoleDesktopProps) {
   const sc = useStaffConsole({ roles: seedRoles, threadApi, initialThreadId });
   // Below 1280px the context pane overlays the conversation, so it starts closed there.
@@ -73,17 +78,26 @@ export function StaffConsoleDesktop({
   // The address names the open conversation, so a reload or shared link reopens it (#1783).
   // replaceState, not push: switching threads should not flood the back stack.
   const activeThreadId = activeThread?.id;
+  const onThreadSelectedRef = useRef(onThreadSelected);
+  onThreadSelectedRef.current = onThreadSelected;
+  const activeRole = activeThread?.kind === "auto" && activeThread.participants.includes("barb")
+    ? "barb"
+    : sc.selectedRole ?? "barb";
   useEffect(() => {
     if (!activeThreadId || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("thread") === activeThreadId) return;
+    if (onThreadSelectedRef.current) {
+      onThreadSelectedRef.current(activeThreadId, activeRole);
+      return;
+    }
     params.set("thread", activeThreadId);
     window.history.replaceState(
       window.history.state,
       "",
       `${window.location.pathname}?${params.toString()}`,
     );
-  }, [activeThreadId]);
+  }, [activeThreadId, activeRole]);
 
   const handleExport = (format: "markdown" | "json") => {
     if (!activeThread) return;
@@ -163,6 +177,7 @@ export function StaffConsoleDesktop({
                 type="button"
                 className="staff-console__export-btn"
                 aria-expanded={showRoster}
+                title={showRoster ? "Hide the staff roster sidebar" : "Show the staff roster to pick a role"}
                 onClick={() => setShowRoster((shown) => !shown)}
               >
                 {showRoster ? "Hide staff" : "Choose staff"}
@@ -173,12 +188,14 @@ export function StaffConsoleDesktop({
                 <button
                   type="button"
                   className="staff-console__export-btn"
+                  title="Start a fresh thread without the current conversation context"
                   onClick={() => void sc.newConversation()}
                 >
                   New conversation
                 </button>
                 <Dropdown
                   label="Export"
+                  tooltip="Download this thread as Markdown or JSON"
                   triggerClassName="staff-console__export-btn"
                   items={[
                     {
@@ -244,6 +261,12 @@ export function StaffConsoleDesktop({
           </div>
         </header>
 
+        {chatFirst && activeThread && (
+          <Suspense fallback={null}>
+            <ProjectStarterActions onPrefill={applyComposerPrefill} />
+          </Suspense>
+        )}
+
         <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
 
         {activeThread ? (
@@ -297,6 +320,7 @@ export function StaffConsoleDesktop({
                         key={text}
                         type="button"
                         className="staff-console__suggestion-chip"
+                        title={`Prefill the composer with: ${text}`}
                         onClick={() => applyComposerPrefill(text)}
                       >
                         {text}
@@ -304,14 +328,9 @@ export function StaffConsoleDesktop({
                     ))}
                   </div>
                   {chatFirst && (
-                    <div className="staff-console__project-starters" aria-label="Project starters">
-                      {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
-                        <button key={project} type="button" className="staff-console__project-starter" aria-label={`Start ${project}`} onClick={() => applyComposerPrefill(prompt)}>
-                          <span>Start with {project}</span>
-                          <span>Prepare a test-first triage</span>
-                        </button>
-                      ))}
-                    </div>
+                    <Suspense fallback={null}>
+                      <ProjectStarterActions onPrefill={applyComposerPrefill} />
+                    </Suspense>
                   )}
                 </>
               )}

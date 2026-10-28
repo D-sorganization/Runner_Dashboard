@@ -15,6 +15,7 @@ DASHBOARD_NAV_TABS = frozenset(
         "staff",
         "fleet-command",
         "agent-bus",
+        "activity",
         "library",
         "context",
         "queue",
@@ -25,6 +26,7 @@ DASHBOARD_NAV_TABS = frozenset(
         "overview",
         "operations",
         "insights",
+        "security",
         "settings",
     }
 )

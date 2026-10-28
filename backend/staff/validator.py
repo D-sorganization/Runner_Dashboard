@@ -7,9 +7,12 @@ without requiring external dependencies like ``jsonschema``.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, TypeGuard
 
 from staff.adapters import CHAT_READ_ONLY_TOOLS
+from staff.model_tiers import validate_role_tier, validate_tier_config
+from staff.provider_failover_config import validate_failover_chain_data
 from staff.provider_fallback import validate_provider_fallback_rules_data
 
 SURFACES: tuple[str, ...] = ("grok-chat", "dashboard", "both")
@@ -42,6 +45,9 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "tools",
     "scopes",
     "retry",
+    "tier",
+    "allow_tier_escalation",
+    "avatar",
 )
 STRATEGY_KEYS: tuple[str, ...] = ("consolidate_when",)
 CONSOLIDATE_WHEN_BOUNDS: dict[str, tuple[int, int | None]] = {
@@ -419,12 +425,34 @@ def validate_role_data(data: Any) -> list[str]:
     problems.extend(_validate_lifecycle(data))
     problems.extend(_validate_chat(data))
     problems.extend(validate_provider_fallback_rules_data(data))
+    problems.extend(validate_failover_chain_data(data))
+    problems.extend(validate_tier_config())
+    tier = data.get("tier")
+    if tier is not None:
+        problems.extend(validate_role_tier(str(tier)))
     problems.extend(_validate_retry_block(data))
+    problems.extend(_validate_avatar_field(data))
     return problems
 
 
+def _validate_avatar_field(data: dict[str, Any]) -> list[str]:
+    from staff.role_avatar_paths import AVATAR_YML_RE
+
+    raw = data.get("avatar")
+    if raw is None:
+        return []
+    if not isinstance(raw, str) or not raw.strip():
+        return ["avatar must be a non-empty string"]
+    rel = raw.strip().replace("\\", "/")
+    if rel.startswith("/") or ".." in Path(rel).parts:
+        return [f"avatar {rel!r} must be a safe path relative to staff/avatars/"]
+    if not AVATAR_YML_RE.match(rel):
+        return [f"avatar {rel!r} must match {AVATAR_YML_RE.pattern}"]
+    return []
+
+
 def _validate_retry_block(data: dict[str, Any]) -> list[str]:
-    """Optional ``retry`` block: max_attempts and legacy fallback_providers."""
+    """Optional ``retry`` block: max_attempts, legacy fallback_providers and failover_chain."""
     problems: list[str] = []
     retry = data.get("retry")
     if retry is None:
@@ -433,7 +461,7 @@ def _validate_retry_block(data: dict[str, Any]) -> list[str]:
         problems.append("retry must be a mapping")
         return problems
     for key in retry:
-        if key not in ("max_attempts", "fallback_providers", "provider_fallbacks"):
+        if key not in ("max_attempts", "fallback_providers", "provider_fallbacks", "failover_chain"):
             problems.append(f"unknown retry key {key!r}")
     max_att = retry.get("max_attempts")
     if max_att is not None:
@@ -443,4 +471,25 @@ def _validate_retry_block(data: dict[str, Any]) -> list[str]:
     if fb is not None:
         if not isinstance(fb, list) or any(not isinstance(p, str) or not p.strip() for p in fb):
             problems.append("retry.fallback_providers must be a list of non-empty strings")
+    if "failover_chain" in retry:
+        problems.extend(_failover_chain_shape_problems(retry["failover_chain"]))
+    return problems
+
+
+def _failover_chain_shape_problems(chain: Any) -> list[str]:
+    """Shape of ``retry.failover_chain`` (RM schema mirror); provider membership is checked in parse_role."""
+    if not isinstance(chain, list) or not chain:
+        return ["retry.failover_chain must be a non-empty list"]
+    problems: list[str] = []
+    for idx, step in enumerate(chain):
+        prefix = f"retry.failover_chain[{idx}]"
+        if not isinstance(step, dict) or set(step) - {"provider", "model"}:
+            problems.append(f"{prefix} must be a mapping of provider and optional model")
+            continue
+        provider = step.get("provider")
+        if not isinstance(provider, str) or not provider.strip():
+            problems.append(f"{prefix}.provider must be a non-empty string")
+        model = step.get("model")
+        if model is not None and (not isinstance(model, str) or not model.strip()):
+            problems.append(f"{prefix}.model must be a non-empty string or null")
     return problems

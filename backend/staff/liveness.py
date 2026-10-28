@@ -5,11 +5,16 @@ months because nothing watched last-success. For every dispatchable role with a
 ``schedule`` this module derives, from the node-local run store and the
 scheduler state file, a status:
 
-  ``ok``     the latest successful run is younger than 1.5 schedule intervals;
-  ``late``   older than 1.5 intervals but younger than 3;
-  ``dead``   older than 3 intervals — or the role has fired at least once and
-             never succeeded (a still-active first attempt is ``late``);
-  ``never``  no run exists and the scheduler has not fired the role.
+  ``ok``      the latest successful run is younger than 1.5 schedule intervals;
+  ``late``    older than 1.5 intervals but younger than 3;
+  ``dead``    older than 3 intervals but younger than 10 — or the role has
+              fired at least once and never succeeded (a still-active first
+              attempt is ``late``);
+  ``retired`` older than 10 intervals: scheduling almost certainly moved to
+              another node (leader election; #3315) rather than this role
+              being actually broken — excluded from ``ALERT_STATUSES`` so it
+              stops paging once it has aged out;
+  ``never``   no run exists and the scheduler has not fired the role.
 
 ``compute_liveness`` is pure (roles, store, scheduler state, now). A role
 turning ``dead`` is recorded once per role per six hours as a ``staff_role_dead``
@@ -35,10 +40,11 @@ from staff.store import ACTIVE_STATUSES, RunRecord
 
 log = logging.getLogger("dashboard.staff.liveness")
 
-LIVENESS_STATUSES = ("ok", "late", "dead", "never")
+LIVENESS_STATUSES = ("ok", "late", "dead", "retired", "never")
 ALERT_STATUSES = ("late", "dead")
 LATE_FACTOR = 1.5
 DEAD_FACTOR = 3.0
+RETIRED_FACTOR = 10.0
 DEAD_EVENT_DEBOUNCE_SECONDS = 6 * 3600
 DEAD_EVENT_KIND: Final = "staff_role_dead"
 
@@ -111,6 +117,8 @@ def _latest(store: RunLookup, role: str, status: str | None = None) -> RunRecord
 def _classify(age: float, interval: int | None) -> str:
     if interval is None or interval <= 0:
         return "ok"
+    if age > RETIRED_FACTOR * interval:
+        return "retired"
     if age > DEAD_FACTOR * interval:
         return "dead"
     if age > LATE_FACTOR * interval:
@@ -137,7 +145,12 @@ def role_liveness(
     elif fired_at is not None or attempt_at is not None:
         anchor = max(t for t in (fired_at, attempt_at) if t is not None)
         age = int((now - anchor).total_seconds())
-        status = "late" if attempt is not None and attempt.status in ACTIVE_STATUSES else "dead"
+        if attempt is not None and attempt.status in ACTIVE_STATUSES:
+            status = "late"
+        elif interval is not None and interval > 0 and age > RETIRED_FACTOR * interval:
+            status = "retired"
+        else:
+            status = "dead"
     else:
         status = "never"
     upcoming: str | None = None

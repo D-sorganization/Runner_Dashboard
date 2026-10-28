@@ -21,7 +21,9 @@ _BACKEND_DIR = Path(__file__).parent.parent / "backend"
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
+
+_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _CALLBACK = f"{_ORIGIN}/api/auth/callback"
 _CLIENT_ID = "Ov23liProductionClient"
 _CLIENT_SECRET = "s" * 40  # pragma: allowlist secret
@@ -117,6 +119,22 @@ def test_missing_oauth_configuration_never_redirects_to_dev_login(
     assert "dev-login" not in repr(exc_info.value.detail)
     assert _CLIENT_SECRET not in repr(exc_info.value.detail)
     assert "administrator" in exc_info.value.detail["hint"].lower()
+
+
+def test_missing_github_org_has_actionable_fail_closed_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+    from routers.auth import github_login
+
+    for name, value in _production_env().items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("GITHUB_ORG")
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(github_login(_request()))
+
+    assert exc_info.value.status_code == 503
+    assert exc_info.value.detail["reason"] == "github_org_missing"
+    assert "GITHUB_ORG" in exc_info.value.detail["hint"]
 
 
 def test_login_redirect_uses_exact_callback_and_least_privilege_scope(

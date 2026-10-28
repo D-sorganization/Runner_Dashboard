@@ -7,9 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, Request
-from identity import Principal
+from identity import Principal, _principal_may_read_fleet, principal_has_scope
 from library.run_reference_recording import requested_run_id
 from library.verify import verification_repo_root, verify_content
+from staff.tokens import active_run_id_for_principal
+
+
+def _is_shared_only_reader(principal: Principal) -> bool:
+    """A library.read principal with no broader fleet access is bound to shared, own-run content."""
+    return principal_has_scope(principal, "library.read") and not _principal_may_read_fleet(principal)
 
 
 async def verify_library_request(request: Request, principal: Principal, db_path: Path) -> dict[str, Any]:
@@ -30,9 +36,14 @@ async def verify_library_request(request: Request, principal: Principal, db_path
         raise HTTPException(status_code=422, detail="shared_only must be a boolean")
     if payload.get("repo") is not None and not isinstance(payload["repo"], str):
         raise HTTPException(status_code=422, detail="repo must be a repository name")
-    if payload.get("shared_only", False) and payload.get("repo") is not None:
+    shared_only_reader = _is_shared_only_reader(principal)
+    local_only = False if shared_only_reader else payload.get("local_only", False)
+    shared_only = True if shared_only_reader else payload.get("shared_only", False)
+    if shared_only and payload.get("repo") is not None:
         raise HTTPException(status_code=422, detail="repo verification is unavailable in shared_only mode")
     try:
+        if shared_only_reader and active_run_id_for_principal(principal.id) is None:
+            raise HTTPException(status_code=403, detail="library read requires an active run token")
         run_id = requested_run_id(request, principal, body_run_id=payload.get("run_id"))
         repo_root = verification_repo_root(payload.get("repo"))
         return await asyncio.to_thread(
@@ -41,8 +52,8 @@ async def verify_library_request(request: Request, principal: Principal, db_path
             content,
             run_id=run_id,
             repo_root=repo_root,
-            local_only=payload.get("local_only", False),
-            shared_only=payload.get("shared_only", False),
+            local_only=local_only,
+            shared_only=shared_only,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

@@ -1,6 +1,6 @@
 """A role remembers the previous turn of its thread (#1655).
 
-Two separate failures made Barb forget turn 1 on DeskComputer:
+Two separate failures made Barb forget turn 1 on hub-a:
 
 - The claude CLI keeps a session under a project directory keyed by the working
   directory. Every turn ran in a fresh ``mkdtemp`` directory, so ``--resume`` from
@@ -30,7 +30,7 @@ CODEWORD = "PERIWINKLE-42"
 
 @pytest.fixture
 def conv_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConversationStore:
-    monkeypatch.setattr("staff.chat.version_gate", lambda *_: None)
+    monkeypatch.setattr("staff.chat_turn_runner.version_gate", lambda *_: None)
     reset_conversation_store()
     reset_thread_bus()
     return get_conversation_store(tmp_path / "test_chat_memory.sqlite3")
@@ -45,9 +45,9 @@ def test_replay_keeps_the_previous_turn_behind_a_long_persona_and_full_context(
     conv_store: ConversationStore,
 ) -> None:
     thread = conv_store.create_thread(title="memory", role="barb")
-    conv_store.add_message(thread.id, author_kind="user", author="dieter", body_md=f"The codeword is {CODEWORD}.")
+    conv_store.add_message(thread.id, author_kind="user", author="operator", body_md=f"The codeword is {CODEWORD}.")
     conv_store.add_message(thread.id, author_kind="role", author="barb", body_md="Noted.")
-    conv_store.add_message(thread.id, author_kind="user", author="dieter", body_md="What is the codeword?")
+    conv_store.add_message(thread.id, author_kind="user", author="operator", body_md="What is the codeword?")
 
     replay = format_history_replay(
         conv_store=conv_store,
@@ -62,7 +62,7 @@ def test_replay_keeps_the_previous_turn_behind_a_long_persona_and_full_context(
 
 
 def _post_turn(conv_store: ConversationStore, thread_id: str, text: str) -> tuple[str, str]:
-    user = conv_store.add_message(thread_id, author_kind="user", author="dieter", body_md=text)
+    user = conv_store.add_message(thread_id, author_kind="user", author="operator", body_md=text)
     placeholder = conv_store.add_message(
         thread_id,
         author_kind="role",
@@ -100,15 +100,15 @@ async def test_turns_on_one_thread_run_in_the_same_directory_so_resume_finds_the
     cwds: list[str] = []
     argvs: list[list[str]] = []
 
-    def spawn(*, cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+    def spawn(*, cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None) -> MagicMock:
         cwds.append(cwd)
         argvs.append(cmd)
         assert Path(cwd).is_dir()
         return _proc("sess-1")
 
     with (
-        patch("staff.chat.load_roles", return_value={"barb": role}),
-        patch("staff.chat.build_fleet_context_block", new_callable=AsyncMock, return_value=None),
+        patch("staff.chat_turn_runner.load_roles", return_value={"barb": role}),
+        patch("staff.chat_turn_runner.build_fleet_context_block", new_callable=AsyncMock, return_value=None),
         patch.object(runner, "_spawn_cli_process", side_effect=spawn),
     ):
         turns = ((thread.id, f"The codeword is {CODEWORD}."), (thread.id, "Codeword?"), (other.id, "Hi"))

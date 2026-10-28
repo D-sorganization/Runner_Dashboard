@@ -6,7 +6,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 const api = vi.hoisted(() => ({ getActionProposal: vi.fn() }));
 vi.mock("../../Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../Staff/staffApi")>()),
@@ -72,6 +72,44 @@ describe("Thread Component", () => {
 
     // Date separators exist for 2026-09-24 and 2026-09-25
     expect(screen.getAllByRole("separator")).toHaveLength(2);
+  });
+
+  it("virtualizes long histories while allowing the user to scroll to earlier messages", async () => {
+    const longHistory = Array.from({ length: 120 }, (_, index): ThreadMessage => ({
+      id: `long-${index}`,
+      thread_id: MOCK_THREAD.id,
+      author: index % 2 ? "barb" : "user",
+      author_kind: index % 2 ? "staff" : "user",
+      kind: "text",
+      body_md: `Virtual history message ${index}`,
+      delivery: "complete",
+      created_at: `2026-09-${String(1 + Math.floor(index / 24)).padStart(2, "0")}T10:00:00Z`,
+      seq: index + 1,
+    }));
+    render(<Thread thread={MOCK_THREAD} messages={longHistory} />);
+
+    const virtualWindow = screen.getByTestId("thread-virtual-window");
+    expect(Number(virtualWindow.getAttribute("data-total-items"))).toBeGreaterThan(120);
+    expect(virtualWindow.querySelectorAll(".thread-virtual-row").length).toBeLessThan(40);
+    const totalVirtualHeight = Number.parseInt(virtualWindow.style.height, 10);
+    const scrollArea = screen.getByRole("log", { name: "Conversation messages" });
+    Object.defineProperty(scrollArea, "scrollHeight", { configurable: true, value: totalVirtualHeight });
+    Object.defineProperty(scrollArea, "clientHeight", { configurable: true, value: 600 });
+    const midScroll = Math.max(0, Math.floor(totalVirtualHeight * 0.5) - 300);
+    await act(async () => {
+      scrollArea.scrollTop = 0;
+      fireEvent.scroll(scrollArea);
+    });
+    expect(screen.getByText("Virtual history message 0")).toBeInTheDocument();
+
+    await act(async () => {
+      scrollArea.scrollTop = midScroll;
+      fireEvent.scroll(scrollArea);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Virtual history message 60")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Virtual history message 0")).toBeNull();
   });
 
   it("shows jump to unread button and scrolls when clicked", () => {
@@ -163,7 +201,7 @@ describe("Thread Component", () => {
         body_md: "Failed to dispatch turn.",
         delivery: "failed",
         failure_class: "auth_expired",
-        remediation: "Run claude login on host DeskComputer.",
+        remediation: "Run claude login on host hub-a.",
         created_at: "2026-09-25T08:12:00Z",
         seq: 4,
       },
@@ -172,7 +210,7 @@ describe("Thread Component", () => {
     render(<Thread thread={MOCK_THREAD} messages={errorMessages} />);
 
     expect(screen.getByText(/Authentication Expired|auth_expired/i)).toBeInTheDocument();
-    expect(screen.getByText(/Run claude login on host DeskComputer./i)).toBeInTheDocument();
+    expect(screen.getByText(/Run claude login on host hub-a./i)).toBeInTheDocument();
   });
 
   it("renders embedded action proposal card and handles approval", async () => {

@@ -1,12 +1,17 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Composer } from "../pages/StaffConsole/Composer";
 import { ConsoleErrorBanner } from "../pages/StaffConsole/ConsoleErrorBanner";
 import { GroupCostConfirm } from "../pages/StaffConsole/GroupCostConfirm";
 import { Thread } from "../pages/StaffConsole/Thread";
 import { useStaffConsole } from "../pages/StaffConsole/useStaffConsole";
 import { ChatGlyph } from "../pages/decompIcons";
-import { PROJECT_WORKFLOWS } from "../pages/StaffConsole/projectWorkflows";
 import "./BarbSidebar.css";
+
+const ProjectStarterActions = lazy(() =>
+  import("../pages/StaffConsole/ProjectStarterActions").then((module) => ({
+    default: module.ProjectStarterActions,
+  })),
+);
 
 const QUICK_ROUTES = [
   { label: "Fleet Command", tabId: "fleet-command" },
@@ -28,7 +33,12 @@ export interface BarbSidebarProps {
 }
 
 export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef, onThreadSelected }: BarbSidebarProps): React.ReactElement {
-  const preferredRoleThreadId = selectedThreadFromUrl();
+  // Specialist navigation must not replace the last Barb selection. The hook
+  // still validates this id against Barb's authorized auto-thread list.
+  const preferredThreadRef = useRef(selectedThreadFromUrl());
+  const urlRole = new URLSearchParams(window.location.search).get("role");
+  if (!urlRole || urlRole === "barb") preferredThreadRef.current = selectedThreadFromUrl();
+  const preferredRoleThreadId = preferredThreadRef.current;
   const sc = useStaffConsole({
     initialRole: "barb",
     preferredRoleThreadId,
@@ -36,6 +46,9 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
   });
   const [composerPrefill, setComposerPrefill] = useState("");
   const [prefillSeq, setPrefillSeq] = useState(0);
+  const [projectWorkflows, setProjectWorkflows] = useState<
+    readonly { project: string; summary: string; prompt: string }[]
+  >([]);
   const applyComposerPrefill = (nextText: string) => {
     setComposerPrefill(nextText);
     setPrefillSeq((n) => n + 1);
@@ -98,6 +111,13 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
       restoreFocusRef.current = null;
     };
   }, [open, mobile, restoreFocusTargetRef]);
+
+  useEffect(() => {
+    if (!open || sc.activeThread) return;
+    void import("../pages/StaffConsole/projectWorkflows").then(({ PROJECT_WORKFLOWS }) => {
+      setProjectWorkflows(PROJECT_WORKFLOWS);
+    });
+  }, [open, sc.activeThread]);
 
   const startNewConversation = async () => {
     if (sc.selectedRole !== "barb" && !(await sc.openRole("barb"))) return;
@@ -208,7 +228,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
             <h3>What would you like to move forward?</h3>
             <p>Ask a question, choose a project, or jump to a fleet workspace.</p>
             <div className="barb-sidebar__projects" aria-label="Project starters">
-              {PROJECT_WORKFLOWS.map((project) => (
+              {projectWorkflows.map((project) => (
                 <button
                   key={project.project}
                   type="button"
@@ -223,6 +243,11 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
               ))}
             </div>
           </div>
+        )}
+        {sc.activeThread && (
+          <Suspense fallback={null}>
+            <ProjectStarterActions onPrefill={applyComposerPrefill} />
+          </Suspense>
         )}
         {sc.activeThread ? <GroupCostConfirm guard={sc.costGuard} /> : null}
         <Composer

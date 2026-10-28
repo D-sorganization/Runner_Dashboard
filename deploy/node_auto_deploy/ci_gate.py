@@ -37,6 +37,7 @@ NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
         "route",  # Taxonomy rollout (issues: labeled)
         "preview",  # Taxonomy rollout dry-run
         "apply",  # Taxonomy rollout apply
+        "slo",  # CI Queue SLO Check (schedule); queue health, not code quality
     }
 )
 
