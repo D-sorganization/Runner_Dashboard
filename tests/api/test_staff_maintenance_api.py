@@ -90,7 +90,7 @@ def test_maintenance_proposal_create_and_dry_run_api(client: TestClient) -> None
             "message_id": msg.id,
             "thread_id": th.id,
             "action": "maintenance.runner_restart",
-            "params": {"runner_name": "deskcomputer-1", "host": "local", "dry_run": True},
+            "params": {"runner_name": "hub-a-1", "host": "local", "dry_run": True},
             "risk": "medium",
         },
         headers=headers,

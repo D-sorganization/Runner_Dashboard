@@ -261,7 +261,9 @@ def test_provider_concurrency_enforced_serially(
         machine="test-node",
     )
 
-    def fake_execute(rec: RunRecord, plan: runner_mod.RunPlan, workdir: Path, lease_note: str) -> None:
+    def fake_execute(
+        rec: RunRecord, plan: runner_mod.RunPlan, workdir: Path, lease_note: str, *, pre_pr_entrypoint: str = ""
+    ) -> None:
         with lock:
             state["active"] += 1
             state["entered"] += 1

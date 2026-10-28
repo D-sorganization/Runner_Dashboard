@@ -276,6 +276,54 @@ def test_plan_dispatch_b6_chain_uses_workflow_primary_first() -> None:
     assert decision.provider_id == "codex_cli"
 
 
+def test_plan_dispatch_prefers_cursor_agent_for_cursor_branches() -> None:
+    """Cursor-authored PR branches should route to cursor_agent first when available."""
+    policy = _make_policy(
+        provider_order=("codex_cli", "claude_code_cli", "cursor_agent"),
+        enabled=("codex_cli", "claude_code_cli", "cursor_agent"),
+    )
+    context = FailureContext(
+        repository="foo/bar",
+        workflow_name="lint",
+        branch="cursor/fix-red-ci",
+        failure_reason="ruff fail",
+    )
+
+    decision = plan_dispatch(
+        context,
+        policy=policy,
+        availability=_make_availability("codex_cli", "claude_code_cli", "cursor_agent"),
+        attempts=[],
+        dispatch_origin="manual",
+    )
+
+    assert decision.accepted is True
+    assert decision.provider_id == "cursor_agent"
+
+
+def test_plan_dispatch_rejects_do_not_merge_labeled_prs() -> None:
+    """Guardrail: do-not-merge PRs are never dispatched for auto-remediation."""
+    policy = _make_policy()
+    context = FailureContext(
+        repository="foo/bar",
+        workflow_name="lint",
+        branch="cursor/fix-red-ci",
+        failure_reason="ruff fail",
+        pr_labels=("do-not-merge", "bug"),
+    )
+
+    decision = plan_dispatch(
+        context,
+        policy=policy,
+        availability=_make_availability("codex_cli", "claude_code_cli", "jules_api"),
+        attempts=[],
+        dispatch_origin="automatic",
+    )
+
+    assert decision.accepted is False
+    assert "do-not-merge" in decision.reason
+
+
 # ---------------------------------------------------------------------------
 # B7-B11: candidate-loop branches
 # Each case is constructed so the *first* candidate hits the branch under

@@ -53,16 +53,16 @@ def test_only_vm_hosts_are_eligible_for_real_scans() -> None:
         {
             "scan_hosts": {
                 "scanvm": {"isolation": "vm", "docker_host": "ssh://scan@scanvm"},
-                "brick": {"isolation": "container"},
+                "node-c": {"isolation": "container"},
                 "bad": {"isolation": "wsl"},
                 "evil": {"isolation": "vm", "docker_host": "tcp://0.0.0.0:2375"},
             }
         }
     )
     hosts = {h.name: h for h in config.scan_hosts}
-    assert set(hosts) == {"scanvm", "brick"}
+    assert set(hosts) == {"scanvm", "node-c"}
     assert hosts["scanvm"].eligible_for_real_scans
-    assert not hosts["brick"].eligible_for_real_scans
+    assert not hosts["node-c"].eligible_for_real_scans
     assert len(config.errors) == 2
 
 

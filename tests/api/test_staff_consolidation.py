@@ -26,7 +26,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from staff import adapters as adapters_mod
 from staff import budget as budget_mod
-from staff import consolidation
+from staff import consolidation, runner_registry
 from staff import holds as holds_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
@@ -260,12 +260,19 @@ def staff(tmp_path: Path, role_dir: Path, monkeypatch: pytest.MonkeyPatch) -> It
     # Repo-scoped runs would clone and add a git worktree; stub both so the test stays offline.
     monkeypatch.setattr(workspace_mod, "find_repo_checkout", lambda _repo: tmp_path / "checkout")
     monkeypatch.setattr(workspace_mod, "add_worktree", lambda _c, wt, _b: wt.mkdir(parents=True, exist_ok=True))
+    # The worktree above has no real repo contents, so the bootstrap preflight (#2796)
+    # would fail fast; stub it so these tests keep exercising consolidation, not bootstrap.
+    monkeypatch.setattr(
+        runner_mod.ops,
+        "ensure_worktree_bootstrap_ready",
+        lambda *_a, **_k: runner_mod.ops.WorktreeBootstrapPreflight(ok=True),
+    )
     store_mod.reset_store()
     runner_mod.reset_runner()
     r = runner_mod.StaffRunner(
         store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="TestNode"
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()

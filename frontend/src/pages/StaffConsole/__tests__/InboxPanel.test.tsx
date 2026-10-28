@@ -28,7 +28,7 @@ const mockInboxData: InboxAggregate = {
       id: "approval_1",
       source: "approval",
       title: "Approve runner restart",
-      summary: "Restart unresponsive worker on oglaptop",
+      summary: "Restart unresponsive worker on node-b",
       severity: "high",
       created_at: "2026-09-25T11:55:00Z",
       link: "/staff?thread=th_restart",

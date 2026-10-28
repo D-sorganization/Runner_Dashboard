@@ -25,7 +25,7 @@ def add_run(store: RunStore, run_id: str, owner: str = "reader") -> None:
             role="cartographer",
             provider="claude",
             model="sonnet",
-            machine="DeskComputer",
+            machine="hub-a",
             repo="Runner_Dashboard",
             target_kind="prompt",
             target_ref="",
@@ -43,7 +43,7 @@ def add_refs(run_id: str) -> None:
         run_id=run_id,
         references=[
             {
-                "node": "DeskComputer",
+                "node": "hub-a",
                 "source_id": "drive",
                 "work_id": 1,
                 "passage_id": 11,
@@ -59,14 +59,14 @@ def add_refs(run_id: str) -> None:
         run_id=run_id,
         references=[
             {
-                "node": "DeskComputer",
+                "node": "hub-a",
                 "repo": "Runner_Dashboard",
                 "commit_sha": commit,
                 "relative_path": "backend/contracts.py",
                 "line_start": 4,
                 "line_end": 8,
                 "content_hash": "b" * 64,
-                "citation": f"[ref:DeskComputer:codebase:Runner_Dashboard@{commit[:8]}:backend/contracts.py#L4-L8]",
+                "citation": f"[ref:hub-a:codebase:Runner_Dashboard@{commit[:8]}:backend/contracts.py#L4-L8]",
             }
         ],
     )

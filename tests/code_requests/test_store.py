@@ -34,7 +34,7 @@ def _sample_request() -> CodeRequest:
         issue_url="https://github.com/D-sorganization/Runner_Dashboard/issues/42",
         state=CodeRequestState.TRIAGE,
         prompt="Add a new biomechanics pipeline for kinematics validation.\nEnsure TDD and DbC are followed.",
-        requester=Requester(id="dieterolson", kind=RequesterKind.HUMAN),
+        requester=Requester(id="fleet-operator", kind=RequesterKind.HUMAN),
         planner_profile_id="planner-v1",
         executor_profile_id="executor-v2",
         board_route=BoardRoute.FORCE_BOARD,
@@ -199,7 +199,7 @@ async def test_deleting_local_cache_rebuilds_from_github(tmp_path: Path, monkeyp
     comments_payload = [
         {
             "body": (
-                "**[Code Request]** State changed from `draft` to `triage` by `dieterolson`.\n\n"
+                "**[Code Request]** State changed from `draft` to `triage` by `fleet-operator`.\n\n"
                 "**Reason:** Initial submission"
             ),
             "created_at": "2026-09-25T10:05:00Z",
@@ -223,7 +223,7 @@ async def test_deleting_local_cache_rebuilds_from_github(tmp_path: Path, monkeyp
     assert items[0].id == req.id
     assert items[0].state == CodeRequestState.TRIAGE
     assert len(items[0].audit_trail) == 1
-    assert items[0].audit_trail[0].actor == "dieterolson"
+    assert items[0].audit_trail[0].actor == "fleet-operator"
     assert cache_path.exists()
 
     # 2. Delete cache and verify rebuild works losslessly
