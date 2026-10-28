@@ -15,8 +15,11 @@ from coordination.postman import BoardRef, Delivery, Postman, PostmanState
 from coordination.postman_adapters import AgentBus, ConfigError, RmBoard
 from coordination.postman_adapters import ConfigBoardSource as _ConfigBoardSource
 from coordination.postman_run import build_postman, run
+from coordination.hub_thread_bus import HubThreadBus
+from coordination.relay_guard import RelayGuard
 
 from tests.api.test_postman import FakeBoard, FakeBus, Source
+from tests.api.test_hub_thread_port import FakeThreadHub
 
 # -- AgentBus ------------------------------------------------------------------------------------
 
@@ -230,11 +233,15 @@ def test_build_postman_wires_the_real_adapters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bus_store: AgentBusStore
 ) -> None:
     root = _write_config(tmp_path, 2376)
+    fake_hub = FakeBoard()
     monkeypatch.setattr("coordination.postman_run.ConfigBoardSource", lambda: _ConfigBoardSource(root=root))
-    monkeypatch.setattr("coordination.postman_run.AgentBusStore", lambda: bus_store)
+    monkeypatch.setattr(
+        "coordination.postman_run.build_hub_thread_bus",
+        lambda **kwargs: HubThreadBus(FakeThreadHub(), RelayGuard(frozenset({"claude", "barb"}))),
+    )
     monkeypatch.setattr(
         "coordination.postman_run.RmBoard",
-        lambda: FakeBoard(),
+        lambda: fake_hub,
     )
     pm = build_postman(tmp_path / "state.json", roster=("claude",))
     assert pm.state.board_issue == 2376
