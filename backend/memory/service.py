@@ -29,6 +29,7 @@ from memory.redact import contains_secret, redact_memory_text
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
+from staff.barb_lease_fence import is_barb_seat
 from staff.lesson_provenance import authenticated_lesson_run
 from staff.store import _now  # noqa: PLC2701
 
@@ -46,8 +47,8 @@ def _redact_body(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_barb_principal(p: Principal | None) -> bool:
-    roles = set(p.roles + p.scopes) if p else set()
-    return bool(p and (p.assistant_kind == "grokbot" or p.id in {"barb", "agent-grok"} or roles & {"barb", "admin"}))
+    """A Barb seat or an admin: who may read Barb-only memory."""
+    return is_barb_seat(p) or bool(p and "admin" in set(p.roles + p.scopes))
 
 
 def is_librarian_principal(p: Principal | None) -> bool:
