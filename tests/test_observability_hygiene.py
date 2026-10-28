@@ -140,17 +140,17 @@ def test_exception_with_sensitive_args_logs_no_values(caplog: pytest.LogCaptureF
 
     caplog.set_level(logging.ERROR)
     token = classification_level_ctx.set(ClassificationLevel.SENSITIVE)
-    secret = "Example-Corp-ultra-secret-token"
+    sensitive_value = "Example-Corp-ultra-sensitive-token"
     try:
         try:
-            raise ValueError(secret, "metadata-only")
+            raise ValueError(sensitive_value, "metadata-only")
         except ValueError:
             log_exception_scrubbed(logging.getLogger("test_observability_hygiene.exc"), "failed")
     finally:
         classification_level_ctx.reset(token)
 
     text = caplog.text
-    assert secret not in text
+    assert sensitive_value not in text
     assert "metadata-only" not in text
 
 
