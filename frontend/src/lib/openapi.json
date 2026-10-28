@@ -3918,6 +3918,45 @@
         "title": "PostMessageRequest",
         "type": "object"
       },
+      "PrHygieneItem": {
+        "properties": {
+          "pr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr",
+            "type": "integer"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr"],
+        "title": "PrHygieneItem",
+        "type": "object"
+      },
+      "PrHygieneRequest": {
+        "properties": {
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrHygieneItem"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": ["items"],
+        "title": "PrHygieneRequest",
+        "type": "object"
+      },
       "PresenceBody": {
         "additionalProperties": false,
         "description": "``register``: advertise what this session is working on (advisory, not a lock).",
@@ -25872,6 +25911,56 @@
         ],
         "summary": "Expert panel state",
         "tags": ["staff-panels"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene": {
+      "post": {
+        "description": "Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run reruns only the failed\nruns it planned to rerun, and the batch is always audited.",
+        "operationId": "pr_hygiene_api_v1_staff_pr_hygiene_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Api V1 Staff Pr Hygiene Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
       }
     },
     "/api/v1/staff/projects": {

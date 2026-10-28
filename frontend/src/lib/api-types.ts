@@ -6937,6 +6937,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/pr-hygiene": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene
+         * @description Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run reruns only the failed
+         *     runs it planned to rerun, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_api_v1_staff_pr_hygiene_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/projects": {
         parameters: {
             query?: never;
@@ -10020,6 +10044,23 @@ export interface components {
             meta?: {
                 [key: string]: unknown;
             };
+        };
+        /** PrHygieneItem */
+        PrHygieneItem: {
+            /** Pr */
+            pr: number;
+            /** Repo */
+            repo: string;
+        };
+        /** PrHygieneRequest */
+        PrHygieneRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Items */
+            items: components["schemas"]["PrHygieneItem"][];
         };
         /**
          * PresenceBody
@@ -23335,6 +23376,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_api_v1_staff_pr_hygiene_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
