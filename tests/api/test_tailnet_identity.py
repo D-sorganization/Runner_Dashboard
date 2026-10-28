@@ -540,7 +540,7 @@ def test_tailnet_principal_direct_allow_refused_without_whois_record(monkeypatch
     configured login either: it still needs tailscaled's own confirmation."""
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_DIRECT_ALLOW", "1")
-    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "dieterolson@github,dieterolson@gmail.com")
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "operator@github,user@example.com")
     monkeypatch.setattr(_tailnet_identity, "_tailscaled_whois", lambda host, port: None)
     req = _mock_request(
         transport_peer=_TAILNET_CLIENT_IP,
