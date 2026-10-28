@@ -11,7 +11,7 @@ It reuses ``staff.provider_failover_config`` so the chain logic lives in one pla
 
 Config keys (env or the git-ignored rd-barb.env read by rd_barb_notify.load_config):
 RD_BARB_PROVIDER, RD_BARB_MODEL, RD_BARB_FAILOVER (comma list). Defaults to
-claude / claude-opus-5-5 with chain claude -> codex -> antigravity -> cursor-agent.
+claude / opus with chain claude -> codex -> antigravity -> cursor-agent.
 Only subscription CLIs; never a pay-per-use API.
 """
 
@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain  # noqa: E402
 
 DEFAULT_PROVIDER = "claude"
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "opus"
 DEFAULT_CHAIN = ("claude", "codex", "antigravity", "cursor-agent")
 SWITCH_ON = frozenset({"auth_expired", "rate_limited", "quota_exhausted", "provider_capacity", "crash"})
 
@@ -46,7 +46,7 @@ class Decision:
 
 
 def chain(config: Mapping[str, str]) -> tuple[FailoverStep, ...]:
-    """Ordered failover steps; the head uses RD_BARB_MODEL (default Opus 5.5)."""
+    """Ordered failover steps; the head uses RD_BARB_MODEL (default opus)."""
     raw = config.get("RD_BARB_FAILOVER") or ",".join(DEFAULT_CHAIN)
     providers = tuple(p.strip() for p in raw.split(",") if p.strip() in DEFAULT_CHAIN) or DEFAULT_CHAIN
     model = (config.get("RD_BARB_MODEL") or "").strip() or None

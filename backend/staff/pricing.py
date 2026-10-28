@@ -84,6 +84,12 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
     "claude-ollama": {},
 }
 
+# The anthropic-api provider (issue #3123) bills the same Anthropic Messages
+# API at the same list prices as the Claude Code CLI seat above, so it shares
+# that row instead of carrying a second copy of the numbers (DRY). Rows are
+# matched by model substring, same as every other provider.
+PRICE_TABLE["anthropic-api"] = PRICE_TABLE["claude"]
+
 # Default model per provider when the run recorded none (mirrors the CLIs' own
 # defaults on 2026-09-22; ``estimate`` rows above still apply).
 DEFAULT_MODEL: dict[str, str] = {
@@ -91,6 +97,7 @@ DEFAULT_MODEL: dict[str, str] = {
     "codex": "gpt-5",
     "gemini": "gemini-2.5-pro",
     "antigravity": "gemini-3.8-flash-high",
+    "anthropic-api": "opus-5",
 }
 
 # Providers that never carry per-token cost regardless of model.

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "_comment": "Bot-builder grant ceiling (RD #3103). Read-only input; only a reviewed owner PR changes it.",
+  "approved_providers": ["sub-cli-alpha", "sub-cli-beta"],
+  "allowed_capabilities": [
+    "rd.staff_api",
+    "rd.cli_sessions",
+    "rd.runners",
+    "grok.chat_cards",
+    "grok.routines"
+  ],
+  "household_capabilities": [
+    "household.mail",
+    "household.finance",
+    "household.files",
+    "household.drive"
+  ]
+}

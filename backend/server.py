@@ -1,4 +1,5 @@
-# ruff: noqa: B008
+# ruff: noqa: B008, E402
+# The worker contract must run before imports initialize process-local state.
 #!/usr/bin/env python3
 """
 D-sorganization Runner Dashboard — FastAPI Backend
@@ -37,34 +38,72 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+
+def _require_single_worker() -> None:
+    """Refuse unsafe worker counts before importing process-local state (#3029)."""
+    counts = [os.environ.get(name, "1") for name in ("WORKERS", "WEB_CONCURRENCY")]
+    # Also cover `uvicorn server:asgi_app --workers N` and --workers=N.
+    for index, arg in enumerate(sys.argv[1:], start=1):
+        if arg == "--workers" and index + 1 < len(sys.argv):
+            counts.append(sys.argv[index + 1])
+        elif arg.startswith("--workers="):
+            counts.append(arg.partition("=")[2])
+    for raw in counts:
+        try:
+            count = int(raw)
+        except ValueError:
+            continue  # The existing configuration parser handles malformed values.
+        if count > 1:
+            message = (
+                "Runner Dashboard: single-worker is the only supported mode; "
+                "use WORKERS=1 and uvicorn --workers 1. Leases, locks, rate limiters, "
+                "bearer tokens and event sequences are process-local."
+            )
+            logging.getLogger(__name__).critical(message)
+            raise SystemExit(1)
+
+
+_require_single_worker()
+
+# Issue #3248: the Docker CMD invokes this module as `python -m backend.server`
+# from WORKDIR /app, where sys.path[0] is /app (not /app/backend). The
+# unqualified sibling imports just below (browser_ingress_guard etc.) only
+# resolve once backend/ itself is on sys.path, so this guard must run first.
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 # systemd watchdog / ready notification (issue #391 AC-3)
 try:
     from systemd.daemon import notify as _sd_notify
 except ImportError:
     _sd_notify = None
 
-import httpx
-from browser_ingress_guard import BrowserIngressMiddleware
-from browser_sessions import BrowserSessionMiddleware
-from cloudflare_access import CloudflareAccessValidator
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import (
+import httpx  # noqa: E402
+from browser_ingress_guard import BrowserIngressMiddleware  # noqa: E402
+from browser_sessions import BrowserSessionMiddleware  # noqa: E402
+from cloudflare_access import CloudflareAccessValidator  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import (  # noqa: E402
     FileResponse,
     HTMLResponse,
     JSONResponse,
 )
-from fastapi.staticfiles import StaticFiles
-from identity import Principal, require_scope  # noqa: B008
-from middleware import MaxBodySizeMiddleware
-from pydantic import BaseModel, Field
-from routers import admin as admin_router
-from routers import auth as auth_router
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.gzip import GZipMiddleware
-from tailnet_identity import build_asgi_app
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from identity import Principal, require_scope  # noqa: B008, E402
+from middleware import MaxBodySizeMiddleware  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+from routers import admin as admin_router  # noqa: E402
+from routers import auth as auth_router  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.middleware.gzip import GZipMiddleware  # noqa: E402
+from tailnet_identity import build_asgi_app  # noqa: E402
 
+# Re-affirms the Issue #3248 guard above; kept here (idempotent, see the
+# `not in sys.path` check) so this statement still separates the two
+# sibling-import blocks for import-sort tooling, as it always has.
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
@@ -794,9 +833,11 @@ from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)
 
+from routers import activity as _activity_router  # noqa: E402
 from routers import memory_v1 as _memory_v1_router  # noqa: E402
 
 app.include_router(_memory_v1_router.router)
+app.include_router(_activity_router.router)
 
 # Projects tab (issue #1199): per-repo charter, status and steward runs.
 from routers import projects as _projects_router  # noqa: E402
@@ -893,6 +934,19 @@ app.add_middleware(StaffV1Middleware)
 # Issue #2990: compress text responses (JS/CSS/HTML/JSON) for slow mobile links.
 # Starlette's GZipMiddleware passes text/event-stream through unbuffered.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+# Validate Host before auth and routing. Public hostnames come from the same
+# registry and explicit origin allowlist used by browser sign-in. The
+# registry is loaded once (disk I/O); env-derived origins are re-read on
+# every request so config set after this module's first import (tests
+# monkeypatching origin env vars) still takes effect.
+from trusted_hosts import IPv6AwareTrustedHostMiddleware, trusted_hosts_from_env  # noqa: E402
+
+_trusted_hosts_registry = load_machine_registry()
+app.add_middleware(
+    IPv6AwareTrustedHostMiddleware,
+    hosts_provider=lambda: trusted_hosts_from_env(registry=_trusted_hosts_registry),
+)
 
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────
@@ -1022,6 +1076,19 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
 try:
     _topology_registry = load_machine_registry()
     from fleet_autoconfig import assert_fleet_identity_no_self_loop
+    from fleet_hub_env_guard import assert_hub_url_env_matches_registry
+
+    _hub_override_ok = os.environ.get("HUB_URL_REGISTRY_OVERRIDE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    assert_hub_url_env_matches_registry(
+        _topology_registry,
+        hub_url_env=os.environ.get("HUB_URL"),
+        allow_registry_override=_hub_override_ok,
+    )
 
     _fleet_identity = apply_fleet_identity_from_registry(
         _topology_registry,
@@ -2685,6 +2752,10 @@ _leader_lock_fd = None
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    from oauth_config import OAuthConfig, validate_oauth_startup
+
+    validate_oauth_startup(OAuthConfig.from_env())
+
     # Issue #942: refuse to start when Maxwell's port collides with a peer
     # dashboard port declared in machine_registry.yml — a silent mis-probe
     # otherwise misreports a sibling dashboard as the Maxwell daemon.
@@ -2693,6 +2764,11 @@ async def _startup() -> None:
         assert_no_maxwell_port_collision,
         assert_valid_active_registry,
     )
+    from overlay_contract import assert_overlay_ready
+
+    # Issue #3079: refuse to start when a configured private overlay is
+    # missing or invalid. No overlay configured -> no-op (unchanged behaviour).
+    assert_overlay_ready()
 
     _startup_reg = load_machine_registry()
     assert_no_maxwell_port_collision(
@@ -2875,6 +2951,7 @@ async def _startup() -> None:
 @app.on_event("shutdown")
 async def _shutdown() -> None:
     """Close pooled HTTP clients on shutdown (issue #364)."""
+    _usage_metrics_router.get_usage_tracker().flush()
     await shutdown_http_clients()
     _BROWSER_ACCESS_VALIDATOR.close()
     log.info("Closed pooled HTTP clients")
@@ -2996,13 +3073,7 @@ if __name__ == "__main__":
 
     _uvicorn_cfg = _read_uvicorn_env_config()
 
-    # Issue #367: keep the documented single-worker default. Operators can set
-    # WORKERS > 1, but uvicorn then requires an import string (not the
-    # in-memory app object) because workers spawn via multiprocessing and each
-    # child re-imports the app. Codex P1 review on PR #482 flagged that passing
-    # `app` directly with `workers > 1` either silently runs a single worker or
-    # fails at startup. Use the import string when WORKERS > 1; keep the
-    # in-memory object for single-worker dev runs (faster, no re-import).
+    # Issue #367 / #3029: only one worker can own process-local state.
     # Issue #1755: run the app wrapped in TransportPeerMiddleware +
     # ProxyHeadersMiddleware ourselves (via asgi_app / "server:asgi_app") and
     # tell uvicorn not to install its own proxy-header handling
@@ -3010,9 +3081,8 @@ if __name__ == "__main__":
     # exactly once, by our wrapper, with the raw transport peer recorded
     # first. This keeps loopback-stays-loopback and XFF-from-127.0.0.1
     # behavior identical to before.
-    _uvicorn_target: object = "server:asgi_app" if _uvicorn_cfg["workers"] > 1 else asgi_app
     uvicorn.run(
-        _uvicorn_target,  # type: ignore[arg-type]
+        asgi_app,
         # Issue #921: honor the operator-resolved bind host (DASHBOARD_HOST) instead
         # of a hardcoded 0.0.0.0. Defaults to 0.0.0.0 when DASHBOARD_HOST is unset,
         # preserving historical behavior while letting operators bind loopback-only.
