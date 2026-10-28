@@ -194,6 +194,7 @@ def test_static_asset_manifest_hashes_and_sorts_deployed_paths(tmp_path: Path) -
     }
 
 
+@pytest.mark.requires_posix
 def test_static_asset_manifest_rejects_symlink_entries(tmp_path: Path) -> None:
     dist = tmp_path / "dist"
     dist.mkdir()

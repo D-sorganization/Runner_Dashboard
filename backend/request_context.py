@@ -113,7 +113,9 @@ class _JsonFormatter(logging.Formatter):
             "path": getattr(record, "pathname", ""),
         }
         if record.exc_info:
-            payload["exc"] = self.formatException(record.exc_info)
+            from observability_hygiene import format_exception_for_log  # noqa: PLC0415
+
+            payload["exc"] = format_exception_for_log(*record.exc_info)
         return json.dumps(payload, ensure_ascii=False)
 
 
@@ -130,8 +132,12 @@ def configure_json_logging() -> None:
 
     Call this once at application startup *after* ``logging.basicConfig``.
     """
+    from observability_hygiene import install_observability_hygiene  # noqa: PLC0415
+
     log_format = os.environ.get("LOG_FORMAT", "").strip().lower()
     root_logger = logging.getLogger()
+
+    install_observability_hygiene(root_logger)
 
     # Always install the filter so request_id is available.
     _filter = RequestIdLogFilter()
