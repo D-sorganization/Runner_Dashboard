@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from identity import Principal, format_caller
+from identity import Principal, format_caller, principal_has_scope
 from memory.contract import (
     CONTEXT_DIGEST_LIMIT,
     CONTEXT_TASK_LIMIT,
@@ -114,6 +114,11 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
         review_status, visibility = req.review_status or "proposed", req.visibility or "fleet"
         expires_at = _validate_and_resolve_expires_at(req.expires_at)
     else:
+        if not principal_has_scope(principal, "memory.write"):
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "Authorization failed", "required_scope": "memory.write", "principal": principal.id},
+            )
         source_run, repo = req.source_run, req.repo
         review_status, visibility = req.review_status, req.visibility
 
