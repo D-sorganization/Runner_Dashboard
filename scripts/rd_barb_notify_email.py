@@ -22,7 +22,7 @@ from typing import Any
 SMTP_TIMEOUT_S = 15.0
 IMPLICIT_TLS_PORT = 465
 DEFAULT_PORT = 587
-DEFAULT_PASSWORD_ENV = "RD_BARB_EMAIL_PASSWORD"  # noqa: S105 - the variable's name, not a secret
+DEFAULT_PASSWORD_ENV = "RD_BARB_EMAIL_PASSWORD"  # noqa: S105 - the variable's name, not a secret  # pragma: allowlist secret
 REQUIRED_KEYS = frozenset({"RD_BARB_EMAIL_HOST", "RD_BARB_EMAIL_FROM", "RD_BARB_EMAIL_TO", "RD_BARB_EMAIL_USER"})
 MAX_SUBJECT_CHARS = 100
 
