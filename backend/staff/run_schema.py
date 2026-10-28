@@ -2,6 +2,46 @@
 
 from __future__ import annotations
 
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS runs (
+    id TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT,
+    machine TEXT NOT NULL,
+    repo TEXT NOT NULL DEFAULT '',
+    target_kind TEXT NOT NULL,
+    target_ref TEXT NOT NULL DEFAULT '',
+    prompt TEXT NOT NULL,
+    status TEXT NOT NULL,
+    requested_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    ended_at TEXT,
+    exit_code INTEGER,
+    cost_usd REAL NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    workdir TEXT NOT NULL DEFAULT '',
+    branch TEXT NOT NULL DEFAULT '',
+    transcript_path TEXT NOT NULL DEFAULT '',
+    lease_id TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    last_line TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS runs_status_idx ON runs(status);
+CREATE INDEX IF NOT EXISTS runs_created_idx ON runs(created_at);
+CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    ts TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id, seq);
+"""
+
 # Columns added after the first schema shipped. Applied with a guarded
 # ``ALTER TABLE ... ADD COLUMN`` so an existing store upgrades in place and a
 # rollback to the previous code keeps working (extra columns are ignored).

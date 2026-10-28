@@ -10,11 +10,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
-_ACTIVE_RUN_STATUSES = frozenset({"queued", "preparing", "running"})
-_RUN_STATUSES = _ACTIVE_RUN_STATUSES | frozenset(
-    {"succeeded", "failed", "cancelled", "timed_out", "blocked", "needs_input"}
-)
-_STAFF_RUNS_LIMIT = 50
 _STAFF_RUNS_RESPONSE_LIMIT = 1024 * 1024
 _STAFF_ACTIVITY_TIMEOUT_SECONDS = 3.0
 
@@ -29,19 +24,20 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 
 
 def fetch_staff_activity(base_url: str, token: str | None, database: Path) -> int:
-    """Return the conservative active count from local API and its full DB.
+    """Return the conservative active count from the local API and its full DB.
 
-    The API request is a bounded authenticated liveness/schema check and only
-    sees its 50-run sample. The local database count covers activity outside
-    that sample. Neither failed source is interpreted as idle.
+    The API request reads a small server-side aggregate
+    (``/api/staff/activity/summary``), never a listing of runs. The local
+    database count covers activity outside that aggregate. Neither failed
+    source is interpreted as idle.
     """
     if not token or not token.strip():
-        raise ActivityUnavailableError("staff runs probe requires a staff.read token")
+        raise ActivityUnavailableError("staff activity summary probe requires a staff.read token")
     try:
         parsed = urlsplit(base_url)
         port = parsed.port
     except ValueError as exc:
-        raise ActivityUnavailableError("staff runs probe has an invalid loopback origin") from exc
+        raise ActivityUnavailableError("staff activity summary probe has an invalid loopback origin") from exc
     if (
         parsed.scheme != "http"
         or parsed.hostname not in {"127.0.0.1", "::1"}
@@ -52,47 +48,30 @@ def fetch_staff_activity(base_url: str, token: str | None, database: Path) -> in
         or parsed.query
         or parsed.fragment
     ):
-        raise ActivityUnavailableError("staff runs probe must use an explicit loopback HTTP origin")
+        raise ActivityUnavailableError("staff activity summary probe must use an explicit loopback HTTP origin")
 
-    url = f"{base_url.rstrip('/')}/api/staff/runs?limit={_STAFF_RUNS_LIMIT}"
+    url = f"{base_url.rstrip('/')}/api/staff/activity/summary"
     request = Request(url, headers={"Authorization": f"Bearer {token.strip()}", "Accept": "application/json"})
     opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
     try:
         with opener.open(request, timeout=_STAFF_ACTIVITY_TIMEOUT_SECONDS) as response:
             if response.getcode() != 200:
-                raise ActivityUnavailableError("staff runs probe returned a non-200 status")
+                raise ActivityUnavailableError("staff activity summary probe returned a non-200 status")
             body = response.read(_STAFF_RUNS_RESPONSE_LIMIT + 1)
         if len(body) > _STAFF_RUNS_RESPONSE_LIMIT:
-            raise ActivityUnavailableError("staff runs probe response exceeded its size limit")
+            raise ActivityUnavailableError("staff activity summary probe response exceeded its size limit")
         payload = json.loads(body.decode("utf-8"))
         if not isinstance(payload, dict):
-            raise ActivityUnavailableError("staff runs probe returned an invalid response")
-        runs = payload.get("runs")
-        count = payload.get("count")
-        if (
-            not isinstance(runs, list)
-            or len(runs) > _STAFF_RUNS_LIMIT
-            or not isinstance(count, int)
-            or isinstance(count, bool)
-            or count != len(runs)
-        ):
-            raise ActivityUnavailableError("staff runs probe returned an invalid run list")
-        api_active_count = 0
-        for run in runs:
-            if (
-                not isinstance(run, dict)
-                or not isinstance(run.get("status"), str)
-                or run["status"] not in _RUN_STATUSES
-            ):
-                raise ActivityUnavailableError("staff runs probe returned an invalid run status")
-            if run["status"] in _ACTIVE_RUN_STATUSES:
-                api_active_count += 1
+            raise ActivityUnavailableError("staff activity summary probe returned an invalid response")
+        active = payload.get("active")
+        if not isinstance(active, int) or isinstance(active, bool) or active < 0:
+            raise ActivityUnavailableError("staff activity summary probe returned an invalid active count")
     except ActivityUnavailableError:
         raise
     except (HTTPError, URLError, TimeoutError, OSError, UnicodeError, ValueError, TypeError, RecursionError) as exc:
-        raise ActivityUnavailableError(f"staff runs probe unavailable: {type(exc).__name__}") from exc
+        raise ActivityUnavailableError(f"staff activity summary probe unavailable: {type(exc).__name__}") from exc
 
-    return max(api_active_count, local_activity_count(database))
+    return max(active, local_activity_count(database))
 
 
 def staff_database_path(environ: dict[str, str] | None = None) -> Path:

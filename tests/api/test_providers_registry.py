@@ -191,10 +191,10 @@ class TestOllamaModels:
         from agent_remediation import provider_registry
 
         # Trailing slash must be normalized away (deployment sets a bare base).
-        monkeypatch.setenv("DASHBOARD_OLLAMA_URL", "http://100.69.12.6:11434/")
+        monkeypatch.setenv("DASHBOARD_OLLAMA_URL", "http://100.64.254.11:11434/")
         reloaded = importlib.reload(provider_registry)
         try:
-            assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://100.69.12.6:11434/api/tags"
+            assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://100.64.254.11:11434/api/tags"
         finally:
             monkeypatch.delenv("DASHBOARD_OLLAMA_URL", raising=False)
             importlib.reload(provider_registry)
@@ -368,6 +368,17 @@ class TestRegistryV2Providers:
         assert any("grok" in m for m in entry.models), entry.models
         assert "SuperGrok" in entry.notes
 
+    def test_cline_is_cli_not_vscode_extension(self) -> None:
+        from agent_remediation import by_dashboard_id  # noqa: PLC0415
+
+        entry = by_dashboard_id()["cline"]
+        assert entry.label == "Cline CLI"
+        assert entry.execution_mode == "local_exec"
+        assert entry.auth_mode == "local"
+        assert entry.availability_probe == ("cline",)
+        assert "VS Code" not in entry.setup_hint
+        assert "npm" in entry.setup_hint.lower() or "cline auth" in entry.setup_hint
+
     def test_every_provider_carries_enabled_flag(self, client: TestClient) -> None:
         for prov in _registry(client)["providers"]:
             assert isinstance(prov["enabled"], bool), prov["dashboard_id"]
@@ -418,7 +429,7 @@ class TestNodeAvailabilityProbe:
         monkeypatch.setattr(shutil, "which", _fake_which(set()))
         result = probe_provider_availability(credential_probes={})
         assert "maxwell" not in result
-        for dashboard_id in ("antigravity", "cursor_agent", "claude_code_cli", "codex_cli", "jules_cli"):
+        for dashboard_id in ("antigravity", "cline", "cursor_agent", "claude_code_cli", "codex_cli", "jules_cli"):
             assert dashboard_id in result
             assert set(result[dashboard_id]) == {"installed", "authenticated", "detail"}
 
