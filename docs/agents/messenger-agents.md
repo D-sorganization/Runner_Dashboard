@@ -103,6 +103,20 @@ Each message gets one state, shown per agent in the Staff Console next to presen
 (a reply with `in_reply_to`), or `rejected` / `expired`. Undelivered and unread counts per agent
 roll up into the existing coordination briefing, so `fleet_briefing` shows them too.
 
+### 6. Addressing When Several Barbs Run
+
+Dieter (2026-10-28) wants one primary Barb and the others still working and splitting the load
+(Barbara `seat/multi-barb.md`, PR #14). For the postman that means:
+
+- `to: barb` resolves, at delivery time, to the holder of the `barb:front-door` scoped lease (the
+  primary). `to: barb:<scope>` resolves to that scope's holder, and an unheld scope falls back to the
+  primary. The lookup reads the continuity store on the authority node; the postman never guesses.
+- Each delivery records the holder and lease epoch it resolved to. If the lease moves before the
+  message is read, the postman re-delivers it to the new holder once, marked as moved.
+- Barbs off the tailnet send lease and inventory changes as envelopes addressed to rd-barb. The
+  postman only delivers them; rd-barb applies them and replies with the new epoch. The postman never
+  takes, renews or releases a Barb lease itself.
+
 ## Rollout (Each Slice Its Own PR, Each Off by Default)
 
 1. Postman runner in dry run, with the cycle report in the Staff Console.
@@ -152,6 +166,7 @@ What changed after that run (same day):
 1. Should the postman run under rd-barb's seat or as its own staff role?
 2. What wake budget per runtime per day is acceptable?
 3. Should Grok Barb get doorbells too, or keep reading the inbox on her own cycle?
+4. Is resolving `to: barb` to the `barb:front-door` holder right, or should every Barb get a copy?
 
 ## What Needs Dieter
 
