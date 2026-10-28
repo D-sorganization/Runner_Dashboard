@@ -16,7 +16,7 @@ Principal: **`agent-codex-hands`**
 On the machine where Codex runs with computer control:
 
 ```bash
-export FLEET_API_URL="http://deskcomputer:8321"
+export FLEET_API_URL="http://hub-a:8321"
 mkdir -p ~/.config/runner-dashboard/agent-tokens
 # Mint on the hub (admin session); capture token without logging it:
 TOKEN=$(curl -s -X POST "$FLEET_API_URL/api/admin/principals/agent-codex-hands/token" \

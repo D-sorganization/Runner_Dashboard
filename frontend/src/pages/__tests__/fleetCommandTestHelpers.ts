@@ -52,7 +52,7 @@ export const DIRECTIVE = {
   repo: "Runner_Dashboard",
   priority: 1,
   expires: "2099-01-01T00:00:00Z",
-  set_by: "dieter",
+  set_by: "operator",
   set_on: "2026-09-20T00:00:00Z",
 };
 
