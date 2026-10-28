@@ -4525,6 +4525,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/activity/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity Summary
+         * @description Bounded aggregate for the node auto-deploy activity probe (#2353).
+         *
+         *     No runner/provider initialisation and no peer fan-out (see
+         *     ``staff.activity_summary`` for the read-only aggregate query).
+         */
+        get: operations["activity_summary_api_staff_activity_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/audit": {
         parameters: {
             query?: never;
@@ -4717,6 +4740,24 @@ export interface paths {
          * @description Replace the holds list. Postcondition: the file on disk equals the response.
          */
         put: operations["put_holds_api_staff_holds_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_staff_host_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5102,6 +5143,30 @@ export interface paths {
         get: operations["get_pricing_api_staff_usage_pricing_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/usage/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage Snapshot
+         * @description Fleet-wide provider usage: newest Usage-Tracker snapshot, per-machine staleness (#3042).
+         */
+        get: operations["get_usage_snapshot_api_staff_usage_snapshot_get"];
+        put?: never;
+        /**
+         * Ingest Usage Snapshot
+         * @description Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042).
+         */
+        post: operations["ingest_usage_snapshot_api_staff_usage_snapshot_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6855,6 +6920,24 @@ export interface paths {
         get: operations["get_holds_v1_api_v1_staff_holds_get"];
         /** Put Holds V1 */
         put: operations["put_holds_v1_api_v1_staff_holds_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_v1_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_v1_staff_host_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -8747,6 +8830,12 @@ export interface components {
          */
         BoardRoutingCriteria: {
             /**
+             * Confidential Data Egress
+             * @description Confidential data egress; requires user sign-off before Board routing.
+             * @default false
+             */
+            confidential_data_egress: boolean;
+            /**
              * Cross Repo Contract
              * @default false
              */
@@ -8756,11 +8845,6 @@ export interface components {
              * @default 0
              */
             estimated_child_issues: number;
-            /**
-             * Inentec Data Egress
-             * @default false
-             */
-            inentec_data_egress: boolean;
             /**
              * New Dependency Or Egress
              * @default false
@@ -9687,6 +9771,29 @@ export interface components {
         HoldsBody: {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
+        };
+        /** HostSettingsPutBody */
+        HostSettingsPutBody: {
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Global */
+            global?: {
+                [key: string]: unknown;
+            };
+            /** Roles */
+            roles?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
         };
         /**
          * InitializeExecutorPayload
@@ -12331,6 +12438,36 @@ export interface components {
             totals?: {
                 [key: string]: unknown;
             };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageSnapshotIngestResponse
+         * @description Response model for POST /api/staff/usage/snapshot (#3042).
+         */
+        StaffUsageSnapshotIngestResponse: {
+            /** Kept */
+            kept: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageSnapshotResponse
+         * @description Response model for GET /api/staff/usage/snapshot (#3042): fleet quota + staleness.
+         */
+        StaffUsageSnapshotResponse: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            }[];
+            /** Received At */
+            received_at?: string | null;
+            /** Snapshot Age Seconds */
+            snapshot_age_seconds?: number | null;
+            /** Snapshot Stale */
+            snapshot_stale: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -18775,6 +18912,28 @@ export interface operations {
             };
         };
     };
+    activity_summary_api_staff_activity_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     list_audit_api_staff_audit_get: {
         parameters: {
             query?: {
@@ -19124,6 +19283,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffHoldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_host_settings_api_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -19687,6 +19903,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffPricingResponse"];
+                };
+            };
+        };
+    };
+    get_usage_snapshot_api_staff_usage_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotResponse"];
+                };
+            };
+        };
+    };
+    ingest_usage_snapshot_api_staff_usage_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotIngestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -23101,6 +23372,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffHoldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_host_settings_api_v1_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_v1_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

@@ -35,7 +35,7 @@ cache on each `staff.rm_sync` tick.
 Kill switch: set `intake_enabled: false` in `staff/mail_policy.yml` and wait for sync (restart not
 required for policy-only changes).
 
-## 3. Hub environment (DeskComputer)
+## 3. Hub environment (hub-a)
 
 Add to the hub **system** service environment file (never commit secrets), e.g.
 `/etc/runner-dashboard/env`:
@@ -60,7 +60,7 @@ After enabling intake or changing credentials:
 sudo systemctl restart runner-dashboard
 ```
 
-On spoke nodes (e.g. Brick) with a **user** unit: `systemctl --user restart runner-dashboard.service`.
+On spoke nodes (e.g. node-c) with a **user** unit: `systemctl --user restart runner-dashboard.service`.
 
 ## 4. Swapping mail providers
 

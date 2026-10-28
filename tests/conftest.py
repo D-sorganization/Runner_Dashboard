@@ -17,6 +17,10 @@ _test_config_root = Path.home() / ".config" / "runner-dashboard" / ".test-runs"
 _test_config_root.mkdir(parents=True, exist_ok=True)
 _test_config_dir = tempfile.TemporaryDirectory(prefix="pytest-", dir=_test_config_root, ignore_cleanup_errors=True)
 os.environ["RUNNER_DASHBOARD_CONFIG_DIR"] = _test_config_dir.name
+# Starlette TestClient defaults to Host: testserver; httpx.AsyncClient's
+# ASGITransport pattern used across this suite defaults to Host: test.
+# Allow both only under pytest.
+os.environ.setdefault("DASHBOARD_TRUSTED_EXTRA_HOSTS", "testserver,test")
 
 # C-extension thread safety. Many "xdist worker crashed" failures
 # come from MKL/OpenBLAS forking under xdist. Pin to single-threaded

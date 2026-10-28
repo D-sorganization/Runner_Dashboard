@@ -23,7 +23,11 @@ One JSON object. All keys are required and unknown keys are rejected.
 | `private_roles`     | list   | Private-role definitions (#3094, see below).       |
 
 A fake example lives in `tests/fixtures/overlay/mock-overlay.json`; public CI
-runs the suite against it alone.
+runs the suite against it alone. A second, docs-facing placeholder overlay
+lives at `tests/fixtures/overlay/sample-public-overlay.json` — see
+[private-mode-policy-schema.md](private-mode-policy-schema.md) for the
+Private Mode epic's (#3249) generic policy schema, which is operator data
+kept under this overlay's `policy_dir` and never in this repo.
 
 ## Private roles (#3094, private-roles slice 1)
 
@@ -54,6 +58,21 @@ instead of raising past the caller or returning context as if it loaded;
 unavailable" and refuse context-dependent work, never as empty context.
 Encrypted template fixtures and the host key are test-only (`tmp_path`);
 nothing under `tests/fixtures/` holds a real store or key.
+
+### `private_mode` (optional, issue #3250)
+
+One additional, optional top-level key. Omitting it (every overlay before
+#3250, and any overlay that doesn't want it) validates exactly as before.
+
+| Key             | Type | Meaning                                                  |
+| ---------------- | ---- | --------------------------------------------------------- |
+| `enabled`        | bool | Private Mode on for this overlay.                          |
+| `default_level`  | string | One of `PUBLIC`, `INTERNAL`, `SENSITIVE` (`backend/private_mode.py`). Unknown names fail closed. |
+
+Absent, or `{"enabled": false, "default_level": "PUBLIC"}` — the same thing —
+resolves to `private_mode.DISABLED`: classification stays `PUBLIC`
+everywhere. See `docs/adr/0009-private-mode-classification-levels.md` and
+`docs/architecture/private-mode-threat-model.md`.
 
 ## Startup behaviour
 

@@ -94,9 +94,9 @@ class TestBoardRoutingCriteriaTable:
             ),
             # Criterion 3b: Confidential partner data egress requires user sign-off
             (
-                BoardRoutingCriteria(inentec_data_egress=True),
+                BoardRoutingCriteria(confidential_data_egress=True),
                 True,
-                ["inentec_data_egress"],
+                ["confidential_data_egress"],
                 True,
             ),
             # Criterion 4: Cross-repo contract or schema change
@@ -175,12 +175,41 @@ class TestBoardRoutingOverrides:
         assert decision.routes_to_board is False
         assert "skip_board" in decision.criteria_matched
 
-    def test_skip_board_cannot_override_inentec_data_egress_without_user_signoff(self) -> None:
+    def test_skip_board_cannot_override_confidential_data_egress_without_user_signoff(self) -> None:
         request = _make_request(board_route=BoardRoute.SKIP_BOARD)
-        criteria = BoardRoutingCriteria(inentec_data_egress=True)
+        criteria = BoardRoutingCriteria(confidential_data_egress=True)
         decision = evaluate_board_routing(request, criteria=criteria)
         # Confidential partner data egress must never be silently skipped without user signoff
         assert decision.routes_to_board is True
+        assert decision.requires_user_signoff is True
+
+
+class TestConfidentialDataEgressFieldRename:
+    """Neutral API field name with one-release deprecated input alias."""
+
+    def test_deprecated_input_alias_still_routes_with_new_criteria_matched_name(self) -> None:
+        criteria = BoardRoutingCriteria.model_validate({"inentec_data_egress": True})
+        assert criteria.confidential_data_egress is True
+        decision = evaluate_board_routing(_make_request(), criteria=criteria)
+        assert decision.routes_to_board is True
+        assert decision.requires_user_signoff is True
+        assert "confidential_data_egress" in decision.criteria_matched
+        assert "inentec_data_egress" not in decision.criteria_matched
+
+    def test_model_dump_emits_only_new_field_name(self) -> None:
+        criteria = BoardRoutingCriteria(confidential_data_egress=True)
+        dumped = criteria.model_dump()
+        assert dumped.get("confidential_data_egress") is True
+        assert "inentec_data_egress" not in dumped
+
+    def test_classifier_emits_confidential_data_egress_in_criteria_matched(self) -> None:
+        classifier = RuleBasedBoardClassifier()
+        decision = classifier.classify(
+            "Export pipeline",
+            "Move confidential data egress to an external analytics endpoint.",
+        )
+        assert decision.routes_to_board is True
+        assert "confidential_data_egress" in decision.criteria_matched
         assert decision.requires_user_signoff is True
 
 

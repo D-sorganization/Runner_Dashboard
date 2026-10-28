@@ -11,7 +11,7 @@
 - The summary parser now keeps recognized malformed, incomplete or ambiguous metadata out of persisted replies, matching the streaming filter. Quoted and nested examples remain ordinary reply text.
 - Combined context/summary credentials require an explicit operator opt-in and separate provisioning of exactly `memory.read` plus `memory.shared.summarize`; do not grant generic `memory.write`. Each original caller also needs summary permission.
 - Validation: three regression cases failed before the parser fix; all 38 summary/streaming/result tests pass afterward. Complete canonical and ordinary commit/pre-push checks before publication.
-- Runtime acceptance remains pending the qualified canonical DeskComputer API deployment and actual provider save acknowledgement. Preserve its existing memory and conversations; no ControlTower-local fallback.
+- Runtime acceptance remains pending the qualified canonical hub-a API deployment and actual provider save acknowledgement. Preserve its existing memory and conversations; no node-a-local fallback.
 
 ## Staff run env + scheduler cursor (#2485)
 

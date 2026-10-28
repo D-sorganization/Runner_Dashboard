@@ -52,6 +52,12 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 
 rd-barb never messages Dieter directly, and Grok Barb does not redo her work.
 
+### Direct Path (Not Live Yet)
+
+`scripts/rd_barb_direct_notify.py` sends questions and alerts with no Grok relay. Its channel is Dieter's choice,
+so `RD_BARB_DIRECT_CHANNEL` defaults to `none`, which fails on purpose and shows on
+`GET /api/v1/staff/rd-barb/notify-status` (`failing`, then `degraded` after 5 minutes). Grok stays live until then.
+
 ```bash
 python scripts/rd_barb_notify.py send --json msg.json   # question/alert now, fyi queued
 python scripts/rd_barb_notify.py flush                  # send queued fyi as one digest
@@ -133,3 +139,32 @@ every provider:
    with a recommendation.
 3. Then Grok Barb pauses her merge-queue pre-flight and burn-guard routine.
    Rollback: resume that routine and stop rd-barb.
+
+## Abort and Lease Release
+
+Repository_Management's rd-barb role is gated on this procedure. Abort a Barb seat at once, then investigate,
+when it touches a hold, arms past a cap or re-arms a queued PR, writes under any identity that is not a fleet
+bot, messages Dieter outside the front door's channel, cancels runs, loops (the same post, arm or request more
+than three times in 15 minutes), or keeps getting `409 stale_barb_lease`.
+
+Dieter may abort at any time. The front-door Barb may abort any seat. Another Barb asks the front door with the
+reason and evidence, and asks Dieter if the seat is still doing harm 15 minutes later.
+
+1. Stop the actor: stop `scripts/rd_barb_watchdog.py` on the authority host and pause the staff schedule. For
+   an off-tailnet Barb, set `BARB_LEASE_REQUESTS` off and drop it from `BARB_REMOTE_HOLDERS` (operator or
+   Dieter). Check: no new writes for 15 minutes.
+2. If it still answers, it releases each scope through `POST /api/v1/staff/barb/leases/release` with a
+   turnover. Check: `GET /api/v1/staff/barb/leases` no longer lists it.
+3. If it does not, let the lease expire (30 minutes). The next checkout gets epoch + 1 and the fence refuses
+   the old seat's writes.
+4. Only an operator with `staff.admin` takes over early, with `takeover` and a reason; it is audited.
+5. The new holder writes the turnover the seat could not (`POST /api/v1/staff/barb/turnover`).
+6. List what the seat changed (arms, issues, comments, cancels) from the audit log and the board, and put it
+   in the turnover. Undoing an arm follows the pr-queue seat's ruling; cancels are Dieter's.
+7. Tell Dieter in one line through the front door: which seat, why, what was undone, what still needs him.
+
+A seat returns only after the cause is fixed and one supervised dry run passes. It checks out fresh and reads
+the turnover first.
+
+Known gaps: `release_lease` checks the holder name but not the epoch, so a stale process under the same name
+can release its successor's lease (fence release by epoch, #3301); there is no single stop switch for rd-barb.

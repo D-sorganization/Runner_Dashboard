@@ -135,7 +135,7 @@ def test_task_supersede_chain(remote_client: TestClient, memory_env: dict[str, s
             "source_product": "codex",
             "body": {
                 "title": "Ship memory API",
-                "owner": "dieter",
+                "owner": "operator",
                 "status": "open",
                 "recommendation": "merge PR1",
             },
@@ -153,7 +153,7 @@ def test_task_supersede_chain(remote_client: TestClient, memory_env: dict[str, s
             "supersedes_id": first_id,
             "body": {
                 "title": "Ship memory API",
-                "owner": "dieter",
+                "owner": "operator",
                 "status": "in_progress",
                 "recommendation": "merge PR2",
             },
@@ -221,7 +221,7 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
         "source_product": "dashboard",
         "conversation_id": "thread-42",
         "user_message_id": "message-8",
-        "reported_origin_principal": f"human:dieterolson token {origin_secret}",
+        "reported_origin_principal": f"human:fleet-operator token {origin_secret}",
         "summary": f"Decided to ship; token {secret}",
         "decisions": ["Keep memory canonical"],
         "open_items": ["Verify replay"],
@@ -237,7 +237,7 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
     assert first.json()["entry"]["id"] == replay.json()["entry"]["id"]
     entry = first.json()["entry"]
     assert entry["author_principal"].endswith("memory-digest-summarizer-test")
-    assert entry["body"]["reported_origin_principal"] == "human:dieterolson token [REDACTED_GITHUB_TOKEN]"
+    assert entry["body"]["reported_origin_principal"] == "human:fleet-operator token [REDACTED_GITHUB_TOKEN]"
     assert "[REDACTED_GITHUB_TOKEN]" in entry["body"]["summary"]
     assert secret not in first.text
     assert origin_secret not in first.text

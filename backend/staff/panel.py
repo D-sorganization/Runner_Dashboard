@@ -382,7 +382,9 @@ async def default_turn_runner(
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             return TurnOutcome(ok=False, error=str(exc))
         env.update(adapter.runtime_env())
-        proc = spawn_cli_process(cmd=cmd, cwd=workdir, env=env)
+        stdin_text = adapter.chat_stdin(prompt)
+        extra: dict[str, Any] = {"stdin_text": stdin_text} if isinstance(stdin_text, str) else {}
+        proc = spawn_cli_process(cmd=cmd, cwd=workdir, env=env, **extra)
         bus = get_thread_bus() if message_id is not None else _NULL_BUS
         out = await stream_turn_output(
             reader=LiveProcessReader(proc),
