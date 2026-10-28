@@ -1,11 +1,4 @@
-/**
- * Mobile.tsx — Mobile Staff Console (SC-D8, Issue #1331).
- *
- * Implements full-screen roster → thread navigation, safe-area aware bottom
- * composer, thumb-reachable approve/deny actions, push deep linking (?thread=, ?role=),
- * and role context inspection. Console state comes from `useStaffConsole`,
- * shared with the desktop layout (#1446).
- */
+/** Mobile Staff Console: roster, threads, composer (SC-D8). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { ROSTER_GROUPS } from "./types";
@@ -427,6 +420,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                               data-testid={`staff-mobile-role-${role.name}`}
                               role="button"
                               tabIndex={0}
+                              title={`Open a conversation with ${role.title}`}
                               onClick={() => handleSelectRole(role.name)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -443,7 +437,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                                 )}
                               </div>
                               {role.caller_unread_count ? (
-                                <span className="staff-mobile__unread-badge">
+                                <span
+                                  className="staff-mobile__unread-badge"
+                                  title={`${role.caller_unread_count} unread message${role.caller_unread_count === 1 ? "" : "s"}`}
+                                >
                                   {role.caller_unread_count}
                                 </span>
                               ) : null}

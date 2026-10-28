@@ -191,3 +191,95 @@ def test_http_bounds_scope_and_ingestion(store, monkeypatch):
         response = client.post("/api/v1/activity/events", json=[event(2).model_dump(mode="json")])
         assert response.status_code == 403
         assert response.json()["detail"]["required_scope"] == "activity.write"
+
+
+def checkin_event(seq=1, kind="heartbeat", **changes):
+    data = dict(
+        source="checkin",
+        repo="D-sorganization/Runner_Dashboard",
+        kind=kind,
+    )
+    data.update(changes)
+    return event(seq, **data)
+
+
+def test_checkin_route_accepts_strict_kinds_and_rejects_unknown(store, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from identity import Principal
+    from routers import activity
+
+    app = FastAPI()
+    app.include_router(activity.router)
+    checkin_route = next(route for route in activity.router.routes if route.path.endswith("/checkins"))
+    dependency = checkin_route.dependant.dependencies[0].call
+    checker = Principal(id="cursor-cloud-1", type="bot", name="fixture", scopes=["activity.checkin"])
+    app.dependency_overrides[dependency] = lambda: checker
+    monkeypatch.setattr(activity, "get_activity_store", lambda: store)
+    with TestClient(app) as client:
+        ok = client.post(
+            "/api/v1/activity/checkins",
+            json=[checkin_event(principal="cursor-cloud-1").model_dump(mode="json")],
+        )
+        assert ok.status_code == 200
+        bad_kind = client.post(
+            "/api/v1/activity/checkins",
+            json=[checkin_event(2, kind="output", principal="cursor-cloud-1").model_dump(mode="json")],
+        )
+        assert bad_kind.status_code == 422
+        missing_repo = client.post(
+            "/api/v1/activity/checkins",
+            json=[checkin_event(3, repo=None, principal="cursor-cloud-1").model_dump(mode="json")],
+        )
+        assert missing_repo.status_code == 422
+        missing_pr = client.post(
+            "/api/v1/activity/checkins",
+            json=[checkin_event(4, kind="pr_opened", principal="cursor-cloud-1").model_dump(mode="json")],
+        )
+        assert missing_pr.status_code == 422
+        has_pr = client.post(
+            "/api/v1/activity/checkins",
+            json=[checkin_event(5, kind="pr_opened", pr=42, principal="cursor-cloud-1").model_dump(mode="json")],
+        )
+        assert has_pr.status_code == 200
+
+
+def test_checkin_route_enforces_tighter_quota_than_events(store, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from identity import Principal
+    from routers import activity
+
+    app = FastAPI()
+    app.include_router(activity.router)
+    checkin_route = next(route for route in activity.router.routes if route.path.endswith("/checkins"))
+    dependency = checkin_route.dependant.dependencies[0].call
+    checker = Principal(id="cursor-cloud-2", type="bot", name="fixture", scopes=["activity.checkin"])
+    app.dependency_overrides[dependency] = lambda: checker
+    monkeypatch.setattr(activity, "get_activity_store", lambda: store)
+    batch = [checkin_event(seq, principal="cursor-cloud-2") for seq in range(1, activity._CHECKIN_MAX_EVENTS + 2)]
+    with TestClient(app) as client:
+        response = client.post("/api/v1/activity/checkins", json=[item.model_dump(mode="json") for item in batch])
+        assert response.status_code == 429
+
+
+def test_checkin_scope_cannot_read_or_write_other_activity_routes(store, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from identity import Principal, principal_has_scope
+    from routers import activity
+
+    checkin_only = Principal(id="cursor-cloud-3", type="bot", name="fixture", scopes=["activity.checkin"])
+    for other_scope in ("activity.read", "activity.write", "staff.read", "staff.chat", "assistant.chat"):
+        assert not principal_has_scope(checkin_only, other_scope)
+
+    app = FastAPI()
+    app.include_router(activity.router)
+    monkeypatch.setattr(activity, "get_activity_store", lambda: store)
+    import identity
+
+    monkeypatch.setattr(identity, "_resolve_principal_optional", lambda *_args: checkin_only)
+    with TestClient(app) as client:
+        assert client.get("/api/v1/activity").status_code == 403
+        response = client.post("/api/v1/activity/events", json=[event().model_dump(mode="json")])
+        assert response.status_code == 403

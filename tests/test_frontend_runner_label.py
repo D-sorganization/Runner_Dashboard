@@ -19,21 +19,25 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "frontend-tests.yml"
 WORKFLOW_DIR = WORKFLOW_PATH.parent
 
-# The exact pre-switch runs-on expressions (origin/main @ 91057286), one shape
-# per job family. Diffing against these literally proves the only change is
-# the inserted `|| vars.CI_BROWSER_RUNNER_LABEL` alternative.
+# The exact pre-switch runs-on expressions, one shape per job family, as of
+# origin/main @ 91057286 plus #3046's merge_group -> CI_QUEUE_RUNNER_LABEL
+# routing (which landed on every job here before this switch did). Diffing
+# against these literally proves the only change is the inserted
+# `|| vars.CI_BROWSER_RUNNER_LABEL` alternative.
 _LONG_CHAIN_OLD = (
     "${{ github.event.pull_request && github.event.pull_request.head.repo.full_name "
     "!= github.repository && 'ubuntu-latest' || !github.event.repository.private && "
     "vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == "
     "'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || "
     "github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && "
-    "'ubuntu-latest' || 'd-sorg-fleet' }}"
+    "'ubuntu-latest' || github.event_name == 'merge_group' && "
+    "vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet' }}"
 )
 _SHORT_CHAIN_OLD = (
     "${{ github.event.pull_request && github.event.pull_request.head.repo.full_name "
     "!= github.repository && 'ubuntu-latest' || !github.event.repository.private && "
-    "vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}"
+    "vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == "
+    "'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet' }}"
 )
 _OLD_RUNS_ON: dict[str, str] = {
     "frontend-required": _LONG_CHAIN_OLD,

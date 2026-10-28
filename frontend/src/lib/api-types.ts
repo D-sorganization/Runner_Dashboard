@@ -5236,7 +5236,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/activity/events": {
+    "/api/v1/activity/checkins": {
         parameters: {
             query?: never;
             header?: never;
@@ -5246,9 +5246,29 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Ingest Activity
-         * @description Bound the wire body before parsing; never trust source-side redaction.
+         * Checkin Activity
+         * @description Write-only tier for agents off the tailnet (Cursor cloud, unconnected boxes).
+         *
+         *     The ``activity.checkin`` scope is never combined with a read or chat scope,
+         *     so a check-in credential cannot read activity, staff threads or anything else.
          */
+        post: operations["checkin_activity_api_v1_activity_checkins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Activity */
         post: operations["ingest_activity_api_v1_activity_events_post"];
         delete?: never;
         options?: never;
@@ -5495,6 +5515,23 @@ export interface paths {
          * @description Detectors call this when a closed or open friction recurs: increments the count, stamps last_seen_at.
          */
         post: operations["friction_recurrence_api_v1_fleet_friction__friction_id__recurrence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/overload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Overload */
+        get: operations["get_fleet_overload_api_v1_fleet_overload_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6900,20 +6937,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/staff/panels/{thread_id}/digest": {
+    "/api/v1/staff/pr-hygiene": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * Expert panel verdict digest
-         * @description Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel.
-         */
-        get: operations["get_panel_digest_api_v1_staff_panels__thread_id__digest_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /**
+         * Pr Hygiene
+         * @description Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run reruns only the failed
+         *     runs it planned to rerun, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_api_v1_staff_pr_hygiene_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9871,8 +9912,6 @@ export interface components {
             preload_codebase: boolean;
             /** Quorum */
             quorum?: number | null;
-            /** Refs */
-            refs?: string[] | null;
             /** Repos */
             repos?: string[] | null;
             /**
@@ -10005,6 +10044,23 @@ export interface components {
             meta?: {
                 [key: string]: unknown;
             };
+        };
+        /** PrHygieneItem */
+        PrHygieneItem: {
+            /** Pr */
+            pr: number;
+            /** Repo */
+            repo: string;
+        };
+        /** PrHygieneRequest */
+        PrHygieneRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Items */
+            items: components["schemas"]["PrHygieneItem"][];
         };
         /**
          * PresenceBody
@@ -19947,6 +20003,26 @@ export interface operations {
             };
         };
     };
+    checkin_activity_api_v1_activity_checkins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEnvelope"][];
+                };
+            };
+        };
+    };
     ingest_activity_api_v1_activity_events_post: {
         parameters: {
             query?: never;
@@ -20442,6 +20518,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FrictionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fleet_overload_api_v1_fleet_overload_get: {
+        parameters: {
+            query: {
+                repo: string;
+                open_count_threshold?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -23291,16 +23399,18 @@ export interface operations {
             };
         };
     };
-    get_panel_digest_api_v1_staff_panels__thread_id__digest_get: {
+    pr_hygiene_api_v1_staff_pr_hygiene_post: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                thread_id: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

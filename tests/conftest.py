@@ -628,3 +628,25 @@ def staff_launches(monkeypatch):
     yield launched
     leaked = _live_staff_run_threads() - already_running
     assert not leaked, f"test started a real staff-run worker: {sorted(t.name for t in leaked)}"
+
+
+@pytest.fixture
+def mock_registry_hub_as_example(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve OAuth's registry-derived hub origin against the public example
+    registry instead of the (now-empty) shipped ``machine_registry.yml``.
+
+    #3082 category 1 stopped shipping real fleet topology in git. Tests that
+    exercise "the registry's hub is the production OAuth origin" must supply
+    their own registry data rather than depend on real values that no longer
+    ship; ``backend/machine_registry.example.yml`` already documents a stable
+    placeholder hub (``hub-a.fleet-example.ts.net``) for exactly this purpose.
+    """
+    import oauth_config  # noqa: PLC0415
+    from machine_registry import load_machine_registry  # noqa: PLC0415
+
+    example_path = REPO_ROOT / "backend" / "machine_registry.example.yml"
+    monkeypatch.setattr(
+        oauth_config,
+        "load_machine_registry",
+        lambda *_a, **_k: load_machine_registry(example_path),
+    )

@@ -73,6 +73,84 @@ def test_diagnostics_machine_registry_block(diag_payload) -> None:
     assert ("machines" in reg) or ("error" in reg)
 
 
+def test_diagnostics_registry_path_matches_the_actual_loader_resolver(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#3380: diagnostics must report the same file load_machine_registry()
+    actually reads, not a re-derived guess that can disagree with it.
+
+    load_machine_registry() only accepts paths under its own module dir or
+    ``~/.config/runner-dashboard`` (issue #355 path-escape guard), so this
+    points HOME at a fake home directory rather than using tmp_path directly.
+    """
+    import machine_registry
+    import server
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_dir = tmp_path / ".config" / "runner-dashboard"
+    config_dir.mkdir(parents=True)
+    local = config_dir / "machine_registry.yml"
+    local.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(machine_registry, "LOCAL_REGISTRY_PATH", local)
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["path"] == str(local)
+    assert reg["source"] == "local"
+    assert reg["machines"] == 0
+
+
+def test_diagnostics_registry_path_reflects_env_override(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import server
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_dir = tmp_path / ".config" / "runner-dashboard"
+    config_dir.mkdir(parents=True)
+    custom = config_dir / "custom.yml"
+    custom.write_text("version: 1\nmachines: [{name: m1}]\n", encoding="utf-8")
+    monkeypatch.setenv("MACHINE_REGISTRY_PATH", str(custom))
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["path"] == str(custom)
+    assert reg["source"] == "env"
+    assert reg["machines"] == 1
+
+
+def test_diagnostics_registry_path_falls_back_to_shipped(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import machine_registry
+    import server
+
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(machine_registry, "LOCAL_REGISTRY_PATH", tmp_path / "missing.yml")
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["path"] == str(machine_registry.DEFAULT_REGISTRY_PATH)
+    assert reg["source"] == "shipped"
+
+
+def test_diagnostics_registry_path_reported_on_load_error(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The loaded:false branch must report the same resolved path too."""
+    import machine_registry
+    import server
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_dir = tmp_path / ".config" / "runner-dashboard"
+    config_dir.mkdir(parents=True)
+    local = config_dir / "machine_registry.yml"
+    local.write_text("not: [valid, yaml, {{{", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(machine_registry, "LOCAL_REGISTRY_PATH", local)
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["loaded"] is False
+    assert reg["path"] == str(local)
+    assert reg["source"] == "local"
+
+
 def test_diagnostics_fleet_federation_block(diag_payload) -> None:
     fleet = diag_payload["fleet_federation"]
     for key in ("source", "node_count", "nodes", "machine_role"):

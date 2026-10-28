@@ -51,6 +51,49 @@ def test_resolve_registry_path_falls_back_to_shipped_example(tmp_path: Path, mon
 
 
 # ---------------------------------------------------------------------------
+# resolve_registry_source (#3380 — diagnostics must agree with the loader)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_registry_source_reports_local_when_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    local = tmp_path / "machine_registry.yml"
+    local.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", local)
+    path, source = mr.resolve_registry_source(None)
+    assert path == local
+    assert source == "local"
+
+
+def test_resolve_registry_source_reports_env_when_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    custom = tmp_path / "custom.yml"
+    custom.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.setenv("MACHINE_REGISTRY_PATH", str(custom))
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", tmp_path / "unused.yml")
+    path, source = mr.resolve_registry_source(None)
+    assert path == custom
+    assert source == "env"
+
+
+def test_resolve_registry_source_reports_shipped_when_neither_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing = tmp_path / "missing.yml"
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing)
+    path, source = mr.resolve_registry_source(None)
+    assert path == mr.DEFAULT_REGISTRY_PATH
+    assert source == "shipped"
+
+
+def test_resolve_registry_source_reports_explicit_for_a_direct_path(tmp_path: Path) -> None:
+    explicit = tmp_path / "explicit.yml"
+    path, source = mr.resolve_registry_source(str(explicit))
+    assert path == explicit
+    assert source == "explicit"
+
+
+# ---------------------------------------------------------------------------
 # _normalize_token
 # ---------------------------------------------------------------------------
 
@@ -388,8 +431,17 @@ def test_normalize_machine_entry_portable_flag_coerced() -> None:
     assert entry["portable"] is False
 
 
-def test_shipped_registry_brick_is_portable() -> None:
-    registry = mr.load_machine_registry(path=mr.DEFAULT_REGISTRY_PATH)
+def test_loaded_registry_preserves_portable_machine(tmp_path: Path) -> None:
+    """A portable, best-effort machine's flag survives the full load pipeline (#3354).
+
+    The shipped machine_registry.yml carries no live topology (#3082); this
+    exercises load_machine_registry() end to end against a registry shaped
+    like a real deployment instead of the (now-empty) shipped file.
+    """
+    p = tmp_path / "registry.json"
+    p.write_text(json.dumps({"version": 1, "machines": [{"name": "Brick", "portable": True}]}), encoding="utf-8")
+    with patch("machine_registry.validate_config_path", return_value=p):
+        registry = mr.load_machine_registry(path=p)
     brick = next(m for m in registry["machines"] if m["name"] == "Brick")
     assert brick["portable"] is True
 

@@ -242,6 +242,39 @@ def _conflict_line(c: PathConflict) -> str:
     )
 
 
+def report_to_dict(report: QueueShepherdReport) -> dict[str, Any]:
+    """JSON-safe view of ``report`` for dashboard/brief surfaces (#2929 slice 3).
+
+    ``QueueShepherdReport`` and its nested dataclasses use ``frozenset`` for
+    unordered fields, which ``json.dumps`` cannot serialize directly — this
+    sorts and lists them instead. Read-only, pure: no new data is fetched.
+    """
+    return {
+        "repo": report.repo,
+        "queue_depth": report.queue_depth,
+        "dependency_violations": [
+            {
+                "pr": v.pr,
+                "pr_position": v.pr_position,
+                "blocked_by": v.blocked_by,
+                "blocked_by_position": v.blocked_by_position,
+            }
+            for v in report.dependency_violations
+        ],
+        "path_conflicts": [
+            {
+                "ahead_pr": c.ahead_pr,
+                "ahead_position": c.ahead_position,
+                "behind_pr": c.behind_pr,
+                "behind_position": c.behind_position,
+                "overlapping_paths": sorted(c.overlapping_paths),
+            }
+            for c in report.path_conflicts
+        ],
+        "armed_not_queued": list(report.armed_not_queued),
+    }
+
+
 def render_brief(report: QueueShepherdReport) -> str:
     """Render ``report`` as a few lines of plain text for a status line."""
     lines = [f"queue-shepherd {report.repo}: depth={report.queue_depth}"]

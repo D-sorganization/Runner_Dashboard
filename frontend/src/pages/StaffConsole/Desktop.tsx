@@ -177,6 +177,7 @@ export function StaffConsoleDesktop({
                 type="button"
                 className="staff-console__export-btn"
                 aria-expanded={showRoster}
+                title={showRoster ? "Hide the staff roster sidebar" : "Show the staff roster to pick a role"}
                 onClick={() => setShowRoster((shown) => !shown)}
               >
                 {showRoster ? "Hide staff" : "Choose staff"}
@@ -187,12 +188,14 @@ export function StaffConsoleDesktop({
                 <button
                   type="button"
                   className="staff-console__export-btn"
+                  title="Start a fresh thread without the current conversation context"
                   onClick={() => void sc.newConversation()}
                 >
                   New conversation
                 </button>
                 <Dropdown
                   label="Export"
+                  tooltip="Download this thread as Markdown or JSON"
                   triggerClassName="staff-console__export-btn"
                   items={[
                     {
@@ -317,6 +320,7 @@ export function StaffConsoleDesktop({
                         key={text}
                         type="button"
                         className="staff-console__suggestion-chip"
+                        title={`Prefill the composer with: ${text}`}
                         onClick={() => applyComposerPrefill(text)}
                       >
                         {text}
