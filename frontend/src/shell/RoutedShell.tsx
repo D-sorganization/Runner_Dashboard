@@ -344,7 +344,6 @@ export function AppShell({
   const [mobileRemediationDispatches, setMobileRemediationDispatches] =
     React.useState<InFlightDispatch[]>([]);
 
-
   if (isMobile) {
     if (isNotFound) {
       return (
