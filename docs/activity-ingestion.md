@@ -28,3 +28,17 @@ immediate transaction. A conflict, authorization failure or quota failure rolls
 back every new event and quota charge in that batch. Concurrent instances use
 the same database transaction boundary. This endpoint neither dispatches work
 nor changes deployment or release state.
+
+## Unconnected-tier check-ins (`POST /api/v1/activity/checkins` and `fleetctl checkin`)
+
+Remote and off-tailnet agents use `POST /api/v1/activity/checkins` with a write-only
+`activity.checkin` credential (never combined with `activity.read`, `activity.write`, or chat scopes):
+
+- **Tier rules & strict kinds:** check in on **start** (`started`), **claim** (`claimed`, requires `issue`),
+  **push** (`pushed`, requires `branch`), **PR open** (`pr_opened`, requires `pr`), **block** (`blocked`),
+  and **finish** (`done`), plus optional `heartbeat`. Every check-in sets `source: "checkin"` and `repo`.
+- **Bounded offline spool (`fleetctl checkin`):** allocates an idempotent per-session `seq`, persists pending
+  envelopes in `~/.config/runner-dashboard/checkin-spool.json` (max 200 events / 256 KiB), retries with
+  exponential backoff, and degrades gracefully (`exit 0`, `spooled: true`) when the hub is unreachable.
+
+
