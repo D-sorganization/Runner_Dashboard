@@ -60,6 +60,8 @@ def _question_errors(msg: dict[str, Any]) -> list[str]:
         errors.append("recommended must equal the label of the recommended option")
     if msg.get("task_state") != "input-required":
         errors.append("a question waiting on an answer must have task_state input-required")
+    if not _one_line(msg.get("recommendation_reason")):
+        errors.append("question requires a one-line recommendation_reason")
     return errors
 
 
