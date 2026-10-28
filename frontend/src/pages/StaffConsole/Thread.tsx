@@ -290,9 +290,8 @@ export const Thread: React.FC<ThreadProps> = ({
     }
   }, [messages, userScrolledUp, totalVirtualHeight]);
 
-  const handleScroll = () => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
     if (useVirtualization) setVirtualScrollTop(el.scrollTop);
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     setUserScrolledUp(!isAtBottom);
