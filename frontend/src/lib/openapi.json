@@ -780,7 +780,7 @@
         "properties": {
           "confidential_data_egress": {
             "default": false,
-            "description": "Confidential data egress; requires user sign-off before Board routing.",
+            "description": "Confidential partner data egress; requires user sign-off before Board routing.",
             "title": "Confidential Data Egress",
             "type": "boolean"
           },
