@@ -479,4 +479,8 @@ def __getattr__(name: str) -> Any:
 
     if name in _pma.EXPORTS:
         return getattr(_pma, name)
+    import private_mode_node_auth as _pmna  # noqa: PLC0415
+
+    if name in _pmna.EXPORTS:
+        return getattr(_pmna, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
