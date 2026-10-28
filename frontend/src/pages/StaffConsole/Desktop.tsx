@@ -5,7 +5,7 @@
  * State comes from `useStaffConsole`, shared with the mobile layout. Nothing
  * is fetched or created until the user picks a role.
  */
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Composer } from "./Composer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { ContextPane } from "./ContextPane";
@@ -18,9 +18,11 @@ import type { StaffRoleItem } from "./types";
 import { useRoleContext, useRosterReadiness } from "./useRoleContext";
 import { useStaffConsole } from "./useStaffConsole";
 import { Dropdown } from "../../primitives/Dropdown";
-import { ProjectStarterActions } from "./ProjectStarterActions";
-import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import "./desktop.css";
+
+const ProjectStarterActions = lazy(() =>
+  import("./ProjectStarterActions").then((module) => ({ default: module.ProjectStarterActions })),
+);
 
 export interface StaffConsoleDesktopProps {
   /** Seed roster (tests); the console loads `/api/v1/staff/roster` when absent. */
@@ -256,7 +258,11 @@ export function StaffConsoleDesktop({
           </div>
         </header>
 
-        {chatFirst && activeThread && <ProjectStarterActions onPrefill={applyComposerPrefill} />}
+        {chatFirst && activeThread && (
+          <Suspense fallback={null}>
+            <ProjectStarterActions onPrefill={applyComposerPrefill} />
+          </Suspense>
+        )}
 
         <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
 
@@ -318,14 +324,9 @@ export function StaffConsoleDesktop({
                     ))}
                   </div>
                   {chatFirst && (
-                    <div className="staff-console__project-starters" aria-label="Project starters">
-                      {PROJECT_WORKFLOWS.map(({ project, prompt }) => (
-                        <button key={project} type="button" className="staff-console__project-starter" aria-label={`Start ${project}`} onClick={() => applyComposerPrefill(prompt)}>
-                          <span>Start with {project}</span>
-                          <span>Prepare a test-first triage</span>
-                        </button>
-                      ))}
-                    </div>
+                    <Suspense fallback={null}>
+                      <ProjectStarterActions onPrefill={applyComposerPrefill} />
+                    </Suspense>
                   )}
                 </>
               )}

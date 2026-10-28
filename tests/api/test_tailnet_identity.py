@@ -483,8 +483,8 @@ def test_direct_tailnet_connection_without_serve_headers_when_direct_allow_enabl
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_DIRECT_ALLOW", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_OPERATOR_WRITES", "1")
-    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "dieterolson@github,dieterolson@gmail.com")
-    _mock_whois_matching(monkeypatch, login="dieterolson@github", host=_TAILNET_CLIENT_IP)
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "operator@github,user@example.com")
+    _mock_whois_matching(monkeypatch, login="operator@github", host=_TAILNET_CLIENT_IP)
     req = _mock_request(
         transport_peer=_TAILNET_CLIENT_IP,
         client_host=_TAILNET_CLIENT_IP,
@@ -492,8 +492,8 @@ def test_direct_tailnet_connection_without_serve_headers_when_direct_allow_enabl
     )
     prin = tailnet_principal(req)
     assert prin is not None
-    assert prin.id == "tailscale:dieterolson@github"
-    assert prin.name == "dieterolson@github"
+    assert prin.id == "tailscale:operator@github"
+    assert prin.name == "operator@github"
     assert "operator" in prin.roles
     assert "admin" in prin.roles
     assert _identity.principal_has_scope(prin, "staff.write")
@@ -540,7 +540,7 @@ def test_tailnet_principal_direct_allow_refused_without_whois_record(monkeypatch
     configured login either: it still needs tailscaled's own confirmation."""
     monkeypatch.setenv("DASHBOARD_TAILSCALE_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_TAILSCALE_DIRECT_ALLOW", "1")
-    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "dieterolson@github,dieterolson@gmail.com")
+    monkeypatch.setenv("DASHBOARD_TAILSCALE_LOGINS", "operator@github,user@example.com")
     monkeypatch.setattr(_tailnet_identity, "_tailscaled_whois", lambda host, port: None)
     req = _mock_request(
         transport_peer=_TAILNET_CLIENT_IP,
