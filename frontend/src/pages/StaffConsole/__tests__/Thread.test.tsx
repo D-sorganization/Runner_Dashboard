@@ -94,10 +94,15 @@ describe("Thread Component", () => {
     const scrollArea = screen.getByRole("log", { name: "Conversation messages" });
     Object.defineProperty(scrollArea, "scrollHeight", { configurable: true, value: 24000 });
     Object.defineProperty(scrollArea, "clientHeight", { configurable: true, value: 600 });
-    fireEvent.scroll(scrollArea, { target: { scrollTop: 0 } });
+    scrollArea.scrollTop = 0;
+    fireEvent.scroll(scrollArea);
     expect(screen.getByText("Virtual history message 0")).toBeInTheDocument();
 
-    fireEvent.scroll(scrollArea, { target: { scrollTop: 10000 } });
+    const messageEstimate =
+      176 + Math.min(800, Math.ceil("Virtual history message 60".length / 240) * 24);
+    const separatorsBefore = Math.floor(60 / 24);
+    scrollArea.scrollTop = 60 * messageEstimate + separatorsBefore * 48;
+    fireEvent.scroll(scrollArea);
     expect(screen.getByText("Virtual history message 60")).toBeInTheDocument();
     expect(screen.queryByText("Virtual history message 0")).toBeNull();
   });
