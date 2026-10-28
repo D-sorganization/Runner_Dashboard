@@ -13,6 +13,13 @@
         "command": "bash -lc 'for root in \"${RUNNER_DASHBOARD_REPO_ROOT}\" \"${RUNNER_DASHBOARD_DEPLOY_DIR}\" \"$HOME/actions-runners/dashboard/current\" \"$(git rev-parse --show-toplevel 2>/dev/null || true)\"; do [ -n \"$root\" ] && [ -f \"$root/scripts/agent-bus-hook-bridge.py\" ] && exec python3 \"$root/scripts/agent-bus-hook-bridge.py\" session-start; done; exit 0'",
         "timeout": 120
       }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "type": "command",
+        "command": "python3 scripts/wrappers/cursor_barb_hook.py",
+        "timeout": 30
+      }
     ]
   }
 }
