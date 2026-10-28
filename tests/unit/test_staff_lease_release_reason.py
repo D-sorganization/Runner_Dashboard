@@ -110,6 +110,11 @@ def test_runner_crash_releases_with_failed_reason(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(runner.ops, "fail_if_cli_outdated", lambda *a: False)
     monkeypatch.setattr(runner.ops, "prepare_run_workdir", lambda *a: tmp_path)
+    monkeypatch.setattr(
+        runner.ops,
+        "ensure_worktree_bootstrap_ready",
+        lambda *_a, **_k: runner.ops.WorktreeBootstrapPreflight(ok=True),
+    )
     monkeypatch.setattr(lease, "acquire", lambda *a, **kw: "leased")
     monkeypatch.setattr(worker, "_execute", Mock(side_effect=RuntimeError("crash")))
     release = Mock()
