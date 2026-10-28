@@ -1,6 +1,6 @@
 """Shared /barb slash-command template (#3067): one source, rendered per provider so each
 fleet host's ``/barb`` / ``@barb`` wrapper stays identical (DRY). This module only renders
-text; it never touches the shared rd-threads entrypoint itself."""
+text; it never touches the shared rd-threads entrypoint itself (see ``scripts/barb_cli.py``)."""
 
 TEMPLATE = """---
 description: Relay a message to rd-barb, or open/continue her RD staff thread
