@@ -43,9 +43,7 @@ class HostToggle:
 @dataclass
 class HostSettingsBlock:
     preference: HostPreference = DEFAULT_PREFERENCE
-    hosts: dict[str, HostToggle] = field(
-        default_factory=lambda: {"grokbot": HostToggle(True), "rd": HostToggle(True)}
-    )
+    hosts: dict[str, HostToggle] = field(default_factory=lambda: {"grokbot": HostToggle(True), "rd": HostToggle(True)})
 
     @classmethod
     def default(cls) -> HostSettingsBlock:
