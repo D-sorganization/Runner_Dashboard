@@ -295,7 +295,7 @@ revoked without affecting the other agents.
 
 | Scope                | Endpoints / Capability                                                                            | Default Bearers                                            |
 | :------------------- | :------------------------------------------------------------------------------------------------ | :--------------------------------------------------------- |
-| `fleet.read`         | `GET /api/priorities*`, `GET /api/coordination/*`, `GET /api/fleet/status`, fleet inventory reads | `viewer`, `operator`, `fleet-peer`, `agent-grok` (default) |
+| `fleet.read`         | `GET /api/priorities*`, `GET /api/coordination/*`, `GET /api/fleet/status`, fleet inventory reads | `viewer`, `operator`, `fleet-peer`, `agent-grok`, `agent-codex`, `agent-claude`, `agent-gemini` (repo defaults) |
 | `staff.read`         | `/api/v1/staff/roster`, `/threads`, `/runs`, `/work-items`, `/proposals`                          | `viewer`, `bot`, `operator`                                |
 | `staff.chat`         | `/api/v1/staff/threads` (open, send, wait)                                                        | `bot`, `operator`, `fleet-peer`                            |
 | `staff.dispatch`     | `/api/v1/staff/{role}/run`                                                                        | `bot`, `operator`, `fleet-peer`                            |

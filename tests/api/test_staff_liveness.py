@@ -122,9 +122,19 @@ def test_only_dispatchable_scheduled_roles_are_reported(store: store_mod.RunStor
 @pytest.mark.unit
 @pytest.mark.parametrize(
     ("age_seconds", "expected"),
-    [(3600, "ok"), (int(1.5 * DAY), "ok"), (int(1.5 * DAY) + 1, "late"), (3 * DAY, "late"), (3 * DAY + 1, "dead")],
+    [
+        (3600, "ok"),
+        (int(1.5 * DAY), "ok"),
+        (int(1.5 * DAY) + 1, "late"),
+        (3 * DAY, "late"),
+        (3 * DAY + 1, "dead"),
+        (10 * DAY, "dead"),
+        (10 * DAY + 1, "retired"),
+    ],
 )
-def test_last_success_age_drives_ok_late_dead(store: store_mod.RunStore, age_seconds: int, expected: str) -> None:
+def test_last_success_age_drives_ok_late_dead_retired(
+    store: store_mod.RunStore, age_seconds: int, expected: str
+) -> None:
     _run(store, "night-watch", "succeeded", age_seconds, "s1")
     _run(store, "night-watch", "failed", 60, "f1")  # a newer failure does not reset the clock
     row = next(r for r in liveness_mod.compute_liveness(_roles(), store, {}, NOW) if r["role"] == "night-watch")
@@ -147,6 +157,17 @@ def test_fired_but_never_succeeded_is_dead_unless_attempt_still_active(store: st
 
 
 @pytest.mark.unit
+def test_fired_but_never_succeeded_retires_after_ten_intervals(store: store_mod.RunStore) -> None:
+    """Regression #3315: a role whose scheduling moved to another node (leader election)
+
+    must stop paging forever just because this node's stale ``last_fired`` is old.
+    """
+    state = {"night-watch": {"cursor": _iso(NOW), "last_fired": _iso(NOW - timedelta(days=10, seconds=1))}}
+    row = liveness_mod.compute_liveness(_roles(), store, state, NOW)[1]
+    assert row["status"] == "retired"
+
+
+@pytest.mark.unit
 def test_load_scheduler_state_tolerates_missing_and_bad_files(tmp_path: Path) -> None:
     assert liveness_mod.load_scheduler_state(tmp_path / "missing.json") == {}
     bad = tmp_path / "bad.json"
@@ -162,6 +183,20 @@ def test_load_scheduler_state_tolerates_missing_and_bad_files(tmp_path: Path) ->
 def test_fleet_event_accepts_staff_role_dead_kind() -> None:
     ev = FleetEvent(ts=1, severity="warning", kind="staff_role_dead", title="x", node="Desk")
     assert ev.to_dict()["kind"] == "staff_role_dead"
+
+
+@pytest.mark.unit
+def test_retired_rows_are_excluded_from_alerts_and_do_not_notify(monkeypatch: pytest.MonkeyPatch) -> None:
+    events = EventStore(capacity=10)
+    monkeypatch.setattr(liveness_mod, "get_event_store", lambda: events)
+    rows: list[dict[str, Any]] = [
+        {"role": "night-watch", "status": "retired", "schedule": "0 22 * * *", "last_success": None},
+        {"role": "hourly", "status": "dead", "schedule": "0 * * * *", "last_success": None},
+    ]
+    assert liveness_mod.alerts(rows, "ControlTower") == [
+        {"role": "hourly", "status": "dead", "schedule": "0 * * * *", "last_success": None, "machine": "ControlTower"}
+    ]
+    assert liveness_mod.notify_dead(rows, "ControlTower", clock=1_000_000.0) == ["hourly"]
 
 
 @pytest.mark.unit
@@ -259,8 +294,9 @@ def test_board_and_summary_expose_liveness(
     monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {})
     events = EventStore(capacity=10)
     monkeypatch.setattr(liveness_mod, "get_event_store", lambda: events)
+    stale = _iso(datetime.now(UTC) - timedelta(days=5)).replace("Z", "+00:00")
     (tmp_path / "state.json").write_text(
-        json.dumps({"night-watch": {"cursor": "2026-09-01T00:00:00+00:00", "last_fired": "2026-09-01T00:00:00+00:00"}}),
+        json.dumps({"night-watch": {"cursor": stale, "last_fired": stale}}),
         encoding="utf-8",
     )
     board = client.get("/api/staff/board").json()

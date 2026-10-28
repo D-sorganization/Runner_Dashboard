@@ -158,8 +158,8 @@ class IdempotencyStore:
 
         Runs in one ``BEGIN IMMEDIATE`` transaction, which holds SQLite's write lock,
         so reservations on different connections or processes are serialised.
-        ``takeover_safe`` lets a lapsed reservation be resumed under the same operation
-        id; use it only for operations that are safe to repeat.
+        ``takeover_safe`` lets a lapsed reservation be resumed with a fresh operation id;
+        use it only for operations that are safe to repeat.
         """
         now_iso = _now()
         try:
@@ -218,11 +218,16 @@ class IdempotencyStore:
         if row["lease_expires_at"] > now_iso:
             return Reservation("in_progress", existing_op)
         if takeover_safe:
+            new_operation_id = f"op-{uuid.uuid4().hex[:12]}"
             self._conn.execute(
-                "UPDATE idempotency_keys SET lease_expires_at = ? WHERE key = ? AND endpoint = ? AND principal = ?",
-                (_iso_in(lease_seconds), *ident),
+                """
+                UPDATE idempotency_keys
+                SET lease_expires_at = ?, operation_id = ?
+                WHERE key = ? AND endpoint = ? AND principal = ?
+                """,
+                (_iso_in(lease_seconds), new_operation_id, *ident),
             )
-            return Reservation("acquired", existing_op, recovered=True)
+            return Reservation("acquired", new_operation_id, recovered=True)
         return Reservation("unknown_outcome", existing_op)
 
     def complete(

@@ -42,6 +42,9 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 - No bulk stale-queue cancel. No bulk branch deletes.
 - Never write holds or directives. Never restate a hold as lifted.
 - Don't re-register or reconfigure runners. node-b runner 8 and node-a runners 5–8 stay off.
+- Barb exchange GitHub writes (`CLAUDE_BARB_CHANNEL`, Barbara ``barb-inbox``) authenticate only with
+  a freshly minted **d-sorg-runner-dashboard** App installation token; missing ``GITHUB_APP_*`` fails
+  closed and never falls back to the hub owner's ``GH_TOKEN``.
 - Never reload the node-c wifi driver.
 - Holds in force: Sidekick packaging; Assessment Board gate; RD deploy/release
   HOLD #2657; #2658 disarmed; #2880 auto-merge off; GM #5540 auto-merge off until
@@ -107,7 +110,7 @@ reuses `staff.provider_failover_config.resolve_failover_chain`.
   restarts on the printed provider, and the script sends a "switched provider"
   fyi with a recommendation. An exhausted chain sends an `alert`.
 
-## `/barb` and `@barb` per-CLI wrappers (#3067, #3070, #3071)
+## `/barb` and `@barb` per-CLI wrappers (#3067, #3069, #3070, #3071)
 
 Every fleet CLI gets the same `/barb` slash command, rendered from one shared
 template (`scripts/wrappers/barb_command_template.py`, synced per provider by
@@ -123,6 +126,11 @@ thread.
 - On Cursor: `.cursor/commands/barb.md` / `.cursor/rules/barb.mdc` handle
   `@barb` mentions the same way via `scripts/wrappers/cursor_barb_hook.py`, a
   `beforeSubmitPrompt` hook (registered in `.cursor/hooks.json`).
+- On Antigravity (agy): `.agent/workflows/barb.md` handles `/barb`;
+  `@barb` mention-wake works the same way via
+  `scripts/wrappers/agy_barb_hook.py`, registered as a `Stop` hook in
+  `.agent/hooks.json` (agy has no prompt-submit hook event, so `Stop` is the
+  closest fit per `scripts/postman_provider_caps.py`'s `AGY_HOOK_EVENTS`).
 - For Tools Sidekick: Sidekick packaging/dispatch is on HOLD (docs/triage
   only), so this repo ships no Sidekick-side command surface -- only the
   RD-side contract Tools implements against. `scripts/wrappers/sidekick_barb_hook.py`

@@ -78,6 +78,7 @@ EventKind = Literal[
     "multi_host_disk_cordon",
     "context_health",
     "slot_health",
+    "node_forwarder_alert",
 ]
 
 # Default ring-buffer capacity. Large enough to hold a meaningful operator
@@ -121,6 +122,7 @@ class FleetEvent:
             "multi_host_disk_cordon",
             "context_health",
             "slot_health",
+            "node_forwarder_alert",
         ):
             raise ValueError(f"FleetEvent.kind invalid: {self.kind!r}")
         if not self.title:

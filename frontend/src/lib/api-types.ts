@@ -5429,6 +5429,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fleet/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Brief */
+        get: operations["get_fleet_brief_api_v1_fleet_brief_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fleet/friction": {
         parameters: {
             query?: never;
@@ -6822,7 +6839,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List recent expert panels
+         * @description Recent panel threads with status and progress; newest activity first.
+         */
+        get: operations["list_panels_api_v1_staff_panels_get"];
         put?: never;
         /**
          * Start an expert panel
@@ -20247,6 +20268,39 @@ export interface operations {
             };
         };
     };
+    get_fleet_brief_api_v1_fleet_brief_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+                limit?: number;
+                format?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_friction_api_v1_fleet_friction_get: {
         parameters: {
             query?: {
@@ -23078,6 +23132,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffOutcomesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_panels_api_v1_staff_panels_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
