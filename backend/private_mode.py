@@ -320,7 +320,7 @@ class ClassificationEnvelope:
             "schema_version": self.schema_version,
             "level": self.level.name,
             "epoch": self.epoch,
-            "hops": list(self.hops),
+            "hops": [*self.hops],
         }
 
 
@@ -333,10 +333,8 @@ class UpgradeCheckResult:
     checkpoint_id: str | None = None
 
 
-_envelope_ctx: contextvars.ContextVar[ClassificationEnvelope | None] = contextvars.ContextVar(
-    "private_mode_envelope", default=None
-)
-_level_distribution_counts: dict[Level, int] = {lvl: 0 for lvl in Level}
+_envelope_ctx = contextvars.ContextVar[ClassificationEnvelope | None]("private_mode_envelope", default=None)
+_level_distribution_counts: dict[Level, int] = dict.fromkeys(Level, 0)
 
 
 def _record_level(level: Level) -> None:
@@ -350,8 +348,7 @@ def get_level_distribution_counts() -> dict[Level, int]:
 
 def reset_level_distribution_counts() -> None:
     """Reset the level-distribution counter (for deterministic tests)."""
-    for lvl in Level:
-        _level_distribution_counts[lvl] = 0
+    _level_distribution_counts.update(dict.fromkeys(Level, 0))
 
 
 def stamp_envelope(
@@ -373,18 +370,14 @@ def stamp_envelope(
     )
 
 
-def _validate_envelope_fields(
-    version: object, epoch: object, hops: object, hops_kind: str
-) -> tuple[int, tuple[str, ...]]:
-    if version != ENVELOPE_SCHEMA_VERSION or isinstance(version, bool):
+def _validate_envelope_fields(ver: object, epoch: object, hops: object, hops_kind: str) -> tuple[int, tuple[str, ...]]:
+    if ver != ENVELOPE_SCHEMA_VERSION or isinstance(ver, bool):
         raise ClassificationError(f"validate_envelope: unsupported schema_version (expected {ENVELOPE_SCHEMA_VERSION})")
     if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
         raise ClassificationError("validate_envelope: epoch must be an int >= 1")
-    if (
-        not isinstance(hops, (list, tuple))
-        or (hops_kind == "tuple" and not isinstance(hops, tuple))
-        or not all(isinstance(h, str) and h.strip() for h in hops)
-    ):
+    if not isinstance(hops, (list, tuple)) or (hops_kind == "tuple" and not isinstance(hops, tuple)):
+        raise ClassificationError(f"validate_envelope: hops must be a {hops_kind} of non-empty strings")
+    if not all(isinstance(h, str) and h.strip() for h in hops):
         raise ClassificationError(f"validate_envelope: hops must be a {hops_kind} of non-empty strings")
     return epoch, tuple(h.strip() for h in hops)
 
@@ -466,10 +459,7 @@ def taint_target_level(
 
 
 def taint_target_envelope(
-    target: ClassificationEnvelope | Mapping[str, Any],
-    *,
-    writer_envelope: ClassificationEnvelope | None = None,
-    config: PrivateModeConfig = DISABLED,
+    target: Any, *, writer_envelope: Any = None, config: PrivateModeConfig = DISABLED
 ) -> ClassificationEnvelope:
     """Apply writer-context taint to *target* envelope, incrementing epoch on upgrade."""
     validated_target = validate_envelope(target)
@@ -494,3 +484,15 @@ def check_mid_run_upgrade(
         upgraded = propagate_envelope(validated, hop="mid_run_upgrade", requested_level=live_level)
         return UpgradeCheckResult(envelope=upgraded, requeue_required=True, checkpoint_id=checkpoint_id)
     return UpgradeCheckResult(envelope=validated, requeue_required=False, checkpoint_id=checkpoint_id)
+
+
+def __getattr__(name: str) -> Any:
+    if name in {"SHARED_SURFACES", "SURFACE_ALLOWLISTS", "SharedProjection", "emit_shared", "opaque_identifier"}:
+        import private_mode_emit as _pme  # noqa: PLC0415
+
+        return getattr(_pme, name)
+    import private_mode_approvals as _pma  # noqa: PLC0415
+
+    if name in _pma.EXPORTS:
+        return getattr(_pma, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

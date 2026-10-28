@@ -32,7 +32,7 @@ from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
 from staff import store as run_stores
 from staff.barb_lease_fence import is_barb_seat
-from staff.lesson_locator import verify_lesson_evidence
+from staff.lesson_locator import locate_lesson_evidence, verify_lesson_evidence
 from staff.lesson_provenance import authenticated_lesson_run, completed_run_for_review
 from staff.store import _now  # noqa: PLC2701
 
@@ -120,6 +120,15 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
     body = _redact_body(req.body)
     if req.entry_type == "lesson":
         body["standards_version"] = run.standards_version
+        body.pop("locator", None)
+        text = body.get("text")
+        if isinstance(text, str) and text:
+            try:
+                locator = locate_lesson_evidence(run_stores.get_store(), run.id, run.repo, text)
+            except ValueError:
+                locator = None
+            if locator is not None:
+                body["locator"] = locator
     enforce_entry_size(body, req.entry_type)
     store = get_memory_store()
     if req.supersedes_id:

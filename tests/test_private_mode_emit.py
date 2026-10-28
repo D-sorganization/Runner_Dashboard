@@ -1,0 +1,156 @@
+"""Contract tests for Private Mode PM-4 ``emit_shared()`` choke point (issue #3254, epic #3249)."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+_ROOT = Path(__file__).resolve().parents[1]
+_BACKEND = _ROOT / "backend"
+if str(_BACKEND) not in sys.path:
+    sys.path.insert(0, str(_BACKEND))
+
+import private_mode as pm  # noqa: E402
+import private_mode_emit as pme  # noqa: E402
+
+SENTINEL = "SENTINEL-" + "example-corp-sensitive-payload"
+
+
+def _enabled_config(default: pm.Level = pm.Level.INTERNAL) -> pm.PrivateModeConfig:
+    return pm.PrivateModeConfig(enabled=True, default_level=default)
+
+
+def test_sensitive_payload_returns_projection_only_and_never_runs_regex(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SENSITIVE payload -> projection only, before any regex in staff.redaction runs."""
+    called_redaction = False
+
+    def _boom_redact(_value: Any) -> Any:
+        nonlocal called_redaction
+        called_redaction = True
+        raise AssertionError("staff.redaction must not run on SENSITIVE payloads")
+
+    monkeypatch.setattr(pme, "_redact_for_non_sensitive", _boom_redact)
+    delivered: list[dict[str, Any]] = []
+
+    fake_token = "ghp_" + ("C" * 36)
+    projection = pm.emit_shared(
+        "board",
+        {
+            "id": "example-corp/widgets-sensitive#42",
+            "repo": "example-corp/widgets-sensitive",
+            "status": "parked",
+            "attempt": 2,
+            "ok": False,
+            "title": f"Fix {SENTINEL} in Example Corp",
+            "body": f"Secret token {fake_token} and {SENTINEL}",
+            "unlisted_field": SENTINEL,
+        },
+        level=pm.Level.SENSITIVE,
+        config=_enabled_config(),
+        sink=delivered.append,
+    )
+
+    assert called_redaction is False
+    assert (projection.withheld, projection.level, projection.surface) == (True, pm.Level.SENSITIVE, "board")
+    assert projection.content is None and projection.content_mac is None
+    assert projection.opaque_id.startswith("opaque:") and "example-corp" not in projection.opaque_id
+    assert SENTINEL not in str(projection.to_dict()) and "ghp_" not in str(projection.to_dict())
+    assert (projection.metadata["status"], projection.metadata["attempt"], projection.metadata["ok"]) == (
+        "parked",
+        2,
+        False,
+    )
+    assert str(projection.metadata["id"]).startswith("opaque:")
+    assert str(projection.metadata["repo"]).startswith("opaque:")
+    assert {"title", "body", "unlisted_field"}.isdisjoint(projection.metadata)
+    assert delivered == [projection.to_dict()]
+
+
+def test_content_hash_omitted_by_default_and_keyed_mac_optional() -> None:
+    """No raw sha256 content hashes; omit by default, keyed HMAC optional."""
+    cfg = _enabled_config()
+    payload = {"id": "item-1", "status": "running", "summary": SENTINEL}
+
+    default_proj = pm.emit_shared("turnover", payload, level=pm.Level.SENSITIVE, config=cfg)
+    assert default_proj.content_mac is None and "content_mac" not in default_proj.to_dict()
+
+    with pytest.raises(pm.ClassificationError, match="mac_key"):
+        pm.emit_shared("turnover", payload, level=pm.Level.SENSITIVE, config=cfg, include_content_mac=True)
+
+    keyed_proj = pm.emit_shared(
+        "turnover",
+        payload,
+        level=pm.Level.SENSITIVE,
+        config=cfg,
+        include_content_mac=True,
+        mac_key=b"example-corp-test-hmac-key-32bytes!",
+    )
+    assert keyed_proj.content_mac is not None and keyed_proj.content_mac.startswith("hmac-sha256:")
+    assert SENTINEL not in keyed_proj.content_mac
+
+
+@pytest.mark.parametrize("level", [pm.Level.PUBLIC, pm.Level.INTERNAL])
+def test_redaction_runs_on_public_and_internal_payloads(level: pm.Level) -> None:
+    """PUBLIC and INTERNAL payloads run through staff.redaction (DRY)."""
+    fake_token = "ghp_" + ("A" * 36)
+    payload = {"id": "example-corp/widgets#7", "status": "completed", "summary": f"Example Corp {fake_token}"}
+    projection = pm.emit_shared("run_history", payload, level=level, config=_enabled_config())
+    assert projection.withheld is False and projection.level is level
+    assert fake_token not in str(projection.content)
+    assert "[REDACTED_GITHUB_TOKEN]" in projection.content["summary"]
+
+
+def test_flag_off_behaviour_unchanged() -> None:
+    """When private_mode is DISABLED, even SENSITIVE-marked emissions behave as PUBLIC with standard redaction."""
+    fake_token = "ghp_" + ("B" * 36)
+    delivered: list[Any] = []
+    payload = {"id": "example-corp/widgets#9", "summary": f"Hello Example Corp {fake_token}"}
+
+    projection = pm.emit_shared("board", payload, level=pm.Level.SENSITIVE, config=pm.DISABLED, sink=delivered.append)
+    assert projection.level is pm.Level.PUBLIC and projection.withheld is False
+    assert projection.content == {
+        "id": "example-corp/widgets#9",
+        "summary": "Hello Example Corp [REDACTED_GITHUB_TOKEN]",
+    }
+    assert delivered == [projection.content]
+
+
+def test_writer_context_taint_elevates_shared_emission_to_sensitive() -> None:
+    """An active SENSITIVE ClassificationEnvelope in contextvars elevates an INTERNAL emission to SENSITIVE."""
+    cfg = _enabled_config()
+    with pm.envelope_context(pm.stamp_envelope(pm.Level.SENSITIVE, hop="run", config=cfg)):
+        projection = pm.emit_shared(
+            "hub_logs", {"id": "log-1", "status": "info", "message": SENTINEL}, level=pm.Level.INTERNAL, config=cfg
+        )
+    assert projection.level is pm.Level.SENSITIVE and projection.withheld is True
+    assert projection.content is None and SENTINEL not in str(projection.to_dict())
+
+
+def test_unknown_surface_or_missing_level_fails_closed() -> None:
+    cfg = _enabled_config()
+    with pytest.raises(pm.ClassificationError, match="surface"):
+        pm.emit_shared("unknown_surface", {"status": "ok"}, level=pm.Level.PUBLIC, config=cfg)
+    with pytest.raises(pm.ClassificationError, match="level"):
+        pm.emit_shared("board", {"status": "ok"}, level=None, config=cfg)
+
+
+def test_import_ban_passes_on_backend_and_fails_on_direct_sink_write(tmp_path: Path) -> None:
+    """The import-ban test passes on backend/ and fails when any unauthorized module writes a shared sink directly."""
+    assert pme.find_shared_sink_import_violations(_BACKEND) == []
+
+    (tmp_path / "rogue_writer.py").write_text(
+        "from staff.redaction import redact_sensitive_content\n"
+        "def write_board_directly(msg: str) -> str:\n    return redact_sensitive_content(msg)\n",
+        encoding="utf-8",
+    )
+    violations = pme.find_shared_sink_import_violations(tmp_path)
+    assert len(violations) == 1 and "rogue_writer.py" in violations[0]
+
+    (tmp_path / "rogue_gate.py").write_text(
+        "from staff.private_surface_gate import gate_text\ndef bypass(msg: str) -> str:\n    return gate_text(msg)\n",
+        encoding="utf-8",
+    )
+    assert len(pme.find_shared_sink_import_violations(tmp_path)) == 2

@@ -225,6 +225,48 @@ def test_review_rejects_lesson_whose_locator_no_longer_verifies(
     assert unchanged.review_status == "proposed" and unchanged.accepted_at is None
 
 
+def test_append_derives_locator_from_persisted_evidence_ignoring_client_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff.lesson_locator import locate_lesson_evidence
+
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    run_store = run_stores.get_store()
+    run_store.append_event(
+        "run-1", "assistant", "STAFF_LESSON: Derive locator server side.", lesson_evidence="assistant_answer"
+    )
+    expected = locate_lesson_evidence(run_store, "run-1", "RD", "Derive locator server side.")
+    forged = {"version": 1, "event_seq": 999, "line_index": 7, "line_sha256": "0" * 64}
+
+    entry = append_entry(_p("agent"), _req(body={"text": "Derive locator server side.", "locator": forged}))
+
+    assert entry.body["locator"] == expected
+    assert entry.body["locator"] != forged
+
+
+def test_append_discards_client_locator_when_no_evidence_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    forged = {"version": 1, "event_seq": 1, "line_index": 0, "line_sha256": "0" * 64}
+
+    entry = append_entry(_p("agent"), _req(body={"text": "Never actually said.", "locator": forged}))
+
+    assert "locator" not in entry.body
+
+
+def test_append_lesson_without_text_field_has_no_locator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+
+    entry = append_entry(_p("agent"), _req())
+
+    assert "locator" not in entry.body
+
+
 def test_review_rejects_a_stale_racing_status_transition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db = tmp_path / "memory.sqlite3"
     monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
