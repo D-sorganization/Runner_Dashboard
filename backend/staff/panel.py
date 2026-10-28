@@ -56,7 +56,9 @@ __all__ = [
     "active_panel_count",
     "default_turn_runner",
     "estimate_panel_cost",
+    "list_panel_summaries",
     "panel_result",
+    "panel_summary",
     "parse_stance",
     "run_panel",
     "record_panel_turnover",
@@ -302,6 +304,31 @@ async def run_panel(
         if grounding_dir:
             cli_projects.remove_turn_project(grounding_dir, os.environ)
             remove_snapshot(grounding_dir)
+
+
+def panel_summary(thread: ThreadRecord) -> dict[str, Any]:
+    """Compact panel row for list endpoints. Pre: ``thread.kind == \"panel\"``."""
+    assert thread.kind == "panel", f"panel_summary requires kind=panel, got {thread.kind!r}"  # noqa: S101
+    state = dict(thread.meta.get("panel", {}))
+    return {
+        "thread_id": thread.id,
+        "title": thread.title,
+        "status": state.get("status", "running"),
+        "mode": state.get("mode"),
+        "rounds": state.get("rounds"),
+        "rounds_used": state.get("rounds_used", 0),
+        "consensus": bool(state.get("consensus")),
+        "created_at": thread.created_at,
+        "updated_at": thread.updated_at,
+        "last_message_at": thread.last_message_at,
+    }
+
+
+def list_panel_summaries(store: ConversationStore, *, limit: int = 200) -> list[dict[str, Any]]:
+    """Recent panel threads, newest ``updated_at`` first. Pre: ``1 <= limit <= 200``."""
+    assert 1 <= limit <= 200, f"list_panel_summaries limit out of range: {limit}"  # noqa: S101
+    threads = store.list_threads(kind="panel", limit=limit)
+    return [panel_summary(t) for t in threads]
 
 
 def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | None:
