@@ -19,6 +19,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from dashboard_config import HUB_URL
+from machine_registry import is_portable_machine
 
 log = logging.getLogger("dashboard.staff.scheduler")
 
@@ -80,6 +81,14 @@ def acquire_leader_lease(
     whatever lock guards ``load_state``/``save_state``.
     Postcondition: result includes ``granted`` and current ``holder``.
     """
+    if is_portable_machine(machine):
+        return {
+            "granted": False,
+            "holder": "",
+            "reason": f"{machine} is a portable node: no required or scheduled roles (#3323)",
+            "expires_at": None,
+            "chain": list(leader_chain()),
+        }
     chain = leader_chain()
     if not chain:
         return {
@@ -194,6 +203,8 @@ def lease_allows_firing(
     now: datetime,
     ttl_seconds: float,
 ) -> bool:
+    if is_portable_machine(runner_machine):
+        return False
     chain = leader_chain()
     if not chain:
         return True
