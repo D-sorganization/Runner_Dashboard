@@ -1,15 +1,4 @@
-/**
- * InboxPanel.tsx — "Waiting on you" Attention panel and drawer (SC-C5, Workstream D).
- *
- * Collapsed by default into a single compact attention bar above the console:
- * - "Waiting on you" + count badge + per-kind counts (Approvals 4, Decisions 73, Sign-ins 3)
- * - "Open" button opens a right-side 420px fixed drawer.
- * - Approvals sorted first, then escalations, needs-input, sign-ins and decisions.
- * - Providers needing sign-in grouped under a collapsible row.
- * - Project decisions grouped by repo.
- * - Degraded source warning with a Details disclosure.
- * - Zero emojis in chrome: clean SVG icons only.
- */
+/** Staff inbox "Waiting on you" panel and drawer (SC-C5). */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "../../primitives/Badge";

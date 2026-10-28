@@ -1,10 +1,4 @@
-/**
- * Composer.tsx — Staff Console message input, supporting markdown, keyboard-first
- * @mentions and slash commands, voice input, persistent drafts, auto-growing input,
- * and reliable send with deduplication.
- *
- * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Workstream B (#1720).
- */
+/** Staff Console composer: markdown, mentions, voice, drafts (SC-D4). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useComposerAutosize } from "../../hooks/useComposerAutosize";
 import { useVoiceInput } from "../../hooks/useVoiceInput";
@@ -398,7 +392,6 @@ export const Composer: React.FC<ComposerComponentProps> = ({
         </div>
       )}
 
-      {/* Claude-grade Rounded Bordered Box */}
       <div
         className="staff-composer__box"
         data-testid="composer-box"
@@ -435,7 +428,6 @@ export const Composer: React.FC<ComposerComponentProps> = ({
             </select>
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={disabled || isPanel || conversationOpening || sendState === "sending"} title="Add files or context" aria-label="Add files or context" data-testid="composer-attach-btn" className="staff-composer__attach-btn">+</button>
           </div>
-          {/* Voice Input Button */}
           <button
             type="button"
             aria-label={

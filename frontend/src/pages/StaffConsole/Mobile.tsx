@@ -1,11 +1,4 @@
-/**
- * Mobile.tsx — Mobile Staff Console (SC-D8, Issue #1331).
- *
- * Implements full-screen roster → thread navigation, safe-area aware bottom
- * composer, thumb-reachable approve/deny actions, push deep linking (?thread=, ?role=),
- * and role context inspection. Console state comes from `useStaffConsole`,
- * shared with the desktop layout (#1446).
- */
+/** Mobile Staff Console: roster, threads, composer (SC-D8). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { ROSTER_GROUPS } from "./types";
