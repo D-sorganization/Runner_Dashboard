@@ -52,6 +52,12 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 
 rd-barb never messages Dieter directly, and Grok Barb does not redo her work.
 
+### Direct Path (Not Live Yet)
+
+`scripts/rd_barb_direct_notify.py` sends questions and alerts with no Grok relay. Its channel is Dieter's choice,
+so `RD_BARB_DIRECT_CHANNEL` defaults to `none`, which fails on purpose and shows on
+`GET /api/v1/staff/rd-barb/notify-status` (`failing`, then `degraded` after 5 minutes). Grok stays live until then.
+
 ```bash
 python scripts/rd_barb_notify.py send --json msg.json   # question/alert now, fyi queued
 python scripts/rd_barb_notify.py flush                  # send queued fyi as one digest
