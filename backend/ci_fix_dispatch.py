@@ -19,6 +19,7 @@ import logging
 import os
 import re
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -104,10 +105,38 @@ def extract_failing_test_names(log_text: str) -> list[str]:
     return names
 
 
+# #2766 item 4: a runner-environment failure is not a code defect; a "fix the code" session
+# can never pass CI for one of these, so it is classified separately and routed to Night Watch.
+INFRA_LOG_PATTERNS: tuple[str, ...] = (
+    "error while loading shared libraries",
+    "importerror: libpython",
+    "cannot open shared object file",
+    "no such file or directory: 'buildx'",
+    "docker: 'buildx' is not a docker command",
+    "failed to solve",  # buildx/docker build-step setup failure
+    "buildx failed with",
+    "http 401",
+    "http 403",
+    "401 unauthorized",
+    "403 forbidden",
+    "no space left on device",
+    "runner has no free disk space",
+    "disk quota exceeded",
+)
+INFRA_WORKFLOW_HINTS: tuple[str, ...] = ("buildx", "docker-build-scan", "docker-build")
+
+
 def classify_failure_type(workflow_name: str, log_excerpt: str) -> str:
-    """Classify the failure category from workflow name and log cues."""
+    """Classify the failure category from workflow name and log cues.
+
+    ``infra`` (runner/environment, #2766) is checked first: a shared-library load error or an
+    HTTP 401/403 from the API is never fixed by editing the PR's code, regardless of which
+    workflow carries it.
+    """
     wf_lower = workflow_name.lower()
     log_lower = log_excerpt.lower()
+    if any(pat in log_lower for pat in INFRA_LOG_PATTERNS) or any(hint in wf_lower for hint in INFRA_WORKFLOW_HINTS):
+        return "infra"
     if any(k in wf_lower for k in ("lint", "format", "style", "ruff", "black")):
         return "lint"
     if "conflict" in log_lower or "merge conflict" in log_lower:
@@ -125,6 +154,8 @@ STRONG_MODEL = "claude-opus-5-5"
 CLI_CLAUDE_MODEL = "claude-sonnet-5-5"
 CHEAP_CODEX_MODEL = "gpt-6-luna"
 AGY_MODEL = "gemini-3.8-flash-high"
+NIGHT_WATCH_ROLE = "night-watch"
+CURSOR_AUTHOR_BRANCH_PREFIX = "cursor/"
 
 
 def _agy_runs_unattended() -> bool:
@@ -139,8 +170,42 @@ def route_ci_fix(
     failure_type: str,
     attempt_number: int = 1,
     max_attempts: int = 3,
+    *,
+    branch: str = "",
 ) -> CIFixRoute:
-    """Route failure to appropriate provider tier based on type and attempts."""
+    """Route failure to appropriate provider tier based on type, attempts and author lane.
+
+    #2766 item 3: a ``cursor/*`` branch is a Cursor-authored PR; it is handed back to a
+    Cursor cloud follow-up on the same branch (subscription, zero local load) rather than a
+    local CLI session, regardless of failure type or attempt count.
+    #2766 item 4: an ``infra`` failure (runner/environment, never the PR's code) is routed to
+    Night Watch instead of a code-fix session, also regardless of attempt count.
+    """
+    if branch.startswith(CURSOR_AUTHOR_BRANCH_PREFIX):
+        return CIFixRoute(
+            provider="cursor_cloud",
+            tier="cloud",
+            model="cursor-cloud-followup",
+            cost_budget=0.0,
+            escalated=False,
+            reason=(
+                "Cursor-authored PR (cursor/* branch): routed to a Cursor cloud follow-up on the "
+                "same branch instead of a local CLI session"
+            ),
+            effort=resolve_effort(f"ci_fix:{failure_type}"),
+        )
+
+    if failure_type == "infra":
+        return CIFixRoute(
+            provider="night_watch",
+            tier="infra",
+            model="",
+            cost_budget=0.0,
+            escalated=False,
+            reason="Runner-environment failure, not a code defect: routed to Night Watch instead of a code fix",
+            effort=resolve_effort("ci_fix:infra"),
+        )
+
     if attempt_number >= max_attempts:
         return CIFixRoute(
             provider="claude_code_cli",
@@ -260,8 +325,32 @@ def evaluate_ci_fix_trigger(
     workflow_name = str(event_payload.get("workflow_name", ""))
     repo = str(event_payload.get("repository", ""))
     run_id = event_payload.get("run_id")
+    head_sha = str(event_payload.get("head_sha") or "")
 
-    if conclusion not in ("failure", "timed_out", "cancelled"):
+    if conclusion == "cancelled":
+        # #2766 item 1 / DbC pre: a cancelled run is only judged eligible once we know
+        # which head SHA it ran on, so we can tell a real cancel apart from a concurrency-group
+        # supersession cancel (164 closer cancels, Merge Hold Guard bursts).
+        if not repo or not run_id or not head_sha:
+            return CIFixTriggerDecision(
+                eligible=False,
+                reason="Cancelled run is missing repo, run id or head SHA; cannot rule out supersession",
+                workflow_name=workflow_name,
+                run_id=run_id,
+            )
+        if bool(event_payload.get("superseded_by_newer_run")):
+            return CIFixTriggerDecision(
+                eligible=False,
+                reason=(
+                    "Cancelled run was superseded by a newer run of the same workflow for this head SHA; "
+                    "not a real failure"
+                ),
+                workflow_name=workflow_name,
+                run_id=run_id,
+            )
+        # The latest run for this head SHA was cancelled outright (not concurrency-superseded):
+        # treat it like any other failure below.
+    elif conclusion not in ("failure", "timed_out"):
         return CIFixTriggerDecision(
             eligible=False,
             reason=f"Run conclusion '{conclusion}' is not failed",
@@ -411,3 +500,99 @@ def count_consecutive_attempts(repo: str, pr_number: int, signature: str, audit_
             break
         streak += 1
     return streak
+
+
+# #2766 item 2: a PR red for more than this many minutes with its lock free gets swept into a
+# fix dispatch even without a fresh webhook event (hub-unreachable gap). #2766 item 5: a
+# ``consolidation``-labeled PR gets a longer grace period before the sweep fires on it, since
+# the "existing rule" already keeps its superseded originals open until it merges.
+DEFAULT_SWEEP_RED_MINUTES = 30.0
+CONSOLIDATION_SWEEP_RED_MINUTES = 120.0
+CONSOLIDATION_LABEL = "consolidation"
+STALE_RED_HOURS = 24.0
+
+
+def _parse_iso(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str) and value:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
+
+
+def select_sweep_candidates(
+    prs: list[dict[str, Any]],
+    *,
+    now: datetime,
+    lock_manager: CIFixLockManager | None = None,
+) -> list[dict[str, Any]]:
+    """Open, non-draft, armed PRs whose required check has been red long enough, with no lock.
+
+    Pre: each ``pr`` dict names ``repo`` and ``number``; a PR missing ``red_since`` is not red
+    and is skipped (DbC: no silent guess at a missing fact).
+    Post: every returned PR is unlocked at ``now`` and has been red at least its threshold
+    (``CONSOLIDATION_SWEEP_RED_MINUTES`` for a ``consolidation``-labeled PR, else
+    ``DEFAULT_SWEEP_RED_MINUTES``); the sweep interval's DbC ("every red armed PR gets a
+    decision within one sweep interval") is satisfied by the caller dispatching one for each.
+    """
+    locks = lock_manager or GLOBAL_CI_FIX_LOCK_MGR
+    candidates: list[dict[str, Any]] = []
+    for pr in prs:
+        if pr.get("is_draft") or not pr.get("auto_merge_armed"):
+            continue
+        red_since = _parse_iso(pr.get("red_since"))
+        if red_since is None:
+            continue
+        labels = pr.get("labels") or []
+        threshold = CONSOLIDATION_SWEEP_RED_MINUTES if CONSOLIDATION_LABEL in labels else DEFAULT_SWEEP_RED_MINUTES
+        red_minutes = (now - red_since).total_seconds() / 60.0
+        if red_minutes < threshold:
+            continue
+        repo = str(pr.get("repo") or "")
+        number = pr.get("number")
+        if not repo or number is None:
+            continue
+        if locks.is_locked(repo, int(number)):
+            continue
+        candidates.append(pr)
+    return candidates
+
+
+def count_stale_red_prs_without_fix_attempts(
+    prs: list[dict[str, Any]],
+    *,
+    now: datetime,
+    audit_file: Path | None = None,
+    hours: float = STALE_RED_HOURS,
+) -> int:
+    """Count open PRs red for more than ``hours`` with zero CI-fix audit rows ever (#2766 metric).
+
+    Feeds the existing Prometheus exporter (``routers/metrics.py``); the issue's problem
+    statement is PRs going red and nobody ever trying a fix (19 of 33 Cursor PRs, Bob 10-23).
+    """
+    target_path = audit_file or DEFAULT_AUDIT_PATH
+    try:
+        entries = json.loads(target_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        entries = []
+    if not isinstance(entries, list):
+        entries = []
+    attempted = {
+        (str(e.get("repository", "")).strip().lower(), e.get("pr_number"))
+        for e in entries
+        if isinstance(e, dict)
+    }
+    count = 0
+    for pr in prs:
+        red_since = _parse_iso(pr.get("red_since"))
+        if red_since is None:
+            continue
+        if (now - red_since).total_seconds() / 3600.0 < hours:
+            continue
+        key = (str(pr.get("repo") or "").strip().lower(), pr.get("number"))
+        if key not in attempted:
+            count += 1
+    return count
