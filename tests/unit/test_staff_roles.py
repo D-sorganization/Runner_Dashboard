@@ -367,3 +367,66 @@ def test_every_schema_property_is_known_to_the_validator() -> None:
     schema = json.loads((Path(validator.__file__).parent / "schema.json").read_text("utf-8"))
     known = set(validator.REQUIRED_FIELDS) | set(validator.OPTIONAL_FIELDS)
     assert set(schema["properties"]) == known
+
+
+_MOCK_OVERLAY = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "overlay" / "mock-overlay.json"
+
+
+def _write_overlay(tmp_path: Path, roles_dir_name: str = "roles") -> Path:
+    import json
+
+    data = json.loads(_MOCK_OVERLAY.read_text(encoding="utf-8"))
+    data["roles_dir"] = roles_dir_name
+    overlay_path = tmp_path / "overlay" / "overlay.json"
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    overlay_path.write_text(json.dumps(data), encoding="utf-8")
+    return overlay_path
+
+
+@pytest.mark.unit
+def test_overlay_roles_dir_is_used_when_no_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#3082 category 3: an overlay-declared roles_dir is used with no STAFF_ROLES_DIR set."""
+    monkeypatch.delenv(roles_mod.ROLES_DIR_ENV, raising=False)
+    overlay_path = _write_overlay(tmp_path)
+    overlay_roles_dir = overlay_path.parent / "roles"
+    overlay_roles_dir.mkdir()
+    monkeypatch.setenv("RD_OVERLAY_PATH", str(overlay_path))
+
+    assert roles_mod.roles_dir() == overlay_roles_dir
+
+
+@pytest.mark.unit
+def test_env_override_wins_over_overlay_roles_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit STAFF_ROLES_DIR still wins over an overlay-declared roles_dir."""
+    overlay_path = _write_overlay(tmp_path)
+    (overlay_path.parent / "roles").mkdir()
+    monkeypatch.setenv("RD_OVERLAY_PATH", str(overlay_path))
+
+    env_roles_dir = tmp_path / "env-roles"
+    env_roles_dir.mkdir()
+    monkeypatch.setenv(roles_mod.ROLES_DIR_ENV, str(env_roles_dir))
+
+    assert roles_mod.roles_dir() == env_roles_dir
+
+
+@pytest.mark.unit
+def test_missing_overlay_roles_dir_falls_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An overlay-declared roles_dir that doesn't exist on disk degrades gracefully, not a hard failure."""
+    monkeypatch.delenv(roles_mod.ROLES_DIR_ENV, raising=False)
+    overlay_path = _write_overlay(tmp_path, roles_dir_name="does-not-exist")
+    monkeypatch.setenv("RD_OVERLAY_PATH", str(overlay_path))
+
+    # No sibling checkout present either in this sandbox: falls all the way through to None,
+    # proving the overlay miss didn't raise (it just didn't supply a directory).
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "no-such-home")
+    assert roles_mod.roles_dir() is None
+
+
+@pytest.mark.unit
+def test_no_overlay_configured_leaves_roles_dir_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset RD_OVERLAY_PATH: behaviour is unchanged (overlay_contract's backward-compat contract)."""
+    monkeypatch.delenv("RD_OVERLAY_PATH", raising=False)
+    monkeypatch.delenv(roles_mod.ROLES_DIR_ENV, raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "no-such-home")
+
+    assert roles_mod.roles_dir() is None
