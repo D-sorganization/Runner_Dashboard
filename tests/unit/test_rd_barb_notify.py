@@ -200,3 +200,39 @@ def test_load_config_env_wins_for_every_rd_barb_key(tmp_path: Path) -> None:
     assert cfg["RD_BARB_PROVIDER"] == "codex"
     assert cfg["RD_BARB_LAUNCH_CMD"] == "bin/a {provider}"
     assert "HOME" not in cfg and "RD_BARB_MODEL" not in cfg
+
+
+def test_normalize_role_and_env_prefix_contract() -> None:
+    assert (rn.normalize_role(), rn.normalize_role("barb"), rn.normalize_role("bob")) == ("rd-barb", "rd-barb", "bob")
+    assert (rn.role_env_prefix(), rn.role_env_prefix("bob"), rn.role_env_prefix("usage-tracker")) == (
+        "RD_BARB_",
+        "RD_BOB_",
+        "RD_USAGE_TRACKER_",
+    )
+    for bad in ("", "Bob", "../etc", "bob_1"):
+        with pytest.raises(ValueError, match="role"):
+            rn.normalize_role(bad)
+
+
+def test_persona_notify_stamps_sender_role_and_keeps_barb_golden(tmp_path: Path, rec: Rec) -> None:
+    res = rn.persona_notify(
+        "bob", _question(), config=CFG, state_path=tmp_path / "bob.json", sender=rec.send, thread_poster=rec.post
+    )
+    assert res == {"ok": True, "status": "sent"}
+    assert rec.sent[0][2]["sender_role"] == "bob"
+    assert rec.posts[0][2] == "bob-q-1"
+    _notifier(tmp_path, rec).notify(_question(dedupe_key="q-barb"))
+    assert "sender_role" not in rec.sent[1][2] and rec.posts[1][2] == "rd-barb-q-barb"
+
+
+def test_role_config_and_shadow_mode_suppress_webhook(tmp_path: Path, rec: Rec) -> None:
+    cfg_file = tmp_path / "rd-bob.env"
+    cfg_file.write_text("RD_BOB_PROVIDER=claude\nRD_BOB_THREAD_ID=th_bob\n", encoding="utf-8")
+    cfg = rn.load_config({"RD_BOB_CONFIG": str(cfg_file), "RD_BOB_SHADOW": "1", **CFG}, role="bob")
+    assert cfg["RD_BOB_PROVIDER"] == "claude" and cfg["RD_BOB_SHADOW"] == "1"
+    res = rn.persona_notify(
+        "bob", _question(), config=cfg, state_path=tmp_path / "bob.json", sender=rec.send, thread_poster=rec.post
+    )
+    assert res == {"ok": True, "status": "shadow"}
+    assert rec.sent == [] and rec.posts[0][0] == "th_bob" and '"sender_role": "bob"' in rec.posts[0][1]
+

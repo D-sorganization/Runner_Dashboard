@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt_mod
 import json
 import subprocess
 import sys
@@ -9,6 +10,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+if not hasattr(_dt_mod, "UTC"):
+    _dt_mod.UTC = _dt_mod.timezone.utc  # type: ignore[attr-defined]  # noqa: UP017
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
@@ -214,3 +218,28 @@ def test_alert_failure_never_breaks_supervise() -> None:
         alert=boom,
     )
     assert rc == 1
+
+
+def test_watchdog_role_uses_role_launch_cmd_and_passes_role_to_next(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(wd.WatchdogError, match="RD_BOB_LAUNCH_CMD"):
+        wd.launch_command({"RD_BARB_LAUNCH_CMD": "bin/barb {provider}"}, "claude", "opus", role="bob")
+    cmd = wd.launch_command(
+        {"RD_BOB_LAUNCH_CMD": "bin/persona --role {role} --provider {provider} --model {model}"},
+        "claude",
+        "opus",
+        role="bob",
+    )
+    assert cmd == ["bin/persona", "--role", "bob", "--provider", "claude", "--model", "opus"]
+    calls: list[list[str]] = []
+
+    def run(c: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(c)
+        return subprocess.CompletedProcess(c, 0, stdout='{"provider": "claude", "model": "opus"}\n', stderr="")
+
+    assert wd.cli_next(current="claude", failure="crash", role="bob", run=run) == wd.Pick("claude", "opus")
+    assert "--role" in calls[0] and "bob" in calls[0]
+    alert = wd.cap_alert("claude", "crash", 3, "r1", role="bob")
+    assert alert["sender_role"] == "bob" and alert["dedupe_key"] == "bob-restart-cap-claude-crash"
+    assert wd.main(["--role", "bob", "run", "--dry-run"], config={"RD_BOB_LAUNCH_CMD": "bin/b {role} {provider}"}, next_provider=FakeNext()) == 0
+    assert capsys.readouterr().out.strip() == "bin/b bob claude"
+
