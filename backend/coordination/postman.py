@@ -17,7 +17,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from pathlib import Path
 from typing import Any, Protocol
+
+from coordination.relay_guard import RelayGuard, _parse_time
 
 log = logging.getLogger("dashboard.coordination.postman")
 
@@ -127,12 +130,20 @@ class PostmanState:
         data = json.loads(text)
         return cls(board_issue=int(data["board_issue"]), delivered=[str(k) for k in data.get("delivered", [])])
 
+    def save(self, path: Path) -> None:
+        """Persist the cursor to ``path`` (JSON), atomically — a crash mid-write cannot corrupt it."""
+        tmp = path.with_suffix(f"{path.suffix}.tmp")
+        tmp.write_text(self.to_json(), encoding="utf-8")
+        tmp.replace(path)
 
-def _parse_time(value: object) -> datetime | None:
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
+    @classmethod
+    def load(cls, path: Path, *, default_board_issue: int) -> PostmanState:
+        """Read the cursor from ``path``; a missing file starts fresh at ``default_board_issue``."""
+        try:
+            text = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return cls(board_issue=default_board_issue)
+        return cls.from_json(text)
 
 
 def _mentions(text: str, names: Sequence[str], *, bare: bool) -> set[str]:
@@ -151,11 +162,13 @@ class Postman:
         roster: Sequence[str],
         state: PostmanState,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        guard: RelayGuard | None = None,
     ) -> None:
         self.board, self.bus, self.source = board, bus, source
         self.roster = tuple(roster)
         self.state = state
         self._clock = clock
+        self.guard = guard or RelayGuard(frozenset(self.roster) | {BARB}, clock=clock)
 
     # -- planning (pure: reads only) -------------------------------------------------
     def _follow_rollover(self, actions: list[Action]) -> int:
@@ -261,6 +274,10 @@ class Postman:
         return CycleReport(False, issue, tuple(actions))
 
     def _deliver(self, delivery: Delivery) -> None:
+        """Pre: ``delivery`` is well-formed. Every delivery passes through the relay guard's
+        secret refusal first (#3233) — a token or key is refused, never sent or logged.
+        """
+        self.guard.refuse_secrets(delivery.body)
         self.bus.send(delivery)
         self.state.mark(delivery.idempotency_key)
 

@@ -26,7 +26,7 @@ def client(bus_env: dict[str, str]) -> TestClient:
 
 @pytest.mark.unit
 def test_blocked_message_duplicates_to_barb_inbox(client: TestClient, bus_env: dict[str, str]) -> None:
-    sess = "local-brick-20261022-blocked"
+    sess = "local-node-c-20261022-blocked"
     reg = client.post(
         "/api/v1/agent/register",
         headers=_auth(bus_env["fleet"]),
@@ -34,7 +34,7 @@ def test_blocked_message_duplicates_to_barb_inbox(client: TestClient, bus_env: d
             "session": sess,
             "role": "local",
             "provider": "cursor",
-            "node": "Brick",
+            "node": "node-c",
             "lease_seconds": 600,
         },
     )
@@ -106,7 +106,7 @@ def test_backlog_lists_blocked_and_stale_sessions(client: TestClient, bus_env: d
             "session": sess,
             "role": "local",
             "provider": "cursor",
-            "node": "Brick",
+            "node": "node-c",
             "lease_seconds": 600,
         },
     )

@@ -1226,16 +1226,21 @@ async def get_system_metrics_snapshot(
     return await asyncio.to_thread(_sync)
 
 
-async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
-    """Run a shell command asynchronously."""
+async def run_cmd(
+    cmd: list[str], timeout: int = 30, cwd: Path | None = None, *, input_text: str | None = None
+) -> tuple[int, str, str]:
+    """Run an argv command asynchronously, optionally passing UTF-8 stdin."""
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE if input_text is not None else None,
             cwd=str(cwd) if cwd else None,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        payload = input_text.encode("utf-8") if input_text is not None else None
+        communicate = proc.communicate(payload) if payload is not None else proc.communicate()
+        stdout, stderr = await asyncio.wait_for(communicate, timeout=timeout)
         return (
             proc.returncode if proc.returncode is not None else -1,
             stdout.decode("utf-8", errors="replace"),
