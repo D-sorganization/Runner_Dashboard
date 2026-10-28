@@ -3,6 +3,11 @@
 Collects local, anonymous page-view and endpoint access telemetry across nodes
 over a rolling 14-day window to provide evidence for SC-G tab pruning and merges.
 Can be disabled via the DASHBOARD_USAGE_METRICS_ENABLED environment variable.
+
+Counters are held in memory and written to disk on a debounced timer
+(``DASHBOARD_USAGE_METRICS_FLUSH_SECONDS``, default 5) and on explicit
+``flush()`` (including application shutdown). A crash may lose at most one
+flush interval of counts; a normal restart persists everything flushed before exit.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ log = logging.getLogger("dashboard.usage_metrics")
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DEFAULT_DATA_FILE = DATA_DIR / "usage_metrics.json"
+DEFAULT_FLUSH_INTERVAL_SECONDS = 5.0
 
 TAB_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
     "overview": ("keep", "Primary landing page: fleet and runner health monitoring"),
@@ -92,19 +98,38 @@ class SessionTelemetryPayload(BaseModel):
 
 
 class UsageTracker:
-    """Thread-safe persistent usage metrics accumulator with rolling-window retention."""
+    """Thread-safe usage metrics accumulator with rolling-window retention.
+
+    Postcondition: ``record_*`` updates in-memory counts only; disk writes happen
+    on the debounced flush timer or ``flush()``.
+    """
 
     def __init__(
         self,
         data_file: Path | None = None,
         retention_days: int = 14,
         enabled: bool | None = None,
+        flush_interval_seconds: float | None = None,
     ) -> None:
         self.data_file = data_file or DEFAULT_DATA_FILE
         self.retention_days = max(1, retention_days)
         self._enabled = enabled
+        self._flush_interval_s = self._resolve_flush_interval(flush_interval_seconds)
         self._lock = threading.Lock()
+        self._dirty = False
+        self._flush_timer: threading.Timer | None = None
         self._data: dict[str, Any] = self._load()
+
+    @staticmethod
+    def _resolve_flush_interval(flush_interval_seconds: float | None) -> float:
+        if flush_interval_seconds is not None:
+            return max(0.0, float(flush_interval_seconds))
+        raw = os.environ.get("DASHBOARD_USAGE_METRICS_FLUSH_SECONDS", str(DEFAULT_FLUSH_INTERVAL_SECONDS))
+        try:
+            return max(0.0, float(raw.strip()))
+        except ValueError:
+            log.warning("Invalid DASHBOARD_USAGE_METRICS_FLUSH_SECONDS=%r; using default", raw)
+            return DEFAULT_FLUSH_INTERVAL_SECONDS
 
     def is_enabled(self) -> bool:
         if self._enabled is not None:
@@ -144,6 +169,39 @@ class UsageTracker:
         except OSError as e:
             log.error("Failed to save usage metrics to %s: %s", self.data_file, e)
 
+    def _on_flush_timer(self) -> None:
+        self.flush()
+
+    def _schedule_flush(self) -> None:
+        if self._flush_interval_s <= 0:
+            self.flush()
+            return
+        with self._lock:
+            if self._flush_timer is not None:
+                return
+            timer = threading.Timer(self._flush_interval_s, self._on_flush_timer)
+            timer.daemon = True
+            self._flush_timer = timer
+        timer.start()
+
+    def flush(self) -> None:
+        """Persist pending in-memory counts. Idempotent when nothing is dirty."""
+        with self._lock:
+            timer = self._flush_timer
+            self._flush_timer = None
+        if timer is not None:
+            timer.cancel()
+        with self._lock:
+            if not self._dirty:
+                return
+            self._save()
+            self._dirty = False
+
+    def _mark_dirty_and_schedule_flush(self) -> None:
+        with self._lock:
+            self._dirty = True
+        self._schedule_flush()
+
     def _prune_expired(self) -> None:
         cutoff = (datetime.now(UTC).date() - timedelta(days=self.retention_days)).isoformat()
         daily = self._data.get("daily", {})
@@ -165,8 +223,8 @@ class UsageTracker:
             views = day_data.setdefault("page_views", {})
             views[cleaned_tab] = views.get(cleaned_tab, 0) + 1
             new_count = views[cleaned_tab]
-            self._save()
-            return new_count
+        self._mark_dirty_and_schedule_flush()
+        return new_count
 
     def record_api_call(self, method: str, endpoint: str) -> int:
         if not self.is_enabled():
@@ -179,8 +237,8 @@ class UsageTracker:
             calls = day_data.setdefault("endpoint_calls", {})
             calls[normalized] = calls.get(normalized, 0) + 1
             new_count = calls[normalized]
-            self._save()
-            return new_count
+        self._mark_dirty_and_schedule_flush()
+        return new_count
 
     def get_summary(self) -> dict[str, Any]:
         with self._lock:
