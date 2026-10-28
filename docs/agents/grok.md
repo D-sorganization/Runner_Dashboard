@@ -62,10 +62,10 @@ below. A dispatch refusal never grants permission to bypass a hold.
    on a fleet machine first (claude, codex, agy or cursor); use Grok itself last.
    A `held` or `rejected` response is a refusal, not a reason to try another hub.
 5. Every fallback writes a ledger/check-in record with its reason and task
-   identity. Use the shared check-in/spool once #2874/#2875 land and the dispatch
-   ledger from #3051/#3054 when available; do not build a parallel spool. Until
-   those paths land, record the fallback in the existing session digest and link
-   its result back to the RD thread when reachable.
+   identity. Use `fleetctl checkin` (`python3 clients/fleet/fleetctl.py checkin {started,claimed,pushed,pr_opened,blocked,done} --repo <repo>`,
+   shared bounded offline spool from #2874/#2875) and the dispatch
+   ledger from #3051/#3054 when available; do not build a parallel spool. Link
+   the result back to the RD thread when reachable.
 6. Relay only the verified outcome and links to Dieter. Check the resulting PR,
    tests or artifact; a terminal success flag alone does not verify the work.
 
