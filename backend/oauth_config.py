@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import TypedDict
@@ -25,7 +26,7 @@ from machine_registry import load_machine_registry
 
 log = logging.getLogger("dashboard.oauth_config")
 
-EXPECTED_GITHUB_ORG = "D-sorganization"
+_GITHUB_ORG_PATTERN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\Z")
 OAUTH_SCOPE = "read:user"
 OAUTH_CALLBACK_PATH = "/api/auth/callback"
 OAUTH_ALLOWED_ORIGINS_ENV = "DASHBOARD_OAUTH_ALLOWED_ORIGINS"
@@ -169,6 +170,15 @@ class OAuthConfig:
         """Return whether any OAuth client ID is present, valid or not."""
         return bool(self.client_id)
 
+    @property
+    def github_org_validation_error(self) -> str | None:
+        """Return a redacted configuration reason for the sign-in organization."""
+        if not self.github_org:
+            return "github_org_missing"
+        if not _GITHUB_ORG_PATTERN.fullmatch(self.github_org):
+            return "github_org_invalid"
+        return None
+
     def diagnostic(self) -> OAuthDiagnostic:
         """Return only readiness, status, and non-sensitive reason codes."""
         reasons: list[str] = []
@@ -176,8 +186,8 @@ class OAuthConfig:
             reasons.append("github_client_id_invalid")
         if not _credential_is_valid(self.client_secret, _MIN_CLIENT_SECRET_LENGTH):
             reasons.append("github_client_secret_invalid")
-        if self.github_org != EXPECTED_GITHUB_ORG:
-            reasons.append("github_org_mismatch")
+        if org_error := self.github_org_validation_error:
+            reasons.append(org_error)
         permitted = allowed_public_origins(self._environment)
         if not self.public_origin or self.public_origin not in permitted:
             reasons.append("public_origin_mismatch")
@@ -235,3 +245,14 @@ class OAuthConfig:
             "code": code,
             "redirect_uri": self.callback_url,
         }
+
+
+def validate_oauth_startup(config: OAuthConfig) -> None:
+    """Fail startup if configured GitHub OAuth has no usable org boundary."""
+    if not config.client_id_configured:
+        return
+    org_error = config.github_org_validation_error
+    if org_error == "github_org_missing":
+        raise RuntimeError("GITHUB_ORG must be set when GitHub OAuth sign-in is configured.")
+    if org_error is not None:
+        raise RuntimeError("GITHUB_ORG must be a valid GitHub organization name for OAuth sign-in.")

@@ -6,6 +6,13 @@
   "max_same_failure_attempts": 3,
   "attempt_window_hours": 24,
   "default_provider": "ollama",
+  "cursor_branch_prefixes": [
+    "cursor/"
+  ],
+  "cursor_branch_provider": "cursor_agent",
+  "blocked_pr_labels": [
+    "do-not-merge"
+  ],
   "provider_order": [
     "gemini_cli",
     "codex_cli",

@@ -55,6 +55,66 @@ export function useThreadStream({
   const messagesThreadRef = useRef(threadId);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingTokenDeltasRef = useRef(new Map<string, string>());
+  const tokenFrameRef = useRef<number | null>(null);
+  const tokenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushTokenDeltas = useCallback(() => {
+    if (tokenFrameRef.current !== null) {
+      cancelAnimationFrame(tokenFrameRef.current);
+      tokenFrameRef.current = null;
+    }
+    if (tokenTimeoutRef.current !== null) {
+      clearTimeout(tokenTimeoutRef.current);
+      tokenTimeoutRef.current = null;
+    }
+
+    const pending = pendingTokenDeltasRef.current;
+    if (pending.size === 0) return;
+    pendingTokenDeltasRef.current = new Map();
+    setMessages((current) => {
+      const next = [...current];
+      const indexes = new Map(next.map((message, index) => [message.id, index]));
+      for (const [messageId, delta] of pending) {
+        const index = indexes.get(messageId);
+        if (index === undefined) {
+          indexes.set(messageId, next.length);
+          next.push({
+            id: messageId,
+            thread_id: threadId,
+            author: "staff",
+            author_kind: "staff",
+            kind: "text",
+            body_md: delta,
+            delivery: "pending",
+            streaming: true,
+          });
+        } else {
+          next[index] = {
+            ...next[index],
+            body_md: (next[index].body_md || "") + delta,
+            streaming: true,
+          };
+        }
+      }
+      return next;
+    });
+  }, [threadId]);
+
+  const scheduleTokenFlush = useCallback(() => {
+    if (tokenFrameRef.current !== null || tokenTimeoutRef.current !== null) return;
+    if (typeof requestAnimationFrame === "function") {
+      tokenFrameRef.current = requestAnimationFrame(() => {
+        tokenFrameRef.current = null;
+        flushTokenDeltas();
+      });
+    } else {
+      tokenTimeoutRef.current = setTimeout(() => {
+        tokenTimeoutRef.current = null;
+        flushTokenDeltas();
+      }, 16);
+    }
+  }, [flushTokenDeltas]);
 
   // Delayed history may predate live events. Reset only for a different thread.
   useEffect(() => {
@@ -88,6 +148,7 @@ export function useThreadStream({
   }, [threadId, initialMessages]);
 
   const stopStreaming = useCallback((messageId?: string) => {
+    flushTokenDeltas();
     setMessages((prev) =>
       prev.map((m) => {
         if (!messageId || m.id === messageId) {
@@ -97,7 +158,7 @@ export function useThreadStream({
       })
     );
     setActiveStreamingId(null);
-  }, []);
+  }, [flushTokenDeltas]);
 
   const appendOptimisticMessage = useCallback((msg: ThreadMessage) => {
     setMessages((prev) => {
@@ -150,34 +211,11 @@ export function useThreadStream({
             if (!message_id) return;
 
             setActiveStreamingId(message_id);
-            setMessages((prev) => {
-              const target = prev.find((m) => m.id === message_id);
-              if (!target) {
-                // If message placeholder hasn't arrived, create one
-                return [
-                  ...prev,
-                  {
-                    id: message_id,
-                    thread_id: threadId,
-                    author: "staff",
-                    author_kind: "staff",
-                    kind: "text",
-                    body_md: delta || "",
-                    delivery: "pending",
-                    streaming: true,
-                  },
-                ];
-              }
-              return prev.map((m) =>
-                m.id === message_id
-                  ? {
-                      ...m,
-                      body_md: (m.body_md || "") + (delta || ""),
-                      streaming: true,
-                    }
-                  : m
-              );
-            });
+            pendingTokenDeltasRef.current.set(
+              message_id,
+              (pendingTokenDeltasRef.current.get(message_id) || "") + (delta || ""),
+            );
+            scheduleTokenFlush();
           } catch {
             // ignore JSON parse error
           }
@@ -185,6 +223,7 @@ export function useThreadStream({
 
         es.addEventListener("message", (ev: MessageEvent) => {
           if (!isMounted) return;
+          flushTokenDeltas();
           if (ev.lastEventId) {
             const parsed = parseInt(ev.lastEventId, 10);
             if (!isNaN(parsed)) {
@@ -232,6 +271,7 @@ export function useThreadStream({
 
         es.onerror = () => {
           if (!isMounted) return;
+          flushTokenDeltas();
           setIsReconnecting(true);
           es.close();
 
@@ -251,6 +291,15 @@ export function useThreadStream({
 
     return () => {
       isMounted = false;
+      if (tokenFrameRef.current !== null) {
+        cancelAnimationFrame(tokenFrameRef.current);
+        tokenFrameRef.current = null;
+      }
+      if (tokenTimeoutRef.current !== null) {
+        clearTimeout(tokenTimeoutRef.current);
+        tokenTimeoutRef.current = null;
+      }
+      pendingTokenDeltasRef.current.clear();
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
@@ -258,7 +307,7 @@ export function useThreadStream({
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [threadId, apiBase, enabled]);
+  }, [threadId, apiBase, enabled, flushTokenDeltas, scheduleTokenFlush]);
 
   return {
     messages,

@@ -369,7 +369,7 @@ def test_redundant_pr_closer_f7_contract() -> None:
     cond = str(job.get("if", ""))
     assert "pull_request.state" in cond and "open" in cond
     assert "JULES_APP_ID" not in text and "create-github-app-token" not in text and "github.token" in text
-    assert "d-sorg-fleet" in str(job["runs-on"]) and "ubuntu-latest" not in str(job["runs-on"])
+    assert "ubuntu-latest" in str(job["runs-on"]) and "d-sorg-fleet" not in str(job["runs-on"])
     run = next(s for s in job["steps"] if s.get("name") == "Close redundant agent PRs")["run"]
     assert "|| {" not in run and "continuing" not in run and "::error::GITHUB_TOKEN is empty" in run
     assert all(tok in script for tok in ("examined", "closed", "skipped"))
@@ -565,11 +565,17 @@ def test_commit_stage_gitleaks_scans_staged_changes_only() -> None:
     assert "--source" not in command
 
 
-def test_ci_secrets_keeps_the_full_history_gitleaks_scan() -> None:
+def test_ci_secrets_gitleaks_pr_range_and_full_history() -> None:
+    """PR gitleaks scans base..head only; main push keeps full history."""
     text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" in text
-    assert '/gitleaks" detect' in text
+    assert "gitleaks\" detect" in text or '/gitleaks" detect' in text
     assert "--no-git" not in text
+    assert "--log-opts" in text
+    assert "pull_request.base.sha" in text
+    assert "pull_request.head.sha" in text
+    assert "gitleaks (full history scan)" in text
+    assert "gitleaks (PR commit range)" in text
 
 
 def test_required_typecheck_job_always_reports_context() -> None:

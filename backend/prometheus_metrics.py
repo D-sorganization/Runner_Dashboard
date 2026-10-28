@@ -13,6 +13,7 @@ the ``prometheus_client`` library.  Metrics collected:
 - ``dashboard_cache_misses_total``            – Cache misses by cache name
 - ``dashboard_health_checks_total``           – Dashboard health outcomes
 - ``dashboard_health_check_duration_seconds`` – Dashboard health-check latency
+- ``dashboard_barb_unclaimed_writes_total``   – Barb-principal writes without lease claim headers (#3279)
 """
 
 from __future__ import annotations
@@ -21,6 +22,12 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Response
+from observability_hygiene import (
+    metrics_route_templates_enabled,
+    sanitize_metric_labels,
+    template_github_api_endpoint,
+    template_http_metric_endpoint,
+)
 
 try:
     from prometheus_client import (
@@ -150,6 +157,13 @@ if _PROMETHEUS_AVAILABLE:
         ["action", "unit"],
     )
 
+    # Barb lease fence (#3279): writes by a Barb principal that carried no X-Barb-* claim
+    BARB_UNCLAIMED_WRITES_TOTAL = Counter(
+        "dashboard_barb_unclaimed_writes_total",
+        "Barb-principal writes that arrived without lease claim headers, by write surface",
+        ["surface"],
+    )
+
 else:  # pragma: no cover
     # Stub objects so imports don't fail when prometheus_client is absent
     class _Stub:  # type: ignore[override]
@@ -191,15 +205,36 @@ else:  # pragma: no cover
     AUTOSCALER_BUSY_CHECK_DURATION = _stub  # type: ignore[assignment]
     AUTOSCALER_DECISION_LOOP_DURATION = _stub  # type: ignore[assignment]
     AUTOSCALER_SYSTEMD_ERRORS_TOTAL = _stub  # type: ignore[assignment]
+    BARB_UNCLAIMED_WRITES_TOTAL = _stub  # type: ignore[assignment]
 
 
 # ─── Helpers for external callers ─────────────────────────────────────────────
 
 
-def record_gh_api_call(method: str, endpoint: str, duration_s: float) -> None:
+def record_gh_api_call(
+    method: str,
+    endpoint: str,
+    duration_s: float,
+    *,
+    templates_enabled: bool | None = None,
+) -> None:
     """Record a completed GitHub API call (call from gh_utils or http_clients)."""
-    GH_API_CALLS_TOTAL.labels(method=method.upper(), endpoint=endpoint).inc()
-    GH_API_DURATION.labels(method=method.upper(), endpoint=endpoint).observe(duration_s)
+    if templates_enabled is None:
+        templates_enabled = metrics_route_templates_enabled()
+    if not templates_enabled:
+        GH_API_CALLS_TOTAL.labels(method=method.upper(), endpoint=endpoint).inc()
+        GH_API_DURATION.labels(method=method.upper(), endpoint=endpoint).observe(duration_s)
+        return
+    labels = sanitize_metric_labels(
+        "dashboard_github_api_calls_total",
+        {"method": method.upper(), "endpoint": endpoint},
+        templates_enabled=True,
+    )
+    if not labels:
+        return
+    endpoint_label = template_github_api_endpoint(labels["endpoint"], enabled=True)
+    GH_API_CALLS_TOTAL.labels(method=labels["method"], endpoint=endpoint_label).inc()
+    GH_API_DURATION.labels(method=labels["method"], endpoint=endpoint_label).observe(duration_s)
 
 
 def record_cache_hit(cache_name: str) -> None:
@@ -254,6 +289,15 @@ def record_autoscaler_systemd_error(action: str, unit: str) -> None:
     AUTOSCALER_SYSTEMD_ERRORS_TOTAL.labels(action=action, unit=unit).inc()
 
 
+def record_barb_unclaimed_write(surface: str) -> None:
+    """Count a Barb-principal write that carried no lease claim (#3279).
+
+    Pre-condition: surface must be a non-empty string.
+    """
+    assert surface, "surface must be non-empty"
+    BARB_UNCLAIMED_WRITES_TOTAL.labels(surface=surface).inc()
+
+
 # ─── ASGI middleware ──────────────────────────────────────────────────────────
 
 
@@ -294,15 +338,34 @@ class PrometheusMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             duration = time.perf_counter() - start
-            # Prefer the route template (e.g. /api/runs/{run_id}) over the raw path
+            templates_on = metrics_route_templates_enabled()
             route = scope.get("route")
-            endpoint = getattr(route, "path", path) if route else path
-            HTTP_REQUESTS_TOTAL.labels(
-                method=method,
-                endpoint=endpoint,
-                status_code=str(status_code),
-            ).inc()
-            HTTP_REQUEST_DURATION.labels(method=method, endpoint=endpoint).observe(duration)
+            if templates_on:
+                route_template = getattr(route, "path", None) if route else None
+                endpoint = template_http_metric_endpoint(route_template, path, enabled=True)
+                labels = sanitize_metric_labels(
+                    "dashboard_http_requests_total",
+                    {
+                        "method": method,
+                        "endpoint": endpoint,
+                        "status_code": str(status_code),
+                    },
+                    templates_enabled=True,
+                )
+                if labels:
+                    HTTP_REQUESTS_TOTAL.labels(**labels).inc()
+                    HTTP_REQUEST_DURATION.labels(
+                        method=labels["method"],
+                        endpoint=labels["endpoint"],
+                    ).observe(duration)
+            else:
+                endpoint = getattr(route, "path", path) if route else path
+                HTTP_REQUESTS_TOTAL.labels(
+                    method=method,
+                    endpoint=endpoint,
+                    status_code=str(status_code),
+                ).inc()
+                HTTP_REQUEST_DURATION.labels(method=method, endpoint=endpoint).observe(duration)
 
 
 # ─── /metrics endpoint ────────────────────────────────────────────────────────
