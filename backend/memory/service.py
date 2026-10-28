@@ -32,6 +32,7 @@ from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
 from staff import store as run_stores
 from staff.barb_lease_fence import is_barb_seat
+from staff.lesson_locator import verify_lesson_evidence
 from staff.lesson_provenance import authenticated_lesson_run, completed_run_for_review
 from staff.store import _now  # noqa: PLC2701
 
@@ -167,6 +168,14 @@ def review_entry(principal: Principal, entry_id: str, req: MemoryReviewRequest) 
             raise HTTPException(status_code=409, detail="lesson proposal expired before review")
         if entry.source_run and completed_run_for_review(run_stores.get_store(), entry.source_run) is None:
             raise HTTPException(status_code=409, detail="lesson run has not reached authoritative completion")
+        locator = entry.body.get("locator")
+        if locator is not None and entry.source_run:
+            text = entry.body.get("text")
+            verified = isinstance(text, str) and verify_lesson_evidence(
+                run_stores.get_store(), entry.source_run, entry.repo or "", text, locator
+            )
+            if not verified:
+                raise HTTPException(status_code=409, detail="lesson evidence locator no longer verifies")
     exp = _validate_and_resolve_expires_at(req.expires_at) if req.expires_at or target == "accepted" else None
     acc = _now() if target == "accepted" else entry.accepted_at
     kw = {"review_status": target, "reviewed_by": format_caller(principal), "accepted_at": acc, "expires_at": exp}
