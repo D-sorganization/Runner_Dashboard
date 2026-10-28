@@ -8783,6 +8783,12 @@ export interface components {
          */
         BoardRoutingCriteria: {
             /**
+             * Confidential Data Egress
+             * @description Confidential data egress; requires user sign-off before Board routing.
+             * @default false
+             */
+            confidential_data_egress: boolean;
+            /**
              * Cross Repo Contract
              * @default false
              */
@@ -8792,11 +8798,6 @@ export interface components {
              * @default 0
              */
             estimated_child_issues: number;
-            /**
-             * Inentec Data Egress
-             * @default false
-             */
-            inentec_data_egress: boolean;
             /**
              * New Dependency Or Egress
              * @default false

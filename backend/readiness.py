@@ -25,9 +25,12 @@ import time
 from pathlib import Path
 from typing import Final, Literal, Protocol, runtime_checkable
 
+from readiness_budget import bounded_checks, subprocess_output
 from runner_busy_lock import RunnerBusyLockProbe
 
 log = logging.getLogger("dashboard.readiness")
+COMPONENT_BUDGET_S = 2.0
+AGGREGATE_BUDGET_S = 5.0
 
 ProbeStatus = Literal["ok", "degraded", "down"]
 
@@ -79,6 +82,9 @@ class GhCliProbe:
     name = "gh_cli"
 
     async def check(self) -> tuple[ProbeStatus, str | None]:
+        return await asyncio.to_thread(self._check_sync)
+
+    def _check_sync(self) -> tuple[ProbeStatus, str | None]:
         if shutil.which("gh") is not None:
             return "ok", None
         return "down", "'gh' not found in PATH"
@@ -97,6 +103,9 @@ class LeaseDbProbe:
         self._db_path = db_path
 
     async def check(self) -> tuple[ProbeStatus, str | None]:
+        return await asyncio.to_thread(self._check_sync)
+
+    def _check_sync(self) -> tuple[ProbeStatus, str | None]:
         from pathlib import Path
 
         p = Path(self._db_path)
@@ -125,6 +134,9 @@ class PushDbProbe:
     name = "push_db"
 
     async def check(self) -> tuple[ProbeStatus, str | None]:
+        return await asyncio.to_thread(self._check_sync)
+
+    def _check_sync(self) -> tuple[ProbeStatus, str | None]:
         try:
             import push_store  # noqa: PLC0415
 
@@ -215,31 +227,17 @@ class RunnerHealthProbe:
 
     async def _probe_systemd(self) -> tuple[ProbeStatus, str | None]:
         try:
-            proc = await asyncio.create_subprocess_exec(
-                self._systemctl_bin,
-                *self._SYSTEMCTL_ARGS,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            stdout = await subprocess_output(
+                (self._systemctl_bin, *self._SYSTEMCTL_ARGS),
+                min(self._subprocess_timeout, COMPONENT_BUDGET_S, AGGREGATE_BUDGET_S),
             )
         except FileNotFoundError:
             # Dev/non-systemd hosts. Not a hard failure of the dashboard.
             return "degraded", f"systemctl not available on this host ({self._systemctl_bin!r} not found)"
+        except TimeoutError:
+            return "degraded", f"systemctl list-units timeout after {self._subprocess_timeout}s"
         except OSError as exc:
             return "degraded", f"systemctl could not start: {exc}"
-
-        try:
-            stdout, _stderr = await asyncio.wait_for(proc.communicate(), timeout=self._subprocess_timeout)
-        except TimeoutError:
-            # Best-effort kill so we don't leak a process. Any failure here
-            # (already-dead PID, no kill method, EPERM, etc.) is irrelevant —
-            # the probe outcome is "degraded" regardless.
-            try:
-                kill = getattr(proc, "kill", None)
-                if callable(kill):
-                    kill()
-            except Exception:  # noqa: BLE001
-                pass
-            return "degraded", f"systemctl list-units timeout after {self._subprocess_timeout}s"
 
         return self._classify_output(stdout)
 
@@ -396,28 +394,19 @@ async def aggregate(probes: list[Probe]) -> tuple[int, dict]:
 
     Returns HTTP 200 when all probes report ``"ok"``, HTTP 503 otherwise.
     """
-    results: list[tuple[str, tuple[ProbeStatus, str | None]]] = []
-    checks_coros = [(p.name, p.check()) for p in probes]
-
-    async def _run(name: str, coro: object) -> tuple[str, tuple[ProbeStatus, str | None]]:
-        try:
-            result = await coro  # type: ignore[misc]
-        except Exception as exc:  # noqa: BLE001
-            log.warning("readyz probe %r raised: %s", name, exc)
-            result = ("down", str(exc))
-        return name, result
-
-    results = await asyncio.gather(*[_run(n, c) for n, c in checks_coros])
+    results = await bounded_checks(((p.name, p.check) for p in probes), COMPONENT_BUDGET_S, AGGREGATE_BUDGET_S)
 
     checks_payload: dict[str, str | dict] = {}
     any_down = False
     any_degraded = False
     for name, (status, detail) in results:
-        if status == "down":
+        if status in {"down", "timed_out"}:
             any_down = True
         elif status == "degraded":
             any_degraded = True
-        if detail is not None:
+        if status == "timed_out":
+            checks_payload[name] = {"status": status, "budget_s": min(COMPONENT_BUDGET_S, AGGREGATE_BUDGET_S)}
+        elif detail is not None:
             checks_payload[name] = {"status": status, "detail": detail}
         else:
             checks_payload[name] = status

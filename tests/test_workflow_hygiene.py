@@ -369,7 +369,7 @@ def test_redundant_pr_closer_f7_contract() -> None:
     cond = str(job.get("if", ""))
     assert "pull_request.state" in cond and "open" in cond
     assert "JULES_APP_ID" not in text and "create-github-app-token" not in text and "github.token" in text
-    assert "d-sorg-fleet" in str(job["runs-on"]) and "ubuntu-latest" not in str(job["runs-on"])
+    assert "ubuntu-latest" in str(job["runs-on"]) and "d-sorg-fleet" not in str(job["runs-on"])
     run = next(s for s in job["steps"] if s.get("name") == "Close redundant agent PRs")["run"]
     assert "|| {" not in run and "continuing" not in run and "::error::GITHUB_TOKEN is empty" in run
     assert all(tok in script for tok in ("examined", "closed", "skipped"))
