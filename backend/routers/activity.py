@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from activity import MAX_BATCH_BYTES, MAX_BATCH_EVENTS, ActivityEnvelope, ActivityPage, get_activity_store
+from activity_sessions import DEFAULT_SESSIONS_LIMIT, MAX_SESSIONS_LIMIT, SessionsPage, SessionStatus, compute_sessions
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, require_scope
 from pydantic import TypeAdapter, ValidationError
@@ -89,3 +90,20 @@ def read_activity(
 ) -> ActivityPage:
     """Return a bounded cursor page; readers cannot mutate stored metadata."""
     return get_activity_store().read(since=since, repo=repo, node=node, session_id=session_id, limit=limit)
+
+
+@router.get("/sessions", response_model=SessionsPage)
+def read_activity_sessions(
+    node: str | None = Query(default=None, max_length=128),
+    status: SessionStatus | None = Query(default=None),  # noqa: B008
+    repo: str | None = Query(default=None, max_length=128),
+    limit: int = Query(default=DEFAULT_SESSIONS_LIMIT, ge=1, le=MAX_SESSIONS_LIMIT),
+    _caller: Principal = Depends(require_scope("activity.read")),  # noqa: B008
+) -> SessionsPage:
+    """Every agent/session checked into the fleet, grouped by node and status (#2860).
+
+    Status is derived entirely from persisted activity-log events (never from an
+    in-memory cache), so this is identical after a restart. See
+    ``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.
+    """
+    return compute_sessions(get_activity_store(), node=node, status=status, repo=repo, limit=limit)
