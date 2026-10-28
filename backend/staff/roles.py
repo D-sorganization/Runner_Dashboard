@@ -19,6 +19,7 @@ from typing import Any
 
 from overlay_contract import get_overlay, overlay_companion_dir
 from staff.role_spec import RoleSpec, parse_role, read_and_parse_role_file
+from staff.workspace import is_standalone_mode
 
 log = logging.getLogger("dashboard.staff.roles")
 
@@ -72,6 +73,8 @@ def roles_dir() -> Path | None:
     # search: the overlay is what category 3 moves this config behind (#3082).
     if (overlay_dir := _overlay_roles_dir()) is not None:
         return overlay_dir
+    if is_standalone_mode():
+        return None
     here = Path(__file__).resolve()
     candidates: list[Path] = []
     for parent in (here.parents[2], here.parents[3]) if len(here.parents) > 3 else (here.parents[2],):
@@ -100,6 +103,8 @@ def schema_path() -> Path:
         parent_schema = r_dir.parent / "schema.json"
         if parent_schema.is_file():
             return parent_schema
+    if is_standalone_mode():
+        return _LOCAL_SCHEMA_PATH
     here = Path(__file__).resolve()
     candidates: list[Path] = []
     for parent in (here.parents[2], here.parents[3]) if len(here.parents) > 3 else (here.parents[2],):
