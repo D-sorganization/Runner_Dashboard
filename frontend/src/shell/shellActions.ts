@@ -1,56 +1,45 @@
-/**
- * shellActions.ts — builders for the modern desktop shell's action bar
- * (extracted from the shell component so it can be unit-tested and so the
- * shell module only exports components, keeping React Fast Refresh happy).
- *
- * The actions are deliberately self-contained so the shell stays orthogonal:
- * Refresh reloads dashboard data and Login/Logout toggles the GitHub session.
- * The "Classic layout" action was retired with the legacy App (#1345).
- */
-import type { ShellAction } from "./DesktopShell"
+/** Desktop shell action bar (#3232 session-aware auth). */
+import type { ShellAction } from "./DesktopShell";
+import type { SessionState } from "../hooks/useSession";
 
-/**
- * Build the modern desktop shell's action bar.
- *
- * `isLoggedIn` is passed in (derived from the reactive `useSession` hook,
- * issue #842) so the auth label flips correctly without a full page reload.
- * `onLoggedOut` lets the caller re-probe the session the moment logout
- * resolves, rather than relying on the reload.
- */
+export type ShellSessionInput = Pick<SessionState, "loading" | "loggedIn" | "authMethod">;
+
 export function buildShellActions(
-  isLoggedIn: boolean,
+  session: ShellSessionInput,
   onLoggedOut: () => void = () => window.location.reload(),
   onLogoutFailed: () => void = () => {},
 ): ShellAction[] {
+  const refresh: ShellAction = {
+    id: "refresh",
+    label: "Refresh",
+    tooltip: "Reload the dashboard to fetch the latest fleet, queue and run data.",
+    onClick: () => window.location.reload(),
+  };
+  const showAuth =
+    !session.loading && (!session.loggedIn || session.authMethod === "github");
+  if (!showAuth) return [refresh];
+
+  const isLogout = session.loggedIn && session.authMethod === "github";
   return [
-    {
-      id: "refresh",
-      label: "Refresh",
-      tooltip:
-        "Reload the dashboard to fetch the latest fleet, queue and run data.",
-      onClick: () => window.location.reload(),
-    },
+    refresh,
     {
       id: "auth",
-      label: isLoggedIn ? "Logout" : "Login",
-      tooltip: isLoggedIn
+      label: isLogout ? "Logout" : "Login",
+      tooltip: isLogout
         ? "Sign out of the dashboard GitHub session."
         : "Sign in with GitHub to enable runner and workflow controls.",
       onClick: () => {
-        if (isLoggedIn) {
+        if (isLogout) {
           fetch("/api/auth/logout", {
             method: "POST",
             headers: { "X-Requested-With": "XMLHttpRequest" },
           })
-            .then((response) => {
-              if (response.ok) onLoggedOut()
-              else onLogoutFailed()
-            })
-            .catch(() => onLogoutFailed())
+            .then((response) => (response.ok ? onLoggedOut() : onLogoutFailed()))
+            .catch(() => onLogoutFailed());
         } else {
-          window.location.href = "/api/auth/github"
+          window.location.href = "/api/auth/github";
         }
       },
     },
-  ]
+  ];
 }
