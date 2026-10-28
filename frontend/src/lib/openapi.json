@@ -26305,6 +26305,56 @@
         "tags": ["staff-v1", "staff-pr-hygiene"]
       }
     },
+    "/api/v1/staff/pr-hygiene/rearm": {
+      "post": {
+        "description": "Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run re-arms only a PR that\nis open, not already armed and not held back (``automerge_guard.evaluate_hold``),\nand the batch is always audited. Never admin-merges, force-pushes or closes.",
+        "operationId": "pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Rearm Api V1 Staff Pr Hygiene Rearm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene Rearm",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
     "/api/v1/staff/projects": {
       "get": {
         "operationId": "list_projects_v1_api_v1_staff_projects_get",

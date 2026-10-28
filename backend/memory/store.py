@@ -303,6 +303,55 @@ class AssistantMemoryStore:
             entries = [e for e in entries if tag in e.tags]
         return entries
 
+    def list_entries_page(
+        self,
+        *,
+        cursor: tuple[str, str] | None = None,
+        entry_type: str | None = None,
+        repo: str | None = None,
+        review_status: str | None = None,
+        include_superseded: bool = False,
+        include_barb_only: bool = False,
+        active_only: bool = False,
+        limit: int = 100,
+    ) -> tuple[list[MemoryEntry], tuple[str, str] | None]:
+        """Keyset page ordered by (created_at, id) descending.
+
+        Unlike `list_entries`'s single `LIMIT`, repeated calls chaining
+        `cursor` to the prior call's returned cursor visit every matching row
+        exactly once, with no gap or duplicate even when rows share
+        `created_at` to the second. Returns `(entries, next_cursor)`;
+        `next_cursor` is `None` once the result set is exhausted.
+        """
+        clauses: list[str] = []
+        params: list[Any] = []
+        if entry_type:
+            clauses.append("entry_type = ?")
+            params.append(entry_type)
+        for c, v in (("repo", repo), ("review_status", review_status)):
+            if v:
+                clauses.append(f"{c} = ?")
+                params.append(v)
+        if not include_superseded:
+            clauses.append("superseded_by IS NULL")
+        if not include_barb_only:
+            clauses.append("(visibility IS NULL OR visibility != 'barb-only')")
+        if active_only:
+            clauses.append("memory_expiry_is_future(expires_at, ?)")
+            params.append(_now())
+        if cursor is not None:
+            clauses.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            params.extend([cursor[0], cursor[0], cursor[1]])
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = f"SELECT * FROM memory_entries {where} ORDER BY created_at DESC, id DESC LIMIT ?"  # noqa: S608
+        params.append(limit + 1)  # one extra row to detect "more" without a round-trip
+        rows = self._db.execute(sql, tuple(params)).fetchall()
+        entries = [_Row(*row).to_entry() for row in rows]
+        has_more = len(entries) > limit
+        entries = entries[:limit]
+        next_cursor = (entries[-1].created_at, entries[-1].id) if has_more and entries else None
+        return entries, next_cursor
+
 
 def get_memory_store() -> AssistantMemoryStore:
     global _STORE

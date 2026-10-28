@@ -7029,6 +7029,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/pr-hygiene/rearm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene Rearm
+         * @description Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run re-arms only a PR that
+         *     is open, not already armed and not held back (``automerge_guard.evaluate_hold``),
+         *     and the batch is always audited. Never admin-merges, force-pushes or closes.
+         */
+        post: operations["pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/projects": {
         parameters: {
             query?: never;
@@ -23620,6 +23645,41 @@ export interface operations {
         };
     };
     pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post: {
         parameters: {
             query?: never;
             header?: never;
