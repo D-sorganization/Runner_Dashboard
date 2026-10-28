@@ -173,7 +173,9 @@ def test_cli_rejects_bad_json_with_exit_1(
 @pytest.mark.parametrize("msg", [_question(), _alert(), _fyi("f1")])
 def test_valid_envelopes_also_pass_the_shared_rd_threads_contract(msg: dict[str, Any]) -> None:
     """notify builds through rd_threads_envelope (#3112): same shape, one validator."""
-    shared = env.with_defaults({**msg, "kind": "update" if msg["kind"] == "fyi" else msg["kind"], "from": "rd-barb", "to": "barb"})
+    shared = env.with_defaults(
+        {**msg, "kind": "update" if msg["kind"] == "fyi" else msg["kind"], "from": "rd-barb", "to": "barb"}
+    )
     assert rn.validate(msg) == [] and env.validate(shared) == []
 
 
@@ -235,4 +237,3 @@ def test_role_config_and_shadow_mode_suppress_webhook(tmp_path: Path, rec: Rec) 
     )
     assert res == {"ok": True, "status": "shadow"}
     assert rec.sent == [] and rec.posts[0][0] == "th_bob" and '"sender_role": "bob"' in rec.posts[0][1]
-

@@ -240,6 +240,12 @@ def test_watchdog_role_uses_role_launch_cmd_and_passes_role_to_next(capsys: pyte
     assert "--role" in calls[0] and "bob" in calls[0]
     alert = wd.cap_alert("claude", "crash", 3, "r1", role="bob")
     assert alert["sender_role"] == "bob" and alert["dedupe_key"] == "bob-restart-cap-claude-crash"
-    assert wd.main(["--role", "bob", "run", "--dry-run"], config={"RD_BOB_LAUNCH_CMD": "bin/b {role} {provider}"}, next_provider=FakeNext()) == 0
+    assert (
+        wd.main(
+            ["--role", "bob", "run", "--dry-run"],
+            config={"RD_BOB_LAUNCH_CMD": "bin/b {role} {provider}"},
+            next_provider=FakeNext(),
+        )
+        == 0
+    )
     assert capsys.readouterr().out.strip() == "bin/b bob claude"
-

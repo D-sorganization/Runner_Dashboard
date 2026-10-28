@@ -15,11 +15,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-
-if not hasattr(_dt_mod, "UTC"):
-    _dt_mod.UTC = _dt_mod.timezone.utc  # type: ignore[attr-defined]  # noqa: UP017
-
-UTC = _dt_mod.UTC
 from staff.barb_continuity import BarbContinuityStore
 from staff.barb_lease_fence import StaleBarbLease
 from staff.barb_node_leader import (
@@ -33,6 +28,11 @@ from staff.barb_node_leader import (
     release_leadership,
     renew_leadership,
 )
+
+if not hasattr(_dt_mod, "UTC"):
+    _dt_mod.UTC = _dt_mod.timezone.utc  # type: ignore[attr-defined]  # noqa: UP017
+
+UTC = _dt_mod.UTC
 
 
 def _write_config(tmp_path: Path, nodes: list[dict]) -> Path:
@@ -195,4 +195,3 @@ def test_role_scoped_node_leader_lease_isolates_personas(tmp_path: Path) -> None
     assert renew_leadership(store, node="ControlTower", epoch=bob_acq["lease"]["epoch"], role="bob")["renewed"] is True
     assert release_leadership(store, node="ControlTower", role="bob")["released"] is True
     assert current_leader(store, role="bob") is None and current_leader(store)["holder"] == "DeskComputer"
-

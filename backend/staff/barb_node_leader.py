@@ -146,7 +146,9 @@ def renew_leadership(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Extend ``node``'s live node-leader lease at ``epoch`` (no epoch bump)."""
-    return store.heartbeat_lease(scope=leader_scope_for(role), holder=node, epoch=epoch, ttl_seconds=ttl_seconds, now=now)
+    return store.heartbeat_lease(
+        scope=leader_scope_for(role), holder=node, epoch=epoch, ttl_seconds=ttl_seconds, now=now
+    )
 
 
 def release_leadership(

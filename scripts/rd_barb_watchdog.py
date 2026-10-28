@@ -38,8 +38,9 @@ for _p in (str(_ROOT), str(_ROOT / "backend")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from scripts.rd_barb_notify import normalize_role, role_env_prefix  # noqa: E402
 from staff.classifier import classify_run_failure  # noqa: E402
+
+from scripts.rd_barb_notify import normalize_role, role_env_prefix  # noqa: E402
 
 log = logging.getLogger("rd_barb.watchdog")
 
@@ -172,9 +173,7 @@ def cli_next(
     return Pick(data["provider"] or None, data.get("model") or None)
 
 
-def launch_command(
-    config: Mapping[str, str], provider: str, model: str | None, *, role: str = "rd-barb"
-) -> list[str]:
+def launch_command(config: Mapping[str, str], provider: str, model: str | None, *, role: str = "rd-barb") -> list[str]:
     norm = normalize_role(role)
     key = f"{role_env_prefix(norm)}LAUNCH_CMD"
     template = (config.get(key) or "").strip()
@@ -232,7 +231,9 @@ def _default_alert(role: str = "rd-barb") -> Callable[[dict[str, Any]], Any] | N
         os.environ.get("RD_BARB_NOTIFY_STATE") if norm == "rd-barb" else None
     )
     state = Path(state_env or rn.default_state_path(norm)).expanduser()
-    return rn.Notifier(rn.load_config(role=norm), state, rn.http_send, rn._fleet_thread_poster(role=norm), role=norm).notify
+    return rn.Notifier(
+        rn.load_config(role=norm), state, rn.http_send, rn._fleet_thread_poster(role=norm), role=norm
+    ).notify
 
 
 def main(

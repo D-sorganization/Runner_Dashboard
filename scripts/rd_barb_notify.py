@@ -154,7 +154,11 @@ class Notifier:
         self._role = normalize_role(role)
         self._prefix = role_env_prefix(self._role)
         self._cfg, self._state_path, self._send, self._post, self._now = (
-            dict(config), state_path, sender, thread_poster, clock
+            dict(config),
+            state_path,
+            sender,
+            thread_poster,
+            clock,
         )
 
     def _with_role(self, msg: dict[str, Any]) -> dict[str, Any]:
@@ -223,7 +227,9 @@ class Notifier:
         return {"ok": True, "status": "sent"}
 
     def _mirror(self, msg: dict[str, Any]) -> None:
-        thread_id = msg.get("thread_id") or self._cfg.get(f"{self._prefix}THREAD_ID") or self._cfg.get("RD_BARB_THREAD_ID")
+        thread_id = (
+            msg.get("thread_id") or self._cfg.get(f"{self._prefix}THREAD_ID") or self._cfg.get("RD_BARB_THREAD_ID")
+        )
         if not (thread_id and self._post):
             return
         try:
@@ -291,7 +297,12 @@ def persona_notify(
     """Validate, stamp ``sender_role``, and deliver a persona envelope via Notifier (#3295, #3296)."""
     norm = normalize_role(role)
     if not isinstance(msg, dict):
-        return {"ok": False, "status": "rejected", "error": "invalid_envelope", "problems": ["message must be a JSON object"]}
+        return {
+            "ok": False,
+            "status": "rejected",
+            "error": "invalid_envelope",
+            "problems": ["message must be a JSON object"],
+        }
     cfg = load_config(role=norm) if config is None else config
     st = default_state_path(norm) if state_path is None else state_path
     poster = _resolve_poster(norm) if thread_poster is None and config is None else thread_poster

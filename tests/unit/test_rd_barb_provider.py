@@ -94,4 +94,3 @@ def test_role_flag_reads_role_prefixed_env_and_stamps_switch_notice(capsys: pyte
     assert rc == 0 and '"provider": "claude"' in out
     assert sent[0]["sender_role"] == "bob" and sent[0]["dedupe_key"] == "bob-provider-codex-claude-rate_limited"
     assert sent[0]["summary"].startswith("bob switched provider codex -> claude")
-

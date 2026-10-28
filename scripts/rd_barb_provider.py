@@ -32,8 +32,9 @@ for _p in (str(_ROOT), str(_ROOT / "backend")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from scripts.rd_barb_notify import normalize_role, role_env_prefix  # noqa: E402
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain  # noqa: E402
+
+from scripts.rd_barb_notify import normalize_role, role_env_prefix  # noqa: E402
 
 DEFAULT_PROVIDER = "claude"
 DEFAULT_MODEL = "opus"
@@ -152,7 +153,9 @@ def _default_notify(rn: Any, *, role: str = "rd-barb") -> Callable[[dict[str, An
         os.environ.get("RD_BARB_NOTIFY_STATE") if norm == "rd-barb" else None
     )
     state = Path(state_env or rn.default_state_path(norm)).expanduser()
-    notifier = rn.Notifier(rn.load_config(role=norm), state, rn.http_send, rn._fleet_thread_poster(role=norm), role=norm)
+    notifier = rn.Notifier(
+        rn.load_config(role=norm), state, rn.http_send, rn._fleet_thread_poster(role=norm), role=norm
+    )
     return notifier.notify
 
 
