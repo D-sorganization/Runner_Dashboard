@@ -18,6 +18,7 @@ import threading
 from datetime import UTC, datetime
 from typing import Any
 
+from activity_producers import emit_activity
 from coordination import board, claims, roster
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
 from coordination.models import AckBody, ClaimBody, ClaimReleaseBody, MessageBody, PresenceBody, ReleaseBody
@@ -164,19 +165,40 @@ def register_presence(body: PresenceBody, caller: Caller) -> dict[str, Any]:
     for key, outcome in body.goals.items():
         args += ["--goal", f"{key}={outcome}"]
     args += ["--ttl-hours", str(float(body.ttl_hours))]
-    return _stamp(board.publish(body.repo, body.session, "register", *args))
+    result = _stamp(board.publish(body.repo, body.session, "register", *args))
+    emit_activity(
+        source="coordination",
+        session_id=body.session,
+        node="hub",
+        kind="presence_register",
+        repo=body.repo,
+        issue=body.issue,
+        branch=body.branch,
+    )
+    return result
 
 
 def release_presence(body: ReleaseBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
-    return _stamp(board.publish(body.repo, body.session, "release"))
+    result = _stamp(board.publish(body.repo, body.session, "release"))
+    emit_activity(source="coordination", session_id=body.session, node="hub", kind="presence_release", repo=body.repo)
+    return result
 
 
 def send_message(body: MessageBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
     _require_presence(body.session, body.repo)
     # ``--text=`` keeps a message that starts with '-' from being parsed as an option.
-    return _stamp(board.publish(body.repo, body.session, "send", "--to", body.to, f"--text={body.text}"))
+    result = _stamp(board.publish(body.repo, body.session, "send", "--to", body.to, f"--text={body.text}"))
+    emit_activity(
+        source="coordination",
+        session_id=body.session,
+        node="hub",
+        kind="message_sent",
+        repo=body.repo,
+        payload={"to": body.to, "text": body.text},
+    )
+    return result
 
 
 def ack_message(body: AckBody, caller: Caller) -> dict[str, Any]:

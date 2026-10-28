@@ -388,8 +388,17 @@ def test_normalize_machine_entry_portable_flag_coerced() -> None:
     assert entry["portable"] is False
 
 
-def test_shipped_registry_brick_is_portable() -> None:
-    registry = mr.load_machine_registry(path=mr.DEFAULT_REGISTRY_PATH)
+def test_loaded_registry_preserves_portable_machine(tmp_path: Path) -> None:
+    """A portable, best-effort machine's flag survives the full load pipeline (#3354).
+
+    The shipped machine_registry.yml carries no live topology (#3082); this
+    exercises load_machine_registry() end to end against a registry shaped
+    like a real deployment instead of the (now-empty) shipped file.
+    """
+    p = tmp_path / "registry.json"
+    p.write_text(json.dumps({"version": 1, "machines": [{"name": "Brick", "portable": True}]}), encoding="utf-8")
+    with patch("machine_registry.validate_config_path", return_value=p):
+        registry = mr.load_machine_registry(path=p)
     brick = next(m for m in registry["machines"] if m["name"] == "Brick")
     assert brick["portable"] is True
 

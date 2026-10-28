@@ -9,6 +9,7 @@ part adds a warning and never raises.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from coordination.briefing import build_briefing
@@ -42,6 +43,25 @@ async def _hub_status() -> tuple[dict[str, Any], list[str]]:
         return {}, [f"hub status unavailable: {exc}"]
 
 
+async def _queue_shepherd(repo: str | None) -> tuple[dict[str, Any], list[str]]:
+    """Read-only queue-shepherd recommendations for ``repo`` (#2929 slice 3).
+
+    Reuses slice 2's ``poll_queue``/``report_to_dict`` — this never reorders
+    the queue, cancels a run, or arms/disarms a PR; it only surfaces slice 1's
+    dependency-order and path-conflict checks for the dashboard brief.
+    """
+    if not repo or "/" not in repo:
+        return {}, []
+    owner, _, name = repo.partition("/")
+    try:
+        from shared_scripts.queue_shepherd_poll import poll_queue, render_brief, report_to_dict  # noqa: PLC0415
+
+        report = await asyncio.to_thread(poll_queue, owner, name)
+        return {**report_to_dict(report), "brief": render_brief(report)}, []
+    except Exception as exc:  # noqa: BLE001 — orthogonality: queue-shepherd failure must not break the brief
+        return {}, [f"queue-shepherd unavailable: {exc}"]
+
+
 async def _issues_and_prs(repo: str | None, limit: int) -> tuple[dict[str, Any], list[str]]:
     try:
         from routers import repos as repos_mod  # noqa: PLC0415
@@ -64,6 +84,7 @@ async def build_fleet_brief(repo: str | None, *, limit: int = 100) -> dict[str, 
     queue, w_queue = await _queue_heads()
     hub_status, w_hub = await _hub_status()
     issues_and_prs, w_issues = await _issues_and_prs(repo, limit)
+    queue_shepherd, w_shepherd = await _queue_shepherd(repo)
     return {
         "generated_at": now_iso(),
         "repo": repo,
@@ -73,7 +94,8 @@ async def build_fleet_brief(repo: str | None, *, limit: int = 100) -> dict[str, 
         "queue": queue,
         "hub_status": hub_status,
         **issues_and_prs,
-        "warnings": [*briefing["warnings"], *w_queue, *w_hub, *w_issues],
+        "queue_shepherd": queue_shepherd,
+        "warnings": [*briefing["warnings"], *w_queue, *w_hub, *w_issues, *w_shepherd],
     }
 
 
@@ -90,6 +112,7 @@ def render_markdown(brief: dict[str, Any]) -> str:
     active_runs = [r for r in runs if isinstance(r, dict) and r.get("status") in ACTIVE_STATUSES]
     hub = brief.get("hub_status") or {}
     offline = [name for name, data in hub.items() if isinstance(data, dict) and data.get("status") == "offline"]
+    shepherd = brief.get("queue_shepherd") or {}
 
     lines = [
         f"# Fleet brief — {repo}",
@@ -103,6 +126,12 @@ def render_markdown(brief: dict[str, Any]) -> str:
         f"- Active staff runs: {len(active_runs)}",
         f"- Hub nodes offline: {len(offline)}" + (f" ({', '.join(offline[:5])})" if offline else ""),
     ]
+    if shepherd:
+        lines.append(
+            f"- Queue-shepherd: depth={shepherd.get('queue_depth', 0)}, "
+            f"{len(shepherd.get('dependency_violations') or [])} dependency issue(s), "
+            f"{len(shepherd.get('path_conflicts') or [])} conflict(s)"
+        )
     warnings = brief.get("warnings") or []
     if warnings:
         lines.append("")
