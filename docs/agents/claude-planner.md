@@ -27,6 +27,28 @@ Dieter", so rd-barb's Telegram slice (#3076) no longer conflicts. The planner's 
 Barb on everything it sends Dieter. Every agent keeps the envelope rules: a recommended option and
 reason per question, a recommended action per alert.
 
+## Several Barbs at Once (Dieter, 2026-10-28)
+
+Dieter wants one primary Barb and the others still working, coordinating and splitting the load, and
+plans Claude as primary from 10-28. The proposal is in the exchange repo at `seat/multi-barb.md`
+(Barbara PR #14), agreed between the Barbs on Barbara #16. In short:
+
+- Primary is whoever holds the `barb:front-door` scoped lease. Only the primary writes to Dieter and
+  breaks ties between Barbs; the others send it their waiting-on-Dieter items.
+- The other Barbs hold the other scopes (`barb:dispatch-coordinator`, `barb:pr-queue`,
+  `barb:ci-shepherd`, `barb:issue-triage`, `barb:night-watch`, or a repo slice such as
+  `barb:pr-queue-rd`) and act only inside them. Each live item has one owner in the Barb task
+  inventory; lanes' board claims stay the lock for code.
+- An expired lease (TTL 30 min) is reassigned by the primary; if the primary drops, the standby
+  checks out `barb:front-door` and the epoch bump fences the old primary's writes (#2734).
+- Off the tailnet, a Barb reads rd-barb's mirror in the exchange repo and sends lease changes to
+  rd-barb as envelopes; nothing counts as held until rd-barb replies with the epoch.
+
+This reuses the continuity store, lease fence, turnover log and task inventory as they are; any
+`barb:<name>` is already a valid scope, so no schema change is needed. If Claude holds
+`barb:front-door`, the planner's "proposes, never dispatches or arms" line below still holds until
+the Barbs and Dieter widen it.
+
 ## The Channel
 
 Every planner message is an rd-threads envelope (#3072, `scripts/rd_threads_envelope.py`), so
@@ -105,3 +127,4 @@ leaks (secrets refused, exchange repo private) and no timer polling of the share
    Agents don't create repositories or mint tokens.
 2. Merge Repository_Management #2483 (rd-barb role) and #2485 (retire the old claude-barb seat).
 3. Say yes to rd-barb's supervised dry run, then to the planner's.
+4. Decide whether a Barb off the tailnet may ever reach the hub directly, or only through rd-barb.
