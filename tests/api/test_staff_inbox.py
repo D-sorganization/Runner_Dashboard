@@ -33,7 +33,7 @@ from staff.work_items import get_work_item_store, reset_work_item_store
 TEST_USER = Principal(
     id="operator-user",
     type="human",
-    name="Dieter Olson",
+    name="Fleet Operator",
     roles=["operator", "owner"],
     scopes=["staff.chat", "staff.read", "staff.approve", "staff.dispatch", "admin", "owner"],
 )
@@ -92,7 +92,7 @@ def test_inbox_aggregates_multiple_sources(client: TestClient) -> None:
         message_id="msg_1",
         thread_id=th.id,
         action="runner.restart",
-        params={"runner_name": "oglaptop", "rationale": "Unresponsive runner"},
+        params={"runner_name": "node-b", "rationale": "Unresponsive runner"},
         risk="high",
     )
 
@@ -103,7 +103,7 @@ def test_inbox_aggregates_multiple_sources(client: TestClient) -> None:
             role="issue-remediator",
             provider="fake",
             model=None,
-            machine="DeskComputer",
+            machine="hub-a",
             repo="UpstreamDrift",
             target_kind="issue",
             target_ref="10931",
