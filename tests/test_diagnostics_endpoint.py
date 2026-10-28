@@ -60,6 +60,7 @@ def test_diagnostics_schema_top_level_keys(diag_payload) -> None:
         "leader",
         "deployment",
         "cache",
+        "integrations",
     }
     assert expected.issubset(diag_payload.keys()), f"missing keys: {expected - diag_payload.keys()}"
 
@@ -103,3 +104,15 @@ def test_diagnostics_deployment_block_has_server_py(diag_payload) -> None:
     entry = deploy["server_py"]
     assert "path" in entry
     assert ("mtime" in entry and "size" in entry) or entry.get("missing") is True
+
+
+def test_diagnostics_integrations_block_reports_repository_management(diag_payload) -> None:
+    """The standalone/no-fleet profile (#3180) needs to see which optional
+    integrations are missing without the endpoint ever erroring for it."""
+    integrations = diag_payload["integrations"]
+    assert "error" not in integrations, f"integration_health raised: {integrations}"
+    rm_status = integrations["repository_management"]
+    assert "available" in rm_status
+    assert "reason" in rm_status
+    if not rm_status["available"]:
+        assert rm_status["reason"]

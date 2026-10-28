@@ -237,6 +237,26 @@ def test_parse_role_with_fleet_actions_and_approvals() -> None:
 
 
 @pytest.mark.unit
+def test_role_without_library_read_gets_no_library_scope() -> None:
+    """#2623: default-off; nothing turns this on implicitly."""
+    from staff.role_spec import RoleSpec
+
+    assert RoleSpec(name="r", title="R").library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"code_read_only": True}).library_read is False
+
+
+@pytest.mark.unit
+def test_library_read_requires_literal_true() -> None:
+    """#2623: only the literal ``True`` enables the capability; default-deny otherwise."""
+    from staff.role_spec import RoleSpec
+
+    assert RoleSpec(name="r", title="R", permissions={"library_read": "yes"}).library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"library_read": 1}).library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"library_read": False}).library_read is False
+    assert RoleSpec(name="r", title="R", permissions={"library_read": True}).library_read is True
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(("level", "ok"), [("owner", True), ("confirm", False), ("auto", False)])
 def test_vhdx_compaction_default_approval_is_owner(level: str, ok: bool) -> None:
     """#1332: a role may not approve a disk-compaction request below owner level."""
@@ -321,16 +341,16 @@ def test_validator_accepts_avatar_field() -> None:
     """RM roles may carry an optional ``avatar`` string (#2680, #3092)."""
     from staff.validator import validate_role_data
 
-    role_dict = dict(_VALID_ROLE_DICT, avatar="barb.png")
+    role_dict = dict(_VALID_ROLE_DICT, avatar="barb.webp")
     assert validate_role_data(role_dict) == []
 
 
 @pytest.mark.unit
 def test_parse_role_carries_avatar_through_to_dict() -> None:
     """RoleSpec and to_dict round-trip the optional ``avatar`` field (#3092)."""
-    spec = roles_mod.parse_role(dict(_VALID_ROLE_DICT, avatar="barb.png"), source_path="/path/barb.yml")
-    assert spec.avatar == "barb.png"
-    assert spec.to_dict()["avatar"] == "barb.png"
+    spec = roles_mod.parse_role(dict(_VALID_ROLE_DICT, avatar="barb.webp"), source_path="/path/barb.yml")
+    assert spec.avatar == "barb.webp"
+    assert spec.to_dict()["avatar"] == "barb.webp"
 
     spec_no_avatar = roles_mod.parse_role(_VALID_ROLE_DICT, source_path="/path/cartographer.yml")
     assert spec_no_avatar.avatar is None

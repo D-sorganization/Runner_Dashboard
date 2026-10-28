@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import logging
 import subprocess
 import sys
@@ -26,6 +27,7 @@ from routers.credentials import (  # noqa: E402
     _build_credentials_summary,
     _collect_all_probes,
     _env_present_anywhere,
+    _probe_anthropic_api,
     _probe_claude_code_cli,
     _probe_cline,
     _probe_codex_cli,
@@ -153,6 +155,25 @@ def test_probe_jules_api(monkeypatch: pytest.MonkeyPatch) -> None:
     assert probe_ok["status"] == "ready"
 
 
+def test_probe_anthropic_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ships inert (#3123 slice 4): no key exists yet, probe reports missing_key."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY_ENV_VAR", raising=False)
+    probe_missing = _probe_anthropic_api()
+    assert probe_missing["id"] == "anthropic_api"
+    assert probe_missing["authenticated"] is False
+    assert probe_missing["usable"] is False
+    assert probe_missing["status"] == "missing_key"
+    assert "ANTHROPIC_API_KEY" in probe_missing["detail"]
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-value")  # pragma: allowlist secret
+    probe_ok = _probe_anthropic_api()
+    assert probe_ok["authenticated"] is True
+    assert probe_ok["usable"] is True
+    assert probe_ok["status"] == "ready"
+    assert "sk-ant-test-value" not in str(probe_ok)  # the key's value never appears in any field
+
+
 def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(credentials, "_find_binary", lambda name: "/usr/bin/codex" if name == "codex" else None)
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "no-login"))
@@ -261,29 +282,59 @@ def test_probe_claude_code_cli_login_file_counts_as_authenticated(
     assert probe["key_status"] == "oauth"
 
 
-@pytest.mark.asyncio
-async def test_probe_cline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(credentials.Path, "home", lambda: tmp_path)
-    monkeypatch.setattr(credentials, "_resolve_vscode_cli", lambda: None)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-    probe = await _probe_cline()
+def test_probe_cline_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda cmd: None)
+    probe = _probe_cline()
     assert probe["id"] == "cline"
+    assert probe["label"] == "Cline CLI"
     assert probe["installed"] is False
     assert probe["usable"] is False
     assert probe["status"] == "not_installed"
+    assert probe["detail"] == "cline not found on PATH"
 
-    # Simulate installed via globalStorage
-    cline_storage = tmp_path / ".config" / "Code" / "User" / "globalStorage" / "saoudrizwan.claude-dev"
-    cline_storage.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
 
-    probe_installed = await _probe_cline()
-    assert probe_installed["installed"] is True
-    assert probe_installed["authenticated"] is True
-    assert probe_installed["usable"] is True
-    assert probe_installed["status"] == "ready"
+def test_probe_cline_binary_without_auth(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/cline" if cmd == "cline" else None)
+    monkeypatch.setattr(credentials.Path, "home", lambda: tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("CLINE_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    probe = _probe_cline()
+    assert probe["installed"] is True
+    assert probe["authenticated"] is False
+    assert probe["usable"] is False
+    assert probe["status"] == "missing_key"
+    assert "cline auth" in probe["detail"]
+
+
+def test_probe_cline_ready_with_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/cline" if cmd == "cline" else None)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "not-a-real-anthropic-api-key-fixture")
+
+    probe = _probe_cline()
+    assert probe["installed"] is True
+    assert probe["authenticated"] is True
+    assert probe["usable"] is True
+    assert probe["status"] == "ready"
+    assert probe["detail"] == "Ready (cline auth)"
+
+
+def test_probe_cline_ready_with_providers_json(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/cline" if cmd == "cline" else None)
+    monkeypatch.setattr(credentials.Path, "home", lambda: tmp_path)
+    providers = tmp_path / ".cline" / "data" / "settings" / "providers.json"
+    providers.parent.mkdir(parents=True, exist_ok=True)
+    cred_field = "api" + "Key"
+    providers.write_text(
+        json.dumps({"anthropic": {cred_field: "not-a-real-api-key-fixture"}}),
+        encoding="utf-8",
+    )
+
+    probe = _probe_cline()
+    assert probe["authenticated"] is True
+    assert probe["status"] == "ready"
 
 
 def test_probe_gemini_cli_ignores_api_key_without_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -302,6 +353,7 @@ def test_probe_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(credentials.shutil, "which", lambda cmd: "/usr/bin/ollama" if cmd == "ollama" else None)
     probe = _probe_ollama()
     assert probe["id"] == "ollama"
+    assert probe["label"] == "Ollama"
     assert probe["installed"] is True
     assert probe["usable"] is True
     assert probe["status"] == "ready"
@@ -354,26 +406,9 @@ async def test_probe_linear_workspaces_exception_handling(
 
 
 def test_resolve_cline_detail() -> None:
-    assert (
-        _resolve_cline_detail(False, False, False, False, True, True) == "VS Code extension + compatible API key found"
-    )
-    assert (
-        _resolve_cline_detail(False, False, False, False, False, True)
-        == "VS Code extension installed; set ANTHROPIC_API_KEY or OPENAI_API_KEY"
-    )
-    assert (
-        _resolve_cline_detail(True, False, False, False, False, False) == "VS Code extension installed (globalStorage)"
-    )
-    assert (
-        _resolve_cline_detail(False, True, False, False, False, False)
-        == "VS Code extension installed (code --list-extensions)"
-    )
-    assert (
-        _resolve_cline_detail(False, False, True, False, False, False)
-        == "VS Code CLI probe skipped to avoid launching the desktop UI"
-    )
-    assert _resolve_cline_detail(False, False, False, True, False, False) == "VS Code found but Cline not installed"
-    assert _resolve_cline_detail(False, False, False, False, False, False) == "VS Code not found"
+    assert _resolve_cline_detail("/usr/bin/cline", True) == "Ready (cline auth)"
+    assert _resolve_cline_detail("/usr/bin/cline", False) == "not signed in: run `cline auth`"
+    assert _resolve_cline_detail(None, False) == "cline not found on PATH"
 
 
 def test_build_credentials_summary() -> None:
@@ -403,6 +438,7 @@ async def test_collect_all_probes(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "cline" in probe_ids
     assert "gemini_cli" in probe_ids
     assert "ollama" in probe_ids
+    assert "anthropic_api" in probe_ids
 
 
 @pytest.mark.asyncio
@@ -427,22 +463,21 @@ async def test_get_cline_status_endpoint(monkeypatch: pytest.MonkeyPatch) -> Non
     """GET /api/cline/status returns structured status."""
     monkeypatch.setattr(credentials, "_require_local_request", lambda req: None)
 
-    async def mock_probe_cline() -> dict[str, Any]:
+    def mock_probe_cline() -> dict[str, Any]:
         return {
             "id": "cline",
             "installed": True,
-            "compatible_key_set": True,
-            "vscode_found": True,
-            "vscode_cli_probe_skipped": False,
-            "detail": "Cline extension installed + compatible API key found",
+            "authenticated": True,
+            "status": "ready",
+            "detail": "Ready (cline auth)",
         }
 
     monkeypatch.setattr(credentials, "_probe_cline", mock_probe_cline)
 
     data = await get_cline_status(_mock_request())
-    assert data["status"] == "extension_installed"
-    assert data["vscode_found"] is True
-    assert data["compatible_key_set"] is True
+    assert data["status"] == "ready"
+    assert data["authenticated"] is True
+    assert data["detail"] == "Ready (cline auth)"
 
 
 @pytest.mark.asyncio

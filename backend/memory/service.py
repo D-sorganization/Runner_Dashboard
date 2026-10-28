@@ -29,6 +29,8 @@ from memory.redact import contains_secret, redact_memory_text
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
+from staff.barb_lease_fence import is_barb_seat
+from staff.lesson_provenance import authenticated_lesson_run
 from staff.store import _now  # noqa: PLC2701
 
 
@@ -45,8 +47,8 @@ def _redact_body(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_barb_principal(p: Principal | None) -> bool:
-    roles = set(p.roles + p.scopes) if p else set()
-    return bool(p and (p.assistant_kind == "grokbot" or p.id in {"barb", "agent-grok"} or roles & {"barb", "admin"}))
+    """A Barb seat or an admin: who may read Barb-only memory."""
+    return is_barb_seat(p) or bool(p and "admin" in set(p.roles + p.scopes))
 
 
 def is_librarian_principal(p: Principal | None) -> bool:
@@ -54,13 +56,8 @@ def is_librarian_principal(p: Principal | None) -> bool:
     return bool(p and (p.id in {"librarian", "fleet-librarian"} or roles & {"librarian", "memory.review", "admin"}))
 
 
-def extract_authenticated_run(p: Principal) -> str | None:
-    run_from_id = p.id.split(":")[2] if p.id.startswith("staff:") and p.id.count(":") >= 2 else None
-    return run_from_id or next((r[10:] for r in p.roles if r.startswith("staff-run:")), None)
-
-
 _FLEET_CONFLICT_RE = re.compile(
-    r"\b(request(?:ing)? human review|assign(?:ing)? dieterolson|human-approval|require human reviewer|"
+    r"\b(request(?:ing)? human review|assign(?:ing)? fleet-operator|human-approval|require human reviewer|"
     r"pay-per-use|OPENAI_API_KEY|ANTHROPIC_API_KEY|GEMINI_API_KEY|GOOGLE_API_KEY|create draft pr|stack(?:ed)? prs?)\b",
     re.I,
 )
@@ -95,6 +92,8 @@ def _validate_and_resolve_expires_at(expires_at: str | None) -> str:
 
 def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
     expires_at: str | None = req.expires_at
+    source_run: str | None
+    repo: str | None
     review_status: str | None
     visibility: str | None
     if req.entry_type == "lesson":
@@ -105,11 +104,10 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
             if not is_librarian_principal(principal):
                 raise HTTPException(status_code=403, detail="agent principal cannot set non-proposed review_status")
             raise HTTPException(status_code=422, detail="new lessons must be proposed before review")
-        bound = extract_authenticated_run(principal)
-        if bound and req.source_run and req.source_run != bound:
-            raise HTTPException(status_code=403, detail="caller cannot spoof source_run")
-        if not (source_run := bound or req.source_run) or not (repo := req.repo or req.body.get("repo")):
-            raise HTTPException(status_code=422, detail="missing provenance: source_run and repo required")
+        run = authenticated_lesson_run(principal, req.source_run, req.repo or req.body.get("repo"))
+        if "repo" in req.body and req.body["repo"] != run.repo:
+            raise HTTPException(status_code=403, detail="lesson body repository does not match stored run")
+        source_run, repo = run.id, run.repo
         review_status, visibility = req.review_status or "proposed", req.visibility or "fleet"
         expires_at = _validate_and_resolve_expires_at(req.expires_at)
     else:
@@ -117,6 +115,8 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
         review_status, visibility = req.review_status, req.visibility
 
     body = _redact_body(req.body)
+    if req.entry_type == "lesson":
+        body["standards_version"] = run.standards_version
     enforce_entry_size(body, req.entry_type)
     store = get_memory_store()
     if req.supersedes_id:

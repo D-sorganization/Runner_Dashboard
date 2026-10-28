@@ -2,6 +2,7 @@
 
 - POST /api/v1/staff/panels creates a ``kind="panel"`` thread and runs the panel in the background.
 - The cost guard reuses ``group_cost_guard_threshold_exceeded`` and is bypassed by ``confirm_cost``.
+- GET /api/v1/staff/panels lists recent panel threads with compact status (#3313).
 - GET /api/v1/staff/panels/{id} returns turns, stances, consensus and synthesis; 404 for other threads.
 - Posting into a panel thread is a 409; a panel thread is never created through POST /threads.
 """
@@ -134,6 +135,39 @@ def test_too_many_running_panels_is_429(client: TestClient, monkeypatch: pytest.
 
 
 @pytest.mark.unit
+def test_list_panels_returns_recent_panel_threads(client: TestClient) -> None:
+    empty = client.get("/api/v1/staff/panels")
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["items"] == []
+
+    started = client.post("/api/v1/staff/panels", json=BODY)
+    assert started.status_code == 202, started.text
+    thread_id = started.json()["thread"]["id"]
+
+    running = client.get("/api/v1/staff/panels")
+    assert running.status_code == 200
+    items = running.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+    assert row["thread_id"] == thread_id
+    assert row["status"] in {"running", "complete"}
+    assert row["mode"] == "debate"
+    assert row["rounds"] == BODY["rounds"]
+    assert "created_at" in row and "updated_at" in row
+
+    if row["status"] == "running":
+        assert row["consensus"] is False
+        _wait_done(client, thread_id)
+
+    done = client.get("/api/v1/staff/panels").json()["items"][0]
+    assert done["status"] == "complete" and done["consensus"] is True and done["rounds_used"] == 1
+
+    chat = get_conversation_store().create_thread(title="not a panel", kind="direct")
+    listed_ids = {item["thread_id"] for item in client.get("/api/v1/staff/panels").json()["items"]}
+    assert thread_id in listed_ids and chat.id not in listed_ids
+
+
+@pytest.mark.unit
 def test_presets_list(client: TestClient) -> None:
     res = client.get("/api/v1/staff/panels/presets")
     assert res.status_code == 200
@@ -215,3 +249,40 @@ def test_the_panel_state_exposes_tally_and_quorum(client: TestClient, monkeypatc
     assert result["tally"] == {"participated": 2, "abstained": 1}
     assert result["abstentions"] == [{"expert": "Cy", "reason": "boom"}]
     assert result["quorum_met"] is True and result["status"] == "complete"
+
+
+def _presets_by_id(client: TestClient) -> dict[str, Any]:
+    return {p["id"]: p for p in client.get("/api/v1/staff/panels/presets").json()["presets"]}
+
+
+@pytest.mark.unit
+def test_fleet_decision_preset_pins_a_provider_and_model_per_seat(client: TestClient) -> None:
+    presets = _presets_by_id(client)
+    seats = {e["name"]: e for e in presets["fleet-decision"]["experts"]}
+    assert presets["fleet-decision"]["title"] == "Fleet decision panel (Argon / Astra / Fable)"
+    assert (seats["Argon"]["provider"], seats["Argon"]["model"]) == ("antigravity", "gemini-4-argon-high")
+    assert (seats["Astra"]["provider"], seats["Astra"]["model"]) == ("codex", "gpt-6-astra")
+    assert (seats["Fable"]["provider"], seats["Fable"]["model"]) == ("claude", "claude-fable-5-1")
+    assert all(e["available"] for e in seats.values())
+    # Older presets stay valid: provider defaults to claude, model is null.
+    assert presets["science"]["experts"][0]["provider"] == "claude"
+    assert presets["science"]["experts"][0]["model"] is None
+
+
+@pytest.mark.unit
+def test_a_disabled_provider_marks_its_seat_unavailable_without_swapping_it(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
+    seats = {e["name"]: e for e in _presets_by_id(client)["fleet-decision"]["experts"]}
+    assert seats["Argon"]["available"] is False
+    assert seats["Argon"]["provider"] == "antigravity"  # visible, not silently replaced
+    assert seats["Astra"]["available"] is True and seats["Fable"]["available"] is True
+
+
+@pytest.mark.unit
+def test_the_fleet_decision_experts_are_a_valid_panel_request(client: TestClient) -> None:
+    keys = ("name", "perspective", "provider", "model")
+    experts = [{k: e[k] for k in keys} for e in _presets_by_id(client)["fleet-decision"]["experts"]]
+    res = client.post("/api/v1/staff/panels", json={**BODY, "experts": experts})
+    assert res.status_code == 202, res.text

@@ -17,6 +17,7 @@ from pathlib import Path
 
 import dashboard_config
 from pydantic import BaseModel
+from runner_control_health import record_runner_control_result
 from system_utils import run_cmd  # noqa: E402
 
 log = logging.getLogger("dashboard")
@@ -105,10 +106,16 @@ async def run_runner_svc(
     assert action in {"start", "stop", "restart"}, f"unsupported runner service action: {action!r}"
 
     service_name = get_runner_service_name(runner_num)
-    assert service_name and re.fullmatch(r"actions\.runner\.[A-Za-z0-9_.@:-]+\.service", service_name), (
+    assert service_name and re.fullmatch(r"actions\.runner\.[A-Za-z0-9._-]+\.service", service_name), (
         "runner service name must be a local runner systemd unit"
     )
-    return await run_cmd(["sudo", "/usr/bin/systemctl", action, service_name], timeout=timeout)
+    result = await run_cmd(
+        ["sudo", "-n", "/usr/local/sbin/rd-runner-ctl"],
+        timeout=timeout,
+        input_text=f"{action}\n{service_name}\n",
+    )
+    record_runner_control_result(action, succeeded=result[0] == 0)
+    return result
 
 
 def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:

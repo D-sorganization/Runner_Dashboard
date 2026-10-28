@@ -133,7 +133,8 @@ async def list_threads(
     caller_id = format_caller(caller)
 
     try:
-        all_threads = store.list_threads(
+        all_threads = await asyncio.to_thread(
+            store.list_threads,
             status=thread_status,
             participant=role,
             limit=200,
@@ -175,10 +176,15 @@ async def get_thread_detail(
     """Get thread metadata along with its historical messages."""
     store = _get_store_or_503()
     try:
-        thread = store.get_thread(thread_id)
+        thread = await asyncio.to_thread(store.get_thread, thread_id)
         if not thread or not thread_readable_by(thread, caller):
             raise HTTPException(status_code=404, detail="thread not found")
-        messages = store.list_messages(thread_id, limit=200, since_seq=since_seq)
+        messages = await asyncio.to_thread(
+            store.list_messages,
+            thread_id,
+            limit=200,
+            since_seq=since_seq,
+        )
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

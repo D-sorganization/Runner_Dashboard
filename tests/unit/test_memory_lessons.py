@@ -17,8 +17,39 @@ from memory.models import MemoryAppendRequest, MemoryEntry, MemoryReviewRequest
 from memory.service import append_entry, get_prompt_lessons, list_entries, review_entry
 from memory.store import AssistantMemoryStore, reset_memory_store
 from server import app
+from staff import store as run_stores
+from staff import tokens
+from staff.store import RunRecord, RunStore
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.fixture(autouse=True)
+def _active_stored_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    store = RunStore(tmp_path / "runs.sqlite3")
+    active = {}
+    for run_id in ("run-1", "run-abc", "run-api-1"):
+        store.create_run(
+            RunRecord(
+                run_id,
+                "swe",
+                "claude",
+                None,
+                "machine",
+                "RD",
+                "prompt",
+                "",
+                "test",
+                status="running",
+                requested_by="operator",
+                standards_version="v1",
+            )
+        )
+        active[run_id] = f"staff:swe:{run_id}"
+    monkeypatch.setattr(run_stores, "get_store", lambda: store)
+    monkeypatch.setattr(tokens, "_active_run_tokens", active)
+    yield
+    store.close()
 
 
 def _p(role: str = "agent", run_id: str = "run-1") -> Principal:

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from email_intake.models import InboundMessage
 from email_intake.policy import AllowedSender, MailPolicy
@@ -8,13 +8,13 @@ from email_intake.verify import dmarc_pass_aligned, verify_inbound
 def _msg(**kwargs: object) -> InboundMessage:
     defaults = {
         "message_id": "<1@test>",
-        "from_address": "dieterolson@gmail.com",
-        "from_domain": "gmail.com",
+        "from_address": "user@example.com",
+        "from_domain": "example.com",
         "to_addresses": ("intake@test",),
         "subject": "hi",
         "body_plain": "role: barb\nplease triage",
         "received_at": datetime.now(UTC),
-        "authentication_results": "dmarc=pass header.from=gmail.com",
+        "authentication_results": "dmarc=pass header.from=example.com",
         "size_bytes": 100,
     }
     defaults.update(kwargs)
@@ -22,7 +22,7 @@ def _msg(**kwargs: object) -> InboundMessage:
 
 
 def test_dmarc_aligned() -> None:
-    assert dmarc_pass_aligned("dmarc=pass header.from=gmail.com", "gmail.com")
+    assert dmarc_pass_aligned("dmarc=pass header.from=example.com", "example.com")
 
 
 def test_quarantine_when_dmarc_fails() -> None:
@@ -32,7 +32,7 @@ def test_quarantine_when_dmarc_fails() -> None:
         max_age_hours=72,
         rate_limit_per_sender_per_hour=10,
         max_message_bytes=10000,
-        allowed_senders=(AllowedSender("dieterolson@gmail.com", True),),
+        allowed_senders=(AllowedSender("user@example.com", True),),
     )
     outcome = verify_inbound(_msg(authentication_results="dmarc=fail"), policy)
     assert outcome.disposition.value == "quarantine"

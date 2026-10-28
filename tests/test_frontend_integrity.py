@@ -576,7 +576,10 @@ def test_queue_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "queue":' in routed_shell
-    assert "return <QueueTab />;" in routed_shell
+    assert "const LazyQueueTab = React.lazy(" in routed_shell
+    assert "return <LazyQueueTab />;" in routed_shell
+    assert 'import("../pages/Queue")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/Queue"', routed_shell, re.M)
     assert 'fetch("/api/queue")' in queue_page
     assert "p.queue ?? localQueue ?? {}" in queue_page
 
@@ -605,7 +608,10 @@ def test_machines_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "machines":' in routed_shell
-    assert "return <MachinesPage />;" in routed_shell
+    assert "const LazyMachinesPage = React.lazy(" in routed_shell
+    assert "return <LazyMachinesPage />;" in routed_shell
+    assert 'import("../pages/Machines")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/Machines"', routed_shell, re.M)
     assert 'legacyFetch("/api/fleet/nodes"' in machines_page
     assert 'legacyFetch("/api/runners"' in machines_page
     assert "export function MachinesPage" in machines_page
@@ -789,13 +795,14 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
     for marker in [
         "overview: (",
         "<LazyFleetMobile />",
-        "queue: <QueueMobile />",
+        "queue: (",
+        "<LazyQueueMobile />",
         "remediation: (",
         "<LazyRemediationMobile",
         "reports: (",
         "<LazyReportsMobile />",
         "const mobileFallback = mobileTabContent[mobileTab] ? null :",
-        "nativeDesktopTabContent(mobileTab)",
+        "nativeDesktopTabContent(mobileTab, onThreadSelected)",
     ]:
         assert marker in routed_shell
 
@@ -805,6 +812,7 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
         ("LazyFleetMobile", "FleetMobile"),
         ("LazyReportsMobile", "ReportsMobile"),
         ("LazyRemediationMobile", "RemediationMobile"),
+        ("LazyQueueMobile", "QueueMobile"),
     ]:
         assert f"const {lazy_name} = React.lazy(" in routed_shell
         assert re.search(rf"\{{\s*{export}\s*\}}\)\s*=>\s*\(\{{\s*default:\s*{export}", routed_shell)

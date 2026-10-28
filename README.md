@@ -1,9 +1,15 @@
 # D-sorganization Runner Dashboard
 
-A web UI control surface for the D-sorganization self-hosted GitHub Actions
-runner fleet. Monitor runner health in real-time, control runner lifecycle,
-dispatch AI agents, manage workflows, and orchestrate multi-node deployments —
-all from a single browser tab.
+Runner_Dashboard is a self-hosted workspace that carries engineering work from
+an agent session through GitHub review and CI, keeping task context and evidence
+with the work. It brings runner operations, agent dispatch, and workflow status
+into one local console.
+
+Unlike hosted agent workspaces, it runs on your own infrastructure and focuses
+on fleet and GitHub workflow integration; it is not a hosted coding environment.
+Unlike a runner-only dashboard, it also connects agent runs and their evidence
+to the review workflow. Capacity-aware scheduling is not a positioning claim
+until a benchmark supports it.
 
 ## Sibling repos
 
@@ -19,6 +25,25 @@ contract is in
 
 The Maxwell tab calls Maxwell-Daemon over HTTP using the contract documented
 in the sibling-repos doc. Maxwell-Daemon never calls back into the dashboard.
+
+## Capability matrix
+
+The core repo runs **standalone** by default; a private **overlay** (see
+[`docs/architecture/overlay-contract.md`](docs/architecture/overlay-contract.md))
+supplies operator-specific config without the core ever naming private hosts,
+people, or paths.
+
+| Capability                                      | Standalone (no overlay) | With overlay (`RD_OVERLAY_PATH` set) |
+| ------------------------------------------------ | ------------------------ | ------------------------------------- |
+| Dashboard UI, API, auth, sessions                | ✅ full                  | ✅ full                               |
+| Runner monitoring and lifecycle control          | ✅ full                  | ✅ full                               |
+| Named self-hosted hosts / tailnet addresses      | — (operator supplies via env/config directly) | ✅ sourced from the overlay |
+| Agent token file paths, per-agent config          | — (operator supplies directly)                | ✅ sourced from the overlay |
+| Private roles, policy, and internal docs          | — (not present)                                | ✅ sourced from the overlay |
+
+Until `RD_OVERLAY_PATH` is set, behaviour is unchanged from today; setting it
+loads and validates the overlay at startup and the core refuses to start on an
+invalid overlay rather than running with partial private config.
 
 ## Architecture
 
@@ -48,7 +73,8 @@ The dashboard ships with a built-in identity and authorization stack — it is
 - **Sessions with revocation** — server-side sessions backed by
   `backend/session_management.py`; revoked/expired sessions are rejected.
 - **GitHub OAuth + org membership check** — operators sign in via GitHub and are
-  admitted only if they belong to the configured org
+  admitted only if they belong to `GITHUB_ORG`, the configured organization
+  (required when OAuth sign-in is enabled)
   (`backend/routers/auth.py`).
 - **WebAuthn** — passkey registration/assertion scaffolding in
   `backend/auth_webauthn.py`.
@@ -95,6 +121,22 @@ of this stack, not a replacement for it.
 
 ## Quick Start
 
+### Try the Offline Demo
+
+The demo starts with fictional sample runners and workflow runs. It needs no
+GitHub credentials, makes no GitHub requests, and disables API access:
+
+```bash
+git clone https://github.com/D-sorganization/Runner_Dashboard.git
+cd Runner_Dashboard
+bash start-dashboard.sh --demo
+```
+
+Open http://localhost:8321. The page is marked **DEMO DATA · READ ONLY**.
+Python 3.11+, Node.js 18+, and npm are required for a clean checkout.
+
+### Connect a Real Dashboard
+
 ```bash
 git clone git@github.com:D-sorganization/runner-dashboard.git
 cd runner-dashboard
@@ -111,7 +153,15 @@ instructions if the dependencies or a working `npm` are unavailable, rather than
 starting a broken server.
 
 **Requirements:** Python 3.11+, Node.js 18+/npm (for the frontend build), and a
-GitHub PAT with `repo` and `admin:org` scopes.
+GitHub PAT with `repo` and `admin:org` scopes. Use the offline demo above to
+explore the interface without credentials.
+
+### Cold-start check
+
+After the demo, ask someone outside the fleet to follow this Quick Start from a
+clean machine. Record any prerequisite, instruction, or first-run step that
+blocks them, then file each friction point as an issue. This check is not yet
+complete.
 
 ### Deterministic / offline-constrained installs
 
@@ -152,6 +202,12 @@ bash deploy/setup.sh
 bash deploy/update-deployed.sh
 ```
 
+Runner Dashboard single-worker is the only supported mode. Keep `WORKERS=1`
+and `uvicorn --workers 1` (including `WEB_CONCURRENCY=1` when set). Startup
+refuses worker counts greater than one because leases, locks, rate limiters,
+bearer tokens and event sequences are process-local. Multi-worker support
+requires a separate shared-state redesign.
+
 The dashboard runs as `runner-dashboard.service` on port 8321. Logs:
 `journalctl -u runner-dashboard -f`
 
@@ -176,7 +232,7 @@ and architecture documentation.
 
 When deployed across multiple machines, the dashboard differentiates between "Hub" and "Node" operation:
 
-- **Hub (Leader)**: The central dashboard instance. Processes global actions, scheduled background tasks, stale queue cleanup, and autoscaler evaluations. If `WORKERS > 1` is configured, leader-election ensures only a single background task thread executes across all workers.
+- **Hub (Leader)**: The central dashboard instance. Processes global actions, scheduled background tasks, stale queue cleanup, and autoscaler evaluations. Each instance runs a single worker; leader-election coordinates background tasks between instances.
 - **Node (Follower)**: Run instances on edge runner hosts without the leader lock (`DASHBOARD_LEADER=0`). They provide the local `/api/system/metrics` endpoints that the Hub aggregates, and stream logs/metrics to the Hub.
   If two Hubs run concurrently without a shared lock directory, background scans (like queue purging) will run twice, but API operations remain idempotent.
 

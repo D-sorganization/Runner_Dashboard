@@ -36,6 +36,7 @@
         "ci-auto-deploy-regression.yml",
         "codex-review-request.yml",
         "collate-changes.yml",
+        "ci-private-roles-redaction-gate.yml",
         "conflict-disarm.yml",
         "arm-cap-reconcile.yml",
         "dependabot-auto-merge.yml",
@@ -66,6 +67,7 @@
         "ci-nightly.yml",
         "ci-standard.yml",
         "frontend-tests.yml",
+        "api-contract-regeneration.yml",
         "lockfile-upgrade.yml",
         "release.yml",
         "main-ci-auto-release.yml"

@@ -390,6 +390,7 @@ def _normalize_machine_entry(entry: dict[str, Any]) -> dict[str, Any]:
     normalized["workload_capacity"] = _workload_capacity_from_hardware(normalized["hardware"])
     normalized["storage"] = _normalize_storage(normalized.get("storage"), field_prefix="storage")
     normalized["runner_pools"] = _normalize_runner_pools(normalized, parent_machine=name)
+    normalized["portable"] = bool(_coerce_bool(normalized.get("portable"), field="portable"))
 
     return normalized
 
@@ -573,6 +574,17 @@ def build_machine_registry_index(
                 if token:
                     index[token] = pool_dict
     return index
+
+
+def is_portable_machine(name: str, registry: dict[str, Any] | None = None) -> bool:
+    """True when ``name`` resolves to a registry machine flagged ``portable: true`` (#3323).
+
+    A portable machine (for example a laptop that travels and is often offline) carries
+    no required or scheduled staff roles; unknown/unregistered names are not portable.
+    """
+    reg = registry if registry is not None else load_machine_registry()
+    entry = build_machine_registry_index(reg).get(_normalize_token(name))
+    return bool(entry.get("portable")) if entry else False
 
 
 def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:

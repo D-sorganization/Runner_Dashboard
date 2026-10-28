@@ -13,6 +13,7 @@ from typing import Any
 
 from staff import fleet as staff_fleet
 from staff import friction_store
+from staff.anthropic_api_alerts import summary_fields as anthropic_api_summary_fields
 from staff.classifier import format_attention_items
 from staff.exclusions import active_exclusions
 from staff.github_app_preflight import (
@@ -102,6 +103,7 @@ async def build_staff_summary() -> dict[str, Any]:
         "recent_24h": counts,
         "attention": attention[:20],
         "spend_today_usd": board_view["spend_today_usd"],
+        **anthropic_api_summary_fields(runner.store),
         "providers": board_view["providers"],
         "providers_cooldown": board_view.get("providers_cooldown", {}),
         "holds": staff_fleet.holds_snapshot(),

@@ -14,14 +14,14 @@ _TEST_COMMIT_SHA = "1" * 40
 def _reference(**overrides: object) -> dict[str, object]:
     commit_sha = _TEST_COMMIT_SHA
     fields: dict[str, object] = {
-        "node": "DeskComputer",
+        "node": "hub-a",
         "repo": "Runner_Dashboard",
         "commit_sha": commit_sha,
         "relative_path": "backend/staff/review.py",
         "line_start": 10,
         "line_end": 16,
         "content_hash": "a" * 64,
-        "citation": (f"[ref:DeskComputer:codebase:Runner_Dashboard@{commit_sha[:8]}:backend/staff/review.py#L10-L16]"),
+        "citation": (f"[ref:hub-a:codebase:Runner_Dashboard@{commit_sha[:8]}:backend/staff/review.py#L10-L16]"),
     }
     fields.update(overrides)
     return fields
@@ -36,7 +36,7 @@ def test_codebase_run_references_are_append_only_idempotent_and_readable(tmp_pat
     assert codebase_references_for_run(db, "run-1") == [
         {
             "run_id": "run-1",
-            "node": "DeskComputer",
+            "node": "hub-a",
             "repo": "Runner_Dashboard",
             "commit_sha": _TEST_COMMIT_SHA,
             "relative_path": "backend/staff/review.py",
@@ -75,7 +75,7 @@ def test_codebase_run_reference_rejects_invalid_identity(tmp_path: Path, overrid
 def test_codebase_ledger_preserves_existing_library_retrievals(tmp_path: Path) -> None:
     db = init_library_db(tmp_path / "library.sqlite")
     library_reference = {
-        "node": "DeskComputer",
+        "node": "hub-a",
         "source_id": "shared",
         "work_id": 1,
         "passage_id": 2,
@@ -109,7 +109,7 @@ def test_codebase_run_reference_limits_are_enforced(tmp_path: Path) -> None:
         for index in range(start, start + count):
             path = f"docs/item-{index}.md"
             citation = (
-                f"[ref:DeskComputer:codebase:Runner_Dashboard@{_TEST_COMMIT_SHA[:8]}:{path}#L{index + 1}-L{index + 1}]"
+                f"[ref:hub-a:codebase:Runner_Dashboard@{_TEST_COMMIT_SHA[:8]}:{path}#L{index + 1}-L{index + 1}]"
             )
             values.append(
                 _reference(

@@ -19,7 +19,7 @@ from identity import Principal, require_scope
 from pydantic import BaseModel, Field, ValidationError
 from security import safe_subprocess_env, sanitize_log_value
 
-router = APIRouter(prefix="/api/maxwell", tags=["maxwell"])
+router = APIRouter(prefix="/api/maxwell", tags=["maxwell"], include_in_schema=False)
 log = logging.getLogger("dashboard")
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime

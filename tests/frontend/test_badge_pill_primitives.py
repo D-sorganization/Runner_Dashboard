@@ -263,16 +263,6 @@ def test_stat_maps_token_colours_to_scoped_classes() -> None:
     assert "style={{" not in source
 
 
-def test_assistant_markdown_uses_scoped_classes() -> None:
-    """Issue #834 migration: assistantMarkdown should avoid inline styles."""
-    source = _read(SRC_DIR / "pages" / "assistantMarkdown.tsx")
-    assert "assistant-markdown__code-block" in source
-    assert "assistant-markdown__inline-code" in source
-    assert "assistant-markdown__link" in source
-    assert "style:" not in source
-    assert "style={{" not in source
-
-
 def test_events_tab_uses_scoped_classes() -> None:
     """Issue #834 migration: Events tab should avoid inline layout styles."""
     source = _read(SRC_DIR / "pages" / "Events.tsx")

@@ -63,7 +63,14 @@ def _release_lease_with_retry(
 
     def _do_release() -> bool:
         try:
-            lease_mod.release(store, rec.id, repo=rec.repo, issue=issue, agent=agent)
+            lease_mod.release(
+                store,
+                rec.id,
+                repo=rec.repo,
+                issue=issue,
+                agent=agent,
+                reason="orphaned: interrupted by backend restart",
+            )
             return True
         except Exception as exc:  # noqa: BLE001
             log.warning(

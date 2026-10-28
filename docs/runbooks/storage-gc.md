@@ -9,9 +9,9 @@ service + timer pairs (#1925). `install-runner-maintenance.sh` delegates to it.
 
 On 2026-10-11 every runner host was running a _different_ cleanup, and nothing noticed:
 
-- **OGLaptop** ran an old fork with no rustup reaper. It leaked 35k `~/.rustup/tmp` directories (23 GB), and Windows `C:` was down to 0.6 GB free.
-- **DeskComputer** had the right binary, but a drop-in (`30-bandwidth-policy.conf`) silently replaced `ExecStart` with a frozen fork.
-- **brick** and **raspberrypi** had no GC at all.
+- **node-b** ran an old fork with no rustup reaper. It leaked 35k `~/.rustup/tmp` directories (23 GB), and Windows `C:` was down to 0.6 GB free.
+- **hub-a** had the right binary, but a drop-in (`30-bandwidth-policy.conf`) silently replaced `ExecStart` with a frozen fork.
+- **node-c** and **raspberrypi** had no GC at all.
 
 The cause was three installers writing the same paths with no check of what actually ended up installed. The fix has three parts:
 
@@ -26,7 +26,7 @@ python deploy/fleet_storage_gc.py --list          # inventory (registry + config
 python deploy/fleet_storage_gc.py --verify-only   # read-only drift check, exit 1 on any drift
 python deploy/fleet_storage_gc.py --dry-run       # what an install would change
 python deploy/fleet_storage_gc.py                 # install + verify everywhere
-python deploy/fleet_storage_gc.py --hosts brick   # one host
+python deploy/fleet_storage_gc.py --hosts node-c   # one host
 ```
 
 Per-host statuses:

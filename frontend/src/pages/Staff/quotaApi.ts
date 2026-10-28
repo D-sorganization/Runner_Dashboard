@@ -51,6 +51,39 @@ export function fetchQuota(signal?: AbortSignal): Promise<QuotaReport> {
   return apiRequest<QuotaReport>("/api/staff/quota", { signal });
 }
 
+export interface UsageSnapshotMachineRow {
+  machine: string;
+  used_percent: number | null;
+  resets_at: string | null;
+  observed_at: string;
+  age_seconds: number;
+  stale: boolean;
+}
+
+export interface UsageSnapshotProviderRow {
+  provider: string;
+  label: string;
+  status: string;
+  quota_used_pct: number | null;
+  quota_limit: number | null;
+  reset_at: string | null;
+  near_limit_flag: boolean;
+  machines: UsageSnapshotMachineRow[];
+}
+
+/** Body of GET /api/staff/usage/snapshot (#3042): the newest Usage-Tracker snapshot, relayed. */
+export interface UsageSnapshotReport {
+  checked_at?: string | null;
+  received_at?: string | null;
+  snapshot_age_seconds?: number | null;
+  snapshot_stale: boolean;
+  providers: UsageSnapshotProviderRow[];
+}
+
+export function fetchUsageSnapshot(signal?: AbortSignal): Promise<UsageSnapshotReport> {
+  return apiRequest<UsageSnapshotReport>("/api/staff/usage/snapshot", { signal });
+}
+
 /** Subscription plans only, each window fullest first; tone flags the ceiling. */
 export function quotaRows(report: QuotaReport): QuotaRow[] {
   return report.providers

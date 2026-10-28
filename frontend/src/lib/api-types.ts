@@ -246,28 +246,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent-remediation/dispatch-jules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Dispatch Jules Workflow
-         * @description Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.
-         *
-         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
-         */
-        post: operations["dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/agent-remediation/history": {
         parameters: {
             query?: never;
@@ -348,28 +326,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agents/quick-dispatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Api Quick Dispatch
-         * @description Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.
-         *
-         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
-         */
-        post: operations["api_quick_dispatch_api_agents_quick_dispatch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/analysis/workflow-machines": {
         parameters: {
             query?: never;
@@ -444,29 +400,6 @@ export interface paths {
         get: operations["get_tool_audit_history_api_assistant_audit_history_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/assistant/chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Assistant Chat
-         * @description Retired endpoint (SC-D11, issue #1330).
-         *
-         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console
-         *     conversation API at /api/v1/staff/threads.
-         */
-        post: operations["assistant_chat_api_assistant_chat_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1055,7 +988,7 @@ export interface paths {
         };
         /**
          * Get Cline Status
-         * @description Return Cline extension detection status.
+         * @description Return Cline CLI detection status.
          */
         get: operations["get_cline_status_api_cline_status_get"];
         put?: never;
@@ -2793,296 +2726,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/maxwell/backends": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Backends
-         * @description Proxy GET /api/v1/backends from Maxwell-Daemon (contract-filtered; secrets stripped).
-         */
-        get: operations["get_maxwell_backends_api_maxwell_backends_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Chat
-         * @description Proxy chat messages to Maxwell-Daemon and surface the answer text (#957).
-         *
-         *     MD's ``/api/chat`` is a request/response JSON endpoint (``ChatResponse``);
-         *     it does not stream and now *rejects* the legacy ``history``/``stream`` fields
-         *     with a 422 (``extra="forbid"``, MD #995). This proxy therefore:
-         *
-         *     * carries multi-turn context in MD's ``messages[]`` (translated from the UI's
-         *       history) so chat is no longer amnesiac;
-         *     * parses the JSON ``ChatResponse`` and emits its ``content`` (not the raw
-         *       JSON serialization the UI previously rendered);
-         *     * routes codebase-scoped chat to MD's dedicated ``/api/chat/codebase`` route.
-         *
-         *     The browser still consumes a ``text/plain`` body via a stream reader, so the
-         *     answer text is delivered as a single chunk — no frontend change required
-         *     (the response is single-turn / non-incremental until MD advertises streaming
-         *     as a negotiated capability).
-         */
-        post: operations["maxwell_chat_api_maxwell_chat_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/control": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Control
-         * @description Start or stop Maxwell-Daemon service (confirmation required).
-         */
-        post: operations["maxwell_control_api_maxwell_control_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/cost": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Cost
-         * @description Proxy GET /api/v1/cost from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_cost_api_maxwell_cost_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/daemon-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Daemon Status Detail
-         * @description Proxy GET /api/status from Maxwell-Daemon (pipeline state + counts, #955).
-         */
-        get: operations["get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/dispatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Dispatch Task
-         * @description Proxy POST /api/dispatch to Maxwell-Daemon (issues #349, #953).
-         *
-         *     Posts to MD's confirmation-gated, idempotent ``POST /api/dispatch`` — the
-         *     endpoint that actually enforces ``hmac.compare_digest`` on
-         *     ``confirmation_token`` and keys idempotency on ``idempotency_key``. The
-         *     previous target, ``POST /api/v1/tasks``, silently discarded both fields
-         *     (Pydantic ``extra="ignore"``), so the confirmation gate was security theatre
-         *     and retries created duplicate tasks (#953). Caller must supply
-         *     ``confirmation_token`` and ``prompt``; server-side injection of the token is
-         *     not done so the dashboard cannot bypass the daemon-side gate.
-         */
-        post: operations["maxwell_dispatch_task_api_maxwell_dispatch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/pipeline-control/{action}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Pipeline Control
-         * @description Proxy POST /api/control/{action} to Maxwell-Daemon (issue #349).
-         *
-         *     Caller must provide ``confirmation_token``; server-side injection removed.
-         */
-        post: operations["maxwell_pipeline_control_api_maxwell_pipeline_control__action__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/pipeline-state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Pipeline State
-         * @description Proxy GET /api/status (pipeline state + counts) from Maxwell-Daemon (#955).
-         */
-        get: operations["get_maxwell_pipeline_state_api_maxwell_pipeline_state_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Status
-         * @description Probe Maxwell-Daemon status and connectivity (Dashboard-facing).
-         */
-        get: operations["get_maxwell_status_api_maxwell_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Tasks
-         * @description Proxy GET /api/tasks from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_tasks_api_maxwell_tasks_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/tasks/{task_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Task Detail
-         * @description Proxy GET /api/tasks/{task_id} from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_task_detail_api_maxwell_tasks__task_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Version
-         * @description Proxy GET /api/version from Maxwell-Daemon (contract-negotiated, #956).
-         *
-         *     Surfaces the daemon's real version and its advertised contract version, plus a
-         *     ``contract_compatible`` flag the Maxwell tab uses to show a degraded-mode
-         *     banner on a major-version mismatch instead of rendering defaulted data.
-         */
-        get: operations["get_maxwell_version_api_maxwell_version_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/workers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Workers
-         * @description Proxy GET /api/v1/workers from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_workers_api_maxwell_workers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/metrics/web-vitals": {
         parameters: {
             query?: never;
@@ -4246,6 +3889,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runners/slot-health/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Slot Health
+         * @description Read-only slot-health analysis; optional publish to hub events and Barb lane.
+         */
+        post: operations["evaluate_slot_health_api_runners_slot_health_evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runners/{runner_id}/diagnostics": {
         parameters: {
             query?: never;
@@ -4592,6 +4255,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/activity/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity Summary
+         * @description Bounded aggregate for the node auto-deploy activity probe (#2353).
+         *
+         *     No runner/provider initialisation and no peer fan-out (see
+         *     ``staff.activity_summary`` for the read-only aggregate query).
+         */
+        get: operations["activity_summary_api_staff_activity_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/audit": {
         parameters: {
             query?: never;
@@ -4784,6 +4470,24 @@ export interface paths {
          * @description Replace the holds list. Postcondition: the file on disk equals the response.
          */
         put: operations["put_holds_api_staff_holds_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_staff_host_settings_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5053,6 +4757,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/schedule/leader-lease": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Leader Lease
+         * @description Acquire or renew the scheduler leader lease (fleet peer internal contract).
+         */
+        post: operations["post_leader_lease_api_staff_schedule_leader_lease_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/schedule/toggle": {
         parameters: {
             query?: never;
@@ -5149,6 +4873,30 @@ export interface paths {
         get: operations["get_pricing_api_staff_usage_pricing_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/usage/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage Snapshot
+         * @description Fleet-wide provider usage: newest Usage-Tracker snapshot, per-machine staleness (#3042).
+         */
+        get: operations["get_usage_snapshot_api_staff_usage_snapshot_get"];
+        put?: never;
+        /**
+         * Ingest Usage Snapshot
+         * @description Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042).
+         */
+        post: operations["ingest_usage_snapshot_api_staff_usage_snapshot_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5488,6 +5236,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/activity/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Activity
+         * @description Bound the wire body before parsing; never trust source-side redaction.
+         */
+        post: operations["ingest_activity_api_v1_activity_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/backlog": {
         parameters: {
             query?: never;
@@ -5661,6 +5429,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fleet/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Brief */
+        get: operations["get_fleet_brief_api_v1_fleet_brief_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fleet/friction": {
         parameters: {
             query?: never;
@@ -5710,6 +5495,23 @@ export interface paths {
          * @description Detectors call this when a closed or open friction recurs: increments the count, stamps last_seen_at.
          */
         post: operations["friction_recurrence_api_v1_fleet_friction__friction_id__recurrence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/overload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Overload */
+        get: operations["get_fleet_overload_api_v1_fleet_overload_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6909,6 +6711,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_v1_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_v1_staff_host_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/inbox": {
         parameters: {
             query?: never;
@@ -7036,7 +6856,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List recent expert panels
+         * @description Recent panel threads with status and progress; newest activity first.
+         */
+        get: operations["list_panels_api_v1_staff_panels_get"];
         put?: never;
         /**
          * Start an expert panel
@@ -7062,7 +6886,7 @@ export interface paths {
         };
         /**
          * Expert panel presets
-         * @description Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.
+         * @description Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).
          */
         get: operations["get_panel_presets_api_v1_staff_panels_presets_get"];
         put?: never;
@@ -8548,22 +8372,6 @@ export interface components {
             };
         };
         /**
-         * AssistantChatResponse
-         * @description AI assistant response.
-         */
-        AssistantChatResponse: {
-            /** Context Used */
-            context_used: {
-                [key: string]: unknown;
-            };
-            /** Provider */
-            provider: string;
-            /** Response */
-            response: string;
-            /** Timestamp */
-            timestamp: string;
-        };
-        /**
          * AuditHistoryResponse
          * @description Paginated audit history for assistant tool executions.
          */
@@ -8810,6 +8618,12 @@ export interface components {
          */
         BoardRoutingCriteria: {
             /**
+             * Confidential Data Egress
+             * @description Confidential partner data egress; requires user sign-off before Board routing.
+             * @default false
+             */
+            confidential_data_egress: boolean;
+            /**
              * Cross Repo Contract
              * @default false
              */
@@ -8819,11 +8633,6 @@ export interface components {
              * @default 0
              */
             estimated_child_issues: number;
-            /**
-             * Inentec Data Egress
-             * @default false
-             */
-            inentec_data_egress: boolean;
             /**
              * New Dependency Or Egress
              * @default false
@@ -9751,6 +9560,29 @@ export interface components {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
         };
+        /** HostSettingsPutBody */
+        HostSettingsPutBody: {
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Global */
+            global?: {
+                [key: string]: unknown;
+            };
+            /** Roles */
+            roles?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
         /**
          * InitializeExecutorPayload
          * @description Children always come from the filed plan; the caller may only tune execution.
@@ -9765,6 +9597,13 @@ export interface components {
              * @description Provider id to launch auth for
              */
             provider: string;
+        };
+        /** LeaderLeaseBody */
+        LeaderLeaseBody: {
+            /** Machine */
+            machine: string;
+            /** Ttl Seconds */
+            ttl_seconds?: number | null;
         };
         /**
          * LeaseRequest
@@ -9862,29 +9701,6 @@ export interface components {
             source_id: string;
             /** Work Id */
             work_id: number;
-        };
-        /**
-         * MaxwellChatBody
-         * @description Request body for POST /api/maxwell/chat.
-         *
-         *     ``repo``/``repo_root`` (issue #838) scope a codebase Q&A session to a single
-         *     repository. Both are optional so the existing fleet-status chat keeps working
-         *     unchanged; when supplied they are forwarded to Maxwell-Daemon, which jails its
-         *     agentic tools (read_file/grep_files/glob_files/run_bash) to that root. The
-         *     daemon-side capability is tracked in Maxwell_Daemon#948; until it ships the
-         *     daemon may answer 501 Not Implemented, which this proxy degrades gracefully.
-         */
-        MaxwellChatBody: {
-            /** History */
-            history?: {
-                [key: string]: unknown;
-            }[];
-            /** Message */
-            message: string;
-            /** Repo */
-            repo?: string | null;
-            /** Repo Root */
-            repo_root?: string | null;
         };
         /** MemoryAppendRequest */
         MemoryAppendRequest: {
@@ -10022,6 +9838,11 @@ export interface components {
             confirm_cost: boolean;
             /** Experts */
             experts: components["schemas"]["PanelExpert"][];
+            /**
+             * Ground Repos
+             * @default true
+             */
+            ground_repos: boolean;
             /**
              * Mode
              * @default debate
@@ -11650,6 +11471,8 @@ export interface components {
              * @default 0
              */
             active_runs: number;
+            /** Avatar */
+            avatar?: string | null;
             budget: components["schemas"]["StaffRoleBudget"];
             /** Chat */
             chat?: {
@@ -12385,6 +12208,36 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * StaffUsageSnapshotIngestResponse
+         * @description Response model for POST /api/staff/usage/snapshot (#3042).
+         */
+        StaffUsageSnapshotIngestResponse: {
+            /** Kept */
+            kept: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageSnapshotResponse
+         * @description Response model for GET /api/staff/usage/snapshot (#3042): fleet quota + staleness.
+         */
+        StaffUsageSnapshotResponse: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            }[];
+            /** Received At */
+            received_at?: string | null;
+            /** Snapshot Age Seconds */
+            snapshot_age_seconds?: number | null;
+            /** Snapshot Stale */
+            snapshot_stale: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** StaffV1AuditPage */
         StaffV1AuditPage: {
             /**
@@ -13084,26 +12937,6 @@ export interface operations {
             };
         };
     };
-    dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     get_remediation_history_api_agent_remediation_history_get: {
         parameters: {
             query?: never;
@@ -13188,26 +13021,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-        };
-    };
-    api_quick_dispatch_api_agents_quick_dispatch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };
@@ -13316,26 +13129,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assistant_chat_api_assistant_chat_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AssistantChatResponse"];
                 };
             };
         };
@@ -16590,337 +16383,6 @@ export interface operations {
             };
         };
     };
-    get_maxwell_backends_api_maxwell_backends_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_chat_api_maxwell_chat_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MaxwellChatBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    maxwell_control_api_maxwell_control_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_cost_api_maxwell_cost_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_dispatch_task_api_maxwell_dispatch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_pipeline_control_api_maxwell_pipeline_control__action__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                action: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_pipeline_state_api_maxwell_pipeline_state_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_status_api_maxwell_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_tasks_api_maxwell_tasks_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_task_detail_api_maxwell_tasks__task_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_version_api_maxwell_version_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_workers_api_maxwell_workers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
     get_web_vitals_aggregated_api_metrics_web_vitals_get: {
         parameters: {
             query?: never;
@@ -18445,6 +17907,43 @@ export interface operations {
             };
         };
     };
+    evaluate_slot_health_api_runners_slot_health_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_runner_diagnostics_api_runners__runner_id__diagnostics_post: {
         parameters: {
             query?: never;
@@ -18886,6 +18385,28 @@ export interface operations {
             };
         };
     };
+    activity_summary_api_staff_activity_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     list_audit_api_staff_audit_get: {
         parameters: {
             query?: {
@@ -19235,6 +18756,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffHoldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_host_settings_api_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -19642,6 +19220,41 @@ export interface operations {
             };
         };
     };
+    post_leader_lease_api_staff_schedule_leader_lease_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaderLeaseBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     toggle_scheduler_api_staff_schedule_toggle_post: {
         parameters: {
             query?: never;
@@ -19763,6 +19376,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffPricingResponse"];
+                };
+            };
+        };
+    };
+    get_usage_snapshot_api_staff_usage_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotResponse"];
+                };
+            };
+        };
+    };
+    ingest_usage_snapshot_api_staff_usage_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotIngestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -20274,6 +19942,26 @@ export interface operations {
             };
         };
     };
+    ingest_activity_api_v1_activity_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEnvelope"][];
+                };
+            };
+        };
+    };
     get_backlog_api_v1_agent_backlog_get: {
         parameters: {
             query?: never;
@@ -20597,6 +20285,39 @@ export interface operations {
             };
         };
     };
+    get_fleet_brief_api_v1_fleet_brief_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+                limit?: number;
+                format?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_friction_api_v1_fleet_friction_get: {
         parameters: {
             query?: {
@@ -20716,6 +20437,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FrictionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fleet_overload_api_v1_fleet_overload_get: {
+        parameters: {
+            query: {
+                repo: string;
+                open_count_threshold?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -23190,6 +22943,63 @@ export interface operations {
             };
         };
     };
+    get_host_settings_api_v1_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_v1_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_staff_inbox_api_v1_staff_inbox_get: {
         parameters: {
             query?: never;
@@ -23253,6 +23063,7 @@ export interface operations {
                 /** @description Include superseded passages */
                 include_superseded?: boolean;
                 run_id?: string | null;
+                repo?: string | null;
             };
             header?: never;
             path: {
@@ -23370,6 +23181,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffOutcomesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_panels_api_v1_staff_panels_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
