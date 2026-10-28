@@ -1,18 +1,23 @@
-"""Non-LLM PR hygiene batch endpoint (#3311, part of Grok Bot offload epic #3295).
+"""Non-LLM PR hygiene batch endpoints (#3311, part of Grok Bot offload epic #3295).
 
-Deterministic batch run over explicit ``(repo, pr)`` targets: for each target,
-list its own head-SHA workflow runs and plan a rerun of the ones that failed.
-Dry run (default) only reports the plan; live execution (``dry_run=False``)
-reruns those failed runs and nothing else. This endpoint never cancels,
-admin-merges, force-pushes or closes anything -- update-branch, merge-queue
-re-arming and PR-body (Closes->Refs) fixes are deliberately out of scope for
-this slice and tracked as follow-up work on #3311.
+Deterministic batch runs over explicit ``(repo, pr)`` targets, never cancelling,
+admin-merging, force-pushing or closing anything:
+
+- ``POST /pr-hygiene`` lists a target's own head-SHA workflow runs and plans a
+  rerun of the ones that failed.
+- ``POST /pr-hygiene/closes-refs`` retexts a ``Closes #N`` in a PR body to
+  ``Refs #N`` when ``N`` is an epic tracker, so merging the PR cannot wrongly
+  auto-close it.
+
+Both default to a dry run that only reports the plan; update-branch and
+merge-queue re-arming remain out of scope, tracked as follow-up work on #3311.
 """
 
 # ruff: noqa: B008
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import gh_client
@@ -29,6 +34,13 @@ router = APIRouter(tags=["staff-pr-hygiene"])
 
 MAX_ITEMS = 20
 _STAFF_ADMIN = require_scope("staff.admin")
+
+#: GitHub's "close/closes/closed" keyword only (this repo's documented PR-body
+#: convention, per AGENTS.md); "fix(es/ed)"/"resolve(s/d)" are out of scope.
+_CLOSES_RE = re.compile(r"\b(?:closes?|closed)\s+#(\d+)\b", re.IGNORECASE)
+
+#: Labels marking an issue as a multi-PR tracker that no single PR should close.
+_EPIC_LABELS = frozenset({"epic", "type:epic"})
 
 
 class PrHygieneItem(BaseModel):
@@ -83,6 +95,20 @@ async def _apply_one(plan: dict[str, Any]) -> dict[str, Any]:
     return {**plan, "applied": applied, "success": success}
 
 
+async def _collect_plans(items: list[PrHygieneItem], plan_one: Any) -> list[dict[str, Any]]:
+    """Run ``plan_one`` over every item, mapping its errors onto the shared HTTP contract."""
+    try:
+        return [await plan_one(item) for item in items]
+    except MaintenancePreconditionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except gh_client.GhNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except gh_client.GhAuthError as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub rejected the token: {exc}") from exc
+    except gh_client.GhClientError as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub refused the request: {exc}") from exc
+
+
 @router.post("/pr-hygiene")
 async def pr_hygiene(
     body: PrHygieneRequest,
@@ -94,16 +120,7 @@ async def pr_hygiene(
     item; a dry run changes nothing on GitHub, a live run reruns only the failed
     runs it planned to rerun, and the batch is always audited.
     """
-    try:
-        plans = [await _plan_one(item) for item in body.items]
-    except MaintenancePreconditionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except gh_client.GhNotFound as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except gh_client.GhAuthError as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub rejected the token: {exc}") from exc
-    except gh_client.GhClientError as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub refused the request: {exc}") from exc
+    plans = await _collect_plans(body.items, _plan_one)
 
     if body.dry_run:
         results = [{**plan, "dry_run": True} for plan in plans]
@@ -118,6 +135,91 @@ async def pr_hygiene(
         principal=caller.id,
         surface="api",
         outcome=outcome,
+        detail={"dry_run": body.dry_run, "items": results},
+    )
+    return {"dry_run": body.dry_run, "results": results}
+
+
+async def _epic_closes_in_body(full: str, body: str) -> list[dict[str, Any]]:
+    """Return one ``{issue, labels}`` entry per distinct ``Closes #N`` whose issue is an epic."""
+    flagged: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for match in _CLOSES_RE.finditer(body):
+        number = int(match.group(1))
+        if number in seen:
+            continue
+        seen.add(number)
+        issue = await gh_client.get(f"/repos/{full}/issues/{number}")
+        labels = {lbl.get("name", "") for lbl in issue.get("labels", [])} if isinstance(issue, dict) else set()
+        if labels & _EPIC_LABELS:
+            flagged.append({"issue": number, "labels": sorted(labels)})
+    return flagged
+
+
+def _retext_closes_to_refs(body: str, issue_numbers: set[int]) -> str:
+    """Rewrite only the ``Closes #N`` occurrences naming one of ``issue_numbers`` to ``Refs #N``."""
+
+    def _sub(match: re.Match[str]) -> str:
+        number = int(match.group(1))
+        return f"Refs #{number}" if number in issue_numbers else match.group(0)
+
+    return _CLOSES_RE.sub(_sub, body)
+
+
+async def _plan_one_closes_refs(item: PrHygieneItem) -> dict[str, Any]:
+    """Pre: ``item.repo`` is in the org. Post: a plan naming every epic-targeting ``Closes #N``."""
+    full = repo_full(item.repo)
+    pr = await gh_client.get(f"/repos/{full}/pulls/{item.pr}")
+    body = pr.get("body") or "" if isinstance(pr, dict) else ""
+    flagged = await _epic_closes_in_body(full, body)
+    return {
+        "repo": item.repo,
+        "pr": item.pr,
+        "flagged": flagged,
+        "action": "fix_closes_refs" if flagged else "none",
+        "_body": body,
+    }
+
+
+async def _apply_one_closes_refs(plan: dict[str, Any]) -> dict[str, Any]:
+    """Retext ``plan``'s body for its flagged issues only; a plan with none is a no-op."""
+    if not plan["flagged"]:
+        return {**plan, "patched": False}
+    full = repo_full(plan["repo"])
+    numbers = {entry["issue"] for entry in plan["flagged"]}
+    new_body = _retext_closes_to_refs(plan["_body"], numbers)
+    await gh_client.patch(f"/repos/{full}/pulls/{plan['pr']}", json={"body": new_body})
+    return {**plan, "patched": True}
+
+
+def _without_body(plan: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in plan.items() if k != "_body"}
+
+
+@router.post("/pr-hygiene/closes-refs")
+async def pr_hygiene_closes_refs(
+    body: PrHygieneRequest,
+    caller: Principal = Depends(_STAFF_ADMIN),
+) -> dict[str, Any]:
+    """Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.
+
+    Pre: every item names an in-org repo and an existing PR. Post: one result per
+    item; a dry run changes nothing on GitHub, a live run retexts only the flagged
+    ``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.
+    """
+    plans = await _collect_plans(body.items, _plan_one_closes_refs)
+
+    if body.dry_run:
+        results = [{**_without_body(plan), "dry_run": True} for plan in plans]
+    else:
+        results = [{**_without_body(await _apply_one_closes_refs(plan)), "dry_run": False} for plan in plans]
+
+    record_audit(
+        action="maintenance",
+        target="pr-hygiene-closes-refs",
+        principal=caller.id,
+        surface="api",
+        outcome="success",
         detail={"dry_run": body.dry_run, "items": results},
     )
     return {"dry_run": body.dry_run, "results": results}
