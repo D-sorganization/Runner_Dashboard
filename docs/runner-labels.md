@@ -16,6 +16,7 @@ to the correct runner tier.
 | `d-sorg-fleet-docker`  | NVMe or SSD  | Docker image builds, Trivy scans, container-layer cache churn                                    | Lightweight maintenance workflows                              |
 | `d-sorg-fleet-bulk`    | HDD          | Governance, issue taxonomy sync, label sync, spec checks, secret scans, lease reaper, verify-tag | Docker builds, native-build CI, lockfile refreshes, Playwright |
 | `d-sorg-fleet-queue`   | Reserved slot | `merge_group` validation only, to keep merge-queue checks from waiting behind PR builds         | Pull-request builds, scheduled and manual jobs                |
+| `d-sorg-fleet-browser` | Playwright/Vitest-capable | Frontend/E2E jobs in `frontend-tests.yml`, opt-in via the `CI_BROWSER_RUNNER_LABEL` repo variable (#3045) | The Brick runners (Brick-1/-2); never assign this label to them |
 
 ## Neutral Labels (safe during transition)
 
@@ -64,6 +65,34 @@ one reserved runner slot before workflows route jobs to it. Do not assign it to
 PR builds or maintenance jobs; the reservation is what protects merge checks
 from the shared PR queue. Keep merge-queue cancellation disabled until the
 owner records approval in the enabling PR.
+
+### Browser runner (opt-in switch, #3045)
+
+```yaml
+runs-on: [self-hosted, Linux, X64, d-sorg-fleet-browser]
+```
+
+`frontend-tests.yml` does not use this snippet directly: every job's
+`runs-on` already ends in `... || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet'`,
+so setting the `CI_BROWSER_RUNNER_LABEL` repository variable to
+`d-sorg-fleet-browser` is enough to opt every frontend/E2E job in at once. With
+the variable unset, those jobs resolve exactly as they do today (bare
+`d-sorg-fleet`).
+
+**Rollout order:**
+
+1. Org admin adds the `d-sorg-fleet-browser` label (Playwright system deps +
+   Node, never Brick-1/-2) to the runners that should carry it.
+2. Verify at least 8 of those runners are online and advertising the label.
+3. Set the repository variable `CI_BROWSER_RUNNER_LABEL=d-sorg-fleet-browser`.
+   Frontend/E2E jobs route to the new label on the next run; fork PRs and
+   hosted-mode PRs are unaffected (RM#1989).
+4. Restart Brick-1 and Brick-2 last, now that they no longer need to serve
+   frontend/E2E jobs under the bare `d-sorg-fleet` label.
+
+**Rollback:** unset `CI_BROWSER_RUNNER_LABEL` (frontend/E2E jobs fall back to
+`d-sorg-fleet` immediately); stop Brick-1/-2 again first if they were
+restarted into serving frontend/E2E traffic.
 
 ## Workflow Classes
 
