@@ -13,7 +13,11 @@ ARGS = {
     "send": {"to": "codex", "kind": "update", "summary": "hi"},
     "inbox": {},
     "peers": {},
-    "ask_barb": {"summary": "?"},
+    "ask_barb": {
+        "summary": "?",
+        "options": [{"label": "Yes", "recommended": True}, {"label": "No"}],
+        "recommendation_reason": "Checks are green.",
+    },
 }
 
 

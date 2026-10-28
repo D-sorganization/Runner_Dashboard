@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from delivery_metrics.models import CheckRunSnapshot, PrSnapshot
+from delivery_metrics.workflow_runs import workflow_run_id_from_url
 from time_utils import parse_github_ts
 
 
@@ -53,6 +54,7 @@ def parse_check_runs(repo_full: str, head_sha: str, payload: dict[str, Any]) -> 
             continue
         app_raw = raw.get("app")
         app: dict[str, Any] = app_raw if isinstance(app_raw, dict) else {}
+        details = str(raw.get("details_url") or raw.get("html_url") or "")
         out.append(
             CheckRunSnapshot(
                 repo_full=repo_full,
@@ -63,8 +65,9 @@ def parse_check_runs(repo_full: str, head_sha: str, payload: dict[str, Any]) -> 
                 conclusion=raw.get("conclusion") if raw.get("conclusion") is not None else None,
                 started_at=parse_github_ts(raw.get("started_at")),
                 completed_at=parse_github_ts(raw.get("completed_at")),
-                details_url=str(raw.get("details_url") or raw.get("html_url") or ""),
+                details_url=details,
                 app_slug=str(app.get("slug") or ""),
+                workflow_run_id=workflow_run_id_from_url(details),
             )
         )
     return tuple(out)

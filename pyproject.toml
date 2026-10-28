@@ -63,6 +63,7 @@ markers = [
     "live_simulation: marks tests as requiring live simulation environment",
     "requires_network: needs real outbound network",
     "heavy: resource-intensive tests",
+    "requires_posix: requires POSIX filesystem or process semantics",
 ]
 
 [tool.coverage.report]

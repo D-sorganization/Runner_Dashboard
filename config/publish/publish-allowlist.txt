@@ -1,0 +1,30 @@
+# Publish allowlist (#3080): one glob per line, `**` spans directories.
+# Covers today's tree; #3082 tightens it as private material moves out.
+.*
+.*/**
+*.json
+*.lock
+*.md
+*.sh
+*.toml
+*.ts
+*.txt
+*.yaml
+Dockerfile
+LICENSE
+Makefile
+VERSION
+backend/**
+benchmarks/**
+changes/**
+clients/**
+config/**
+deploy/**
+docker/**
+docs/**
+fleet-hooks/**
+frontend/**
+scripts/**
+shared_scripts/**
+src/**
+tests/**
