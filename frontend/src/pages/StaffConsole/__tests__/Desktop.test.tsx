@@ -323,3 +323,23 @@ describe("StaffConsoleDesktop", () => {
     }
   });
 });
+
+
+it("shows named project starters in an active desktop conversation without sending or changing thread", async () => {
+  render(<StaffConsoleDesktop roles={ROLES} chatFirst />);
+  fireEvent.click(screen.getByRole("button", { name: "Choose staff" }));
+  openMaintenance();
+  await screen.findByText("All hosts healthy.");
+  for (const project of ["UpstreamDrift", "AffineDrift"]) {
+    fireEvent.click(screen.getByRole("button", { name: `Start ${project}` }));
+    expect((screen.getByRole("textbox", { name: /staff conversation input/i }) as HTMLTextAreaElement).value).toContain(`Triage ${project}`);
+    expect(screen.getByRole("heading", { name: MAINT_THREAD.title })).toBeInTheDocument();
+    expect(api.postThreadMessage).not.toHaveBeenCalled();
+  }
+  const fresh = { ...MAINT_THREAD, id: "thr_fresh", title: "Fresh conversation" };
+  api.createThread.mockResolvedValue(fresh);
+  fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+  await screen.findByRole("heading", { name: fresh.title });
+  expect(screen.getByRole("button", { name: "Start UpstreamDrift" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Start AffineDrift" })).toBeInTheDocument();
+});
