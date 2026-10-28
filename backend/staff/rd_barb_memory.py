@@ -29,10 +29,15 @@ class MemoryRefused(RuntimeError):
     """A write was refused (locked policy, secret, or cap); nothing was written."""
 
 
+def rd_barb_state_dir() -> Path:
+    """``$RUNNER_DASHBOARD_STATE_DIR/rd-barb`` (config dir fallback); every rd-barb state file lives here."""
+    state = os.environ.get("RUNNER_DASHBOARD_STATE_DIR", "").strip()
+    return (Path(state).expanduser() if state else _config_dir()) / "rd-barb"
+
+
 def default_guidelines_path() -> Path:
     """``$RUNNER_DASHBOARD_STATE_DIR/rd-barb/guidelines.md`` (config dir fallback)."""
-    state = os.environ.get("RUNNER_DASHBOARD_STATE_DIR", "").strip()
-    return (Path(state).expanduser() if state else _config_dir()) / "rd-barb" / "guidelines.md"
+    return rd_barb_state_dir() / "guidelines.md"
 
 
 def _check_entry(text: str) -> str:

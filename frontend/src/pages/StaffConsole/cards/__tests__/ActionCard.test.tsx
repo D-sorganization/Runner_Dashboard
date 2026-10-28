@@ -124,13 +124,13 @@ describe("ActionCard", () => {
     const decidedProposal: ActionProposalData = {
       ...MOCK_PROPOSAL,
       status: "approved",
-      decided_by: "dieter",
+      decided_by: "operator",
       decided_at: "2026-09-25T11:00:00.000Z",
     };
 
     render(<ActionCard proposal={decidedProposal} />);
 
-    expect(screen.getByText(/approved by dieter/i)).toBeInTheDocument();
+    expect(screen.getByText(/approved by operator/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
   });
 

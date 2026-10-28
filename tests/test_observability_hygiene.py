@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 import sys
 from io import StringIO
 from pathlib import Path
@@ -140,17 +141,17 @@ def test_exception_with_sensitive_args_logs_no_values(caplog: pytest.LogCaptureF
 
     caplog.set_level(logging.ERROR)
     token = classification_level_ctx.set(ClassificationLevel.SENSITIVE)
-    sensitive_value = "Example-Corp-ultra-sensitive-token"
+    secret = secrets.token_urlsafe(32)
     try:
         try:
-            raise ValueError(sensitive_value, "metadata-only")
+            raise ValueError(secret, "metadata-only")
         except ValueError:
             log_exception_scrubbed(logging.getLogger("test_observability_hygiene.exc"), "failed")
     finally:
         classification_level_ctx.reset(token)
 
     text = caplog.text
-    assert sensitive_value not in text
+    assert secret not in text
     assert "metadata-only" not in text
 
 
