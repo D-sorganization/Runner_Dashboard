@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.pytest_ci_shard import _collect_node_ids, _parse_collected_node_ids, select_shard
+from scripts.pytest_ci_shard import (
+    _collect_node_ids,
+    _parse_collected_node_ids,
+    pytest_collection_modifyitems,
+    select_shard,
+)
 
 
 def test_parse_collected_node_ids_ignores_warnings_and_summaries() -> None:
@@ -57,6 +62,35 @@ def test_select_shard_rejects_invalid_index() -> None:
         select_shard([], 2, 0)
     with pytest.raises(ValueError, match="index"):
         select_shard([], 2, 3)
+
+
+def test_collection_modifyitems_shards_in_process_and_reports_deselected() -> None:
+    from unittest.mock import MagicMock
+
+    items = [MagicMock(name=f"item_{i}") for i in range(4)]
+    deselected_calls: list[list[object]] = []
+    config = MagicMock()
+    opts = {"--ci-shard-groups": 2, "--ci-shard-index": 2}
+    config.getoption.side_effect = lambda name, default=None: opts.get(name, default)
+    config.hook.pytest_deselected.side_effect = lambda items: deselected_calls.append(list(items))
+
+    working = list(items)
+    pytest_collection_modifyitems(config, working)
+    assert working == [items[1], items[3]]
+    assert deselected_calls == [[items[0], items[2]]]
+
+
+def test_collection_modifyitems_noop_when_single_shard() -> None:
+    from unittest.mock import MagicMock
+
+    items = [MagicMock(name="item_0"), MagicMock(name="item_1")]
+    config = MagicMock()
+    config.getoption.return_value = 1
+
+    working = list(items)
+    pytest_collection_modifyitems(config, working)
+    assert working == items
+    config.hook.pytest_deselected.assert_not_called()
 
 
 def test_ci_standard_tests_matrix_two_shards_on_merge_group_only() -> None:
