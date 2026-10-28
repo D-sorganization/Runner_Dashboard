@@ -157,7 +157,7 @@ def test_sandbox_ephemeral_home_leaves_no_credential_files(tmp_path: Path) -> No
         "PATH": "/usr/bin:/bin",
         "HOME": "/home/ambient-user",
         "GH_TOKEN": "ghp_ambient_host_secret",
-        "GITHUB_APP_PRIVATE_KEY": "secret-key-pem",
+        "GITHUB_APP_PRIVATE_KEY": "secret-key-pem",  # pragma: allowlist secret
     }
     sandbox_root = tmp_path / "sandboxes"
     sandbox_root.mkdir()
