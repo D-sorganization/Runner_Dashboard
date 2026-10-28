@@ -285,7 +285,9 @@ def apply_staff_run_fleet_token(
 ) -> dict[str, str] | None:
     """Attach fleet API token and adapter runtime env, or fail the run on mint errors."""
     try:
-        token = mint_run_token(plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout)
+        token = mint_run_token(
+            plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout, library_read=role.library_read
+        )
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint staff run token for %s", rec.id)
         err = f"token minting failed: {exc}"

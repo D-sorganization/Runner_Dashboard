@@ -59,8 +59,8 @@ describe("FleetStatusBanner", () => {
         isStale={false}
         error={null}
         runners={[
-          { id: 1, name: "d-sorg-local-ControlTower-1", status: "online", busy: false },
-          { id: 2, name: "d-sorg-local-DeskComputer-1", status: "online", busy: true },
+          { id: 1, name: "d-sorg-local-node-a-1", status: "online", busy: false },
+          { id: 2, name: "d-sorg-local-hub-a-1", status: "online", busy: true },
         ]}
         stats={{ runs_completed: 10, runs_success: 10, success_rate: 100 }}
       />
