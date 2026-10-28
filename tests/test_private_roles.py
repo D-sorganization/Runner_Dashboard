@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import inspect
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +17,7 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 import overlay_contract as oc  # noqa: E402
+import private_context_audit as pca  # noqa: E402
 import private_roles as pr  # noqa: E402
 
 MOCK = _ROOT / "tests" / "fixtures" / "overlay" / "mock-overlay.json"
@@ -179,3 +182,67 @@ def test_unavailable_state_rejects_unknown_reasons() -> None:
 def test_none_overlay_is_fail_closed(tmp_path: Path) -> None:
     result = _read(tmp_path, None, None)  # type: ignore[arg-type]
     assert _reason(result) == "role-not-found"
+
+
+# --- issue #3096: private-context audit (metadata only) ---------------------
+
+
+def _audit_store(tmp_path: Path) -> pca.PrivateContextAuditStore:
+    return pca.PrivateContextAuditStore(tmp_path / "audit.sqlite3")
+
+
+def test_successful_read_writes_one_audit_entry(tmp_path: Path) -> None:
+    key = Fernet.generate_key()
+    overlay = _overlay_with_role(_store(tmp_path, key=key, content=SENTINEL.encode()))
+    store = _audit_store(tmp_path)
+    result = _read(tmp_path, overlay, key, audit_store=store)
+    assert result == SENTINEL.encode()
+    entries = store.list_entries(role_id=ROLE_ID)
+    assert len(entries) == 1
+    entry = entries[0]
+    assert (entry.role_id, entry.template_name, entry.provider_cli, entry.host, entry.outcome) == (
+        ROLE_ID,
+        TEMPLATE,
+        CLI,
+        HOST,
+        "success",
+    )
+    assert entry.ts
+    assert SENTINEL not in json.dumps(entry.__dict__)
+
+
+def test_unavailable_read_writes_one_audit_entry_with_its_reason(tmp_path: Path) -> None:
+    key = Fernet.generate_key()
+    overlay = _overlay_with_role(_store(tmp_path, key=key))
+    store = _audit_store(tmp_path)
+    result = _read(tmp_path, overlay, key, template_name="not-allowlisted", audit_store=store)
+    assert _reason(result) == "template-not-allowlisted"
+    entries = store.list_entries(role_id=ROLE_ID)
+    assert len(entries) == 1
+    assert entries[0].outcome == "template-not-allowlisted"
+
+
+def test_audit_write_failure_fails_closed_even_on_an_otherwise_successful_read(tmp_path: Path) -> None:
+    key = Fernet.generate_key()
+    overlay = _overlay_with_role(_store(tmp_path, key=key, content=SENTINEL.encode()))
+
+    class _BrokenStore:
+        def record(self, rec: object) -> int:
+            raise pca.PrivateContextAuditError("disk full")
+
+    result = _read(tmp_path, overlay, key, audit_store=_BrokenStore())
+    assert _reason(result) == "audit-write-failed"
+
+
+def test_audit_entries_survive_role_deletion(tmp_path: Path) -> None:
+    key = Fernet.generate_key()
+    overlay = _overlay_with_role(_store(tmp_path, key=key, content=SENTINEL.encode()))
+    store = _audit_store(tmp_path)
+    _read(tmp_path, overlay, key, audit_store=store)
+
+    overlay_without_role = dataclasses.replace(overlay, private_roles=())
+    assert overlay_without_role.private_role(ROLE_ID) is None
+
+    entries = store.list_entries(role_id=ROLE_ID)
+    assert len(entries) == 1
+    assert entries[0].outcome == "success"
