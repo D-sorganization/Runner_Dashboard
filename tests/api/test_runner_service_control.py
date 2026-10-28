@@ -77,19 +77,34 @@ async def test_run_runner_svc_calls_run_cmd(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(dc, "RUNNER_BASE_DIR", tmp_path)
     captured: dict = {}
 
-    async def fake_run_cmd(cmd, timeout=30, cwd=None):  # noqa: ANN001, ARG001
+    async def fake_run_cmd(cmd, timeout=30, cwd=None, *, input_text=None):  # noqa: ANN001, ARG001
         captured["cmd"] = cmd
         captured["cwd"] = cwd
+        captured["input"] = input_text
         return 0, "started", ""
 
     monkeypatch.setattr(sc, "run_cmd", fake_run_cmd)
     code, stdout, _ = await run_runner_svc(2, "start")
     assert code == 0
-    assert "sudo" in captured["cmd"]
-    assert "start" in captured["cmd"]
+    assert captured["cmd"] == ["sudo", "-n", "/usr/local/sbin/rd-runner-ctl"]
     expected_unit = f"actions.runner.{dc.ORG}.d-sorg-local-{dc.HOSTNAME}-2.service"
-    assert captured["cmd"] == ["sudo", "/usr/bin/systemctl", "start", expected_unit]
+    assert captured["input"] == f"start\n{expected_unit}\n"
     assert captured["cwd"] is None
+
+
+async def test_run_runner_svc_records_failed_control(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(dc, "RUNNER_BASE_DIR", tmp_path)
+
+    async def failed_run_cmd(*args, **kwargs):  # noqa: ANN002, ANN003
+        return 1, "", "helper failed"
+
+    monkeypatch.setattr(sc, "run_cmd", failed_run_cmd)
+    from runner_control_health import get_runner_control_health, reset_runner_control_health
+
+    reset_runner_control_health()
+    await run_runner_svc(2, "stop")
+    assert get_runner_control_health() == {"status": "degraded", "last_action": "stop"}
+    reset_runner_control_health()
 
 
 async def test_run_runner_svc_rejects_unsupported_action(monkeypatch: pytest.MonkeyPatch) -> None:
