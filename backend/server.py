@@ -2371,6 +2371,7 @@ def _diagnostics_payload() -> dict:
     wsl_vhdx_status = _diagnostics_router.get_cached_wsl_vhdx_status() if _diagnostics_router else []
 
     # Optional-integration availability for the standalone/no-fleet profile (#3180)
+    integrations_status: dict[str, Any]
     try:
         from integration_health import check_all_integration_availability
 
