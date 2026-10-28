@@ -77,3 +77,14 @@ def test_preconditions(health: nh.NotifyHealth) -> None:
 def test_default_path_follows_the_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(tmp_path))
     assert nh.default_health_path() == tmp_path / "rd-barb" / "notify-health.json"
+
+
+def test_per_channel_state_is_independent_of_the_aggregate(tmp_path) -> None:
+    health = nh.NotifyHealth(tmp_path / "h.json")
+    health.record_channel("email", ok=False, error="smtp_unreachable", now=T0)
+    health.record_channel("dashboard", ok=True, error="", now=T0)
+    channels = health.status(now=T0 + nh.DEGRADED_AFTER_S)["channels"]
+    assert channels["email"]["state"] == "degraded" and channels["email"]["last_error"] == "smtp_unreachable"
+    assert channels["dashboard"]["state"] == "ok"
+    health.record_channel("email", ok=True, error="", now=T0 + 400)
+    assert health.status(now=T0 + 400)["channels"]["email"]["state"] == "ok"
