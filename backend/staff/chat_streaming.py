@@ -132,12 +132,18 @@ def spawn_cli_process(
     cmd: list[str],
     cwd: str,
     env: dict[str, str],
+    stdin_text: str | None = None,
 ) -> subprocess.Popen[str]:
-    """Spawn the provider CLI subprocess in read-only scratch mode."""
-    return subprocess.Popen(
+    """Spawn the provider CLI subprocess in read-only scratch mode.
+
+    When ``stdin_text`` is given it is written to the child's stdin and stdin is closed, so a prompt too
+    long for argv (Windows command-line limit under WSL interop, #2744) still reaches the CLI.
+    """
+    proc = subprocess.Popen(
         cmd,
         cwd=cwd,
         env=env,
+        stdin=subprocess.PIPE if stdin_text is not None else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -145,6 +151,20 @@ def spawn_cli_process(
         errors="replace",
         bufsize=1,
     )
+    if stdin_text is not None and proc.stdin is not None:
+        try:
+            proc.stdin.write(stdin_text)
+        except OSError:  # the CLI exited early; its exit code and stderr carry the failure
+            pass
+        finally:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+            # Popen.communicate() re-flushes self.stdin if it is still set, which raises on an
+            # already-closed file; clear the attribute now that stdin has been fully delivered.
+            proc.stdin = None
+    return proc
 
 
 class LiveProcessReader:

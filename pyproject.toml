@@ -24,7 +24,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.3",
+    "pytest>=9.0.3,<9.2.0",
     "pytest-asyncio>=0.23.0",
     "pytest-xdist>=3.6.0",
     "pytest-rerunfailures>=14.0",

@@ -246,28 +246,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agent-remediation/dispatch-jules": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Dispatch Jules Workflow
-         * @description Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.
-         *
-         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
-         */
-        post: operations["dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/agent-remediation/history": {
         parameters: {
             query?: never;
@@ -348,28 +326,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/agents/quick-dispatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Api Quick Dispatch
-         * @description Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.
-         *
-         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).
-         */
-        post: operations["api_quick_dispatch_api_agents_quick_dispatch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/analysis/workflow-machines": {
         parameters: {
             query?: never;
@@ -444,29 +400,6 @@ export interface paths {
         get: operations["get_tool_audit_history_api_assistant_audit_history_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/assistant/chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Assistant Chat
-         * @description Retired endpoint (SC-D11, issue #1330).
-         *
-         *     Returns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console
-         *     conversation API at /api/v1/staff/threads.
-         */
-        post: operations["assistant_chat_api_assistant_chat_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4791,6 +4724,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_staff_host_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/inbox": {
         parameters: {
             query?: never;
@@ -6929,6 +6880,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_v1_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_v1_staff_host_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/inbox": {
         parameters: {
             query?: never;
@@ -8568,22 +8537,6 @@ export interface components {
             };
         };
         /**
-         * AssistantChatResponse
-         * @description AI assistant response.
-         */
-        AssistantChatResponse: {
-            /** Context Used */
-            context_used: {
-                [key: string]: unknown;
-            };
-            /** Provider */
-            provider: string;
-            /** Response */
-            response: string;
-            /** Timestamp */
-            timestamp: string;
-        };
-        /**
          * AuditHistoryResponse
          * @description Paginated audit history for assistant tool executions.
          */
@@ -9770,6 +9723,29 @@ export interface components {
         HoldsBody: {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
+        };
+        /** HostSettingsPutBody */
+        HostSettingsPutBody: {
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Global */
+            global?: {
+                [key: string]: unknown;
+            };
+            /** Roles */
+            roles?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
         };
         /**
          * InitializeExecutorPayload
@@ -13116,26 +13092,6 @@ export interface operations {
             };
         };
     };
-    dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-        };
-    };
     get_remediation_history_api_agent_remediation_history_get: {
         parameters: {
             query?: never;
@@ -13220,26 +13176,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-        };
-    };
-    api_quick_dispatch_api_agents_quick_dispatch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
                 };
             };
         };
@@ -13348,26 +13284,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    assistant_chat_api_assistant_chat_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            410: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AssistantChatResponse"];
                 };
             };
         };
@@ -19280,6 +19196,63 @@ export interface operations {
             };
         };
     };
+    get_host_settings_api_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_staff_inbox_api_staff_inbox_get: {
         parameters: {
             query?: never;
@@ -23244,6 +23217,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffHoldsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_host_settings_api_v1_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_v1_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
