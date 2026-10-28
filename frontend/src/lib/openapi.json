@@ -17681,6 +17681,36 @@
         "tags": ["code_requests"]
       }
     },
+    "/api/staff/activity/summary": {
+      "get": {
+        "description": "Bounded aggregate for the node auto-deploy activity probe (#2353).\n\nNo runner/provider initialisation and no peer fan-out (see\n``staff.activity_summary`` for the read-only aggregate query).",
+        "operationId": "activity_summary_api_staff_activity_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Activity Summary Api Staff Activity Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Activity Summary",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/audit": {
       "get": {
         "description": "Retrieve durable append-only staff audit rows (SC-A8, Issue #1298).",
