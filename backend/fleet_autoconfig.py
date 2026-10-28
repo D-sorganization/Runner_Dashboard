@@ -100,6 +100,19 @@ def _pool_url_port(url: str) -> int | None:
         return None
 
 
+def is_fixed_capacity_pool(pool: Mapping[str, Any]) -> bool:
+    """True for an active pool with ``capacity_mode: fixed``.
+
+    Fixed pools are always-on runners in a separate distro with no dashboard
+    or autoscaler (e.g. ControlTower's CT-NVMe distro). They are outside the
+    host autoscaler's cap, need no ``dashboard_url``, and are never dashboard
+    peers.
+    """
+    if not isinstance(pool, Mapping) or pool.get("retired"):
+        return False
+    return str(pool.get("capacity_mode") or "").strip().lower() == "fixed"
+
+
 def derive_pool_topology(
     registry: Mapping[str, Any],
     *,
@@ -123,7 +136,11 @@ def derive_pool_topology(
     for machine in registry.get("machines", []) or []:
         if not isinstance(machine, Mapping):
             continue
-        pools = [p for p in (machine.get("runner_pools") or []) if isinstance(p, Mapping) and not p.get("retired")]
+        pools = [
+            p
+            for p in (machine.get("runner_pools") or [])
+            if isinstance(p, Mapping) and not p.get("retired") and not is_fixed_capacity_pool(p)
+        ]
         if not pools:
             continue
         if not registry_machine_matches_current_dashboard(machine, identities):
@@ -476,6 +493,8 @@ def assert_valid_active_registry(registry: Mapping[str, Any]) -> None:
                 if not pool_name:
                     raise RuntimeError(f"Active runner pool under '{name}' missing name: {pool}")
                 pool_url = str(pool.get("dashboard_url") or "").strip()
+                if not pool_url and is_fixed_capacity_pool(pool):
+                    continue
                 if not pool_url:
                     raise RuntimeError(f"Active runner pool '{pool_name}' under '{name}' missing dashboard_url")
                 try:
