@@ -2,7 +2,7 @@
 
 Covers:
 1. Table-driven tests for every routing criterion (routes vs doesn't route).
-2. Confidential data egress requires user sign-off.
+2. Confidential partner data egress requires user sign-off.
 3. Operator overrides (force_board and skip_board) with audit tracking.
 4. Escalation deadline triggering after N scheduled meetings without decision.
 5. End-to-end integration: triage -> board proposal creation -> board:accepted -> planning with notes.
@@ -92,7 +92,7 @@ class TestBoardRoutingCriteriaTable:
                 ["new_dependency_or_egress"],
                 False,
             ),
-            # Criterion 3b: Confidential data egress requires user sign-off
+            # Criterion 3b: Confidential partner data egress requires user sign-off
             (
                 BoardRoutingCriteria(confidential_data_egress=True),
                 True,
@@ -106,7 +106,7 @@ class TestBoardRoutingCriteriaTable:
                 ["cross_repo_contract"],
                 False,
             ),
-            # Criterion 5: Structural change to a public site (e.g. AffineDrift IA)
+            # Criterion 5: Structural change to a public site
             (
                 BoardRoutingCriteria(public_site_structure=True),
                 True,
@@ -179,6 +179,7 @@ class TestBoardRoutingOverrides:
         request = _make_request(board_route=BoardRoute.SKIP_BOARD)
         criteria = BoardRoutingCriteria(confidential_data_egress=True)
         decision = evaluate_board_routing(request, criteria=criteria)
+        # Confidential partner data egress must never be silently skipped without user signoff
         assert decision.routes_to_board is True
         assert decision.requires_user_signoff is True
 

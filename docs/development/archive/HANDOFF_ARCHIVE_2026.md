@@ -3284,7 +3284,7 @@ Last updated: 2026-09-25
     1. `new_surface`: Adds a new user-facing surface (page, tab, or tool).
     2. `new_service_or_repo`: Creates a new repository, service, or daemon.
     3. `new_dependency_or_egress`: Adds external dependencies or third-party data egress.
-       - Special constraint: `inentec_data_egress` confidential InEnTec/ICR data egress ALWAYS routes to the Board and flags `requires_user_signoff=True`, overriding any operator `skip_board`.
+       - Special constraint: `inentec_data_egress` confidential partner data egress ALWAYS routes to the Board and flags `requires_user_signoff=True`, overriding any operator `skip_board`.
     4. `cross_repo_contract`: Modifies cross-repo contract or schema.
     5. `public_site_structure`: Structural changes to public site navigation or architecture.
     6. `estimated_child_issues > 8` or `target_repos_count > 1`: Multi-repo or large epic breakdown.
