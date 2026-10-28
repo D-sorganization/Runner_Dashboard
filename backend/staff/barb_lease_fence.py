@@ -12,18 +12,33 @@ This extends the existing ``barb_scoped_leases.epoch``; it is not a second fence
 
 Rule: the lock is a ``threading.RLock`` and is held only across the *synchronous* write; never
 ``await`` inside :func:`barb_write_fence`.
+
+Unclaimed Barb writes (#3279). Declaring the claim is opt-in for ordinary callers, but a write from a
+Barb seat (:func:`is_barb_seat`) that carries neither header is not silently trusted.
+``DASHBOARD_BARB_FENCE_MODE`` selects what :func:`claim_for_write` does with it:
+
+- ``off``: nothing; the write runs unfenced (the pre-#3279 behaviour).
+- ``warn`` (default; unknown values fall back to it): log a warning naming the principal and surface
+  (never header values or credentials), count it in ``dashboard_barb_unclaimed_writes_total``, allow it.
+- ``enforce``: count it and refuse with the fence's ``stale_barb_lease`` 409, reason ``claim_required``.
+
+Non-Barb requests are unaffected in every mode.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import HTTPException
+
+if TYPE_CHECKING:
+    from identity import Principal
 
 log = logging.getLogger("dashboard.barb_fence")
 
@@ -31,6 +46,11 @@ SCOPE_HEADER = "x-barb-scope"
 EPOCH_HEADER = "x-barb-lease-epoch"
 HOLDER_HEADER = "x-barb-holder"
 STALE_ERROR = "stale_barb_lease"
+MODE_ENV = "DASHBOARD_BARB_FENCE_MODE"
+FenceMode = Literal["off", "warn", "enforce"]
+_MODES: tuple[FenceMode, ...] = ("off", "warn", "enforce")
+DEFAULT_MODE: FenceMode = "warn"
+BARB_SEAT_IDS = frozenset({"barb", "agent-grok"})
 
 
 @dataclass(frozen=True)
@@ -80,6 +100,60 @@ def parse_barb_claim(headers: Mapping[str, str], caller_id: str) -> BarbClaim | 
     return BarbClaim(scope=scope, epoch=epoch, caller_id=caller_id, holder=(headers.get(HOLDER_HEADER) or "").strip())
 
 
+def is_barb_seat(principal: Principal | None) -> bool:
+    """True for a principal that acts as a Barb seat (Grok-kind assistant, a Barb id or the ``barb`` role/scope).
+
+    Admins are deliberately not Barb seats here: they may read Barb-only memory, but their writes are
+    operator writes, not Barb-authority writes.
+    """
+    if principal is None:
+        return False
+    marks = set(principal.roles) | set(principal.scopes)
+    return principal.assistant_kind == "grokbot" or principal.id in BARB_SEAT_IDS or "barb" in marks
+
+
+def fence_mode() -> FenceMode:
+    """The configured unclaimed-write mode; an unset or unknown value is ``warn``."""
+    raw = os.environ.get(MODE_ENV, "").strip().lower()
+    for mode in _MODES:
+        if raw == mode:
+            return mode
+    if raw:
+        log.warning("barb fence: unknown %s value; using %s", MODE_ENV, DEFAULT_MODE)
+    return DEFAULT_MODE
+
+
+def claim_for_write(headers: Mapping[str, str], principal: Principal, *, surface: str) -> BarbClaim | None:
+    """Parse the request's Barb claim and apply the unclaimed-write policy for Barb seats (#3279).
+
+    Pre-condition: ``surface`` is non-empty. Post-condition: the result is exactly
+    :func:`parse_barb_claim`'s; the only extra effect is a log line, a metric increment or (``enforce``) a 409.
+    """
+    assert surface, "surface must be non-empty"
+    claim = parse_barb_claim(headers, principal.id)
+    if claim is not None or not is_barb_seat(principal):
+        return claim
+    mode = fence_mode()
+    if mode == "off":
+        return None
+    from prometheus_metrics import record_barb_unclaimed_write  # noqa: PLC0415
+
+    record_barb_unclaimed_write(surface)
+    log.warning(
+        "barb fence: write by Barb principal %s on %s arrived without lease claim headers (mode=%s)",
+        principal.id,
+        surface,
+        mode,
+    )
+    if mode == "enforce":
+        exc = StaleBarbLease(reason="claim_required", scope="", current_epoch=0, holder="", claimed_epoch=0)
+        from identity import format_caller  # noqa: PLC0415
+
+        caller = format_caller(principal)
+        raise reject_stale(exc, claimed_holder=principal.id, surface=surface, target=surface, principal=caller)
+    return None
+
+
 class BarbLeaseFenceMixin:
     """Fence methods for the continuity store; expects ``_lock`` (RLock) and ``_conn`` from the host."""
 
@@ -122,7 +196,9 @@ class BarbLeaseFenceMixin:
             yield self.assert_lease_claim(claim, now=now)
 
 
-def reject_stale(exc: StaleBarbLease, *, claim: BarbClaim, surface: str, target: str, principal: str) -> HTTPException:
+def reject_stale(
+    exc: StaleBarbLease, *, claimed_holder: str, surface: str, target: str, principal: str
+) -> HTTPException:
     """Audit the rejection and build the 409 the caller receives."""
     try:
         from staff.audit import record_audit  # noqa: PLC0415
@@ -133,7 +209,7 @@ def reject_stale(exc: StaleBarbLease, *, claim: BarbClaim, surface: str, target:
             principal=principal,
             surface=surface,
             outcome="rejected",
-            detail={**exc.detail, "claimed_holder": claim.holder or claim.caller_id},
+            detail={**exc.detail, "claimed_holder": claimed_holder},
             fail_closed=False,
         )
     except Exception:  # noqa: BLE001 - the rejection must reach the caller even if the audit sink is down
@@ -178,7 +254,9 @@ def barb_write_fence(
         try:
             stack.enter_context(store.fence(claim))
         except StaleBarbLease as exc:
-            rejection = reject_stale(exc, claim=claim, surface=surface, target=target, principal=principal)
+            rejection = reject_stale(
+                exc, claimed_holder=claim.holder or claim.caller_id, surface=surface, target=target, principal=principal
+            )
             if audit is not None:
                 _supersede_admitted_audit(audit, rejection)
             raise rejection from None
