@@ -195,7 +195,7 @@ def emit_activity_envelope(envelope: ActivityEnvelope | Mapping[str, Any], **opt
         raw_p["repo"] = val.repo
 
     def _fmt_act(proj: SharedProjection) -> dict[str, Any]:
-        if not proj.withheld:
+        if not proj.withheld and isinstance(proj.content, Mapping):
             return ActivityEnvelope.model_validate(proj.content["envelope"]).model_dump(mode="json")
         op_repo = proj.metadata.get("repo")
         pl = dict(withheld=True, level=proj.level.name, opaque_id=proj.opaque_id, metadata=dict(proj.metadata))
@@ -233,7 +233,7 @@ def emit_github_check_run(
         p["text"] = text
 
     def _fmt_chk(proj: SharedProjection) -> dict[str, Any]:
-        if proj.withheld:
+        if proj.withheld or not isinstance(proj.content, Mapping):
             st, oc = proj.metadata.get("status", "withheld"), proj.metadata.get("outcome", "withheld")
             ms = f"level={proj.level.name} withheld=true opaque_id={proj.opaque_id} status={st} outcome={oc}"
             out = {"title": f"Private Mode check ({chk_status})", "summary": ms}
