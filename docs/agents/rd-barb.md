@@ -110,7 +110,7 @@ reuses `staff.provider_failover_config.resolve_failover_chain`.
   restarts on the printed provider, and the script sends a "switched provider"
   fyi with a recommendation. An exhausted chain sends an `alert`.
 
-## `/barb` and `@barb` per-CLI wrappers (#3067, #3070, #3071)
+## `/barb` and `@barb` per-CLI wrappers (#3067, #3069, #3070, #3071)
 
 Every fleet CLI gets the same `/barb` slash command, rendered from one shared
 template (`scripts/wrappers/barb_command_template.py`, synced per provider by
@@ -126,6 +126,11 @@ thread.
 - On Cursor: `.cursor/commands/barb.md` / `.cursor/rules/barb.mdc` handle
   `@barb` mentions the same way via `scripts/wrappers/cursor_barb_hook.py`, a
   `beforeSubmitPrompt` hook (registered in `.cursor/hooks.json`).
+- On Antigravity (agy): `.agent/workflows/barb.md` handles `/barb`;
+  `@barb` mention-wake works the same way via
+  `scripts/wrappers/agy_barb_hook.py`, registered as a `Stop` hook in
+  `.agent/hooks.json` (agy has no prompt-submit hook event, so `Stop` is the
+  closest fit per `scripts/postman_provider_caps.py`'s `AGY_HOOK_EVENTS`).
 - For Tools Sidekick: Sidekick packaging/dispatch is on HOLD (docs/triage
   only), so this repo ships no Sidekick-side command surface -- only the
   RD-side contract Tools implements against. `scripts/wrappers/sidekick_barb_hook.py`
