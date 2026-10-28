@@ -138,8 +138,12 @@ class ResolvedRoleHost:
 def resolve_role_leader(role: str, doc: HostSettingsDocument | None = None) -> ResolvedRoleHost:
     block = doc.roles.get(role) if doc else None
     block = block or (doc.global_default if doc else HostSettingsBlock.default())
-    enabled = tuple(h for h in ("grokbot", "rd") if block.hosts[h].enabled)
-    order = ("rd", "grokbot") if block.preference == "rd-first" else ("grokbot", "rd")
+    enabled_list: list[HostId] = []
+    for hid in ("grokbot", "rd"):
+        if block.hosts[hid].enabled:
+            enabled_list.append(hid)
+    enabled = tuple(enabled_list)
+    order: tuple[HostId, HostId] = ("rd", "grokbot") if block.preference == "rd-first" else ("grokbot", "rd")
     leader: HostId | None = None
     followers: list[HostId] = []
     for hid in order:
