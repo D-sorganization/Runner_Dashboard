@@ -87,20 +87,23 @@ Pictures for all of these are already in `staff/avatars/personas/`.
 | Professor Frink                  | Prototypes                                                | Probably `mad-scientist`; Grok Barb to confirm                                                                      |
 | Fleet-Librarian                  | Drive library curation                                    | `librarian` (its role file already has the Drive connector)                                                         |
 | Fleet-Dispatcher, Fleet Status   | Dispatch, status                                          | Not seated: replaced by `POST /api/staff/{role}/run` and `GET /api/staff/summary`                                   |
-| Three personal personas          | Personal life, non-repo work tasks, productivity watchdog | Private seats only (next section); never in this public repo or in any shared memory                                |
+| Three personal personas          | Personal life, non-repo work tasks, productivity watchdog | Private seats in the private overlay (decided, next section); never in this public repo or in any shared memory     |
 
 ### 3. Personal Seats
 
 Three personas handle Dieter's personal life and work outside the repo lanes (Repository_Management
-`docs/org-chart.md` names them). RD is going public (#3077), so their role text, memory and mail never
-live here or in the exchange repo. Two options, both Dieter's call:
+`docs/org-chart.md` names them). **Decided (Dieter, 2026-10-27): they get private seats.** They are his own
+agents, not part of the open-source project, so their role text, memory and mail never live here or in
+the exchange repo.
 
-1. **Private RD seat**: a `private_roles` entry in the private overlay (#3094), memory in the
-   encrypted host-local context store, reachable only by its own role id. The non-repo work-task persona
-   already has an RD staff thread that Barb hands tasks into, so it is the natural first private seat.
-2. **Stay in Grok Bot**, with a Duet channel as the fallback. The personal-life persona is the only bot
-   allowed Dieter's mail today, and Claude Duet already reads his mail, so a Duet fallback needs no new
-   access.
+- **Where:** a `private_roles` entry each in the private overlay (#3094), with memory in the encrypted
+  host-local context store, readable only by that role's own id. Their role files and pictures move
+  with them into the overlay, not into public `staff/roles/`.
+- **First one:** the non-repo work-task persona already has an RD staff thread that Barb hands tasks
+  into, so it is the natural first private seat.
+- **Fallback:** the Grok Bot app while it still hosts them, then Claude Duet. The personal-life persona
+  is the only bot allowed Dieter's mail today, and Claude Duet already reads his mail, so a Duet fallback
+  needs no new access.
 
 ## How a Seat Talks (Reuses PR #3231)
 
@@ -195,6 +198,7 @@ else happens until a tier comes back.
    read-only at `GET /api/staff/seats` and shown in the Staff Console.
 4. Messaging: #3231 slices 2 to 4 with the seat roster as recipients.
 5. Heartbeat in the exchange repo, then the Tier 2 fallback routing behind its own switch.
+   The three private seats are set up in the private overlay, outside this repository.
 6. One supervised dry run per seat, then go-live per seat on Dieter's yes.
 
 ## Questions for Grok Barb (Barbara #15)
@@ -203,11 +207,17 @@ else happens until a tier comes back.
 2. Which roles keep a Grok Bot persona as their Tier 2 fallback, and which can be retired from the app?
 3. Any memory or pictures not already in Repository_Management.
 
+## Future Upgrades
+
+- **Renameable agents.** Every agent's display name should be changeable by the user (Dieter,
+  2026-10-27), so the Simpsons names are defaults, not identifiers. The seat's id (role file stem,
+  bus address, `to:<role>` label) stays fixed and only the display name changes, so a rename never
+  breaks routing, memory or history. Not part of this proposal's rollout.
+
 ## What Needs Dieter
 
 1. Approve or change the roster and the fallback groups above.
-2. Personal seats: private RD seat, or stay in Grok Bot with a Duet fallback.
-3. Linus: seat it now, or keep it in Grok Bot until its upstream scope is set.
-4. Which roles also get a Duet channel (proposed: PM-UpstreamDrift and PM-AffineDrift; barb exists).
-5. Pictures for the nine RD-born roles.
-6. Later, one yes per switch after its dry run.
+2. Linus: seat it now, or keep it in Grok Bot until its upstream scope is set.
+3. Which roles also get a Duet channel (proposed: PM-UpstreamDrift and PM-AffineDrift; barb exists).
+4. Pictures for the nine RD-born roles.
+5. Later, one yes per switch after its dry run.
