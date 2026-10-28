@@ -784,7 +784,7 @@ jobs:
               python scripts/pytest_ci_shard.py --groups "$SHARDS" --index "$SHARD" --marker "$FAST_MARKER"
             )
             echo "merge_group shard ${SHARD}/${SHARDS}: ${#SHARD_NODES[@]} tests"
-            pytest --tb=short -n auto "${SHARD_NODES[@]}"
+            pytest --tb=short -n auto -m "$FAST_MARKER" "${SHARD_NODES[@]}"
           else
             pytest tests/ --tb=short -n auto -m "$FAST_MARKER"
           fi

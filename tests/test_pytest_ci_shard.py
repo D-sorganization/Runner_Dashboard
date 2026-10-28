@@ -4,7 +4,41 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.pytest_ci_shard import select_shard
+from scripts.pytest_ci_shard import _collect_node_ids, _parse_collected_node_ids, select_shard
+
+
+def test_parse_collected_node_ids_ignores_warnings_and_summaries() -> None:
+    sample_stdout = """
+tests/a.py::test_one
+tests/b.py::TestSuite::test_two[param with space]
+tests/c.py: 12
+
+=============================== warnings summary ===============================
+backend/main.py:45
+  /path/backend/main.py:45: DeprecationWarning: on_event is deprecated
+    app.on_event("startup")
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2/10 tests collected (8 deselected) in 0.12s
+"""
+    assert _parse_collected_node_ids(sample_stdout) == [
+        "tests/a.py::test_one",
+        "tests/b.py::TestSuite::test_two[param with space]",
+    ]
+
+
+def test_collect_node_ids_overrides_addopts_to_single_quiet(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    captured_cmd: list[str] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_cmd.extend(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="tests/a.py::test_one\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert _collect_node_ids("not slow") == ["tests/a.py::test_one"]
+    assert "-o" in captured_cmd
+    assert "addopts=-q" in captured_cmd
 
 
 def test_select_shard_splits_evenly() -> None:

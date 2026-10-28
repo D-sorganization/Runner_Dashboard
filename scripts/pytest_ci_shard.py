@@ -11,14 +11,32 @@ import subprocess
 import sys
 
 
+def _parse_collected_node_ids(stdout: str) -> list[str]:
+    nodes: list[str] = []
+    for raw in stdout.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("="):
+            break
+        head = line.split("[", 1)[0]
+        if "::" not in head or " " in head or head.endswith(":"):
+            continue
+        nodes.append(line)
+    return nodes
+
+
 def _collect_node_ids(marker_expr: str) -> list[str]:
     proc = subprocess.run(
         [
             sys.executable,
             "-m",
             "pytest",
+            "-o",
+            "addopts=-q",
+            "-W",
+            "ignore",
             "--collect-only",
-            "-q",
             "tests/",
             "-m",
             marker_expr,
@@ -31,15 +49,7 @@ def _collect_node_ids(marker_expr: str) -> list[str]:
         sys.stderr.write(proc.stdout)
         sys.stderr.write(proc.stderr)
         raise SystemExit(proc.returncode or 1)
-    nodes: list[str] = []
-    for raw in proc.stdout.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("="):
-            continue
-        if line.endswith(" warnings summary"):
-            continue
-        nodes.append(line.split()[0])
-    return nodes
+    return _parse_collected_node_ids(proc.stdout)
 
 
 def select_shard(nodes: list[str], groups: int, index: int) -> list[str]:
