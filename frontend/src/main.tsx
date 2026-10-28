@@ -16,7 +16,6 @@ import {
   tryRefreshSession,
 } from './lib/sessionExpired'
 import { installWheelValueGuard } from './lib/wheelValueGuard'
-import { initWebVitals } from './lib/webVitals'
 import { loadFonts } from './lib/loadFonts'
 import './index.css'
 
@@ -26,8 +25,11 @@ import './index.css'
 // focused number input.
 installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
 installWheelValueGuard(document)
-// Web Vitals — send metrics to backend (issues #385, #1550)
-initWebVitals()
+// Optional telemetry stays outside the render-critical entry bundle (#3282).
+// Web Vitals uses buffered observers, so early paint metrics are still captured.
+void import('./lib/webVitals').then(({ initWebVitals }) => initWebVitals()).catch(() => {
+  // A telemetry chunk failure must not prevent the dashboard from starting.
+})
 
 // Service Worker Registration
 // Provides offline support, caching, and PWA installability.

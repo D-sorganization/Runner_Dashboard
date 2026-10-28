@@ -101,8 +101,8 @@ def _unit_state(unit: str) -> tuple[str, str]:
 def _runner_name_for_unit(unit: str) -> str:
     """Extract the runner name from a unit (the last dotted segment before .service).
 
-    Example: ``actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service``
-    → ``d-sorg-local-ControlTower-3``.
+    Example: ``actions.runner.D-sorganization.d-sorg-local-node-a-3.service``
+    → ``d-sorg-local-node-a-3``.
     """
     # The unit prefix is ``actions.runner.<org>.``. Whatever follows up to the
     # ``.service`` suffix is the runner name. We use rpartition so a future
@@ -211,7 +211,7 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
     genuine host-overload eviction are different events, and labelling every
     stop "host overloaded" (the old hardcoded string) made an idle-host
     schedule trim look like a CPU/memory emergency — the misleading half of the
-    OGLaptop 2026-06-09 report.
+    node-b 2026-06-09 report.
 
     After every stop attempt (whether systemctl returns success or failure)
     invokes :func:`runner_state_cleanup.cleanup_runner_state` so that any

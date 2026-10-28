@@ -191,10 +191,10 @@ class TestOllamaModels:
         from agent_remediation import provider_registry
 
         # Trailing slash must be normalized away (deployment sets a bare base).
-        monkeypatch.setenv("DASHBOARD_OLLAMA_URL", "http://100.69.12.6:11434/")
+        monkeypatch.setenv("DASHBOARD_OLLAMA_URL", "http://100.64.254.11:11434/")
         reloaded = importlib.reload(provider_registry)
         try:
-            assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://100.69.12.6:11434/api/tags"
+            assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://100.64.254.11:11434/api/tags"
         finally:
             monkeypatch.delenv("DASHBOARD_OLLAMA_URL", raising=False)
             importlib.reload(provider_registry)

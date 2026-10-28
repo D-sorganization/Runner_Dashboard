@@ -7,6 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = REPO_ROOT / "deploy" / "runner-dashboard.service"
 SETUP_SH = REPO_ROOT / "deploy" / "setup.sh"
+SCOPE_SH = REPO_ROOT / "deploy" / "setup-systemd-scope.sh"
 
 
 def test_runner_dashboard_unit_template_has_no_machine_role() -> None:
@@ -19,7 +20,8 @@ def test_runner_dashboard_unit_template_has_no_machine_role() -> None:
 
 def test_setup_sh_strips_stale_machine_role_and_supports_override() -> None:
     setup = SETUP_SH.read_text(encoding="utf-8")
+    scope = SCOPE_SH.read_text(encoding="utf-8")
     assert "ROLE_ENV_OVERRIDE" in setup
-    assert "Environment=MACHINE_ROLE=" in setup
+    assert "Environment=MACHINE_ROLE=" in scope
     assert "MACHINE_ROLE=hub|MACHINE_ROLE=${MACHINE_ROLE}" not in setup
     assert "registry_resolved_role" in setup

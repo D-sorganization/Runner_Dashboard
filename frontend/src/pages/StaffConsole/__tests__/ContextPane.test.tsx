@@ -9,8 +9,8 @@ const mockRole: RoleDetail = {
   title: "Overnight Watchdog",
   mandate: "Monitor fleet health and clean up stalled runners overnight.",
   providers: [
-    { name: "claude", readiness: "installed", node: "ControlTower" },
-    { name: "codex", readiness: "unknown", node: "DeskComputer" },
+    { name: "claude", readiness: "installed", node: "node-a" },
+    { name: "codex", readiness: "unknown", node: "hub-a" },
   ],
   schedule: {
     cron: "0 22 * * *",

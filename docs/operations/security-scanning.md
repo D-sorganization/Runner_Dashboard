@@ -64,7 +64,7 @@ convention.
 - **Real scans need a VM scan host.** The host must be declared
   `isolation: "vm"`, reached over `DOCKER_HOST=ssh://`, and have a
   `build_network` whose filter is live: `/run/vs-build/<network>.ok` on the VM
-  must hold the network's current id. A WSL distro is not a VM. ControlTower
+  must hold the network's current id. A WSL distro is not a VM. node-a
   never hosts a scan.
 - **Real scans start only on the hub.** A node answers `409`; dry runs work
   everywhere.
@@ -98,7 +98,7 @@ convention.
 ## Enabling a Scan Host (Owner, One Time)
 
 1. Provision a Linux VM: Hyper-V or a separate machine, _not_ a WSL distro, not
-   ControlTower. Install Docker and buildx. Give the dashboard host an SSH key
+   node-a. Install Docker and buildx. Give the dashboard host an SSH key
    for a dedicated `scan` user in the `docker` group.
 2. On the VM, review the filtered network, then install it as a boot unit
    (iptables rules and the `/run` marker do not survive a reboot, and until the
