@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 const SCHEDULE_DATA = {
-  machine: "controltower",
+  machine: "node-a",
   max_runners: 16,
   config_path: "/etc/runner-schedule.json",
   timers: {

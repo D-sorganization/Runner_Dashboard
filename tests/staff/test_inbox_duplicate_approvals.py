@@ -28,7 +28,7 @@ def test_duplicate_approvals_collapse_into_one_item() -> None:
         message_id="msg_1",
         thread_id=th.id,
         action="runner.restart",
-        params={"runner_name": "oglaptop", "rationale": "High load"},
+        params={"runner_name": "node-b", "rationale": "High load"},
         risk="high",
     )
     # Proposal 2: exact duplicate of Proposal 1 (same action, thread_id, params)
@@ -36,7 +36,7 @@ def test_duplicate_approvals_collapse_into_one_item() -> None:
         message_id="msg_2",
         thread_id=th.id,
         action="runner.restart",
-        params={"runner_name": "oglaptop", "rationale": "High load"},
+        params={"runner_name": "node-b", "rationale": "High load"},
         risk="high",
     )
     # Proposal 3: distinct action
@@ -44,7 +44,7 @@ def test_duplicate_approvals_collapse_into_one_item() -> None:
         message_id="msg_3",
         thread_id=th.id,
         action="runner.stop",
-        params={"runner_name": "oglaptop"},
+        params={"runner_name": "node-b"},
         risk="low",
     )
 
