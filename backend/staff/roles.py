@@ -111,7 +111,7 @@ _FALLBACK_ROLES: tuple[dict[str, Any], ...] = (
 _CACHE_LOCK = threading.Lock()
 _CACHE_DIR_SIG: tuple[Any, ...] | None = None
 _CACHE_ROLES: dict[str, RoleSpec] = {}
-_CACHE_FILE_ENTRIES: dict[str, tuple[int, RoleSpec]] = {}
+_CACHE_FILE_ENTRIES: dict[str, tuple[tuple[int, tuple[tuple[str, int], ...]], RoleSpec]] = {}
 _CACHE_ERRORS: dict[str, list[str]] = {}
 
 
@@ -146,7 +146,11 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
             file_stats.append((p.name, p.stat().st_mtime_ns))
         except OSError:
             file_stats.append((p.name, -1))
-    dir_sig = (str(directory.resolve()), tuple(file_stats))
+    from staff.role_avatar_paths import avatars_dir_mtime_sig, staff_avatars_dir_for_roles
+
+    avatars_dir = staff_avatars_dir_for_roles(directory)
+    avatars_sig = avatars_dir_mtime_sig(avatars_dir)
+    dir_sig = (str(directory.resolve()), tuple(file_stats), avatars_sig)
 
     global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_ERRORS
     with _CACHE_LOCK:
@@ -157,12 +161,13 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
         new_errors: dict[str, list[str]] = {}
 
         for path, (_, mtime) in zip(files, file_stats, strict=True):
+            file_sig = (mtime, avatars_sig)
             cached = _CACHE_FILE_ENTRIES.get(str(path))
-            if cached is not None and cached[0] == mtime:
+            if cached is not None and cached[0] == file_sig:
                 spec = cached[1]
             else:
                 spec = read_and_parse_role_file(path)
-                _CACHE_FILE_ENTRIES[str(path)] = (mtime, spec)
+                _CACHE_FILE_ENTRIES[str(path)] = (file_sig, spec)
             new_roles[spec.name] = spec
             if not spec.valid and spec.errors:
                 new_errors[path.name] = list(spec.errors)

@@ -110,39 +110,3 @@ export function semanticAliasVarsForFleetTheme(theme: FleetThemeDef): Record<str
     accentOrange: theme.isDark ? darkColorTokens.accentOrange : lightColorTokens.accentOrange,
   });
 }
-
-/** Dark standard theme aliases — merged into darkCssVariableMap / :root. */
-export const darkSemanticAliasCssVars = semanticAliasVarsFromInputs({
-  isDark: true,
-  bg: darkColorTokens.bgPrimary,
-  groupBg: darkColorTokens.bgSecondary,
-  border: darkColorTokens.border,
-  text: darkColorTokens.textPrimary,
-  textSecondary: darkColorTokens.textSecondary,
-  label: darkColorTokens.textMuted,
-  inputBg: darkColorTokens.bgSecondary,
-  link: darkColorTokens.accentBlue,
-  success: darkBadgeTokens.successFg,
-  warning: darkBadgeTokens.warningFg,
-  error: darkBadgeTokens.dangerFg,
-  selectionText: '#ffffff',
-  accentOrange: darkColorTokens.accentOrange,
-});
-
-/** Light standard theme aliases — merged into lightCssVariableMap / [data-theme=light]. */
-export const lightSemanticAliasCssVars = semanticAliasVarsFromInputs({
-  isDark: false,
-  bg: lightColorTokens.bgPrimary,
-  groupBg: lightColorTokens.bgSecondary,
-  border: lightColorTokens.border,
-  text: lightColorTokens.textPrimary,
-  textSecondary: lightColorTokens.textSecondary,
-  label: lightColorTokens.textMuted,
-  inputBg: lightColorTokens.bgPrimary,
-  link: lightColorTokens.accentBlue,
-  success: lightBadgeTokens.successFg,
-  warning: lightBadgeTokens.warningFg,
-  error: lightBadgeTokens.dangerFg,
-  selectionText: '#ffffff',
-  accentOrange: lightColorTokens.accentOrange,
-});

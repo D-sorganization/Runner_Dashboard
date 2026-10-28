@@ -62,7 +62,7 @@ def test_dispatch_gh_failure_returns_classified_error_and_dispatched_false(
             "repo": "Tools",
             "workflow": "ci.yml",
             "ref": "main",
-            "machine_target": "DeskComputer",
+            "machine_target": "hub-a",
             "approved_by": "test-operator",
         },
     )
@@ -102,7 +102,7 @@ def test_dispatch_injects_machine_target_into_inputs(
             "repo": "Tools",
             "workflow": "ci.yml",
             "ref": "main",
-            "machine_target": "DeskComputer",
+            "machine_target": "hub-a",
             "inputs": {"test_suite": "unit"},
             "approved_by": "test-operator",
         },
@@ -111,7 +111,7 @@ def test_dispatch_injects_machine_target_into_inputs(
     assert resp.status_code == 200
     data = resp.json()
     assert data["dispatched"] is True
-    assert captured_payload.get("inputs", {}).get("machine_target") == "DeskComputer"
+    assert captured_payload.get("inputs", {}).get("machine_target") == "hub-a"
     assert captured_payload.get("inputs", {}).get("test_suite") == "unit"
 
 
@@ -167,7 +167,7 @@ def test_deploy_returns_501_not_wired_and_records_audit(
     resp = client.post(
         "/api/fleet/orchestration/deploy",
         json={
-            "machine": "DeskComputer",
+            "machine": "hub-a",
             "action": "restart_runner",
             "confirmed": True,
         },
@@ -182,5 +182,5 @@ def test_deploy_returns_501_not_wired_and_records_audit(
     assert len(audit_entries) >= 1
     entry = audit_entries[0]
     assert entry.get("orchestration_type") == "fleet_deploy"
-    assert entry.get("machine") == "DeskComputer"
+    assert entry.get("machine") == "hub-a"
     assert entry.get("deploy_action") == "restart_runner"

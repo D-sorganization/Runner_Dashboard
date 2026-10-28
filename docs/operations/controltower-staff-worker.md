@@ -1,11 +1,11 @@
-# ControlTower Staff Hub Worker Runbook
+# node-a Staff Hub Worker Runbook
 
 Governing epic: [#1192](https://github.com/D-sorganization/Runner_Dashboard/issues/1192); node qualification issue: [#1273](https://github.com/D-sorganization/Runner_Dashboard/issues/1273).
-ControlTower is the third and final node to join the Staff Hub fleet as a worker; DeskComputer (scheduler) and OGLaptop (worker) are qualified.
+node-a is the third and final node to join the Staff Hub fleet as a worker; hub-a (scheduler) and node-b (worker) are qualified.
 
 ## Baseline Probe Findings (2026-09-23 17:00 PT)
 
-The initial probe of ControlTower recorded:
+The initial probe of node-a recorded:
 
 - Dashboard version: `4.10.0` at commit `f510c4c` (pre-dating #1250, #1253, #1256, and #1262).
 - WSL GitHub CLI: `/usr/bin/gh` installed but not authenticated.
@@ -16,9 +16,9 @@ The initial probe of ControlTower recorded:
 - Systemd drop-in: `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf` missing provider paths and Cursor paths.
 - Windows Ollama: exposed to network (`OLLAMA_HOST=0.0.0.0`), with broad inbound firewall rules ("Any", "Tailscale", and a temporary "TEMP Any" rule).
 
-Progress since the probe (2026-09-23 17:10 PT, done from DeskComputer): dashboard redeployed to `5c143ac` (Python 3.12 artifact, see 4.1), user lingering enabled (5.2), and `%h/.cursor %h/.config/cursor` added to the drop-in `ReadWritePaths` (backup `staff-hub.conf.bak-*-cursor`). The acceptance script passed 7 of 22 checks at that point.
+Progress since the probe (2026-09-23 17:10 PT, done from hub-a): dashboard redeployed to `5c143ac` (Python 3.12 artifact, see 4.1), user lingering enabled (5.2), and `%h/.cursor %h/.config/cursor` added to the drop-in `ReadWritePaths` (backup `staff-hub.conf.bak-*-cursor`). The acceptance script passed 7 of 22 checks at that point.
 
-Facts: WSL distro **`ControlTower-Runner`** (Python 3.12 only), Linux user `dieterolson`, `NUM_RUNNERS=3`. An agent on another host reaches this WSL only through `_deploy\remote\run_task.py` (S4U scheduled task); never run `wsl.exe` over SSH. Back up every file before changing it (`*.bak-<stamp>`).
+Facts: WSL distro **`node-a-Runner`** (Python 3.12 only), Linux user `fleet-operator`, `NUM_RUNNERS=3`. An agent on another host reaches this WSL only through `_deploy\remote\run_task.py` (S4U scheduled task); never run `wsl.exe` over SSH. Back up every file before changing it (`*.bak-<stamp>`).
 
 ## Ordered Step-by-Step Checklist
 
@@ -31,10 +31,10 @@ Every step is marked **[Owner]** or **[Agent]**. Execute in sequence from probe 
 Windows Ollama must bind strictly to loopback `127.0.0.1:11434`. The WSL instance connects via the WSL virtual adapter default gateway forwarded through a scoped portproxy.
 
 - [ ] **1.1 [Owner] Remove broad Ollama environment variables.**
-      In Windows System Properties → Environment Variables, delete `OLLAMA_HOST` from both User and System variables (or set it strictly to `127.0.0.1:11434`). On ControlTower it is the **User** variable `OLLAMA_HOST=0.0.0.0:11434`. Also turn off "Expose Ollama to the network" in the Ollama settings, then quit and restart Ollama from the system tray (the setting only takes effect after a restart). Check: `Get-NetTCPConnection -LocalPort 11434 -State Listen` shows only `127.0.0.1`.
+      In Windows System Properties → Environment Variables, delete `OLLAMA_HOST` from both User and System variables (or set it strictly to `127.0.0.1:11434`). On node-a it is the **User** variable `OLLAMA_HOST=0.0.0.0:11434`. Also turn off "Expose Ollama to the network" in the Ollama settings, then quit and restart Ollama from the system tray (the setting only takes effect after a restart). Check: `Get-NetTCPConnection -LocalPort 11434 -State Listen` shows only `127.0.0.1`.
 
 - [ ] **1.2 [Owner] Disable exposed Windows firewall rules.**
-      Open Windows Defender Firewall with Advanced Security (or elevated PowerShell) and **disable** (do not delete) the non-scoped inbound rules for port 11434. On ControlTower they are named `ollama.exe`, `Ollama Tailscale` and `Ollama TEMP Any`: `Get-NetFirewallRule -DisplayName 'ollama.exe','Ollama Tailscale','Ollama TEMP Any' | Disable-NetFirewallRule`. Re-read them with `Get-NetFirewallRule` to confirm `Enabled: False`; `-PassThru` output can be stale. The rules are:
+      Open Windows Defender Firewall with Advanced Security (or elevated PowerShell) and **disable** (do not delete) the non-scoped inbound rules for port 11434. On node-a they are named `ollama.exe`, `Ollama Tailscale` and `Ollama TEMP Any`: `Get-NetFirewallRule -DisplayName 'ollama.exe','Ollama Tailscale','Ollama TEMP Any' | Disable-NetFirewallRule`. Re-read them with `Get-NetFirewallRule` to confirm `Enabled: False`; `-PassThru` output can be stale. The rules are:
 
   - Inbound rule allowing port 11434 from `Any`
   - Inbound rule allowing port 11434 from `Tailscale`
@@ -42,11 +42,11 @@ Windows Ollama must bind strictly to loopback `127.0.0.1:11434`. The WSL instanc
 
 - [ ] **1.3 [Owner] Install the managed Ollama WSL Bridge.**
       In an elevated **PowerShell as Administrator**, run:
-      ControlTower has no Windows checkout of this repository; the script is copied to `_deploy`. Run `-DryRun` first and expect `planned`, then `-Install` and expect `configured`:
+      node-a has no Windows checkout of this repository; the script is copied to `_deploy`. Run `-DryRun` first and expect `planned`, then `-Install` and expect `configured`:
 
   ```powershell
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\diete\Repositories\_deploy\windows\ollama-wsl-bridge.ps1" -DryRun
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\diete\Repositories\_deploy\windows\ollama-wsl-bridge.ps1" -Install
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\fleet\Repositories\_deploy\windows\ollama-wsl-bridge.ps1" -DryRun
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\fleet\Repositories\_deploy\windows\ollama-wsl-bridge.ps1" -Install
   ```
 
   This creates `%ProgramData%\RunnerDashboard\OllamaWslBridge`, configures scoped portproxy forwarding only on the WSL vEthernet adapter (`192.168.x.1:11434` -> `127.0.0.1:11434`), creates the firewall rule `StaffHub-Ollama-WSL`, and registers the scheduled SYSTEM task `StaffHub-Ollama-WSL-Bridge`.
@@ -58,10 +58,10 @@ Windows Ollama must bind strictly to loopback `127.0.0.1:11434`. The WSL instanc
 
 ### Phase 2: WSL Authentication, Runtimes & Provider CLIs
 
-Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runner`** WSL distro on ControlTower.
+Paths starting with `~` refer to `/home/fleet-operator` in the **`node-a-Runner`** WSL distro on node-a.
 
 - [ ] **2.1 [Owner] Authenticate WSL GitHub CLI.**
-      In a ControlTower terminal, open the distro with `wsl -d ControlTower-Runner`, then run:
+      In a node-a terminal, open the distro with `wsl -d node-a-Runner`, then run:
 
   ```bash
   gh auth login -h github.com -s admin:org
@@ -118,8 +118,8 @@ Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runn
 
   ```ini
   [user]
-      name = Dieter Olson
-      email = dieterolson@users.noreply.github.com
+      name = Fleet Operator
+      email = fleet-operator@users.noreply.github.com
   [credential "https://github.com"]
       helper = !gh auth token
   [credential "https://gist.github.com"]
@@ -158,13 +158,13 @@ Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runn
 
   ```ini
   STAFF_SCHEDULER_ENABLED=0
-  STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management
-  STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles
-  GIT_CONFIG_GLOBAL=/home/dieterolson/.config/runner-dashboard/staff.gitconfig
-  CLAUDE_CONFIG_DIR=/home/dieterolson/.config/runner-dashboard/claude
+  STAFF_RM_ROOT=/home/fleet-operator/staff-repos/Repository_Management
+  STAFF_ROLES_DIR=/home/fleet-operator/staff-repos/Repository_Management/staff/roles
+  GIT_CONFIG_GLOBAL=/home/fleet-operator/.config/runner-dashboard/staff.gitconfig
+  CLAUDE_CONFIG_DIR=/home/fleet-operator/.config/runner-dashboard/claude
   ```
 
-  _(Important: `STAFF_SCHEDULER_ENABLED` must remain `0` because ControlTower is a worker node; DeskComputer is the fleet scheduler)._
+  _(Important: `STAFF_SCHEDULER_ENABLED` must remain `0` because node-a is a worker node; hub-a is the fleet scheduler)._
 
 - [ ] **4.3 [Agent] Seed service-owned Claude config.**
   ```bash
@@ -184,7 +184,7 @@ Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runn
   ```ini
   [Service]
   MemoryDenyWriteExecute=false
-  Environment="PATH=/home/dieterolson/.nvm/versions/node/v24.21.0/bin:/home/dieterolson/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  Environment="PATH=/home/fleet-operator/.nvm/versions/node/v24.21.0/bin:/home/fleet-operator/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   ReadWritePaths=%h/.claude %h/.claude.json %h/.codex %h/.gemini %h/.antigravity %h/.cache %h/.local/share
   ReadWritePaths=%h/staff-repos %h/staff-worktrees %h/.config/gh %h/.cursor %h/.config/cursor
   ```
@@ -192,10 +192,10 @@ Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runn
   Ensure all paths referenced in `ReadWritePaths` exist before reloading systemd; a missing one stops the unit from starting.
   The node path in `PATH` must match the installed version (`ls ~/.nvm/versions/node`), not the example above.
 
-- [ ] **5.2 [Owner] Enable user lingering.** Already done on ControlTower (2026-09-23).
+- [ ] **5.2 [Owner] Enable user lingering.** Already done on node-a (2026-09-23).
 
   ```bash
-  sudo loginctl enable-linger dieterolson
+  sudo loginctl enable-linger fleet-operator
   ```
 
 - [ ] **5.3 [Agent] Install and activate `rm-sync` user timer.**
@@ -216,8 +216,8 @@ Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runn
 
 ---
 
-- [ ] **5.5 [Owner] Reserve ControlTower's LAN address.**
-      In the eero app, add a DHCP reservation for ControlTower's LAN interface (see "Node LAN addressing" in `docs/staff-hub.md`). Record the MAC in the private deploy notes, not in this repository.
+- [ ] **5.5 [Owner] Reserve node-a's LAN address.**
+      In the eero app, add a DHCP reservation for node-a's LAN interface (see "Node LAN addressing" in `docs/staff-hub.md`). Record the MAC in the private deploy notes, not in this repository.
 
 ---
 
@@ -250,4 +250,4 @@ Paths starting with `~` refer to `/home/dieterolson` in the **`ControlTower-Runn
     Confirm all six reach status `succeeded` with exit code 0 and `STAFF_RESULT: ok`. Each run can take several minutes; the script waits up to 15 minutes per provider.
 
 - [ ] **6.4 [Owner] Final signoff.**
-      ControlTower is verified and admitted as an active Staff Hub worker node.
+      node-a is verified and admitted as an active Staff Hub worker node.

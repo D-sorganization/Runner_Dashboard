@@ -42,13 +42,10 @@ import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { useBreakpoint } from "../hooks/useBreakpoint";
 import { ShellDensityControl } from "./ShellDensityControl";
 import { ShellThemeControl } from "./ShellThemeControl";
-import { QueueMobile } from "../pages/Queue";
-import { QueueTab } from "../pages/Queue";
 import type { InFlightDispatch } from "../pages/Remediation/Mobile";
 import { AnalysisTab } from "../pages/Analysis";
 import { EventsTab } from "../pages/Events";
 import { CodeRequestsPage } from "../pages/CodeRequestsPage";
-import { MachinesPage } from "../pages/Machines";
 import { RunnerAuditPage } from "../pages/RunnerAudit";
 import { RunnerSchedulePage } from "../pages/RunnerSchedule";
 import { WorkflowsPage } from "../pages/WorkflowsPage";
@@ -57,6 +54,15 @@ import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
 import { navItemById } from "./navRegistry";
 
+const LazyMachinesPage = React.lazy(() =>
+  import("../pages/Machines").then(({ MachinesPage }) => ({ default: MachinesPage })),
+);
+const LazyQueueTab = React.lazy(() =>
+  import("../pages/Queue").then(({ QueueTab }) => ({ default: QueueTab })),
+);
+const LazyQueueMobile = React.lazy(() =>
+  import("../pages/Queue").then(({ QueueMobile }) => ({ default: QueueMobile })),
+);
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
 // #2990: mobile Fleet/Remediation views are lazy so they stay out of the entry chunk.
 const LazyFleetMobile = React.lazy(() =>
@@ -113,7 +119,7 @@ function ShellActiveProvider({
   );
 }
 
-function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
+function nativeDesktopTabContent(tabId: string, onThreadSelected?: (threadId: string, role: string) => void): React.ReactNode | null {
   switch (normalizeTabId(tabId)) {
     case "overview":
       return <LazyOverviewPage />;
@@ -145,11 +151,11 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
     case "context":
       return <LazyContextPage />;
     case "machines":
-      return <MachinesPage />;
+      return <LazyMachinesPage />;
     case "projects":
       return <LazyProjectsPage />;
     case "queue":
-      return <QueueTab />;
+      return <LazyQueueTab />;
     case "remediation":
       return <LazyRemediationPage />;
     case "runner-audit":
@@ -159,7 +165,7 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
     case "settings":
       return <SettingsPage />;
     case "staff":
-      return <LazyStaffPage />;
+      return <LazyStaffPage routeThreadId={new URLSearchParams(window.location.search).get("thread")} onThreadSelected={onThreadSelected} />;
     case "workflows":
       return <WorkflowsPage />;
     default:
@@ -345,7 +351,11 @@ export function AppShell({
           <LazyFleetMobile />
         </React.Suspense>
       ),
-      queue: <QueueMobile />,
+      queue: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyQueueMobile />
+        </React.Suspense>
+      ),
       remediation: (
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
           <LazyRemediationMobile
@@ -387,7 +397,7 @@ export function AppShell({
     const mobileFallback = mobileTabContent[mobileTab] ? null : (
       <TabErrorBoundary tabName={mobileTab} resetKey={mobileTab}>
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
-          {nativeDesktopTabContent(mobileTab) ?? (
+          {nativeDesktopTabContent(mobileTab, onThreadSelected) ?? (
             <NotFoundPanel
               path={unmatchedPath || "/"}
               onNavigateHome={() => onSelectTab("staff")}
@@ -422,7 +432,7 @@ export function AppShell({
     ) : undefined;
   const navItem = navItemById(activeTab);
   const tabDisplayName = navItem ? navItem.label : activeTab;
-  const nativeContent = nativeDesktopTabContent(activeTab);
+  const nativeContent = nativeDesktopTabContent(activeTab, onThreadSelected);
   const wrappedContent = isNotFound ? (
     <NotFoundPanel
       path={unmatchedPath || "/"}
