@@ -9,6 +9,8 @@ import yaml
 
 from shared_scripts.ci_workflow_concurrency import (
     CANCEL_IN_PROGRESS_EXPR,
+    CI_STANDARD_CANCEL_IN_PROGRESS_EXPR,
+    CI_STANDARD_WORKFLOW_CONCURRENCY_GROUP_EXPR,
     WORKFLOW_CONCURRENCY_GROUP_EXPR,
     pr_number_from_queue_ref,
 )
@@ -16,12 +18,13 @@ from shared_scripts.ci_workflow_concurrency import (
 _WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 _MERGE_GROUP_HEAVY = [
-    "ci-standard.yml",
     "docker-build.yml",
     "frontend-tests.yml",
     "ci-secrets.yml",
     "ci-auto-deploy-regression.yml",
 ]
+
+_CI_STANDARD = "ci-standard.yml"
 
 _PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
 
@@ -70,6 +73,19 @@ def test_merge_group_concurrency_is_unique_per_queue_entry(name: str) -> None:
 def test_main_push_still_unique_per_sha(name: str) -> None:
     group = _load(name)["concurrency"]["group"]
     assert "github.sha" in group
+
+
+def test_ci_standard_uses_main_push_shared_concurrency_group() -> None:
+    block = _load(_CI_STANDARD)["concurrency"]
+    assert block["group"] == CI_STANDARD_WORKFLOW_CONCURRENCY_GROUP_EXPR
+    assert block["cancel-in-progress"] == CI_STANDARD_CANCEL_IN_PROGRESS_EXPR
+    assert "refs/heads/main' && 'main'" in block["group"]
+
+
+def test_ci_standard_merge_group_still_not_cancel_in_progress() -> None:
+    cancel = _load(_CI_STANDARD)["concurrency"]["cancel-in-progress"]
+    assert "merge_group" not in cancel
+    assert cancel == CI_STANDARD_CANCEL_IN_PROGRESS_EXPR
 
 
 def test_cancel_in_progress_limited_to_pull_request() -> None:
