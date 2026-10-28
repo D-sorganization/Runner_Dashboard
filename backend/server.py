@@ -1,4 +1,5 @@
-# ruff: noqa: B008
+# ruff: noqa: B008, E402
+# The worker contract must run before imports initialize process-local state.
 #!/usr/bin/env python3
 """
 D-sorganization Runner Dashboard — FastAPI Backend
@@ -36,6 +37,34 @@ import time
 from collections import deque
 from pathlib import Path
 from typing import Any
+
+
+def _require_single_worker() -> None:
+    """Refuse unsafe worker counts before importing process-local state (#3029)."""
+    counts = [os.environ.get(name, "1") for name in ("WORKERS", "WEB_CONCURRENCY")]
+    # Also cover `uvicorn server:asgi_app --workers N` and --workers=N.
+    for index, arg in enumerate(sys.argv[1:], start=1):
+        if arg == "--workers" and index + 1 < len(sys.argv):
+            counts.append(sys.argv[index + 1])
+        elif arg.startswith("--workers="):
+            counts.append(arg.partition("=")[2])
+    for raw in counts:
+        try:
+            count = int(raw)
+        except ValueError:
+            continue  # The existing configuration parser handles malformed values.
+        if count > 1:
+            message = (
+                "Runner Dashboard: single-worker is the only supported mode; "
+                "use WORKERS=1 and uvicorn --workers 1. Leases, locks, rate limiters, "
+                "bearer tokens and event sequences are process-local."
+            )
+            logging.getLogger(__name__).critical(message)
+            raise SystemExit(1)
+
+
+_require_single_worker()
+
 
 # systemd watchdog / ready notification (issue #391 AC-3)
 try:
@@ -794,9 +823,11 @@ from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)
 
+from routers import activity as _activity_router  # noqa: E402
 from routers import memory_v1 as _memory_v1_router  # noqa: E402
 
 app.include_router(_memory_v1_router.router)
+app.include_router(_activity_router.router)
 
 # Projects tab (issue #1199): per-repo charter, status and steward runs.
 from routers import projects as _projects_router  # noqa: E402
@@ -2693,6 +2724,11 @@ async def _startup() -> None:
         assert_no_maxwell_port_collision,
         assert_valid_active_registry,
     )
+    from overlay_contract import assert_overlay_ready
+
+    # Issue #3079: refuse to start when a configured private overlay is
+    # missing or invalid. No overlay configured -> no-op (unchanged behaviour).
+    assert_overlay_ready()
 
     _startup_reg = load_machine_registry()
     assert_no_maxwell_port_collision(
@@ -2875,6 +2911,7 @@ async def _startup() -> None:
 @app.on_event("shutdown")
 async def _shutdown() -> None:
     """Close pooled HTTP clients on shutdown (issue #364)."""
+    _usage_metrics_router.get_usage_tracker().flush()
     await shutdown_http_clients()
     _BROWSER_ACCESS_VALIDATOR.close()
     log.info("Closed pooled HTTP clients")
@@ -2996,13 +3033,7 @@ if __name__ == "__main__":
 
     _uvicorn_cfg = _read_uvicorn_env_config()
 
-    # Issue #367: keep the documented single-worker default. Operators can set
-    # WORKERS > 1, but uvicorn then requires an import string (not the
-    # in-memory app object) because workers spawn via multiprocessing and each
-    # child re-imports the app. Codex P1 review on PR #482 flagged that passing
-    # `app` directly with `workers > 1` either silently runs a single worker or
-    # fails at startup. Use the import string when WORKERS > 1; keep the
-    # in-memory object for single-worker dev runs (faster, no re-import).
+    # Issue #367 / #3029: only one worker can own process-local state.
     # Issue #1755: run the app wrapped in TransportPeerMiddleware +
     # ProxyHeadersMiddleware ourselves (via asgi_app / "server:asgi_app") and
     # tell uvicorn not to install its own proxy-header handling
@@ -3010,9 +3041,8 @@ if __name__ == "__main__":
     # exactly once, by our wrapper, with the raw transport peer recorded
     # first. This keeps loopback-stays-loopback and XFF-from-127.0.0.1
     # behavior identical to before.
-    _uvicorn_target: object = "server:asgi_app" if _uvicorn_cfg["workers"] > 1 else asgi_app
     uvicorn.run(
-        _uvicorn_target,  # type: ignore[arg-type]
+        asgi_app,
         # Issue #921: honor the operator-resolved bind host (DASHBOARD_HOST) instead
         # of a hardcoded 0.0.0.0. Defaults to 0.0.0.0 when DASHBOARD_HOST is unset,
         # preserving historical behavior while letting operators bind loopback-only.
