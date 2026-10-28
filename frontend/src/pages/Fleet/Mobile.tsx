@@ -106,13 +106,13 @@ export function FleetMobile() {
     const ctPools: Array<[string, FleetNode]> = [];
     const others: Array<[string, FleetNode]> = [];
     for (const [name, node] of filtered) {
-      if (name.startsWith("ControlTower")) {
+      if (name.startsWith("node-a")) {
         ctPools.push([name, node]);
       } else {
         others.push([name, node]);
       }
     }
-    // One ControlTower entry is just a machine; the pool heading only helps with several.
+    // One node-a entry is just a machine; the pool heading only helps with several.
     if (ctPools.length < 2) return { controlTowerPools: [], otherNodes: [...ctPools, ...others] };
     return { controlTowerPools: ctPools, otherNodes: others };
   }, [filtered]);
@@ -184,7 +184,7 @@ export function FleetMobile() {
               {controlTowerPools.length > 0 && (
                 <div className="control-tower-pools-container" style={{ marginBottom: "16px" }}>
                   <h4 style={{ margin: "0 0 8px 4px", fontSize: "14px", fontWeight: 600, color: "var(--text-secondary)" }}>
-                    ControlTower Pools
+                    node-a Pools
                   </h4>
                   <div style={{ display: "flex", gap: "8px", flexDirection: "row", flexWrap: "wrap" }}>
                     {controlTowerPools.map(([name, node]) => {
