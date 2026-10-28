@@ -16,7 +16,6 @@ import {
   tryRefreshSession,
 } from './lib/sessionExpired'
 import { installWheelValueGuard } from './lib/wheelValueGuard'
-import { initWebVitals } from './lib/webVitals'
 import { loadFonts } from './lib/loadFonts'
 import './index.css'
 
@@ -26,8 +25,8 @@ import './index.css'
 // focused number input.
 installFetchGuards({ emitSessionExpired, shouldIgnoreUnauthorizedResponse, tryRefreshSession })
 installWheelValueGuard(document)
-// Web Vitals — send metrics to backend (issues #385, #1550)
-initWebVitals()
+// Web Vitals — defer so the reporter stays out of the entry chunk (issue #831).
+void import('./lib/webVitals').then(({ initWebVitals }) => initWebVitals())
 
 // Service Worker Registration
 // Provides offline support, caching, and PWA installability.
