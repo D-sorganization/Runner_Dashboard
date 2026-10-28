@@ -15,13 +15,19 @@ the local loopback principal, when ALL of the following hold:
      from the network.
   3. The *resolved* client address (after proxy-header rewriting) is in a
      Tailscale CGNAT range.
-  4. The ``Tailscale-User-Login`` header names a login in the
-     ``DASHBOARD_TAILSCALE_LOGINS`` allow-list.
+  4. The ``Tailscale-User-Login`` header (or, with
+     ``DASHBOARD_TAILSCALE_DIRECT_ALLOW``, the first configured login) names
+     a login in the ``DASHBOARD_TAILSCALE_LOGINS`` allow-list.
+  5. Tailscaled's own LocalAPI ``whois`` record for this exact peer/port
+     (#3011) names the *same* login. Only tailscaled — proxying a real
+     ``tailscale serve`` request or a genuine direct tailnet socket — has
+     such a record; an unrelated local process that merely connects to this
+     port on loopback and forges the headers above has none, and is refused.
 
-A direct tailnet caller who forges the ``Tailscale-User-Login`` header is
-refused by condition 2: their raw transport peer is their own tailnet
-address, never loopback, because only ``tailscaled`` on this host can
-connect via loopback and inject those headers.
+Condition 2 alone is not proof against a local attacker: any process on this
+host, not only ``tailscaled``, can open a loopback connection and send the
+same forged headers. Condition 5 closes that gap by asking the one party who
+cannot be impersonated — tailscaled itself — who really owns the connection.
 
 Approvals: the loopback power includes ``staff.approve``, so the owner approves
 from any device (#1786). The ``tailnet-approver`` role (#1770) is still added for
@@ -31,9 +37,13 @@ a sign-in from *another* tailnet device, i.e. not one of
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
+import json
 import logging
 import os
+import socket
+from dataclasses import dataclass
 from typing import Any, cast
 
 from fastapi import Request
@@ -47,8 +57,71 @@ _TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
 _TAILNET_V6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")
 
 _TRANSPORT_PEER_SCOPE_KEY = "rd.transport_peer"
+_TRANSPORT_PEER_PORT_SCOPE_KEY = "rd.transport_peer_port"
 
 TAILNET_APPROVER_ROLE = "tailnet-approver"
+
+_DEFAULT_TAILSCALED_SOCKET = "/var/run/tailscale/tailscaled.sock"
+_WHOIS_TIMEOUT_SECONDS = 2.0
+
+
+@dataclass(frozen=True)
+class WhoIsIdentity:
+    """A login verified by tailscaled's own record of a connection (#3011)."""
+
+    login: str
+    name: str
+
+
+class _UnixSocketHTTPConnection(http.client.HTTPConnection):
+    """An ``HTTPConnection`` over an ``AF_UNIX`` socket (tailscaled's LocalAPI)."""
+
+    def __init__(self, socket_path: str, timeout: float = _WHOIS_TIMEOUT_SECONDS) -> None:
+        super().__init__("local-tailscaled.sock", timeout=timeout)
+        self._socket_path = socket_path
+
+    def connect(self) -> None:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self._socket_path)
+        self.sock = sock
+
+
+def _tailscaled_socket_path() -> str:
+    return os.environ.get("DASHBOARD_TAILSCALED_SOCKET", _DEFAULT_TAILSCALED_SOCKET)
+
+
+def _tailscaled_whois(host: str | None, port: int | None) -> WhoIsIdentity | None:
+    """Ask tailscaled's LocalAPI who owns the connection seen at ``host:port``.
+
+    Only ``tailscaled`` itself — proxying a real ``tailscale serve`` request or
+    a direct tailnet socket — has a WhoIs record for that exact peer/port. An
+    unrelated local process spoofing identity headers over its own loopback
+    connection has none, so this fails closed (``None``) on any lookup
+    failure, timeout or malformed response, not just a clean "not found".
+    """
+    if not host or not port:
+        return None
+    try:
+        conn = _UnixSocketHTTPConnection(_tailscaled_socket_path())
+        try:
+            conn.request("GET", f"/localapi/v0/whois?addr={host}:{port}")
+            resp = conn.getresponse()
+            body = resp.read()
+            if resp.status != 200:
+                return None
+            data = json.loads(body)
+        finally:
+            conn.close()
+    except (OSError, ValueError, http.client.HTTPException):
+        return None
+    profile = data.get("UserProfile") if isinstance(data, dict) else None
+    login = profile.get("LoginName") if isinstance(profile, dict) else None
+    if not isinstance(login, str) or not login.strip():
+        return None
+    display = profile.get("DisplayName") if isinstance(profile, dict) else None
+    name = display.strip() if isinstance(display, str) and display.strip() else login.strip()
+    return WhoIsIdentity(login=login.strip(), name=name)
 
 
 class TransportPeerMiddleware:
@@ -66,6 +139,7 @@ class TransportPeerMiddleware:
         if scope.get("type") in ("http", "websocket"):
             client = scope.get("client")
             scope[_TRANSPORT_PEER_SCOPE_KEY] = client[0] if client else None
+            scope[_TRANSPORT_PEER_PORT_SCOPE_KEY] = client[1] if client else None
         await self.app(scope, receive, send)
 
 
@@ -145,6 +219,7 @@ def tailnet_principal(request: Request) -> Principal | None:
     direct_allow = os.getenv("DASHBOARD_TAILSCALE_DIRECT_ALLOW", "0").strip().lower() in ("1", "true", "yes")
     scope = getattr(request, "scope", None)
     transport_peer = scope.get(_TRANSPORT_PEER_SCOPE_KEY) if isinstance(scope, dict) else None
+    transport_port = scope.get(_TRANSPORT_PEER_PORT_SCOPE_KEY) if isinstance(scope, dict) else None
     is_loopback_peer = _is_loopback_addr(transport_peer)
     if not is_loopback_peer and not (direct_allow and _is_tailnet_addr(transport_peer)):
         return None
@@ -168,6 +243,14 @@ def tailnet_principal(request: Request) -> Principal | None:
         login = login_header.strip()
         if not login or login.lower() not in allowed:
             return None
+
+    # #3011: a header (or a blindly-picked first allow-listed login) is not
+    # proof of identity — any local process can forge it over its own
+    # loopback connection. Require tailscaled's own WhoIs record for this
+    # exact peer/port to confirm the same login before admitting.
+    verified = _tailscaled_whois(transport_peer, transport_port)
+    if verified is None or verified.login.lower() != login.lower():
+        return None
 
     name_header = request.headers.get("Tailscale-User-Name")
     name = name_header.strip() if name_header and name_header.strip() else login

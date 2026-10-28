@@ -175,6 +175,7 @@ export const Thread: React.FC<ThreadProps> = ({
 
   useEffect(() => {
     const container = scrollContainerRef.current;
+    const observedRows = observedRowsRef.current;
     if (!container) return;
     setViewportHeight(container.clientHeight || 600);
     if (typeof ResizeObserver === "undefined") return;
@@ -197,7 +198,6 @@ export const Thread: React.FC<ThreadProps> = ({
     });
     resizeObserverRef.current = observer;
     observer.observe(container);
-    const observedRows = observedRowsRef.current;
     for (const row of observedRows.values()) observer.observe(row);
     return () => {
       observer.disconnect();
@@ -290,9 +290,8 @@ export const Thread: React.FC<ThreadProps> = ({
     }
   }, [messages, userScrolledUp, totalVirtualHeight]);
 
-  const handleScroll = () => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
+  const handleScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
     if (useVirtualization) setVirtualScrollTop(el.scrollTop);
     const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
     setUserScrolledUp(!isAtBottom);

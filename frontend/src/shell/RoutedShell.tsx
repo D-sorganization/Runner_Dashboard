@@ -44,10 +44,26 @@ import { ShellDensityControl } from "./ShellDensityControl";
 import { ShellThemeControl } from "./ShellThemeControl";
 import { QueueMobile } from "../pages/Queue";
 import type { InFlightDispatch } from "../pages/Remediation/Mobile";
+import { AnalysisTab } from "../pages/Analysis";
+import { EventsTab } from "../pages/Events";
+import { CodeRequestsPage } from "../pages/CodeRequestsPage";
+import { RunnerAuditPage } from "../pages/RunnerAudit";
+import { RunnerSchedulePage } from "../pages/RunnerSchedule";
+import { WorkflowsPage } from "../pages/WorkflowsPage";
+import { SettingsPage } from "../pages/Settings/SettingsPage";
 import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
 import { navItemById } from "./navRegistry";
 
+const LazyMachinesPage = React.lazy(() =>
+  import("../pages/Machines").then(({ MachinesPage }) => ({ default: MachinesPage })),
+);
+const LazyQueueTab = React.lazy(() =>
+  import("../pages/Queue").then(({ QueueTab }) => ({ default: QueueTab })),
+);
+const LazyQueueMobile = React.lazy(() =>
+  import("../pages/Queue").then(({ QueueMobile }) => ({ default: QueueMobile })),
+);
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
 const LazyAnalysisTab = React.lazy(() =>
   import("../pages/Analysis").then(({ AnalysisTab }) => ({ default: AnalysisTab })),
@@ -363,7 +379,11 @@ export function AppShell({
           <LazyFleetMobile />
         </React.Suspense>
       ),
-      queue: <QueueMobile />,
+      queue: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyQueueMobile />
+        </React.Suspense>
+      ),
       remediation: (
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
           <LazyRemediationMobile

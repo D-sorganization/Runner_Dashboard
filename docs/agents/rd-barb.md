@@ -52,6 +52,12 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 
 rd-barb never messages Dieter directly, and Grok Barb does not redo her work.
 
+### Direct Path (Not Live Yet)
+
+`scripts/rd_barb_direct_notify.py` sends questions and alerts with no Grok relay. Its channel is Dieter's choice,
+so `RD_BARB_DIRECT_CHANNEL` defaults to `none`, which fails on purpose and shows on
+`GET /api/v1/staff/rd-barb/notify-status` (`failing`, then `degraded` after 5 minutes). Grok stays live until then.
+
 ```bash
 python scripts/rd_barb_notify.py send --json msg.json   # question/alert now, fyi queued
 python scripts/rd_barb_notify.py flush                  # send queued fyi as one digest
@@ -100,6 +106,19 @@ reuses `staff.provider_failover_config.resolve_failover_chain`.
 - The watchdog calls `rd_barb_provider.py next --current P --failure CLASS`,
   restarts on the printed provider, and the script sends a "switched provider"
   fyi with a recommendation. An exhausted chain sends an `alert`.
+
+## `/barb` and `@barb` per-CLI wrappers (#3067)
+
+Every fleet CLI gets the same `/barb` slash command, rendered from one shared
+template (`scripts/wrappers/barb_command_template.py`, synced per provider by
+`scripts/wrappers/sync_barb_commands.py`). On Claude Code:
+`/barb <message>` relays `<message>` to rd-barb (async, returns a
+`correlation_id` immediately); `/barb chat` opens or continues the
+conversation in rd-barb's RD staff thread, read with `@barb` mention-wake —
+`scripts/wrappers/claude_barb_hook.py` is a `UserPromptSubmit` hook that calls
+the shared `barb_cli.inbox()` entrypoint and injects unread items addressed to
+this agent into context. Both only call `scripts/barb_cli.py`; auth is the
+calling agent's own principal and the token is never printed or logged.
 
 ## Config on hub-a (never committed)
 
