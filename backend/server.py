@@ -843,6 +843,10 @@ from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
 
+from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+
+app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)
