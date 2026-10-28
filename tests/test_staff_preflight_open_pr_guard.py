@@ -5,10 +5,15 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from dispatch_premise import PremiseCheckResult
 from fastapi import HTTPException
 from identity import Principal
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
-from staff.preflight_duplicate_guard import check_duplicate_pr_or_run, is_issue_referenced_in_pr
+from staff.preflight_duplicate_guard import (
+    _issue_branch_pattern,
+    check_duplicate_pr_or_run,
+    is_issue_referenced_in_pr,
+)
 from staff.roles import RoleSpec
 from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore
@@ -184,6 +189,64 @@ async def test_dispatch_force_duplicate_bypasses_guard(mock_runner: StaffRunner,
 
 
 @pytest.mark.asyncio
+async def test_force_duplicate_skips_open_pr_premise_and_records_override(
+    mock_runner: StaffRunner, test_principal: Principal
+) -> None:
+    """The override skips only open PR premise checks and is visible in audit detail."""
+    cmd = DispatchCommand(
+        role="issue-remediator",
+        requested_by="test:operator",
+        repo="Test_Repo",
+        issue=2980,
+        prompt="Fix the issue",
+        force_duplicate=True,
+    )
+    with (
+        patch("staff.dispatch_service.get_runner", return_value=mock_runner),
+        patch("staff.dispatch_service.claim_guard.enforce_claim_guard", new_callable=AsyncMock, return_value={}),
+        patch("staff.dispatch_service.claim_guard.enabled", return_value=False),
+        patch("dispatch_premise.evaluate_dispatch_premise", new_callable=AsyncMock) as evaluate,
+        patch("staff.dispatch_service.record_audit") as record_audit,
+        patch("dispatch_routing.resolve_model_routing") as routing,
+        patch("staff.dispatch_service.barb_write_fence"),
+    ):
+        evaluate.return_value = PremiseCheckResult(allowed=True)
+        routing.return_value = MagicMock(tier="test", model="sonnet", reason="test")
+        mock_run = MagicMock(id="run-new", role="issue-remediator", provider="claude", to_dict=lambda: {})
+        mock_runner.admit.return_value = (mock_run, mock_runner.plan.return_value, False)
+        await dispatch_staff_run(cmd, test_principal)
+
+    assert evaluate.await_args.kwargs["check_open_pr"] is False
+    assert evaluate.await_args.kwargs["check_claim_labels"] is True
+    assert record_audit.call_args.kwargs["detail"]["force_duplicate"] is True
+
+
+@pytest.mark.asyncio
+async def test_force_duplicate_keeps_resolved_on_main_premise_check(
+    mock_runner: StaffRunner, test_principal: Principal
+) -> None:
+    cmd = DispatchCommand(
+        role="issue-remediator",
+        requested_by="test:operator",
+        repo="Test_Repo",
+        issue=2980,
+        prompt="Fix local-only-runner-guard.yml",
+        force_duplicate=True,
+    )
+    with (
+        patch("staff.dispatch_service.get_runner", return_value=mock_runner),
+        patch("staff.dispatch_service.claim_guard.enforce_claim_guard", new_callable=AsyncMock, return_value={}),
+        patch("dispatch_premise.evaluate_dispatch_premise", new_callable=AsyncMock) as evaluate,
+    ):
+        evaluate.return_value = PremiseCheckResult(
+            allowed=False, reason="already_resolved_on_main", detail="already resolved", should_close=True
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            await dispatch_staff_run(cmd, test_principal)
+    assert exc_info.value.detail["reason"] == "already_resolved_on_main"
+
+
+@pytest.mark.asyncio
 async def test_check_duplicate_pr_or_run_direct_call(mock_runner: StaffRunner) -> None:
     with patch("staff.preflight_duplicate_guard.get_runner", return_value=mock_runner):
         # Clean call with no active run and no open PRs
@@ -260,3 +323,58 @@ async def test_check_duplicate_pr_or_run_refuses_on_active_claim_label(mock_runn
         assert exc_info.value.status_code == 409
         assert exc_info.value.detail["code"] == "active_claim_exists"
         assert "claim:cursor-agent" in exc_info.value.detail["message"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stored_ref", ["#123", "123"])
+async def test_active_run_guard_matches_stored_hash_prefixed_target_ref(
+    mock_runner: StaffRunner, stored_ref: str
+) -> None:
+    """Runs persist ``plan.target_ref`` as ``#N``; the duplicate guard must still match it (#2968)."""
+    mock_runner.store.create_run(
+        RunRecord(
+            id="run-hash-ref",
+            role="issue-remediator",
+            provider="claude",
+            model="sonnet",
+            machine="local",
+            repo="Test_Repo",
+            target_kind="issue",
+            target_ref=stored_ref,
+            prompt="Working on issue #123",
+            status="running",
+        )
+    )
+    with patch("staff.preflight_duplicate_guard.get_runner", return_value=mock_runner):
+        with pytest.raises(HTTPException) as exc_info:
+            await check_duplicate_pr_or_run(
+                "Test_Repo",
+                123,
+                gh_get_fn=AsyncMock(return_value=[]),
+                check_open_pr=False,
+                check_merged_pr=False,
+                check_issue_branches=False,
+                check_claim=False,
+            )
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "active_run_exists"
+    assert exc_info.value.detail["run_id"] == "run-hash-ref"
+
+
+@pytest.mark.parametrize(
+    "branch",
+    ["claude/report-2026-10-26", "fix/2026-10-26-cleanup", "release_10-26", "feat/v1-10-2-notes"],
+)
+def test_issue_branch_pattern_ignores_number_inside_dates_and_numbers(branch: str) -> None:
+    """Issue 10 must not match ``-10-`` embedded in dates or other number runs (#2969)."""
+    assert _issue_branch_pattern(10).search(branch) is None
+    assert not is_issue_referenced_in_pr({"head": {"ref": branch}}, 10)
+
+
+@pytest.mark.parametrize(
+    "branch",
+    ["fix/10-bug", "10-bug", "feat/issue-10", "claude/10_slug", "staff/issue-remediator-10-abcdef", "fix/x-10"],
+)
+def test_issue_branch_pattern_still_matches_standalone_issue_token(branch: str) -> None:
+    assert _issue_branch_pattern(10).search(branch) is not None
+    assert is_issue_referenced_in_pr({"head": {"ref": branch}}, 10)

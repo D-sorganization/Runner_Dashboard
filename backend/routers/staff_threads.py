@@ -42,7 +42,12 @@ from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
 from staff.request_cards import request_message_card
 from staff.thread_bus import get_thread_bus
-from staff.thread_helpers import find_idempotent_reply, shape_new_thread
+from staff.thread_helpers import (
+    find_idempotent_reply,
+    shape_new_thread,
+    store_without_turn,
+    thread_readable_by,
+)
 
 log = logging.getLogger("dashboard.staff.threads")
 
@@ -135,6 +140,7 @@ async def list_threads(
         )
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    all_threads = [t for t in all_threads if thread_readable_by(t, caller)]
     if unread:
         all_threads = [t for t in all_threads if t.unread_counters.get(caller_id, 0) > 0]
 
@@ -164,13 +170,13 @@ async def list_threads(
 async def get_thread_detail(
     thread_id: str,
     since_seq: int = Query(default=0, ge=0),
-    _caller: Principal = Depends(require_scope("staff.read")),
+    caller: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     """Get thread metadata along with its historical messages."""
     store = _get_store_or_503()
     try:
         thread = store.get_thread(thread_id)
-        if not thread:
+        if not thread or not thread_readable_by(thread, caller):
             raise HTTPException(status_code=404, detail="thread not found")
         messages = store.list_messages(thread_id, limit=200, since_seq=since_seq)
     except ConversationsUnavailableError as exc:
@@ -244,7 +250,7 @@ async def post_message(
 
     try:
         thread = store.get_thread(thread_id)
-        if not thread:
+        if not thread or not thread_readable_by(thread, caller):
             raise HTTPException(status_code=404, detail="thread not found")
 
         existing = find_idempotent_reply(store._conn, thread_id, idempotency_key)
@@ -262,6 +268,9 @@ async def post_message(
                 status_code=status.HTTP_409_CONFLICT,
                 detail={"code": "panel_thread_read_only", "message": "A panel thread takes no new messages"},
             )
+
+        if (thread.meta or {}).get("no_auto_reply"):
+            return store_without_turn(store, get_thread_bus(), thread_id, body, caller_id, idempotency_key.strip())
 
         from staff.group_threads import dispatch_group_message, is_group_thread
 
@@ -411,12 +420,12 @@ async def stream_thread(
     since_seq: int | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     follow: bool = Query(default=True, description="Keep stream open for live updates"),
-    _caller: Principal = Depends(require_scope("staff.read")),
+    caller: Principal = Depends(require_scope("staff.read")),
 ) -> StreamingResponse:
     """SSE feed for thread updates (token deltas, message completions, proposals)."""
     store = _get_store_or_503()
     thread = store.get_thread(thread_id)
-    if not thread:
+    if not thread or not thread_readable_by(thread, caller):
         raise HTTPException(status_code=404, detail="thread not found")
 
     bus = get_thread_bus()

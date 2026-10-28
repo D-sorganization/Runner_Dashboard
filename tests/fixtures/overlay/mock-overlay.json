@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "hosts": [
+    { "name": "mock-hub", "address": "mock-hub.example.invalid" },
+    { "name": "mock-node", "address": "mock-node.example.invalid" }
+  ],
+  "agent_token_paths": {
+    "mock-agent": "~/.config/mock-overlay/mock-agent.token-path"
+  },
+  "roles_dir": "roles",
+  "policy_dir": "policy",
+  "private_docs_dir": "docs-private"
+}

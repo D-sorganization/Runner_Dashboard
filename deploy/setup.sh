@@ -5,7 +5,7 @@
 # This script:
 #   1. Installs Python dependencies
 #   2. Copies dashboard to a stable location (~/.../dashboard/)
-#   3. Configures passwordless sudo for runner svc.sh commands
+#   3. Configures scoped passwordless sudo for runner systemd units
 #   4. Installs systemd service with GitHub App/fallback token and machine metadata
 #   5. Sets up Windows port forwarding instructions
 #
@@ -344,30 +344,26 @@ else
     ok "Runner schedule config already exists at ${SCHEDULE_CONFIG_VAL}"
 fi
 
-# ── Step 3: Sudoers for runner control ───────────────────────────────────────
+# ── Step 3: Sudoers migration ────────────────────────────────────────────────
 header "Step 3/5: Sudoers Configuration"
-SUDOERS_FILE="/etc/sudoers.d/runner-dashboard"
-SUDOERS_LINE="${USER} ALL=(ALL) NOPASSWD: ${RUNNER_BASE_DIR}/runner-*/svc.sh"
-
-if [[ -f "${SUDOERS_FILE}" ]] && grep -qF "${SUDOERS_LINE}" "${SUDOERS_FILE}" 2>/dev/null; then
-    ok "Sudoers rule already configured"
-else
-    info "Adding passwordless sudo for runner svc.sh..."
-    # Atomic sudoers replacement (issue #402): write to tmp, validate with
-    # `visudo -c -f`, only then move into place. Validation failure leaves
-    # any existing sudoers file untouched.
-    tmp=$(mktemp)
-    echo "${SUDOERS_LINE}" > "$tmp"
-    if visudo -c -f "$tmp" >/dev/null 2>&1; then
-        sudo install -m 0440 "$tmp" "${SUDOERS_FILE}"
-        rm -f "$tmp"
-        ok "Sudoers rule installed (start/stop runners without password)"
-    else
-        rm -f "$tmp"
-        echo "ERROR: sudoers validation failed; existing file untouched"
-        exit 1
+# Remove obsolete runner-script rules from every drop-in while preserving
+# unrelated entries. Validate each replacement before installing it.
+for legacy_file in /etc/sudoers.d/*; do
+    [[ -f "$legacy_file" ]] || continue
+    if sudo grep -Eq 'NOPASSWD:.*svc\.sh' "$legacy_file" 2>/dev/null; then
+        legacy_tmp=$(mktemp)
+        sudo sed -E '/NOPASSWD:.*svc\.sh/d' "$legacy_file" > "$legacy_tmp"
+        if visudo -cf "$legacy_tmp" >/dev/null 2>&1; then
+            sudo install -m 0440 "$legacy_tmp" "$legacy_file"
+            info "Updated sudoers drop-in: $(basename "$legacy_file")"
+        else
+            rm -f "$legacy_tmp"
+            echo "ERROR: sudoers migration validation failed; existing file untouched"
+            exit 1
+        fi
+        rm -f "$legacy_tmp"
     fi
-fi
+done
 
 # ── Step 4: Systemd service ──────────────────────────────────────────────────
 header "Step 4/5: Systemd Service (Auto-Start)"
@@ -417,8 +413,8 @@ fi
 
 SERVICE_FILE="$(install_dashboard_systemd_unit "${TEMPLATE_FILE}" "${MACHINE_NAME}")"
 ok "Installed runner-dashboard unit at ${SERVICE_FILE} (${SYSTEMD_DASHBOARD_SCOPE} scope)"
-
 # Install tightly-scoped sudoers drop-in (issue #391 AC-6).
+sudo install -o root -g root -m 0755 "${SCRIPT_DIR}/deploy/rd-runner-ctl" /usr/local/sbin/rd-runner-ctl
 SUDOERS_SRC="${SCRIPT_DIR}/deploy/sudoers.d-runner-dashboard"
 SUDOERS_DEST="/etc/sudoers.d/runner-dashboard"
 if [[ -f "${SUDOERS_SRC}" ]]; then

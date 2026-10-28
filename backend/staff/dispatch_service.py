@@ -252,7 +252,7 @@ async def dispatch_staff_run(
             issue_number=cmd.issue,
             prompt=cmd.prompt,
             check_claim_labels=not claim_guard.enabled(),
-            check_open_pr=not cmd.force_claim_override,
+            check_open_pr=not (cmd.force_claim_override or cmd.force_duplicate),
         )
         if not premise_res.allowed:
             await log_dispatch_skip(premise_res, cmd.repo, cmd.issue)
@@ -431,6 +431,7 @@ async def dispatch_staff_run(
                 "model": plan.model or routing.model,
                 "routing_reason": routing.reason,
                 "machine": runner.machine,
+                **({"force_duplicate": True} if cmd.force_duplicate else {}),
                 **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                 **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
                 **({"claim_check": claim_info["claim_check"]} if claim_info else {}),
@@ -445,7 +446,9 @@ async def dispatch_staff_run(
         ) from exc
     # Barb-authored dispatch: the lease check and the run admission share one critical section, so a
     # takeover cannot land between them (#2734). ``admit`` is synchronous; never await inside the fence.
-    with barb_write_fence(barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller)):
+    with barb_write_fence(
+        barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller), audit=audit_ctx
+    ):
         rec, plan, created = runner.admit(req, run_id=run_id)
     auth_skipped = getattr(plan, "provider_auth_skipped", None)
     if created and auth_skipped:
