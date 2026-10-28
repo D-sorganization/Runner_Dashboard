@@ -32,13 +32,15 @@ placeholder for something private.
 
 from __future__ import annotations
 
+import contextvars
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import IntEnum
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, TypeVar
 
 _FIELDS: dict[str, type] = {"enabled": bool, "default_level": str}
 _POLICY_FIELDS: dict[str, type] = {
@@ -48,6 +50,8 @@ _POLICY_FIELDS: dict[str, type] = {
     "operator_marks": dict,
 }
 POLICY_FILENAME = "classification.json"
+ENVELOPE_SCHEMA_VERSION = 1
+_T = TypeVar("_T")
 
 
 class ClassificationError(RuntimeError):
@@ -311,3 +315,243 @@ def resolve(
             raise ClassificationError("resolve: classification downgrade is refused without audited declassify")
 
     return level
+
+
+# --- PM-2 (#3252): immutable versioned envelope + propagation, taint, upgrade requeue, metric ---
+
+
+@dataclass(frozen=True)
+class ClassificationEnvelope:
+    """Immutable versioned classification envelope (issue #3252, PM-2).
+
+    Consumers read ``envelope.level`` only (LoD); receivers validate
+    ``schema_version`` via :func:`validate_envelope`.
+    """
+
+    schema_version: int
+    level: Level
+    epoch: int = 1
+    hops: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "level": self.level.name,
+            "epoch": self.epoch,
+            "hops": list(self.hops),
+        }
+
+
+@dataclass(frozen=True)
+class UpgradeCheckResult:
+    """Result of checking a running envelope against a live classification level."""
+
+    envelope: ClassificationEnvelope
+    requeue_required: bool
+    checkpoint_id: str | None = None
+
+
+_envelope_ctx: contextvars.ContextVar[ClassificationEnvelope | None] = contextvars.ContextVar(
+    "private_mode_envelope",
+    default=None,
+)
+_level_distribution_counts: dict[Level, int] = {lvl: 0 for lvl in Level}
+
+
+def _record_level(level: Level) -> None:
+    _level_distribution_counts[level] = _level_distribution_counts.get(level, 0) + 1
+
+
+def get_level_distribution_counts() -> dict[Level, int]:
+    """Return a copy of the in-process level-distribution counter (PM-2 metric)."""
+    return dict(_level_distribution_counts)
+
+
+def reset_level_distribution_counts() -> None:
+    """Reset the level-distribution counter (for deterministic tests)."""
+    for lvl in Level:
+        _level_distribution_counts[lvl] = 0
+
+
+def stamp_envelope(
+    level: Level,
+    *,
+    hop: str = "origin",
+    epoch: int = 1,
+    config: PrivateModeConfig = DISABLED,
+) -> ClassificationEnvelope:
+    """Stamp an initial immutable :class:`ClassificationEnvelope` (DbC).
+
+    When ``config.enabled`` is ``False``, the envelope is stamped ``Level.PUBLIC``
+    regardless of *level* (flag-off invariant).
+    """
+    if not isinstance(level, Level):
+        raise ClassificationError("stamp_envelope: level must be a Level")
+    if not isinstance(config, PrivateModeConfig):
+        raise ClassificationError("stamp_envelope: config must be a PrivateModeConfig")
+    if not isinstance(hop, str) or not hop.strip():
+        raise ClassificationError("stamp_envelope: hop must be a non-empty str")
+    if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
+        raise ClassificationError("stamp_envelope: epoch must be an int >= 1")
+    effective = Level.PUBLIC if not config.enabled else level
+    _record_level(effective)
+    return ClassificationEnvelope(
+        schema_version=ENVELOPE_SCHEMA_VERSION,
+        level=effective,
+        epoch=epoch,
+        hops=(hop.strip(),),
+    )
+
+
+def validate_envelope(raw: ClassificationEnvelope | Mapping[str, Any]) -> ClassificationEnvelope:
+    """Receiver boundary check: validate an envelope or wire dict (DbC)."""
+    if isinstance(raw, ClassificationEnvelope):
+        if raw.schema_version != ENVELOPE_SCHEMA_VERSION or isinstance(raw.schema_version, bool):
+            raise ClassificationError(
+                f"validate_envelope: unsupported schema_version (expected {ENVELOPE_SCHEMA_VERSION})"
+            )
+        if not isinstance(raw.level, Level):
+            raise ClassificationError("validate_envelope: level must be a Level")
+        if not isinstance(raw.epoch, int) or isinstance(raw.epoch, bool) or raw.epoch < 1:
+            raise ClassificationError("validate_envelope: epoch must be an int >= 1")
+        if not isinstance(raw.hops, tuple) or not all(isinstance(h, str) and h.strip() for h in raw.hops):
+            raise ClassificationError("validate_envelope: hops must be a tuple of non-empty strings")
+        return raw
+    if not isinstance(raw, Mapping):
+        raise ClassificationError("validate_envelope: envelope must be a ClassificationEnvelope or mapping")
+    expected_keys = {"schema_version", "level", "epoch", "hops"}
+    missing = sorted(expected_keys - set(raw))
+    unknown = sorted(set(raw) - expected_keys)
+    if missing:
+        raise ClassificationError(f"validate_envelope: missing required key(s): {', '.join(missing)}")
+    if unknown:
+        raise ClassificationError(f"validate_envelope: unknown key(s): {', '.join(unknown)}")
+    version = raw["schema_version"]
+    if version != ENVELOPE_SCHEMA_VERSION or isinstance(version, bool):
+        raise ClassificationError(f"validate_envelope: unsupported schema_version (expected {ENVELOPE_SCHEMA_VERSION})")
+    level = _parse_level(raw["level"], "validate_envelope", err_cls=ClassificationError)
+    epoch = raw["epoch"]
+    if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
+        raise ClassificationError("validate_envelope: epoch must be an int >= 1")
+    hops_raw = raw["hops"]
+    if not isinstance(hops_raw, (list, tuple)) or not all(isinstance(h, str) and h.strip() for h in hops_raw):
+        raise ClassificationError("validate_envelope: hops must be a list of non-empty strings")
+    return ClassificationEnvelope(
+        schema_version=ENVELOPE_SCHEMA_VERSION,
+        level=level,
+        epoch=epoch,
+        hops=tuple(h.strip() for h in hops_raw),
+    )
+
+
+def propagate_envelope(
+    parent: ClassificationEnvelope | Mapping[str, Any],
+    *,
+    hop: str,
+    requested_level: Level | None = None,
+) -> ClassificationEnvelope:
+    """Propagate *parent* across retries, sub-dispatch, forked threads or artifacts.
+
+    The classification level never decreases along the chain (`max_join`). If
+    the level increases, ``epoch`` increments by 1.
+    """
+    validated = validate_envelope(parent)
+    if not isinstance(hop, str) or not hop.strip():
+        raise ClassificationError("propagate_envelope: hop must be a non-empty str")
+    if requested_level is not None and not isinstance(requested_level, Level):
+        raise ClassificationError("propagate_envelope: requested_level must be a Level")
+    next_level = max_join(validated.level, requested_level) if requested_level is not None else validated.level
+    next_epoch = validated.epoch + 1 if next_level > validated.level else validated.epoch
+    _record_level(next_level)
+    return ClassificationEnvelope(
+        schema_version=ENVELOPE_SCHEMA_VERSION,
+        level=next_level,
+        epoch=next_epoch,
+        hops=(*validated.hops, hop.strip()),
+    )
+
+
+def current_envelope() -> ClassificationEnvelope | None:
+    """Return the active :class:`ClassificationEnvelope` from ``contextvars``."""
+    return _envelope_ctx.get()
+
+
+@contextmanager
+def envelope_context(envelope: ClassificationEnvelope | Mapping[str, Any]) -> Iterator[ClassificationEnvelope]:
+    """Bind a validated :class:`ClassificationEnvelope` to the current execution context.
+
+    If an outer envelope is already active in ``contextvars``, the inner envelope's
+    level is joined (`max_join`) so classification never decreases inside nested scopes.
+    """
+    validated = validate_envelope(envelope)
+    outer = _envelope_ctx.get()
+    if outer is not None and outer.level > validated.level:
+        validated = propagate_envelope(validated, hop="context_join", requested_level=outer.level)
+    token = _envelope_ctx.set(validated)
+    try:
+        yield validated
+    finally:
+        _envelope_ctx.reset(token)
+
+
+def copy_context_callable(fn: Callable[..., _T], *args: Any, **kwargs: Any) -> Callable[[], _T]:
+    """Wrap *fn* in a snapshot of the current ``contextvars.Context`` for threadpool execution."""
+    ctx = contextvars.copy_context()
+    return lambda: ctx.run(fn, *args, **kwargs)
+
+
+def taint_target_level(
+    target_level: Level,
+    *,
+    writer_envelope: ClassificationEnvelope | None = None,
+    config: PrivateModeConfig = DISABLED,
+) -> Level:
+    """Writer-context taint: a writer at level *W* elevates its target to ``max(target, W)``."""
+    if not isinstance(target_level, Level):
+        raise ClassificationError("taint_target_level: target_level must be a Level")
+    if not isinstance(config, PrivateModeConfig):
+        raise ClassificationError("taint_target_level: config must be a PrivateModeConfig")
+    if not config.enabled:
+        return Level.PUBLIC
+    active = validate_envelope(writer_envelope) if writer_envelope is not None else _envelope_ctx.get()
+    if active is None:
+        return target_level
+    return max_join(target_level, active.level)
+
+
+def taint_target_envelope(
+    target: ClassificationEnvelope | Mapping[str, Any],
+    *,
+    writer_envelope: ClassificationEnvelope | None = None,
+    config: PrivateModeConfig = DISABLED,
+) -> ClassificationEnvelope:
+    """Apply writer-context taint to *target* envelope, incrementing epoch on upgrade."""
+    validated_target = validate_envelope(target)
+    if not config.enabled:
+        return stamp_envelope(Level.PUBLIC, hop="flag_off", config=config)
+    tainted_level = taint_target_level(validated_target.level, writer_envelope=writer_envelope, config=config)
+    if tainted_level > validated_target.level:
+        return propagate_envelope(validated_target, hop="writer_taint", requested_level=tainted_level)
+    return validated_target
+
+
+def check_mid_run_upgrade(
+    running: ClassificationEnvelope | Mapping[str, Any],
+    *,
+    live_level: Level,
+    checkpoint_id: str | None = None,
+) -> UpgradeCheckResult:
+    """Detect mid-run classification upgrades and signal checkpoint requeue.
+
+    Refuses mid-run downgrades (`live_level < running.level`) with
+    :class:`ClassificationError`.
+    """
+    validated = validate_envelope(running)
+    if not isinstance(live_level, Level):
+        raise ClassificationError("check_mid_run_upgrade: live_level must be a Level")
+    if live_level < validated.level:
+        raise ClassificationError("check_mid_run_upgrade: mid-run classification downgrade is refused")
+    if live_level > validated.level:
+        upgraded = propagate_envelope(validated, hop="mid_run_upgrade", requested_level=live_level)
+        return UpgradeCheckResult(envelope=upgraded, requeue_required=True, checkpoint_id=checkpoint_id)
+    return UpgradeCheckResult(envelope=validated, requeue_required=False, checkpoint_id=checkpoint_id)
