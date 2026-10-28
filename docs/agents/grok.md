@@ -20,7 +20,7 @@ In the fleet topology, **Barb** is the single front door:
 
 ### Remote Ingress (ADR 0007: local-only)
 
-Direct connections use the local network or Tailscale address (`http://deskcomputer:8321`). **Cloud-hosted Grok instances outside the private network are not supported** ([ADR 0007](../adr/0007-agent-client-ingress-local-only.md)): the dashboard has no Funnel, connector or outbound relay path. Grok connects through its local-exec tool on a fleet machine, over the tailnet; that is a local process calling a cloud model, not cloud ingress. See [Supported Clients and Networks](connect.md#supported-clients-and-networks). Any future cloud ingress is a separate Board decision.
+Direct connections use the local network or Tailscale address (`http://hub-a:8321`). **Cloud-hosted Grok instances outside the private network are not supported** ([ADR 0007](../adr/0007-agent-client-ingress-local-only.md)): the dashboard has no Funnel, connector or outbound relay path. Grok connects through its local-exec tool on a fleet machine, over the tailnet; that is a local process calling a cloud model, not cloud ingress. See [Supported Clients and Networks](connect.md#supported-clients-and-networks). Any future cloud ingress is a separate Board decision.
 
 ---
 
@@ -29,7 +29,7 @@ Direct connections use the local network or Tailscale address (`http://deskcompu
 Set environment variables in Grok's execution context:
 
 ```bash
-export FLEET_API_URL="http://deskcomputer:8321"
+export FLEET_API_URL="http://hub-a:8321"
 export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-grok.token)"
 export FLEET_AGENT="grok"
 ```
@@ -88,7 +88,7 @@ The first live contract is the `/api/v1/staff` threads API with the `agent-grok`
   `/api/v1/staff/proposals/{id}/decide`). Chat turns (including Barb) operate in read-only mode and cannot
   dispatch runs directly or accept chat confirmations. Saying "yes" in chat does not dispatch; the owner must
   accept the proposal card in the Staff Console. The cost guard still applies; a cost-guard overrun needs its own approval.
-  - The supervised dry run gate is met. The first dry run (2026-09-27, DeskComputer) showed that Barb's run plan
+  - The supervised dry run gate is met. The first dry run (2026-09-27, hub-a) showed that Barb's run plan
     carried write tools and push/PR rules. That was fixed by the opt-in `permissions.code_read_only` (#1659,
     Repository_Management#1822) and by removing Barb's directive-write recipe (Repository_Management#1818).
   - The re-run on `dfbd139d` passed: a read-only tool allowlist, no draft-PR rules, no directive write, and

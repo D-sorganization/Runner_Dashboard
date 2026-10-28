@@ -995,7 +995,7 @@ def _deployment_info() -> dict:
 # entries for every *other* machine in the fleet.  The hub always includes
 # itself automatically — do not list it in FLEET_NODES.
 #
-# Example (in /etc/systemd/system/runner-dashboard.service on ControlTower):
+# Example (in /etc/systemd/system/runner-dashboard.service on node-a):
 #   Environment=MACHINE_ROLE=hub
 #   Environment=FLEET_NODES=envy:http://100.x.x.x:8321,thinkpad:http://100.x.x.x:8321
 MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
