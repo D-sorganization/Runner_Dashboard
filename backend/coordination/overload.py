@@ -1,12 +1,4 @@
-"""Per-repo swarm overload detection, auto-DRAIN mode, and PR consolidation (issue #3293, slices 1-3).
-
-Computes open/merge rate over rolling 1h/6h windows, open-PR count,
-merge-queue depth, an ``overloaded`` flag, merge-queue ruleset settings,
-auto-DRAIN mode with recovery hysteresis, and read-only PR consolidation
-suggestions grouped by linked issue, branch prefix, and overlapping paths
-under the PR size cap.
-Each GitHub sub-source degrades independently into a ``warnings`` entry.
-"""
+"""Per-repo swarm overload detection, auto-DRAIN mode, and PR consolidation (issue #3293, slices 1-3)."""
 
 from __future__ import annotations
 
@@ -29,15 +21,8 @@ WINDOW_HOURS: tuple[int, ...] = (1, 6)  #: rolling-rate windows reported
 CONSECUTIVE_WINDOWS_THRESHOLD = 3  #: trailing 1h buckets of open>merge before overload fires
 DEFAULT_OPEN_COUNT_THRESHOLD = 15  #: open-PR count that alone triggers OVERLOADED
 DEFAULT_PR_SIZE_CAP = 500  #: max combined changed lines (additions + deletions) per consolidated PR
-MODE_NORMAL = "NORMAL"
-MODE_DRAIN = "DRAIN"
-RECOVERY_WINDOW_KEY = "1h"
-DEFAULT_DRAIN_EXCEPTIONS: tuple[str, ...] = (
-    "ci-unblock",
-    "runner-unblock",
-    "security",
-    "work-report",
-)
+MODE_NORMAL, MODE_DRAIN, RECOVERY_WINDOW_KEY = "NORMAL", "DRAIN", "1h"
+DEFAULT_DRAIN_EXCEPTIONS: tuple[str, ...] = ("ci-unblock", "runner-unblock", "security", "work-report")
 
 _HISTORY_HOURS = max(max(WINDOW_HOURS), CONSECUTIVE_WINDOWS_THRESHOLD)
 _MERGE_QUEUE_RULE_TYPE = "merge_queue"
@@ -53,8 +38,7 @@ _drain_latched_since: dict[str, str] = {}
 
 
 def _ensure_repo_slug(repo: str) -> str:
-    """Defensive precondition for direct/unit-test callers; the HTTP boundary
-    (``routers/overload.py``) already validates the format."""
+    """Defensive precondition for direct/unit-test callers."""
     if not repo or "/" not in repo:
         raise ValueError(f"repo must be an 'owner/name' slug, got {repo!r}")
     return repo
@@ -65,9 +49,9 @@ async def _fetch_open_prs(repo: str) -> tuple[list[dict[str, Any]], str | None]:
         items, err = await pr_inventory.fetch_repo_prs(repo)
     except Exception as exc:  # noqa: BLE001 — orthogonality: one source must not break the rest
         return [], f"open PR count unavailable: {exc}"
-    if err:
-        return [], f"open PR count unavailable: {err}"
-    return [dict(item) for item in items if isinstance(item, Mapping)], None
+    return (
+        ([], f"open PR count unavailable: {err}") if err else ([dict(i) for i in items if isinstance(i, Mapping)], None)
+    )
 
 
 async def _fetch_open_count(repo: str) -> tuple[int, str | None]:
@@ -77,21 +61,20 @@ async def _fetch_open_count(repo: str) -> tuple[int, str | None]:
 
 async def _fetch_recent_prs(repo: str) -> tuple[tuple[PrSnapshot, ...], str | None]:
     since = datetime.now(UTC) - timedelta(hours=_HISTORY_HOURS)
-    collector = GhClientDeliveryCollector(concurrency=2)
     try:
-        prs = await collector.list_pulls_updated_since(repo, since, max_pages=3)
+        return await GhClientDeliveryCollector(concurrency=2).list_pulls_updated_since(repo, since, max_pages=3), None
     except gh_client.GhNotFound:
         return (), f"{repo}: repository not found"
     except Exception as exc:  # noqa: BLE001
         return (), f"PR history unavailable: {exc}"
-    return prs, None
 
 
 def _rate_counts(prs: tuple[PrSnapshot, ...], *, since: datetime) -> tuple[int, int]:
     """Return ``(opened_count, merged_count)`` for events at/after *since*."""
-    opened = sum(1 for pr in prs if pr.created_at >= since)
-    merged = sum(1 for pr in prs if pr.merged_at is not None and pr.merged_at >= since)
-    return opened, merged
+    return (
+        sum(1 for pr in prs if pr.created_at >= since),
+        sum(1 for pr in prs if pr.merged_at is not None and pr.merged_at >= since),
+    )
 
 
 def _windows(prs: tuple[PrSnapshot, ...], *, now: datetime) -> dict[str, dict[str, float]]:
@@ -110,20 +93,20 @@ def _windows(prs: tuple[PrSnapshot, ...], *, now: datetime) -> dict[str, dict[st
 def _consecutive_overloaded_buckets(prs: tuple[PrSnapshot, ...], *, now: datetime) -> bool:
     """True when each of the trailing N 1h buckets has open-rate > merge-rate."""
     for bucket in range(CONSECUTIVE_WINDOWS_THRESHOLD):
-        bucket_end = now - timedelta(hours=bucket)
-        bucket_start = now - timedelta(hours=bucket + 1)
-        opened = sum(1 for pr in prs if bucket_start <= pr.created_at < bucket_end)
-        merged = sum(1 for pr in prs if pr.merged_at is not None and bucket_start <= pr.merged_at < bucket_end)
+        b_end, b_start = now - timedelta(hours=bucket), now - timedelta(hours=bucket + 1)
+        opened = sum(1 for pr in prs if b_start <= pr.created_at < b_end)
+        merged = sum(1 for pr in prs if pr.merged_at is not None and b_start <= pr.merged_at < b_end)
         if not (opened > merged):
             return False
     return True
 
 
 async def _fetch_queue_depth(repo: str) -> tuple[int, str | None]:
-    path = f"/repos/{repo}/actions/runs?event=merge_group&status=queued&per_page=100"
     depth = 0
     try:
-        async for _run in gh_client.paginate(path):
+        async for _run in gh_client.paginate(
+            f"/repos/{repo}/actions/runs?event=merge_group&status=queued&per_page=100"
+        ):
             depth += 1
             if depth >= _MAX_QUEUE_RUNS_SCANNED:
                 break
@@ -145,53 +128,38 @@ async def _fetch_merge_queue_settings(repo: str) -> tuple[dict[str, Any] | None,
         return None, "merge-queue settings unavailable: unexpected rulesets response shape"
 
     for summary in summaries:
-        if not isinstance(summary, dict) or summary.get("enforcement") != "active":
-            continue
-        ruleset_id = summary.get("id")
-        if ruleset_id is None:
+        if not isinstance(summary, dict) or summary.get("enforcement") != "active" or summary.get("id") is None:
             continue
         try:
-            ruleset = await gh_client.get(f"/repos/{repo}/rulesets/{ruleset_id}")
+            ruleset = await gh_client.get(f"/repos/{repo}/rulesets/{summary['id']}")
         except gh_client.GhClientError:
             continue
         for rule in ruleset.get("rules") or []:
-            if rule.get("type") != _MERGE_QUEUE_RULE_TYPE:
-                continue
-            params = rule.get("parameters") or {}
-            return (
-                {key: params.get(key) for key in _MERGE_QUEUE_PARAM_KEYS},
-                None,
-            )
+            if rule.get("type") == _MERGE_QUEUE_RULE_TYPE:
+                params = rule.get("parameters") or {}
+                return {key: params.get(key) for key in _MERGE_QUEUE_PARAM_KEYS}, None
     return None, "no active ruleset defines a merge_queue rule"
 
 
 def reset_drain_state(repo: str | None = None) -> None:
     """Clear latched DRAIN state for ``repo`` (or all repos when ``None``)."""
-    if repo is None:
-        _drain_latched_since.clear()
-    else:
-        _drain_latched_since.pop(repo, None)
+    _drain_latched_since.clear() if repo is None else _drain_latched_since.pop(repo, None)
 
 
 def resolve_drain_exceptions(exceptions: Sequence[str] | None = None) -> tuple[str, ...]:
     """Resolve and validate open-PR exception categories allowed during DRAIN."""
-    raw_items: Sequence[str]
     if exceptions is not None:
         if not exceptions:
             raise ValueError("drain_exceptions must not be empty when provided")
-        raw_items = exceptions
+        raw_items: Sequence[str] = exceptions
     else:
         env_val = os.environ.get("RD_OVERLOAD_DRAIN_EXCEPTIONS", "").strip()
-        raw_items = (
-            [item.strip() for item in env_val.split(",") if item.strip()] if env_val else DEFAULT_DRAIN_EXCEPTIONS
-        )
-
+        raw_items = [s.strip() for s in env_val.split(",") if s.strip()] if env_val else DEFAULT_DRAIN_EXCEPTIONS
     normalized: list[str] = []
     for item in raw_items:
         if not isinstance(item, str) or not item.strip():
             raise ValueError(f"drain_exceptions entries must be non-empty strings, got {item!r}")
-        token = item.strip().lower()
-        if token not in normalized:
+        if (token := item.strip().lower()) not in normalized:
             normalized.append(token)
     return tuple(normalized)
 
@@ -225,8 +193,9 @@ def evaluate_drain_mode(
     merge_rate = float(recovery.get("merge_rate_per_hour", 0.0))
     recovered = merge_rate > open_rate
 
-    latched = False
-    cleared = False
+    latched, cleared, active = False, False, False
+    latched_at: str | None = None
+    reason = ""
     if overloaded:
         latched_at = _drain_latched_since.setdefault(repo, now.isoformat())
         active = True
@@ -234,27 +203,18 @@ def evaluate_drain_mode(
     elif repo in _drain_latched_since:
         if recovered:
             _drain_latched_since.pop(repo, None)
-            latched_at = None
-            active = False
             cleared = True
             reason = f"drain cleared: {RECOVERY_WINDOW_KEY} merge_rate ({merge_rate}/h) > open_rate ({open_rate}/h)"
         else:
-            latched_at = _drain_latched_since[repo]
-            active = True
-            latched = True
+            latched_at, active, latched = _drain_latched_since[repo], True, True
             reason = (
                 f"holding DRAIN until {RECOVERY_WINDOW_KEY} merge_rate ({merge_rate}/h) "
                 f"exceeds open_rate ({open_rate}/h)"
             )
-    else:
-        latched_at = None
-        active = False
-        reason = ""
 
-    mode = MODE_DRAIN if active else MODE_NORMAL
     return {
         "active": active,
-        "mode": mode,
+        "mode": MODE_DRAIN if active else MODE_NORMAL,
         "latched": latched,
         "cleared": cleared,
         "latched_at": latched_at,
@@ -283,14 +243,10 @@ def write_drain_state_file(path: Path | str, snapshot: Mapping[str, Any]) -> Pat
     target = Path(path)
     repo = str(snapshot.get("repo") or "")
     _ensure_repo_slug(repo)
-    payload = {
+    payload = {k: snapshot.get(k) for k in ("generated_at", "drain", "lane_notice", "dispatch_directive")} | {
         "repo": repo,
-        "generated_at": snapshot.get("generated_at"),
         "overloaded": bool(snapshot.get("overloaded")),
         "mode": snapshot.get("mode", MODE_NORMAL),
-        "drain": snapshot.get("drain"),
-        "lane_notice": snapshot.get("lane_notice"),
-        "dispatch_directive": snapshot.get("dispatch_directive"),
     }
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -310,13 +266,10 @@ def read_drain_state_file(path: Path | str) -> dict[str, Any]:
 
 def _normalize_branch_prefix(head_ref: str) -> str | None:
     """Derive a topic-scoped branch prefix for consolidation grouping."""
-    if not head_ref or not head_ref.strip():
-        return None
     slash_parts = [part.strip().lower() for part in head_ref.strip().split("/") if part.strip()]
     if not slash_parts:
         return None
-    slug = slash_parts[-1]
-    tokens = [tok for tok in slug.split("-") if tok]
+    tokens = [tok for tok in slash_parts[-1].split("-") if tok]
     if len(tokens) < 2:
         return None
     if tokens[0].isdigit():
@@ -339,31 +292,73 @@ def _normalize_open_pr_for_consolidation(
     elif "additions" in raw or "deletions" in raw:
         changed_lines = int(raw.get("additions") or 0) + int(raw.get("deletions") or 0)
     elif number in recent_by_number:
-        snap = recent_by_number[number]
-        changed_lines = int(snap.additions) + int(snap.deletions)
+        changed_lines = int(recent_by_number[number].additions) + int(recent_by_number[number].deletions)
     else:
         changed_lines = 0
     if changed_lines < 0:
         raise ValueError(f"changed_lines must be non-negative for PR #{number}, got {changed_lines!r}")
-
     head_ref = str(raw.get("head_ref") or raw.get("headRefName") or raw.get("branch") or "").strip()
     raw_issues = raw.get("linked_issues")
     if isinstance(raw_issues, Sequence) and not isinstance(raw_issues, (str, bytes)):
         linked_issues = sorted({int(i) for i in raw_issues if isinstance(i, int) and not isinstance(i, bool)})
     else:
         linked_issues = pr_inventory._parse_linked_issues(raw.get("body"))
-
     raw_paths = raw.get("changed_paths") or raw.get("paths") or raw.get("files") or ()
-    changed_paths = sorted({str(p).strip() for p in raw_paths if isinstance(p, str) and str(p).strip()})
     return {
         "number": number,
         "title": str(raw.get("title") or ""),
         "head_ref": head_ref,
         "branch_prefix": _normalize_branch_prefix(head_ref),
         "linked_issues": linked_issues,
-        "changed_paths": changed_paths,
+        "changed_paths": sorted({str(p).strip() for p in raw_paths if isinstance(p, str) and str(p).strip()}),
         "changed_lines": changed_lines,
         "draft": bool(raw.get("draft", False)),
+    }
+
+
+def _build_consolidation_suggestion(
+    group_by: str,
+    group_key: str,
+    surviving: dict[str, Any],
+    absorbed: list[dict[str, Any]],
+    skipped_over_cap: list[int],
+    combined_lines: int,
+    size_cap: int,
+) -> dict[str, Any]:
+    chosen = [surviving, *absorbed]
+    shared_issues = sorted(
+        {i for p in chosen for i in p["linked_issues"] if sum(i in q["linked_issues"] for q in chosen) >= 2}
+    )
+    shared_paths = sorted(
+        {f for p in chosen for f in p["changed_paths"] if sum(f in q["changed_paths"] for q in chosen) >= 2}
+    )
+    shared_prefixes = sorted(
+        {
+            str(p["branch_prefix"])
+            for p in chosen
+            if p["branch_prefix"] and sum(q["branch_prefix"] == p["branch_prefix"] for q in chosen) >= 2
+        }
+    )
+    absorbed_nums = [p["number"] for p in absorbed]
+    return {
+        "group_by": group_by,
+        "group_key": group_key,
+        "reasons": [f"linked_issue:#{i}" for i in shared_issues]
+        + [f"branch_prefix:{p}" for p in shared_prefixes]
+        + [f"overlapping_paths:{p}" for p in shared_paths],
+        "surviving_pr": surviving["number"],
+        "absorbed_prs": absorbed_nums,
+        "skipped_over_cap_prs": skipped_over_cap,
+        "combined_changed_lines": combined_lines,
+        "size_cap": size_cap,
+        "shared_issues": shared_issues,
+        "shared_paths": shared_paths,
+        "branch_prefix": shared_prefixes[0] if shared_prefixes else surviving["branch_prefix"],
+        "auto_close": False,
+        "action": (
+            f"Keep #{surviving['number']}; manually close "
+            f"{', '.join(f'#{n}' for n in absorbed_nums)} as absorbed into #{surviving['number']}"
+        ),
     }
 
 
@@ -376,16 +371,12 @@ def suggest_pr_consolidations(
     """Suggest surviving + absorbed open PR groups under ``size_cap`` (read-only)."""
     if size_cap <= 0:
         raise ValueError(f"size_cap must be positive, got {size_cap!r}")
-
     recent_by_number = {pr.number: pr for pr in recent_prs}
-    normalized: list[dict[str, Any]] = []
-    for item in open_prs:
-        if not isinstance(item, Mapping):
-            continue
-        norm = _normalize_open_pr_for_consolidation(item, recent_by_number)
-        if norm is not None:
-            normalized.append(norm)
-
+    normalized = [
+        norm
+        for item in open_prs
+        if isinstance(item, Mapping) and (norm := _normalize_open_pr_for_consolidation(item, recent_by_number))
+    ]
     by_issue: dict[int, list[dict[str, Any]]] = {}
     by_prefix: dict[str, list[dict[str, Any]]] = {}
     by_path: dict[str, list[dict[str, Any]]] = {}
@@ -397,32 +388,23 @@ def suggest_pr_consolidations(
         for path in pr["changed_paths"]:
             by_path.setdefault(path, []).append(pr)
 
-    candidate_groups: list[tuple[str, str, list[dict[str, Any]]]] = []
-    for issue_num in sorted(by_issue):
-        if len(by_issue[issue_num]) >= 2:
-            candidate_groups.append(("linked_issue", f"#{issue_num}", by_issue[issue_num]))
-    for prefix in sorted(by_prefix):
-        if len(by_prefix[prefix]) >= 2:
-            candidate_groups.append(("branch_prefix", prefix, by_prefix[prefix]))
-    for path in sorted(by_path):
-        if len(by_path[path]) >= 2:
-            candidate_groups.append(("overlapping_paths", path, by_path[path]))
-
+    candidate_groups = (
+        [("linked_issue", f"#{k}", by_issue[k]) for k in sorted(by_issue) if len(by_issue[k]) >= 2]
+        + [("branch_prefix", k, by_prefix[k]) for k in sorted(by_prefix) if len(by_prefix[k]) >= 2]
+        + [("overlapping_paths", k, by_path[k]) for k in sorted(by_path) if len(by_path[k]) >= 2]
+    )
     assigned_prs: set[int] = set()
     suggestions: list[dict[str, Any]] = []
     for group_by, group_key, members in candidate_groups:
         available = sorted(
-            (m for m in members if m["number"] not in assigned_prs),
-            key=lambda m: (m["draft"], m["number"]),
+            (m for m in members if m["number"] not in assigned_prs), key=lambda m: (m["draft"], m["number"])
         )
-        if len(available) < 2:
-            continue
-        surviving = next((m for m in available if m["changed_lines"] <= size_cap), None)
+        surviving = (
+            next((m for m in available if m["changed_lines"] <= size_cap), None) if len(available) >= 2 else None
+        )
         if surviving is None:
             continue
-        combined_lines = surviving["changed_lines"]
-        absorbed: list[dict[str, Any]] = []
-        skipped_over_cap: list[int] = []
+        combined_lines, absorbed, skipped_over_cap = surviving["changed_lines"], [], []
         for cand in available:
             if cand["number"] == surviving["number"]:
                 continue
@@ -431,55 +413,13 @@ def suggest_pr_consolidations(
                 combined_lines += cand["changed_lines"]
             else:
                 skipped_over_cap.append(cand["number"])
-        if not absorbed:
-            continue
-
-        chosen = [surviving, *absorbed]
-        for pr in chosen:
-            assigned_prs.add(pr["number"])
-
-        issue_counts: dict[int, int] = {}
-        path_counts: dict[str, int] = {}
-        prefix_counts: dict[str, int] = {}
-        for pr in chosen:
-            for issue_num in pr["linked_issues"]:
-                issue_counts[issue_num] = issue_counts.get(issue_num, 0) + 1
-            for path in pr["changed_paths"]:
-                path_counts[path] = path_counts.get(path, 0) + 1
-            if pr["branch_prefix"]:
-                bp = str(pr["branch_prefix"])
-                prefix_counts[bp] = prefix_counts.get(bp, 0) + 1
-
-        shared_issues = sorted(k for k, count in issue_counts.items() if count >= 2)
-        shared_paths = sorted(k for k, count in path_counts.items() if count >= 2)
-        shared_prefixes = sorted(k for k, count in prefix_counts.items() if count >= 2)
-        reasons = (
-            [f"linked_issue:#{i}" for i in shared_issues]
-            + [f"branch_prefix:{p}" for p in shared_prefixes]
-            + [f"overlapping_paths:{p}" for p in shared_paths]
-        )
-        absorbed_nums = [p["number"] for p in absorbed]
-        suggestions.append(
-            {
-                "group_by": group_by,
-                "group_key": group_key,
-                "reasons": reasons,
-                "surviving_pr": surviving["number"],
-                "absorbed_prs": absorbed_nums,
-                "skipped_over_cap_prs": skipped_over_cap,
-                "combined_changed_lines": combined_lines,
-                "size_cap": size_cap,
-                "shared_issues": shared_issues,
-                "shared_paths": shared_paths,
-                "branch_prefix": shared_prefixes[0] if shared_prefixes else surviving["branch_prefix"],
-                "auto_close": False,
-                "action": (
-                    f"Keep #{surviving['number']}; manually close "
-                    f"{', '.join(f'#{n}' for n in absorbed_nums)} as absorbed into #{surviving['number']}"
-                ),
-            }
-        )
-
+        if absorbed:
+            assigned_prs.update(pr["number"] for pr in (surviving, *absorbed))
+            suggestions.append(
+                _build_consolidation_suggestion(
+                    group_by, group_key, surviving, absorbed, skipped_over_cap, combined_lines, size_cap
+                )
+            )
     return suggestions
 
 
@@ -490,9 +430,7 @@ async def build_overload_snapshot(
     drain_exceptions: Sequence[str] | None = None,
     pr_size_cap: int = DEFAULT_PR_SIZE_CAP,
 ) -> dict[str, Any]:
-    """Pre: ``repo`` is an ``owner/name`` slug, ``open_count_threshold`` > 0.
-    Post: result always has ``overloaded``/``overload_reasons`` and ``drain``;
-    a failing sub-source adds to ``warnings`` instead of raising."""
+    """Assemble per-repo overload, auto-DRAIN, and PR consolidation snapshot."""
     _ensure_repo_slug(repo)
     if open_count_threshold <= 0:
         raise ValueError(f"open_count_threshold must be positive, got {open_count_threshold!r}")
@@ -501,21 +439,12 @@ async def build_overload_snapshot(
     resolved_exceptions = resolve_drain_exceptions(drain_exceptions)
 
     now = datetime.now(UTC)
-    warnings: list[str] = []
-
     open_prs, open_err = await _fetch_open_prs(repo)
     open_count = len(open_prs)
-    if open_err:
-        warnings.append(open_err)
     recent_prs, history_err = await _fetch_recent_prs(repo)
-    if history_err:
-        warnings.append(history_err)
     queue_depth, queue_err = await _fetch_queue_depth(repo)
-    if queue_err:
-        warnings.append(queue_err)
     merge_queue_settings, settings_err = await _fetch_merge_queue_settings(repo)
-    if settings_err:
-        warnings.append(settings_err)
+    warnings = [err for err in (open_err, history_err, queue_err, settings_err) if err]
 
     reasons: list[str] = []
     if _consecutive_overloaded_buckets(recent_prs, now=now):
@@ -542,11 +471,7 @@ async def build_overload_snapshot(
         "open_pr_exceptions": list(resolved_exceptions),
         "notice_line": notice_line,
     }
-    consolidation_suggestions = suggest_pr_consolidations(
-        open_prs,
-        recent_prs=recent_prs,
-        size_cap=pr_size_cap,
-    )
+    consolidation_suggestions = suggest_pr_consolidations(open_prs, recent_prs=recent_prs, size_cap=pr_size_cap)
 
     return {
         "repo": repo,

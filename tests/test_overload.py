@@ -367,76 +367,64 @@ async def test_drain_state_file_roundtrip_for_lane_reader(tmp_path: Path, monkey
     assert loaded["lane_notice"] == snap["lane_notice"]
 
 
+def _open_pr(
+    number: int,
+    head_ref: str,
+    *,
+    lines: int | None = None,
+    issues: list[int] | None = None,
+    paths: list[str] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "number": number,
+        "title": f"pr {number}",
+        "head_ref": head_ref,
+        "linked_issues": issues if issues is not None else [],
+        "changed_paths": paths if paths is not None else [],
+        **extra,
+    }
+    if lines is not None:
+        row["changed_lines"] = lines
+    return row
+
+
 def test_suggest_pr_consolidations_groups_by_issue_branch_and_paths_under_size_cap() -> None:
     open_prs = [
-        {
-            "number": 101,
-            "title": "fix(overload): part 1",
-            "head_ref": "claude/3100-overload-part1",
-            "linked_issues": [3100],
-            "additions": 120,
-            "deletions": 30,
-            "changed_paths": ["backend/coordination/overload.py"],
-        },
-        {
-            "number": 102,
-            "title": "fix(overload): part 2",
-            "head_ref": "agy/3100-overload-part2",
-            "body": "Closes #3100",
-            "additions": 180,
-            "deletions": 20,
-            "changed_paths": ["backend/coordination/overload.py", "tests/test_overload.py"],
-        },
-        {
-            "number": 103,
-            "title": "fix(overload): part 3 too large to fit cap",
-            "head_ref": "codex/3100-overload-part3",
-            "linked_issues": [3100],
-            "additions": 160,
-            "deletions": 40,
-            "changed_paths": ["backend/coordination/overload.py"],
-        },
-        {
-            "number": 201,
-            "title": "chore(topology): sanitize slice 04",
-            "head_ref": "cursor/topology-sanitize-04-a43e",
-            "linked_issues": [],
-            "changed_lines": 140,
-            "changed_paths": ["docs/a.md"],
-        },
-        {
-            "number": 202,
-            "title": "chore(topology): sanitize slice 07",
-            "head_ref": "cursor/topology-sanitize-07-a43e",
-            "linked_issues": [],
-            "changed_lines": 190,
-            "changed_paths": ["docs/b.md"],
-        },
-        {
-            "number": 301,
-            "title": "fix(staff): tweak router validation",
-            "head_ref": "claude/2879-fleet-glance",
-            "linked_issues": [],
-            "changed_lines": 80,
-            "changed_paths": ["backend/routers/staff.py"],
-        },
-        {
-            "number": 302,
-            "title": "refactor(staff): cleanup router error path",
-            "head_ref": "claude/2664-lesson-locator",
-            "linked_issues": [],
-            "changed_lines": 110,
-            "changed_paths": ["backend/routers/staff.py", "tests/test_staff.py"],
-        },
-        {
-            "number": 401,
-            "title": "feat(unrelated): standalone change",
-            "head_ref": "claude/2999-unrelated-feature",
-            "linked_issues": [2999],
-            "changed_lines": 50,
-            "changed_paths": ["backend/routers/other.py"],
-        },
+        _open_pr(
+            101,
+            "claude/3100-overload-part1",
+            issues=[3100],
+            additions=120,
+            deletions=30,
+            paths=["backend/coordination/overload.py"],
+        ),
+        _open_pr(
+            102,
+            "agy/3100-overload-part2",
+            issues=None,
+            body="Closes #3100",
+            additions=180,
+            deletions=20,
+            paths=["backend/coordination/overload.py", "tests/test_overload.py"],
+        ),
+        _open_pr(
+            103,
+            "codex/3100-overload-part3",
+            issues=[3100],
+            additions=160,
+            deletions=40,
+            paths=["backend/coordination/overload.py"],
+        ),
+        _open_pr(201, "cursor/topology-sanitize-04-a43e", lines=140, paths=["docs/a.md"]),
+        _open_pr(202, "cursor/topology-sanitize-07-a43e", lines=190, paths=["docs/b.md"]),
+        _open_pr(301, "claude/2879-fleet-glance", lines=80, paths=["backend/routers/staff.py"]),
+        _open_pr(
+            302, "claude/2664-lesson-locator", lines=110, paths=["backend/routers/staff.py", "tests/test_staff.py"]
+        ),
+        _open_pr(401, "claude/2999-unrelated-feature", issues=[2999], lines=50, paths=["backend/routers/other.py"]),
     ]
+    open_prs[1].pop("linked_issues", None)
 
     suggestions = suggest_pr_consolidations(open_prs, size_cap=DEFAULT_PR_SIZE_CAP)
     assert len(suggestions) == 3
