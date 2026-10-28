@@ -14,12 +14,14 @@ from coordination.overload import (
     CONSECUTIVE_WINDOWS_THRESHOLD,
     DEFAULT_DRAIN_EXCEPTIONS,
     DEFAULT_OPEN_COUNT_THRESHOLD,
+    DEFAULT_PR_SIZE_CAP,
     MODE_DRAIN,
     MODE_NORMAL,
     build_overload_snapshot,
     is_drain_open_pr_allowed,
     read_drain_state_file,
     reset_drain_state,
+    suggest_pr_consolidations,
     write_drain_state_file,
 )
 from delivery_metrics.adapters.github import GhClientDeliveryCollector
@@ -363,3 +365,133 @@ async def test_drain_state_file_roundtrip_for_lane_reader(tmp_path: Path, monkey
     assert loaded["mode"] == MODE_DRAIN
     assert loaded["drain"]["active"] is True
     assert loaded["lane_notice"] == snap["lane_notice"]
+
+
+def _open_pr(
+    number: int,
+    head_ref: str,
+    *,
+    lines: int | None = None,
+    issues: list[int] | None = None,
+    paths: list[str] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "number": number,
+        "title": f"pr {number}",
+        "head_ref": head_ref,
+        "linked_issues": issues if issues is not None else [],
+        "changed_paths": paths if paths is not None else [],
+        **extra,
+    }
+    if lines is not None:
+        row["changed_lines"] = lines
+    return row
+
+
+def test_suggest_pr_consolidations_groups_by_issue_branch_and_paths_under_size_cap() -> None:
+    open_prs = [
+        _open_pr(
+            101,
+            "claude/3100-overload-part1",
+            issues=[3100],
+            additions=120,
+            deletions=30,
+            paths=["backend/coordination/overload.py"],
+        ),
+        _open_pr(
+            102,
+            "agy/3100-overload-part2",
+            issues=None,
+            body="Closes #3100",
+            additions=180,
+            deletions=20,
+            paths=["backend/coordination/overload.py", "tests/test_overload.py"],
+        ),
+        _open_pr(
+            103,
+            "codex/3100-overload-part3",
+            issues=[3100],
+            additions=160,
+            deletions=40,
+            paths=["backend/coordination/overload.py"],
+        ),
+        _open_pr(201, "cursor/topology-sanitize-04-a43e", lines=140, paths=["docs/a.md"]),
+        _open_pr(202, "cursor/topology-sanitize-07-a43e", lines=190, paths=["docs/b.md"]),
+        _open_pr(301, "claude/2879-fleet-glance", lines=80, paths=["backend/routers/staff.py"]),
+        _open_pr(
+            302, "claude/2664-lesson-locator", lines=110, paths=["backend/routers/staff.py", "tests/test_staff.py"]
+        ),
+        _open_pr(401, "claude/2999-unrelated-feature", issues=[2999], lines=50, paths=["backend/routers/other.py"]),
+    ]
+    open_prs[1].pop("linked_issues", None)
+
+    suggestions = suggest_pr_consolidations(open_prs, size_cap=DEFAULT_PR_SIZE_CAP)
+    assert len(suggestions) == 3
+
+    by_survivor = {item["surviving_pr"]: item for item in suggestions}
+
+    # Group 1: linked issue #3100 -> 101 (150 lines) + 102 (200 lines) = 350 <= 500; 103 (200 lines) skipped over cap.
+    s_issue = by_survivor[101]
+    assert s_issue["group_by"] == "linked_issue"
+    assert s_issue["absorbed_prs"] == [102]
+    assert s_issue["combined_changed_lines"] == 350
+    assert s_issue["skipped_over_cap_prs"] == [103]
+    assert s_issue["shared_issues"] == [3100]
+    assert "backend/coordination/overload.py" in s_issue["shared_paths"]
+    assert s_issue["auto_close"] is False
+
+    # Group 2: branch prefix cursor/topology-sanitize -> 201 (140) + 202 (190) = 330 <= 500.
+    s_branch = by_survivor[201]
+    assert s_branch["group_by"] == "branch_prefix"
+    assert s_branch["absorbed_prs"] == [202]
+    assert s_branch["combined_changed_lines"] == 330
+    assert s_branch["branch_prefix"] == "cursor/topology-sanitize"
+    assert s_branch["auto_close"] is False
+
+    # Group 3: overlapping paths backend/routers/staff.py -> 301 (80) + 302 (110) = 190 <= 500.
+    # Unrelated PR 401 is not grouped with 301/302 despite sharing the 'claude/' agent prefix.
+    s_paths = by_survivor[301]
+    assert s_paths["group_by"] == "overlapping_paths"
+    assert s_paths["absorbed_prs"] == [302]
+    assert s_paths["combined_changed_lines"] == 190
+    assert s_paths["shared_paths"] == ["backend/routers/staff.py"]
+    assert s_paths["auto_close"] is False
+
+
+@pytest.mark.asyncio
+async def test_build_overload_snapshot_includes_consolidation_suggestions_with_recent_pr_sizes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+
+    async def _fake_fetch_repo_prs(_repo: str) -> tuple[list[dict[str, Any]], str | None]:
+        return [
+            {"number": 501, "title": "slice a", "head_ref": "agy/3293-overload-a", "linked_issues": [3293]},
+            {"number": 502, "title": "slice b", "head_ref": "agy/3293-overload-b", "linked_issues": [3293]},
+        ], None
+
+    async def _fake_list_pulls_updated_since(
+        self: Any, _repo: str, _since: datetime, *, max_pages: int = 3
+    ) -> tuple[PrSnapshot, ...]:
+        p1 = _pr(number=501, created_at=now - timedelta(minutes=30))
+        p2 = _pr(number=502, created_at=now - timedelta(minutes=20))
+        return (
+            PrSnapshot(**{**p1.__dict__, "additions": 100, "deletions": 25}),
+            PrSnapshot(**{**p2.__dict__, "additions": 150, "deletions": 50}),
+        )
+
+    monkeypatch.setattr(pr_inventory, "fetch_repo_prs", _fake_fetch_repo_prs)
+    monkeypatch.setattr(GhClientDeliveryCollector, "list_pulls_updated_since", _fake_list_pulls_updated_since)
+
+    snap = await build_overload_snapshot(REPO)
+    assert snap["pr_size_cap"] == DEFAULT_PR_SIZE_CAP
+    assert len(snap["consolidation_suggestions"]) == 1
+    suggestion = snap["consolidation_suggestions"][0]
+    assert suggestion["surviving_pr"] == 501
+    assert suggestion["absorbed_prs"] == [502]
+    assert suggestion["combined_changed_lines"] == 325
+    assert suggestion["auto_close"] is False
+
+    with pytest.raises(ValueError, match="size_cap"):
+        suggest_pr_consolidations([], size_cap=0)
