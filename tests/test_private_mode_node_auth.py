@@ -22,9 +22,9 @@ import private_mode as pm  # noqa: E402
 import private_mode_node_auth as pmna  # noqa: E402
 
 EXAMPLE_TARGET = "example-corp/widgets-sensitive#18"
-HUB_SECRET = "example-corp-hub-signing-secret-0001"
-SPOKE_A_SECRET = "example-corp-spoke-a-signing-secret-1"
-SPOKE_B_SECRET = "example-corp-spoke-b-signing-secret-2"
+HUB_SECRET = "example-corp-hub-signing-secret-0001"  # pragma: allowlist secret
+SPOKE_A_SECRET = "example-corp-spoke-a-signing-secret-1"  # pragma: allowlist secret
+SPOKE_B_SECRET = "example-corp-spoke-b-signing-secret-2"  # pragma: allowlist secret
 ENABLED = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
 PAYLOAD = {"target_id": EXAMPLE_TARGET, "action": "status_sync"}
 
