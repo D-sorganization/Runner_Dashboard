@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, review, runner_planning, verification, workspace
+from staff import claim_guard, consolidation, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import runner_ops as ops
@@ -167,6 +167,12 @@ class StaffRunner:
                     ops.prepare_cloud_workdir(store, rec) if cloud_run else ops.prepare_run_workdir(store, rec, plan)
                 )
                 lease_note = ""
+                pre_pr_entrypoint = ""
+                if not cloud_run:
+                    preflight = ops.ensure_worktree_bootstrap_ready(store, rec, plan, workdir)
+                    if preflight is None:
+                        return
+                    pre_pr_entrypoint = preflight.pre_pr_entrypoint
                 agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
                     note = lease_ritual.acquire(
@@ -180,11 +186,12 @@ class StaffRunner:
                     if note is None:
                         return  # blocked; status already recorded
                     lease_note = note
-                self._execute(rec, plan, workdir, lease_note)
+                self._execute(rec, plan, workdir, lease_note, pre_pr_entrypoint=pre_pr_entrypoint)
             except Exception as exc:  # noqa: BLE001
                 crashed = True
                 log.exception("staff run %s crashed", rec.id)
                 store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
+                claim_guard.release_claim(rec.id, "failed")
                 store.append_event(rec.id, "error", str(exc)[:1000])
             finally:
                 if plan.lease_ritual:
@@ -201,7 +208,15 @@ class StaffRunner:
     def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
         return ops.prepare_run_workdir(self.store, rec, plan)
 
-    def _execute(self, rec: RunRecord, plan: RunPlan, workdir: Path, lease_note: str) -> None:
+    def _execute(
+        self,
+        rec: RunRecord,
+        plan: RunPlan,
+        workdir: Path,
+        lease_note: str,
+        *,
+        pre_pr_entrypoint: str = "",
+    ) -> None:
         store = self.store
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
@@ -217,6 +232,11 @@ class StaffRunner:
             repo_lessons_result=select_repo_lessons(plan.repo),
             prompt_token_cap=TOTAL_CONTEXT_TOKEN_CAP if plan.provider == "codex" else None,
         )
+        if pre_pr_entrypoint:
+            prompt = (
+                f"{prompt}\n\nRepository pre-PR check entry point for this checkout: `{pre_pr_entrypoint}`. "
+                "Use this command instead of a generic scripts.pre_pr assumption."
+            )
         launch_paths = self._launch_paths(adapter, workdir)
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
