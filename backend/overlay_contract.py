@@ -17,6 +17,11 @@ Contract (DbC):
 
 Error messages name keys and reasons only. They never echo overlay values or
 the overlay path, because both may be private.
+
+The optional ``private_mode`` key (issue #3250, epic #3249) is additive: an
+overlay that omits it validates exactly as it did before #3250, and
+``Overlay.private_mode`` resolves to ``private_mode.DISABLED``. See
+``backend/private_mode.py`` for the ``Level`` enum and the field's shape.
 """
 
 from __future__ import annotations
@@ -27,6 +32,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from private_mode import PrivateModeConfig
+from private_mode import parse_private_mode as _parse_private_mode
 
 OVERLAY_PATH_ENV = "RD_OVERLAY_PATH"
 OVERLAY_REQUIRED_ENV = "RD_OVERLAY_REQUIRED"
@@ -80,6 +88,7 @@ class Overlay:
     policy_dir: str
     private_docs_dir: str
     private_roles: tuple[PrivateRole, ...]
+    private_mode: PrivateModeConfig
 
     def host_names(self) -> tuple[str, ...]:
         return tuple(h.name for h in self.hosts)
@@ -159,7 +168,14 @@ def parse_overlay(data: object) -> Overlay:
     version = data.get("schema_version")
     if version != OVERLAY_SCHEMA_VERSION or isinstance(version, bool):
         raise OverlayError(f"overlay: unsupported schema_version (expected {OVERLAY_SCHEMA_VERSION})")
-    _check_keys(data, _TOP_LEVEL_KEYS, "root")
+    # `private_mode` (issue #3250) is optional and additive: strip it before the
+    # required/unknown-key check so existing overlays validate unchanged.
+    required_body = {k: v for k, v in data.items() if k != "private_mode"}
+    _check_keys(required_body, _TOP_LEVEL_KEYS, "root")
+    try:
+        private_mode = _parse_private_mode(data.get("private_mode"))
+    except ValueError as exc:
+        raise OverlayError(f"overlay {exc}") from exc
     hosts: list[OverlayHost] = []
     for i, raw in enumerate(data["hosts"]):
         if not isinstance(raw, dict):
@@ -180,6 +196,7 @@ def parse_overlay(data: object) -> Overlay:
         policy_dir=data["policy_dir"],
         private_docs_dir=data["private_docs_dir"],
         private_roles=_parse_private_roles(data["private_roles"]),
+        private_mode=private_mode,
     )
 
 

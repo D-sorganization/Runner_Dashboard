@@ -56,6 +56,7 @@ def _overlay_with_role(store_dir: Path) -> oc.Overlay:
         policy_dir=base.policy_dir,
         private_docs_dir=base.private_docs_dir,
         private_roles=(role,),
+        private_mode=base.private_mode,
     )
 
 
