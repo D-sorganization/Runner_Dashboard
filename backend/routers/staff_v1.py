@@ -18,13 +18,15 @@ import shutil
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel
 from routers.staff import (
     MAX_LIMIT,
     RunBody,
 )
+from routers.staff_avatars import router as staff_avatars_router
+from routers.staff_context import router as staff_context_router
 from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_pr_hygiene import router as staff_pr_hygiene_router
 from routers.staff_projects import router as staff_projects_router
@@ -63,7 +65,7 @@ from staff.models import (
 )
 from staff.pagination import CursorPage, paginate_items
 from staff.pricing import price_table_rows
-from staff.role_avatar_paths import avatar_url_for, staff_avatars_dir, validate_avatar_yaml_path
+from staff.role_avatar_paths import avatar_url_for
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
 
@@ -74,6 +76,8 @@ router.include_router(staff_skills_router)
 router.include_router(staff_projects_router)
 router.include_router(staff_references_router)
 router.include_router(staff_pr_hygiene_router)
+router.include_router(staff_avatars_router)
+router.include_router(staff_context_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:
@@ -213,18 +217,6 @@ async def roster_v1(
     }
 
 
-@router.get("/avatars/{avatar_rel:path}")
-async def avatar_v1(
-    avatar_rel: str,
-    _peer: Principal = Depends(require_scope("staff.read")),
-) -> FileResponse:
-    """Serve a role's persona image from RM ``staff/avatars/`` (#2680)."""
-    avatars_dir = staff_avatars_dir()
-    if avatars_dir is None or validate_avatar_yaml_path(avatar_rel, avatars_dir=avatars_dir):
-        raise HTTPException(status_code=404, detail="avatar not found")
-    return FileResponse(avatars_dir / avatar_rel, media_type="image/webp")
-
-
 @router.get("/providers", response_model=StaffProvidersResponse, response_model_exclude_none=True)
 async def providers_v1(
     _peer: Principal = Depends(require_scope("staff.read")),
@@ -258,27 +250,6 @@ async def board_v1(
     if not peers:
         return mine
     return await staff_fleet.aggregate_board(mine, peers)
-
-
-@router.get("/context/agents-sync")
-async def context_agents_sync_v1(
-    _peer: Principal = Depends(require_scope("staff.read")),
-) -> dict[str, Any]:
-    """Compare published managed AGENTS blocks with the Repository_Management source."""
-    from cache_utils import cache_get, cache_set
-    from projects.service import configured_repos, fetch_repo_file
-    from staff.agents_sync import build_agents_sync_report
-
-    cached = cache_get("context:agents-sync", 600)
-    if cached is not None:
-        return cached
-
-    async def fetch_file(repo: str, path: str) -> str | None:
-        return await fetch_repo_file(repo, path)
-
-    report = await build_agents_sync_report(fetch_file, configured_repos())
-    cache_set("context:agents-sync", report)
-    return report
 
 
 @router.get("/summary", response_model=StaffSummaryResponse, response_model_exclude_none=True)
