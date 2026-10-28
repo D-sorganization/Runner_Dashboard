@@ -45,6 +45,7 @@ jobs:
     needs: [pr-guard]
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
       always() &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&

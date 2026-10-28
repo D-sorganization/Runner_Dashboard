@@ -560,7 +560,10 @@ jobs:
           github.event_name != 'merge_group' &&
           needs.changes.outputs.run_python_tests == 'true' &&
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
-          needs.changes.outputs.full_suite == 'true')
+          needs.changes.outputs.full_suite == 'true') &&
+          (github.event_name != 'pull_request' ||
+          needs.pr-guard.result == 'skipped' ||
+          needs.pr-guard.outputs.skip_heavy != 'true')
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
         # MEDIUM findings are allow-listed in bandit.yaml with rationale per finding.
         # Exits non-zero on HIGH; MEDIUM/LOW are suppressed via config.
@@ -609,7 +612,10 @@ jobs:
           github.event_name != 'merge_group' &&
           needs.changes.outputs.run_python_tests == 'true' &&
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
-          needs.changes.outputs.full_suite == 'true')
+          needs.changes.outputs.full_suite == 'true') &&
+          (github.event_name != 'pull_request' ||
+          needs.pr-guard.result == 'skipped' ||
+          needs.pr-guard.outputs.skip_heavy != 'true')
         # Blocking for CRITICAL/HIGH CVEs.
         # Known LOW/MEDIUM CVEs are allow-listed in requirements-audit-ignore.txt
         # with rationale and expiry date per entry.
