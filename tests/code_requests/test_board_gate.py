@@ -2,7 +2,7 @@
 
 Covers:
 1. Table-driven tests for every routing criterion (routes vs doesn't route).
-2. Confidential InEnTec/ICR data egress requires user sign-off.
+2. Confidential data egress requires user sign-off.
 3. Operator overrides (force_board and skip_board) with audit tracking.
 4. Escalation deadline triggering after N scheduled meetings without decision.
 5. End-to-end integration: triage -> board proposal creation -> board:accepted -> planning with notes.
