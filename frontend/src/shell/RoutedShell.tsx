@@ -37,6 +37,7 @@ import { NotFoundPanel } from "./NotFoundPanel";
 import { useToast } from "../primitives/Toaster";
 import { IntroHeader } from "../primitives/IntroHeader";
 import { useSession } from "../hooks/useSession";
+import { SessionIdentity } from "./SessionIdentity";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { useBreakpoint } from "../hooks/useBreakpoint";
 import { ShellDensityControl } from "./ShellDensityControl";
@@ -326,9 +327,9 @@ export function AppShell({
   const breakpoint = useBreakpoint();
   const isMobile = breakpoint !== "lg" && breakpoint !== "xl";
 
-  // Reactive dashboard-session state (#842): the topbar Login/Logout label
-  // derives from this hook, so it updates on focus / visibility / logout.
-  const { loggedIn, refresh: refreshSession } = useSession();
+  // Reactive identity from GET /api/auth/me (#3232, #842).
+  const session = useSession();
+  const { refresh: refreshSession } = session;
   const { showToast } = useToast();
 
   // Per-tab intro header dismissal (#822).
@@ -469,13 +470,14 @@ export function AppShell({
       activeTabId={activeTab}
       onSelect={onSelectTab}
       onThreadSelected={onThreadSelected}
-      actions={buildShellActions(loggedIn, refreshSession, () => {
+      actions={buildShellActions(session, refreshSession, () => {
         showToast("Could not sign out. Please try again.", { variant: "error" });
       })}
       helpAbout={<HelpAbout onNavigate={onSelectTab} />}
       intro={introNode}
       headerExtra={
         <>
+          <SessionIdentity session={session} />
           <ShellDensityControl />
           <ShellThemeControl />
           <ShellActiveProvider

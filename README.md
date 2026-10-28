@@ -54,7 +54,8 @@ The dashboard ships with a built-in identity and authorization stack — it is
 - **Sessions with revocation** — server-side sessions backed by
   `backend/session_management.py`; revoked/expired sessions are rejected.
 - **GitHub OAuth + org membership check** — operators sign in via GitHub and are
-  admitted only if they belong to the configured org
+  admitted only if they belong to `GITHUB_ORG`, the configured organization
+  (required when OAuth sign-in is enabled)
   (`backend/routers/auth.py`).
 - **WebAuthn** — passkey registration/assertion scaffolding in
   `backend/auth_webauthn.py`.
