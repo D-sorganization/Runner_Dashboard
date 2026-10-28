@@ -182,6 +182,25 @@ def test_uv_lock_urllib3_meets_security_baseline() -> None:
         )
 
 
+def test_uv_lock_msgpack_avoids_cve_2026_114613() -> None:
+    """uv.lock must not pin msgpack 1.2.1 — pip-audit fails on ci-standard lint (#3115)."""
+    assert _UV_LOCK.exists(), "uv.lock must exist"
+    lock_data = tomllib.loads(_read(_UV_LOCK))
+    packages = lock_data.get("package", [])
+    msgpack_entries = [pkg for pkg in packages if pkg.get("name") == "msgpack"]
+    assert msgpack_entries, "msgpack must be present in uv.lock (CacheControl transitive)"
+    for entry in msgpack_entries:
+        version_str = str(entry.get("version", ""))
+        parts = [int(part) for part in version_str.split(".")]
+        version_tuple = tuple(parts)
+        assert version_tuple != (1, 2, 1), (
+            f"msgpack {version_str!r} in uv.lock is vulnerable (CVE-2026-114613); use >= 1.2.2"
+        )
+        assert version_tuple >= (1, 2, 2), (
+            f"msgpack version {version_str!r} in uv.lock is below required security baseline 1.2.2"
+        )
+
+
 def test_requirements_lock_urllib3_meets_security_baseline() -> None:
     """The container export must retain urllib3's patched security baseline."""
     content = _read(_LOCK)
