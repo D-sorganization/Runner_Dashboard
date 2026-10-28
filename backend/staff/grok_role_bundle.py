@@ -104,7 +104,7 @@ def _policy_refs(spec: RoleSpec) -> dict[str, Any]:
 
 
 def _export_payload(spec: RoleSpec, raw: dict[str, Any]) -> dict[str, Any]:
-    scrubbed = scrub_role_export_payload(raw)
+    scrub_role_export_payload(raw)
     payload: dict[str, Any] = {
         "bundle_format": BUNDLE_FORMAT,
         "role": spec.name,
