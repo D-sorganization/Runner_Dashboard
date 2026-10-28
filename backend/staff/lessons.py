@@ -167,7 +167,13 @@ def select_repo_lessons(
         return RepoLessonsResult("", (), {}, 0)
 
     store = memory_store or get_memory_store()
-    all_entries = store.list_entries(entry_type="lesson", repo=repo, limit=100)
+    all_entries: list[MemoryEntry] = []
+    cursor: tuple[str, str] | None = None
+    while True:
+        page, cursor = store.list_entries_page(entry_type="lesson", repo=repo, cursor=cursor)
+        all_entries.extend(page)
+        if cursor is None:
+            break
 
     now_iso = datetime.now(UTC).isoformat()
     eligible: list[MemoryEntry] = []
