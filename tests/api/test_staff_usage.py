@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from staff import pricing, usage
+from staff import pricing, runner_registry, usage
 from staff import runner as runner_mod
 from staff import store as store_mod
 
@@ -224,7 +224,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Te
     runner_mod.reset_runner()
     s = store_mod.RunStore(tmp_path / "runs.sqlite3")
     r = runner_mod.StaffRunner(store=s, adapters={}, machine="TestNode")
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     app = FastAPI()
     app.include_router(usage_router.router)
     app.dependency_overrides[require_fleet_peer] = lambda: "test-peer"

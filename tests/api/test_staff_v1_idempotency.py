@@ -134,3 +134,27 @@ def test_a_lapsed_dispatch_is_unknown_but_a_safe_action_is_retaken(
         staff_v1._handle_idempotent_post("c", cancel, WHO, {}, lambda: {"cancelled": True}, takeover_safe=True)
     )
     assert done.status_code == 200
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_stale_action_cannot_mutate_a_new_reservation(ledger: IdempotencyStore, fails: bool) -> None:
+    """RD-14: both router cleanup paths pass the operation they reserved."""
+    replacement = None
+
+    def action() -> dict[str, Any]:
+        nonlocal replacement
+        ledger._conn.execute("UPDATE idempotency_keys SET expires_at = '2000-01-01T00:00:00Z'")
+        replacement = ledger.reserve("k", ENDPOINT, WHO, idempotency.payload_fingerprint({}))
+        if fails:
+            raise HTTPException(status_code=404, detail="old action failed")
+        return {"old": True}
+
+    if fails:
+        with pytest.raises(HTTPException):
+            asyncio.run(staff_v1._handle_idempotent_post("k", ENDPOINT, WHO, {}, action))
+    else:
+        response = asyncio.run(staff_v1._handle_idempotent_post("k", ENDPOINT, WHO, {}, action))
+        assert response.headers["Idempotency-Receipt"] == "unrecorded"
+    remaining = ledger.reserve("k", ENDPOINT, WHO, idempotency.payload_fingerprint({}))
+    assert remaining.state == "in_progress"
+    assert remaining.operation_id == replacement.operation_id

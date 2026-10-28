@@ -17,6 +17,10 @@ _test_config_root = Path.home() / ".config" / "runner-dashboard" / ".test-runs"
 _test_config_root.mkdir(parents=True, exist_ok=True)
 _test_config_dir = tempfile.TemporaryDirectory(prefix="pytest-", dir=_test_config_root, ignore_cleanup_errors=True)
 os.environ["RUNNER_DASHBOARD_CONFIG_DIR"] = _test_config_dir.name
+# Starlette TestClient defaults to Host: testserver; httpx.AsyncClient's
+# ASGITransport pattern used across this suite defaults to Host: test.
+# Allow both only under pytest.
+os.environ.setdefault("DASHBOARD_TRUSTED_EXTRA_HOSTS", "testserver,test")
 
 # C-extension thread safety. Many "xdist worker crashed" failures
 # come from MKL/OpenBLAS forking under xdist. Pin to single-threaded
@@ -259,6 +263,15 @@ def _no_real_plan_quota(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_barb_turnover_store(tmp_path, monkeypatch):
+    """Panel completion appends a Barb turnover note (#2511); tests write it to a per-test store, never ``state/``."""
+    from staff import barb_continuity  # noqa: PLC0415
+
+    monkeypatch.setenv("BARB_CONTINUITY_DB", str(tmp_path / "barb_continuity.sqlite3"))
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", None)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_chat_scratch_sweep(monkeypatch):
     """Chat turns never sweep the node's real temp dir or Claude projects root (#1688).
 
@@ -408,8 +421,32 @@ def mock_auth():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _session_staff_workspace(tmp_path_factory):
+    """Keep leaked workers away from operator checkouts between tests (#2925)."""
+    from staff import knowledge_refresh, workspace  # noqa: PLC0415
+
+    root = tmp_path_factory.mktemp("staff-session")
+
+    def configured_roots_only() -> list[Path]:
+        configured = os.environ.get("STAFF_REPOS_ROOT", "")
+        return [Path(p) for p in configured.split(os.pathsep) if p and Path(p).is_dir()]
+
+    def no_clone(*_args, **_kwargs):
+        raise AssertionError("clone_repo() is disabled in tests; provide a fake checkout")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.delenv("STAFF_REPOS_ROOT", raising=False)
+        patch.setenv("STAFF_WORKTREES_ROOT", str(root / "worktrees"))
+        patch.setenv("STAFF_RM_ROOT", str(root / "rm"))
+        patch.setattr(workspace, "repos_roots", configured_roots_only)
+        patch.setattr(knowledge_refresh, "repos_roots", configured_roots_only)
+        patch.setattr(workspace, "clone_repo", no_clone)
+        yield
+
+
 @pytest.fixture(autouse=True)
-def _hermetic_staff_workspace(tmp_path, monkeypatch):
+def _hermetic_staff_workspace(tmp_path, monkeypatch, _session_staff_workspace):
     """Isolate staff.workspace so tests never touch a real checkout (#1521).
 
     ``staff.workspace.repos_roots()`` used to always append the developer's
@@ -430,22 +467,8 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
     # a test that needs a corpus sets its own with monkeypatch.setenv.
     monkeypatch.delenv("STAFF_REPOS_ROOT", raising=False)
 
-    try:
-        from staff import knowledge_refresh as knowledge_refresh_mod  # noqa: PLC0415
-    except ImportError:
-        knowledge_refresh_mod = None
     from staff import workspace as workspace_mod  # noqa: PLC0415
 
-    def configured_roots_only() -> list[Path]:
-        # A test's own STAFF_REPOS_ROOT (a tmp_path corpus) is honoured; the
-        # developer's real ~/Repositories defaults never are.
-        configured = os.environ.get("STAFF_REPOS_ROOT", "")
-        return [Path(p) for p in configured.split(os.pathsep) if p and Path(p).is_dir()]
-
-    monkeypatch.setattr(workspace_mod, "repos_roots", configured_roots_only)
-    # knowledge_refresh binds repos_roots at import time; patch that name too.
-    if knowledge_refresh_mod is not None:
-        monkeypatch.setattr(knowledge_refresh_mod, "repos_roots", configured_roots_only)
     monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(tmp_path / "staff-worktrees"))
     monkeypatch.setenv("STAFF_RM_ROOT", str(tmp_path / "staff-rm-root"))
 

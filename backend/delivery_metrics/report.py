@@ -15,6 +15,7 @@ from delivery_metrics.attribution import (
 )
 from delivery_metrics.load import check_runs_for_heads, get_pull, list_pulls_between
 from delivery_metrics.rollup import aggregate_window, build_pr_rollup, weekly_trends
+from delivery_metrics.workflow_runs import build_workflow_run_drill_down
 
 
 def _checks_index(
@@ -88,4 +89,5 @@ def pr_drill_down(
         "pull": pr.to_dict(),
         "rollup": rollup.to_dict(),
         "check_runs": [r.to_dict() for r in runs],
+        "workflow_runs": build_workflow_run_drill_down(runs),
     }
