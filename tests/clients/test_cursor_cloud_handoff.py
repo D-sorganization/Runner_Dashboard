@@ -179,3 +179,17 @@ def test_handoff_checkin_cli_subcommand_and_done_only_stop(
     assert code_stop == 0
     assert fake_api.last.body[0]["kind"] == "done"
     assert fake_api.last.body[0]["pr"] is None
+
+
+def test_cursor_principal_is_checkin_only_and_checkin_route_bounds_wire_body() -> None:
+    import yaml
+
+    defaults = yaml.safe_load((REPO_ROOT / "config" / "agent_principals.yml").read_text(encoding="utf-8"))
+    agents = {row["id"]: row for row in defaults["agents"]}
+    assert cursor_cloud_handoff.CURSOR_PRINCIPAL in agents
+    cursor_cfg = agents[cursor_cloud_handoff.CURSOR_PRINCIPAL]
+    assert cursor_cfg["roles"] == ["checkin-only"]
+    assert cursor_cfg["scopes"] == ["activity.checkin"]
+
+    activity_router_src = (REPO_ROOT / "backend" / "routers" / "activity.py").read_text(encoding="utf-8")
+    assert "_read_bounded_body(request, max_bytes=_CHECKIN_MAX_BYTES)" in activity_router_src
