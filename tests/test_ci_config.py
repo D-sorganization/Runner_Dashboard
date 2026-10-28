@@ -234,6 +234,9 @@ def test_docker_workflow_skips_merge_queue_jobs() -> None:
     triggers = workflow.get("on") or workflow.get(True) or {}
     assert "merge_group" in triggers, "docker-build.yml keeps merge_group for required-check trigger parity"
     for job_id, job in workflow["jobs"].items():
+        if job_id == "queue-entry-alive":
+            assert "github.event_name == 'merge_group'" in str(job.get("if", ""))
+            continue
         condition = str(job.get("if", ""))
         assert "github.event_name != 'merge_group'" in condition, (
             f"docker job {job_id} must skip merge_group"
