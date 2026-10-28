@@ -27,6 +27,20 @@ sweep_stale_worktrees = _wh.sweep_stale_worktrees
 log = logging.getLogger("dashboard.staff.workspace")
 
 ORG = os.environ.get("GITHUB_ORG", "D-sorganization")
+STANDALONE_ENV = "DASHBOARD_STANDALONE"
+STAFF_STANDALONE_ENV = "STAFF_STANDALONE"
+NO_RM_REASON = "Repository_Management checkout not found (set STAFF_RM_ROOT)"
+STANDALONE_RM_REASON = "Disabled by standalone profile (DASHBOARD_STANDALONE=1)"
+_TRUTHY_FLAG_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def is_standalone_mode() -> bool:
+    """Whether the dashboard is running in the standalone (no-fleet) profile (#3180)."""
+    for env_name in (STANDALONE_ENV, STAFF_STANDALONE_ENV):
+        if os.environ.get(env_name, "").strip().lower() in _TRUTHY_FLAG_VALUES:
+            return True
+    return False
+
 
 # The runner marks a run that exits without this line as failed (#1221), so it is the
 # last sentence of both rule sets rather than a clause mid-paragraph (Barb's live test, 2026-09-27).
@@ -82,6 +96,8 @@ def _default_repos_roots(home: Path) -> list[Path]:
 
 def rm_root() -> Path | None:
     """Locate a Repository_Management checkout for the lease ritual scripts."""
+    if is_standalone_mode():
+        return None
     override = os.environ.get("STAFF_RM_ROOT")
     if override:
         p = Path(override).expanduser()

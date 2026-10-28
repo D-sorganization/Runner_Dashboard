@@ -9,7 +9,7 @@ from pathlib import Path
 
 from staff.skills.contract import SkillDetail, SkillSummary, SkillValidationError, parse_skill_md, semver_sort_key
 from staff.skills.pointer import resolve_skill_source
-from staff.workspace import rm_root
+from staff.workspace import is_standalone_mode, rm_root
 
 log = logging.getLogger("dashboard.staff.skills")
 SKILLS_DIR_ENV = "STAFF_SKILLS_DIR"
@@ -27,6 +27,8 @@ def skills_dir() -> Path | None:
     if override:
         p = Path(override).expanduser()
         return p if p.is_dir() else None
+    if is_standalone_mode():
+        return None
     root = rm_root()
     if root is not None:
         cand = root / "skills"

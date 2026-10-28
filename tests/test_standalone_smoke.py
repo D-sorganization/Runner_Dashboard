@@ -59,6 +59,8 @@ def test_diagnostics_endpoint_ok_without_rm(no_rm_env, make_authed_client, viewe
 def test_diagnostics_endpoint_reports_rm_available_when_present(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, make_authed_client, viewer_principal
 ) -> None:
+    monkeypatch.delenv("DASHBOARD_STANDALONE", raising=False)
+    monkeypatch.delenv("STAFF_STANDALONE", raising=False)
     rm_dir = tmp_path / "Repository_Management"
     scripts_dir = rm_dir / "scripts"
     scripts_dir.mkdir(parents=True)
@@ -70,3 +72,22 @@ def test_diagnostics_endpoint_reports_rm_available_when_present(
 
     assert resp.status_code == 200
     assert resp.json()["integrations"]["repository_management"]["available"] is True
+
+
+def test_diagnostics_endpoint_honors_standalone_flag_when_rm_present(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, make_authed_client, viewer_principal
+) -> None:
+    rm_dir = tmp_path / "Repository_Management"
+    scripts_dir = rm_dir / "scripts"
+    scripts_dir.mkdir(parents=True)
+    (scripts_dir / "check_agent_claim.py").write_text("# marker\n")
+    monkeypatch.setenv("STAFF_RM_ROOT", str(rm_dir))
+    monkeypatch.setenv("DASHBOARD_STANDALONE", "1")
+
+    client = make_authed_client(viewer_principal)
+    resp = client.get("/api/diagnostics")
+
+    assert resp.status_code == 200
+    rm_block = resp.json()["integrations"]["repository_management"]
+    assert rm_block["available"] is False
+    assert "standalone" in rm_block["reason"].lower()
