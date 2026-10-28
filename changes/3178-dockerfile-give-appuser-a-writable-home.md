@@ -1,4 +1,4 @@
 ---
 issue: 3178
-summary: "Dockerfile: give appuser a writable home so container smoke test can persist SESSION_SECRET"
+summary: "Dockerfile: appuser home for SESSION_SECRET persistence and multi-stage Vite dist for smoke-test UI check"
 ---

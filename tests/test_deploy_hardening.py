@@ -249,6 +249,14 @@ def test_dockerfile_appuser_has_writable_config_home() -> None:
     )
 
 
+def test_dockerfile_includes_built_frontend_dist() -> None:
+    """Smoke test expects the SPA shell at /; the image must ship dist/index.html."""
+    content = _read(_DOCKERFILE)
+    assert "frontend-build" in content
+    assert "COPY --from=frontend-build" in content
+    assert "./dist/" in content
+
+
 def test_requirements_lock_file_exists() -> None:
     """requirements.lock.txt must exist alongside requirements.txt."""
     assert _LOCK.exists(), (
