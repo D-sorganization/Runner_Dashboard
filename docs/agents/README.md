@@ -10,7 +10,7 @@ Runner Dashboard is the **shared context hub** for personal-assistant agents (Ba
 | Hands             | `agent-codex-hands`              | Execute work (computer control, dispatch); reports back via memory and threads |
 | CLI orchestrators | `agent-codex`, `agent-claude`, … | Existing MCP/CLI paths; see per-product guides                                 |
 
-Barb is the **single front door** for Dieter-facing notifications. Other assistants are **hands**: they take assigned work, follow holds and directives from the dashboard, and **do not** ping Dieter directly—post updates to shared memory or staff threads instead.
+Barb is the **front door** for Dieter-facing notifications, and any agent (Grok Barb, rd-barb, the proposed Claude planner in [claude-planner.md](claude-planner.md), or a hand) may contact Dieter directly as long as Grok Barb is copied (Dieter, 2026-10-27), through a staff thread or a `to: barb` envelope, so the front door keeps the full picture. Hands still take assigned work, follow holds and directives from the dashboard, and post routine updates to shared memory or staff threads.
 
 ## Session Lifecycle
 
@@ -32,4 +32,5 @@ Repo defaults: `config/agent_principals.yml` (`assistant_profile` + per-agent `k
 - [Codex hands](codex-hands.md)
 - [Codex CLI (MCP)](codex.md)
 - [Claude](claude.md)
+- [Claude planner seat and Barb channel (proposed)](claude-planner.md)
 - [Connect index](connect.md)

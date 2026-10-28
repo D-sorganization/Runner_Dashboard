@@ -50,7 +50,10 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 
 ## Messaging: rd-barb -> Grok Barb -> Dieter
 
-rd-barb never messages Dieter directly, and Grok Barb does not redo her work.
+Any agent may contact Dieter directly if Grok Barb is copied (Dieter,
+2026-10-27), so direct channels such as Telegram (#3076) are allowed. The Grok Barb relay below stays
+rd-barb's default path, and Grok Barb does not redo her work. The Claude planner
+persona and its channel are proposed in [claude-planner.md](claude-planner.md).
 
 ```bash
 python scripts/rd_barb_notify.py send --json msg.json   # question/alert now, fyi queued
