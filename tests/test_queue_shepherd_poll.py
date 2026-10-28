@@ -21,6 +21,7 @@ from shared_scripts.queue_shepherd_poll import (
     poll_queue,
     queue_entries_from_graphql,
     render_brief,
+    report_to_dict,
 )
 
 
@@ -140,6 +141,41 @@ def test_build_report_clean_queue() -> None:
     report = build_report("o/r", [QueuedPR(number=1, position=1)])
 
     assert (report.dependency_violations, report.path_conflicts, report.armed_not_queued) == ((), (), ())
+
+
+def test_report_to_dict_is_json_serializable_and_round_trips_fields() -> None:
+    report = QueueShepherdReport(
+        repo="o/r",
+        queue_depth=2,
+        dependency_violations=(DependencyViolation(pr=2780, pr_position=1, blocked_by=2775, blocked_by_position=2),),
+        path_conflicts=(PathConflict(2780, 1, 2775, 2, frozenset({"a.py"})),),
+        armed_not_queued=(90,),
+    )
+
+    data = report_to_dict(report)
+    json.dumps(data)  # must not raise — this is what the dashboard brief serializes
+
+    assert data["repo"] == "o/r"
+    assert data["queue_depth"] == 2
+    assert data["dependency_violations"] == [
+        {"pr": 2780, "pr_position": 1, "blocked_by": 2775, "blocked_by_position": 2}
+    ]
+    assert data["path_conflicts"] == [
+        {"ahead_pr": 2780, "ahead_position": 1, "behind_pr": 2775, "behind_position": 2, "overlapping_paths": ["a.py"]}
+    ]
+    assert data["armed_not_queued"] == [90]
+
+
+def test_report_to_dict_clean_queue_has_empty_lists() -> None:
+    data = report_to_dict(QueueShepherdReport(repo="o/r", queue_depth=0))
+
+    assert data == {
+        "repo": "o/r",
+        "queue_depth": 0,
+        "dependency_violations": [],
+        "path_conflicts": [],
+        "armed_not_queued": [],
+    }
 
 
 def test_render_brief_reports_clean_queue() -> None:
