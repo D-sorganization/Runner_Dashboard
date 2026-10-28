@@ -11,15 +11,15 @@ from typing import Any
 
 import pytest
 from agent_bus.store import AgentBusStore
+from coordination.hub_thread_bus import HubThreadBus
 from coordination.postman import BoardRef, Delivery, Postman, PostmanState
 from coordination.postman_adapters import AgentBus, ConfigError, RmBoard
 from coordination.postman_adapters import ConfigBoardSource as _ConfigBoardSource
 from coordination.postman_run import build_postman, run
-from coordination.hub_thread_bus import HubThreadBus
 from coordination.relay_guard import RelayGuard
 
-from tests.api.test_postman import FakeBoard, FakeBus, Source
 from tests.api.test_hub_thread_port import FakeThreadHub
+from tests.api.test_postman import FakeBoard, FakeBus, Source
 
 # -- AgentBus ------------------------------------------------------------------------------------
 

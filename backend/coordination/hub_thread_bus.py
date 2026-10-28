@@ -16,9 +16,10 @@ from typing import Any, Protocol
 
 from coordination.postman import Delivery
 from coordination.relay_guard import RelayGuard, RelayRejected
-from scripts import rd_threads_envelope as envelope
 from staff.conversations import ConversationStore
 from staff.thread_bus import ThreadEventBus
+
+from scripts import rd_threads_envelope as envelope
 
 log = logging.getLogger("dashboard.coordination.hub_thread_bus")
 

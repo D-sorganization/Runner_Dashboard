@@ -114,8 +114,8 @@ def test_bus_failure_retries_then_dead_letters() -> None:
 def test_secret_bearing_body_is_refused_before_any_thread_write() -> None:
     hub = FakeThreadHub()
     bus = _bus(hub)
-    secret_body = "token: " + "ghp_" + "a" * 36
-    delivery = _delivery(body=secret_body)
+    token = "ghp_" + "a" * 36  # pragma: allowlist secret
+    delivery = _delivery(body=f"token: {token}")
 
     with pytest.raises(RelayRejected):
         bus.send(delivery)
