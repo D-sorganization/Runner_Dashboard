@@ -62,9 +62,41 @@ def python_for_rm() -> str:
     return os.environ.get("STAFF_RM_PYTHON") or shutil.which("python3") or shutil.which("python") or "python"
 
 
+def _rm_env() -> dict[str, str]:
+    """Build subprocess env for RM scripts (Design by Contract).
+
+    Post: returned mapping is a copy of ``os.environ`` except ``GH_TOKEN`` and
+    ``GITHUB_TOKEN`` are removed when their values are not GitHub App installation
+    tokens (prefix ``ghs_``). When ``FLEET_GH_WRAPPER_DIR`` (default
+    ``~/.claude/fleet-gh/bin``) exists and contains an executable ``gh``, that
+    directory is prepended to ``PATH`` and ``FLEET_GH_APP`` defaults to
+    ``general`` if unset. Token values are never logged or exposed elsewhere.
+    """
+    env = dict(os.environ)
+    for key in ("GH_TOKEN", "GITHUB_TOKEN"):
+        value = env.get(key)
+        if value is not None and not value.startswith("ghs_"):
+            del env[key]
+    wrapper_dir = Path(
+        os.environ.get("FLEET_GH_WRAPPER_DIR", str(Path.home() / ".claude" / "fleet-gh" / "bin"))
+    ).expanduser()
+    gh_wrapper = wrapper_dir / "gh"
+    if gh_wrapper.is_file():
+        env["PATH"] = str(wrapper_dir) + os.pathsep + env.get("PATH", "")
+        env.setdefault("FLEET_GH_APP", "general")
+    return env
+
+
 def run_argv(argv: list[str], cwd: Path, timeout: int = DEFAULT_TIMEOUT) -> ScriptResult:
     try:
-        r = subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)  # noqa: S603
+        r = subprocess.run(
+            argv,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=_rm_env(),
+        )  # noqa: S603
         return ScriptResult(r.returncode, r.stdout or "", r.stderr or "")
     except (OSError, subprocess.TimeoutExpired) as exc:
         return ScriptResult(130, "", str(exc))
