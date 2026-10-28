@@ -124,6 +124,7 @@ def test_review_cannot_promote_without_trusted_evidence(tmp_path: Path, monkeypa
     reset_memory_store()
     store = AssistantMemoryStore(db)
     lesson = append_entry(_p("agent"), _req())
+    run_stores.get_store().update_run("run-1", status="succeeded", exit_code=0)
     accepted = review_entry(_p("lib"), lesson.id, MemoryReviewRequest(review_status="accepted"))
 
     with pytest.raises(HTTPException) as exc:
@@ -138,7 +139,67 @@ def test_review_cannot_promote_without_trusted_evidence(tmp_path: Path, monkeypa
     assert unchanged.accepted_at == accepted.accepted_at
 
 
-@pytest.mark.parametrize("old_days", [None, -1, 365])
+@pytest.mark.parametrize("case", ["active", "missing", "failed", "exit_nonzero"])
+def test_review_rejects_acceptance_before_authoritative_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    store = AssistantMemoryStore(db)
+    lesson = append_entry(_p("agent"), _req())
+    run_store = run_stores.get_store()
+    if case == "missing":
+        run_store._conn.execute("DELETE FROM runs")  # noqa: SLF001
+    elif case == "active":
+        pass  # fixture default: run-1 stays "running"
+    elif case == "failed":
+        run_store.update_run("run-1", status="failed", exit_code=1)
+    elif case == "exit_nonzero":
+        run_store.update_run("run-1", status="succeeded", exit_code=1)
+
+    with pytest.raises(HTTPException) as exc:
+        review_entry(_p("lib"), lesson.id, MemoryReviewRequest(review_status="accepted"))
+    assert exc.value.status_code == 409
+
+    unchanged = store.get(lesson.id)
+    assert unchanged is not None
+    assert unchanged.review_status == "proposed" and unchanged.accepted_at is None
+
+
+def test_review_accepts_after_authoritative_completion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    lesson = append_entry(_p("agent"), _req())
+    run_stores.get_store().update_run("run-1", status="succeeded", exit_code=0)
+
+    accepted = review_entry(_p("lib"), lesson.id, MemoryReviewRequest(review_status="accepted"))
+    assert accepted.review_status == "accepted"
+
+
+def test_review_rejects_a_stale_racing_status_transition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    store = AssistantMemoryStore(db)
+    lesson = append_entry(_p("agent"), _req())
+    run_stores.get_store().update_run("run-1", status="succeeded", exit_code=0)
+    review_entry(_p("lib"), lesson.id, MemoryReviewRequest(review_status="accepted"))
+
+    # A second reviewer who read the entry before the first accept still holds a
+    # stale "proposed" snapshot; their write must not silently clobber the winner.
+    with pytest.raises(ValueError, match="stale_review_conflict"):
+        store.update_review(
+            lesson.id,
+            expected_review_status="proposed",
+            review_status="quarantined",
+            reviewed_by="other-librarian",
+        )
+    assert store.get(lesson.id).review_status == "accepted"
+
+
+@pytest.mark.parametrize("old_days", [None, 365])
 def test_acceptance_sets_a_new_bounded_expiry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_days: int | None
 ) -> None:
@@ -148,6 +209,7 @@ def test_acceptance_sets_a_new_bounded_expiry(
     before = datetime.now(UTC)
     old_expiry = (before + timedelta(days=old_days)).isoformat() if old_days is not None else None
     AssistantMemoryStore(db).append(_ent("legacy-proposal", review_status="proposed", expires_at=old_expiry))
+    run_stores.get_store().update_run("run-1", status="succeeded", exit_code=0)
 
     reviewed = review_entry(_p("lib"), "legacy-proposal", MemoryReviewRequest(review_status="accepted"))
     assert reviewed.review_status == "accepted"
@@ -156,6 +218,24 @@ def test_acceptance_sets_a_new_bounded_expiry(
     ttl = timedelta(days=DEFAULT_LESSON_TTL_DAYS)
     assert before + ttl <= expiry <= datetime.now(UTC) + ttl
     assert reviewed.reviewed_by and reviewed.accepted_at
+
+
+def test_acceptance_rejects_an_already_expired_proposal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db = tmp_path / "memory.sqlite3"
+    monkeypatch.setenv("ASSISTANT_MEMORY_DB", str(db))
+    reset_memory_store()
+    before = datetime.now(UTC)
+    store = AssistantMemoryStore(db)
+    store.append(_ent("stale-proposal", review_status="proposed", expires_at=(before - timedelta(days=1)).isoformat()))
+    run_stores.get_store().update_run("run-1", status="succeeded", exit_code=0)
+
+    with pytest.raises(HTTPException) as exc:
+        review_entry(_p("lib"), "stale-proposal", MemoryReviewRequest(review_status="accepted"))
+    assert exc.value.status_code == 409
+
+    unchanged = store.get("stale-proposal")
+    assert unchanged is not None
+    assert unchanged.review_status == "proposed" and unchanged.accepted_at is None
 
 
 @pytest.mark.parametrize("replacement_type", ["lesson", "task"])
@@ -249,6 +329,7 @@ def test_memory_lesson_store_and_lifecycle(tmp_path: Path, monkeypatch: pytest.M
     e_bb = append_entry(agent, _req(visibility="barb-only"))
     e_cf = append_entry(agent, _req(body={"s": "require human reviewer"}))
     assert review_entry(lib, e_cf.id, MemoryReviewRequest(review_status="accepted")).review_status == "quarantined"
+    run_stores.get_store().update_run("run-abc", status="succeeded", exit_code=0)
     accepted = review_entry(lib, e.id, MemoryReviewRequest(review_status="accepted"))
     assert accepted.review_status == "accepted" and accepted.reviewed_by and accepted.accepted_at
     f_pub = [x.id for x in list_entries(entry_type="lesson", repo="RD")]
@@ -267,6 +348,7 @@ def test_memory_lesson_store_and_lifecycle(tmp_path: Path, monkeypatch: pytest.M
     eid, rev = res.json()["entry"]["id"], {"review_status": "accepted"}
     assert c.patch(f"/api/v1/memory/{eid}/review", json=rev, headers=h).status_code == 403
     app.dependency_overrides[require_principal] = lambda: _p("lib")
+    run_stores.get_store().update_run("run-api-1", status="succeeded", exit_code=0)
     assert c.patch(f"/api/v1/memory/{eid}/review", json=rev, headers=h).status_code == 200
     entries = c.get("/api/v1/memory?type=lesson&repo=RD&review_status=accepted").json()["entries"]
     assert (
