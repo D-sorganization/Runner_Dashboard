@@ -152,7 +152,7 @@ repos:
         args:
           [
             "--pytest-args",
-            "-x -q --tb=short -m 'not slow and not integration'",
+            "-x -q --tb=short -m 'not slow and not integration and not requires_posix'",
           ]
         # ``language: system`` runs pytest from the user's activated venv
         # (or PATH-resolved pytest). The previous config used
