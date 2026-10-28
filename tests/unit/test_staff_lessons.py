@@ -231,6 +231,16 @@ def test_select_repo_lessons_filtering() -> None:
     assert "les-06" not in res.injected_ids and "les-07" not in res.injected_ids
 
 
+def test_select_repo_lessons_pages_past_more_than_one_page_of_noise() -> None:
+    s = get_memory_store()
+    _add(s, "les-old-accepted", text="Old accepted lesson that must survive paging.")
+    for i in range(150):
+        _add(s, f"les-noise-{i:03d}", status="proposed", text=f"noise {i}")
+
+    res = select_repo_lessons("Tools", memory_store=s)
+    assert res.injected_ids == ("les-old-accepted",)
+
+
 def test_select_repo_lessons_budget_and_whole_selection() -> None:
     s = get_memory_store()
     _add(s, "les-a", text="Short lesson A.")
