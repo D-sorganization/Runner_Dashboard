@@ -42,7 +42,8 @@ plans Claude as primary from 10-28. The proposal is in the exchange repo at `sea
 - An expired lease (TTL 30 min) is reassigned by the primary; if the primary drops, the standby
   checks out `barb:front-door` and the epoch bump fences the old primary's writes (#2734).
 - Off the tailnet, a Barb reads rd-barb's mirror in the exchange repo and sends lease changes to
-  rd-barb as envelopes; nothing counts as held until rd-barb replies with the epoch.
+  rd-barb as envelopes; nothing counts as held until rd-barb replies with the epoch. Dieter decided
+  on 2026-10-28 that off-tailnet Barbs reach the dashboard only through rd-barb, never directly.
 
 This reuses the continuity store, lease fence, turnover log and task inventory as they are; any
 `barb:<name>` is already a valid scope, so no schema change is needed. If Claude holds
@@ -127,4 +128,3 @@ leaks (secrets refused, exchange repo private) and no timer polling of the share
    Agents don't create repositories or mint tokens.
 2. Merge Repository_Management #2483 (rd-barb role) and #2485 (retire the old claude-barb seat).
 3. Say yes to rd-barb's supervised dry run, then to the planner's.
-4. Decide whether a Barb off the tailnet may ever reach the hub directly, or only through rd-barb.
