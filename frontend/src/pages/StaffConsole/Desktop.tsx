@@ -18,6 +18,7 @@ import type { StaffRoleItem } from "./types";
 import { useRoleContext, useRosterReadiness } from "./useRoleContext";
 import { useStaffConsole } from "./useStaffConsole";
 import { Dropdown } from "../../primitives/Dropdown";
+import { ProjectStarterActions } from "./ProjectStarterActions";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import "./desktop.css";
 
@@ -254,6 +255,8 @@ export function StaffConsoleDesktop({
             </button>
           </div>
         </header>
+
+        {chatFirst && activeThread && <ProjectStarterActions onPrefill={applyComposerPrefill} />}
 
         <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
 

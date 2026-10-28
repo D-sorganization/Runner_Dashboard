@@ -5,6 +5,7 @@ import { GroupCostConfirm } from "../pages/StaffConsole/GroupCostConfirm";
 import { Thread } from "../pages/StaffConsole/Thread";
 import { useStaffConsole } from "../pages/StaffConsole/useStaffConsole";
 import { ChatGlyph } from "../pages/decompIcons";
+import { ProjectStarterActions } from "../pages/StaffConsole/ProjectStarterActions";
 import { PROJECT_WORKFLOWS } from "../pages/StaffConsole/projectWorkflows";
 import "./BarbSidebar.css";
 
@@ -229,6 +230,7 @@ export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restore
             </div>
           </div>
         )}
+        {sc.activeThread && <ProjectStarterActions onPrefill={applyComposerPrefill} />}
         {sc.activeThread ? <GroupCostConfirm guard={sc.costGuard} /> : null}
         <Composer
           threadId={sc.activeThread?.id ?? "new"}
