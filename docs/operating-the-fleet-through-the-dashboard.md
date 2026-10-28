@@ -132,7 +132,10 @@ Rules:
    has not expired and the epoch matches. Otherwise it answers **409** `{"error": "stale_barb_lease", "reason":
 "holder_mismatch" | "expired" | "stale_epoch" | "no_lease", "current_epoch": N, "holder": "..."}`, applies nothing and
    audit-logs the rejection (`barb_write_rejected`). A takeover waits for any write already inside the check, so it
-   cannot land between the check and the write. Requests without the headers are unaffected. The `fleetctl`/MCP client
+   cannot land between the check and the write. Requests without the headers are unaffected, except a write from a Barb
+   seat (a Grok-kind assistant, `agent-grok`/`barb`, or the `barb` role): `DASHBOARD_BARB_FENCE_MODE` (`off`, `warn` default,
+   `enforce`) logs it and counts it in `dashboard_barb_unclaimed_writes_total{surface}` on `/metrics` (`warn`, still
+   allowed) or refuses it with the 409 above, reason `claim_required` (`enforce`) (#3279). The `fleetctl`/MCP client
    remembers the seat from your last checkout or heartbeat, sends the headers on those writes automatically, and on a 409
    fails with "You lost the Barb seat (epoch X -> Y)". It never retries: re-checkout the seat or hand off.
 3. **409 on checkout means do not act.** The seat is held by another agent until a stated time. Pick another scope or wait

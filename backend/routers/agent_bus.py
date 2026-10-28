@@ -65,6 +65,9 @@ def _fleet_or_writer(
         presented = header_token[len("Bearer ") :]
         if hmac.compare_digest(presented, hub_token):
             return Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"]), True
+    _reject_unauthenticated_bearer(header_token)
+    if _loopback_auth_enabled() and _is_loopback_request(request):
+        return Principal(id="__loopback__", type="bot", name="loopback", roles=["loopback"]), True
     raise HTTPException(status_code=401, detail="Authentication required")
 
 

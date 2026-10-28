@@ -109,6 +109,8 @@ class PanelCreateRequest(BaseModel):
     pack_id: Literal["cartographer"] | None = "cartographer"
     repos: list[str] | None = Field(default=None, min_length=1, max_length=6)
     preload_codebase: bool = True
+    # With ``repos``: seats read a read-only snapshot of origin/main for those repos (#2511).
+    ground_repos: bool = True
 
     @field_validator("repos")
     @classmethod
@@ -165,11 +167,40 @@ class TurnOutcome:
     error: str | None = None
 
 
-def _expert(name: str, perspective: str) -> dict[str, Any]:
-    return {"name": name, "perspective": perspective}
+def _expert(name: str, perspective: str, provider: str | None = None, model: str | None = None) -> dict[str, Any]:
+    """A preset seat; ``provider``/``model`` are set only for presets that pin real CLI seats."""
+    seat: dict[str, Any] = {"name": name, "perspective": perspective}
+    if provider is not None:
+        seat["provider"] = provider
+        seat["model"] = model
+    return seat
 
 
 PANEL_PRESETS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "fleet-decision",
+        "title": "Fleet decision panel (Argon / Astra / Fable)",
+        "experts": [
+            _expert(
+                "Argon",
+                "Systems efficiency, cost and latency, algorithmic rigor.",
+                "antigravity",
+                "gemini-4-argon-high",
+            ),
+            _expert(
+                "Astra",
+                "Architecture, contracts, security boundaries and testability.",
+                "codex",
+                "gpt-6-astra",
+            ),
+            _expert(
+                "Fable",
+                "Skeptic: failure modes, edge cases and long-term maintainability.",
+                "claude",
+                "claude-fable-5-1",
+            ),
+        ],
+    },
     {
         "id": "engineering-review",
         "title": "Engineering design review",
@@ -199,3 +230,27 @@ PANEL_PRESETS: tuple[dict[str, Any], ...] = (
         ],
     },
 )
+
+
+def preset_view() -> list[dict[str, Any]]:
+    """The presets for the API: every seat gets its ``provider`` (default claude), ``model`` and ``available``.
+
+    Post: ``available`` is False exactly when the seat's provider is switched off on this node (#1597) or
+    has no read-only chat mode; the seat is never swapped here, the caller shows the fallback.
+    """
+    usable = set(enabled_panel_providers())
+    return [
+        {
+            **preset,
+            "experts": [
+                {
+                    **e,
+                    "provider": e.get("provider", "claude"),
+                    "model": e.get("model"),
+                    "available": e.get("provider", "claude") in usable,
+                }
+                for e in preset["experts"]
+            ],
+        }
+        for preset in PANEL_PRESETS
+    ]

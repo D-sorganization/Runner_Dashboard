@@ -100,7 +100,7 @@ async def test_turns_on_one_thread_run_in_the_same_directory_so_resume_finds_the
     cwds: list[str] = []
     argvs: list[list[str]] = []
 
-    def spawn(*, cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+    def spawn(*, cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None) -> MagicMock:
         cwds.append(cwd)
         argvs.append(cmd)
         assert Path(cwd).is_dir()
