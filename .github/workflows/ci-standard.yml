@@ -52,7 +52,7 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
+      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE != 'hosted' && vars.CI_QUEUE_RUNNER_LABEL || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
     permissions:
       actions: write
@@ -102,6 +102,7 @@ jobs:
         env:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
           CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
+          CI_QUEUE_RUNNER_LABEL: ${{ vars.CI_QUEUE_RUNNER_LABEL }}
           CI_PR_RUNNER_MODE: ${{ vars.CI_PR_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
@@ -132,6 +133,14 @@ jobs:
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-queue" >> "$GITHUB_OUTPUT"
             echo "Merge queue on GitHub-hosted runners (CI_QUEUE_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Postcondition (#3046): merge_group only, not hosted, label set ->
+          # route to the reserved queue label instead of the shared fleet pool.
+          if [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" != "hosted" ] && [ -n "$CI_QUEUE_RUNNER_LABEL" ]; then
+            echo "runner=$CI_QUEUE_RUNNER_LABEL" >> "$GITHUB_OUTPUT"
+            echo "mode=queue-label" >> "$GITHUB_OUTPUT"
+            echo "Merge queue routed to reserved runner label $CI_QUEUE_RUNNER_LABEL (#3046)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$CI_PR_RUNNER_MODE" = "hosted" ]; then
