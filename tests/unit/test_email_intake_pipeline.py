@@ -32,17 +32,17 @@ def test_accept_creates_proposal(stores, monkeypatch: pytest.MonkeyPatch) -> Non
         max_age_hours=72,
         rate_limit_per_sender_per_hour=10,
         max_message_bytes=10000,
-        allowed_senders=(AllowedSender("dieterolson@gmail.com", True),),
+        allowed_senders=(AllowedSender("user@example.com", True),),
     )
     msg = InboundMessage(
         message_id="<abc@test>",
-        from_address="dieterolson@gmail.com",
-        from_domain="gmail.com",
+        from_address="user@example.com",
+        from_domain="example.com",
         to_addresses=("intake@test",),
         subject="work",
         body_plain="role: maintenance\nfix queue",
         received_at=datetime.now(UTC),
-        authentication_results="dmarc=pass header.from=gmail.com",
+        authentication_results="dmarc=pass header.from=example.com",
         size_bytes=50,
     )
     out = process_inbound_message(
