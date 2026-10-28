@@ -31,32 +31,6 @@ const INITIAL_EXPERTS: PanelFormExpert[] = [
   { name: "", perspective: "", provider: "claude", model: "" },
 ];
 
-function expertsFromPreset(
-  found: PanelPreset,
-  providerList: string[],
-): { experts: PanelFormExpert[]; notes: string[] } {
-  const defaultProvider = providerList[0] || "claude";
-  const notes: string[] = [];
-  const experts = found.experts.map((expert) => {
-    if (!expert.provider) {
-      return { name: expert.name, perspective: expert.perspective, provider: defaultProvider, model: "" };
-    }
-    if (expert.available === false || !providerList.includes(expert.provider)) {
-      notes.push(
-        `${expert.name}: ${expert.provider}${expert.model ? ` (${expert.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
-      );
-      return { name: expert.name, perspective: expert.perspective, provider: defaultProvider, model: "" };
-    }
-    return {
-      name: expert.name,
-      perspective: expert.perspective,
-      provider: expert.provider,
-      model: expert.model ?? "",
-    };
-  });
-  return { experts, notes };
-}
-
 export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
   const [topic, setTopic] = useState("");
   const [mode, setMode] = useState<"debate" | "brainstorm">("debate");
@@ -77,12 +51,32 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
 
   const applyPresetExperts = useCallback(
     (found: PanelPreset, providerList: string[] = providers) => {
-      const { experts: mapped, notes } = expertsFromPreset(found, providerList);
+      const defaultProvider = providerList[0] || "claude";
+      const notes: string[] = [];
+      const mapped = found.experts.map((expert) => {
+        if (!expert.provider) {
+          return { name: expert.name, perspective: expert.perspective, provider: defaultProvider, model: "" };
+        }
+        if (expert.available === false || !providerList.includes(expert.provider)) {
+          notes.push(
+            `${expert.name}: ${expert.provider}${expert.model ? ` (${expert.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
+          );
+          return { name: expert.name, perspective: expert.perspective, provider: defaultProvider, model: "" };
+        }
+        return {
+          name: expert.name,
+          perspective: expert.perspective,
+          provider: expert.provider,
+          model: expert.model ?? "",
+        };
+      });
       setSeatNotes(notes);
       setExperts(mapped);
     },
     [providers],
   );
+  const applyPresetExpertsRef = useRef(applyPresetExperts);
+  applyPresetExpertsRef.current = applyPresetExperts;
 
   useEffect(() => {
     let cancelled = false;
@@ -100,9 +94,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
         if (!presetId) return;
         const found = loadedPresets.find((preset) => preset.id === presetId);
         if (!found) return;
-        const { experts: mapped, notes } = expertsFromPreset(found, providerList);
-        setSeatNotes(notes);
-        setExperts(mapped);
+        applyPresetExpertsRef.current(found, providerList);
       })
       .catch(() => {
         // fail-open with defaults
@@ -128,9 +120,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
     const found = presets.find((p) => p.id === presetId);
     if (!found) return;
 
-    const { experts: mapped, notes } = expertsFromPreset(found, providers);
-    setSeatNotes(notes);
-    setExperts(mapped);
+    applyPresetExperts(found);
   };
 
   // Preset pick can beat fetchPanelPresets on a slow runner; apply when the catalog arrives.

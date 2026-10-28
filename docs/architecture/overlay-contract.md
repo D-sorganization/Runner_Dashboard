@@ -20,9 +20,40 @@ One JSON object. All keys are required and unknown keys are rejected.
 | `roles_dir`         | string | Private role and policy files.                     |
 | `policy_dir`        | string | Private policy files.                              |
 | `private_docs_dir`  | string | Private docs.                                      |
+| `private_roles`     | list   | Private-role definitions (#3094, see below).       |
 
 A fake example lives in `tests/fixtures/overlay/mock-overlay.json`; public CI
 runs the suite against it alone.
+
+## Private roles (#3094, private-roles slice 1)
+
+Each entry in `private_roles` is an object:
+
+| Key                    | Type   | Meaning                                              |
+| ---------------------- | ------ | ----------------------------------------------------- |
+| `role_id`              | string | Unique id; must match the requesting role exactly.    |
+| `allowed_templates`    | list   | Template names this role may read. No bulk/listing.   |
+| `providers`            | object | Host name to list of approved subscription CLI names. |
+| `context_store_dir`    | string | Host-local directory of the encrypted context store. |
+| `store_schema_version` | int    | Must equal the store's `.store-schema-version` file.  |
+
+`backend/private_roles.py` is the single accessor
+(`read_private_context`). It is called with the requesting role id, a target
+template name, the host, and the provider CLI in use, and enforces, in
+order: the role exists, the requester *is* that role (no panel, agent or
+other role reads), the template is allowlisted, the host+provider pair is
+approved, a host-local key is configured (`RD_PRIVATE_CONTEXT_KEY_PATH`), the
+context store and its schema-version marker exist and match, and the
+template file (Fernet-encrypted, `<template>.age`) decrypts.
+
+Any failure returns a `PrivateContextUnavailable(role_id, reason)` value
+instead of raising past the caller or returning context as if it loaded;
+`reason` is one of a small fixed, non-sensitive vocabulary (for example
+`role-not-found`, `not-owner`, `store-missing`, `version-skew`,
+`decrypt-failed`). Callers must treat any such value as "private context
+unavailable" and refuse context-dependent work, never as empty context.
+Encrypted template fixtures and the host key are test-only (`tmp_path`);
+nothing under `tests/fixtures/` holds a real store or key.
 
 ## Startup behaviour
 
