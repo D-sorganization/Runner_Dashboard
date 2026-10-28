@@ -40,11 +40,14 @@ def test_key_env_var_defaults() -> None:
 
 
 def test_key_env_var_override() -> None:
-    assert key_env_var(env={"ANTHROPIC_API_KEY_ENV_VAR": "CUSTOM_ANTHROPIC_KEY"}) == "CUSTOM_ANTHROPIC_KEY"
+    assert (
+        key_env_var(env={"ANTHROPIC_API_KEY_ENV_VAR": "CUSTOM_ANTHROPIC_KEY"})  # pragma: allowlist secret
+        == "CUSTOM_ANTHROPIC_KEY"
+    )
 
 
 def test_key_env_var_blank_override_falls_back() -> None:
-    assert key_env_var(env={"ANTHROPIC_API_KEY_ENV_VAR": "   "}) == DEFAULT_KEY_ENV_VAR
+    assert key_env_var(env={"ANTHROPIC_API_KEY_ENV_VAR": "   "}) == DEFAULT_KEY_ENV_VAR  # pragma: allowlist secret
 
 
 # ── load_api_key ──────────────────────────────────────────────────────────
@@ -55,7 +58,10 @@ def test_load_api_key_reads_env_first() -> None:
 
 
 def test_load_api_key_honors_configurable_var_name() -> None:
-    env = {"ANTHROPIC_API_KEY_ENV_VAR": "CUSTOM_ANTHROPIC_KEY", "CUSTOM_ANTHROPIC_KEY": _FAKE_KEY}
+    env = {
+        "ANTHROPIC_API_KEY_ENV_VAR": "CUSTOM_ANTHROPIC_KEY",  # pragma: allowlist secret
+        "CUSTOM_ANTHROPIC_KEY": _FAKE_KEY,
+    }
     assert load_api_key(env=env) == _FAKE_KEY
 
 
