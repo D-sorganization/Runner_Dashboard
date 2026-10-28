@@ -4592,6 +4592,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/activity/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity Summary
+         * @description Bounded aggregate for the node auto-deploy activity probe (#2353).
+         *
+         *     No runner/provider initialisation and no peer fan-out (see
+         *     ``staff.activity_summary`` for the read-only aggregate query).
+         */
+        get: operations["activity_summary_api_staff_activity_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/audit": {
         parameters: {
             query?: never;
@@ -18897,6 +18920,28 @@ export interface operations {
         };
     };
     update_prompt_notes_api_settings_prompt_notes_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    activity_summary_api_staff_activity_summary_get: {
         parameters: {
             query?: never;
             header?: never;
