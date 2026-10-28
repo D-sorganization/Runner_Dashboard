@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 const FAKE_ROSTER = {
-  machine: "DeskComputer",
+  machine: "hub-a",
   active_runs: 0,
   providers: { claude: true },
   roles: [
@@ -72,7 +72,7 @@ const FAKE_RUN: RunRecord = {
   role: "night-watch",
   provider: "claude",
   model: null,
-  machine: "DeskComputer",
+  machine: "hub-a",
   repo: "UpstreamDrift",
   target_kind: "issue",
   target_ref: "10622",
@@ -289,7 +289,7 @@ describe("SSE cache updates (issue #1304)", () => {
     const testClient = new QueryClient();
     testClient.setQueryData(["staff", "run", "run-42"], { run: FAKE_RUN, events: [] });
     testClient.setQueryData(["staff", "board"], {
-      machine: "DeskComputer",
+      machine: "hub-a",
       running: [FAKE_RUN],
       queued: [],
       spend_today_usd: 0,

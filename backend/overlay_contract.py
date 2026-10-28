@@ -220,3 +220,12 @@ def get_overlay(env: Mapping[str, str] | None = None) -> Overlay | None:
 def assert_overlay_ready(env: Mapping[str, str] | None = None) -> None:
     """Startup gate: raise :class:`OverlayError` so the server refuses to start."""
     get_overlay(env)
+
+
+def overlay_companion_dir(env: Mapping[str, str] | None = None) -> Path | None:
+    """Parent directory of the overlay file for companion private settings (e.g. host_settings.json)."""
+    env = os.environ if env is None else env
+    raw_path = env.get(OVERLAY_PATH_ENV, "").strip()
+    if not raw_path:
+        return None
+    return Path(raw_path).expanduser().parent
