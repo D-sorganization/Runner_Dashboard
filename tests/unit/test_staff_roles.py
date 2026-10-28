@@ -321,16 +321,16 @@ def test_validator_accepts_avatar_field() -> None:
     """RM roles may carry an optional ``avatar`` string (#2680, #3092)."""
     from staff.validator import validate_role_data
 
-    role_dict = dict(_VALID_ROLE_DICT, avatar="barb.png")
+    role_dict = dict(_VALID_ROLE_DICT, avatar="barb.webp")
     assert validate_role_data(role_dict) == []
 
 
 @pytest.mark.unit
 def test_parse_role_carries_avatar_through_to_dict() -> None:
     """RoleSpec and to_dict round-trip the optional ``avatar`` field (#3092)."""
-    spec = roles_mod.parse_role(dict(_VALID_ROLE_DICT, avatar="barb.png"), source_path="/path/barb.yml")
-    assert spec.avatar == "barb.png"
-    assert spec.to_dict()["avatar"] == "barb.png"
+    spec = roles_mod.parse_role(dict(_VALID_ROLE_DICT, avatar="barb.webp"), source_path="/path/barb.yml")
+    assert spec.avatar == "barb.webp"
+    assert spec.to_dict()["avatar"] == "barb.webp"
 
     spec_no_avatar = roles_mod.parse_role(_VALID_ROLE_DICT, source_path="/path/cartographer.yml")
     assert spec_no_avatar.avatar is None
