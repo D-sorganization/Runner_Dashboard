@@ -1,33 +1,10 @@
 """Private Mode classification levels (issue #3250, epic #3249/#3077).
 
-Defines the total-ordered :class:`Level` enum and the ``private_mode``
-overlay schema field (#3079). An overlay with no ``private_mode`` key, or no
-overlay at all, resolves to :data:`DISABLED` (``enabled=False``,
-``default_level=Level.PUBLIC``): classification never diverges from today's
-PUBLIC-everywhere behaviour. That is the safe-disable contract this slice
-ships; every later Private Mode slice builds on it without changing it.
-
-Level semantics:
-
-* ``PUBLIC`` -- may appear on any surface: hub logs, transcripts, panel
-  threads, board posts, metrics, GitHub logs and artifacts. Today's only
-  level; unchanged while the flag is off.
-* ``INTERNAL`` -- fleet-internal. Stays off public surfaces (public repo
-  mirrors, public GitHub issues/PRs/comments, OSS artifacts) but may still
-  reach the fleet's own private hub logs, transcripts and board. The level
-  for private-but-not-sensitive content; a later slice (PM-1) migrates
-  legacy, pre-flag threads here rather than leaving them PUBLIC.
-* ``SENSITIVE`` -- must never reach *any* shared surface at all: not hub
-  logs, not transcripts, not panel threads, not board posts, not metrics,
-  not GitHub logs or artifacts. Confined to private, ephemeral, RD-owned
-  infrastructure built out in later slices of this epic.
-
-``Level`` is a total order (``PUBLIC < INTERNAL < SENSITIVE``): joining two
-levels for the same content always keeps the more restrictive one.
-
-Validation error messages name keys and reasons only; they never echo the
-rejected value, because an operator-supplied ``default_level`` may be a
-placeholder for something private.
+Defines the total-ordered :class:`Level` enum (``PUBLIC < INTERNAL < SENSITIVE``)
+and the ``private_mode`` overlay schema field (#3079). An overlay with no
+``private_mode`` key, or no overlay at all, resolves to :data:`DISABLED`
+(``enabled=False``, ``default_level=Level.PUBLIC``). Validation error messages
+name keys and reasons only; they never echo rejected values.
 """
 
 from __future__ import annotations
@@ -486,9 +463,20 @@ def check_mid_run_upgrade(
     return UpgradeCheckResult(envelope=validated, requeue_required=False, checkpoint_id=checkpoint_id)
 
 
+_EMIT_EXPORTS = frozenset(
+    "CANARY_FORMS CanaryLeakError CanaryVariants SHARED_SURFACES SURFACE_ALLOWLISTS "
+    "SharedProjection assert_no_canary_leak build_canary_variants detect_canary_leaks "
+    "emit_shared opaque_identifier".split()
+)
+
+
 def __getattr__(name: str) -> Any:
-    if name in {"SHARED_SURFACES", "SURFACE_ALLOWLISTS", "SharedProjection", "emit_shared", "opaque_identifier"}:
+    if name in _EMIT_EXPORTS:
         import private_mode_emit as _pme  # noqa: PLC0415
 
         return getattr(_pme, name)
+    import private_mode_approvals as _pma  # noqa: PLC0415
+
+    if name in _pma.EXPORTS:
+        return getattr(_pma, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

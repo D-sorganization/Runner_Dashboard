@@ -13,26 +13,33 @@ from __future__ import annotations
 import base64
 import json
 import re
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from private_mode import Level
-from staff.barb_continuity import BarbContinuityStore
-from staff.conversations import ConversationStore, get_conversation_store, reset_conversation_store
-from staff.private_surface_gate import (
+
+_BACKEND = Path(__file__).resolve().parents[2] / "backend"
+if str(_BACKEND) not in sys.path:
+    sys.path.insert(0, str(_BACKEND))
+
+import private_mode as pm  # noqa: E402
+from private_mode import Level  # noqa: E402
+from staff.barb_continuity import BarbContinuityStore  # noqa: E402
+from staff.conversations import ConversationStore, get_conversation_store, reset_conversation_store  # noqa: E402
+from staff.private_surface_gate import (  # noqa: E402
     MALFORMED_PLACEHOLDER,
     PLACEHOLDER,
     MalformedClassification,
     gate_text,
     tag,
 )
-from staff.redaction import redact_sensitive_content
-from staff.runner import StaffRunner
-from staff.store import RunRecord, RunStore
-from staff.thread_bus import reset_thread_bus
+from staff.redaction import redact_sensitive_content  # noqa: E402
+from staff.runner import StaffRunner  # noqa: E402
+from staff.store import RunRecord, RunStore  # noqa: E402
+from staff.thread_bus import reset_thread_bus  # noqa: E402
 
 # Built at runtime, like the secret-redaction suite's planted token, so no
 # literal private-looking value sits in the repository.
@@ -240,3 +247,111 @@ def test_canary_wiring_into_redact_sensitive_content_is_not_skipped() -> None:
     """Canary: if the integration point in staff.redaction drops the gate call, this fails."""
     assert redact_sensitive_content(SPAN) == gate_text(SPAN)
     assert SENTINEL not in redact_sensitive_content(SPAN)
+
+
+def _write_case_with_span(
+    field: str, span_expr: str, conv: ConversationStore, runs: RunStore, continuity: BarbContinuityStore
+) -> Any:
+    writers: dict[str, Callable[[], Any]] = {
+        "board.thread.title": lambda: conv.get_thread(_thread(conv, title=span_expr)).title,  # type: ignore[union-attr]
+        "board.message.body": lambda: (
+            conv.add_message(
+                thread_id=_thread(conv), author_kind="role", author="panel:expert-1", body_md=span_expr
+            ).body_md
+        ),
+        "board.proposal.params": lambda: (
+            conv.get_proposal(
+                conv.create_proposal(
+                    message_id=conv.add_message(
+                        thread_id=_thread(conv), author_kind="role", author="barb", body_md="x"
+                    ).id,
+                    thread_id=_thread(conv),
+                    action="test.noop",
+                    params={"note": span_expr},
+                    risk="low",
+                ).id
+            ).params
+        ),  # type: ignore[union-attr]
+        "run.history.prompt": lambda: runs.get_run(_run(runs, prompt=span_expr)).prompt,  # type: ignore[union-attr]
+        "run.history.event": lambda: (runs.append_event(_run(runs), "text", span_expr), runs.events_after("run_1"))[1],
+        "turnover.summary": lambda: continuity.append_turnover(scope="barb:front-door", author="op", summary=span_expr)[
+            "summary"
+        ],
+        "turnover.blockers": lambda: continuity.append_turnover(
+            scope="barb:front-door", author="op", summary="ok", blockers=[span_expr]
+        )["blockers"],
+        "inventory.title": lambda: continuity.upsert_task(title=span_expr)["title"],
+        "inventory.next_action": lambda: continuity.upsert_task(title="t", next_action=span_expr)["next_action"],
+    }
+    return writers[field]()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("form", ["raw", "base64", "url_encoded", "split"])
+@pytest.mark.parametrize("field", sorted(CASES))
+def test_pm5_leak_canary_forms_absent_across_all_gate_sinks(
+    field: str, form: str, conv: ConversationStore, runs: RunStore, continuity: BarbContinuityStore
+) -> None:
+    """PM-5 (#3255): raw, base64, URL-encoded, and split canaries are withheld across every #3095 sink."""
+    variants = pm.build_canary_variants(SENTINEL)
+    planted = variants.for_form(form)
+    span_expr = (
+        f"{tag(planted[0], Level.SENSITIVE)} {tag(planted[1], Level.SENSITIVE)}"
+        if isinstance(planted, tuple)
+        else tag(planted, Level.SENSITIVE)
+    )
+    stored = _write_case_with_span(field, span_expr, conv, runs, continuity)
+    pm.assert_no_canary_leak(stored, SENTINEL, sink_name=field)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("form", ["raw", "base64", "url_encoded", "split"])
+@pytest.mark.parametrize("surface", sorted(pm.SHARED_SURFACES))
+def test_pm5_leak_canary_forms_absent_across_all_emit_shared_sinks(surface: str, form: str) -> None:
+    """PM-5 (#3255): raw, base64, URL-encoded, and split canaries never leak from emit_shared()."""
+    variants = pm.build_canary_variants(SENTINEL)
+    planted = variants.for_form(form)
+    payload = (
+        {
+            "id": f"example-corp/{planted[0]}",
+            "repo": f"example-corp/{planted[1]}",
+            "status": planted[0],
+            "outcome": planted[1],
+            "summary": f"Example Corp {planted[0]} {planted[1]}",
+        }
+        if isinstance(planted, tuple)
+        else {
+            "id": f"example-corp/{planted}",
+            "repo": "example-corp/widgets",
+            "status": planted,
+            "summary": f"Example Corp {planted}",
+        }
+    )
+    cfg = pm.PrivateModeConfig(enabled=True, default_level=Level.INTERNAL)
+    projection = pm.emit_shared(surface, payload, level=Level.SENSITIVE, config=cfg)
+    pm.assert_no_canary_leak(projection.to_dict(), SENTINEL, sink_name=surface)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("form", ["raw", "base64", "url_encoded", "split"])
+def test_pm5_canary_of_the_canary_bypass_fails_gate(form: str) -> None:
+    """PM-5 (#3255): a bypass fixture that leaks any canary form makes the gate fail."""
+    variants = pm.build_canary_variants(SENTINEL)
+    planted = variants.for_form(form)
+    leaked_payload = {"a": planted[0], "b": planted[1]} if isinstance(planted, tuple) else {"body": planted}
+    assert form in pm.detect_canary_leaks(leaked_payload, SENTINEL)
+    with pytest.raises(pm.CanaryLeakError, match=form):
+        pm.assert_no_canary_leak(leaked_payload, SENTINEL, sink_name="bypass_fixture")
+
+
+@pytest.mark.unit
+def test_pm5_flag_off_behaviour_unchanged() -> None:
+    """PM-5 (#3255): when private_mode is DISABLED, emit_shared preserves PUBLIC behaviour."""
+    proj = pm.emit_shared(
+        "board",
+        {"id": "example-corp/widgets#1", "status": "ok", "summary": "Example Corp public status"},
+        level=Level.SENSITIVE,
+        config=pm.DISABLED,
+    )
+    assert proj.level is Level.PUBLIC and proj.withheld is False
+    assert proj.content["summary"] == "Example Corp public status"

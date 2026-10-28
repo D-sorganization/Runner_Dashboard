@@ -12,11 +12,13 @@
 from __future__ import annotations
 
 import ast
+import base64
 import hashlib
 import hmac
 import json
 import re
 import secrets
+import urllib.parse
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,8 +37,78 @@ from private_mode import (
 from staff.redaction import redact_value
 
 _PROCESS_OPAQUE_SECRET: bytes = secrets.token_bytes(32)
-_SAFE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.:+-]{1,64}$")
+_ISO_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
+_SAFE_SENSITIVE_META_TOKENS: frozenset[str] = frozenset(
+    {
+        "ok",
+        "info",
+        "warn",
+        "warning",
+        "error",
+        "ready",
+        "running",
+        "parked",
+        "parked_policy",
+        "parked_capacity",
+        "parked_audit",
+        "completed",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "queued",
+        "pending",
+        "expired",
+        "degraded",
+        "withheld",
+        "public",
+        "internal",
+        "sensitive",
+    }
+)
 _MIN_MAC_KEY_BYTES = 16
+_MIN_CANARY_LEN = 8
+CANARY_FORMS: tuple[str, ...] = ("raw", "base64", "url_encoded", "split")
+EMIT_EXPORTS: frozenset[str] = frozenset(
+    {
+        "CANARY_FORMS",
+        "CanaryLeakError",
+        "CanaryVariants",
+        "SHARED_SURFACES",
+        "SURFACE_ALLOWLISTS",
+        "SharedProjection",
+        "assert_no_canary_leak",
+        "build_canary_variants",
+        "detect_canary_leaks",
+        "emit_shared",
+        "opaque_identifier",
+    }
+)
+
+
+class CanaryLeakError(ClassificationError):
+    """Raised when a leak-canary variant is detected in a shared sink output."""
+
+
+@dataclass(frozen=True)
+class CanaryVariants:
+    """Encoded and split forms of a leak canary token (issue #3255, PM-5)."""
+
+    raw: str
+    base64: str
+    url_encoded: str
+    split: tuple[str, str]
+
+    def for_form(self, form: str) -> str | tuple[str, str]:
+        if form == "raw":
+            return self.raw
+        if form == "base64":
+            return self.base64
+        if form == "url_encoded":
+            return self.url_encoded
+        if form == "split":
+            return self.split
+        raise ClassificationError(f"CanaryVariants.for_form: unsupported form {form!r}")
+
 
 _OPAQUE_ID_KEYS: frozenset[str] = frozenset(
     {"id", "run_id", "thread_id", "target_id", "repo", "item_id", "session_id", "issue", "pr", "role_id"}
@@ -164,6 +236,10 @@ def _redact_for_non_sensitive(payload: Any) -> Any:
     return redact_value(payload)
 
 
+def _is_safe_sensitive_meta_token(value: str) -> bool:
+    return value.lower() in _SAFE_SENSITIVE_META_TOKENS or bool(_ISO_TS_RE.match(value))
+
+
 def _project_metadata(
     surface: str, payload: Any, *, sensitive: bool, opaque_key: bytes | None
 ) -> tuple[str, dict[str, Any]]:
@@ -187,7 +263,9 @@ def _project_metadata(
         elif isinstance(v, (bool, int)):
             projected[k] = v
         elif isinstance(v, str):
-            projected[k] = (v if _SAFE_TOKEN_RE.match(v) else "withheld") if sensitive else _redact_for_non_sensitive(v)
+            projected[k] = (
+                (v if _is_safe_sensitive_meta_token(v) else "withheld") if sensitive else _redact_for_non_sensitive(v)
+            )
     return op_id, projected
 
 
@@ -277,3 +355,51 @@ def find_shared_sink_import_violations(root: Path) -> list[str]:
                 ):
                     violations.append(f"{rel}:{node.lineno}: unauthorized gate_text import from {mod}")
     return violations
+
+
+def build_canary_variants(canary: str) -> CanaryVariants:
+    """Build raw, base64, URL-encoded, and split variants of *canary* (issue #3255, PM-5)."""
+    if not isinstance(canary, str) or len(canary.strip()) < _MIN_CANARY_LEN:
+        raise ClassificationError(f"build_canary_variants: canary must be a str of length >= {_MIN_CANARY_LEN}")
+    raw_bytes = canary.encode("utf-8")
+    b64 = base64.b64encode(raw_bytes).decode("ascii")
+    url_enc = "".join(f"%{b:02X}" for b in raw_bytes)
+    mid = len(canary) // 2
+    return CanaryVariants(raw=canary, base64=b64, url_encoded=url_enc, split=(canary[:mid], canary[mid:]))
+
+
+def detect_canary_leaks(output: object, canary: str) -> tuple[str, ...]:
+    """Return all canary forms (``raw``, ``base64``, ``url_encoded``, ``split``) leaked in *output*."""
+    variants = build_canary_variants(canary)
+    text = output if isinstance(output, str) else json.dumps(output, sort_keys=True, default=str)
+    lower_text = text.lower()
+    lower_raw = variants.raw.lower()
+    leaked: list[str] = []
+    if lower_raw in lower_text:
+        leaked.append("raw")
+    url_b64 = base64.urlsafe_b64encode(variants.raw.encode("utf-8")).decode("ascii")
+    b64_candidates = {variants.base64, variants.base64.rstrip("="), url_b64, url_b64.rstrip("=")}
+    if any(cand and cand in text for cand in b64_candidates):
+        leaked.append("base64")
+    unquoted = urllib.parse.unquote(text).lower()
+    if variants.url_encoded.lower() in lower_text or (
+        "%" in text and lower_raw not in lower_text and lower_raw in unquoted
+    ):
+        leaked.append("url_encoded")
+    part_a, part_b = variants.split[0].lower(), variants.split[1].lower()
+    collapsed = re.sub(r"[^a-z0-9]+", "", lower_text)
+    collapsed_raw = re.sub(r"[^a-z0-9]+", "", lower_raw)
+    if lower_raw not in lower_text and (
+        part_a in lower_text or part_b in lower_text or (collapsed_raw and collapsed_raw in collapsed)
+    ):
+        leaked.append("split")
+    return tuple(leaked)
+
+
+def assert_no_canary_leak(output: object, canary: str, *, sink_name: str = "sink") -> None:
+    """Assert that *output* contains no raw, base64, URL-encoded, or split form of *canary*."""
+    if not isinstance(sink_name, str) or not sink_name.strip():
+        raise ClassificationError("assert_no_canary_leak: sink_name must be a non-empty str")
+    leaks = detect_canary_leaks(output, canary)
+    if leaks:
+        raise CanaryLeakError(f"{sink_name}: leaked canary form(s): {', '.join(leaks)}")
