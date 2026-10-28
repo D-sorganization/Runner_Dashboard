@@ -37,9 +37,23 @@ export interface PrRollupRow {
   churn_flags: string[];
 }
 
+export interface WorkflowRunDrillDown {
+  workflow_run_id: number;
+  repo_full: string;
+  html_url: string;
+  jobs: {
+    check_run_id: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    details_url: string;
+  }[];
+}
+
 export interface PullDrillDown {
   pull: { repo_full: string; number: number; title: string; author_login: string; html_url: string };
   check_runs: { name: string; status: string; conclusion: string | null; details_url: string }[];
+  workflow_runs: WorkflowRunDrillDown[];
 }
 
 const XHR = { "X-Requested-With": "XMLHttpRequest" };
@@ -82,7 +96,9 @@ export async function fetchPullDrillDown(repoFull: string, number: number): Prom
   const response = await fetch("/api/v1/metrics/pull?" + params.toString(), { headers: XHR });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = (await response.json()) as PullDrillDown;
-  if (!body?.pull || !Array.isArray(body.check_runs)) throw new Error("Invalid pull drill-down response");
+  if (!body?.pull || !Array.isArray(body.check_runs) || !Array.isArray(body.workflow_runs)) {
+    throw new Error("Invalid pull drill-down response");
+  }
   return body;
 }
 

@@ -317,31 +317,6 @@
         "title": "AssertCompleteRequest",
         "type": "object"
       },
-      "AssistantChatResponse": {
-        "description": "AI assistant response.",
-        "properties": {
-          "context_used": {
-            "additionalProperties": true,
-            "title": "Context Used",
-            "type": "object"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "response": {
-            "title": "Response",
-            "type": "string"
-          },
-          "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
-          }
-        },
-        "required": ["response", "provider", "context_used", "timestamp"],
-        "title": "AssistantChatResponse",
-        "type": "object"
-      },
       "AuditHistoryResponse": {
         "description": "Paginated audit history for assistant tool executions.",
         "properties": {
@@ -803,6 +778,12 @@
       "BoardRoutingCriteria": {
         "description": "Explicit requester-declared or system-extracted routing flags.",
         "properties": {
+          "confidential_data_egress": {
+            "default": false,
+            "description": "Confidential data egress; requires user sign-off before Board routing.",
+            "title": "Confidential Data Egress",
+            "type": "boolean"
+          },
           "cross_repo_contract": {
             "default": false,
             "title": "Cross Repo Contract",
@@ -812,11 +793,6 @@
             "default": 0,
             "title": "Estimated Child Issues",
             "type": "integer"
-          },
-          "inentec_data_egress": {
-            "default": false,
-            "title": "Inentec Data Egress",
-            "type": "boolean"
           },
           "new_dependency_or_egress": {
             "default": false,
@@ -2899,6 +2875,35 @@
         "title": "HoldsBody",
         "type": "object"
       },
+      "HostSettingsPutBody": {
+        "properties": {
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "global": {
+            "additionalProperties": true,
+            "title": "Global",
+            "type": "object"
+          },
+          "roles": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Roles",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "title": "HostSettingsPutBody",
+        "type": "object"
+      },
       "InitializeExecutorPayload": {
         "additionalProperties": false,
         "description": "Children always come from the filed plan; the caller may only tune execution.",
@@ -2927,6 +2932,32 @@
         },
         "required": ["provider"],
         "title": "LaunchAuthRequest",
+        "type": "object"
+      },
+      "LeaderLeaseBody": {
+        "properties": {
+          "machine": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 3600.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Seconds"
+          }
+        },
+        "required": ["machine"],
+        "title": "LeaderLeaseBody",
         "type": "object"
       },
       "LeaseRequest": {
@@ -3562,6 +3593,11 @@
             "minItems": 3,
             "title": "Experts",
             "type": "array"
+          },
+          "ground_repos": {
+            "default": true,
+            "title": "Ground Repos",
+            "type": "boolean"
           },
           "mode": {
             "default": "debate",
@@ -9475,32 +9511,6 @@
         "tags": ["remediation", "agents"]
       }
     },
-    "/api/agent-remediation/dispatch-jules": {
-      "post": {
-        "description": "Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
-        "operationId": "dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Dispatch Jules Workflow",
-        "tags": ["remediation", "agents", "remediation"]
-      }
-    },
     "/api/agent-remediation/history": {
       "get": {
         "description": "Return recent remediation dispatch history.",
@@ -9595,32 +9605,6 @@
         },
         "summary": "Get Agent Providers",
         "tags": ["remediation", "agents"]
-      }
-    },
-    "/api/agents/quick-dispatch": {
-      "post": {
-        "description": "Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
-        "operationId": "api_quick_dispatch_api_agents_quick_dispatch_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Api Quick Dispatch",
-        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/analysis/workflow-machines": {
@@ -9766,34 +9750,6 @@
           }
         },
         "summary": "Get Tool Audit History",
-        "tags": ["assistant", "assistant"]
-      }
-    },
-    "/api/assistant/chat": {
-      "post": {
-        "description": "Retired endpoint (SC-D11, issue #1330).\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console\nconversation API at /api/v1/staff/threads.",
-        "operationId": "assistant_chat_api_assistant_chat_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AssistantChatResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Assistant Chat",
         "tags": ["assistant", "assistant"]
       }
     },
@@ -10890,7 +10846,7 @@
     },
     "/api/cline/status": {
       "get": {
-        "description": "Return Cline extension detection status.",
+        "description": "Return Cline CLI detection status.",
         "operationId": "get_cline_status_api_cline_status_get",
         "responses": {
           "200": {
@@ -17792,6 +17748,36 @@
         "tags": ["code_requests"]
       }
     },
+    "/api/staff/activity/summary": {
+      "get": {
+        "description": "Bounded aggregate for the node auto-deploy activity probe (#2353).\n\nNo runner/provider initialisation and no peer fan-out (see\n``staff.activity_summary`` for the read-only aggregate query).",
+        "operationId": "activity_summary_api_staff_activity_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Activity Summary Api Staff Activity Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Activity Summary",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/audit": {
       "get": {
         "description": "Retrieve durable append-only staff audit rows (SC-A8, Issue #1298).",
@@ -18490,6 +18476,82 @@
           }
         ],
         "summary": "Put Holds",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/host-settings": {
+      "get": {
+        "operationId": "get_host_settings_api_staff_host_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Settings Api Staff Host Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Host Settings",
+        "tags": ["staff"]
+      },
+      "put": {
+        "operationId": "put_host_settings_api_staff_host_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostSettingsPutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Host Settings Api Staff Host Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Host Settings",
         "tags": ["staff"]
       }
     },
@@ -19261,6 +19323,56 @@
           }
         ],
         "summary": "Get Schedule",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/schedule/leader-lease": {
+      "post": {
+        "description": "Acquire or renew the scheduler leader lease (fleet peer internal contract).",
+        "operationId": "post_leader_lease_api_staff_schedule_leader_lease_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderLeaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Leader Lease Api Staff Schedule Leader Lease Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Leader Lease",
         "tags": ["staff"]
       }
     },
@@ -25253,6 +25365,82 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/host-settings": {
+      "get": {
+        "operationId": "get_host_settings_api_v1_staff_host_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Settings Api V1 Staff Host Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Host Settings",
+        "tags": ["staff"]
+      },
+      "put": {
+        "operationId": "put_host_settings_api_v1_staff_host_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostSettingsPutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Host Settings Api V1 Staff Host Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Host Settings",
+        "tags": ["staff"]
+      }
+    },
     "/api/v1/staff/inbox": {
       "get": {
         "description": "Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.",
@@ -25400,6 +25588,24 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
             }
           }
         ],
@@ -25715,7 +25921,7 @@
     },
     "/api/v1/staff/panels/presets": {
       "get": {
-        "description": "Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.",
+        "description": "Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).",
         "operationId": "get_panel_presets_api_v1_staff_panels_presets_get",
         "responses": {
           "200": {

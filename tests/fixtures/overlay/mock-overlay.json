@@ -9,5 +9,14 @@
   },
   "roles_dir": "roles",
   "policy_dir": "policy",
-  "private_docs_dir": "docs-private"
+  "private_docs_dir": "docs-private",
+  "private_roles": [
+    {
+      "role_id": "mock-private-role",
+      "allowed_templates": ["mock-template"],
+      "providers": { "mock-node": ["mock-subscription-cli"] },
+      "context_store_dir": "/tmp/mock-overlay-store-do-not-use",
+      "store_schema_version": 1
+    }
+  ]
 }

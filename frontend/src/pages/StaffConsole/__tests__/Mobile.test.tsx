@@ -111,10 +111,10 @@ const MOCK_MESSAGES: ThreadMessage[] = [
         thread_id: "thread-barb-auto",
         message_id: "msg-prop",
         action: "maintenance.trim_worktrees",
-        description: "Trim 12 stale git worktrees on ControlTower",
+        description: "Trim 12 stale git worktrees on node-a",
         risk_level: "medium",
         status: "proposed",
-        params: { host: "ControlTower" },
+        params: { host: "node-a" },
         created_at: "2026-09-25T12:01:00Z",
       },
     },
@@ -415,7 +415,7 @@ describe("StaffConsoleMobile (SC-D8)", () => {
 
     await waitFor(() => expect(approveBtn).toBeEnabled());
     fireEvent.click(approveBtn);
-    expect(onApproveProposal).toHaveBeenCalledWith("prop-999", { host: "ControlTower" }, "e".repeat(64));
+    expect(onApproveProposal).toHaveBeenCalledWith("prop-999", { host: "node-a" }, "e".repeat(64));
   });
 
   it("opens thread view directly when ?thread=<id> is present in the URL", () => {

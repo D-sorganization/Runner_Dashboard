@@ -177,6 +177,7 @@ async def plan_agent_remediation(
         run_id=context.run_id,
         conclusion=context.conclusion,
         protected_branch=context.protected_branch,
+        pr_labels=context.pr_labels,
         source=context.source,
     )
 
@@ -194,6 +195,7 @@ async def plan_agent_remediation(
                 run_id=context.run_id,
                 conclusion=context.conclusion,
                 protected_branch=context.protected_branch,
+                pr_labels=context.pr_labels,
                 source=context.source,
             )
 
@@ -249,6 +251,7 @@ async def dispatch_agent_remediation(
         run_id=context.run_id,
         conclusion=context.conclusion,
         protected_branch=context.protected_branch,
+        pr_labels=context.pr_labels,
         source=context.source,
     )
     provider_id = str(
@@ -273,6 +276,7 @@ async def dispatch_agent_remediation(
                 run_id=context.run_id,
                 conclusion=context.conclusion,
                 protected_branch=context.protected_branch,
+                pr_labels=context.pr_labels,
                 source=context.source,
             )
 
