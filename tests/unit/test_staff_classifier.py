@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from staff.classifier import (
     ALLOWED_FAILURE_CLASSES,
@@ -70,6 +72,64 @@ def test_classify_execution_result_fails_success_with_bwrap_in_transcript(tmp_pa
     assert not retryable
     assert "wsl.conf" in remediation.lower()
     assert error
+
+
+def test_exit0_run_with_bwrap_error_recorded_failed(tmp_path: Path) -> None:
+    """#2771: a bwrap/namespace failure in the transcript fails the run even with no STAFF_RESULT line."""
+    from staff.execution_result import classify_execution_result
+
+    transcript = tmp_path / "t.log"
+    transcript.write_text(CODEX_BWRAP_TRANSCRIPT, encoding="utf-8")
+    status, failure_class, _retryable, _remediation, error = classify_execution_result(
+        cancelled=False,
+        rc=0,
+        result_line="",
+        provider="codex",
+        transcript_path=transcript,
+        machine="DeskComputer",
+    )
+    assert status == "failed"
+    assert failure_class == "environment_error"
+    assert error
+
+
+def test_staff_result_line_does_not_mask_sandbox_failure(tmp_path: Path) -> None:
+    """#2771: a trailing STAFF_RESULT line does not mask a sandbox failure earlier in the transcript."""
+    from staff.execution_result import classify_execution_result
+
+    transcript = tmp_path / "t.log"
+    transcript.write_text(CODEX_BWRAP_TRANSCRIPT, encoding="utf-8")
+    status, failure_class, _retryable, _remediation, _error = classify_execution_result(
+        cancelled=False,
+        rc=0,
+        result_line="STAFF_RESULT: ok",
+        provider="codex",
+        transcript_path=transcript,
+        machine="DeskComputer",
+    )
+    assert status == "failed"
+    assert failure_class == "environment_error"
+
+
+def test_clean_run_still_succeeds(tmp_path: Path) -> None:
+    """#2771 regression: a clean exit-0 run with no sandbox pattern in the transcript still succeeds."""
+    from staff.execution_result import classify_execution_result
+
+    transcript = tmp_path / "t.log"
+    transcript.write_text("All good.\nSTAFF_RESULT: ok\n", encoding="utf-8")
+    status, failure_class, retryable, remediation, error = classify_execution_result(
+        cancelled=False,
+        rc=0,
+        result_line="STAFF_RESULT: ok",
+        provider="codex",
+        transcript_path=transcript,
+        machine="DeskComputer",
+    )
+    assert status == "succeeded"
+    assert failure_class == ""
+    assert not retryable
+    assert remediation == ""
+    assert error == ""
 
 
 @pytest.mark.parametrize(
