@@ -6985,6 +6985,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/pr-hygiene/closes-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene Closes Refs
+         * @description Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run retexts only the flagged
+         *     ``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/projects": {
         parameters: {
             query?: never;
@@ -23506,6 +23530,41 @@ export interface operations {
         };
     };
     pr_hygiene_api_v1_staff_pr_hygiene_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post: {
         parameters: {
             query?: never;
             header?: never;
