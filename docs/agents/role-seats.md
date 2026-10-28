@@ -71,6 +71,9 @@ Retired and not seated: `orchestrator` (folded into barb) and `usage-tracker` (r
 `GET /api/staff/usage`). rd-barb's role file is in Repository_Management #2483 and becomes a seat when
 that merges. The planner seat (`claude-planner`) is #3217.
 
+**Duet channels (decided, Dieter, 2026-10-27): every bot gets its own Claude Duet channel**, so the
+Duet channel columns below are superseded; the Duet coordinator creates them.
+
 Nine roles were born in RD and never had a Grok Bot picture. Picking Simpsons-themed pictures for them is
 Dieter's call; until then the Staff Console keeps its default.
 
@@ -218,6 +221,5 @@ else happens until a tier comes back.
 
 1. Approve or change the roster and the fallback groups above.
 2. Linus: seat it now, or keep it in Grok Bot until its upstream scope is set.
-3. Which roles also get a Duet channel (proposed: PM-UpstreamDrift and PM-AffineDrift; barb exists).
-4. Pictures for the nine RD-born roles.
-5. Later, one yes per switch after its dry run.
+3. Pictures for the nine RD-born roles.
+4. Later, one yes per switch after its dry run.
