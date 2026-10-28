@@ -7,13 +7,13 @@ import os
 import re
 import secrets
 import sqlite3
-import stat
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from platform_utils.vault_key_permissions import assert_master_key_file_permissions
 
 _KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 _HANDLE_PREFIX = "$vault:"
@@ -52,11 +52,7 @@ def load_or_create_master_key(key_path: Path | None = None) -> bytes:
             os.write(fd, secrets.token_bytes(32))
         finally:
             os.close(fd)
-    st = path.stat()
-    if st.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
-        raise PermissionError(
-            f"Vault master key {path} has unsafe permissions {oct(st.st_mode & 0o777)}; expected 0o600"
-        )
+    assert_master_key_file_permissions(path)
     data = path.read_bytes()
     if len(data) != 32:
         raise ValueError(f"Vault master key {path} must be 32 bytes (got {len(data)})")

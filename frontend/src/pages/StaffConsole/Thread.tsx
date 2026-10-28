@@ -175,7 +175,6 @@ export const Thread: React.FC<ThreadProps> = ({
 
   useEffect(() => {
     const container = scrollContainerRef.current;
-    const observedRows = observedRowsRef.current;
     if (!container) return;
     setViewportHeight(container.clientHeight || 600);
     if (typeof ResizeObserver === "undefined") return;
@@ -198,6 +197,7 @@ export const Thread: React.FC<ThreadProps> = ({
     });
     resizeObserverRef.current = observer;
     observer.observe(container);
+    const observedRows = observedRowsRef.current;
     for (const row of observedRows.values()) observer.observe(row);
     return () => {
       observer.disconnect();

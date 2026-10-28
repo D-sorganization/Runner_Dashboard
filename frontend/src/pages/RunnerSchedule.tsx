@@ -308,6 +308,8 @@ export function RunnerScheduleTab({
                     <td>
                       <input
                         className="runner-schedule__time-input"
+                        aria-label={`Start time for ${entry.name}`}
+                        title={`Start time for ${entry.name}`}
                         value={entry.start}
                         onInput={(e) => {
                           updateSchedule(
@@ -321,6 +323,8 @@ export function RunnerScheduleTab({
                     <td>
                       <input
                         className="runner-schedule__time-input"
+                        aria-label={`End time for ${entry.name}`}
+                        title={`End time for ${entry.name}`}
                         value={entry.end}
                         onInput={(e) => {
                           updateSchedule(
@@ -337,6 +341,8 @@ export function RunnerScheduleTab({
                         type="number"
                         min={0}
                         max={d.max_runners || 99}
+                        aria-label={`Runner count for ${entry.name}`}
+                        title={`Runner count for ${entry.name}`}
                         value={entry.runners}
                         onInput={(e) => {
                           updateSchedule(

@@ -78,10 +78,16 @@ export function GroupCostConfirm(props: GroupCostConfirmProps) {
         <p>{message}</p>
       )}
       <div className="group-cost-confirm__actions">
-        <TouchButton variant="primary" onClick={handleConfirm}>
+        <TouchButton
+          variant="primary"
+          onClick={handleConfirm}
+          title="Approve and send despite the estimated cost"
+        >
           {confirmText}
         </TouchButton>
-        <TouchButton onClick={handleCancel}>{cancelText}</TouchButton>
+        <TouchButton onClick={handleCancel} title="Cancel and do not send yet">
+          {cancelText}
+        </TouchButton>
       </div>
     </aside>
   );

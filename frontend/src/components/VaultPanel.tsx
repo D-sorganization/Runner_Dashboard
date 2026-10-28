@@ -60,7 +60,11 @@ export function VaultPanel() {
           <input aria-label="Vault scope" placeholder="global or repo:Name" value={scope} onChange={(e) => setScope(e.target.value)} />
           <button type="submit" className="btn btn-primary">Store Secret</button>
         </form>
-        {status && <div className="muted" role="status" style={{ marginBottom: 8 }}>{status}</div>}
+        {status && (
+          <div className="muted" role="status" title={status} style={{ marginBottom: 8 }}>
+            {status}
+          </div>
+        )}
         <table className="table" style={{ width: '100%' }}>
           <thead><tr><th>Key</th><th>Handle</th><th>Scope</th><th>Masked</th><th>Fingerprint</th><th /></tr></thead>
           <tbody>

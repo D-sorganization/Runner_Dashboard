@@ -7,6 +7,13 @@
 # of slow CPython 3.14 source builds.
 # To regenerate requirements.lock.txt:  uv export --no-dev -o requirements.lock.txt
 
+FROM node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da AS frontend-build
+
+WORKDIR /build
+COPY package.json package-lock.json vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
+COPY frontend ./frontend
+RUN npm ci && npm run build
+
 FROM python:3.13-slim@sha256:7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4
 
 WORKDIR /app
@@ -30,9 +37,12 @@ RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u3' \
     openssl-provider-legacy="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user and group
+# Create non-root user and group. appuser needs a writable home: dashboard_config
+# persists SESSION_SECRET to ~/.config/runner-dashboard at import when SESSION_SECRET
+# is unset (Docker smoke test and default container startup).
 RUN groupadd --gid 10001 appuser \
-    && useradd --uid 10001 --gid 10001 --no-create-home --shell /sbin/nologin appuser
+    && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/appuser --shell /sbin/nologin appuser \
+    && install -d -o appuser -g appuser -m 700 /home/appuser/.config/runner-dashboard
 
 # Copy requirements first for layer caching; install with hash verification.
 COPY requirements.lock.txt .
@@ -55,6 +65,7 @@ RUN pip install --no-cache-dir --upgrade \
 
 
 # Copy application code and set ownership
+COPY --from=frontend-build --chown=appuser:appuser /build/dist ./dist/
 COPY --chown=appuser:appuser backend/ ./backend/
 COPY --chown=appuser:appuser config/ ./config/
 COPY --chown=appuser:appuser frontend/ ./frontend/

@@ -7,6 +7,7 @@ without requiring external dependencies like ``jsonschema``.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, TypeGuard
 
 from staff.adapters import CHAT_READ_ONLY_TOOLS
@@ -430,7 +431,24 @@ def validate_role_data(data: Any) -> list[str]:
     if tier is not None:
         problems.extend(validate_role_tier(str(tier)))
     problems.extend(_validate_retry_block(data))
+    problems.extend(_validate_avatar_field(data))
     return problems
+
+
+def _validate_avatar_field(data: dict[str, Any]) -> list[str]:
+    from staff.role_avatar_paths import AVATAR_YML_RE
+
+    raw = data.get("avatar")
+    if raw is None:
+        return []
+    if not isinstance(raw, str) or not raw.strip():
+        return ["avatar must be a non-empty string"]
+    rel = raw.strip().replace("\\", "/")
+    if rel.startswith("/") or ".." in Path(rel).parts:
+        return [f"avatar {rel!r} must be a safe path relative to staff/avatars/"]
+    if not AVATAR_YML_RE.match(rel):
+        return [f"avatar {rel!r} must match {AVATAR_YML_RE.pattern}"]
+    return []
 
 
 def _validate_retry_block(data: dict[str, Any]) -> list[str]:

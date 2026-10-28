@@ -62,4 +62,10 @@ commits = [
   # #2656 (closed, superseded by #2659): tests/test_verify_merge_gates.py fixture
   # lines hold public SHA-1 digests from detect-secrets run 39994915171, not secrets.
   "593e755571cbc027b4d6d85e8deceb88b7444e5c",  # pragma: allowlist secret (commit SHA)
+  # #3254: tests/test_private_mode_emit.py initial test fixture used a synthetic 1..6 pattern
+  # replaced in follow-up commit with runtime concatenation.
+  "ad4eee827196a0d0629e06bf8bc8b2823f6d425e",  # pragma: allowlist secret (commit SHA)
+  # #3264: tests/test_private_mode_credentials.py:146 fake GitHub App installation token
+  # (StaffGithubToken fixture asserting it never leaks into the sandboxed env) — not a secret.
+  "be7f93f99c15b4f62a2556da2aa858a18cce2e2e",  # pragma: allowlist secret (commit SHA)
 ]

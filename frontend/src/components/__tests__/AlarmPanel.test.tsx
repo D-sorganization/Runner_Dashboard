@@ -61,7 +61,7 @@ describe("AlarmPanel", () => {
         onNavigate={onNavigate}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "2 offline" }));
+    fireEvent.click(screen.getByRole("button", { name: /Navigate to alarm: 2 offline/i }));
     expect(onNavigate).toHaveBeenCalledWith("runners-offline");
   });
 });

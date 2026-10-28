@@ -188,7 +188,11 @@ export function ProposalForm({ initialPrefill, onSuccess }: ProposalFormProps) {
       ) : null}
 
       {submitNotice ? (
-        <div className="fleet-cmd__notice fleet-cmd__notice--success" role="status">
+        <div
+          className="fleet-cmd__notice fleet-cmd__notice--success"
+          role="status"
+          title={submitNotice}
+        >
           {submitNotice}
         </div>
       ) : null}

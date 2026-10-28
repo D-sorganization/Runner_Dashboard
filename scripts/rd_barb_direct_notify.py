@@ -96,9 +96,16 @@ class FanOutChannel:
             raise ChannelError(failed)
 
 
+def _email_channel(cfg: Mapping[str, str]) -> NotifyChannel:
+    from scripts.rd_barb_notify_email import email_channel  # noqa: PLC0415 - lazy: sys.path is set late
+
+    return email_channel(cfg, error_cls=ChannelError)
+
+
 CHANNELS: dict[str, Callable[[Mapping[str, str]], NotifyChannel]] = {
     "none": lambda _cfg: _FailingChannel("none", "no_channel_configured"),
     "dashboard": lambda _cfg: DashboardChannel(DashboardInbox(default_inbox_path())),
+    "email": _email_channel,
 }
 
 

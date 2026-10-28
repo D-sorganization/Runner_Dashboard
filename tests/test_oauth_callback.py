@@ -25,10 +25,13 @@ def _mock_request(session: dict) -> MagicMock:
     return req
 
 
+pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
+
+
 @pytest.fixture(autouse=True)
 def _production_oauth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Configure the exact production contract for callback-focused tests."""
-    origin = "https://deskcomputer.tail2bbcc7.ts.net"
+    origin = "https://hub-a.fleet-example.ts.net"
     monkeypatch.setenv("GITHUB_CLIENT_ID", "Ov23liCallbackTests")
     monkeypatch.setenv("GITHUB_CLIENT_SECRET", "s" * 40)  # pragma: allowlist secret
     monkeypatch.setenv("GITHUB_ORG", "D-sorganization")

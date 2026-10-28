@@ -1,11 +1,4 @@
-/**
- * Mobile.tsx — Mobile Staff Console (SC-D8, Issue #1331).
- *
- * Implements full-screen roster → thread navigation, safe-area aware bottom
- * composer, thumb-reachable approve/deny actions, push deep linking (?thread=, ?role=),
- * and role context inspection. Console state comes from `useStaffConsole`,
- * shared with the desktop layout (#1446).
- */
+/** Mobile Staff Console: roster, threads, composer (SC-D8). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { ROSTER_GROUPS } from "./types";
@@ -316,7 +309,9 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             <button type="button" className="staff-mobile__details-btn" onClick={() => setView("roster")}>Choose staff</button>
           </header>
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
-          <main className="staff-mobile__main-content staff-mobile__home-content">
+          {/* A <div>, not <main>: the page already has one <main> landmark
+              (MobileShell's #main-content); a second here would duplicate it. */}
+          <div className="staff-mobile__main-content staff-mobile__home-content">
             <section className="staff-mobile__home-intro" aria-labelledby="staff-mobile-home-title">
               <span className="staff-mobile__home-eyebrow">Your fleet, one conversation away</span>
               <h2 id="staff-mobile-home-title">What would you like to work on?</h2>
@@ -329,7 +324,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 </button>
               ))}
             </div>
-          </main>
+          </div>
           <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
             <GroupCostConfirm guard={sc.costGuard} />
             <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} prefillSeq={prefillSeq} />
@@ -427,6 +422,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                               data-testid={`staff-mobile-role-${role.name}`}
                               role="button"
                               tabIndex={0}
+                              title={`Open a conversation with ${role.title}`}
                               onClick={() => handleSelectRole(role.name)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -443,7 +439,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                                 )}
                               </div>
                               {role.caller_unread_count ? (
-                                <span className="staff-mobile__unread-badge">
+                                <span
+                                  className="staff-mobile__unread-badge"
+                                  title={`${role.caller_unread_count} unread message${role.caller_unread_count === 1 ? "" : "s"}`}
+                                >
                                   {role.caller_unread_count}
                                 </span>
                               ) : null}
