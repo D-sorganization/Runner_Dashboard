@@ -96,3 +96,35 @@ def test_no_overlay_configured_falls_back_to_directory_glob(tmp_path: Path, monk
 
     prin = mgr.principals["agent-grok"]
     assert mgr.verify_token("svc_test_grok_directory") is prin
+
+
+def test_merge_provisions_agent_cursor_as_checkin_only_without_read_or_chat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#2874: unconnected Cursor cloud check-in credential gets activity.checkin only."""
+    monkeypatch.delenv("RD_OVERLAY_PATH", raising=False)
+    monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
+    id_dir = tmp_path / "id"
+    id_dir.mkdir()
+    tok_dir = id_dir / "agent-tokens"
+    tok_dir.mkdir()
+    (tok_dir / "agent-cursor.token").write_text("svc_test_cursor_checkin\n", encoding="utf-8")
+
+    mgr = IdentityManager(config_dir=id_dir)
+    merge_agent_principal_defaults(mgr)
+
+    prin = mgr.principals["agent-cursor"]
+    assert prin.roles == ["checkin-only"]
+    assert principal_has_scope(prin, "activity.checkin")
+    for forbidden in (
+        "activity.read",
+        "activity.write",
+        "staff.read",
+        "staff.chat",
+        "staff.dispatch",
+        "assistant.chat",
+        "fleet.read",
+        "memory.read",
+    ):
+        assert not principal_has_scope(prin, forbidden)
+    assert mgr.verify_token("svc_test_cursor_checkin") is prin
