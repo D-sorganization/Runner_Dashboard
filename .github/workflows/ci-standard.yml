@@ -85,11 +85,17 @@ jobs:
           fi
           echo "has_expedite=$has" >> "$GITHUB_OUTPUT"
 
-      - name: Merge queue ref guard
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'merge_group'
-        uses: ./.github/actions/merge-queue-ref-guard
         with:
-          merge_group_head_ref: ${{ github.event.merge_group.head_ref }}
+          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
+          sparse-checkout-cone-mode: false
+      - name: Stop obsolete merge queue entries
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - id: select
         name: Select runner without API polling
         shell: bash

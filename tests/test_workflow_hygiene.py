@@ -126,6 +126,50 @@ def _is_reusable_caller(job_body: dict) -> bool:
     return "uses" in job_body and "steps" not in job_body
 
 
+_LOCAL_ACTION_PREFIX = "./.github/actions/"
+_CHECKOUT_ACTION_MARKERS = (
+    "actions/checkout",
+    "actions/checkout@v",
+)
+
+
+def _step_is_checkout(step: dict) -> bool:
+    uses = str(step.get("uses", ""))
+    return any(marker in uses for marker in _CHECKOUT_ACTION_MARKERS)
+
+
+def _local_action_violations(workflow_path: Path) -> list[str]:
+    """Local composite actions require a prior checkout on the runner workspace."""
+    data = _load_workflow(workflow_path)
+    violations: list[str] = []
+    for job_id, job in (data.get("jobs") or {}).items():
+        if _is_reusable_caller(job or {}):
+            continue
+        saw_checkout = False
+        for step in (job or {}).get("steps") or []:
+            if _step_is_checkout(step):
+                saw_checkout = True
+            uses = str(step.get("uses", ""))
+            if uses.startswith(_LOCAL_ACTION_PREFIX) and not saw_checkout:
+                violations.append(f"{workflow_path.name}::{job_id}::{step.get('name', uses)}")
+    return violations
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_checkout_precedes_local_github_actions(workflow_path: Path) -> None:
+    """``uses: ./.github/actions/*`` must run only after ``actions/checkout`` (#2886)."""
+    violations = _local_action_violations(workflow_path)
+    assert not violations, (
+        "Local composite actions need action.yml on disk; checkout (sparse "
+        "``.github/actions`` is fine) must come first, or inline the script. "
+        f"Violations: {violations}"
+    )
+
+
 @pytest.mark.parametrize(
     "workflow_path",
     _workflow_files(),

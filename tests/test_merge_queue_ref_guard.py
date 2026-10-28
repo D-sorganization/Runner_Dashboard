@@ -110,11 +110,17 @@ def test_merge_group_only_workflows_keep_standalone_guard_job(name: str) -> None
     assert job["permissions"] == {"actions": "write", "contents": "read"}
 
 
+def _guard_steps_from_job(steps: list) -> list[dict]:
+    return [s for s in steps if "merge-queue-ref-guard" in str(s.get("run", "")) or _ACTION in str(s.get("uses", ""))]
+
+
 @pytest.mark.parametrize("name", sorted(_GUARD_STEP_ENTRY_JOBS))
 def test_merge_group_guard_step_on_first_heavy_job(name: str) -> None:
     job_id = _GUARD_STEP_ENTRY_JOBS[name]
     steps = _load_workflow(name)["jobs"][job_id]["steps"]
-    guard = next(s for s in steps if _ACTION in str(s.get("uses", "")))
+    guard_steps = _guard_steps_from_job(steps)
+    assert guard_steps, f"{name}::{job_id} must run merge-queue-ref-guard on merge_group"
+    guard = guard_steps[0]
     assert "merge_group" in str(guard.get("if", ""))
 
 
@@ -218,6 +224,20 @@ def test_frontend_scope_guard_preserves_pull_request_files_read_permission() -> 
         "contents": "read",
         "pull-requests": "read",
     }
+
+
+def test_frontend_scope_merge_group_exits_before_pr_number_lookup() -> None:
+    """merge_group must not call the GitHub PR files API (no pull_request payload)."""
+    scope_step = next(
+        s
+        for s in _load_workflow("frontend-tests.yml")["jobs"]["frontend-scope"]["steps"]
+        if s.get("id") == "scope"
+    )
+    run = str(scope_step["run"])
+    merge_block = run.split('if [ "$EVENT_NAME" = "merge_group" ]; then', 1)[1].split("fi", 1)[0]
+    assert "run_frontend_tests=true" in merge_block
+    assert "gh pr" not in merge_block
+    assert run.index("merge_group") < run.index("PR_NUMBER")
 
 
 def test_gh_api_error_fails_open_without_cancel(tmp_path: Path) -> None:
