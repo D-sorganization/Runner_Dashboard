@@ -58,7 +58,6 @@ class RoleSpec:
     max_attempts: int = 2
     fallback_providers: tuple[str, ...] = ()
     provider_fallbacks: tuple[ProviderFallbackRule, ...] = ()
-    avatar: str | None = None
     failover_chain: tuple[FailoverStep, ...] = ()
     valid: bool = True
     errors: tuple[str, ...] = ()
