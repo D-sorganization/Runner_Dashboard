@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import contextvars
+import json
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -52,11 +53,13 @@ __all__ = [
     "PanelSpeaker",
     "TurnOutcome",
     "TurnRunner",
+    "DIGEST_MAX_BYTES",
     "compute_tally",
     "active_panel_count",
     "default_turn_runner",
     "estimate_panel_cost",
     "list_panel_summaries",
+    "panel_digest",
     "panel_result",
     "panel_summary",
     "parse_stance",
@@ -67,6 +70,7 @@ __all__ = [
 
 TurnRunner = Callable[[PanelSpeaker, str, str, str], Awaitable[TurnOutcome]]
 _ACTIVE_PANELS: set[str] = set()
+DIGEST_MAX_BYTES = 4096  # #3313: a caller gets one GET for the verdict instead of the full transcript.
 
 
 def active_panel_count() -> int:
@@ -370,6 +374,37 @@ def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | N
         "turns": turns,
         "synthesis": synthesis,
     }
+
+
+def panel_digest(store: ConversationStore, thread_id: str) -> dict[str, Any] | None:
+    """Compact verdict for ``thread_id``: status, tally and a synthesis excerpt, no turn transcript.
+
+    None if not a panel (the API turns that into a 404). Post: the UTF-8 JSON encoding of the
+    result is at most ``DIGEST_MAX_BYTES``; a synthesis too long to fit is cut short with
+    ``truncated: true`` rather than the digest ever growing past the cap.
+    """
+    result = panel_result(store, thread_id)
+    if result is None:
+        return None
+    digest: dict[str, Any] = {
+        "thread_id": result["thread_id"],
+        "title": result["title"],
+        "status": result["status"],
+        "mode": result["mode"],
+        "rounds_used": result["rounds_used"],
+        "consensus": result["consensus"],
+        "tally": result.get("tally"),
+        "quorum": result.get("quorum"),
+        "quorum_met": result.get("quorum_met"),
+        "abstentions": result.get("abstentions", []),
+        "synthesis": result.get("synthesis") or "",
+        "truncated": False,
+    }
+    while digest["synthesis"] and len(json.dumps(digest, ensure_ascii=False).encode("utf-8")) > DIGEST_MAX_BYTES:
+        keep = len(digest["synthesis"]) * 9 // 10
+        digest["synthesis"] = digest["synthesis"][:keep].rstrip() + "…"
+        digest["truncated"] = True
+    return digest
 
 
 # ── the real turn runner ────────────────────────────────────────────────────

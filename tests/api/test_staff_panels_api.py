@@ -4,6 +4,7 @@
 - The cost guard reuses ``group_cost_guard_threshold_exceeded`` and is bypassed by ``confirm_cost``.
 - GET /api/v1/staff/panels lists recent panel threads with compact status (#3313).
 - GET /api/v1/staff/panels/{id} returns turns, stances, consensus and synthesis; 404 for other threads.
+- GET /api/v1/staff/panels/{id}/digest returns a compact verdict capped at 4 KB (#3313).
 - Posting into a panel thread is a 409; a panel thread is never created through POST /threads.
 """
 
@@ -212,6 +213,55 @@ def test_a_non_panel_thread_is_404(client: TestClient) -> None:
     thread = get_conversation_store().create_thread(title="chat", kind="direct")
     assert client.get(f"/api/v1/staff/panels/{thread.id}").status_code == 404
     assert client.get("/api/v1/staff/panels/th_missing").status_code == 404
+
+
+@pytest.mark.unit
+def test_digest_is_404_for_a_non_panel_thread(client: TestClient) -> None:
+    thread = get_conversation_store().create_thread(title="chat", kind="direct")
+    assert client.get(f"/api/v1/staff/panels/{thread.id}/digest").status_code == 404
+    assert client.get("/api/v1/staff/panels/th_missing/digest").status_code == 404
+
+
+@pytest.mark.unit
+def test_digest_carries_the_verdict_without_the_turn_transcript(client: TestClient) -> None:
+    started = client.post("/api/v1/staff/panels", json=BODY)
+    thread_id = started.json()["thread"]["id"]
+    full = _wait_done(client, thread_id)
+
+    digest = client.get(f"/api/v1/staff/panels/{thread_id}/digest")
+    assert digest.status_code == 200, digest.text
+    body = digest.json()
+    assert body["thread_id"] == thread_id
+    assert body["status"] == full["status"] == "complete"
+    assert body["consensus"] == full["consensus"] is True
+    assert body["rounds_used"] == full["rounds_used"]
+    assert body["tally"] == full["tally"]
+    assert body["quorum_met"] == full["quorum_met"]
+    assert body["synthesis"] == full["synthesis"]
+    assert body["truncated"] is False
+    assert "turns" not in body and "experts" not in body
+
+
+@pytest.mark.unit
+def test_digest_truncates_a_long_synthesis_to_stay_under_4kb(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def verbose_runner(speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str) -> TurnOutcome:
+        if speaker.name == "Moderator":
+            return TurnOutcome(ok=True, text="**Consensus:** " + "x" * 10_000)
+        return await agreeing_runner(speaker, prompt, thread_id, message_id)
+
+    monkeypatch.setattr(staff_panels, "_turn_runner", lambda: verbose_runner)
+    started = client.post("/api/v1/staff/panels", json=BODY)
+    thread_id = started.json()["thread"]["id"]
+    _wait_done(client, thread_id)
+
+    digest = client.get(f"/api/v1/staff/panels/{thread_id}/digest")
+    assert digest.status_code == 200
+    assert len(digest.content) <= 4096
+    body = digest.json()
+    assert body["truncated"] is True
+    assert body["synthesis"].endswith("…")
 
 
 @pytest.mark.unit
