@@ -90,7 +90,10 @@ def test_disk_cap_prunes_oldest_first(stores) -> None:
 def test_metadata_archive_and_metrics(stores, tmp_path: Path) -> None:
     activity, chunks = stores
     activity.append(_meta())
-    paths = archive_activity_metadata(activity, retention_days=7, archive_dir=tmp_path / "archives", reference_ts=_ts(0))[1]
+    archived = archive_activity_metadata(
+        activity, retention_days=7, archive_dir=tmp_path / "archives", reference_ts=_ts(0)
+    )
+    paths = archived[1]
     with gzip.open(paths[0], "rt", encoding="utf-8") as handle:
         assert "session-a" in handle.read()
     _put(chunks, body=b"payload", stored_at=_ts(0))

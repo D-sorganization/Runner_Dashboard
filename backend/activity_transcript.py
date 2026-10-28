@@ -97,9 +97,7 @@ class TranscriptChunkStore:
                     if current != body:
                         record_reject(409)
                         raise ValueError("conflicting transcript chunk payload")
-                    return TranscriptChunkRef(
-                        session_id, seq, node, principal, stored_at, int(row["byte_len"])
-                    )
+                    return TranscriptChunkRef(session_id, seq, node, principal, stored_at, int(row["byte_len"]))
                 path = self.spool_dir / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with gzip.open(path, "wb") as handle:
@@ -152,7 +150,11 @@ class TranscriptChunkStore:
     def spool_bytes(self, *, node: str | None = None) -> int:
         clause, params = ("WHERE node=?", (node,)) if node else ("", ())
         with self._lock, self._connection() as conn:
-            return int(conn.execute(f"SELECT COALESCE(SUM(byte_len),0) FROM transcript_chunks {clause}", params).fetchone()[0])
+            row = conn.execute(
+                f"SELECT COALESCE(SUM(byte_len),0) FROM transcript_chunks {clause}",
+                params,
+            ).fetchone()[0]
+            return int(row)
 
     def spool_depth(self, *, node: str | None = None) -> int:
         clause, params = ("WHERE node=?", (node,)) if node else ("", ())
@@ -174,9 +176,7 @@ class ActivityRetentionSettings:
             return default if not raw else max(0, int(raw))
 
         raw_nodes = os.environ.get("RUNNER_DASHBOARD_ACTIVITY_NODE_SPOOL_MAX_BYTES", "").strip()
-        node_caps = (
-            {str(k): max(0, int(v)) for k, v in json.loads(raw_nodes).items()} if raw_nodes else {}
-        )
+        node_caps = {str(k): max(0, int(v)) for k, v in json.loads(raw_nodes).items()} if raw_nodes else {}
         return cls(
             transcript_max_age_days=_int("RUNNER_DASHBOARD_ACTIVITY_TRANSCRIPT_MAX_AGE_DAYS", 0),
             spool_max_bytes=_int("RUNNER_DASHBOARD_ACTIVITY_SPOOL_MAX_BYTES", 0),
@@ -247,9 +247,7 @@ def run_transcript_retention(
             if chunk.stored_at < cutoff_ts and _remove_chunk(chunk_store, activity_store, chunk, "age"):
                 removed += 1
     if settings.spool_max_bytes > 0:
-        pruned, _ = _enforce_byte_cap(
-            chunk_store, activity_store, limit=settings.spool_max_bytes, node=None
-        )
+        pruned, _ = _enforce_byte_cap(chunk_store, activity_store, limit=settings.spool_max_bytes, node=None)
         removed += pruned
     for node, limit in settings.node_spool_max_bytes.items():
         if limit <= 0:
@@ -264,12 +262,15 @@ def _remove_chunk(store: TranscriptChunkStore, activity: ActivityStore, ref: Tra
         return False
     source = "recorder"
     with sqlite3.connect(str(activity.db_path)) as conn:
-        gap_seq = int(
-            conn.execute(
-                "SELECT COALESCE(MAX(seq), -1) FROM activity_events WHERE source=? AND session_id=?",
-                (source, ref.session_id),
-            ).fetchone()[0]
-        ) + 1
+        gap_seq = (
+            int(
+                conn.execute(
+                    "SELECT COALESCE(MAX(seq), -1) FROM activity_events WHERE source=? AND session_id=?",
+                    (source, ref.session_id),
+                ).fetchone()[0]
+            )
+            + 1
+        )
     activity.append(
         ActivityEnvelope.model_validate(
             {
