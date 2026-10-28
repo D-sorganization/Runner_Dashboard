@@ -92,7 +92,7 @@ Fix the envelope and resend.
 `scripts/rd_barb_provider.py` is the one adapter layer for choosing the CLI. It
 reuses `staff.provider_failover_config.resolve_failover_chain`.
 
-- Default: `claude` with `claude-opus-5-5` (subscription CLI). Switch with
+- Default: `claude` with `opus` (subscription CLI short id). Switch with
   `RD_BARB_PROVIDER` / `RD_BARB_MODEL`.
 - Chain: claude -> codex -> antigravity -> cursor-agent (`RD_BARB_FAILOVER` overrides).
 - Switch on `auth_expired`, `rate_limited`, `quota_exhausted`, `provider_capacity`

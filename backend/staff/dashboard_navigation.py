@@ -25,6 +25,7 @@ DASHBOARD_NAV_TABS = frozenset(
         "overview",
         "operations",
         "insights",
+        "security",
         "settings",
     }
 )

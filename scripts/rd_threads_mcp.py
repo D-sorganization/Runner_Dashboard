@@ -15,7 +15,10 @@ TOOLS = {
     "send": ("Post an envelope to an agent's thread, or to='*' for the fleet board.", ["to", "kind", "summary"]),
     "inbox": ("Unread envelopes addressed to you (needs fleet.read).", []),
     "peers": ("Live agent sessions (needs fleet.read).", []),
-    "ask_barb": ("Ask @barb; options [{label, recommended?}] with exactly one recommended.", ["summary", "options"]),
+    "ask_barb": (
+        "Ask @barb; options [{label, recommended?}] with exactly one recommended plus recommendation_reason.",
+        ["summary", "options", "recommendation_reason"],
+    ),
 }
 SERVER_INFO = {"name": "rd-threads", "title": "Runner Dashboard threads (@barb)", "version": "1.0.0"}
 

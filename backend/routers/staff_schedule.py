@@ -99,13 +99,21 @@ def schedule_snapshot() -> dict[str, Any]:
     """Per role: next fire, window, blocking hold, budget, last fired; shared by both route versions."""
     sched = get_scheduler()
     now = datetime.now(UTC)
+    enabled = scheduler_enabled()
+    roles = sched.status(now)
+    if not enabled:
+        for row in roles:
+            row["enabled"] = False
+            row["next_fire"] = None
+            row["hold"] = f"inactive on this node: {SCHEDULER_ENABLED_ENV}=0"
     return {
         "machine": sched.runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
-        "enabled": scheduler_enabled(),
+        "enabled": enabled,
         "running": sched.running,
         "tick_seconds": sched.tick_seconds,
-        "roles": sched.status(now),
+        "leader_lease": sched.leader_status(now),
+        "roles": roles,
     }
 
 
@@ -137,6 +145,11 @@ async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("
 
 class ScheduleToggleBody(BaseModel):
     enabled: bool
+
+
+class LeaderLeaseBody(BaseModel):
+    machine: str = Field(min_length=1, max_length=80)
+    ttl_seconds: float | None = Field(default=None, gt=0, le=3600)
 
 
 @router.post(
@@ -172,6 +185,16 @@ async def get_schedule(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     return schedule_snapshot()
+
+
+@router.post("/schedule/leader-lease", response_model_exclude_none=True)
+async def post_leader_lease(
+    body: LeaderLeaseBody,
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Acquire or renew the scheduler leader lease (fleet peer internal contract)."""
+    sched = get_scheduler()
+    return sched.acquire_leader_lease(body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds)
 
 
 v1_router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])

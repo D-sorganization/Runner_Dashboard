@@ -19,6 +19,7 @@ if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
 import health as h  # noqa: E402
+from runner_control_health import record_runner_control_result, reset_runner_control_health  # noqa: E402
 
 
 def test_router_is_apiRouter() -> None:
@@ -29,6 +30,33 @@ def test_router_has_health_routes() -> None:
     paths = [r.path for r in h.router.routes]  # type: ignore[attr-defined]
     # At minimum a /health or /api/health route must exist
     assert any("health" in p for p in paths), f"No health route found in {paths}"
+
+
+@pytest.mark.asyncio
+async def test_runner_control_failure_degrades_health(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_fetch_org_runners(_gh_api_admin, _org) -> dict:
+        return {"runners": []}
+
+    fake_server = types.SimpleNamespace(
+        BOOT_TIME=time.time(),
+        HOSTNAME="test-host",
+        ORG="D-sorganization",
+        _cache_get=lambda *_args, **_kwargs: None,
+        _cache_set=lambda *_args, **_kwargs: None,
+        _deployment_info=lambda: {"version": "test"},
+        gh_api_admin=lambda _endpoint: {},
+    )
+    monkeypatch.setitem(sys.modules, "server", fake_server)
+    monkeypatch.setattr(h, "fetch_org_runners", fake_fetch_org_runners, raising=False)
+    monkeypatch.setattr(h, "record_dashboard_health", lambda *_args: None)
+    reset_runner_control_health()
+    record_runner_control_result("stop", succeeded=False)
+
+    body = await h._health_impl({"github_api": "connected", "runners_registered": 0})  # noqa: SLF001
+
+    assert body["status"] == "degraded"
+    assert body["runner_control"] == {"status": "degraded", "last_action": "stop"}
+    reset_runner_control_health()
 
 
 @pytest.mark.asyncio

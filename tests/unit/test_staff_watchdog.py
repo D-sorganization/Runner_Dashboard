@@ -16,6 +16,7 @@ from fleet_events import get_event_store
 from staff import adapters as adapters_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 from staff.watchdog import StaffWatchdog, terminate_process_group
 
@@ -122,7 +123,7 @@ def staff_runner(
         adapters=adapters,
         machine="TestNode",
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()
