@@ -22,8 +22,8 @@ READER = Principal(id="agent-test", type="agent", name="Test", roles=["agent"], 
 
 _BRIEF: dict[str, Any] = {
     "generated_at": "2026-09-27T00:00:00Z",
-    "hub": "DeskComputer",
-    "machines_online": ["ControlTower", "DeskComputer", "OGLaptop"],
+    "hub": "hub-a",
+    "machines_online": ["node-a", "hub-a", "node-b"],
     "machines_offline": [],
     "in_flight": [{"id": "run-1", "role": "night-watch"}],
     "recent_24h": {"succeeded": 3},
@@ -50,7 +50,7 @@ def test_v1_summary_returns_the_staff_brief(client: TestClient) -> None:
 
     assert res.status_code == 200, res.text
     body = res.json()
-    assert body["hub"] == "DeskComputer"
-    assert body["machines_online"] == ["ControlTower", "DeskComputer", "OGLaptop"]
+    assert body["hub"] == "hub-a"
+    assert body["machines_online"] == ["node-a", "hub-a", "node-b"]
     assert [r["id"] for r in body["in_flight"]] == ["run-1"]
     assert body["holds"] == [{"name": "C3"}]

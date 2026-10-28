@@ -1,4 +1,4 @@
-"""Safely inspect or register the DeskComputer Crucial X9 library source."""
+"""Safely inspect or register the hub-a Crucial X9 library source."""
 
 from __future__ import annotations
 
@@ -176,12 +176,12 @@ def main() -> int:
         add_source(
             library_db_path(),
             source_id="desk-x9-library",
-            label="DeskComputer Crucial X9",
+            label="hub-a Crucial X9",
             root_path=str(root),
             shared=False,
             created_by="register_desk_x9_library",
         )
-        logger.info("Registered DeskComputer Crucial X9 as a private library source.")
+        logger.info("Registered hub-a Crucial X9 as a private library source.")
         return 0
     except (OSError, ValueError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
         logger.error("X9 source registration stopped: %s", exc)
