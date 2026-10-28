@@ -174,7 +174,6 @@ export const Thread: React.FC<ThreadProps> = ({
   }
 
   useEffect(() => {
-    const observedRows = observedRowsRef.current;
     const container = scrollContainerRef.current;
     const observedRows = observedRowsRef.current;
     if (!container) return;
