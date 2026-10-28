@@ -22,7 +22,7 @@ from vuln_scan.sandbox import ExecResult, SandboxError  # noqa: E402
 
 from backend.ci import private_sandbox_executor as pse  # noqa: E402
 
-SHA = "a1b2c3d4e5f6" * 3 + "a1b2"
+SHA = "a" * 40
 DIGEST = "sha256:" + ("d" * 64)
 
 
@@ -64,17 +64,22 @@ def test_escape_fixtures_host_path_or_cred_env_fail() -> None:
                 )
             )
 
-    for bad_env in (
-        {"GITHUB_TOKEN": "ghp_secret"},
-        {"GH_TOKEN": "ghs_secret"},
-        {"AWS_SECRET_ACCESS_KEY": "secret"},
-        {"ANTHROPIC_API_KEY": "sk-ant"},
-        {"DATABASE_PASSWORD": "pw"},
-        {"PRIVATE_KEY_PEM": "pem"},
+    for bad_key in (
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "AWS_SECRET_ACCESS_KEY",
+        "ANTHROPIC_API_KEY",
+        "DATABASE_PASSWORD",
+        "PRIVATE_KEY_PEM",
     ):
         with pytest.raises(SandboxError, match="credential|secret"):
             pse.validate_job_spec(
-                pse.SandboxJobSpec(job_id="job001", repo="example-corp/widgets", sha=SHA, env=bad_env)
+                pse.SandboxJobSpec(
+                    job_id="job001",
+                    repo="example-corp/widgets",
+                    sha=SHA,
+                    env={bad_key: "redacted"},
+                )
             )
 
     # Image declaring a VOLUME is refused before container start

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from ci.private_gate_manifest import load_manifest
 from vuln_scan.docker_ops import docker_ids, image_digest, inspect_argv
 from vuln_scan.sandbox import (
     MAX_OUTPUT_BYTES,
@@ -36,8 +37,6 @@ from vuln_scan.sandbox import (
     validate_argv,
 )
 from vuln_scan.watch import ScanAborted
-
-from backend.ci.private_gate_manifest import load_manifest
 
 SANDBOX_LABEL = "fleet.private_ci.sandbox=1"
 TOOLCHAIN_ROOT = "/opt/toolchain"
@@ -271,7 +270,7 @@ class PrivateSandboxExecutor:
         validate_job_spec(spec)
         if not is_private_ci_enabled(enabled=enabled):
             return SandboxJobResult(enabled=False, ran=False, exit_code=0, cleaned_up=True)
-        resolved_gates = list(gates) if gates is not None else load_manifest()
+        resolved_gates: Sequence[Mapping[str, Any]] = list(gates) if gates is not None else load_manifest()
         cname = container_name(spec.job_id)
         img = image_tag(spec.job_id, spec.sha)
         scratch: Path | None = None
