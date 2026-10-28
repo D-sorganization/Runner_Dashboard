@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from identity import Principal, format_caller, require_scope
+from identity import Principal, format_caller, require_principal, require_scope
 from memory.models import (
     MemoryAppendRequest,
     MemoryAppendResponse,
@@ -24,7 +24,7 @@ from memory.service import (
     review_entry,
 )
 from staff.audit import record_audit
-from staff.barb_lease_fence import barb_write_fence, parse_barb_claim
+from staff.barb_lease_fence import barb_write_fence, claim_for_write
 
 log = logging.getLogger("dashboard.memory")
 router = APIRouter(prefix="/api/v1/memory", tags=["assistant-memory"])
@@ -58,9 +58,12 @@ async def get_context_pack(
 async def post_memory_entry(
     body: MemoryAppendRequest,
     request: Request,
-    writer: Principal = Depends(require_scope("memory.write")),
+    writer: Principal = Depends(require_principal),
 ) -> MemoryAppendResponse:
-    claim = parse_barb_claim(request.headers, writer.id)
+    # Authorization is entry-type-specific and enforced inside append_entry: a
+    # lesson proposal is authorized by active-run binding (authenticated_lesson_run),
+    # everything else still requires the "memory.write" scope (#2665).
+    claim = claim_for_write(request.headers, writer, surface="memory")
     with barb_write_fence(claim, surface="memory", target="memory:append", principal=format_caller(writer)):
         entry = append_entry(writer, body)
     record_audit(
@@ -87,7 +90,7 @@ async def post_session_digest(
     request: Request,
     writer: Principal = Depends(require_scope("memory.shared.summarize")),
 ) -> SessionDigestAppendResponse:
-    claim = parse_barb_claim(request.headers, writer.id)
+    claim = claim_for_write(request.headers, writer, surface="memory")
     with barb_write_fence(claim, surface="memory", target="memory:session-digest", principal=format_caller(writer)):
         entry, replayed = append_session_digest(writer, body)
     if replayed:

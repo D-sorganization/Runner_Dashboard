@@ -26,6 +26,7 @@ from routers.staff import (
     RunBody,
 )
 from routers.staff_knowledge import router as staff_knowledge_router
+from routers.staff_pr_hygiene import router as staff_pr_hygiene_router
 from routers.staff_projects import router as staff_projects_router
 from routers.staff_references import router as staff_references_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
@@ -71,6 +72,7 @@ router.include_router(staff_knowledge_router)
 router.include_router(staff_skills_router)
 router.include_router(staff_projects_router)
 router.include_router(staff_references_router)
+router.include_router(staff_pr_hygiene_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:

@@ -42,7 +42,7 @@ def _failed(staff: runner_mod.StaffRunner, **overrides: Any) -> RunRecord:  # no
             "max_attempts": 2,
             "thread_id": "th_barb",
             "work_item_id": "wi_1",
-            "origin_node": "OGLaptop",
+            "origin_node": "node-b",
             **overrides,
         }
     )
@@ -82,7 +82,7 @@ def test_a_follow_up_retry_invokes_the_provider_and_keeps_its_links(
     assert decision == RetryDecision(True, run_id="run-orig-a2", reason="retry launched")
     done = _wait_terminal(staff, "run-orig-a2")
     assert done.status == "succeeded", done.error
-    assert (done.thread_id, done.work_item_id, done.origin_node) == ("th_barb", "wi_1", "OGLaptop")
+    assert (done.thread_id, done.work_item_id, done.origin_node) == ("th_barb", "wi_1", "node-b")
     assert (done.retry_of, done.attempt) == ("run-orig", 2)
 
 

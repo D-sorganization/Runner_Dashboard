@@ -64,7 +64,7 @@ def test_render_parse_round_trip() -> None:
 def test_render_headings_match_real_board_proposal_form() -> None:
     """Rendered headings must match board-proposal.yml's labels exactly (defect 2)."""
     req = CreateProposalRequest(**_VALID_PAYLOAD)
-    body = render_proposal_markdown(req, source="dieterolson")
+    body = render_proposal_markdown(req, source="fleet-operator")
 
     assert "### Submitter / Source" in body
     assert "### Target Repository / Repositories" in body
@@ -81,7 +81,7 @@ def test_render_headings_match_real_board_proposal_form() -> None:
 def test_parse_body_shaped_like_a_real_form_filed_issue() -> None:
     """A human filing the GitHub form directly renders '_No response_' for a blank optional field."""
     body = """### Submitter / Source
-dieterolson
+fleet-operator
 
 ### Target Repository / Repositories
 Repository_Management, Runner_Dashboard
@@ -113,7 +113,7 @@ _No response_
     parsed = parse_proposal_markdown(body)
 
     assert parsed["target_repos"] == ["Repository_Management", "Runner_Dashboard"]
-    assert parsed["source"] == "dieterolson"
+    assert parsed["source"] == "fleet-operator"
     assert "Tools_Private#1797" in parsed["evidence"]
     assert parsed["estimated_cost"] == "High"
     assert parsed["code_request_url"] is None

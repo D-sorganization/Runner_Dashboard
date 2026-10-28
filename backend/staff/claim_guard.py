@@ -39,7 +39,7 @@ CLAIM_PREFIX = "claim:"
 STAFF_LABEL = "claim:staff"
 ROLE_LABELS = frozenset({"claim:issue-remediator", "claim:pr-remediator"})
 OWN_LABELS = frozenset({STAFF_LABEL}) | ROLE_LABELS
-TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled", "blocked"})
 OVERRIDE_SCOPE = "staff.admin"
 DEFAULT_ORG = "D-sorganization"
 PULLS_TTL_SECONDS = 30.0
@@ -190,13 +190,24 @@ def issue_attempt_blocker(
     *,
     role: str,
     repo: str,
-    issue: int,
+    issue: int | None = None,
+    pr: int | None = None,
     now: datetime | None = None,
 ) -> ClaimVerdict | None:
-    """Block repeated dispatches to one issue after retries/no_change outcomes."""
+    """Block repeated dispatches to one issue or PR after retries/no_change outcomes.
+
+    ``target_ref`` must match ``WorkItem.target_ref`` (``plan.py``): ``#N`` for an issue,
+    ``PR #N`` for a PR — the two never collide since GitHub shares one numbering sequence
+    between them. The cap and cooldown are scoped per ``role`` by design: two roles working
+    the same target each get their own attempt budget (#3278).
+    """
     if store is None:
         return None
-    runs = store.list_runs_for_target(role=role, repo=repo, target_ref=f"#{issue}")
+    target_ref = f"#{issue}" if issue else (f"PR #{pr}" if pr else "")
+    if not target_ref:
+        return None
+    target_label = f"{repo}#{issue}" if issue else f"{repo} PR #{pr}"
+    runs = store.list_runs_for_target(role=role, repo=repo, target_ref=target_ref)
     if not runs:
         return None
     now_dt = now or datetime.now(UTC)
@@ -218,7 +229,7 @@ def issue_attempt_blocker(
             "blocked",
             "attempt_cap_reached",
             (
-                f"{repo}#{issue} has {len(active_window)} attempts in the last "
+                f"{target_label} has {len(active_window)} attempts in the last "
                 f"{int(ISSUE_ATTEMPT_WINDOW.total_seconds() // 3600)}h (cap {ISSUE_ATTEMPT_CAP})"
             ),
         )
@@ -229,7 +240,7 @@ def issue_attempt_blocker(
                 "blocked",
                 "no_change_cooldown",
                 (
-                    f"{repo}#{issue} is cooling down after no_change until "
+                    f"{target_label} is cooling down after no_change until "
                     f"{reset_at.astimezone(UTC).isoformat().replace('+00:00', 'Z')}"
                 ),
             )
@@ -315,7 +326,7 @@ def scheduler_blocker(
     number = issue or pr
     if not enabled() or not number:
         return ""
-    attempt_block = issue_attempt_blocker(store or _live_store(), role=role, repo=repo, issue=number, now=now)
+    attempt_block = issue_attempt_blocker(store or _live_store(), role=role, repo=repo, issue=issue, pr=pr, now=now)
     if attempt_block is not None:
         return f"{attempt_block.code}: {attempt_block.message}"
     get = fetch or _gh_cli

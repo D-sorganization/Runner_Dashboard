@@ -123,7 +123,8 @@ test("a failed Barb chunk stays local while closed and recovers after reload", a
     await toggle.click();
     await expect(panel.getByRole("alert")).toContainText("Ask Barb could not load");
 
-    await page.getByRole("button", { name: "Reload dashboard" }).click();
+    await expect(panel.getByRole("button", { name: "Retry" })).toBeVisible();
+    await page.reload();
     await page.getByRole("button", { name: "Ask Barb" }).click();
     const composer = page.locator("#barb-sidebar").getByRole("textbox", { name: "Staff conversation input" });
     await expect(composer).toBeVisible();

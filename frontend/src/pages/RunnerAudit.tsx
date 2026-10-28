@@ -152,7 +152,11 @@ export default function RunnerAudit({
       </div>
 
       {audit.error ? (
-        <div role="status" className="runner-audit__error">
+        <div
+          role="status"
+          className="runner-audit__error"
+          title={"Error: " + audit.error}
+        >
           {"Error: " + audit.error}
         </div>
       ) : null}

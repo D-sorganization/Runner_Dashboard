@@ -182,6 +182,25 @@ def test_uv_lock_urllib3_meets_security_baseline() -> None:
         )
 
 
+def test_uv_lock_msgpack_avoids_cve_2026_114613() -> None:
+    """uv.lock must not pin msgpack 1.2.1 — pip-audit fails on ci-standard lint (#3115)."""
+    assert _UV_LOCK.exists(), "uv.lock must exist"
+    lock_data = tomllib.loads(_read(_UV_LOCK))
+    packages = lock_data.get("package", [])
+    msgpack_entries = [pkg for pkg in packages if pkg.get("name") == "msgpack"]
+    assert msgpack_entries, "msgpack must be present in uv.lock (CacheControl transitive)"
+    for entry in msgpack_entries:
+        version_str = str(entry.get("version", ""))
+        parts = [int(part) for part in version_str.split(".")]
+        version_tuple = tuple(parts)
+        assert version_tuple != (1, 2, 1), (
+            f"msgpack {version_str!r} in uv.lock is vulnerable (CVE-2026-114613); use >= 1.2.2"
+        )
+        assert version_tuple >= (1, 2, 2), (
+            f"msgpack version {version_str!r} in uv.lock is below required security baseline 1.2.2"
+        )
+
+
 def test_requirements_lock_urllib3_meets_security_baseline() -> None:
     """The container export must retain urllib3's patched security baseline."""
     content = _read(_LOCK)
@@ -217,6 +236,25 @@ def test_dockerfile_runs_as_non_root_user() -> None:
     assert re.search(r"^USER\s+(?!0\b|root\b)\S+", content, re.MULTILINE), (
         "Dockerfile must include a USER directive set to a non-root user"
     )
+
+
+def test_dockerfile_appuser_has_writable_config_home() -> None:
+    """appuser must own ~/.config/runner-dashboard so import-time secret persistence works."""
+    content = _read(_DOCKERFILE)
+    assert "--no-create-home" not in content, (
+        "Dockerfile must not use --no-create-home; SESSION_SECRET persistence writes under ~/"
+    )
+    assert "/home/appuser/.config/runner-dashboard" in content, (
+        "Dockerfile must pre-create appuser config dir for container smoke tests"
+    )
+
+
+def test_dockerfile_includes_built_frontend_dist() -> None:
+    """Smoke test expects the SPA shell at /; the image must ship dist/index.html."""
+    content = _read(_DOCKERFILE)
+    assert "frontend-build" in content
+    assert "COPY --from=frontend-build" in content
+    assert "./dist/" in content
 
 
 def test_requirements_lock_file_exists() -> None:

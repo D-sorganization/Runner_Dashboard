@@ -687,9 +687,60 @@ def test_leader_lease_prefers_primary_and_expires_to_failover(
 
 
 @pytest.mark.unit
-def test_scheduler_tick_skips_when_non_leader_lease_active(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_leader_lease_denies_portable_machine_even_in_chain(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A node flagged ``portable`` (#3323) never wins the leader lease, even if an
+    operator's env var mistakenly lists it in the chain, so no scheduled or
+    required role ever fires there."""
+    from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
+
+    s, _, _ = sched
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "Brick")
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "Brick,DeskComputer")
+    t0 = _la(2026, 9, 22, 22, 0, 0)
+    denied = s.acquire_leader_lease("Brick", now=t0, ttl_seconds=30)
+    assert denied["granted"] is False and denied["holder"] == ""
+    granted = s.acquire_leader_lease("DeskComputer", now=t0, ttl_seconds=30)
+    assert granted["granted"] is True and granted["holder"] == "DeskComputer"
+
+
+@pytest.mark.unit
+def test_scheduler_tick_never_fires_on_portable_machine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No role is scheduled or required on a portable node, even with lease fencing
+    disabled entirely (no ``STAFF_SCHEDULER_LEADER_CHAIN``)."""
+    from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "Brick")
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "maintenance": roles_mod.parse_role(
+            {
+                "name": "maintenance",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "Brick"
+    clock = {"now": _la(2026, 9, 22, 22, 0, 0)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    state_file = tmp_path / "shared-state.json"
+    s = scheduler_mod.StaffScheduler(runner, holds, guard, clock=lambda: clock["now"], state_file=state_file)  # type: ignore[arg-type]
+    assert s.tick() == []
+    clock["now"] = _la(2026, 9, 22, 22, 1, 0)
+    assert s.tick() == []
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = store_mod.RunStore(tmp_path / "runs.sqlite3")
     roles = {
         "night-watch": roles_mod.parse_role(

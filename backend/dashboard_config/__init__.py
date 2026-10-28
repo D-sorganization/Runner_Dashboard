@@ -103,6 +103,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 # unauthenticated paths. TLS-only protections are now gated on DASHBOARD_TLS:
 # unset (default) = HTTP-mode (no Secure cookie, no HSTS); set = TLS-mode.
 TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
+LIGHTWEIGHT_STARTUP = _env_flag("DASHBOARD_LIGHTWEIGHT_STARTUP", default=False)
 
 
 def _resolve_bind_host() -> str:
@@ -124,7 +125,7 @@ HOST = _resolve_bind_host()
 # Issue #959: Maxwell-Daemon serves on 8080 by default (its cli/main.py,
 # launcher.py, and CLI clients all default to http://127.0.0.1:8080). The old
 # 8322 default appeared nowhere in Maxwell_Daemon and — worse — collided with the
-# ControlTower-SSD pool's own dashboard_url:8322 in backend/machine_registry.yml,
+# node-a-SSD pool's own dashboard_url:8322 in backend/machine_registry.yml,
 # so a default deploy probed a second dashboard and misreported it as Maxwell.
 # Align RD's default to the daemon's real port so an out-of-box RD reaches an
 # out-of-box MD on the same host. Override with MAXWELL_PORT / MAXWELL_URL.

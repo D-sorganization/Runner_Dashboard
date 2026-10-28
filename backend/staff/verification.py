@@ -55,6 +55,10 @@ DEFAULT_CI_GRACE_SECONDS = 1800
 # A STAFF_RESULT summary that starts with one of these (case-insensitive) is a deliberate
 # skip / no-op, not a failed deliverable. Matched at the start only, to stay conservative.
 SKIP_MARKERS = ("staff_skip", "skip", "no work", "nothing to do", "no-op", "noop", "no action", "no change")
+# A STAFF_RESULT summary that starts with one of these (case-insensitive) reports a GitHub-side
+# remediation action that legitimately pushes no commit — a CI rerun, a branch update, or an
+# auto-merge re-arm — not a failure to deliver (#3312).
+NO_COMMIT_ACTION_MARKERS = ("rerun", "re-run", "update-branch", "update branch", "re-arm", "rearm")
 RESULT_PREFIX = "STAFF_RESULT:"
 CI_RED_DETAIL = "head CI is failing"
 RECHECK_BATCH = 20
@@ -78,14 +82,25 @@ def ci_grace() -> timedelta:
     return timedelta(seconds=seconds if seconds >= 0 else DEFAULT_CI_GRACE_SECONDS)
 
 
-def is_skip_result(result_text: str) -> bool:
-    """True when the run's final ``STAFF_RESULT:`` summary is an explicit skip / no-work report."""
+def _result_summary(result_text: str) -> str:
+    """The first line of the run's ``STAFF_RESULT:`` summary, lowercased and markup-stripped; "" if absent."""
     _, sep, rest = (result_text or "").rpartition(RESULT_PREFIX)
     if not sep:
-        return False
+        return ""
     lines = rest.strip().splitlines()
-    summary = lines[0].strip().lower().lstrip("[(*_ ") if lines else ""
+    return lines[0].strip().lower().lstrip("[(*_ ") if lines else ""
+
+
+def is_skip_result(result_text: str) -> bool:
+    """True when the run's final ``STAFF_RESULT:`` summary is an explicit skip / no-work report."""
+    summary = _result_summary(result_text)
     return bool(summary) and summary.startswith(SKIP_MARKERS)
+
+
+def is_no_commit_action_result(result_text: str) -> bool:
+    """True when the run's ``STAFF_RESULT:`` summary reports a rerun, branch update, or re-arm (#3312)."""
+    summary = _result_summary(result_text)
+    return bool(summary) and summary.startswith(NO_COMMIT_ACTION_MARKERS)
 
 
 def decide(
@@ -212,6 +227,13 @@ def evaluate(
                     f"PR #{target_pr} already merged; no commits pushed",
                     target_pr,
                     ARTIFACT_PR_MERGED,
+                )
+            if remote_ahead_by == 0 and target.state == "open" and is_no_commit_action_result(result_text):
+                return Verdict(
+                    "not_applicable",
+                    f"PR #{target_pr} is still open; run reported a confirmed no-commit action",
+                    target_pr,
+                    ARTIFACT_PR_OPEN,
                 )
             if remote_ahead_by > 0:
                 pr = target

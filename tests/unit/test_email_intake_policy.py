@@ -7,8 +7,8 @@ def test_parse_companion_policy() -> None:
     text = Path("docs/email-intake/companion/staff-mail_policy.yml").read_text(encoding="utf-8")
     policy = parse_mail_policy_yaml(text)
     assert policy.require_dmarc_pass is True
-    assert policy.sender_enabled("dieterolson@gmail.com")
-    assert not policy.sender_enabled("dolson@inentec.com")
+    assert policy.sender_enabled("user@example.com")
+    assert not policy.sender_enabled("disabled-sender@partner.example.org")
 
 
 def test_rejects_bad_sender() -> None:

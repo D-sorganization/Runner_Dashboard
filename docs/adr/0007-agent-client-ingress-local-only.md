@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Owner decision (Dieter Olson, 2026-09-27), recorded on
+Accepted. Owner decision (Fleet Operator, 2026-09-27), recorded on
 Repository_Management#1335 (SC-F6, part of SC-F #1352 under the Staff
 Console epic #1354).
 

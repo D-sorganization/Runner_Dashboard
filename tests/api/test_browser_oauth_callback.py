@@ -15,7 +15,9 @@ from oauth_config import OAuthConfig
 from routers import auth
 from starlette.middleware.sessions import SessionMiddleware
 
-PRIVATE = "https://deskcomputer.tail2bbcc7.ts.net"
+pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
+
+PRIVATE = "https://hub-a.fleet-example.ts.net"
 PUBLIC = "https://ops.example.invalid"
 OTHER = "https://other.example.invalid"
 EDGE = {"CF-Ray": "test-ray"}

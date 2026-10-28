@@ -87,12 +87,13 @@ def test_openapi_schema_contains_staff_and_assistant_schemas(
         "StaffUsageResponse",
         "StaffPricingResponse",
         "StaffUsageExportResponse",
-        "AssistantChatResponse",
         "ToolExecuteResponse",
     ]
 
     for name in expected_schemas:
         assert name in schemas, f"Schema {name} missing from OpenAPI components.schemas"
+
+    assert "AssistantChatResponse" not in schemas
 
 
 def test_staff_board_response_model_validation() -> None:

@@ -91,3 +91,28 @@ def test_ci_standard_merge_group_still_not_cancel_in_progress() -> None:
 def test_cancel_in_progress_limited_to_pull_request() -> None:
     assert CANCEL_IN_PROGRESS_EXPR == _PR_ONLY_CANCEL
     assert "merge_group" not in CANCEL_IN_PROGRESS_EXPR
+
+
+# --- #3046 regression lock: merge_group/push never cancel-in-progress ------
+#
+# Reserved-runner routing (#3046) only helps a merge_group job if it is never
+# cancelled mid-run by a later push or queue entry. Not a behavior change —
+# the expression below already evaluates to False for both events on main;
+# this pins that fact so a future edit to the concurrency block can't widen
+# cancellation to merge_group or push without failing a test.
+
+
+def _cancel_in_progress_for_event(expr: str, event_name: str) -> bool:
+    """Evaluate the fixed-shape ``${{ github.event_name == '<literal>' }}`` expression."""
+    body = expr.strip()
+    assert body.startswith("${{") and body.endswith("}}"), expr
+    lhs, op, rhs = body[3:-2].split()
+    assert (lhs, op) == ("github.event_name", "=="), expr
+    return event_name == rhs.strip("'")
+
+
+@pytest.mark.parametrize("name", ["ci-standard.yml", "frontend-tests.yml", "ci-secrets.yml"])
+@pytest.mark.parametrize("event_name", ["merge_group", "push"])
+def test_merge_group_and_push_never_cancel_in_progress(name: str, event_name: str) -> None:
+    expr = _load(name)["concurrency"]["cancel-in-progress"]
+    assert _cancel_in_progress_for_event(expr, event_name) is False
