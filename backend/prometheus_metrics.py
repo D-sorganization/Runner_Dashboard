@@ -21,6 +21,12 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Response
+from observability_hygiene import (
+    metrics_route_templates_enabled,
+    sanitize_metric_labels,
+    template_github_api_endpoint,
+    template_http_metric_endpoint,
+)
 
 try:
     from prometheus_client import (
@@ -196,10 +202,30 @@ else:  # pragma: no cover
 # ─── Helpers for external callers ─────────────────────────────────────────────
 
 
-def record_gh_api_call(method: str, endpoint: str, duration_s: float) -> None:
+def record_gh_api_call(
+    method: str,
+    endpoint: str,
+    duration_s: float,
+    *,
+    templates_enabled: bool | None = None,
+) -> None:
     """Record a completed GitHub API call (call from gh_utils or http_clients)."""
-    GH_API_CALLS_TOTAL.labels(method=method.upper(), endpoint=endpoint).inc()
-    GH_API_DURATION.labels(method=method.upper(), endpoint=endpoint).observe(duration_s)
+    if templates_enabled is None:
+        templates_enabled = metrics_route_templates_enabled()
+    if not templates_enabled:
+        GH_API_CALLS_TOTAL.labels(method=method.upper(), endpoint=endpoint).inc()
+        GH_API_DURATION.labels(method=method.upper(), endpoint=endpoint).observe(duration_s)
+        return
+    labels = sanitize_metric_labels(
+        "dashboard_github_api_calls_total",
+        {"method": method.upper(), "endpoint": endpoint},
+        templates_enabled=True,
+    )
+    if not labels:
+        return
+    endpoint_label = template_github_api_endpoint(labels["endpoint"], enabled=True)
+    GH_API_CALLS_TOTAL.labels(method=labels["method"], endpoint=endpoint_label).inc()
+    GH_API_DURATION.labels(method=labels["method"], endpoint=endpoint_label).observe(duration_s)
 
 
 def record_cache_hit(cache_name: str) -> None:
@@ -294,15 +320,34 @@ class PrometheusMiddleware:
             await self.app(scope, receive, send_wrapper)
         finally:
             duration = time.perf_counter() - start
-            # Prefer the route template (e.g. /api/runs/{run_id}) over the raw path
+            templates_on = metrics_route_templates_enabled()
             route = scope.get("route")
-            endpoint = getattr(route, "path", path) if route else path
-            HTTP_REQUESTS_TOTAL.labels(
-                method=method,
-                endpoint=endpoint,
-                status_code=str(status_code),
-            ).inc()
-            HTTP_REQUEST_DURATION.labels(method=method, endpoint=endpoint).observe(duration)
+            if templates_on:
+                route_template = getattr(route, "path", None) if route else None
+                endpoint = template_http_metric_endpoint(route_template, path, enabled=True)
+                labels = sanitize_metric_labels(
+                    "dashboard_http_requests_total",
+                    {
+                        "method": method,
+                        "endpoint": endpoint,
+                        "status_code": str(status_code),
+                    },
+                    templates_enabled=True,
+                )
+                if labels:
+                    HTTP_REQUESTS_TOTAL.labels(**labels).inc()
+                    HTTP_REQUEST_DURATION.labels(
+                        method=labels["method"],
+                        endpoint=labels["endpoint"],
+                    ).observe(duration)
+            else:
+                endpoint = getattr(route, "path", path) if route else path
+                HTTP_REQUESTS_TOTAL.labels(
+                    method=method,
+                    endpoint=endpoint,
+                    status_code=str(status_code),
+                ).inc()
+                HTTP_REQUEST_DURATION.labels(method=method, endpoint=endpoint).observe(duration)
 
 
 # ─── /metrics endpoint ────────────────────────────────────────────────────────
