@@ -30,7 +30,7 @@ EXAMPLE_REGISTRY_PATH = Path(__file__).with_name("machine_registry.example.yml")
 DEPLOYED_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
 # Back-compat for callers that referenced the old shipped default path constant.
-DEFAULT_REGISTRY_PATH = EXAMPLE_REGISTRY_PATH
+DEFAULT_REGISTRY_PATH = LOCAL_REGISTRY_PATH
 
 
 def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
@@ -44,8 +44,6 @@ def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
         return LOCAL_REGISTRY_PATH, "local"
     if DEPLOYED_REGISTRY_PATH.is_file():
         return DEPLOYED_REGISTRY_PATH, "deployed"
-    if EXAMPLE_REGISTRY_PATH.is_file():
-        return EXAMPLE_REGISTRY_PATH, "shipped"
     return LOCAL_REGISTRY_PATH, "local"
 
 

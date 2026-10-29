@@ -98,15 +98,12 @@ def test_resolve_registry_source_reports_shipped_when_neither_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     missing = tmp_path / "missing.yml"
-    example = tmp_path / "example.yml"
-    example.write_text("version: 1\nmachines: []\n", encoding="utf-8")
     monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
     monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing)
     monkeypatch.setattr(mr, "DEPLOYED_REGISTRY_PATH", tmp_path / "deploy.yml")
-    monkeypatch.setattr(mr, "EXAMPLE_REGISTRY_PATH", example)
     path, source = mr.resolve_registry_source(None)
-    assert path == example
-    assert source == "shipped"
+    assert path == missing
+    assert source == "local"
 
 
 def test_resolve_registry_source_reports_explicit_for_a_direct_path(tmp_path: Path) -> None:
