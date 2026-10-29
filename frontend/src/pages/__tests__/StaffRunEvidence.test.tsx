@@ -13,7 +13,7 @@ const RUN = {
   role: "cartographer",
   provider: "claude",
   model: null,
-  machine: "DeskComputer",
+  machine: "hub-a",
   repo: "Runner_Dashboard",
   target_kind: "issue",
   target_ref: "3176",
@@ -30,7 +30,7 @@ const RUN = {
 
 const CODEBASE_REF = {
   kind: "codebase",
-  node: "DeskComputer",
+  node: "hub-a",
   repo: "Runner_Dashboard",
   commit_sha: "c".repeat(40),
   relative_path: "frontend/src/pages/Staff/RunDetail.tsx",

@@ -38,10 +38,10 @@ def test_cli_outdated_remediation_names_option_node_and_upgrade_command() -> Non
         "claude",
         1,
         error_message="error: unknown option '--permission-prompts'",
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert "--permission-prompts" in classification.remediation
-    assert "DeskComputer" in classification.remediation
+    assert "hub-a" in classification.remediation
     assert "npm install -g @anthropic-ai/claude-code@latest" in classification.remediation
 
 
