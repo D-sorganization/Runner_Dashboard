@@ -155,7 +155,11 @@ def test_loopback_dispatch_routes_reject_unauthenticated_and_allow_operator(
 
     from staff import followup as followup_mod
 
-    monkeypatch.setattr(followup_mod.FollowupEngine, "sweep", lambda self, now=None: followup_mod.SweepResult())
+    monkeypatch.setattr(
+        followup_mod.FollowupEngine,
+        "sweep",
+        lambda self, now=None: type("_R", (), {"to_dict": lambda s: {"items_scanned": 0}})(),
+    )
     auth_sweep = loopback_client.post("/api/v1/staff/followup/sweep", headers=op_headers)
     assert auth_sweep.status_code == 200, auth_sweep.text
 
