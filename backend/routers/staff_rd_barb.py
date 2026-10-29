@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from identity import Principal, require_scope
+from staff.rd_barb_inbox import DashboardInbox, default_inbox_path
 from staff.rd_barb_memory import GuidelinesDoc, default_guidelines_path
 from staff.rd_barb_notify_health import NotifyHealth, default_health_path
 from staff.rd_barb_policy import LockedPolicyError, load_locked_policy
@@ -33,3 +34,10 @@ def get_guidelines(_principal: Principal = Depends(require_scope("fleet.read")))
 def get_notify_status(_principal: Principal = Depends(require_scope("fleet.read"))) -> dict[str, Any]:  # noqa: B008
     """Direct notify delivery health: ``failing`` from the first failure, ``degraded`` after 5 minutes (#3075)."""
     return NotifyHealth(default_health_path()).status(now=time.time())
+
+
+@router.get("/inbox")
+def get_inbox(_principal: Principal = Depends(require_scope("fleet.read"))) -> dict[str, Any]:  # noqa: B008
+    """Unacknowledged questions and alerts delivered to the dashboard channel, newest first (#3075)."""
+    items = DashboardInbox(default_inbox_path()).unacknowledged()
+    return {"unacknowledged": len(items), "items": items}

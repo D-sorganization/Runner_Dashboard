@@ -63,10 +63,16 @@ CREATE INDEX IF NOT EXISTS idx_barb_tasks_status ON barb_task_inventory(status, 
 
 
 def normalize_scope(scope: str) -> str:
-    """Return the canonical (stripped) scope; ``ValueError`` unless known or ``barb:<subrole>``."""
+    """Return the canonical (stripped) scope; ``ValueError`` unless known, ``barb:<subrole>``, or ``persona:<role>``."""
     norm = scope.strip()
-    if norm not in BARB_SCOPES and not (norm.startswith("barb:") and len(norm) > len("barb:")):
-        raise ValueError(f"Invalid Barb scope '{scope}'. Expected one of {BARB_SCOPES} or 'barb:<subrole>'.")
+    if (
+        norm not in BARB_SCOPES
+        and not (norm.startswith("barb:") and len(norm) > len("barb:"))
+        and not (norm.startswith("persona:") and len(norm) > len("persona:"))
+    ):
+        raise ValueError(
+            f"Invalid Barb scope '{scope}'. Expected one of {BARB_SCOPES}, 'barb:<subrole>', or 'persona:<role>'."
+        )
     return norm
 
 

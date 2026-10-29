@@ -48,6 +48,10 @@ class StaffRoleSpec(BaseModel):
     instructions: str = ""
     providers: list[str]
     model: str | None = None
+    # Runtime model-selector override (epic #3295 S2) and the model actually in
+    # effect (the override, or ``model`` when none is set).
+    model_override: str | None = None
+    effective_model: str | None = None
     schedule: str | None = None
     window: dict[str, str] | str | None = None
     repos: list[str]

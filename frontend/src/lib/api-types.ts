@@ -3453,6 +3453,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remediation/ci-fix/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sweep Ci Fix Endpoint
+         * @description Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.
+         */
+        post: operations["sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remediation/ci-fix/webhook": {
         parameters: {
             query?: never;
@@ -4605,6 +4625,29 @@ export interface paths {
         /** Roster */
         get: operations["roster_api_staff_roles_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_staff_roles__role__model_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -7338,6 +7381,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_v1_staff_roles__role__model_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/roles/{role}/schedule": {
         parameters: {
             query?: never;
@@ -8928,6 +8994,22 @@ export interface components {
              * @default
              */
             workflow_name: string;
+        };
+        /**
+         * CIFixSweepRequest
+         * @description 30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.
+         *
+         *     This node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,
+         *     ``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live
+         *     fetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.
+         */
+        CIFixSweepRequest: {
+            /** Prs */
+            prs?: {
+                [key: string]: unknown;
+            }[];
+            /** Repo */
+            repo: string;
         };
         /**
          * ChildExecutionRecord
@@ -10760,6 +10842,16 @@ export interface components {
             /** Run Id */
             run_id?: number | null;
         };
+        /** RoleModelOverrideBody */
+        RoleModelOverrideBody: {
+            /** Model */
+            model?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
             /** Enabled */
@@ -11709,6 +11801,8 @@ export interface components {
              * @default true
              */
             dispatchable: boolean;
+            /** Effective Model */
+            effective_model?: string | null;
             /** Error */
             error?: string | null;
             /** Errors */
@@ -11729,6 +11823,8 @@ export interface components {
             instructions: string;
             /** Model */
             model?: string | null;
+            /** Model Override */
+            model_override?: string | null;
             /** Name */
             name: string;
             /** Permissions */
@@ -17701,6 +17797,41 @@ export interface operations {
             };
         };
     };
+    sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CIFixSweepRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     github_ci_fix_webhook_api_remediation_ci_fix_webhook_post: {
         parameters: {
             query?: never;
@@ -19196,6 +19327,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    put_role_model_api_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -24222,6 +24390,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    put_role_model_api_v1_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -261,6 +261,22 @@ class StaffScheduler:
             return f"budget: {report['budget_reason']}"
         return ""
 
+    def role_model_override(self, role_name: str) -> str | None:
+        """Current runtime model override for ``role_name``, or ``None`` when unset (epic #3295 S2)."""
+        with self._lock:
+            raw = self._load_state().get(role_name, {}).get("model_override")
+            return str(raw) if raw else None
+
+    def set_role_model_override(self, role_name: str, model: str | None) -> None:
+        """Persist (or clear, when ``model`` is ``None``) a role's runtime model override."""
+        with self._lock:
+            entry = self._load_state().setdefault(role_name, {})
+            if model:
+                entry["model_override"] = model
+            else:
+                entry.pop("model_override", None)
+            self._save_state()
+
     def set_role_schedule_enabled(self, role_name: str, enabled: bool) -> dict[str, Any]:
         """Enable or disable scheduling for a specific role (SC-D6, Issue #1320)."""
         with self._lock:

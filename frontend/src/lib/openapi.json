@@ -1150,6 +1150,29 @@
         "title": "CIFixDispatchRequest",
         "type": "object"
       },
+      "CIFixSweepRequest": {
+        "description": "30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.\n\nThis node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,\n``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live\nfetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.",
+        "properties": {
+          "prs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Prs",
+            "type": "array"
+          },
+          "repo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo"],
+        "title": "CIFixSweepRequest",
+        "type": "object"
+      },
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
@@ -5247,6 +5270,30 @@
         "title": "RequestTarget",
         "type": "object"
       },
+      "RoleModelOverrideBody": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RoleModelOverrideBody",
+        "type": "object"
+      },
       "RoleScheduleOverrideBody": {
         "properties": {
           "enabled": {
@@ -7237,6 +7284,17 @@
             "title": "Dispatchable",
             "type": "boolean"
           },
+          "effective_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Model"
+          },
           "error": {
             "anyOf": [
               {
@@ -7293,6 +7351,17 @@
               }
             ],
             "title": "Model"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "name": {
             "title": "Name",
@@ -16204,6 +16273,56 @@
         "tags": ["remediation", "agents", "remediation", "ci-fix"]
       }
     },
+    "/api/remediation/ci-fix/sweep": {
+      "post": {
+        "description": "Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.",
+        "operationId": "sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CIFixSweepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sweep Ci Fix Endpoint Api Remediation Ci Fix Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Sweep Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
     "/api/remediation/ci-fix/webhook": {
       "post": {
         "description": "Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.",
@@ -18647,6 +18766,67 @@
           }
         ],
         "summary": "Roster",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
         "tags": ["staff"]
       }
     },
@@ -27207,6 +27387,67 @@
           }
         ],
         "summary": "Roster V1",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_v1_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api V1 Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
         "tags": ["staff-v1"]
       }
     },
