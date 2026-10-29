@@ -45,7 +45,7 @@ def _probe(reachable: bool = True, status: str = "healthy", **roles: dict[str, A
 
 
 def test_probe_roles_health_classifies_transport_http_invalid_and_ok_and_never_leaks_token() -> None:
-    secret = "secret-bearer-token-xyz-987"
+    secret = "secret-bearer-token-xyz-987"  # pragma: allowlist secret
     seen_auth: list[str | None] = []
 
     def down_opener(req: Any, timeout: float) -> Any:
