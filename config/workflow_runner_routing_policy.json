@@ -48,6 +48,7 @@
         "pr-cap.yml",
         "publish-guard.yml",
         "rd-barb-hold-integrity.yml",
+        "recurring-scan.yml",
         "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",
         "Verify-Issue-Closure.yml",
