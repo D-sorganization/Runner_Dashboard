@@ -16,6 +16,7 @@ import os
 import secrets
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,9 @@ router = APIRouter(prefix="/api/auth/webauthn", tags=["auth"])
 _CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "runner-dashboard"
 _CREDENTIALS_PATH = Path(os.environ.get("DASHBOARD_WEBAUTHN_CREDENTIALS", _CONFIG_DIR / "webauthn_credentials.json"))
 _CHALLENGE_SESSION_KEY = "webauthn_challenges"
+_UNLOCKED_SESSION_KEY = "webauthn_unlocked"
 _CHALLENGE_TTL_SECONDS = 300
+_assertion_verifier: Callable[[WebAuthnCredentialRecord, WebAuthnChallenge, dict[str, Any]], int | bool] | None = None
 
 # Rate limiting for challenge endpoints (issue #322).
 # Keyed on principal_id; limit is intentionally conservative because each
@@ -141,9 +144,22 @@ def _active_credentials_for(user_id: str) -> list[WebAuthnCredentialRecord]:
     return [record for record in _load_credentials() if record.user_id == user_id and record.revoked_at is None]
 
 
+def is_session_unlocked(request: Request) -> bool:
+    """Return True only when the current session has completed a valid WebAuthn assertion."""
+    if not hasattr(request, "session"):
+        return False
+    return request.session.get(_UNLOCKED_SESSION_KEY) is True
+
+
+def _lock_session(request: Request) -> None:
+    if hasattr(request, "session"):
+        request.session[_UNLOCKED_SESSION_KEY] = False
+
+
 def _store_challenge(request: Request, challenge: WebAuthnChallenge) -> None:
     if not hasattr(request, "session"):
         raise HTTPException(status_code=500, detail="Session middleware is required for WebAuthn")
+    _lock_session(request)
     stored = request.session.get(_CHALLENGE_SESSION_KEY, [])
     if not isinstance(stored, list):
         stored = []
@@ -167,6 +183,105 @@ def _new_challenge(request: Request, principal: Principal, ceremony: str) -> Web
     return challenge
 
 
+def verify_assertion(request: Request, principal: Principal, credential: dict[str, Any]) -> None:
+    """Validate an assertion ceremony fail-closed; lock session on any error, timeout, mismatch, or replay."""
+    if not hasattr(request, "session"):
+        raise HTTPException(status_code=500, detail="Session middleware is required for WebAuthn")
+    _lock_session(request)
+    if not isinstance(credential, dict):
+        raise HTTPException(status_code=401, detail="Invalid WebAuthn assertion payload")
+
+    challenge_value = credential.get("challenge")
+    stored_raw = request.session.get(_CHALLENGE_SESSION_KEY, [])
+    if not challenge_value and not stored_raw and _assertion_verifier is None:
+        raise HTTPException(status_code=501, detail="WebAuthn assertion verification is not implemented")
+
+    if not isinstance(challenge_value, str) or not challenge_value:
+        raise HTTPException(status_code=401, detail="Missing WebAuthn challenge")
+
+    if not isinstance(stored_raw, list):
+        stored_raw = []
+    matched: WebAuthnChallenge | None = None
+    remaining: list[dict[str, Any]] = []
+    now = time.time()
+    for item in stored_raw:
+        if not isinstance(item, dict):
+            continue
+        if matched is None and item.get("challenge") == challenge_value:
+            try:
+                matched = WebAuthnChallenge(**item)
+            except Exception:
+                matched = None
+            continue
+        if float(item.get("expires_at", 0)) > now:
+            remaining.append(item)
+    request.session[_CHALLENGE_SESSION_KEY] = remaining
+
+    if matched is None:
+        raise HTTPException(status_code=401, detail="WebAuthn challenge not found or already consumed")
+    if matched.user_id != principal.id or matched.ceremony != "assert":
+        raise HTTPException(status_code=401, detail="WebAuthn challenge principal or ceremony mismatch")
+    if now >= matched.expires_at:
+        raise HTTPException(status_code=408, detail="WebAuthn challenge expired or timed out")
+
+    expected_sig = _sign_challenge(matched.challenge, matched.user_id, matched.ceremony, matched.expires_at)
+    provided_sig = credential.get("challenge_signature", matched.signature)
+    if not isinstance(provided_sig, str) or not (
+        hmac.compare_digest(expected_sig, matched.signature) and hmac.compare_digest(expected_sig, provided_sig)
+    ):
+        raise HTTPException(status_code=401, detail="Invalid WebAuthn challenge signature")
+
+    cred_id = credential.get("id") or credential.get("credential_id")
+    if not isinstance(cred_id, str) or not cred_id:
+        raise HTTPException(status_code=401, detail="Missing WebAuthn credential id")
+
+    active_creds = [rec for rec in _active_credentials_for(principal.id) if rec.credential_id == cred_id]
+    if not active_creds:
+        raise HTTPException(status_code=401, detail="Unknown or revoked WebAuthn credential")
+    active_cred = active_creds[0]
+
+    new_sign_count = active_cred.sign_count + 1
+    if "sign_count" in credential:
+        try:
+            provided_count = int(credential["sign_count"])
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=401, detail="Invalid WebAuthn sign_count") from exc
+        if provided_count <= active_cred.sign_count:
+            raise HTTPException(status_code=401, detail="WebAuthn assertion replay detected")
+        new_sign_count = provided_count
+
+    if _assertion_verifier is None:
+        raise HTTPException(status_code=501, detail="WebAuthn assertion verification is not implemented")
+
+    try:
+        verified = _assertion_verifier(active_cred, matched, credential)
+    except TimeoutError as exc:
+        _lock_session(request)
+        raise HTTPException(status_code=408, detail="WebAuthn assertion verification timed out") from exc
+    except HTTPException:
+        _lock_session(request)
+        raise
+    except Exception as exc:
+        _lock_session(request)
+        raise HTTPException(status_code=401, detail="WebAuthn assertion verification failed") from exc
+
+    if verified is False or verified is None:
+        _lock_session(request)
+        raise HTTPException(status_code=401, detail="Invalid WebAuthn assertion signature")
+    if isinstance(verified, int) and not isinstance(verified, bool):
+        if verified <= active_cred.sign_count:
+            _lock_session(request)
+            raise HTTPException(status_code=401, detail="WebAuthn assertion replay detected")
+        new_sign_count = verified
+
+    all_records = _load_credentials()
+    for record in all_records:
+        if record.user_id == principal.id and record.credential_id == cred_id and record.revoked_at is None:
+            record.sign_count = new_sign_count
+    _save_credentials(all_records)
+    request.session[_UNLOCKED_SESSION_KEY] = True
+
+
 @router.post("/register/begin")
 async def register_begin(
     request: Request,
@@ -174,6 +289,7 @@ async def register_begin(
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
     """Start device registration after the existing session is authenticated."""
+    _lock_session(request)
     _check_webauthn_rate(principal.id)
     challenge = _new_challenge(request, principal, "register")
     return {
@@ -187,10 +303,12 @@ async def register_begin(
 
 @router.post("/register/complete")
 async def register_complete(
+    request: Request,
     _body: RegisterCompleteRequest,
     _principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> None:
     """Fail closed until a pinned WebAuthn verifier validates attestation."""
+    _lock_session(request)
     raise HTTPException(status_code=501, detail="WebAuthn registration verification is not implemented")
 
 
@@ -201,6 +319,7 @@ async def assert_begin(
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
     """Start an assertion ceremony for the current authenticated user."""
+    _lock_session(request)
     _check_webauthn_rate(principal.id)
     credentials = _active_credentials_for(principal.id)
     if body.credential_id:
@@ -221,11 +340,12 @@ async def assert_begin(
 
 @router.post("/assert/complete")
 async def assert_complete(
+    request: Request,
     _body: AssertCompleteRequest,
     _principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> None:
     """Fail closed until a pinned WebAuthn verifier validates assertion data."""
-    raise HTTPException(status_code=501, detail="WebAuthn assertion verification is not implemented")
+    verify_assertion(request, _principal, _body.credential)
 
 
 @router.get("/credentials")
