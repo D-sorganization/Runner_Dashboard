@@ -83,7 +83,7 @@ def material_change_fields(previous: BuilderRoleDefinition, candidate: BuilderRo
         ("providers", tuple(previous.providers) != tuple(candidate.providers)),
         ("capabilities", caps_changed),
         ("host", previous.host != candidate.host),
-        ("schedule", previous.schedule != candidate.schedule),
+        ("schedule", previous.schedule != candidate.schedule or previous.schedule_bounds != candidate.schedule_bounds),
         ("triggers", tuple(previous.triggers) != tuple(candidate.triggers)),
     )
     return tuple(name for name, diff in checks if diff)
