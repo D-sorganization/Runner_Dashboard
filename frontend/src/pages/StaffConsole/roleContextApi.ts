@@ -6,6 +6,7 @@
  *   GET /api/v1/staff/providers              provider id -> installed on this node
  *   GET /api/v1/staff/schedule               per role: enabled, blocking hold, next fire
  *   PUT /api/v1/staff/roles/{role}/schedule  enable/disable a role's schedule (staff.holds.write)
+ *   PUT /api/v1/staff/roles/{role}/model     audited runtime model-selector override (epic #3295 S2)
  *   GET /api/v1/staff/work-items             work items by owner role or thread
  */
 import { apiRequest } from "../../lib/api";
@@ -55,6 +56,14 @@ export function putRoleSchedule(role: string, enabled: boolean): Promise<unknown
   return apiRequest<unknown>(`${STAFF_BASE}/roles/${encodeURIComponent(role)}/schedule`, {
     method: "PUT",
     body: { enabled, reason: "Staff Console schedule switch" },
+  });
+}
+
+/** `PUT /roles/{role}/model`: audited runtime model override. `model: null` clears it (epic #3295 S2). */
+export function putRoleModel(role: string, model: string | null): Promise<unknown> {
+  return apiRequest<unknown>(`${STAFF_BASE}/roles/${encodeURIComponent(role)}/model`, {
+    method: "PUT",
+    body: { model, reason: "Staff Console model switch" },
   });
 }
 
