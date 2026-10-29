@@ -224,25 +224,11 @@ def test_leased_runners_no_file(tmp_path: Path) -> None:
 def test_leased_runners_no_leases_key(tmp_path: Path) -> None:
     lease_file = tmp_path / "leases.yml"
     lease_file.write_text("{}", encoding="utf-8")
-    with patch("runner_autoscaler.Path") as mock_path_cls:
-        mock_path_cls.return_value.__truediv__ = lambda self, other: lease_file
-        # Easier: patch the open call path-level
-        pass
-    # Test via direct file
-    with patch.object(ra.Path, "__new__", return_value=lease_file):
-        pass
-    # Simpler integration: write a real file and patch the path resolution
-    import yaml
-
-    lease_file.write_text(yaml.dump({"leases": []}), encoding="utf-8")
-    # Monkeypatch the constant
-    original = ra.Path
-    try:
-        ra.Path = lambda *a, **kw: lease_file if "leases" in str(a) else original(*a, **kw)  # type: ignore[assignment]
-    except Exception:
-        pass
-    finally:
-        ra.Path = original
+    with patch("autoscaler_sampling._leases_path", return_value=lease_file):
+        assert ra._leased_runners() == set()
+    lease_file.write_text("leases: []\n", encoding="utf-8")
+    with patch("autoscaler_sampling._leases_path", return_value=lease_file):
+        assert ra._leased_runners() == set()
 
 
 def test_leased_runners_active_lease(tmp_path: Path) -> None:
