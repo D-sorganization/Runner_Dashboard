@@ -218,6 +218,7 @@ def library_reindex_source(
     source_id: str,
     _principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
 ) -> dict[str, Any]:
+    from library.gdrive_ingest import ingest_gdrive_source
     from library.ingest import ingest_directory
     from library.sources import get_source
 
@@ -225,7 +226,11 @@ def library_reindex_source(
         source = get_source(_db(), source_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    root = Path(source["root_path"])
+    raw_root = str(source["root_path"])
+    if raw_root.startswith("gdrive://") or source.get("backend_type") == "google_drive_connector":
+        stats = ingest_gdrive_source(_db(), source_id=source_id)
+        return {"status": "ok", "source_id": source_id, "stats": stats}
+    root = Path(raw_root)
     if not root.is_dir():
         raise HTTPException(status_code=404, detail=f"source root not found on disk: {root}")
     stats = ingest_directory(root, db_path=_db(), source_id=source_id)
