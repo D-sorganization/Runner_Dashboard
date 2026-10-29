@@ -54,7 +54,7 @@ def test_post_andon_dedupes_by_fingerprint() -> None:
     first = client.post(
         "/api/v1/andon",
         json=_sample_payload(
-            error="AssertionError: boom at 2026-10-29T10:00:00Z commit abcdef123456 on runner-slot-1 line 10:2"
+            error="AssertionError: boom at 2026-10-29T10:00:00Z commit abcdef123456 on runner-slot-1 line 10 col 2"
         ),
     )
     assert first.status_code == 200
@@ -65,7 +65,7 @@ def test_post_andon_dedupes_by_fingerprint() -> None:
     second = client.post(
         "/api/v1/andon",
         json=_sample_payload(
-            error="AssertionError: boom at 2026-10-29T11:30:00Z commit 9876543210ab on runner-slot-9 line 99:8"
+            error="AssertionError: boom at 2026-10-29T11:30:00Z commit 9876543210ab on runner-slot-9 line 99 col 8"
         ),
     )
     assert second.status_code == 200
