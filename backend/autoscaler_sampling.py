@@ -65,11 +65,18 @@ def _leases_path() -> Path:
     persists to ``$RUNNER_DASHBOARD_CONFIG_DIR`` (default
     ``~/.config/runner-dashboard``). Reader and writer must share one path
     helper or lease protection is a permanent no-op. We delegate to
-    ``runner_lease._default_config_dir`` so the two can never drift again.
+    ``runner_lease._default_config_dir`` so the two can never drift again, with
+    an identical env/home fallback when ``runner_lease`` (and its FastAPI
+    dependencies) cannot be imported in standaloneautoscaler/test contexts.
     """
-    from runner_lease import _default_config_dir  # noqa: PLC0415
+    try:
+        from runner_lease import _default_config_dir  # noqa: PLC0415
 
-    return _default_config_dir() / "leases.yml"
+        return _default_config_dir() / "leases.yml"
+    except Exception:
+        env_dir = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR")
+        base = Path(env_dir) if env_dir else Path.home() / ".config" / "runner-dashboard"
+        return base / "leases.yml"
 
 
 _VIRTUAL_LEASE_PREFIXES = ("virtual-", "github-claim-")

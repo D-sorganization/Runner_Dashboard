@@ -1,12 +1,6 @@
 """The one staff-dispatch policy shared by ``POST /api/staff/{role}/run`` and the
-``staff.dispatch`` action (#1487).
-
-``dispatch_staff_run`` owns everything a dispatch must pass through, in order:
-PR-consolidation decision, plan validation, the ``dispatches`` rate limit, machine
-targeting (``local`` / peer / ``auto``), peer forwarding with on-behalf-of provenance,
-dry-run and the fail-closed ``dispatch`` audit record. Refusals are ``HTTPException``s
-so the route returns them unchanged; the action executor classifies them with
-:func:`failure_class_for`.
+``staff.dispatch`` action (#1487): consolidation, planning, rate-limit, machine
+targeting, peer forwarding, resource admission, dry-run, and fail-closed audit.
 """
 
 from __future__ import annotations
@@ -19,7 +13,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller
-from staff import claim_guard, consolidation
+from staff import claim_guard, consolidation, resource_admission
 from staff import fleet as staff_fleet
 from staff.audit import AuditError, record_audit
 from staff.barb_lease_fence import BarbClaim, barb_write_fence
@@ -29,6 +23,8 @@ from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import _now
 
 log = logging.getLogger("dashboard.staff")
+DispatchResourceSnapshot = resource_admission.DispatchResourceSnapshot
+sample_dispatch_resources = resource_admission.sample_dispatch_resources
 
 _FAILURE_CLASS_BY_STATUS = {
     403: "permission_denied",
@@ -41,10 +37,7 @@ _FAILURE_CLASS_BY_STATUS = {
 
 @dataclass(frozen=True)
 class DispatchCommand:
-    """A validated dispatch request, independent of the surface it came from.
-
-    ``requested_by`` / ``on_behalf_of`` / ``surface`` / ``thread_id`` are provenance; the rest mirrors the /run body.
-    """
+    """A validated dispatch request, independent of the surface it came from."""
 
     role: str
     requested_by: str
@@ -127,6 +120,8 @@ class DispatchCommand:
 
 def failure_class_for(exc: HTTPException) -> str:
     """Map a dispatch refusal onto the action failure taxonomy."""
+    if isinstance(exc.detail, dict) and isinstance(exc.detail.get("failure_class"), str):
+        return str(exc.detail["failure_class"])
     return _FAILURE_CLASS_BY_STATUS.get(exc.status_code, "dispatch_failed")
 
 
@@ -396,6 +391,7 @@ async def dispatch_staff_run(
         except AuditError as exc:
             log.warning("staff: dry-run dispatch audit skipped: %s", exc)
         return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine, **claim_info}
+    resource_admission.check_dispatch_resource_admission(cmd, caller, machine=target, sampler=sample_dispatch_resources)
     budget_ok, budget_reason = BudgetGuard(runner.store).can_dispatch(spec, plan.provider)
     if not budget_ok and not cmd.ignore_budget:
         raise HTTPException(

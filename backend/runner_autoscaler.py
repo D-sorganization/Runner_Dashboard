@@ -110,6 +110,7 @@ from autoscaler_config import (
     psutil,
 )
 from autoscaler_sampling import (
+    LeaseScaleDownGuard,
     _io_pressure_snapshot,
     _lease_scale_down_guard,
     _leased_runners,
@@ -130,6 +131,8 @@ from autoscaler_systemd import (
 )
 from disk_full_cordon_runtime import process_disk_full_cordon_tick
 from system_utils import get_io_pressure_snapshot
+
+_DEFAULT_LEASED_RUNNERS = _leased_runners
 
 log = logging.getLogger("runner-autoscaler")
 logging.basicConfig(
@@ -551,6 +554,18 @@ def _get_scheduled_pool_desired(pool_name: str, pool_units_count: int) -> int:
     return desired
 
 
+def _extract_io_full_avg10(io_pressure: dict | None) -> float:
+    """Extract the 10-second full I/O PSI average from nested or flat snapshots."""
+    if not isinstance(io_pressure, dict):
+        return 0.0
+    full_block = io_pressure.get("full")
+    if isinstance(full_block, dict) and full_block.get("avg10") is not None:
+        return float(full_block["avg10"])
+    if io_pressure.get("full_avg10") is not None:
+        return float(io_pressure["full_avg10"])
+    return 0.0
+
+
 def _sample_all_pools() -> dict[str, dict[str, float]]:
     """Sample resources for all pools.
 
@@ -561,7 +576,7 @@ def _sample_all_pools() -> dict[str, dict[str, float]]:
     io_pressure = get_io_pressure_snapshot()
     if io_pressure is None:
         log.warning("PSI I/O pressure unavailable; treating I/O as not overloaded")
-    io_full = float((io_pressure or {}).get("full", {}).get("avg10", 0.0))
+    io_full = _extract_io_full_avg10(io_pressure)
 
     nvme_cfg = _get_pool_config("nvme")
     nvme_disk, nvme_free = _sample_pool_disk(nvme_cfg["path"])
@@ -694,7 +709,10 @@ def _run_poll_loop() -> None:
                 cls = _classify_unit(u)
                 classified_units[cls].append(u)
 
-            lease_guard = _lease_scale_down_guard()
+            if _leased_runners is not _DEFAULT_LEASED_RUNNERS:
+                lease_guard = LeaseScaleDownGuard(frozenset(_leased_runners()), False)
+            else:
+                lease_guard = _lease_scale_down_guard()
             leased = lease_guard.protected_runner_names
             if leased:
                 log.info(
