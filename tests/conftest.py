@@ -645,7 +645,7 @@ def mock_registry_hub_as_example(monkeypatch: pytest.MonkeyPatch) -> None:
     from security import safe_yaml_load  # noqa: PLC0415
 
     example_path = REPO_ROOT / "backend" / "machine_registry.example.yml"
-    example_registry = safe_yaml_load(example_path.read_text(encoding="utf-8"))
+    example_registry = safe_yaml_load(example_path)
     monkeypatch.setattr(
         oauth_config,
         "load_machine_registry",

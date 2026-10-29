@@ -29,12 +29,22 @@ log = logging.getLogger("dashboard.machine_registry")
 EXAMPLE_REGISTRY_PATH = Path(__file__).with_name("machine_registry.example.yml")
 DEPLOYED_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
-# Back-compat for callers that referenced the old shipped default path constant.
-DEFAULT_REGISTRY_PATH = LOCAL_REGISTRY_PATH
+DEFAULT_REGISTRY_PATH = DEPLOYED_REGISTRY_PATH
+
+
+def _registry_path_ref(value: str | Path) -> Path:
+    """Normalize module-level path constants and test monkeypatches to ``Path``."""
+    if isinstance(value, Path):
+        return value.expanduser()
+    return Path(value).expanduser()
 
 
 def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
-    """Pick the registry file and report which source supplied it."""
+    """Pick the registry file and report which source supplied it.
+
+    Order: explicit ``path`` argument, then ``$MACHINE_REGISTRY_PATH``, then the
+    local operator config, then the shipped default beside this module.
+    """
     if path is not None:
         return Path(path), "explicit"
     env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
@@ -42,9 +52,7 @@ def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
         return Path(env_path), "env"
     if LOCAL_REGISTRY_PATH.is_file():
         return LOCAL_REGISTRY_PATH, "local"
-    if DEPLOYED_REGISTRY_PATH.is_file():
-        return DEPLOYED_REGISTRY_PATH, "deployed"
-    return LOCAL_REGISTRY_PATH, "local"
+    return DEFAULT_REGISTRY_PATH, "shipped"
 
 
 _registry_empty = False
@@ -82,14 +90,14 @@ def migrate_legacy_registry_to_local_config(
 
     if os.environ.get("MACHINE_REGISTRY_PATH", "").strip():
         return "skipped_env_override"
-    local_path = LOCAL_REGISTRY_PATH.expanduser()
+    local_path = _registry_path_ref(LOCAL_REGISTRY_PATH)
     if local_path.is_file():
         return "skipped_local_exists"
 
     legacy_candidates: list[Path] = []
     if deploy_backend_dir is not None:
         legacy_candidates.append(Path(deploy_backend_dir) / "machine_registry.yml")
-    module_legacy = DEPLOYED_REGISTRY_PATH.expanduser()
+    module_legacy = _registry_path_ref(DEPLOYED_REGISTRY_PATH)
     if module_legacy not in legacy_candidates:
         legacy_candidates.append(module_legacy)
 
@@ -204,9 +212,9 @@ def assert_safe_registry_source(registry_path: Path, registry: dict[str, Any]) -
       local file is missing, even if the shipped default is empty.
     """
 
-    resolved = registry_path.expanduser().resolve()
-    default_resolved = DEFAULT_REGISTRY_PATH.expanduser().resolve()
-    local_resolved = LOCAL_REGISTRY_PATH.expanduser().resolve()
+    resolved = _registry_path_ref(registry_path).resolve()
+    default_resolved = _registry_path_ref(DEFAULT_REGISTRY_PATH).resolve()
+    local_resolved = _registry_path_ref(LOCAL_REGISTRY_PATH).resolve()
     example_resolved = EXAMPLE_REGISTRY_PATH.resolve()
     deployed_resolved = DEPLOYED_REGISTRY_PATH.resolve()
 
@@ -548,10 +556,8 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
 
     registry_path = _resolve_registry_path(path)
     if not registry_path.exists():
-        empty = {"version": 1, "machines": []}
-        assert_safe_registry_source(registry_path, empty)
         _mark_registry_empty(path=registry_path, path_existed=False)
-        return empty
+        return {"version": 1, "machines": []}
 
     # Validate the path before loading (security check for issue #355).
     #
