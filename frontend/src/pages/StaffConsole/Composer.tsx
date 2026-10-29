@@ -64,11 +64,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   const conversationOpeningRef = useRef(false);
   const latestTextRef = useRef(text);
   latestTextRef.current = text;
-  // `sendState` is a React state value: two sends dispatched in the same task
-  // (a real double-tap) both read it before the first setSendState("sending")
-  // commits, so a plain state check lets both through. This ref is set
-  // synchronously, before any await, so the second call always sees it.
-  const sendInFlightRef = useRef(false);
+  const sendInFlightRef = useRef(false); // set before any await; sendState alone misses a same-task double-tap
 
   useEffect(() => {
     if (!autoFocus || disabled || isPanel || conversationOpening) return;
@@ -244,8 +240,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
   const executeSend = async (retryKey?: string) => {
     const trimmed = text.trim();
-    if ((!trimmed && !attachedItems.length) || hasUnsettledAttachments || sendState === "sending" || disabled || isPanel || conversationOpening) return;
-    if (sendInFlightRef.current) return;
+    if ((!trimmed && !attachedItems.length) || hasUnsettledAttachments || sendState === "sending" || disabled || isPanel || conversationOpening || sendInFlightRef.current) return;
     sendInFlightRef.current = true;
 
     const key = retryKey || idempotencyKey || generateIdempotencyKey(threadId);
@@ -275,8 +270,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       setTimeout(() => setSendState("idle"), 1000);
     } catch (err: unknown) {
       setSendState("failed");
-      const msg = err instanceof Error ? err.message : "Failed to send message";
-      setErrorMessage(msg);
+      setErrorMessage(err instanceof Error ? err.message : "Failed to send message");
     } finally {
       sendInFlightRef.current = false;
     }
