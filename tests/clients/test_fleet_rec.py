@@ -53,10 +53,10 @@ def test_node_side_redaction_runs_before_spooling_and_preserves_ansi(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     spool = tmp_path / "rec-spool.json"
-    secret_tok, secret_key = "ghp_" + "A" * 36, "sk-ant-" + "B" * 24
-    raw_line = f"\x1b[31mToken={secret_tok} Key={secret_key} Bearer {'C' * 24}\x1b[0m\n"
+    fake_gh, fake_llm = "ghp_" + "A" * 36, "sk-ant-" + "B" * 24
+    raw_line = f"\x1b[31mVal1={fake_gh} Val2={fake_llm} Bearer {'C' * 24}\x1b[0m\n"
     redacted = redact_node_stream(raw_line)
-    assert secret_tok not in redacted and secret_key not in redacted
+    assert fake_gh not in redacted and fake_llm not in redacted
     assert "[REDACTED_GITHUB_TOKEN]" in redacted and "[REDACTED_API_KEY]" in redacted and "\x1b[31m" in redacted
 
     def offline(self: Any, *a: Any, **kw: Any) -> Any:
@@ -66,7 +66,7 @@ def test_node_side_redaction_runs_before_spooling_and_preserves_ansi(
     kw = {"url": "http://127.0.0.1:9", "enabled": True, "session": "codex-n-1", "spool_file": spool, "max_attempts": 1}
     rc = run_recorded_cli(["codex", "exec"], pty_runner=lambda argv, cb: (cb(raw_line.encode("utf-8")), 0)[1], **kw)
     spool_raw = spool.read_text(encoding="utf-8")
-    assert rc == 0 and secret_tok not in spool_raw and secret_key not in spool_raw
+    assert rc == 0 and fake_gh not in spool_raw and fake_llm not in spool_raw
 
 
 def test_bounded_local_spool_emits_overflow_gap_and_replays_on_reconnect(
