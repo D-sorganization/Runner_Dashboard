@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import json
 import os
 import sqlite3
 import time
+from typing import Any
 
 from activity import (
     GAP_KINDS,
@@ -30,13 +34,66 @@ from activity_transcript import (
     redact_terminal_stream,
     strip_ansi,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from identity import Principal, require_scope
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
+from staff import fleet as staff_fleet
+from staff import remote_runs
 from staff.rate_limit import check_rate_limit
 from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/v1/activity", tags=["activity"])
+
+DEFAULT_SSE_BUFFER_SIZE = 64
+SSE_HEARTBEAT_SECONDS = 15.0
+_SUBSCRIBERS: dict[str, set[asyncio.Queue[dict[str, Any]]]] = {}
+_LOOPS: dict[asyncio.Queue[dict[str, Any]], asyncio.AbstractEventLoop] = {}
+
+
+async def subscribe_transcript_session(session_id: str, max_buffer: int | None = None) -> asyncio.Queue[dict[str, Any]]:
+    """Register a bounded per-subscriber queue; slow consumers receive slow_consumer_disconnect on overflow."""
+    cap = max_buffer or max(1, _env_int("RUNNER_DASHBOARD_ACTIVITY_SSE_BUFFER_SIZE", DEFAULT_SSE_BUFFER_SIZE))
+    q: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=cap)
+    _LOOPS[q] = asyncio.get_running_loop()
+    _SUBSCRIBERS.setdefault(session_id, set()).add(q)
+    return q
+
+
+async def unsubscribe_transcript_session(session_id: str, q: asyncio.Queue[dict[str, Any]]) -> None:
+    _LOOPS.pop(q, None)
+    if (subs := _SUBSCRIBERS.get(session_id)) and q in subs:
+        subs.remove(q)
+        if not subs:
+            _SUBSCRIBERS.pop(session_id, None)
+
+
+def _enqueue_or_disconnect(q: asyncio.Queue[dict[str, Any]], payload: dict[str, Any], session_id: str) -> None:
+    try:
+        q.put_nowait(payload)
+    except asyncio.QueueFull:
+        with contextlib.suppress(Exception):
+            q.get_nowait()
+            disc = {"session_id": session_id, "reason": "buffer_overflow", "policy": "disconnect_slow_consumer"}
+            q.put_nowait({"id": None, "event": "slow_consumer_disconnect", "data": disc})
+
+
+def publish_transcript_event(session_id: str, event_type: str, data: dict[str, Any], *, seq: int | None = None) -> int:
+    payload, subs = {"id": seq, "event": event_type, "data": data}, list(_SUBSCRIBERS.get(session_id, set()))
+    for q in subs:
+        loop = _LOOPS.get(q)
+        with contextlib.suppress(RuntimeError):
+            if loop is not None and loop.is_running():
+                try:
+                    same_loop = asyncio.get_running_loop() is loop
+                except RuntimeError:
+                    same_loop = False
+                if not same_loop:
+                    loop.call_soon_threadsafe(_enqueue_or_disconnect, q, payload, session_id)
+                    continue
+            _enqueue_or_disconnect(q, payload, session_id)
+    return len(subs)
+
 
 # Unconnected-tier (off-tailnet) check-ins: strict kinds, each tied to the
 # repo and one other identifying field so a check-in cannot be a free-form event.
@@ -249,7 +306,7 @@ def _ingest_chunk_sync(
         emit_capture_gap(
             activity_store, session_id, chunk.seq, principal, chunk.node, "missing_metadata", {"bytes": ref.byte_len}
         )
-    return TranscriptChunk(
+    out = TranscriptChunk(
         session_id=session_id,
         seq=ref.seq,
         node=ref.node,
@@ -261,6 +318,8 @@ def _ingest_chunk_sync(
         redaction_version=REDACTION_VERSION,
         stored_at=ref.stored_at,
     )
+    publish_transcript_event(session_id, "chunk", out.model_dump(mode="json"), seq=out.seq)
+    return out
 
 
 @router.post("/sessions/{session_id}/chunks", response_model=TranscriptChunk, include_in_schema=False)
@@ -280,15 +339,15 @@ async def ingest_session_chunk(
     )
 
 
-@router.get("/sessions/{session_id}/chunks", response_model=TranscriptChunksPage, include_in_schema=False)
-def read_session_chunks(
-    session_id: str,
-    after_seq: int = Query(default=-1, ge=-1),
-    limit: int = Query(default=100, ge=1, le=500),
-    _caller: Principal = Depends(require_scope("activity.read")),  # noqa: B008
+def _has_local_session_data(chunk_store: TranscriptChunkStore, activity_store: ActivityStore, session_id: str) -> bool:
+    return bool(
+        chunk_store.list_chunks(session_id=session_id) or activity_store.read(session_id=session_id, limit=1).items
+    )
+
+
+def _read_local_chunks_sync(
+    chunk_store: TranscriptChunkStore, activity_store: ActivityStore, session_id: str, after_seq: int, limit: int
 ) -> TranscriptChunksPage:
-    chunk_store = get_transcript_chunk_store()
-    activity_store = get_activity_store()
     stored = {ref.seq: ref for ref in chunk_store.list_chunks(session_id=session_id)}
     for ev in activity_store.read(session_id=session_id, limit=500).items:
         if ev.kind not in GAP_KINDS and ev.seq not in stored:
@@ -319,4 +378,105 @@ def read_session_chunks(
         items=items,
         gaps=gaps,
         next_seq=items[-1].seq if len(ordered) > limit and items else None,
+    )
+
+
+@router.get("/sessions/{session_id}/chunks", response_model=TranscriptChunksPage, include_in_schema=False)
+@router.get("/local-sessions/{session_id}/chunks", response_model=TranscriptChunksPage, include_in_schema=False)
+async def read_session_chunks(
+    session_id: str,
+    request: Request,
+    after_seq: int = Query(default=-1, ge=-1),
+    limit: int = Query(default=100, ge=1, le=500),
+    local: bool = Query(default=False, include_in_schema=False),
+    caller: Principal = Depends(require_scope("activity.read")),  # noqa: B008
+) -> TranscriptChunksPage:
+    chunk_store, activity_store = get_transcript_chunk_store(), get_activity_store()
+    is_local_route = "/local-sessions/" in request.url.path
+    if not _has_local_session_data(chunk_store, activity_store, session_id):
+        if is_local_route:
+            raise HTTPException(404, detail={"code": "local_session_not_found", "session_id": session_id})
+        if not (local or staff_fleet.is_fleet_peer(caller)):
+            try:
+                if (remote := await remote_runs.find_remote_session(session_id)) is not None:
+                    raw = await remote_runs.proxy_remote_session_chunks(session_id, after_seq, limit, *remote)
+                    return TranscriptChunksPage.model_validate(raw)
+            except remote_runs.RemoteRunNotFound:
+                pass
+            except remote_runs.RemoteRunLookupUnavailable as exc:
+                raise HTTPException(503, "peer session lookup unavailable") from exc
+    return await run_in_threadpool(
+        lambda: _read_local_chunks_sync(chunk_store, activity_store, session_id, after_seq, limit)
+    )
+
+
+def _resolve_replay_after(after_seq: int | None, last_event_id: str | None) -> int:
+    if after_seq is not None:
+        return after_seq
+    return int(last_event_id) if last_event_id and last_event_id.lstrip("-").isdigit() else -1
+
+
+@router.get("/sessions/{session_id}/stream", include_in_schema=False)
+@router.get("/local-sessions/{session_id}/stream", include_in_schema=False)
+async def stream_session_transcript(
+    session_id: str,
+    request: Request,
+    after_seq: int | None = Query(default=None, ge=-1),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    follow: bool = Query(default=True),
+    local: bool = Query(default=False, include_in_schema=False),
+    caller: Principal = Depends(require_scope("activity.read")),  # noqa: B008
+) -> StreamingResponse:
+    replay_after = _resolve_replay_after(after_seq, last_event_id)
+    chunk_store, activity_store = get_transcript_chunk_store(), get_activity_store()
+    is_local = local or "/local-sessions/" in request.url.path or staff_fleet.is_fleet_peer(caller)
+    if not _has_local_session_data(chunk_store, activity_store, session_id):
+        if not is_local:
+            try:
+                remote = await remote_runs.find_remote_session(session_id)
+            except remote_runs.RemoteRunLookupUnavailable as exc:
+                raise HTTPException(503, "peer session lookup unavailable") from exc
+            if remote is not None:
+                sse_headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+                gen = remote_runs.stream_remote_session(session_id, replay_after, *remote, follow=follow)
+                return StreamingResponse(gen, media_type="text/event-stream", headers=sse_headers)
+        raise HTTPException(404, detail={"code": "local_session_not_found", "session_id": session_id})
+
+    queue = await subscribe_transcript_session(session_id)
+
+    async def _gen():  # type: ignore[no-untyped-def]
+        try:
+            page = await run_in_threadpool(
+                lambda: _read_local_chunks_sync(chunk_store, activity_store, session_id, replay_after, 500)
+            )
+            high_water = replay_after
+            for item in page.items:
+                high_water = max(high_water, item.seq)
+                yield f"id: {item.seq}\nevent: chunk\ndata: {json.dumps(item.model_dump(mode='json'))}\n\n"
+            for gap in page.gaps:
+                gseq = int(gap.payload.get("chunk_seq", gap.seq))
+                yield f"id: {gseq}\nevent: gap\ndata: {json.dumps(gap.model_dump(mode='json'))}\n\n"
+            if not follow:
+                return
+            while not await request.is_disconnected():
+                try:
+                    ev = await asyncio.wait_for(queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
+                except TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+                ev_type, eid = ev["event"], ev.get("id")
+                if ev_type == "slow_consumer_disconnect":
+                    yield f"event: slow_consumer_disconnect\ndata: {json.dumps(ev['data'])}\n\n"
+                    return
+                if ev_type == "chunk" and isinstance(eid, int) and eid <= high_water:
+                    continue
+                if isinstance(eid, int):
+                    high_water = max(high_water, eid)
+                prefix = f"id: {eid}\n" if eid is not None else ""
+                yield f"{prefix}event: {ev_type}\ndata: {json.dumps(ev['data'])}\n\n"
+        finally:
+            await unsubscribe_transcript_session(session_id, queue)
+
+    return StreamingResponse(
+        _gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
