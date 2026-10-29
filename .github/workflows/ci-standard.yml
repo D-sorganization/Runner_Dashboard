@@ -909,7 +909,6 @@ jobs:
       actions: write
       contents: read
       pull-requests: read
-    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -922,7 +921,6 @@ jobs:
     permissions:
       actions: write
       contents: read
-    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -934,7 +932,6 @@ jobs:
     uses: ./.github/workflows/api-contract-regeneration.yml
     permissions:
       contents: read
-    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -947,7 +944,6 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
