@@ -1,4 +1,4 @@
-"""Out-of-band hub liveness sentinel on Brick (#3050), slice 1/3: probe
+"""Out-of-band hub liveness sentinel on node-c (#3050), slice 1/3: probe
 classification, outage/recovery alert transitions, and fail-closed corrupt
 state. Alert-sink tests live in ``test_hub_sentinel_alerts.py``; the
 ``run_once``/CLI integration test lands with the wiring slice.
@@ -72,7 +72,7 @@ _BODY_HEALTHY = json.dumps({"status": "healthy"}).encode("utf-8")
     ],
 )
 def test_probe_classifies_each_outcome(primary: object, fallback: object, expected: str) -> None:
-    classification, _detail = sentinel.probe_hub("http://brick:8321", opener=_sequence_opener([primary, fallback]))
+    classification, _detail = sentinel.probe_hub("http://node-c:8321", opener=_sequence_opener([primary, fallback]))
     assert classification == expected
 
 

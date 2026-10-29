@@ -26,8 +26,8 @@ pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
 
 _DESK_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _DESK_CALLBACK = f"{_DESK_ORIGIN}{OAUTH_CALLBACK_PATH}"
-_OGLAPTOP_ORIGIN = "https://node-b.fleet-example.ts.net"
-_OGLAPTOP_CALLBACK = f"{_OGLAPTOP_ORIGIN}{OAUTH_CALLBACK_PATH}"
+_NODE_B_ORIGIN = "https://node-b.fleet-example.ts.net"
+_NODE_B_CALLBACK = f"{_NODE_B_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 
 def _credentials_env(**updates: str) -> dict[str, str]:
@@ -65,7 +65,7 @@ def test_hub_public_origins_from_registry_lists_only_hubs() -> None:
     assert resolve_hub_public_origin_from_registry(registry) == _DESK_ORIGIN
 
 
-def test_deskcomputer_origin_is_ready_with_matching_callback() -> None:
+def test_hub_a_origin_is_ready_with_matching_callback() -> None:
     env = _credentials_env(
         DASHBOARD_PUBLIC_ORIGIN=_DESK_ORIGIN,
         GITHUB_OAUTH_CALLBACK_URL=_DESK_CALLBACK,
@@ -74,21 +74,21 @@ def test_deskcomputer_origin_is_ready_with_matching_callback() -> None:
     assert diagnostic["ready"] is True
 
 
-def test_oglaptop_origin_blocked_without_allowlist() -> None:
+def test_node_b_origin_blocked_without_allowlist() -> None:
     env = _credentials_env(
-        DASHBOARD_PUBLIC_ORIGIN=_OGLAPTOP_ORIGIN,
-        GITHUB_OAUTH_CALLBACK_URL=_OGLAPTOP_CALLBACK,
+        DASHBOARD_PUBLIC_ORIGIN=_NODE_B_ORIGIN,
+        GITHUB_OAUTH_CALLBACK_URL=_NODE_B_CALLBACK,
     )
     diagnostic = OAuthConfig.from_env(env).diagnostic()
     assert diagnostic["ready"] is False
     assert "public_origin_mismatch" in diagnostic["reason"]
 
 
-def test_oglaptop_origin_allowed_via_explicit_allowlist_env() -> None:
+def test_node_b_origin_allowed_via_explicit_allowlist_env() -> None:
     env = _credentials_env(
-        DASHBOARD_PUBLIC_ORIGIN=_OGLAPTOP_ORIGIN,
-        GITHUB_OAUTH_CALLBACK_URL=_OGLAPTOP_CALLBACK,
-        DASHBOARD_OAUTH_ALLOWED_ORIGINS=_OGLAPTOP_ORIGIN,
+        DASHBOARD_PUBLIC_ORIGIN=_NODE_B_ORIGIN,
+        GITHUB_OAUTH_CALLBACK_URL=_NODE_B_CALLBACK,
+        DASHBOARD_OAUTH_ALLOWED_ORIGINS=_NODE_B_ORIGIN,
     )
     diagnostic = OAuthConfig.from_env(env).diagnostic()
     assert diagnostic["ready"] is True
@@ -141,10 +141,10 @@ def test_from_env_defaults_origin_and_callback_from_registry_hub(
 
 def test_allowed_public_origins_includes_registry_hub_and_allowlist() -> None:
     origins = allowed_public_origins(
-        {"DASHBOARD_OAUTH_ALLOWED_ORIGINS": _OGLAPTOP_ORIGIN},
+        {"DASHBOARD_OAUTH_ALLOWED_ORIGINS": _NODE_B_ORIGIN},
     )
     assert _DESK_ORIGIN in origins
-    assert _OGLAPTOP_ORIGIN in origins
+    assert _NODE_B_ORIGIN in origins
 
 
 def test_public_origin_helper_uses_https_host_without_dashboard_port() -> None:
