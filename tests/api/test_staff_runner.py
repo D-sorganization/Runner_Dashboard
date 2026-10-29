@@ -488,6 +488,27 @@ def test_roster_reports_model_override(client: TestClient, monkeypatch: pytest.M
 
 
 @pytest.mark.unit
+def test_roster_reports_allowed_models_for_the_role_provider(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GET /roster lists selectable models for the Staff Console dropdown (epic #3295 S2)."""
+    from staff.model_tiers import allowed_models_for_provider
+
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
+    body = client.get("/api/staff/roster").json()
+    roles_by_name = {r["name"]: r for r in body["roles"]}
+    night_watch = roles_by_name["night-watch"]
+    assert night_watch["providers"], "fixture role must declare at least one provider"
+    assert night_watch["allowed_models"] == sorted(allowed_models_for_provider(night_watch["providers"][0]))
+
+    ad_hoc = roles_by_name["ad-hoc"]
+    assert ad_hoc["providers"], "ad-hoc must declare at least one provider"
+    expected_ad_hoc = sorted(allowed_models_for_provider(ad_hoc["providers"][0]))
+    assert expected_ad_hoc, "ad-hoc's first provider must have at least one allowed model"
+    assert ad_hoc["allowed_models"] == expected_ad_hoc
+
+
+@pytest.mark.unit
 def test_roster_reports_an_outdated_claude_cli(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from staff import cli_version
 

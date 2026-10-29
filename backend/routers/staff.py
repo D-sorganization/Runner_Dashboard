@@ -44,6 +44,7 @@ from staff.cli_version import provider_versions
 from staff.dispatch_auth import require_staff_run_dispatch
 from staff.github_app_preflight import run_preflight_and_cache
 from staff.github_credential_service import mint_github_credential_for_run
+from staff.model_tiers import allowed_models_for_provider
 from staff.models import (
     StaffAuditListResponse,
     StaffBoardResponse,
@@ -133,6 +134,7 @@ async def roster(
             "active_runs": per_role.get(name, 0),
             "model_override": override,
             "effective_model": override or spec.model,
+            "allowed_models": sorted(allowed_models_for_provider(spec.providers[0])) if spec.providers else [],
         }
         if role_dict.get("avatar"):
             role_dict["avatar"] = avatar_url_for(role_dict["avatar"])
