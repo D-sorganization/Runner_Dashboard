@@ -71,6 +71,10 @@ class NodeRoleConfigError(RuntimeError):
     """The node-roles config is missing, malformed, or violates an invariant; callers fail closed."""
 
 
+class RelayLeadershipError(RuntimeError):
+    """A node not permitted to lead the postman relay (forwarder or unknown) attempted to acquire it."""
+
+
 @dataclass(frozen=True)
 class NodeRoleEntry:
     name: str
@@ -191,3 +195,56 @@ def current_leader(
     """The active node-leader lease, or ``None`` when no node currently holds it."""
     target = leader_scope_for(role)
     return next((lease for lease in store.list_leases(now=now) if lease["scope"] == target), None)
+
+
+def ensure_relay_lease(
+    store: BarbContinuityStore,
+    config: NodeLeaderConfig,
+    *,
+    node: str,
+    role: str = "rd-barb",
+    ttl_seconds: int = DEFAULT_LEASE_TTL_SECONDS,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Enforce the #3073/#3237 relay ownership, expiry, and standby failover contract in #3117 topology.
+
+    Pre: ``node`` is declared in ``config`` with role ``leader`` or ``standby``; ``forwarder`` and
+    unknown nodes fail closed with :class:`RelayLeadershipError`.
+    Post: returns ``active=True`` with a fenced :class:`BarbClaim` for the single active holder
+    (renewing when already held, or promoting the standby within one lease interval once the prior
+    lease expires), or ``active=False`` with ``claim=None`` while another node holds a live lease.
+    """
+    node_role = config.role_of(node)
+    if node_role is None:
+        raise RelayLeadershipError(f"node {node!r} is not in the node-roles config")
+    if node_role not in ("leader", "standby"):
+        raise RelayLeadershipError(f"node {node!r} has role {node_role!r} and may never own the relay lease")
+    active = current_leader(store, role=role, now=now)
+    if active is None:
+        acq = assume_leadership(store, node=node, role=role, ttl_seconds=ttl_seconds, now=now)
+        lease = acq["lease"]
+        return {
+            "active": True,
+            "role": node_role,
+            "promoted": node_role == "standby",
+            "lease": lease,
+            "claim": claim_for(node, int(lease["epoch"]), role=role),
+        }
+    if active["holder"] == node:
+        epoch = int(active["epoch"])
+        renewed = renew_leadership(store, node=node, epoch=epoch, role=role, ttl_seconds=ttl_seconds, now=now)
+        return {
+            "active": True,
+            "role": node_role,
+            "promoted": False,
+            "lease": renewed["lease"],
+            "claim": claim_for(node, epoch, role=role),
+        }
+    return {
+        "active": False,
+        "role": node_role,
+        "promoted": False,
+        "leader": active["holder"],
+        "epoch": int(active["epoch"]),
+        "claim": None,
+    }
