@@ -987,6 +987,11 @@ jobs:
       'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          sparse-checkout: scripts/ci/verify_merge_group_companion_checks.py
+          sparse-checkout-cone-mode: false
       - name: Require every gated job to succeed
         shell: bash
         env:

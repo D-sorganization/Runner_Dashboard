@@ -200,7 +200,7 @@ jobs:
               "tsconfig.app.json",
               "tsconfig.node.json",
           }
-          run_frontend = any(path.startswith(("frontend/", "scripts/")) or path in exact for path in files)
+          run_frontend = any((path.startswith("frontend/") or (path.startswith("scripts/") and not path.startswith("scripts/ci/"))) or path in exact for path in files)
           print(f"run_frontend_tests={'true' if run_frontend else 'false'}")
           staff_prefixes = ("frontend/src/pages/Staff", "backend/staff/", "backend/routers/staff", "tests/e2e/")
           run_staff = run_frontend or any(path.startswith(staff_prefixes) for path in files)

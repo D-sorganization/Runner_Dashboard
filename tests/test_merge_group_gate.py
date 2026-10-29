@@ -225,7 +225,15 @@ def test_tests_required_fails_closed_on_merge_group_cancel() -> None:
 
 def test_quality_gate_verifies_companion_checks_on_merge_group() -> None:
     jobs = _load(_CI_STANDARD)["jobs"]
-    step = next(s for s in jobs["quality-gate"]["steps"] if s.get("name") == "Require every gated job to succeed")
+    steps = jobs["quality-gate"]["steps"]
+    checkout_step = next(
+        (s for s in steps if str(s.get("uses", "")).startswith("actions/checkout@")),
+        None,
+    )
+    assert checkout_step is not None, "quality-gate must checkout verify_merge_group_companion_checks.py on merge_group"
+    assert "merge_group" in str(checkout_step.get("if", ""))
+    assert "scripts/ci/verify_merge_group_companion_checks.py" in str(checkout_step.get("with", {}).get("sparse-checkout", ""))
+    step = next(s for s in steps if s.get("name") == "Require every gated job to succeed")
     run = step["run"]
     assert "verify_merge_group_companion_checks.py" in run, (
         "quality-gate must invoke verify_merge_group_companion_checks.py on merge_group"
