@@ -380,7 +380,7 @@ class StaffScheduler:
             prompt = f"{prompt} Target issue #{issue_number} for this run."
         req = RunRequest(
             role=name,
-            repo=repo,
+            repo=repo or "",
             issue=issue_number,
             prompt=prompt,
             requested_by=REQUESTED_BY,
