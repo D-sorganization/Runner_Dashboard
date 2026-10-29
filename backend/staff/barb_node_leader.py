@@ -18,6 +18,7 @@ it does not decide who calls ``assume_leadership`` or when.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +29,21 @@ from staff.barb_lease_fence import BarbClaim
 
 NODE_LEADER_SCOPE = "barb:node-leader"
 _VALID_ROLES = ("leader", "standby", "forwarder")
+_ROLE_SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 DEFAULT_NODE_ROLES_PATH = Path(__file__).resolve().parents[2] / "config" / "rd_barb_node_roles.json"
+
+
+def _normalize_persona_role(role: str = "rd-barb") -> str:
+    raw = str(role or "").strip()
+    if not _ROLE_SLUG_RE.match(raw):
+        raise ValueError(f"invalid persona role {role!r}; expected lowercase slug matching ^[a-z][a-z0-9-]*$")
+    return "rd-barb" if raw == "barb" else raw
+
+
+def leader_scope_for(role: str = "rd-barb") -> str:
+    """Return the node-leader lease scope for ``role`` ('barb:node-leader' for rd-barb)."""
+    norm = _normalize_persona_role(role)
+    return NODE_LEADER_SCOPE if norm == "rd-barb" else f"{NODE_LEADER_SCOPE}:{norm}"
 
 
 class NodeRoleConfigError(RuntimeError):
@@ -94,25 +109,27 @@ def load_node_leader_config(path: Path = DEFAULT_NODE_ROLES_PATH) -> NodeLeaderC
     return NodeLeaderConfig(nodes=_validated_entries(data))
 
 
-def claim_for(node: str, epoch: int) -> BarbClaim:
+def claim_for(node: str, epoch: int, *, role: str = "rd-barb") -> BarbClaim:
     """The :class:`BarbClaim` a node presents to act as the current node-leader at ``epoch``."""
-    return BarbClaim(scope=NODE_LEADER_SCOPE, epoch=epoch, caller_id=node)
+    return BarbClaim(scope=leader_scope_for(role), epoch=epoch, caller_id=node)
 
 
 def assume_leadership(
     store: BarbContinuityStore,
     *,
     node: str,
+    role: str = "rd-barb",
     ttl_seconds: int = DEFAULT_LEASE_TTL_SECONDS,
     force: bool = False,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Acquire or renew the node-leader lease for ``node``; a live other holder conflicts unless ``force``."""
+    norm = _normalize_persona_role(role)
     return store.checkout_lease(
-        scope=NODE_LEADER_SCOPE,
+        scope=leader_scope_for(norm),
         holder=node,
         machine=node,
-        persona="rd-barb",
+        persona=norm,
         ttl_seconds=ttl_seconds,
         force=force,
         now=now,
@@ -124,21 +141,26 @@ def renew_leadership(
     *,
     node: str,
     epoch: int,
+    role: str = "rd-barb",
     ttl_seconds: int = DEFAULT_LEASE_TTL_SECONDS,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Extend ``node``'s live node-leader lease at ``epoch`` (no epoch bump)."""
-    return store.heartbeat_lease(scope=NODE_LEADER_SCOPE, holder=node, epoch=epoch, ttl_seconds=ttl_seconds, now=now)
+    return store.heartbeat_lease(
+        scope=leader_scope_for(role), holder=node, epoch=epoch, ttl_seconds=ttl_seconds, now=now
+    )
 
 
-def release_leadership(store: BarbContinuityStore, *, node: str, now: datetime | None = None) -> dict[str, Any]:
+def release_leadership(
+    store: BarbContinuityStore, *, node: str, role: str = "rd-barb", now: datetime | None = None
+) -> dict[str, Any]:
     """Release ``node``'s node-leader lease; no shift-turnover note required for a machine role."""
-    return store.release_lease(scope=NODE_LEADER_SCOPE, holder=node, require_turnover=False, now=now)
+    return store.release_lease(scope=leader_scope_for(role), holder=node, require_turnover=False, now=now)
 
 
-def current_leader(store: BarbContinuityStore, *, now: datetime | None = None) -> dict[str, Any] | None:
+def current_leader(
+    store: BarbContinuityStore, *, role: str = "rd-barb", now: datetime | None = None
+) -> dict[str, Any] | None:
     """The active node-leader lease, or ``None`` when no node currently holds it."""
-    for lease in store.list_leases(now=now):
-        if lease["scope"] == NODE_LEADER_SCOPE:
-            return lease
-    return None
+    target = leader_scope_for(role)
+    return next((lease for lease in store.list_leases(now=now) if lease["scope"] == target), None)
