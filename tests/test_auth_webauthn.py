@@ -205,3 +205,156 @@ def test_challenge_signature_tampering() -> None:
 
     sig3 = auth_webauthn._sign_challenge("chal1", "user1", "assert", 12345.0)
     assert sig1 != sig3
+
+
+def _seed_active_credential(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sign_count: int = 7) -> Path:
+    import auth_webauthn
+
+    auth_webauthn._webauthn_rate.clear()
+    credential_path = tmp_path / "webauthn_credentials.json"
+    monkeypatch.setattr(auth_webauthn, "_CREDENTIALS_PATH", credential_path)
+    auth_webauthn._save_credentials(
+        [
+            auth_webauthn.WebAuthnCredentialRecord(
+                user_id="human:test",
+                credential_id="cred-current",
+                public_key="public-key",
+                sign_count=sign_count,
+                label="Phone",
+            )
+        ]
+    )
+    return credential_path
+
+
+def _session_unlocked(auth_webauthn_mod: object, session: dict[str, object]) -> bool:
+    from fastapi import Request
+
+    req = Request({"type": "http", "session": session})
+    return bool(auth_webauthn_mod.is_session_unlocked(req))  # type: ignore[attr-defined]
+
+
+def _assert_payload(bdata: dict[str, object], **overrides: object) -> dict[str, object]:
+    cred: dict[str, object] = {
+        "id": "cred-current",
+        "challenge": bdata["challenge"],
+        "challenge_signature": bdata["challenge_signature"],
+        "sign_count": 8,
+    }
+    cred.update(overrides)
+    return {"credential": cred}
+
+
+def test_assert_complete_error_leaves_session_locked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import auth_webauthn
+
+    _seed_active_credential(monkeypatch, tmp_path)
+
+    def exploding_verifier(record: object, challenge: object, credential: dict[str, object]) -> bool:
+        raise RuntimeError("verifier hardware failure")
+
+    monkeypatch.setattr(auth_webauthn, "_assertion_verifier", exploding_verifier, raising=False)
+    client = _client(monkeypatch, tmp_path)
+    bdata = client.post("/api/auth/webauthn/assert/begin", json={}).json()
+
+    resp = client.post("/api/auth/webauthn/assert/complete", json=_assert_payload(bdata))
+    assert resp.status_code == 401
+    req = auth_webauthn.Request({"type": "http", "session": {"webauthn_unlocked": True}})
+    with pytest.raises(auth_webauthn.HTTPException):
+        auth_webauthn.verify_assertion(
+            req,
+            auth_webauthn.Principal(id="human:test", type="human", name="Test User", roles=["operator"]),
+            {"id": "cred-current", "challenge": bdata["challenge"]},
+        )
+    assert _session_unlocked(auth_webauthn, req.session) is False
+
+
+def test_assert_complete_timeout_leaves_session_locked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import time
+
+    import auth_webauthn
+
+    _seed_active_credential(monkeypatch, tmp_path)
+    monkeypatch.setattr(auth_webauthn, "_assertion_verifier", lambda *_a: True, raising=False)
+
+    now = time.time()
+    req_expired = auth_webauthn.Request({"type": "http", "session": {"webauthn_unlocked": True}})
+    principal = auth_webauthn.Principal(id="human:test", type="human", name="Test User", roles=["operator"])
+    expired_chal = auth_webauthn.WebAuthnChallenge(
+        challenge="expired-c1",
+        signature=auth_webauthn._sign_challenge("expired-c1", principal.id, "assert", now - 5),
+        user_id=principal.id,
+        ceremony="assert",
+        expires_at=now - 5,
+    )
+    req_expired.session["webauthn_challenges"] = [expired_chal.model_dump()]
+    with pytest.raises(auth_webauthn.HTTPException) as exc_info:
+        auth_webauthn.verify_assertion(
+            req_expired,
+            principal,
+            {
+                "id": "cred-current",
+                "challenge": "expired-c1",
+                "challenge_signature": expired_chal.signature,
+                "sign_count": 8,
+            },
+        )
+    assert exc_info.value.status_code == 408
+    assert _session_unlocked(auth_webauthn, req_expired.session) is False
+
+    def timeout_verifier(*_a: object) -> bool:
+        raise TimeoutError("authenticator timed out")
+
+    monkeypatch.setattr(auth_webauthn, "_assertion_verifier", timeout_verifier, raising=False)
+    client = _client(monkeypatch, tmp_path)
+    bdata = client.post("/api/auth/webauthn/assert/begin", json={}).json()
+    resp = client.post("/api/auth/webauthn/assert/complete", json=_assert_payload(bdata))
+    assert resp.status_code == 408
+
+
+def test_assert_complete_bad_signature_leaves_session_locked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import auth_webauthn
+
+    _seed_active_credential(monkeypatch, tmp_path)
+    monkeypatch.setattr(auth_webauthn, "_assertion_verifier", lambda *_a: True, raising=False)
+    client = _client(monkeypatch, tmp_path)
+
+    begin1 = client.post("/api/auth/webauthn/assert/begin", json={}).json()
+    tampered = client.post(
+        "/api/auth/webauthn/assert/complete",
+        json=_assert_payload(begin1, challenge_signature="tampered-signature"),
+    )
+    assert tampered.status_code == 401
+
+    monkeypatch.setattr(auth_webauthn, "_assertion_verifier", lambda *_a: False, raising=False)
+    begin2 = client.post("/api/auth/webauthn/assert/begin", json={}).json()
+    bad_sig = client.post("/api/auth/webauthn/assert/complete", json=_assert_payload(begin2))
+    assert bad_sig.status_code == 401
+
+
+def test_assert_complete_replay_leaves_session_locked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import auth_webauthn
+
+    _seed_active_credential(monkeypatch, tmp_path, sign_count=7)
+    monkeypatch.setattr(auth_webauthn, "_assertion_verifier", lambda *_a: True, raising=False)
+    client = _client(monkeypatch, tmp_path)
+
+    begin1 = client.post("/api/auth/webauthn/assert/begin", json={}).json()
+    payload = _assert_payload(begin1)
+    first = client.post("/api/auth/webauthn/assert/complete", json=payload)
+    assert first.status_code == 200
+
+    replay_challenge = client.post("/api/auth/webauthn/assert/complete", json=payload)
+    assert replay_challenge.status_code == 401
+
+    begin2 = client.post("/api/auth/webauthn/assert/begin", json={}).json()
+    replay_counter = client.post("/api/auth/webauthn/assert/complete", json=_assert_payload(begin2))
+    assert replay_counter.status_code == 401
+
+
+def test_mobile_webauthn_component_never_unlocks_on_error_or_missing_webauthn() -> None:
+    mobile_tsx = (Path(__file__).parent.parent / "frontend" / "src" / "pages" / "Credentials" / "Mobile.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "/api/auth/webauthn/assert/complete" in mobile_tsx
+    assert mobile_tsx.count("unlocked = true") == 1
