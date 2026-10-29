@@ -104,7 +104,7 @@ describe("MessageItem avatar", () => {
     return {
       id: "m3",
       thread_id: "t1",
-      author: "barb",
+      author: "marge",
       author_kind: "staff",
       kind: "text",
       body_md: "On it.",
@@ -115,16 +115,16 @@ describe("MessageItem avatar", () => {
   }
 
   it("renders an <img> when avatarUrl is provided", () => {
-    render(<MessageItem message={roleMessage({})} avatarUrl="/api/v1/staff/avatars/barb.webp" />);
+    render(<MessageItem message={roleMessage({})} avatarUrl="/api/v1/staff/avatars/marge.webp" />);
     const img = screen.getByTestId("message-m3").querySelector("img.thread-avatar--image");
-    expect(img).toHaveAttribute("src", "/api/v1/staff/avatars/barb.webp");
+    expect(img).toHaveAttribute("src", "/api/v1/staff/avatars/marge.webp");
   });
 
   it("falls back to the letter circle when avatarUrl is absent", () => {
     render(<MessageItem message={roleMessage({})} />);
     const header = screen.getByTestId("message-m3");
     expect(header?.querySelector("img")).toBeNull();
-    expect(header?.querySelector(".thread-avatar")).toHaveTextContent("B");
+    expect(header?.querySelector(".thread-avatar")).toHaveTextContent("M");
   });
 
   it("falls back to the letter circle when the avatar image fails to load", () => {
@@ -134,6 +134,14 @@ describe("MessageItem avatar", () => {
     expect(img).not.toBeNull();
     fireEvent.error(img);
     expect(header.querySelector("img")).toBeNull();
-    expect(header.querySelector(".thread-avatar")).toHaveTextContent("B");
+    expect(header.querySelector(".thread-avatar")).toHaveTextContent("M");
+  });
+
+  /** #3501: rd-barb never shows a photo in chat either, matching RosterRow/RosterGroup's auto-route rule. */
+  it("shows the auto-route glyph, not a photo, for a message authored by barb", () => {
+    render(<MessageItem message={roleMessage({ id: "m4", author: "barb" })} avatarUrl="/api/v1/staff/avatars/barb.webp" />);
+    const header = screen.getByTestId("message-m4");
+    expect(header.querySelector("img")).toBeNull();
+    expect(header.querySelector(".thread-avatar")).toHaveTextContent("★");
   });
 });
