@@ -97,6 +97,8 @@ def test_explicit_end_event_yields_ended_even_if_recent(store):
         ("staff_run", "failed"),
         ("coordination", "presence_release"),
         ("checkin", "done"),
+        ("recorder", "session_end"),
+        ("recorder", "exit"),
     ],
 )
 def test_documented_terminal_kinds_per_source_end_the_session(store, source, terminal_kind):
