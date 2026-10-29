@@ -111,7 +111,7 @@ def test_real_pty_preserves_interactivity_tty_and_exit_code() -> None:
 
 def test_dbc_rejects_unsupported_cli_and_corrupt_spool(tmp_path: Path) -> None:
     with pytest.raises(FleetArgumentError, match="unsupported CLI"):
-        run_recorded_cli(["bash", "-c", "echo no"], enabled=True)
+        run_recorded_cli(["unsupported-cli", "--flag"], enabled=True)
     corrupt = tmp_path / "corrupt.json"
     corrupt.write_text("{not-json", encoding="utf-8")
     with pytest.raises(FleetArgumentError, match="spool"):
