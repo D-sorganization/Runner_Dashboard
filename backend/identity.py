@@ -449,9 +449,8 @@ FLEET_PEER_SCOPES = frozenset(
 )
 LOOPBACK_SCOPES = frozenset(
     (
-        "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write staff.approve "
-        "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain fleet.read "
-        "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write "
+        "staff.read staff.chat staff.holds.write "
+        "fleet.read coordination.write priorities.write proposals.write "
         "memory.read activity.read activity.write"
     ).split()
 )
