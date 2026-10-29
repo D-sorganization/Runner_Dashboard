@@ -174,7 +174,8 @@ def test_holds_seed_from_roles_persist_and_replace(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         holds.replace([{"id": "x", "text": "a"}, {"id": "x", "text": "b"}])
     path.write_text("{not json", encoding="utf-8")
-    assert holds.load() == []
+    corrupt_loaded = holds.load()
+    assert len(corrupt_loaded) == 1 and corrupt_loaded[0].id == holds_mod.FAIL_CLOSED_HOLD_ID
 
 
 @pytest.mark.unit
@@ -653,6 +654,7 @@ def test_schedule_route_reports_roles(client: TestClient, monkeypatch: pytest.Mo
 @pytest.mark.unit
 def test_start_scheduler_respects_env_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     from routers import staff_schedule as schedule_router  # noqa: PLC0415
+    from staff import reconcile as reconcile_mod  # noqa: PLC0415
 
     started: list[bool] = []
 
@@ -660,12 +662,17 @@ def test_start_scheduler_respects_env_gate(monkeypatch: pytest.MonkeyPatch) -> N
         def start(self) -> None:
             started.append(True)
 
+    monkeypatch.setattr(reconcile_mod, "reconcile_orphaned_runs", lambda *_a, **_k: [])
     monkeypatch.setattr(schedule_router, "get_scheduler", lambda: _S())
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "false")
     schedule_router.start_scheduler()
+    if schedule_router._bootstrap_thread is not None:
+        schedule_router._bootstrap_thread.join(timeout=2)
     assert started == []
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "1")
     schedule_router.start_scheduler()
+    if schedule_router._bootstrap_thread is not None:
+        schedule_router._bootstrap_thread.join(timeout=2)
     assert started == [True]
 
 
