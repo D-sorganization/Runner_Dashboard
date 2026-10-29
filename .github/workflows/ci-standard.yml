@@ -905,25 +905,37 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     uses: ./.github/workflows/frontend-tests.yml
-    if: github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true'
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
     needs: [changes]
 
-  ci-secrets:
+  secrets-audit:
     name: CI Secrets
     uses: ./.github/workflows/ci-secrets.yml
-    if: github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true'
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
     needs: [changes]
 
   api-contract-regeneration:
     name: API Contract Regeneration
     uses: ./.github/workflows/api-contract-regeneration.yml
-    if: github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true'
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
     needs: [changes]
 
   docker-build:
     name: Docker Build & Trivy Scan
     uses: ./.github/workflows/docker-build.yml
-    if: github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true'
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
     needs: [changes]
 
   # Required branch-protection context for `main` (org ruleset
@@ -945,7 +957,7 @@ jobs:
         tests-required,
         security-scan,
         frontend-tests,
-        ci-secrets,
+        secrets-audit,
         api-contract-regeneration,
         docker-build,
       ]
@@ -969,7 +981,7 @@ jobs:
           RESULT_TESTS: ${{ needs.tests-required.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
           RESULT_FRONTEND: ${{ needs.frontend-tests.result }}
-          RESULT_SECRETS: ${{ needs.ci-secrets.result }}
+          RESULT_SECRETS: ${{ needs.secrets-audit.result }}
           RESULT_API_CONTRACT: ${{ needs.api-contract-regeneration.result }}
           RESULT_DOCKER: ${{ needs.docker-build.result }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
@@ -1016,7 +1028,7 @@ jobs:
             echo "::error::ci-health-check reported '$HEALTH', expected 'success'."
             failed=1
           fi
-          for pair in "lint=$RESULT_LINT" "tests=$RESULT_TESTS" "security-scan=$RESULT_SECURITY" "frontend-tests=$RESULT_FRONTEND" "ci-secrets=$RESULT_SECRETS" "api-contract-regeneration=$RESULT_API_CONTRACT" "docker-build=$RESULT_DOCKER"; do
+          for pair in "lint=$RESULT_LINT" "tests=$RESULT_TESTS" "security-scan=$RESULT_SECURITY" "frontend-tests=$RESULT_FRONTEND" "secrets-audit=$RESULT_SECRETS" "api-contract-regeneration=$RESULT_API_CONTRACT" "docker-build=$RESULT_DOCKER"; do
             job="${pair%%=*}"
             result="${pair#*=}"
             echo "$job: $result"
@@ -1046,7 +1058,7 @@ jobs:
             # (docs-only PR, post-merge push); tests-required always runs and
             # encodes that rule itself.
             if [ "$result" = "skipped" ] && [ "$TIER" != "full" ]; then
-              if [ "$job" = "frontend-tests" ] || [ "$job" = "ci-secrets" ] || [ "$job" = "api-contract-regeneration" ] || [ "$job" = "docker-build" ]; then
+              if [ "$job" = "frontend-tests" ] || [ "$job" = "secrets-audit" ] || [ "$job" = "api-contract-regeneration" ] || [ "$job" = "docker-build" ]; then
                 echo "::notice::$job skipped: companion workflows run in their own lanes on PR tier."
                 continue
               fi

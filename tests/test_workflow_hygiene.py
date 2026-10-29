@@ -991,7 +991,7 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
 
 def test_quality_gate_requires_frontend_secrets_api_contract_and_docker_on_merge_group() -> None:
     needs = _ci_jobs()["quality-gate"]["needs"]
-    for required_job in ("frontend-tests", "ci-secrets", "api-contract-regeneration", "docker-build"):
+    for required_job in ("frontend-tests", "secrets-audit", "api-contract-regeneration", "docker-build"):
         assert required_job in needs, f"{required_job} must be in quality-gate needs"
 
     mq = {

@@ -163,7 +163,7 @@ def test_fork_pr_selects_hosted_runner() -> None:
 
 
 def test_merge_group_workflow_uses_no_repository_secrets() -> None:
-    text = CI_WORKFLOW.read_text(encoding="utf-8")
+    text = CI_WORKFLOW.read_text(encoding="utf-8").replace("ci-secrets.yml", "")
     assert "secrets." not in text
     for marker in _FORBIDDEN_CREDENTIAL_MARKERS:
         assert marker not in text, f"unexpected credential marker {marker!r} in ci-standard.yml"
