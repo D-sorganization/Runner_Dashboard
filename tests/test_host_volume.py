@@ -46,29 +46,29 @@ def test_resolve_runner_backing_drive_from_registry() -> None:
         "version": 1,
         "machines": [
             {
-                "name": "ControlTower",
+                "name": "node-a",
                 "storage": {"runner_backing_drive": "F:"},
                 "runner_pools": [
                     {
-                        "name": "ControlTower-SSD",
+                        "name": "node-a-ssd",
                         "storage": {"runner_backing_drive": "F:"},
                     }
                 ],
             },
             {
-                "name": "DeskComputer",
+                "name": "hub-a",
                 "storage": {"runner_backing_drive": "D:"},
             },
             {
-                "name": "OGLaptop",
+                "name": "node-b",
                 "storage": {"runner_backing_drive": "C:"},
             },
         ],
     }
-    assert resolve_runner_backing_drive(machine_name="ControlTower", registry=fake_registry) == "F:"
-    assert resolve_runner_backing_drive(pool_name="ControlTower-SSD", registry=fake_registry) == "F:"
-    assert resolve_runner_backing_drive(machine_name="DeskComputer", registry=fake_registry) == "D:"
-    assert resolve_runner_backing_drive(machine_name="OGLaptop", registry=fake_registry) == "C:"
+    assert resolve_runner_backing_drive(machine_name="node-a", registry=fake_registry) == "F:"
+    assert resolve_runner_backing_drive(pool_name="node-a-ssd", registry=fake_registry) == "F:"
+    assert resolve_runner_backing_drive(machine_name="hub-a", registry=fake_registry) == "D:"
+    assert resolve_runner_backing_drive(machine_name="node-b", registry=fake_registry) == "C:"
 
 
 def test_resolve_runner_backing_drive_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -249,14 +249,14 @@ def test_machine_registry_preserves_runner_backing_drive(tmp_path: Path) -> None
         "version": 1,
         "machines": [
             {
-                "name": "ControlTower",
+                "name": "node-a",
                 "storage": {"runner_backing_drive": "F:"},
                 "runner_pools": [
-                    {"name": "ControlTower-Runner", "storage": {"runner_backing_drive": "F:"}},
+                    {"name": "node-a-runner", "storage": {"runner_backing_drive": "F:"}},
                 ],
             },
-            {"name": "OGLaptop", "storage": {"runner_backing_drive": "C:"}},
-            {"name": "DeskComputer", "storage": {"runner_backing_drive": "D:"}},
+            {"name": "node-b", "storage": {"runner_backing_drive": "C:"}},
+            {"name": "hub-a", "storage": {"runner_backing_drive": "D:"}},
         ],
     }
     registry_path = tmp_path / "registry.json"
@@ -265,20 +265,20 @@ def test_machine_registry_preserves_runner_backing_drive(tmp_path: Path) -> None
         reg = load_machine_registry(path=registry_path)
     machines = {m["name"]: m for m in reg.get("machines", [])}
 
-    assert "ControlTower" in machines
-    assert "OGLaptop" in machines
-    assert "DeskComputer" in machines
+    assert "node-a" in machines
+    assert "node-b" in machines
+    assert "hub-a" in machines
 
-    # ControlTower storage and pool
-    assert machines["ControlTower"]["storage"].get("runner_backing_drive") == "F:"
-    ct_pools = {p["name"]: p for p in machines["ControlTower"].get("runner_pools", [])}
-    active_pool = ct_pools.get("ControlTower-Runner") or ct_pools.get("ControlTower-SSD")
+    # node-a storage and pool
+    assert machines["node-a"]["storage"].get("runner_backing_drive") == "F:"
+    ct_pools = {p["name"]: p for p in machines["node-a"].get("runner_pools", [])}
+    active_pool = ct_pools.get("node-a-runner") or ct_pools.get("node-a-ssd")
     assert active_pool is not None
     assert active_pool["storage"].get("runner_backing_drive") == "F:"
 
-    # OGLaptop and DeskComputer storage
-    assert machines["OGLaptop"]["storage"].get("runner_backing_drive") == "C:"
-    assert machines["DeskComputer"]["storage"].get("runner_backing_drive") == "D:"
+    # node-b and hub-a storage
+    assert machines["node-b"]["storage"].get("runner_backing_drive") == "C:"
+    assert machines["hub-a"]["storage"].get("runner_backing_drive") == "D:"
 
 
 def test_resource_offline_reason_flags_host_volume_critical() -> None:

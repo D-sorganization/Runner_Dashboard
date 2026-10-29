@@ -674,16 +674,16 @@ def test_leader_lease_prefers_primary_and_expires_to_failover(
     sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     s, _, clock = sched
-    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "DeskComputer,OGLaptop")
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "hub-a,node-b")
     t0 = _la(2026, 9, 22, 22, 0, 0)
-    desk = s.acquire_leader_lease("DeskComputer", now=t0, ttl_seconds=30)
-    assert desk["granted"] is True and desk["holder"] == "DeskComputer"
-    blocked = s.acquire_leader_lease("OGLaptop", now=t0 + timedelta(seconds=1), ttl_seconds=30)
-    assert blocked["granted"] is False and blocked["holder"] == "DeskComputer"
-    takeover = s.acquire_leader_lease("OGLaptop", now=t0 + timedelta(seconds=31), ttl_seconds=30)
-    assert takeover["granted"] is True and takeover["holder"] == "OGLaptop"
-    preempt = s.acquire_leader_lease("DeskComputer", now=t0 + timedelta(seconds=32), ttl_seconds=30)
-    assert preempt["granted"] is True and preempt["holder"] == "DeskComputer"
+    desk = s.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
+    assert desk["granted"] is True and desk["holder"] == "hub-a"
+    blocked = s.acquire_leader_lease("node-b", now=t0 + timedelta(seconds=1), ttl_seconds=30)
+    assert blocked["granted"] is False and blocked["holder"] == "hub-a"
+    takeover = s.acquire_leader_lease("node-b", now=t0 + timedelta(seconds=31), ttl_seconds=30)
+    assert takeover["granted"] is True and takeover["holder"] == "node-b"
+    preempt = s.acquire_leader_lease("hub-a", now=t0 + timedelta(seconds=32), ttl_seconds=30)
+    assert preempt["granted"] is True and preempt["holder"] == "hub-a"
 
 
 @pytest.mark.unit
@@ -697,13 +697,13 @@ def test_leader_lease_denies_portable_machine_even_in_chain(
     from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
 
     s, _, _ = sched
-    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "Brick")
-    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "Brick,DeskComputer")
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "node-c")
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "node-c,hub-a")
     t0 = _la(2026, 9, 22, 22, 0, 0)
-    denied = s.acquire_leader_lease("Brick", now=t0, ttl_seconds=30)
+    denied = s.acquire_leader_lease("node-c", now=t0, ttl_seconds=30)
     assert denied["granted"] is False and denied["holder"] == ""
-    granted = s.acquire_leader_lease("DeskComputer", now=t0, ttl_seconds=30)
-    assert granted["granted"] is True and granted["holder"] == "DeskComputer"
+    granted = s.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
+    assert granted["granted"] is True and granted["holder"] == "hub-a"
 
 
 @pytest.mark.unit
@@ -712,7 +712,7 @@ def test_scheduler_tick_never_fires_on_portable_machine(tmp_path: Path, monkeypa
     disabled entirely (no ``STAFF_SCHEDULER_LEADER_CHAIN``)."""
     from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
 
-    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "Brick")
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "node-c")
     store = store_mod.RunStore(tmp_path / "runs.sqlite3")
     roles = {
         "maintenance": roles_mod.parse_role(
@@ -726,7 +726,7 @@ def test_scheduler_tick_never_fires_on_portable_machine(tmp_path: Path, monkeypa
         )
     }
     runner = _FakeRunner(store, roles)
-    runner.machine = "Brick"
+    runner.machine = "node-c"
     clock = {"now": _la(2026, 9, 22, 22, 0, 0)}
     holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
     holds.replace([])
@@ -754,7 +754,7 @@ def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monke
         )
     }
     runner = _FakeRunner(store, roles)
-    runner.machine = "OGLaptop"
+    runner.machine = "node-b"
     clock = {"now": _la(2026, 9, 22, 21, 59, 50)}
     holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
     holds.replace([])
@@ -762,8 +762,8 @@ def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monke
     state_file = tmp_path / "shared-state.json"
     s = scheduler_mod.StaffScheduler(runner, holds, guard, clock=lambda: clock["now"], state_file=state_file)  # type: ignore[arg-type]
     assert s.tick() == []  # anchor cursor before the due slot while lease logic is disabled
-    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "DeskComputer,OGLaptop")
-    s.acquire_leader_lease("DeskComputer", now=_la(2026, 9, 22, 22, 0, 0), ttl_seconds=20)
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "hub-a,node-b")
+    s.acquire_leader_lease("hub-a", now=_la(2026, 9, 22, 22, 0, 0), ttl_seconds=20)
     clock["now"] = _la(2026, 9, 22, 22, 0, 5)
     assert s.tick() == []
     assert runner.submitted == []
