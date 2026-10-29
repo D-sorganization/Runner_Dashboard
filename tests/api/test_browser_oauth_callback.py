@@ -33,7 +33,7 @@ def flow(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Mock, dict[str, s
         "GITHUB_OAUTH_CALLBACK_URL": PRIVATE + "/api/auth/callback",
         "SESSION_SECRET": "b" * 32,
         "DASHBOARD_TLS": "1",
-        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": f"{PUBLIC},{OTHER}",
+        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": f"{PRIVATE},{PUBLIC},{OTHER}",
     }
     monkeypatch.setenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN", PUBLIC)
     monkeypatch.setenv("DASHBOARD_OWNER_GITHUB_ID", "12345")
