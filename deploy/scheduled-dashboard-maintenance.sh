@@ -73,7 +73,7 @@ Scheduled-agent example:
   bash runner-dashboard/deploy/scheduled-dashboard-maintenance.sh \
     --role hub \
     --runners 8 \
-    --fleet-nodes "oglaptop=http://100.125.64.108:8321,deskcomputer=http://100.122.254.109:8321"
+    --fleet-nodes "node-b=http://100.64.254.11:8321,hub-a=http://100.64.254.13:8321"
 EOF
 }
 

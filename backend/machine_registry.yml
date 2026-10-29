@@ -1,8 +1,0 @@
-# Runner Dashboard machine registry (public repo).
-#
-# The public repository ships no live fleet topology. Real host data lives
-# outside git: copy it to ~/.config/runner-dashboard/machine_registry.yml or
-# set MACHINE_REGISTRY_PATH. See docs/runbooks/local-fleet-topology.md and
-# backend/machine_registry.example.yml for the full schema.
-version: 1
-machines: []

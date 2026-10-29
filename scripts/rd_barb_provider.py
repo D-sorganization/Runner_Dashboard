@@ -163,6 +163,16 @@ def main(
     notice = switch_notice(decision, failure_class=args.failure, run_id=args.run_id, role=role)
     if notice is not None:
         notify(notice)
+    if decision.provider:
+        from staff.rd_barb_provider_state import record_active_provider  # noqa: PLC0415
+
+        record_active_provider(
+            role,
+            decision.provider,
+            model=decision.model,
+            failure_class=args.failure,
+            previous=decision.previous,
+        )
     print(json.dumps(decision.__dict__, sort_keys=True))
     return 0 if decision.provider else 1
 

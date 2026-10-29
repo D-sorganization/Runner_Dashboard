@@ -63,12 +63,13 @@ def test_preflight_allows_override_env_in_secrets(tmp_path: Path) -> None:
         "HUB_URL=http://node-a.fleet-example.ts.net:8321\nHUB_URL_REGISTRY_OVERRIDE=1\n",
         encoding="utf-8",
     )
+    repo_root = _repo_root_with_synthetic_registry(tmp_path, _SYNTHETIC_HUB_REGISTRY)
     result = subprocess.run(
         [
             sys.executable,
             str(PREFLIGHT),
             "--repo-root",
-            str(REPO_ROOT),
+            str(repo_root),
             "--secrets-file",
             str(secrets),
         ],
