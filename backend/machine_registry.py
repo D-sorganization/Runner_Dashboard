@@ -42,8 +42,8 @@ def _registry_path_ref(value: str | Path) -> Path:
 def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
     """Pick the registry file and report which source supplied it.
 
-    Order: explicit ``path`` argument, then ``$MACHINE_REGISTRY_PATH``, then the
-    local operator config, then the shipped default beside this module.
+    Order: explicit ``path``, ``$MACHINE_REGISTRY_PATH``, local operator config,
+    on-disk deploy copy beside this module, then the canonical local path (missing).
     """
     if path is not None:
         return Path(path), "explicit"
@@ -52,7 +52,9 @@ def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
         return Path(env_path), "env"
     if LOCAL_REGISTRY_PATH.is_file():
         return LOCAL_REGISTRY_PATH, "local"
-    return DEFAULT_REGISTRY_PATH, "shipped"
+    if DEPLOYED_REGISTRY_PATH.is_file():
+        return DEPLOYED_REGISTRY_PATH, "deployed"
+    return LOCAL_REGISTRY_PATH, "local"
 
 
 _registry_empty = False
@@ -482,7 +484,12 @@ def _load_raw_registry(path: Path) -> dict[str, Any]:
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise ValueError("Machine registry must be a mapping at the top level")
+        log.warning(
+            "Machine registry at %s is not a mapping (got %s); treating as empty",
+            path,
+            type(data).__name__,
+        )
+        return {}
     return data
 
 
