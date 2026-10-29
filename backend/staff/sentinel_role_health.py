@@ -215,7 +215,7 @@ class SentinelRoleHealthMonitor:
         if not roles_norm:
             raise ValueError("tracked_roles must contain at least one role")
         reachable = bool(probe.get("reachable"))
-        probe_roles = probe.get("roles") if isinstance(probe.get("roles"), Mapping) else {}
+        probe_roles: Mapping[str, Any] = r if isinstance(r := probe.get("roles"), Mapping) else {}
 
         with self._lock:
             state = self._read()
