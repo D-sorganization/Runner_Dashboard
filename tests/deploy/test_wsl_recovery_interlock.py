@@ -92,7 +92,7 @@ def test_record_wsl_teardown_audit(tmp_path: Path) -> None:
         allowed=False,
         override_used=False,
         log_dir=log_dir,
-        extra={"distro": "Ubuntu-22.04", "host": "oglaptop"},
+        extra={"distro": "Ubuntu-22.04", "host": "node-b"},
     )
     assert entry["initiator"] == "test_suite"
     assert entry["allowed"] is False
@@ -103,7 +103,7 @@ def test_record_wsl_teardown_audit(tmp_path: Path) -> None:
     lines = [json.loads(line) for line in audit_file.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 1
     assert lines[0]["active_workers"] == 3
-    assert lines[0]["host"] == "oglaptop"
+    assert lines[0]["host"] == "node-b"
 
 
 def test_get_wsl_lifecycle_diagnostics(tmp_path: Path) -> None:

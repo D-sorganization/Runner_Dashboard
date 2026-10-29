@@ -1,4 +1,4 @@
-"""Qualified OGLaptop GitHub inventory diagnostics (#1838)."""
+"""Qualified node-b GitHub inventory diagnostics (#1838)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,15 @@ from pathlib import Path
 
 import pytest
 
-MODULE_PATH = Path(__file__).resolve().parents[2] / "deploy" / "oglaptop_github_inventory.py"
-spec = importlib.util.spec_from_file_location("oglaptop_github_inventory", MODULE_PATH)
+# deploy/ source files stay untouched until the #2657 deploy hold lifts.
+MODULE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "deploy"
+    / (
+        "oglaptop_github_inventory.py"  # pragma: allowlist private-topology
+    )
+)
+spec = importlib.util.spec_from_file_location("node_b_github_inventory", MODULE_PATH)
 assert spec is not None and spec.loader is not None
 inventory = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = inventory
