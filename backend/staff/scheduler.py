@@ -55,6 +55,7 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
+from staff.scheduler_startup import mark_scheduler_started, skip_due_slot_during_startup
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.scheduler")
@@ -114,6 +115,7 @@ class StaffScheduler:
             self._stop.clear()
             self._thread = threading.Thread(target=self._loop, name="staff-scheduler", daemon=True)
             self._thread.start()
+        mark_scheduler_started()
         log.info("staff scheduler started (tick %.0fs)", self.tick_seconds)
 
     def stop(self) -> None:
@@ -295,6 +297,7 @@ class StaffScheduler:
         decisions: list[dict[str, Any]] = []
         if not self._lease_allows_firing(now):
             return decisions
+        pending_fires: list[dict[str, Any]] = []
         with self._lock:
             for name, role in sorted(self.runner.roles().items()):
                 if not (role.schedule and role.dispatchable):
@@ -302,6 +305,9 @@ class StaffScheduler:
                 report = self.evaluate(role, now)
                 due = report["next_fire"]
                 if due is None or datetime.fromisoformat(due) > now:
+                    continue
+                if skip_due_slot_during_startup(name):
+                    log.info("staff scheduler: %s slot %s deferred — hub startup grace", name, due)
                     continue
                 blocker = self._blocker(report)
                 entry = self._load_state().setdefault(name, {})
@@ -339,47 +345,74 @@ class StaffScheduler:
                     log.info("staff scheduler: %s slot %s skipped - %s (%s)", name, due, reason, excluded.id)
                     decisions.append({"role": name, "slot": due, "fired": False, "reason": reason})
                     continue
-                decision = self._decider(role, repo)
-                prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
-                if issue_number:
-                    prompt = f"{prompt} Target issue #{issue_number} for this run."
-                req = RunRequest(
-                    role=name,
-                    repo=repo,
-                    issue=issue_number,
-                    prompt=prompt,
-                    requested_by=REQUESTED_BY,
-                    consolidation=decision,
+                pending_fires.append(
+                    {
+                        "name": name,
+                        "role": role,
+                        "due": due,
+                        "repo": repo,
+                        "issue_number": issue_number,
+                    }
                 )
-                claimed = claim_guard.scheduler_blocker(repo, req.issue, req.pr, name) if repo else ""
-                if claimed:  # fail closed: a claimed (or unreadable) target is skipped with the reason recorded (#2562)
-                    entry["last_reason"] = f"skipped {due}: {claimed}"
-                    log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
-                    decisions.append({"role": name, "slot": due, "fired": False, "reason": claimed})
-                    continue
-                try:
-                    rec = self.runner.submit(req)
-                except ValueError as exc:
-                    entry["last_reason"] = f"skipped {due}: {exc}"
-                    log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
-                    decisions.append({"role": name, "slot": due, "fired": False, "reason": str(exc)})
-                    continue
-                entry["last_fired"] = now.isoformat()
-                entry["last_reason"] = f"fired {due} as {rec.id}"
-                log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
-                fired: dict[str, Any] = {"role": name, "slot": due, "fired": True, "run_id": rec.id}
-                if decision:
-                    fired["consolidation"] = decision
-                decisions.append(fired)
             if decisions:
                 self._save_state()
+        for pending in pending_fires:
+            decisions.append(self._fire_pending_slot(now, **pending))
+        if pending_fires:
+            with self._lock:
+                self._save_state()
         return decisions
+
+    def _fire_pending_slot(
+        self,
+        now: datetime,
+        *,
+        name: str,
+        role: RoleSpec,
+        due: str,
+        repo: str | None,
+        issue_number: int | None,
+    ) -> dict[str, Any]:
+        """Run slow consolidation/claim/submit work without holding the scheduler lock (#3526)."""
+        decision = self._decider(role, repo or "")
+        prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
+        if issue_number:
+            prompt = f"{prompt} Target issue #{issue_number} for this run."
+        req = RunRequest(
+            role=name,
+            repo=repo or "",
+            issue=issue_number,
+            prompt=prompt,
+            requested_by=REQUESTED_BY,
+            consolidation=decision,
+        )
+        claimed = claim_guard.scheduler_blocker(repo, req.issue, req.pr, name) if repo else ""
+        with self._lock:
+            entry = self._load_state().setdefault(name, {})
+            if claimed:
+                entry["last_reason"] = f"skipped {due}: {claimed}"
+                log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
+                return {"role": name, "slot": due, "fired": False, "reason": claimed}
+            try:
+                rec = self.runner.submit(req)
+            except ValueError as exc:
+                entry["last_reason"] = f"skipped {due}: {exc}"
+                log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
+                return {"role": name, "slot": due, "fired": False, "reason": str(exc)}
+            entry["last_fired"] = now.isoformat()
+            entry["last_reason"] = f"fired {due} as {rec.id}"
+        log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
+        fired: dict[str, Any] = {"role": name, "slot": due, "fired": True, "run_id": rec.id}
+        if decision:
+            fired["consolidation"] = decision
+        return fired
 
     def status(self, now: datetime | None = None) -> list[dict[str, Any]]:
         """Per-role gate report for ``GET /api/staff/schedule`` (scheduled roles first)."""
         now = now or self._clock()
         with self._lock:
-            reports = [self.evaluate(role, now) for _, role in sorted(self.runner.roles().items()) if role.dispatchable]
+            roles = [(n, r) for n, r in sorted(self.runner.roles().items()) if r.dispatchable]
+        reports = [self.evaluate(role, now) for _, role in roles]
         return sorted(reports, key=lambda r: (r["schedule"] is None, r["role"]))
 
 

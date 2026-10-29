@@ -241,8 +241,12 @@ def test_start_scheduler_invokes_reconciliation(temp_store: RunStore, monkeypatc
 
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "0")  # disable scheduler ticker, but verify reconcile runs
     start_scheduler()
-
-    assert temp_store.active_runs() == []
+    for _ in range(50):
+        if temp_store.get_run("run-sched-boot") and temp_store.get_run("run-sched-boot").status == "failed":
+            break
+        time.sleep(0.05)
+    else:
+        raise AssertionError("reconcile did not finish on background bootstrap thread")
     rec = temp_store.get_run("run-sched-boot")
     assert rec is not None
     assert rec.status == "failed"
