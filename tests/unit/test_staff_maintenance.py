@@ -191,3 +191,85 @@ def test_vacuum_sqlite_and_trim_worktrees_execution() -> None:
         res_trim = execute_maintenance("maintenance.trim_worktrees", {}, ctx)
         assert res_trim.success is True
         assert res_trim.result["trimmed_count"] == 2
+
+
+def test_every_wired_maintenance_action_executes_against_backend() -> None:
+    """Every maintenance action in MAINTENANCE_POLICY executes without raising NotWired (#3555)."""
+    import anyio
+
+    ctx = ActionContext(thread_id="th-3555", caller=TEST_CALLER)
+
+    fake_runners = {
+        "runners": [
+            {
+                "id": 101,
+                "name": "runner-1",
+                "status": "online",
+                "busy": False,
+                "labels": [{"name": "ci-workers"}],
+            },
+            {
+                "id": 102,
+                "name": "ghost-1",
+                "status": "offline",
+                "busy": False,
+                "labels": [],
+            },
+        ]
+    }
+    fake_io_pressure = {
+        "some": {"avg10": 1.25, "avg60": 0.8, "avg300": 0.4, "total": 1200.0},
+        "full": {"avg10": 0.5, "avg60": 0.2, "avg300": 0.1, "total": 400.0},
+    }
+
+    async def fake_gh_get(path: str) -> dict[str, Any]:
+        if path.endswith("/actions/runners"):
+            return fake_runners
+        return {"status": "completed", "conclusion": "cancelled", "run_attempt": 2}
+
+    async def fake_gh_req(method: str, path: str, **_kwargs: Any) -> dict[str, Any]:
+        return {"method": method, "path": path}
+
+    async def fake_svc(runner_num: int, cmd: str, timeout: int = 30) -> tuple[int, str, str]:
+        return (0, f"{cmd}-{runner_num}", "")
+
+    async def fake_purge(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        return {"stale_count": 1, "purge_candidate_count": 1, "cancelled_count": 1, "errors": [], "runs": []}
+
+    async def fake_fleet_ctrl(action: str) -> dict[str, Any]:
+        return {"results": [{"runner": 1, "action": action, "success": True}], "hostname": "desk"}
+
+    def _run_all() -> None:
+        for action_name, params in [
+            ("maintenance.runner_start", {"runner_name": "runner-1", "host": "desk"}),
+            ("maintenance.runner_stop", {"runner_name": "runner-1", "host": "desk"}),
+            ("maintenance.runner_restart", {"runner_name": "runner-1", "host": "desk"}),
+            ("maintenance.runner_drain", {"runner_name": "runner-1", "host": "desk"}),
+            ("maintenance.group_start", {"group_label": "ci-workers", "max_count": 3, "host": "desk"}),
+            ("maintenance.group_stop", {"group_label": "ci-workers", "max_count": 3, "host": "desk"}),
+            ("maintenance.fleet_control", {"action": "restart", "host": "desk"}),
+            ("maintenance.runner_remove", {"runner_name": "ghost-1", "host": "desk"}),
+            ("maintenance.queue_purge_stale", {"repo": "D-sorganization/Runner_Dashboard", "max_count": 5}),
+            ("maintenance.trim_worktrees", {}),
+            ("maintenance.diagnose", {"target": "runner-1", "host": "desk"}),
+        ]:
+            reset_maintenance_cooldowns()
+            res = execute_maintenance(action_name, params, ctx)
+            assert res.success is True, f"{action_name} failed: {res.error}"
+            assert res.failure_class is None
+            if action_name == "maintenance.diagnose":
+                assert res.result["io_pressure"] == fake_io_pressure
+
+    with (
+        patch("gh_client.get", side_effect=fake_gh_get),
+        patch("gh_client._request", side_effect=fake_gh_req),
+        patch("runners.service_control.run_runner_svc", side_effect=fake_svc),
+        patch("queue_cleanup.purge_stale_runs", side_effect=fake_purge),
+        patch("routers.fleet._fleet_control_local", side_effect=fake_fleet_ctrl),
+        patch(
+            "staff.workspace.sweep_stale_worktrees",
+            return_value={"removed": 1, "preserved_unpushed": 0, "skipped_active": 0},
+        ),
+        patch("system_utils.get_io_pressure_snapshot", return_value=fake_io_pressure),
+    ):
+        anyio.run(anyio.to_thread.run_sync, _run_all)

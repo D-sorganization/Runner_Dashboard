@@ -160,5 +160,41 @@ describe("FleetMachinesSection", () => {
     // hub-a: 1 runner bound, 0 online -> "0 / 1" (never the org-wide 21)
     expect(deskComputerRow!.querySelectorAll("td")[3].textContent).toBe("0 / 1");
   });
+
+  it("renders io_pressure in the machine row summary and expanded telemetry details (#3555)", () => {
+    const machinesWithIo = [
+      {
+        ...mockMachines[0],
+        system: {
+          ...mockMachines[0].system,
+          io_pressure: {
+            some: { avg10: 3.4, avg60: 2.1, avg300: 1.0, total: 9500 },
+            full: { avg10: 1.2, avg60: 0.7, avg300: 0.3, total: 3100 },
+          },
+        },
+      },
+    ];
+
+    render(
+      <FleetMachinesSection
+        machines={machinesWithIo}
+        runners={mockRunners}
+        loading={false}
+        error={null}
+        onRetry={vi.fn()}
+      />
+    );
+
+    const nodeRow = screen.getByText("node-a").closest("tr");
+    expect(nodeRow).not.toBeNull();
+    expect(nodeRow!.querySelectorAll("td")[4].textContent).toContain("IO 1.2%");
+
+    const expandBtn = screen.getByRole("button", { name: /expand node-a telemetry/i });
+    fireEvent.click(expandBtn);
+
+    expect(screen.getByTestId("io-pressure-node-a")).toHaveTextContent(
+      "IO Pressure (PSI): full 1.2% · some 3.4%"
+    );
+  });
 });
 
