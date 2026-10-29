@@ -40,8 +40,70 @@ log = logging.getLogger("dashboard.staff.holds")
 
 HOLDS_FILE = "staff_holds.json"
 MAX_TEXT = 500
+FAIL_CLOSED_HOLD_ID = "hold-fail-closed"
 HoldKind = Literal["guardrail", "schedule"]
 HOLD_KINDS: frozenset[str] = frozenset({"guardrail", "schedule"})
+
+_metrics_lock = threading.Lock()
+_holds_load_errors_total = 0
+_corrupt_paths: set[str] = set()
+
+
+def _record_load_error(path: Path) -> None:
+    global _holds_load_errors_total  # noqa: PLW0603
+    with _metrics_lock:
+        _holds_load_errors_total += 1
+        _corrupt_paths.add(str(path))
+
+
+def _clear_corrupt_path(path: Path) -> None:
+    with _metrics_lock:
+        _corrupt_paths.discard(str(path))
+
+
+def holds_metrics_snapshot() -> dict[str, int]:
+    """Fail-closed load error counter and corrupt-file gauge (#3541)."""
+    with _metrics_lock:
+        return {
+            "load_errors_total": _holds_load_errors_total,
+            "corrupt": int(bool(_corrupt_paths)),
+        }
+
+
+def reset_holds_metrics() -> None:
+    """Reset holds error metrics (for isolated unit tests)."""
+    global _holds_load_errors_total  # noqa: PLW0603
+    with _metrics_lock:
+        _holds_load_errors_total = 0
+        _corrupt_paths.clear()
+
+
+def _extract_hold_items(raw: Any) -> list[dict[str, Any]]:
+    if isinstance(raw, dict):
+        if "holds" not in raw or not isinstance(raw["holds"], list):
+            raise ValueError("holds file object must contain a 'holds' list")
+        raw_items = raw["holds"]
+    elif isinstance(raw, list):
+        raw_items = raw
+    else:
+        raise ValueError("holds file root must be a JSON object or list")
+    if not all(isinstance(item, dict) for item in raw_items):
+        raise ValueError("each hold entry must be a JSON object")
+    return list(raw_items)
+
+
+def _fail_closed_hold(path: Path, exc: BaseException) -> Hold:
+    reason = str(exc).strip() or type(exc).__name__
+    msg = f"holds file {path.name} corrupt, unreadable or schema-invalid ({reason}); failing closed"
+    if len(msg) > MAX_TEXT:
+        msg = msg[: MAX_TEXT - 3] + "..."
+    return Hold(
+        id=FAIL_CLOSED_HOLD_ID,
+        text=msg,
+        applies_to=["*"],
+        active=True,
+        kind="schedule",
+    )
 
 
 def holds_path() -> Path:
@@ -77,19 +139,35 @@ class Hold:
         hold persisted before #1726, or one created by a caller that leaves
         the field unset); an explicit ``kind`` in ``data`` always wins.
         """
-        text = str(data.get("text", "")).strip()
+        if not isinstance(data, dict):
+            raise ValueError("hold entry must be a JSON object")
+        raw_text = data.get("text", "")
+        if not isinstance(raw_text, str):
+            raise ValueError("hold text must be a string")
+        text = raw_text.strip()
         if not text:
             raise ValueError("hold text is required")
         if len(text) > MAX_TEXT:
             raise ValueError(f"hold text longer than {MAX_TEXT} characters")
-        raw_targets = data.get("applies_to") or ["*"]
-        if not isinstance(raw_targets, list) or not all(isinstance(t, str) and t.strip() for t in raw_targets):
+        raw_targets = data.get("applies_to") if "applies_to" in data else ["*"]
+        if raw_targets is None:
+            raw_targets = ["*"]
+        if (
+            not isinstance(raw_targets, list)
+            or not raw_targets
+            or not all(isinstance(t, str) and t.strip() for t in raw_targets)
+        ):
             raise ValueError("applies_to must be a list of non-empty strings")
+        raw_active = data.get("active", True)
+        if not isinstance(raw_active, bool):
+            raise ValueError("active must be a boolean")
         raw_kind = data.get("kind")
         if raw_kind is None:
             kind: HoldKind = default_kind
         else:
-            kind = str(raw_kind).strip().lower()  # type: ignore[assignment]
+            if not isinstance(raw_kind, str):
+                raise ValueError(f"kind must be 'guardrail' or 'schedule', got {raw_kind!r}")
+            kind = raw_kind.strip().lower()  # type: ignore[assignment]
             if kind not in HOLD_KINDS:
                 raise ValueError(f"kind must be 'guardrail' or 'schedule', got {raw_kind!r}")
         hold = cls(
@@ -98,7 +176,7 @@ class Hold:
             set_on=str(data.get("set_on") or _now()),
             lifted_when=str(data.get("lifted_when") or ""),
             applies_to=[t.strip() for t in raw_targets],
-            active=bool(data.get("active", True)),
+            active=raw_active,
             kind=kind,
         )
         assert hold.kind in HOLD_KINDS  # noqa: S101 — DbC boundary check (#1726)
@@ -172,33 +250,47 @@ class HoldsList:
         """
         with self._lock:
             path = self.path
-            if not path.exists():
+            try:
+                exists = path.exists()
+            except OSError as exc:
+                _record_load_error(path)
+                log.error("staff: holds file %s unreadable (%s); failing closed", path, exc)
+                return [_fail_closed_hold(path, exc)]
+            if not exists:
                 seeded = seed_from_roles(self._roles_loader())
                 self._write(seeded)
+                _clear_corrupt_path(path)
                 return seeded
             try:
                 raw = json.loads(path.read_text(encoding="utf-8"))
-                items = [h for h in (raw.get("holds", []) if isinstance(raw, dict) else raw) if isinstance(h, dict)]
-            except (OSError, ValueError) as exc:
-                log.warning("staff: holds file %s unreadable (%s); treating as empty", path, exc)
-                return []
-            legacy = [h for h in items if "kind" not in h]
-            seed_keys: frozenset[str] = frozenset()
-            if legacy:
-                try:
-                    seeded = seed_from_roles(self._roles_loader())
-                    seed_keys = frozenset(_seed_key(h.text) for h in seeded)
-                except Exception as exc:  # noqa: BLE001 — migration lookup must never block a read
-                    log.warning("staff: holds guardrail-migration lookup unavailable: %s", exc)
-            holds = [
-                Hold.from_dict(
-                    h,
-                    default_kind=("guardrail" if _seed_key(str(h.get("text", ""))) in seed_keys else "schedule"),
-                )
-                for h in items
-            ]
+                items = _extract_hold_items(raw)
+                legacy = [h for h in items if "kind" not in h]
+                seed_keys: frozenset[str] = frozenset()
+                if legacy:
+                    try:
+                        seeded = seed_from_roles(self._roles_loader())
+                        seed_keys = frozenset(_seed_key(h.text) for h in seeded)
+                    except Exception as exc:  # noqa: BLE001 — migration lookup must never block a read
+                        log.warning("staff: holds guardrail-migration lookup unavailable: %s", exc)
+                holds = [
+                    Hold.from_dict(
+                        h,
+                        default_kind=("guardrail" if _seed_key(str(h.get("text", ""))) in seed_keys else "schedule"),
+                    )
+                    for h in items
+                ]
+                seen: set[str] = set()
+                for hold in holds:
+                    if hold.id in seen:
+                        raise ValueError(f"duplicate hold id {hold.id}")
+                    seen.add(hold.id)
+            except (OSError, ValueError, TypeError) as exc:
+                _record_load_error(path)
+                log.error("staff: holds file %s invalid or unreadable (%s); failing closed", path, exc)
+                return [_fail_closed_hold(path, exc)]
             if legacy:
                 self._write(holds)
+            _clear_corrupt_path(path)
             return holds
 
     def replace(self, items: list[dict[str, Any]]) -> list[Hold]:
@@ -211,6 +303,7 @@ class HoldsList:
             seen.add(hold.id)
         with self._lock:
             self._write(holds)
+            _clear_corrupt_path(self.path)
         return holds
 
     def blocking(self, role: str, repo: str = "") -> Hold | None:
