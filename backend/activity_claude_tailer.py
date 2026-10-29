@@ -301,7 +301,9 @@ class ClaudeSessionTailer:
             try:
                 raw_bytes = file_path.read_bytes()
             except OSError as exc:
-                self._logger.warning("%s session tailer could not read %s: %s", self.SESSION_PREFIX, file_path.name, exc)
+                self._logger.warning(
+                    "%s session tailer could not read %s: %s", self.SESSION_PREFIX, file_path.name, exc
+                )
                 continue
             cursor = 0 if len(raw_bytes) < offset else offset
 

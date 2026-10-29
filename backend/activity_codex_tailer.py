@@ -94,8 +94,7 @@ def is_codex_tailer_enabled(env: Mapping[str, str] | None = None) -> bool:
 def default_codex_session_roots(env: Mapping[str, str] | None = None) -> list[Path]:
     src = env if env is not None else os.environ
     explicit = (
-        src.get("RUNNER_DASHBOARD_CODEX_SESSION_DIRS", "").strip()
-        or src.get("STAFF_CODEX_SESSION_DIRS", "").strip()
+        src.get("RUNNER_DASHBOARD_CODEX_SESSION_DIRS", "").strip() or src.get("STAFF_CODEX_SESSION_DIRS", "").strip()
     )
     if explicit:
         return [Path(p).expanduser() for p in explicit.split(os.pathsep) if p.strip()]
