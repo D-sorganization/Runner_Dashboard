@@ -178,9 +178,7 @@ def _composite_guard_followed_by_repo_steps(workflow_path: Path) -> list[str]:
                 continue
             for later in steps[index + 1 :]:
                 if later.get("run") or str(later.get("uses", "")).startswith(_LOCAL_ACTION_PREFIX):
-                    violations.append(
-                        f"{workflow_path.name}::{job_id}::{step.get('name', _GUARD_ACTION)}"
-                    )
+                    violations.append(f"{workflow_path.name}::{job_id}::{step.get('name', _GUARD_ACTION)}")
                     break
     return violations
 
@@ -662,7 +660,7 @@ def test_ci_secrets_gitleaks_pr_range_and_full_history() -> None:
     """PR gitleaks scans base..head only; main push keeps full history."""
     text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" in text
-    assert "gitleaks\" detect" in text or '/gitleaks" detect' in text
+    assert 'gitleaks" detect' in text or '/gitleaks" detect' in text
     assert "--no-git" not in text
     assert "--log-opts" in text
     assert "pull_request.base.sha" in text
@@ -943,6 +941,10 @@ def _quality_gate(**env: str) -> int:
         "RESULT_LINT": "success",
         "RESULT_TESTS": "success",
         "RESULT_SECURITY": "success",
+        "RESULT_FRONTEND": "skipped",
+        "RESULT_SECRETS": "skipped",  # pragma: allowlist secret
+        "RESULT_API_CONTRACT": "skipped",
+        "RESULT_DOCKER": "skipped",
         "GITHUB_EVENT_NAME": "pull_request",
     }
     code, _ = _run_step(_ci_step("quality-gate", name="Require every gated job to succeed"), {**defaults, **env})
@@ -970,7 +972,14 @@ def test_quality_gate_requires_security_scan_on_pr_python_lane() -> None:
 
 
 def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
-    full = {"TIER": "full", "FULL_SUITE": "true"}
+    full = {
+        "TIER": "full",
+        "FULL_SUITE": "true",
+        "RESULT_FRONTEND": "success",
+        "RESULT_SECRETS": "success",  # pragma: allowlist secret
+        "RESULT_API_CONTRACT": "success",
+        "RESULT_DOCKER": "success",
+    }
     assert _quality_gate(**full, RESULT_SECURITY="success") == 0
     assert _quality_gate(**full, RESULT_SECURITY="skipped") == 1
     assert _quality_gate(**full, RESULT_SECURITY="failure") == 1
@@ -983,8 +992,33 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
         "GITHUB_EVENT_NAME": "merge_group",
     }
     assert _quality_gate(**mq, RESULT_SECURITY="skipped") == 0
-    assert _quality_gate(**mq, RESULT_LINT="skipped") == 1
-    assert _quality_gate(**mq, RESULT_TESTS="cancelled") == 1
+    assert _quality_gate(**dict(mq, RESULT_LINT="skipped")) == 1
+    assert _quality_gate(**dict(mq, RESULT_TESTS="cancelled")) == 1
+
+
+def test_quality_gate_requires_frontend_secrets_api_contract_and_docker_on_merge_group() -> None:
+    step = _ci_step("quality-gate", name="Require every gated job to succeed")
+    run = step["run"]
+    assert "verify_merge_group_companion_checks.py" in run, (
+        "quality-gate must invoke verify_merge_group_companion_checks.py on merge_group"
+    )
+    from scripts.ci.verify_merge_group_companion_checks import REQUIRED_COMPANION_CHECKS
+
+    for required_check in (
+        "frontend-required",
+        "detect-secrets (baseline diff)",
+        "api-contract-regeneration",
+        "docker-build-scan",
+    ):
+        assert required_check in REQUIRED_COMPANION_CHECKS
+
+
+def test_companion_gate_workflows_have_workflow_call_and_merge_group() -> None:
+    for workflow_name in ("frontend-tests.yml", "ci-secrets.yml", "api-contract-regeneration.yml", "docker-build.yml"):
+        data = _load_workflow(_WORKFLOWS_DIR / workflow_name)
+        triggers = _triggers(data)
+        assert "workflow_call" in triggers, f"{workflow_name} must support workflow_call"
+        assert "merge_group" in triggers, f"{workflow_name} must support merge_group"
 
 
 def test_quality_gate_passes_docs_only_pr_and_post_merge_push() -> None:
