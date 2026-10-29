@@ -27,6 +27,11 @@ _ALLOWED_PATHS: frozenset[str] = frozenset(
         # runtime to prove the publish guard's own secret scan works; no
         # real address is shipped.
         "scripts/publish_guard.py",
+        # #3482/#3085's migrate_issues tests feed literal fixture strings
+        # (an @gmail.com address, a 100.100.1.1 CGNAT IP) through
+        # publish_guard's own content-pattern rules on purpose, same as the
+        # publish_guard canary above; no real address/host is shipped.
+        "tests/test_migrate_issues.py",
     }
 )
 
