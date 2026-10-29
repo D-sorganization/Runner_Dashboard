@@ -45,10 +45,6 @@ class Cursor:
     last_run_at: float | None = None
 
 
-def _iso(ts: float) -> str:
-    return datetime.fromtimestamp(ts, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def load_cursor(path: Path) -> Cursor:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -198,7 +194,8 @@ def run_scan(
         alerts.append(notify(build_finding_alert(findings)))
 
     head = _run(["git", "-C", str(repo), "rev-parse", "HEAD"]).strip()
-    return Cursor(last_commit=head, last_item_at=_iso(now), last_run_at=now), alerts
+    stamp = datetime.fromtimestamp(now, tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return Cursor(last_commit=head, last_item_at=stamp, last_run_at=now), alerts
 
 
 def main(argv: Sequence[str] | None = None) -> int:
