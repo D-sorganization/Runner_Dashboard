@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import datetime as _dt_mod
 import sys
 from pathlib import Path
 
 import pytest
 
+if not hasattr(_dt_mod, "UTC"):
+    _dt_mod.UTC = _dt_mod.timezone.utc  # type: ignore[attr-defined]  # noqa: UP017
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from scripts import rd_barb_provider as rp  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_rd_barb_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(tmp_path))
 
 
 def test_default_is_claude_opus() -> None:
@@ -59,6 +68,7 @@ def test_custom_chain_from_config() -> None:
 def test_switch_notice_is_update_with_recommendation() -> None:
     d = rp.select({}, current="claude", failure_class="auth_expired")
     msg = rp.switch_notice(d, failure_class="auth_expired", run_id="r1")
+    assert msg is not None
     assert msg["kind"] == "update" and "codex" in msg["summary"]
     assert "Recommendation:" in msg["body"] and "claude" in msg["body"]
     assert msg["dedupe_key"].startswith("rd-barb-provider-")
@@ -67,6 +77,7 @@ def test_switch_notice_is_update_with_recommendation() -> None:
 def test_exhausted_notice_is_alert_with_recommended_action() -> None:
     d = rp.select({}, current="cursor-agent", failure_class="rate_limited")
     msg = rp.switch_notice(d, failure_class="rate_limited")
+    assert msg is not None
     assert msg["kind"] == "alert" and msg["urgency"] == "high"
     assert msg["recommended_action"].strip()
 
