@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from staff.group_models import SeatReply, SeatSpec, lookup_seat_price
 from staff.panel import default_turn_runner
 from staff.panel_models import PanelSpeaker, TurnOutcome
+from staff.seat_fallback import run_turn_with_fallback, steps_for_board_seat
 
 __all__ = [
     "run_seat",
@@ -62,7 +63,14 @@ async def run_seat(
         model=seat.model if seat.pin_model else None,
     )
     formatted_prompt = seat_prompt(seat, prompt)
-    outcome = await turn_runner(speaker, formatted_prompt, thread_id, None)
+    outcome = await run_turn_with_fallback(
+        speaker,
+        formatted_prompt,
+        thread_id,
+        None,
+        turn_runner,
+        steps=steps_for_board_seat(seat),
+    )
     if outcome.ok:
         cost = seat_cost_usd(seat, formatted_prompt, outcome.text)
         return SeatReply(
