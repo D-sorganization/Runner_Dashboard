@@ -35,6 +35,12 @@ def _canonical_role_payload(role: BuilderRoleDefinition) -> dict[str, object]:
     }
     if role.description:
         payload["description"] = role.description
+    if role.schedule_bounds is not None:
+        payload["schedule_bounds"] = {
+            "runs_per_day": role.schedule_bounds.runs_per_day,
+            "concurrency": role.schedule_bounds.concurrency,
+            "quiet_hours_utc": list(role.schedule_bounds.quiet_hours_utc),
+        }
     return payload
 
 

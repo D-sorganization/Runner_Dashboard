@@ -1,4 +1,4 @@
-"""Draft/validate/preview/publish API for template/scratch/clone/edit (RD #3104, #3105).
+"""Draft/validate/preview/publish API for template/scratch/clone/edit (RD #3104, #3105, #3107).
 
 One draft flow serves every mode; clone always re-validates fresh against
 the current ceiling, never inheriting a prior pass. Publish/rollback reuse
@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from orchestration_audit import append_orchestration_audit
 from staff.bot_builder.activation import is_material_change
 from staff.bot_builder.escalation import EscalationDiff, escalation_diff
 from staff.bot_builder.grant_ceiling import GrantCeiling
-from staff.bot_builder.schema import BuilderRoleDefinition, parse_builder_role
+from staff.bot_builder.schedules import DEFAULT_SCHEDULE_POLICY, SchedulePolicy
+from staff.bot_builder.schema import BuilderRoleDefinition, TriggerEdge, parse_builder_role
 from staff.bot_builder.validator import ValidationResult, validate_builder_role
 from staff.bot_builder.versions import RoleVersion, RoleVersionLedger
 
@@ -80,13 +82,23 @@ def create_draft(
             source_version_id=source.version_id,
         )
 
-    # SCRATCH/TEMPLATE: fresh lineage, starts disabled until supervised dry run is approved.
     return Draft(mode, role)
 
 
-def validate_draft(draft: Draft, ceiling: GrantCeiling) -> ValidationResult:
+def validate_draft(
+    draft: Draft,
+    ceiling: GrantCeiling,
+    *,
+    schedule_policy: SchedulePolicy = DEFAULT_SCHEDULE_POLICY,
+    declared_edges_by_role: Mapping[str, Sequence[TriggerEdge]] | None = None,
+) -> ValidationResult:
     """Call the one shared validator — never reimplement its rules here."""
-    return validate_builder_role(draft.role, ceiling)
+    return validate_builder_role(
+        draft.role,
+        ceiling,
+        schedule_policy=schedule_policy,
+        declared_edges_by_role=declared_edges_by_role,
+    )
 
 
 def preview_draft(draft: Draft, ceiling: GrantCeiling) -> PreviewResult:
@@ -120,13 +132,22 @@ async def publish_draft(
     *,
     confirmed: bool,
     principal: str,
+    schedule_policy: SchedulePolicy = DEFAULT_SCHEDULE_POLICY,
+    declared_edges_by_role: Mapping[str, Sequence[TriggerEdge]] | None = None,
 ) -> RoleVersion:
-    """DbC: draft.role belongs to ``ledger``'s lineage; blocks widening/persona edits without ``confirmed``."""
-    validation = validate_builder_role(draft.role, ceiling)
+    """DbC: draft.role belongs to ``ledger``'s lineage; blocks widening/cycles/self-widening."""
+    validation = validate_builder_role(
+        draft.role,
+        ceiling,
+        schedule_policy=schedule_policy,
+        declared_edges_by_role=declared_edges_by_role,
+    )
     if not validation.ok:
         raise PublishError(f"publish blocked: validation failed ({'; '.join(validation.reasons)})")
 
     reasons = _requires_confirmation(ledger, draft.role)
+    if reasons and principal.strip() == draft.role.name:
+        raise PublishError("publish blocked: self-widening of role bounds is forbidden")
     if reasons and not confirmed:
         raise PublishError(
             "publish blocked without confirmation: " + ", ".join(sorted(set(reasons))),
