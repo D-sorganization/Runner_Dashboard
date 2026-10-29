@@ -24,6 +24,7 @@ on:
     # No workflow-level path filter: a skipped workflow never reports
     # `docker-build-scan`, which leaves optional branch rules stuck pending.
   merge_group:
+  workflow_call:
   workflow_dispatch:
 
 # Main-push and live merge_group runs are never concurrency-cancelled. Only
@@ -69,7 +70,6 @@ jobs:
     needs: [pr-guard]
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      github.event_name != 'merge_group' &&
       always() &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -127,7 +127,6 @@ jobs:
       BUILDX_BUILDER: rd-ci-${{ github.run_id }}-${{ github.run_attempt }}
     needs: decide-docker-scope
     if: >-
-      github.event_name != 'merge_group' &&
       always() &&
       !cancelled() &&
       needs.decide-docker-scope.outputs.run_docker == 'true' &&
@@ -233,7 +232,6 @@ jobs:
       - docker-image
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      github.event_name != 'merge_group' &&
       always() &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
@@ -274,7 +272,6 @@ jobs:
       - docker-image
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      github.event_name != 'merge_group' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.decide-docker-scope.outputs.run_docker == 'true' &&
