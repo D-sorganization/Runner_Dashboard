@@ -367,3 +367,150 @@ def test_memory_write_rejects_malformed_metadata(
     )
     assert response.status_code == 422, response.text
     assert get_memory_store().list_entries() == []
+
+
+def test_context_pack_scope_and_data_class_isolation(remote_client: TestClient, memory_env: dict[str, str]) -> None:
+    """Scope-isolation test (#3547, F07): caller A cannot receive B-scoped or private items."""
+    from memory.models import MemoryEntry
+    from memory.service import build_context_pack
+    from memory.store import get_memory_store, new_entry_id
+    from priorities.directives import Directive, get_directives
+
+    tok_a = "svc_caller_a_test"  # pragma: allowlist secret
+    tok_b = "svc_caller_b_test"  # pragma: allowlist secret
+    for tok, pid, scopes in (
+        (tok_a, "caller-a", ["memory.read", "scope:team-a", "repo:RepoA"]),
+        (tok_b, "caller-b", ["memory.read", "scope:team-b", "repo:RepoB"]),
+    ):
+        identity_manager.add_ephemeral_token(
+            hashlib.sha256(tok.encode()).hexdigest(),
+            Principal(id=pid, type="bot", name=pid, scopes=scopes),
+            name=pid,
+        )
+
+    store = get_memory_store()
+
+    def _add(etype: str, ts: int, **kwargs: object) -> MemoryEntry:
+        author = str(kwargs.pop("author", "bot:caller-a"))
+        return store.append(
+            MemoryEntry(
+                id=new_entry_id(),
+                entry_type=etype,  # type: ignore[arg-type]
+                author_principal=author,
+                source_product="codex",
+                created_at=f"2026-10-29T12:00:{ts:02d}Z",
+                **kwargs,  # type: ignore[arg-type]
+            )
+        )
+
+    shared_digest = _add("session_digest", 1, body={"summary": "shared fleet digest", "data_class": "public"})
+    a_digest = _add(
+        "session_digest", 2, repo="RepoA", tags=["scope:team-a"], body={"summary": "team-a", "scope": "team-a"}
+    )
+    a_task = _add("task", 3, repo="RepoA", body={"title": "RepoA task", "status": "open", "scope": "caller-a"})
+    b_digest = _add(
+        "session_digest", 4, author="bot:caller-b", tags=["scope:team-b"], body={"summary": "team-b", "scope": "team-b"}
+    )
+    b_repo_task = _add("task", 5, author="bot:caller-b", repo="RepoB", body={"title": "RepoB task", "status": "open"})
+    b_principal_task = _add(
+        "task", 6, author="bot:caller-b", body={"title": "B direct", "status": "open", "principal": "caller-b"}
+    )
+    barb_only_digest = _add(
+        "session_digest", 7, author="bot:agent-grok", visibility="barb-only", body={"summary": "barb-only"}
+    )
+    private_vis_digest = _add(
+        "session_digest", 8, author="bot:caller-b", visibility="private", body={"summary": "private vis"}
+    )
+    private_dc_task = _add("task", 9, body={"title": "sensitive vault", "status": "open", "data_class": "sensitive"})
+    private_flag_task = _add(
+        "task", 10, author="bot:caller-b", body={"title": "private flag", "status": "open", "private": True}
+    )
+
+    get_directives().replace_all(
+        [
+            Directive(id="dir-fleet", text="Fleet-wide directive", set_by="op", repo="*"),
+            Directive(id="dir-a", text="RepoA directive", set_by="op", repo="RepoA"),
+            Directive(id="dir-b", text="RepoB directive", set_by="op", repo="RepoB"),
+        ]
+    )
+
+    resp_a = remote_client.get("/api/v1/memory/context-pack", headers=_auth(tok_a))
+    assert resp_a.status_code == 200
+    pack_a = resp_a.json()
+    digest_ids_a = {d["id"] for d in pack_a["session_digests"]}
+    task_ids_a = {t["id"] for t in pack_a["open_tasks"]}
+    assert digest_ids_a == {shared_digest.id, a_digest.id}
+    assert {b_digest.id, barb_only_digest.id, private_vis_digest.id}.isdisjoint(digest_ids_a)
+    assert task_ids_a == {a_task.id}
+    assert {b_repo_task.id, b_principal_task.id, private_dc_task.id, private_flag_task.id}.isdisjoint(task_ids_a)
+    assert {d["id"] for d in pack_a["directives"]} == {"dir-fleet", "dir-a"}
+
+    pack_b = remote_client.get("/api/v1/memory/context-pack", headers=_auth(tok_b)).json()
+    assert {d["id"] for d in pack_b["session_digests"]} == {shared_digest.id, b_digest.id}
+    assert {t["id"] for t in pack_b["open_tasks"]} == {b_repo_task.id, b_principal_task.id}
+    assert {d["id"] for d in pack_b["directives"]} == {"dir-fleet", "dir-b"}
+
+    digest_ids_grok = {
+        d["id"]
+        for d in remote_client.get("/api/v1/memory/context-pack", headers=_auth(memory_env["grok"])).json()[
+            "session_digests"
+        ]
+    }
+    assert barb_only_digest.id in digest_ids_grok
+    assert private_vis_digest.id not in digest_ids_grok
+
+    # Caller A cannot escalate scope, repo, or data_class via query parameters.
+    assert (
+        remote_client.get("/api/v1/memory/context-pack?scope=team-b", headers=_auth(tok_a)).json()["session_digests"]
+        == []
+    )
+    assert remote_client.get("/api/v1/memory/context-pack?repo=RepoB", headers=_auth(tok_a)).json()["open_tasks"] == []
+    assert (
+        remote_client.get("/api/v1/memory/context-pack?data_class=sensitive", headers=_auth(tok_a)).json()["open_tasks"]
+        == []
+    )
+
+    anon_pack = build_context_pack()
+    assert {d.id for d in anon_pack.session_digests} == {shared_digest.id}
+    assert anon_pack.open_tasks == []
+
+
+def test_context_pack_pagination_does_not_starve_caller_by_other_scopes(
+    remote_client: TestClient, memory_env: dict[str, str]
+) -> None:
+    """Newer B-scoped or private items exceeding CONTEXT_DIGEST_LIMIT must not starve caller A (#3547)."""
+    from memory.contract import CONTEXT_DIGEST_LIMIT
+    from memory.models import MemoryEntry
+    from memory.store import get_memory_store, new_entry_id
+
+    tok_a = "svc_starve_caller_a"  # pragma: allowlist secret
+    identity_manager.add_ephemeral_token(
+        hashlib.sha256(tok_a.encode()).hexdigest(),
+        Principal(id="caller-a", type="bot", name="Caller A", scopes=["memory.read", "scope:team-a"]),
+        name="starve-caller-a",
+    )
+    store = get_memory_store()
+    older_a = store.append(
+        MemoryEntry(
+            id=new_entry_id(),
+            entry_type="session_digest",
+            author_principal="bot:caller-a",
+            source_product="codex",
+            body={"summary": "older caller-a digest", "scope": "team-a"},
+            created_at="2026-10-29T10:00:00Z",
+        )
+    )
+    for idx in range(CONTEXT_DIGEST_LIMIT + 3):
+        store.append(
+            MemoryEntry(
+                id=new_entry_id(),
+                entry_type="session_digest",
+                author_principal="bot:caller-b",
+                source_product="codex",
+                body={"summary": f"newer team-b digest {idx}", "scope": "team-b"},
+                created_at=f"2026-10-29T11:00:{idx:02d}Z",
+            )
+        )
+    resp_a = remote_client.get("/api/v1/memory/context-pack", headers=_auth(tok_a))
+    assert resp_a.status_code == 200
+    assert [d["id"] for d in resp_a.json()["session_digests"]] == [older_a.id]

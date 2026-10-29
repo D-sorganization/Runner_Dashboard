@@ -25,6 +25,7 @@ from staff.groups import (
     get_board_group,
     get_group,
 )
+from staff.loop_guard import principal_author_kind
 from staff.proposal_cards import post_proposal
 from staff.thread_bus import get_thread_bus
 
@@ -271,7 +272,7 @@ async def dispatch_group_message(
     target_role = str(thread.meta.get("coordinator") or BOARD_PROPOSAL_ROLE)
     user_msg = store.add_message(
         thread_id=thread.id,
-        author_kind="user",
+        author_kind=principal_author_kind(caller),
         author=caller_id,
         kind=body.kind or "text",
         body_md=body.body,
