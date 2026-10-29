@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
 
 import provider_switch
 from staff.adapters import ADAPTERS
