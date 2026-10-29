@@ -64,6 +64,10 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
         "Read-only SLO snapshot and stall alarm must finish GitHub API reads; cancel-in-progress would "
         "discard partial metrics without reducing queue load."
     ),
+    "recurring-scan.yml": (
+        "Cursor read-scan-push to bot/recurring-scan-state must finish; cancel mid-run risks a corrupt "
+        "cursor or a lost heartbeat."
+    ),
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
