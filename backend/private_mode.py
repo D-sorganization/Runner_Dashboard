@@ -348,7 +348,7 @@ def stamp_envelope(
         raise ClassificationError("stamp_envelope: hop must be a non-empty str")
     if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
         raise ClassificationError("stamp_envelope: epoch must be an int >= 1")
-    effective = max_join(level, config.default_level) if config.enabled else level
+    effective = level
     _record_level(effective)
     return ClassificationEnvelope(
         schema_version=ENVELOPE_SCHEMA_VERSION, level=effective, epoch=epoch, hops=(hop.strip(),)
