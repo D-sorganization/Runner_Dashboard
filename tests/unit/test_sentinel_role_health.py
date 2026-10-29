@@ -1,4 +1,4 @@
-"""Unit tests for Brick sentinel per-role health probe and wake envelopes (#3295 S6)."""
+"""Unit tests for node-c sentinel per-role health probe and wake envelopes (#3295 S6)."""
 
 from __future__ import annotations
 

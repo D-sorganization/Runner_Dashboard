@@ -9,7 +9,7 @@ Panel synthesis `th_e54ff7081c60` (2026-10-27): build **one model-free postman r
 | Core | Single relay leader + delivery adapters (Claude push, Codex/agy hook or poll) |
 | Canonical transport | Hub threads `GET/POST /api/v1/staff/threads` (ADR 0007, `scripts/rd_threads_envelope.py`) |
 | Cloud Duet bridge | Barbara `barb-inbox` store-and-forward (#3217); same rd-threads envelope (#3072) |
-| Topology | rd-barb #3117: leader on Desk, warm standby on ControlTower; shares #3073 leader lease when bound (#3237) |
+| Topology | rd-barb #3117: leader on Desk, warm standby on node-a; shares #3073 leader lease when bound (#3237) |
 | Safety | Refuse secrets (never redact), recipient allowlist, no dispatch/staff-run authority, Dieter only via rd-barb webhook (#3233) |
 | Role file | RM#2461 stays decoupled |
 

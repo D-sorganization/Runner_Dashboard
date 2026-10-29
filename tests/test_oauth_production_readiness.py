@@ -76,7 +76,7 @@ def test_exact_production_configuration_is_ready_and_redacted() -> None:
     ("updates", "reason"),
     [
         ({"GITHUB_CLIENT_SECRET": "short"}, "github_client_secret_invalid"),  # pragma: allowlist secret
-        ({"DASHBOARD_PUBLIC_ORIGIN": "https://100.125.64.108"}, "public_origin_mismatch"),
+        ({"DASHBOARD_PUBLIC_ORIGIN": "https://100.64.0.5"}, "public_origin_mismatch"),
         (
             {"GITHUB_OAUTH_CALLBACK_URL": "https://evil.example/api/auth/callback"},
             "callback_url_mismatch",

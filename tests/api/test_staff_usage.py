@@ -279,9 +279,7 @@ def test_usage_snapshot_route_ingests_and_serves_the_fleet_view(
                 "quota_used_pct": 7.0,
                 "near_limit_flag": False,
                 "rate_limits": {
-                    "readings": [
-                        {"machine": "DeskComputer", "observed_at": "2026-10-26T17:19:00Z", "used_percent": 7.0}
-                    ]
+                    "readings": [{"machine": "hub-a", "observed_at": "2026-10-26T17:19:00Z", "used_percent": 7.0}]
                 },
             }
         ],
@@ -291,7 +289,7 @@ def test_usage_snapshot_route_ingests_and_serves_the_fleet_view(
 
     body = c.get("/api/staff/usage/snapshot").json()
     assert body["snapshot_stale"] is False
-    assert body["providers"][0]["machines"][0]["machine"] == "DeskComputer"
+    assert body["providers"][0]["machines"][0]["machine"] == "hub-a"
 
     bad = {**payload, "schema_version": "provider-availability.v2"}
     resp = c.post("/api/staff/usage/snapshot", json=bad, headers=_XHR)
