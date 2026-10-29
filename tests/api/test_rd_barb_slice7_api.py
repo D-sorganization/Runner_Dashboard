@@ -109,7 +109,7 @@ def test_webhook_down_queues_with_backoff_delivers_once_and_5min_banner(app: Fas
 
 def test_answer_routing_completes_question_writes_ledger_and_never_lifts_hold(app: FastAPI) -> None:
     client = _as(app, ["fleet.read", "staff.dispatch"])
-    t0 = datetime.now(UTC).replace(microsecond=0)
+    t0 = datetime.now(UTC)
     store, policy = get_conversation_store(), load_locked_policy()
     ledger = DecisionLedger(path=default_ledger_path(), policy=policy, clock=lambda: t0)
     thread = store.create_thread(title="rd-threads:barb", kind="direct", role="rd-barb", created_by="rd-barb")
