@@ -22,7 +22,7 @@ permissions: {}
 jobs:
   counter:
     if: github.event_name == 'pull_request_target'
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
@@ -81,7 +81,7 @@ jobs:
       needs.counter.outputs.status == 'WARN' &&
       (needs.counter.outputs.reason == 'cap_exceeded' ||
        needs.counter.outputs.reason == 'unknown_identity')
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     continue-on-error: true
     permissions:
