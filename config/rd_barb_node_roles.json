@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "_comment": "rd-barb node-leader topology (#3117, part of #3064). Exactly one leader; at most one warm standby; every other node forwards only and never leads.",
+  "_comment": "rd-barb node-leader topology (#3117, part of #3064). Exactly one leader; at most one warm standby; every other node forwards only and never leads. This is the shipped EXAMPLE topology; set $RD_BARB_NODE_ROLES_PATH or install ~/.config/runner-dashboard/rd_barb_node_roles.json for real per-node roles (#3461).",
   "nodes": [
-    { "name": "DeskComputer", "role": "leader", "priority": 1 },
-    { "name": "ControlTower", "role": "standby", "priority": 2 },
-    { "name": "Brick", "role": "forwarder" },
-    { "name": "OGLaptop", "role": "forwarder" }
+    { "name": "hub-a", "role": "leader", "priority": 1 },
+    { "name": "node-a", "role": "standby", "priority": 2 },
+    { "name": "node-c", "role": "forwarder" },
+    { "name": "node-b", "role": "forwarder" }
   ]
 }

@@ -8,14 +8,7 @@ import yaml
 
 _WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 _GUARD = _WORKFLOWS / "reusable-pr-freshness-guard.yml"
-_CALLERS = [
-    "ci-standard.yml",
-    "ci-secrets.yml",
-    "docker-build.yml",
-    "frontend-tests.yml",
-    "ci-auto-deploy-regression.yml",
-]
-_MERGE_GROUP_WORKFLOWS = _CALLERS
+_CALLERS = ["ci-standard.yml", "ci-secrets.yml", "docker-build.yml", "frontend-tests.yml", "ci-auto-deploy-regression.yml"]
 
 
 def _triggers(data: dict) -> dict | str | list:
@@ -44,7 +37,7 @@ def test_reusable_pr_guard_concurrency_scoped_per_caller_workflow() -> None:
 
 
 def test_jobs_needing_pr_guard_use_always_when_workflow_has_merge_group() -> None:
-    for name in _MERGE_GROUP_WORKFLOWS:
+    for name in _CALLERS:
         data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
         triggers = _triggers(data)
         if "merge_group" not in triggers and "merge_group" not in str(triggers):

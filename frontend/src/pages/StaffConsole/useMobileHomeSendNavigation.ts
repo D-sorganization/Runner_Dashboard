@@ -36,10 +36,11 @@ export async function startNewMobileConversation(
   roleName: string,
   onThreadSelected?: (threadId: string, role: string) => void,
   onOpenThread?: (threadId: string) => void,
-): Promise<void> {
+): Promise<MobileThreadTarget | null> {
   const thread = await createConversation();
-  if (!thread) return;
+  if (!thread) return null;
   selectMobileThread(thread.id, roleName, onThreadSelected, onOpenThread);
+  return thread;
 }
 
 /** Reveal the new conversation after a successful chat-first home send. */

@@ -41,6 +41,10 @@ people, or paths.
 | Agent token file paths, per-agent config          | — (operator supplies directly)                | ✅ sourced from the overlay |
 | Private roles, policy, and internal docs          | — (not present)                                | ✅ sourced from the overlay |
 
+The dashboard itself is also usable without a sibling `Repository_Management`
+checkout; see [`docs/standalone-profile.md`](docs/standalone-profile.md) for
+what degrades and how that's tested.
+
 Until `RD_OVERLAY_PATH` is set, behaviour is unchanged from today; setting it
 loads and validates the overlay at startup and the core refuses to start on an
 invalid overlay rather than running with partial private config.
@@ -121,6 +125,22 @@ of this stack, not a replacement for it.
 
 ## Quick Start
 
+### Try the Offline Demo
+
+The demo starts with fictional sample runners and workflow runs. It needs no
+GitHub credentials, makes no GitHub requests, and disables API access:
+
+```bash
+git clone https://github.com/D-sorganization/Runner_Dashboard.git
+cd Runner_Dashboard
+bash start-dashboard.sh --demo
+```
+
+Open http://localhost:8321. The page is marked **DEMO DATA · READ ONLY**.
+Python 3.11+, Node.js 18+, and npm are required for a clean checkout.
+
+### Connect a Real Dashboard
+
 ```bash
 git clone git@github.com:D-sorganization/runner-dashboard.git
 cd runner-dashboard
@@ -132,12 +152,13 @@ Open http://localhost:8321 in your browser.
 
 On a clean checkout `start-dashboard.sh` provisions a project-local `.venv` from
 the repo-root `requirements.txt` and builds the frontend bundle
-(`frontend/dist/`) via `npm ci && npm run build`. It exits non-zero with
+(`dist/`) via `npm ci && npm run build`. It exits non-zero with
 instructions if the dependencies or a working `npm` are unavailable, rather than
 starting a broken server.
 
 **Requirements:** Python 3.11+, Node.js 18+/npm (for the frontend build), and a
-GitHub PAT with `repo` and `admin:org` scopes.
+GitHub PAT with `repo` and `admin:org` scopes. Use the offline demo above to
+explore the interface without credentials.
 
 ### Cold-start check
 

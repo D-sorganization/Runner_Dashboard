@@ -3,7 +3,7 @@
  *
  * Implements Workstream C (Issue #1721, Epic #1718).
  */
-import React from "react";
+import React, { useState } from "react";
 import type { RosterRowProps, RosterStatus } from "./types";
 import { computeRoleStatus, formatRelativeTime, getRoleHue, getRoleTooltipText } from "./rosterUtils";
 import { Tooltip } from "../../primitives/Tooltip";
@@ -73,9 +73,12 @@ export const RosterRow: React.FC<RosterRowProps> = ({
     }
   };
 
+  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
+
   const avatarInitial = isAutoRoute
     ? "★"
-    : (role.avatar || role.title.charAt(0) || role.name.charAt(0)).toUpperCase();
+    : (role.title.charAt(0) || role.name.charAt(0)).toUpperCase();
+  const showAvatarImage = !isAutoRoute && !!role.avatar && !avatarImageFailed;
 
   const hue = getRoleHue(role.name);
   const avatarStyle: React.CSSProperties = isAutoRoute
@@ -108,9 +111,18 @@ export const RosterRow: React.FC<RosterRowProps> = ({
       >
         {/* Avatar with status indicator */}
         <div className="roster-avatar-wrap">
-          <div className="roster-avatar" style={avatarStyle}>
-            {avatarInitial}
-          </div>
+          {showAvatarImage ? (
+            <img
+              src={role.avatar}
+              alt=""
+              className="roster-avatar roster-avatar--image"
+              onError={() => setAvatarImageFailed(true)}
+            />
+          ) : (
+            <div className="roster-avatar" style={avatarStyle}>
+              {avatarInitial}
+            </div>
+          )}
 
           {/* Status dot with tooltip. The anchor pins it to the avatar corner;
               Tooltip's own relative wrapper would otherwise flow below. */}

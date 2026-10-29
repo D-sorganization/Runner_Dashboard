@@ -18,6 +18,11 @@ const mockRole: RoleDetail = {
     enabled: true,
     next_fire: "2026-09-25T22:00:00Z",
   },
+  model: {
+    effective: "sonnet",
+    override: null,
+    allowed: ["sonnet", "opus", "claude-opus-5-5"],
+  },
   budget: {
     usd_per_day: 15.0,
     usd_today: 3.5,
@@ -99,6 +104,84 @@ describe("ContextPane (SC-D6, Issue #1320)", () => {
       // Switch reverted back to true
       expect(toggle.getAttribute("aria-checked")).toBe("true");
     });
+  });
+
+  it("renders the model dropdown with the effective model and allowed options (epic #3295 S2)", () => {
+    render(
+      <ContextPane
+        role={mockRole}
+        threadContext={mockThreadContext}
+        onChangeModel={vi.fn()}
+      />
+    );
+
+    const select = screen.getByRole("combobox", { name: /model override/i }) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect(screen.getByText(/Default \(sonnet\)/)).not.toBeNull();
+    expect(screen.getByText("Effective: sonnet")).not.toBeNull();
+  });
+
+  it("calls onChangeModel with the selected model override", async () => {
+    const handleChange = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ContextPane
+        role={mockRole}
+        threadContext={mockThreadContext}
+        onChangeModel={handleChange}
+      />
+    );
+
+    const select = screen.getByRole("combobox", { name: /model override/i });
+    fireEvent.change(select, { target: { value: "claude-opus-5-5" } });
+
+    expect(handleChange).toHaveBeenCalledWith("night-watch", "claude-opus-5-5");
+  });
+
+  it("calls onChangeModel with null when the dropdown is reset to Default", async () => {
+    const handleChange = vi.fn().mockResolvedValue(undefined);
+    const overridden: RoleDetail = {
+      ...mockRole,
+      model: { effective: "claude-opus-5-5", override: "claude-opus-5-5", allowed: ["sonnet", "claude-opus-5-5"] },
+    };
+    render(
+      <ContextPane
+        role={overridden}
+        threadContext={mockThreadContext}
+        onChangeModel={handleChange}
+      />
+    );
+
+    const select = screen.getByRole("combobox", { name: /model override/i });
+    fireEvent.change(select, { target: { value: "" } });
+
+    expect(handleChange).toHaveBeenCalledWith("night-watch", null);
+  });
+
+  it("reverts the model dropdown and displays an error when the change fails", async () => {
+    const handleChange = vi.fn().mockRejectedValue(new Error("model 'bogus' is not valid"));
+    render(
+      <ContextPane
+        role={mockRole}
+        threadContext={mockThreadContext}
+        onChangeModel={handleChange}
+      />
+    );
+
+    const select = screen.getByRole("combobox", { name: /model override/i }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "opus" } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("context-model-error")).toHaveTextContent(/model 'bogus' is not valid/i);
+      expect(select.value).toBe("");
+    });
+  });
+
+  it("disables the model dropdown and shows a reason when read-only", () => {
+    render(<ContextPane role={mockRole} threadContext={mockThreadContext} />);
+
+    const select = screen.getByRole("combobox", { name: /model override/i }) as HTMLSelectElement;
+    expect(select.disabled).toBe(true);
+    expect(screen.getByTestId("context-model-reason")).toHaveTextContent(/read-only/i);
   });
 
   it("switches to Thread tab and displays linked items (work items, runs, issues, PRs)", () => {

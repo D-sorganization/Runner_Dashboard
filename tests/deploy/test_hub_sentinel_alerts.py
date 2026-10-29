@@ -1,4 +1,4 @@
-"""Out-of-band hub liveness sentinel on Brick (#3050), slice 2/3: the
+"""Out-of-band hub liveness sentinel on node-c (#3050), slice 2/3: the
 alert-sink port contract and dispatch fan-out. Probe classification and
 the alert/cooldown/recovery state machine are tested in
 ``test_hub_sentinel.py``; the ``run_once``/CLI integration test lands

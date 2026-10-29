@@ -43,7 +43,7 @@ def test_runner_schedule_valid() -> None:
     assert result == data
 
 
-def test_default_runner_schedule_preserves_deskcomputer_headroom() -> None:
+def test_default_runner_schedule_preserves_hub_a_headroom() -> None:
     data = json.loads((Path(__file__).parent.parent / "config" / "runner-schedule.json").read_text(encoding="utf-8"))
 
     result = config_schema.validate_runner_schedule_config(data)

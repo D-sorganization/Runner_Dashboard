@@ -56,6 +56,13 @@ Body fields (`RunBody`): `repo` (bare name), `issue` | `pr` | `prompt`, `provide
 cancelled`, or `blocked` when another agent holds the issue. Follow a run with `GET /api/staff/runs/{id}` (includes
 events) or `/stream`.
 
+### Grok Dispatcher Protocol
+
+Grok agents follow the canonical [dispatcher-first protocol](agents/grok.md#dispatcher-first-protocol)
+for classification, hub probes, idempotent dispatch, waiting, fallback evidence,
+result recording and holds. That section also identifies client features awaiting
+sibling implementations; verify availability before using a planned command.
+
 ### Check before you dispatch
 
 | Check       | Read                                                               | Effect                                                                                                                                                                                   |
@@ -133,9 +140,10 @@ Rules:
 "holder_mismatch" | "expired" | "stale_epoch" | "no_lease", "current_epoch": N, "holder": "..."}`, applies nothing and
    audit-logs the rejection (`barb_write_rejected`). A takeover waits for any write already inside the check, so it
    cannot land between the check and the write. Requests without the headers are unaffected, except a write from a Barb
-   seat (a Grok-kind assistant, `agent-grok`/`barb`, or the `barb` role): `DASHBOARD_BARB_FENCE_MODE` (`off`, `warn` default,
-   `enforce`) logs it and counts it in `dashboard_barb_unclaimed_writes_total{surface}` on `/metrics` (`warn`, still
-   allowed) or refuses it with the 409 above, reason `claim_required` (`enforce`) (#3279). The `fleetctl`/MCP client
+   seat (a Grok-kind assistant, `agent-grok`/`barb`, or the `barb` role): `DASHBOARD_BARB_FENCE_MODE` (`enforce` default,
+   `warn`, `off`) refuses it with the 409 above, reason `claim_required`, and counts it in
+   `dashboard_barb_unclaimed_writes_total{surface}` on `/metrics` (`enforce`), or logs a warning and still allows it (`warn`,
+   rollback switch to revert enforcement without a code change) (#3279, #3318). The `fleetctl`/MCP client
    remembers the seat from your last checkout or heartbeat, sends the headers on those writes automatically, and on a 409
    fails with "You lost the Barb seat (epoch X -> Y)". It never retries: re-checkout the seat or hand off.
 3. **409 on checkout means do not act.** The seat is held by another agent until a stated time. Pick another scope or wait

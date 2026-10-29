@@ -1,9 +1,10 @@
-"""A Barb principal writing without the lease claim headers is observed, not silently trusted (#3279 step 1).
+"""A Barb principal writing without the lease claim headers is rejected by default (#3279 step 1 & #3318 step 2).
 
-``DASHBOARD_BARB_FENCE_MODE`` = ``off`` | ``warn`` (default) | ``enforce``. In ``warn`` a Barb-principal
-write with no ``X-Barb-Scope`` / ``X-Barb-Lease-Epoch`` is logged and counted
-(``dashboard_barb_unclaimed_writes_total``) but still allowed; ``enforce`` refuses it with the fence's
-``stale_barb_lease`` 409. Non-Barb requests are never touched.
+``DASHBOARD_BARB_FENCE_MODE`` = ``off`` | ``warn`` | ``enforce`` (default). In ``enforce`` a Barb-principal
+write with no ``X-Barb-Scope`` / ``X-Barb-Lease-Epoch`` is counted
+(``dashboard_barb_unclaimed_writes_total``) and refused with the fence's
+``stale_barb_lease`` 409; ``warn`` logs and counts it while allowing the write as a rollback switch.
+Non-Barb requests are never touched.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -75,8 +77,9 @@ def _fence_warnings(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]
 
 
 def test_barb_write_without_claim_is_logged_counted_and_allowed_in_warn_mode(
-    client: TestClient, caplog: pytest.LogCaptureFixture
+    client: TestClient, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("DASHBOARD_BARB_FENCE_MODE", "warn")
     before = _count()
     with caplog.at_level(logging.WARNING, logger=FENCE_LOGGER):
         r = client.post("/api/v1/memory", headers=_h("barb"), json=_MEMORY)
@@ -126,32 +129,75 @@ def test_flag_off_behaves_like_before(
 
 
 def test_enforce_refuses_an_unclaimed_barb_write_with_the_fence_error(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
-    monkeypatch.setenv("DASHBOARD_BARB_FENCE_MODE", "enforce")
+    from memory.store import get_memory_store  # noqa: PLC0415
+    from staff.barb_continuity import get_barb_continuity_store  # noqa: PLC0415
+
+    # Default mode is enforce (#3318): unclaimed Barb-seat write is rejected without duplicate warning log.
     before = _count()
-    r = client.post("/api/v1/memory", headers=_h("barb"), json=_MEMORY)
+    with caplog.at_level(logging.WARNING, logger=FENCE_LOGGER):
+        r = client.post("/api/v1/memory", headers=_h("barb"), json=_MEMORY)
     assert r.status_code == 409, r.text
     assert r.json()["detail"]["error"] == "stale_barb_lease"
     assert r.json()["detail"]["reason"] == "claim_required"
     assert _count() == before + 1
-    assert client.post("/api/v1/memory", headers=_h("plain"), json=_MEMORY).status_code == 201
-    # the staff v1 surfaces share the policy (their error envelope carries the 409 status)
+    assert [w for w in _fence_warnings(caplog) if "without lease claim headers" in w.getMessage()] == []
+    assert get_memory_store().list_entries() == []
+    # the staff v1 surfaces share the policy (their error envelope carries the 409 status) and leave state unchanged
     turnover = {"scope": SCOPE, "summary": "shift over"}
     assert client.post("/api/v1/staff/barb/turnover", headers=_h("barb"), json=turnover).status_code == 409
+    assert get_barb_continuity_store().list_turnover(scope=SCOPE) == []
+    assert client.post("/api/v1/memory", headers=_h("plain"), json=_MEMORY).status_code == 201
     assert client.post("/api/v1/staff/barb/turnover", headers=_h("plain"), json=turnover).status_code == 200
+
+
+def test_barb_seat_fenced_writes_accept_valid_and_reject_stale_or_expired_leases(client: TestClient) -> None:
+    from memory.store import get_memory_store  # noqa: PLC0415
+    from staff.barb_continuity import get_barb_continuity_store  # noqa: PLC0415
+
+    store = get_barb_continuity_store()
+    lease = store.checkout_lease(scope=SCOPE, holder="agent-grok")["lease"]
+    epoch = lease["epoch"]
+
+    # Valid, current lease -> accepted, behaviour unchanged
+    ok = client.post("/api/v1/memory", headers=_h("barb", SCOPE, epoch), json=_MEMORY)
+    assert ok.status_code == 201, ok.text
+    assert len(get_memory_store().list_entries()) == 1
+
+    # Stale epoch -> rejected, state unchanged
+    store.release_lease(scope=SCOPE, holder="agent-grok", require_turnover=False)
+    reacquired = store.checkout_lease(scope=SCOPE, holder="agent-grok")["lease"]
+    assert reacquired["epoch"] > epoch
+    stale = client.post("/api/v1/memory", headers=_h("barb", SCOPE, epoch), json=_MEMORY)
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["detail"]["error"] == "stale_barb_lease"
+    assert stale.json()["detail"]["reason"] == "stale_epoch"
+    assert len(get_memory_store().list_entries()) == 1
+
+    # Expired lease -> rejected, state unchanged
+    past = (datetime.now(UTC) - timedelta(seconds=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with store._lock, store._conn:
+        store._conn.execute("UPDATE barb_scoped_leases SET expires_at = ? WHERE scope = ?", (past, SCOPE))
+    expired = client.post("/api/v1/memory", headers=_h("barb", SCOPE, reacquired["epoch"]), json=_MEMORY)
+    assert expired.status_code == 409, expired.text
+    assert expired.json()["detail"]["error"] == "stale_barb_lease"
+    assert expired.json()["detail"]["reason"] == "expired"
+    assert len(get_memory_store().list_entries()) == 1
 
 
 @pytest.mark.unit
 def test_unknown_mode_falls_back_to_warn(monkeypatch: pytest.MonkeyPatch) -> None:
     from staff.barb_lease_fence import fence_mode  # noqa: PLC0415
 
-    monkeypatch.setenv("DASHBOARD_BARB_FENCE_MODE", "ENFORCE ")
-    assert fence_mode() == "enforce"
+    monkeypatch.setenv("DASHBOARD_BARB_FENCE_MODE", "WARN ")
+    assert fence_mode() == "warn"
+    monkeypatch.setenv("DASHBOARD_BARB_FENCE_MODE", "off")
+    assert fence_mode() == "off"
     monkeypatch.setenv("DASHBOARD_BARB_FENCE_MODE", "bogus")
-    assert fence_mode() == "warn"
+    assert fence_mode() == "enforce"
     monkeypatch.delenv("DASHBOARD_BARB_FENCE_MODE")
-    assert fence_mode() == "warn"
+    assert fence_mode() == "enforce"
 
 
 @pytest.mark.unit

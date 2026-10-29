@@ -35,7 +35,7 @@ def _event(run_id: str = "run-1", **overrides: object) -> RunEvent:
         "verification": "verified",
         "duration_s": 42.0,
         "provider": "claude",
-        "host": "OGLaptop",
+        "host": "node-b",
         "summary": "Added the run-card notifier.",
         "transcript_url": "https://example.invalid/transcripts/run-1",
     }

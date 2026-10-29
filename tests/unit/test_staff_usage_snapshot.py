@@ -32,21 +32,21 @@ FIXTURE = {
             "rate_limits": {
                 "readings": [
                     {
-                        "machine": "DeskComputer",
+                        "machine": "hub-a",
                         "observed_at": "2026-10-26T17:19:00Z",
                         "used_percent": 7.0,
                         "resets_at": None,
                         "source": "codex-session-log",
                     },
                     {
-                        "machine": "ControlTower",
+                        "machine": "node-a",
                         "observed_at": "2026-10-24T22:25:00Z",
                         "used_percent": 37.0,
                         "resets_at": None,
                         "source": "codex-session-log",
                     },
                     {
-                        "machine": "OGLaptop",
+                        "machine": "node-b",
                         "observed_at": "2026-10-24T20:09:00Z",
                         "used_percent": 35.0,
                         "resets_at": None,
@@ -140,10 +140,10 @@ def test_snapshot_view_flags_stale_machine(tmp_path: Path) -> None:
     body = snap_mod.view(NOW, store=store)
     assert body["snapshot_stale"] is False  # received just now
     machines = {m["machine"]: m for m in body["providers"][0]["machines"]}
-    assert machines["DeskComputer"]["stale"] is False
-    assert machines["ControlTower"]["stale"] is True
-    assert machines["OGLaptop"]["stale"] is True
-    assert machines["DeskComputer"]["age_seconds"] == pytest.approx(11 * 60, abs=1)
+    assert machines["hub-a"]["stale"] is False
+    assert machines["node-a"]["stale"] is True
+    assert machines["node-b"]["stale"] is True
+    assert machines["hub-a"]["age_seconds"] == pytest.approx(11 * 60, abs=1)
 
 
 @pytest.mark.unit

@@ -238,6 +238,25 @@ def test_dockerfile_runs_as_non_root_user() -> None:
     )
 
 
+def test_dockerfile_appuser_has_writable_config_home() -> None:
+    """appuser must own ~/.config/runner-dashboard so import-time secret persistence works."""
+    content = _read(_DOCKERFILE)
+    assert "--no-create-home" not in content, (
+        "Dockerfile must not use --no-create-home; SESSION_SECRET persistence writes under ~/"
+    )
+    assert "/home/appuser/.config/runner-dashboard" in content, (
+        "Dockerfile must pre-create appuser config dir for container smoke tests"
+    )
+
+
+def test_dockerfile_includes_built_frontend_dist() -> None:
+    """Smoke test expects the SPA shell at /; the image must ship dist/index.html."""
+    content = _read(_DOCKERFILE)
+    assert "frontend-build" in content
+    assert "COPY --from=frontend-build" in content
+    assert "./dist/" in content
+
+
 def test_requirements_lock_file_exists() -> None:
     """requirements.lock.txt must exist alongside requirements.txt."""
     assert _LOCK.exists(), (

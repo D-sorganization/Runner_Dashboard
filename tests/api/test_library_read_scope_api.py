@@ -204,3 +204,74 @@ def test_revocation_after_authentication_precedes_data_access(
     monkeypatch.setattr(library_read, "_resolve_principal_optional", authenticate_then_revoke)
     monkeypatch.setattr(routes, "_db", lambda: pytest.fail("data access after revocation"))
     assert reader.api.get(path, headers=reader.headers).status_code == 403
+
+
+def test_library_read_principal_verification_forced_shared_only(reader: SimpleNamespace) -> None:
+    """A library.read principal requesting local_only is still bound to shared, retrieval-ledger content (#2639)."""
+    principal = reader.manager.verify_token(reader.token)
+    assert principal is not None
+    reader.api.app.dependency_overrides[routes.require_library_peer] = lambda: principal
+    try:
+        citation = f"[ref:desk:private:w2:p2#sha256={'2' * 8}:p.1-1]"
+        response = reader.api.post(
+            "/api/v1/library/verify",
+            json={"content": f"See {citation}", "local_only": True},
+            headers=reader.headers,
+        )
+    finally:
+        reader.api.app.dependency_overrides.pop(routes.require_library_peer, None)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["shared_only"] is True
+    assert body["verified"] is False
+    assert body["citations"][0]["status"] == "citation_not_found"
+
+
+def test_library_read_principal_run_id_must_match_active_run(reader: SimpleNamespace) -> None:
+    """A foreign run_id in the body is rejected before any verification happens (#2639)."""
+    principal = reader.manager.verify_token(reader.token)
+    assert principal is not None
+    reader.api.app.dependency_overrides[routes.require_library_peer] = lambda: principal
+    try:
+        response = reader.api.post(
+            "/api/v1/library/verify",
+            json={"content": "no citations here", "run_id": "run-other"},
+            headers=reader.headers,
+        )
+    finally:
+        reader.api.app.dependency_overrides.pop(routes.require_library_peer, None)
+    assert response.status_code == 403, response.text
+
+
+def test_library_read_principal_without_active_run_is_rejected(reader: SimpleNamespace) -> None:
+    """Fail-closed: a library.read principal with no bound active run never reaches verification (#2639)."""
+    orphan = identity.Principal(id="staff:research-scout:orphan", type="bot", name="orphan", scopes=["library.read"])
+    reader.api.app.dependency_overrides[routes.require_library_peer] = lambda: orphan
+    try:
+        response = reader.api.post(
+            "/api/v1/library/verify",
+            json={"content": "no citations here"},
+            headers=reader.headers,
+        )
+    finally:
+        reader.api.app.dependency_overrides.pop(routes.require_library_peer, None)
+    assert response.status_code == 403, response.text
+
+
+def test_fleet_principal_verification_unchanged(reader: SimpleNamespace) -> None:
+    """Operator/fleet-readable verification keeps honoring the caller's own local_only/shared_only (#2639)."""
+    operator = identity.Principal(id="operator", type="bot", name="operator", roles=[], scopes=["fleet.read"])
+    reader.api.app.dependency_overrides[routes.require_library_peer] = lambda: operator
+    try:
+        response = reader.api.post(
+            "/api/v1/library/verify",
+            json={"content": "no citations here"},
+            headers=reader.headers,
+        )
+    finally:
+        reader.api.app.dependency_overrides.pop(routes.require_library_peer, None)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["verified"] is True
+    assert body["citations"] == []
+    assert "shared_only" not in body

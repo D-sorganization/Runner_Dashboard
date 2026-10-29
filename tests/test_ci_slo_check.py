@@ -99,3 +99,75 @@ def test_stall_alarm_windows() -> None:
     )
     assert slo.stall_alarm(stalled)[0] and slo.run_check(stalled, mode="stall") == 1
     assert not slo.stall_alarm(healthy)[0] and slo.run_check(healthy, mode="stall") == 0
+
+
+class _Proc:
+    returncode = 0
+    stdout = "[]\n"
+    stderr = ""
+
+
+def test_gh_api_reads_with_get_even_with_query_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `gh api -f k=v` switches the method to POST unless told otherwise, which
+    # turned every live read into a create call ("gh: Invalid request").
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    seen: list[list[str]] = []
+
+    def runner(cmd: list[str]) -> _Proc:
+        seen.append(list(cmd))
+        return _Proc()
+
+    slo.gh_api("repos/o/r/pulls", runner=runner, params={"state": "open"})
+    cmd = seen[0]
+    assert cmd[cmd.index("--method") + 1] == "GET"
+    assert "state=open" in cmd
+
+
+class _PagedProc:
+    returncode = 0
+    stderr = ""
+
+    def __init__(self, stdout: str) -> None:
+        self.stdout = stdout
+
+
+def test_gh_api_decodes_back_to_back_list_pages_with_no_separator(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `gh api --paginate` concatenates each page's JSON with no newline between
+    # them, so a two-page list response arrives as `[...][...]` on one line.
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    page1 = [{"number": 1}, {"number": 2}]
+    page2 = [{"number": 3}]
+    stdout = json.dumps(page1) + json.dumps(page2)
+
+    def runner(cmd: list[str]) -> _PagedProc:
+        return _PagedProc(stdout)
+
+    result = slo.gh_api("repos/o/r/pulls", runner=runner)
+    assert result == [{"number": 1}, {"number": 2}, {"number": 3}]
+
+
+def test_gh_api_decodes_back_to_back_workflow_run_pages_with_no_separator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    page1 = {"workflow_runs": [{"id": 1}, {"id": 2}]}
+    page2 = {"workflow_runs": [{"id": 3}]}
+    stdout = json.dumps(page1) + json.dumps(page2)
+
+    def runner(cmd: list[str]) -> _PagedProc:
+        return _PagedProc(stdout)
+
+    result = slo.gh_api("repos/o/r/actions/runs", runner=runner)
+    assert result == [{"id": 1}, {"id": 2}, {"id": 3}]
+
+
+def test_gh_api_decodes_a_single_page_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    page = {"workflow_runs": [{"id": 1}]}
+    stdout = json.dumps(page)
+
+    def runner(cmd: list[str]) -> _PagedProc:
+        return _PagedProc(stdout)
+
+    result = slo.gh_api("repos/o/r/actions/runs", runner=runner)
+    assert result == page

@@ -25,6 +25,9 @@ from bash_host import as_bash_path, require_bash
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 _PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
+_PR_OR_MAIN_PUSH_CANCEL = (
+    "${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+)
 _POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
 _PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
 _PR_GROUP_TOKENS = (
@@ -60,6 +63,10 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
     "ci-slo-check.yml": (
         "Read-only SLO snapshot and stall alarm must finish GitHub API reads; cancel-in-progress would "
         "discard partial metrics without reducing queue load."
+    ),
+    "recurring-scan.yml": (
+        "Cursor read-scan-push to bot/recurring-scan-state must finish; cancel mid-run risks a corrupt "
+        "cursor or a lost heartbeat."
     ),
 }
 
@@ -266,7 +273,10 @@ def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> N
 
     block = data["concurrency"]
     # Deploy-blocking workflows cancel only superseded PR runs, never main pushes.
-    assert block.get("cancel-in-progress") is True or block.get("cancel-in-progress") == _PR_ONLY_CANCEL, (
+    assert block.get("cancel-in-progress") is True or block.get("cancel-in-progress") in (
+        _PR_ONLY_CANCEL,
+        _PR_OR_MAIN_PUSH_CANCEL,
+    ), (
         f"{workflow_path.name}: PR-triggered workflows must cancel superseded "
         "runs unless they are documented in _CANCEL_FALSE_ALLOWLIST."
     )
@@ -894,7 +904,9 @@ def test_heavy_security_scanners_run_on_pull_request_or_schedule_not_merge_group
     assert "needs.changes.outputs.run_python_tests == 'true'" in gate
     for step_name in _HEAVY_SCANNER_STEPS:
         step_if = str(_ci_step("lint", name=step_name).get("if", ""))
-        assert step_if == gate, f"{step_name} must share the security-scan job gate"
+        assert step_if == gate.removeprefix("always() && !cancelled() && "), (
+            f"{step_name} must share the security-scan job gate"
+        )
 
 
 def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:

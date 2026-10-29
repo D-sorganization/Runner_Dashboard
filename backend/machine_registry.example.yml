@@ -70,6 +70,29 @@ machines:
           min: 1
           default: 2
           max: 4
+      # Fixed always-on pool: a second distro with runners only (no
+      # dashboard/autoscaler), outside the host autoscaler's cap. Needs no
+      # dashboard_url and is never a dashboard peer.
+      - name: node-a-nvme
+        aliases:
+          - node-a-nvme
+        capacity_mode: fixed
+        storage_tier: nvme
+        runner_base_dir: /home/runner/actions-runners
+        runner_labels:
+          - self-hosted
+          - Linux
+          - X64
+          - d-sorg-fleet
+        runners:
+          min: 4
+          default: 4
+          max: 6
+        storage:
+          runner_backing_drive: "C:"
+          host_drive: "C:"
+          wsl_distro: node-a-nvme
+          vhdx_max_gb: 200
     maintenance:
       owner: fleet-ops
       allow_auto_stop: false
