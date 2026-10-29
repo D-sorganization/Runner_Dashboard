@@ -171,19 +171,25 @@ def test_api_detect_stalled_high_risk_creates_proposal_for_approval(
     assert prop["state"] == "proposed"
 
     # Now approve and execute proposal via API
-    decide_res = client.post(
-        f"/api/v1/staff/proposals/{prop['id']}/decide",
-        json={
-            "decision": "approved",
-            "execute": True,
-            "params_hash": reviewed_hash(prop["id"]),
-            "reason": "Decommission dead runner",
-        },
-        headers={"X-Requested-With": "XMLHttpRequest"},
-    )
+    async def fake_runners_get(_path: str) -> dict[str, Any]:
+        return {"runners": [{"id": 8801, "name": "ghost-rogue-runner", "status": "offline", "busy": False}]}
+
+    with (
+        patch.object(gh_client, "get", fake_runners_get),
+        patch.object(gh_client, "_request", AsyncMock(return_value={})),
+    ):
+        decide_res = client.post(
+            f"/api/v1/staff/proposals/{prop['id']}/decide",
+            json={
+                "decision": "approved",
+                "execute": True,
+                "params_hash": reviewed_hash(prop["id"]),
+                "reason": "Decommission dead runner",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
     assert decide_res.status_code == 200, decide_res.text
     decide_data = decide_res.json()
-    # Runner removal has no backend yet (#1344): it fails visibly instead of claiming success.
-    assert decide_data["state"] == "failed"
-    assert decide_data["execution_result"]["success"] is False
-    assert decide_data["execution_result"]["failure_class"] == "not_wired"
+    assert decide_data["state"] == "executed"
+    assert decide_data["execution_result"]["success"] is True
+    assert decide_data["execution_result"]["result"]["removed"] is True

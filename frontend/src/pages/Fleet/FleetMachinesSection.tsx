@@ -58,7 +58,7 @@ export interface MachineNode {
   };
 }
 
-export function formatIoPressureSummary(io?: IoPressureSnapshot | number | null): {
+function formatIoPressureSummary(io?: IoPressureSnapshot | number | null): {
   compact: string | null;
   detail: string | null;
 } {
