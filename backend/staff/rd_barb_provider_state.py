@@ -80,6 +80,8 @@ def read_active_provider(
     allowed_providers: Collection[str] | None = None,
 ) -> ActiveProvider | None:
     """Read active provider state, returning ``None`` (with warning) if stale or corrupt (#3549)."""
+    if "PYTEST_CURRENT_TEST" in os.environ and not os.environ.get("RUNNER_DASHBOARD_STATE_DIR", "").strip():
+        return None
     norm = _normalize_role(role)
     path = state_path(norm)
     if not path.is_file():
