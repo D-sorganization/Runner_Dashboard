@@ -90,6 +90,8 @@ def _derive_status(event: ActivityEnvelope, *, now: datetime) -> SessionStatus:
         return "ended"
     age = (now - _as_utc(event.ts)).total_seconds()
     age = max(age, 0.0)  # a clock-skewed future timestamp reads as "now", not an error
+    if event.source == "recorder" and event.kind == "uncaptured_process":
+        return "uncaptured" if age <= IDLE_WINDOW_SECONDS else "stale"
     if age <= LIVE_WINDOW_SECONDS:
         return "live"
     if age <= IDLE_WINDOW_SECONDS:
