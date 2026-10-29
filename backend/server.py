@@ -19,6 +19,7 @@ Then open http://localhost:8321 in your browser.
 """
 
 import asyncio
+import contextlib
 import datetime as _dt_mod
 import errno
 import json
@@ -460,6 +461,17 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
+from demo_mode import demo_api_block  # noqa: E402
+
+
+@app.middleware("http")
+async def _demo_api_guard(request: Request, call_next):
+    blocked = demo_api_block(
+        request.url.path,
+        enabled=os.environ.get("RUNNER_DASHBOARD_DEMO") == "1",
+    )
+    return blocked if blocked is not None else await call_next(request)
+
 
 @app.exception_handler(gh_utils.RateLimitedError)
 async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimitedError) -> JSONResponse:
@@ -534,10 +546,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-# Issue #331 — request_id correlation middleware (outermost so all subsequent
-# middleware and handlers have access to the request_id context var).
-app.add_middleware(RequestIdMiddleware)
-
 # Issue #350 — early body-size guard (ASGI middleware, runs before routing)
 app.add_middleware(
     MaxBodySizeMiddleware,
@@ -609,8 +617,7 @@ async def _watchdog_heartbeat() -> None:
         try:
             _notifier("WATCHDOG=1")
         except Exception as exc:  # noqa: BLE001
-            log.warning("watchdog_heartbeat: sd_notify failed (%s), exiting task", exc)
-            return
+            log.warning("watchdog_heartbeat: sd_notify failed (%s), continuing", exc)
 
 
 _LEASE_REAPER_INTERVAL_S: int = max(30, int(os.environ.get("LEASE_REAPER_INTERVAL_S", "300")))
@@ -770,6 +777,7 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_barb as _staff_barb_router  # noqa: E402
 from routers import staff_concerns as _staff_concerns_router  # noqa: E402
+from routers import staff_dispatcher as _staff_dispatcher_router  # noqa: E402
 from routers import staff_exclusions as _staff_exclusions_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
@@ -789,6 +797,7 @@ from routers import staff_v1 as _staff_v1_router  # noqa: E402
 from routers import staff_work_items as _staff_work_items_router  # noqa: E402
 
 app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
+app.include_router(_staff_dispatcher_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
 app.include_router(_staff_export_router.router, prefix="/api/v1/staff")  # Thread export & retention (issue #1490)
 app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
@@ -831,6 +840,22 @@ app.include_router(_coordination_router.router)
 from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
+
+from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+
+app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
+from routers import staff_playbooks as _staff_playbooks_router  # noqa: E402
+
+app.include_router(_staff_playbooks_router.router)  # playbooks list/render/assign (issue #3488)
+
+from routers import staff_presentation_prefs as _staff_presentation_prefs_router  # noqa: E402
+
+app.include_router(_staff_presentation_prefs_router.router)  # personal presentation preferences (issue #3495)
+
+from routers import overload as _fleet_overload_router  # noqa: E402
+
+app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
 
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
@@ -1166,7 +1191,10 @@ async def run_cmd(
             stderr.decode("utf-8", errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         return -1, "", "Command timed out"
 
 
@@ -2229,6 +2257,11 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# Issue #331 / #3034 — request_id correlation middleware added last so
+# Starlette inserts it at index 0 (outermost) of app.user_middleware.
+app.add_middleware(RequestIdMiddleware)
+
+
 # ─── Operator diagnostics ────────────────────────────────────────────────────
 #
 # /api/diagnostics surfaces the config-load and fleet-federation state that
@@ -2247,12 +2280,13 @@ async def log_requests(request: Request, call_next):
 
 def _diagnostics_payload() -> dict:
     """Build the /api/diagnostics body. Pure-ish — only safe local I/O."""
-    from machine_registry import load_machine_registry  # local import to avoid cycle
+    from machine_registry import load_machine_registry, resolve_registry_source  # local import to avoid cycle
 
     # Registry load status
     registry_status: dict[str, object]
     registry_err: str | None = None
     machines_count = 0
+    _registry_path, _registry_source = resolve_registry_source(None)
     try:
         _registry = load_machine_registry()
         machines_count = len(_registry.get("machines", []))
@@ -2260,14 +2294,16 @@ def _diagnostics_payload() -> dict:
             "loaded": True,
             "machines": machines_count,
             "version": _registry.get("version"),
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
     except Exception as exc:  # noqa: BLE001
         registry_err = str(exc)
         registry_status = {
             "loaded": False,
             "error": registry_err,
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
 
     # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
@@ -2359,6 +2395,15 @@ def _diagnostics_payload() -> dict:
 
     wsl_vhdx_status = _diagnostics_router.get_cached_wsl_vhdx_status() if _diagnostics_router else []
 
+    # Optional-integration availability for the standalone/no-fleet profile (#3180)
+    integrations_status: dict[str, Any]
+    try:
+        from integration_health import check_all_integration_availability
+
+        integrations_status = check_all_integration_availability()
+    except Exception as exc:  # noqa: BLE001
+        integrations_status = {"error": str(exc)}
+
     # Overall health summary so deploy-check.sh can grep one field
     fleet_node_count_raw = fleet_status.get("node_count", 0)
     fleet_node_count = fleet_node_count_raw if isinstance(fleet_node_count_raw, int) else 0
@@ -2379,6 +2424,7 @@ def _diagnostics_payload() -> dict:
         "cache": cache_status,
         "wsl_vhdx_status": wsl_vhdx_status,
         "storage_handle_incident": storage_handle_incident,
+        "integrations": integrations_status,
     }
 
 
@@ -2837,6 +2883,9 @@ def _acquire_leader_lock() -> bool:
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    if os.environ.get("RUNNER_DASHBOARD_DEMO") == "1":
+        log.info("Demo mode enabled; skipping external clients and background workers")
+        return
     from oauth_config import OAuthConfig, validate_oauth_startup
 
     validate_oauth_startup(OAuthConfig.from_env())
@@ -2907,9 +2956,6 @@ async def _startup() -> None:
     else:
         log.debug("systemd.daemon not available; omitting sd_notify")
 
-    # Start systemd watchdog heartbeat task (issue #707)
-    asyncio.create_task(_watchdog_heartbeat())
-
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())
 
@@ -2974,6 +3020,13 @@ async def _startup() -> None:
     from vuln_scan.scan_service import start_schedule_loop  # noqa: PLC0415
 
     start_schedule_loop()
+
+    if dashboard_config.LIGHTWEIGHT_STARTUP:
+        log.info(
+            "DASHBOARD_LIGHTWEIGHT_STARTUP=1: skipping leader election and background hub tasks",
+        )
+        _runner_audit_router.set_org(ORG)
+        return
 
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()

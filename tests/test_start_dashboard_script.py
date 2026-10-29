@@ -48,6 +48,15 @@ def test_script_builds_or_demands_frontend_bundle() -> None:
     assert "dist" in text and "npm run build" in text
 
 
+def test_dist_dir_matches_vite_and_server_repo_root_output() -> None:
+    text = _script_text()
+    # Vite's outDir is '../dist' relative to root 'frontend' (vite.config.ts),
+    # and backend/server.py serves Path(__file__).parent.parent / "dist" —
+    # both resolve to the repo-root dist/, not frontend/dist/ (#3177).
+    assert 'DIST_DIR="${SCRIPT_DIR}/dist"' in text
+    assert "FRONTEND_DIR}/dist" not in text
+
+
 def test_no_backend_requirements_reference_in_docs() -> None:
     for doc in ("README.md", "CLAUDE.md"):
         text = (REPO_ROOT / doc).read_text(encoding="utf-8")

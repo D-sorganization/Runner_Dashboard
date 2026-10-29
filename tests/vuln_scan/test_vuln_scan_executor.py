@@ -262,7 +262,7 @@ def test_dry_run_plans_without_docker_or_cli(tmp_path: Path) -> None:
 
 def test_refused_without_a_vm_host(tmp_path: Path) -> None:
     docker, popen = FakeDocker(), FakePopen([], [])
-    config = _config(scan_hosts={"brick": {"isolation": "container"}})
+    config = _config(scan_hosts={"node-c": {"isolation": "container"}})
     row = _run(_executor(tmp_path, popen, docker, config=config))
     assert row["state"] == "refused" and any("no scan host" in r for r in row["reasons"])
     assert docker.calls == [] and popen.argvs == []

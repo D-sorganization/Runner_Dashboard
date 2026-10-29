@@ -79,7 +79,8 @@
             { "context": "TypeScript typecheck (tsc)" },
             { "context": "frontend-required" },
             { "context": "detect-secrets (baseline diff)" },
-            { "context": "api-contract-regeneration" }
+            { "context": "api-contract-regeneration" },
+            { "context": "Adversarial redaction gate fixtures" }
           ]
         }
       }

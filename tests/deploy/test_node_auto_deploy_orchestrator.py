@@ -39,7 +39,7 @@ def test_pick_release_assets_matches_target_commit() -> None:
 
 def test_hub_gate_requires_matching_sha() -> None:
     fleet = {
-        "DeskComputer": {
+        "hub-a": {
             "_role": "hub",
             "deployment": {"git_sha": _SHA},
             "status": "online",

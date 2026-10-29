@@ -6,16 +6,21 @@
  * redirect to those anchors (see `routing.ts`). Section content supplies its
  * own heading, so the wrapper only names the region and anchors it.
  */
-import React, { useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
 import { ThemeSettings } from "../../components/ThemeSettings";
 import { VaultPanel } from "../../components/VaultPanel";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
+import { SkeletonCard } from "../../primitives/Skeleton";
 import { CredentialsMobile } from "../Credentials";
 import { CredentialsPage } from "../CredentialsPage";
 import { LinearSetup } from "../LinearSetup";
+import { LocalAppsPage } from "../LocalApps";
 import { PrincipalsTab } from "../Principals";
 import PushSettings from "../PushSettings";
-import { HostSettingsPanel } from "./HostSettingsPanel";
+
+const LazyHostSettingsPanel = React.lazy(() =>
+  import("./HostSettingsPanel").then(({ HostSettingsPanel }) => ({ default: HostSettingsPanel })),
+);
 
 export interface SettingsSection {
   id: string;
@@ -35,8 +40,13 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "notifications", title: "Notifications", render: () => <PushSettings /> },
   { id: "principals", title: "Principals", render: () => <PrincipalsTab /> },
   { id: "theme", title: "Theme", render: () => <ThemeSettings /> },
+  { id: "local-tools", title: "Local Tools", render: () => <LocalAppsPage /> },
   { id: "vault", title: "Secure Vault", render: () => <VaultPanel /> },
-  { id: "host-settings", title: "Host settings", render: () => <HostSettingsPanel /> },
+  { id: "host-settings", title: "Host settings", render: () => (
+    <Suspense fallback={<SkeletonCard />}>
+      <LazyHostSettingsPanel />
+    </Suspense>
+  ) },
 ];
 
 function scrollToHash(): void {
@@ -51,10 +61,6 @@ export function SettingsPage(): React.ReactElement {
   const isMobile = breakpoint !== "lg" && breakpoint !== "xl";
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash.replace(/^#/, "") === "local-tools") {
-      window.location.replace("/fleet/operations#local-tools");
-      return;
-    }
     scrollToHash();
     window.addEventListener("hashchange", scrollToHash);
     return () => window.removeEventListener("hashchange", scrollToHash);
@@ -71,6 +77,8 @@ export function SettingsPage(): React.ReactElement {
             key={section.id}
             href={`#${section.id}`}
             style={{ color: "var(--text-link, #58a6ff)", fontSize: "0.875rem" }}
+            title={`Jump to ${section.title} settings`}
+            aria-label={`Jump to ${section.title} settings`}
           >
             {section.title}
           </a>

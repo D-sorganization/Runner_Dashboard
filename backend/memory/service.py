@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
-from identity import Principal, format_caller
+from identity import Principal, format_caller, principal_has_scope
 from memory.contract import (
     CONTEXT_DIGEST_LIMIT,
     CONTEXT_TASK_LIMIT,
@@ -18,6 +18,7 @@ from memory.contract import (
     enforce_entry_size,
     validate_status_transition,
 )
+from memory.expiry import expiry_is_future
 from memory.models import (
     MemoryAppendRequest,
     MemoryContextPack,
@@ -29,7 +30,10 @@ from memory.redact import contains_secret, redact_memory_text
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
+from staff import store as run_stores
 from staff.barb_lease_fence import is_barb_seat
+from staff.lesson_locator import locate_lesson_evidence, verify_lesson_evidence
+from staff.lesson_provenance import authenticated_lesson_run, completed_run_for_review
 from staff.store import _now  # noqa: PLC2701
 
 
@@ -53,11 +57,6 @@ def is_barb_principal(p: Principal | None) -> bool:
 def is_librarian_principal(p: Principal | None) -> bool:
     roles = set(p.roles + p.scopes) if p else set()
     return bool(p and (p.id in {"librarian", "fleet-librarian"} or roles & {"librarian", "memory.review", "admin"}))
-
-
-def extract_authenticated_run(p: Principal) -> str | None:
-    run_from_id = p.id.split(":")[2] if p.id.startswith("staff:") and p.id.count(":") >= 2 else None
-    return run_from_id or next((r[10:] for r in p.roles if r.startswith("staff-run:")), None)
 
 
 _FLEET_CONFLICT_RE = re.compile(
@@ -96,6 +95,8 @@ def _validate_and_resolve_expires_at(expires_at: str | None) -> str:
 
 def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
     expires_at: str | None = req.expires_at
+    source_run: str | None
+    repo: str | None
     review_status: str | None
     visibility: str | None
     if req.entry_type == "lesson":
@@ -106,18 +107,33 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
             if not is_librarian_principal(principal):
                 raise HTTPException(status_code=403, detail="agent principal cannot set non-proposed review_status")
             raise HTTPException(status_code=422, detail="new lessons must be proposed before review")
-        bound = extract_authenticated_run(principal)
-        if bound and req.source_run and req.source_run != bound:
-            raise HTTPException(status_code=403, detail="caller cannot spoof source_run")
-        if not (source_run := bound or req.source_run) or not (repo := req.repo or req.body.get("repo")):
-            raise HTTPException(status_code=422, detail="missing provenance: source_run and repo required")
+        run = authenticated_lesson_run(principal, req.source_run, req.repo or req.body.get("repo"))
+        if "repo" in req.body and req.body["repo"] != run.repo:
+            raise HTTPException(status_code=403, detail="lesson body repository does not match stored run")
+        source_run, repo = run.id, run.repo
         review_status, visibility = req.review_status or "proposed", req.visibility or "fleet"
         expires_at = _validate_and_resolve_expires_at(req.expires_at)
     else:
+        if not principal_has_scope(principal, "memory.write"):
+            raise HTTPException(
+                status_code=403,
+                detail={"error": "Authorization failed", "required_scope": "memory.write", "principal": principal.id},
+            )
         source_run, repo = req.source_run, req.repo
         review_status, visibility = req.review_status, req.visibility
 
     body = _redact_body(req.body)
+    if req.entry_type == "lesson":
+        body["standards_version"] = run.standards_version
+        body.pop("locator", None)
+        text = body.get("text")
+        if isinstance(text, str) and text:
+            try:
+                locator = locate_lesson_evidence(run_stores.get_store(), run.id, run.repo, text)
+            except ValueError:
+                locator = None
+            if locator is not None:
+                body["locator"] = locator
     enforce_entry_size(body, req.entry_type)
     store = get_memory_store()
     if req.supersedes_id:
@@ -161,10 +177,20 @@ def review_entry(principal: Principal, entry_id: str, req: MemoryReviewRequest) 
         raise HTTPException(status_code=422, detail="promotion requires trusted merged-promotion evidence")
     validate_status_transition(entry.review_status, req.review_status)
     target = validate_lesson_acceptance(entry, store) if req.review_status == "accepted" else req.review_status
+    if target == "accepted":
+        if not expiry_is_future(entry.expires_at, _now()):
+            raise HTTPException(status_code=409, detail="lesson proposal expired before review")
+        if entry.source_run and completed_run_for_review(run_stores.get_store(), entry.source_run) is None:
+            raise HTTPException(status_code=409, detail="lesson run has not reached authoritative completion")
+        if not _lesson_evidence_still_verifies(entry):
+            raise HTTPException(status_code=409, detail="lesson evidence locator no longer verifies")
     exp = _validate_and_resolve_expires_at(req.expires_at) if req.expires_at or target == "accepted" else None
     acc = _now() if target == "accepted" else entry.accepted_at
     kw = {"review_status": target, "reviewed_by": format_caller(principal), "accepted_at": acc, "expires_at": exp}
-    return store.update_review(entry_id, **kw)  # type: ignore[arg-type]
+    try:
+        return store.update_review(entry_id, expected_review_status=entry.review_status or "proposed", **kw)  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="lesson review is stale; reload and retry") from exc
 
 
 def append_session_digest(principal: Principal, req: SessionDigestAppendRequest) -> tuple[MemoryEntry, bool]:
@@ -218,20 +244,46 @@ def _open_tasks(entries: list[MemoryEntry]) -> list[MemoryEntry]:
     return open_entries[:CONTEXT_TASK_LIMIT]
 
 
+def _lesson_evidence_still_verifies(entry: MemoryEntry) -> bool:
+    """A lesson with no locator/source_run was never evidence-bound; nothing to re-check."""
+    locator = entry.body.get("locator")
+    if locator is None or not entry.source_run:
+        return True
+    text = entry.body.get("text")
+    return isinstance(text, str) and verify_lesson_evidence(
+        run_stores.get_store(), entry.source_run, entry.repo or "", text, locator
+    )
+
+
 def get_prompt_lessons(
     store: AssistantMemoryStore | None = None,
     repo: str | None = None,
     principal: Principal | None = None,
     limit: int = 10,
 ) -> list[MemoryEntry]:
-    return (store or get_memory_store()).list_entries(
-        entry_type="lesson",
-        repo=repo,
-        review_status="accepted",
-        include_barb_only=is_barb_principal(principal),
-        active_only=True,
-        limit=limit,
-    )
+    """Fill up to `limit` lessons whose evidence still verifies, paging deterministically.
+
+    A single-page fetch followed by post-hoc filtering would starve an older, still-valid
+    lesson whenever enough newer lessons on that same page have since gone stale — keep
+    paging past stale entries until the budget is filled or the source is exhausted.
+    """
+    store = store or get_memory_store()
+    results: list[MemoryEntry] = []
+    cursor: tuple[str, str] | None = None
+    while len(results) < limit:
+        page, cursor = store.list_entries_page(
+            cursor=cursor,
+            entry_type="lesson",
+            repo=repo,
+            review_status="accepted",
+            include_barb_only=is_barb_principal(principal),
+            active_only=True,
+            limit=limit,
+        )
+        results.extend(entry for entry in page if _lesson_evidence_still_verifies(entry))
+        if cursor is None:
+            break
+    return results[:limit]
 
 
 def build_context_pack() -> MemoryContextPack:

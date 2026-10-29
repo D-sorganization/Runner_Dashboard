@@ -1,0 +1,44 @@
+name: Reusable PR freshness guard
+
+# pull_request-only early exit; never called on merge_group (callers gate the job).
+permissions:
+  contents: read
+  pull-requests: read
+
+on:
+  workflow_call:
+    outputs:
+      skip_heavy:
+        description: When true, heavy jobs for this pull_request run should no-op.
+        value: ${{ jobs.guard.result == 'success' && jobs.guard.outputs.skip_heavy == 'true' }}
+      reason:
+        description: Skip reason when skip_heavy is true.
+        value: ${{ jobs.guard.result == 'success' && jobs.guard.outputs.reason || '' }}
+
+concurrency:
+  # Scope per caller workflow so parallel CI workflows do not cancel each other's guard.
+  group: pr-freshness-guard-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  guard:
+    name: PR freshness guard
+    if: >-
+      !github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, d-sorg-fleet]
+    timeout-minutes: 3
+    outputs:
+      skip_heavy: ${{ steps.guard.outputs.skip }}
+      reason: ${{ steps.guard.outputs.reason }}
+    steps:
+      - name: Checkout local composite action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/actions/pr-early-exit
+            shared_scripts
+          sparse-checkout-cone-mode: false
+      - id: guard
+        uses: ./.github/actions/pr-early-exit

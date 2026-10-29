@@ -165,7 +165,14 @@ test.describe("accessibility (axe-core)", () => {
     page,
   }, testInfo) => {
     await gotoApp(page);
-    await page.locator("body").press("?");
+    // The default Staff Console route auto-focuses its composer textarea once
+    // the conversation finishes opening, which can land after gotoApp()
+    // returns. The '?' shortcut deliberately ignores text fields, so pressing
+    // it while the composer holds focus types a literal '?' instead of opening
+    // help. Park focus on a non-text control first: the composer only claims
+    // focus while document.body is active, so it cannot take it back.
+    await page.getByRole("navigation").getByRole("button").first().focus();
+    await page.keyboard.press("?");
     const dialog = page.getByRole("dialog", { name: /help/i });
     await expect(dialog).toBeVisible({ timeout: 5000 });
     await expect(dialog).toContainText("Navigate staff roster roles");
@@ -192,5 +199,41 @@ test.describe("accessibility (axe-core)", () => {
       .getByRole("navigation")
       .or(page.getByRole("tablist"));
     await expect(navOrTablist.first()).toBeVisible({ timeout: 15000 });
+  });
+
+  // #2991: shell chrome (sidebar nav, global toaster) is excluded from the
+  // #main-content scan above by design (see file header), so it needs its
+  // own targeted coverage rather than widening that gate's scope.
+  test("sidebar navigation has no serious a11y violations", async ({
+    page,
+  }, testInfo) => {
+    await gotoApp(page);
+    const nav = page.getByRole("navigation", { name: "Dashboard sections" });
+    if (!(await nav.isVisible({ timeout: 2000 }).catch(() => false))) {
+      test.skip(true, "desktop sidebar not present at this viewport");
+    }
+    await expectNoSeriousA11yViolations(
+      page,
+      testInfo,
+      "sidebar",
+      'nav[aria-label="Dashboard sections"]',
+    );
+  });
+
+  test("notification toaster region has no serious a11y violations", async ({
+    page,
+  }, testInfo) => {
+    await gotoApp(page);
+    await expectNoSeriousA11yViolations(page, testInfo, "toaster", ".toaster-region");
+  });
+
+  // #2991: the Staff mobile "Ask Barb" home view used to render its own
+  // <main>, duplicating MobileShell's #main-content landmark.
+  test("Staff tab (mobile) has exactly one main landmark", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await gotoApp(page, "/staff");
+    await expect(page.getByRole("main")).toHaveCount(1);
   });
 });

@@ -102,7 +102,7 @@ def test_lapsed_reservation_is_unknown_unless_the_operation_is_safe_to_take_over
     taken = store.reserve(KEY, ENDPOINT, WHO, "h1", takeover_safe=True)
     assert taken.state == "acquired"
     assert taken.recovered is True
-    assert taken.operation_id == first.operation_id
+    assert taken.operation_id != first.operation_id
 
 
 @pytest.mark.unit
@@ -143,6 +143,26 @@ def test_legacy_ledger_is_migrated_and_its_rows_replay(db: Path) -> None:
     assert replay.state == "replay"
     assert replay.record is not None
     assert replay.record.response_body == '{"old": true}'
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("method", ["release", "complete"])
+def test_takeover_safe_mints_fresh_operation_id_stale_holder_cannot_mutate(db: Path, method: str) -> None:
+    """Issue #3039: after takeover_safe only the new holder may release or complete."""
+    store = IdempotencyStore(db)
+    stale = store.reserve(KEY, ENDPOINT, WHO, "h1", lease_seconds=-1)
+    taken = store.reserve(KEY, ENDPOINT, WHO, "h1", takeover_safe=True)
+    assert taken.state == "acquired"
+    assert taken.recovered is True
+    assert taken.operation_id != stale.operation_id
+    if method == "release":
+        result = store.release(KEY, ENDPOINT, WHO, operation_id=stale.operation_id)
+    else:
+        result = store.complete(KEY, ENDPOINT, WHO, 200, {}, "stale", operation_id=stale.operation_id)
+    assert result == "not-owner"
+    assert store.reserve(KEY, ENDPOINT, WHO, "h1").state == "in_progress"
+    assert store.complete(KEY, ENDPOINT, WHO, 201, {}, "current", operation_id=taken.operation_id) == "ok"
+    assert store.get(KEY, ENDPOINT, WHO).response_body == "current"
 
 
 @pytest.mark.unit

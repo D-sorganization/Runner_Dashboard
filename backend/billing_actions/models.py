@@ -44,6 +44,20 @@ class UsageItem:
 
 
 @dataclass(frozen=True)
+class BudgetSnapshot:
+    """The org's configured Actions budget cap (slice 2).
+
+    Pre: ``amount_usd`` is non-negative.
+    """
+
+    amount_usd: float
+    prevent_further_usage: bool
+
+    def __post_init__(self) -> None:
+        assert self.amount_usd >= 0.0, "amount_usd must be non-negative"
+
+
+@dataclass(frozen=True)
 class QuotaResult:
     """SKU-weighted minutes used this cycle, private repos only.
 

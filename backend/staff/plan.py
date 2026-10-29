@@ -44,6 +44,7 @@ class RunRequest:
     # When set, must exist in the skills registry (#2157); omit to use role/repo matching + fallback.
     requested_skill: str | None = None
     execution_mode: str = "local"
+    dispatch_origin: str = ""
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):

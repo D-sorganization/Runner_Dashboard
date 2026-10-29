@@ -20,7 +20,7 @@ import hashlib
 import json
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -247,7 +247,7 @@ def _dispatch_with_failover(namespace: argparse.Namespace) -> int:
         return 2
 
     prompt_digest = hashlib.sha256((prompt or "").encode("utf-8")).hexdigest()
-    date = datetime.now(UTC).date().isoformat()
+    date = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017 - py3.10 stdlib clients
     key_material = "\0".join((role, namespace.repo or "", str(namespace.issue or ""), prompt_digest, date))
     idempotency_key = hashlib.sha256(key_material.encode("utf-8")).hexdigest()
     last_failure = "hub_unreachable"

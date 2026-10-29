@@ -295,3 +295,60 @@ def test_send_ack_and_release_call_the_matching_subcommands(rm: FakeRM, client: 
 def test_request_contracts_reject_bad_input(rm: FakeRM, client: TestClient, path: str, body: dict) -> None:
     assert client.post(path, json=body, headers=_BOT).status_code == 422
     assert rm.calls() == []
+
+
+# ── activity log producer adapter (#2859) ──────────────────────────────────
+@pytest.fixture
+def activity_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # noqa: ANN201
+    import activity_producers
+    from activity import ActivityStore
+
+    activity_producers._next_seq.clear()
+    real_store = ActivityStore(tmp_path / "activity.sqlite3")
+    monkeypatch.setattr(activity_producers, "get_activity_store", lambda: real_store)
+    return real_store
+
+
+@pytest.mark.unit
+def test_presence_register_and_release_feed_the_activity_log(
+    rm: FakeRM, client: TestClient, activity_store: Any
+) -> None:
+    rm.respond("agent_communicate:register", {"ok": True})
+    body = {"session": "codex-42", "repo": "Tools", "issue": 42, "branch": "feat/x"}
+    assert client.post("/api/coordination/presence", json=body, headers=_BOT).status_code == 200
+    rm.respond("agent_communicate:release", {"ok": True})
+    rel = {"session": "codex-42", "repo": "Tools"}
+    assert client.post("/api/coordination/presence/release", json=rel, headers=_BOT).status_code == 200
+    page = activity_store.read(session_id="codex-42")
+    assert [item.kind for item in page.items] == ["presence_register", "presence_release"]
+    assert page.items[0].source == "coordination"
+    assert page.items[0].issue == 42
+    assert page.items[0].branch == "feat/x"
+
+
+@pytest.mark.unit
+def test_send_message_feeds_the_activity_log(rm: FakeRM, client: TestClient, activity_store: Any) -> None:
+    rm.respond("agent_communicate:list", board(session("codex-1", "Tools", agent="codex")))
+    rm.respond("agent_communicate:send", {"ok": True})
+    msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "rebasing"}
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
+    page = activity_store.read(session_id="codex-1")
+    assert [item.kind for item in page.items] == ["message_sent"]
+    assert page.items[0].payload == {"to": "claude-2", "text": "rebasing"}
+
+
+@pytest.mark.unit
+def test_presence_register_survives_a_broken_activity_store(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import activity_producers
+
+    def broken_store():  # noqa: ANN202
+        raise RuntimeError("activity store unavailable")
+
+    monkeypatch.setattr(activity_producers, "get_activity_store", broken_store)
+    rm.respond("agent_communicate:register", {"ok": True})
+    body = {"session": "codex-42", "repo": "Tools", "issue": 42, "branch": "feat/x"}
+    resp = client.post("/api/coordination/presence", json=body, headers=_BOT)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True

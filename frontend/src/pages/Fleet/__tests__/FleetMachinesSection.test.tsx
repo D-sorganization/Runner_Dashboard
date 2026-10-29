@@ -10,7 +10,7 @@ afterEach(() => {
 
 const mockMachines = [
   {
-    name: "ControlTower",
+    name: "node-a",
     online: true,
     dashboard_reachable: true,
     health: { runners_registered: 2 },
@@ -25,7 +25,7 @@ const mockMachines = [
     },
   },
   {
-    name: "DeskComputer",
+    name: "hub-a",
     online: false,
     dashboard_reachable: false,
     // Org-wide total, as returned by the real API on every node (see #1738).
@@ -38,9 +38,9 @@ const mockMachines = [
 ];
 
 const mockRunners = [
-  { id: 1, name: "d-sorg-local-ControlTower-1", status: "online", busy: false, labels: ["self-hosted"], machine: "ControlTower" },
-  { id: 2, name: "d-sorg-local-ControlTower-2", status: "online", busy: true, labels: ["self-hosted"], machine: "ControlTower" },
-  { id: 3, name: "d-sorg-local-DeskComputer-1", status: "offline", busy: false, labels: [], machine: "DeskComputer" },
+  { id: 1, name: "d-sorg-local-node-a-1", status: "online", busy: false, labels: ["self-hosted"], machine: "node-a" },
+  { id: 2, name: "d-sorg-local-node-a-2", status: "online", busy: true, labels: ["self-hosted"], machine: "node-a" },
+  { id: 3, name: "d-sorg-local-hub-a-1", status: "offline", busy: false, labels: [], machine: "hub-a" },
 ];
 
 describe("FleetMachinesSection", () => {
@@ -56,8 +56,8 @@ describe("FleetMachinesSection", () => {
     );
 
     expect(screen.getByRole("region", { name: /Fleet Machines/i })).toBeInTheDocument();
-    expect(screen.getByText("ControlTower")).toBeInTheDocument();
-    expect(screen.getByText("DeskComputer")).toBeInTheDocument();
+    expect(screen.getByText("node-a")).toBeInTheDocument();
+    expect(screen.getByText("hub-a")).toBeInTheDocument();
   });
 
   it("expands machine telemetry on row click", () => {
@@ -71,7 +71,7 @@ describe("FleetMachinesSection", () => {
       />
     );
 
-    const expandBtn = screen.getByRole("button", { name: /expand ControlTower telemetry/i });
+    const expandBtn = screen.getByRole("button", { name: /expand node-a telemetry/i });
     fireEvent.click(expandBtn);
 
     expect(screen.getByText(/Storage Devices/i)).toBeInTheDocument();
@@ -95,7 +95,7 @@ describe("FleetMachinesSection", () => {
     expect(maintBtns.length).toBeGreaterThan(0);
     fireEvent.click(maintBtns[0]);
 
-    expect(onAskMaintenance).toHaveBeenCalledWith("ControlTower", expect.any(String));
+    expect(onAskMaintenance).toHaveBeenCalledWith("node-a", expect.any(String));
   });
 
   it("fails visibly with independent error state and retry CTA", () => {
@@ -136,7 +136,7 @@ describe("FleetMachinesSection", () => {
     const compactDiskItem = screen.getByRole("menuitem", { name: "Compact disk" });
     fireEvent.click(compactDiskItem);
 
-    expect(onMaintenanceAction).toHaveBeenCalledWith("ControlTower", "compact_disk", true);
+    expect(onMaintenanceAction).toHaveBeenCalledWith("node-a", "compact_disk", true);
   });
 
   it("groups runners by machine and shows the machine's own count, not the org-wide total", () => {
@@ -150,14 +150,14 @@ describe("FleetMachinesSection", () => {
       />
     );
 
-    const controlTowerRow = screen.getByText("ControlTower").closest("tr");
-    const deskComputerRow = screen.getByText("DeskComputer").closest("tr");
+    const controlTowerRow = screen.getByText("node-a").closest("tr");
+    const deskComputerRow = screen.getByText("hub-a").closest("tr");
     expect(controlTowerRow).not.toBeNull();
     expect(deskComputerRow).not.toBeNull();
 
-    // ControlTower: 2 runners bound, both online -> "2 / 2"
+    // node-a: 2 runners bound, both online -> "2 / 2"
     expect(controlTowerRow!.querySelectorAll("td")[3].textContent).toBe("2 / 2");
-    // DeskComputer: 1 runner bound, 0 online -> "0 / 1" (never the org-wide 21)
+    // hub-a: 1 runner bound, 0 online -> "0 / 1" (never the org-wide 21)
     expect(deskComputerRow!.querySelectorAll("td")[3].textContent).toBe("0 / 1");
   });
 });

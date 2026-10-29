@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """rd-barb -> Dieter direct notify path, with no Grok relay (RD #3075; barbara #11 step 3).
 
-Questions and alerts go straight to a channel Dieter picks: Telegram (RD #3076) or the dashboard plus email.
+Questions and alerts go straight to the channel(s) Dieter picked: the dashboard inbox plus email (``dashboard,email``).
 Until he picks one, the only channel is ``none``, which fails every delivery, so non-delivery shows on
 ``GET /api/v1/staff/rd-barb/notify-status`` (``failing`` at once, ``degraded`` after 5 minutes) instead of
 being silent. A channel is one adapter registered in ``CHANNELS``; nothing else changes. The fyi digest
@@ -28,6 +28,7 @@ from typing import Any, Protocol
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "backend"))
 
+from staff.rd_barb_inbox import DashboardInbox, InboxRefused, default_inbox_path  # noqa: E402
 from staff.rd_barb_notify_health import NotifyHealth, default_health_path  # noqa: E402
 
 log = logging.getLogger("rd_barb.direct_notify")
@@ -60,14 +61,66 @@ class _FailingChannel:
         raise ChannelError(self._code)
 
 
+class DashboardChannel:
+    """Appends the envelope to the dashboard inbox (``GET /api/v1/staff/rd-barb/inbox``)."""
+
+    name = "dashboard"
+
+    def __init__(self, inbox: DashboardInbox) -> None:
+        self._inbox = inbox
+
+    def send(self, msg: dict[str, Any]) -> None:
+        try:
+            self._inbox.add(msg)
+        except InboxRefused as exc:
+            raise ChannelError("secret_refused") from exc
+
+
+class FanOutChannel:
+    """Delivers to every member; the delivery counts only if all of them succeed.
+
+    ``send_each`` returns ``{member name: error code or ""}`` so health can record each member apart.
+    """
+
+    def __init__(self, members: Sequence[NotifyChannel]) -> None:
+        if not members:
+            raise ValueError("a fan-out needs at least one channel")
+        self._members = list(members)
+        self.name = "+".join(m.name for m in members)
+
+    def send_each(self, msg: dict[str, Any]) -> dict[str, str]:
+        return {m.name: _send(m, msg) for m in self._members}
+
+    def send(self, msg: dict[str, Any]) -> None:
+        if failed := _failures(self.send_each(msg)):
+            raise ChannelError(failed)
+
+
+def _email_channel(cfg: Mapping[str, str]) -> NotifyChannel:
+    from scripts.rd_barb_notify_email import email_channel  # noqa: PLC0415 - lazy: sys.path is set late
+
+    return email_channel(cfg, error_cls=ChannelError)
+
+
 CHANNELS: dict[str, Callable[[Mapping[str, str]], NotifyChannel]] = {
     "none": lambda _cfg: _FailingChannel("none", "no_channel_configured"),
+    "dashboard": lambda _cfg: DashboardChannel(DashboardInbox(default_inbox_path())),
+    "email": _email_channel,
 }
 
 
 def channel_from_config(cfg: Mapping[str, str]) -> NotifyChannel:
-    """The channel named by ``RD_BARB_DIRECT_CHANNEL`` (default ``none``); an unregistered name fails closed."""
-    name = (cfg.get("RD_BARB_DIRECT_CHANNEL") or "none").strip()
+    """The channel(s) named by ``RD_BARB_DIRECT_CHANNEL``, comma separated (default ``none``).
+
+    An unregistered name fails closed: that member (recorded as ``unknown``) fails every delivery.
+    """
+    raw = cfg.get("RD_BARB_DIRECT_CHANNEL") or "none"
+    names = list(dict.fromkeys(n.strip() for n in raw.split(",") if n.strip())) or ["none"]
+    members = [_member(name, cfg) for name in names]
+    return members[0] if len(members) == 1 else FanOutChannel(members)
+
+
+def _member(name: str, cfg: Mapping[str, str]) -> NotifyChannel:
     factory = CHANNELS.get(name)
     return factory(cfg) if factory else _FailingChannel("unknown", "unknown_channel")
 
@@ -83,8 +136,10 @@ def deliver(
         return {"ok": False, "status": "rejected", "error": "invalid_envelope", "problems": problems}
     if msg["kind"] not in DIRECT_KINDS:
         return {"ok": False, "status": "rejected", "error": "fyi_uses_digest"}
-    error = _send(channel, msg)
-    state = _record(health, channel.name, error, clock())
+    now = clock()
+    outcomes = _send_each(channel, msg)
+    error = _failures(outcomes) if len(outcomes) > 1 else next(iter(outcomes.values()))
+    state = _record(health, channel.name, error, now, outcomes if len(outcomes) > 1 else {})
     if error:
         log.error("rd-barb direct notify not sent: %s", error)
         return {"ok": False, "status": "not_sent", "error": error, "health": state}
@@ -101,9 +156,22 @@ def _send(channel: NotifyChannel, msg: dict[str, Any]) -> str:
     return ""
 
 
-def _record(health: NotifyHealth, channel: str, error: str, now: float) -> str:
+def _send_each(channel: NotifyChannel, msg: dict[str, Any]) -> dict[str, str]:
+    """Per-member outcomes for a fan-out; a plain channel is one entry."""
+    each = getattr(channel, "send_each", None)
+    return each(msg) if callable(each) else {channel.name: _send(channel, msg)}
+
+
+def _failures(outcomes: Mapping[str, str]) -> str:
+    """``name:code`` of each failed member, comma joined; empty when every member delivered."""
+    return ",".join(f"{name}:{code}" for name, code in outcomes.items() if code)
+
+
+def _record(health: NotifyHealth, channel: str, error: str, now: float, members: Mapping[str, str]) -> str:
     try:
         health.record(ok=not error, channel=channel, error=error, now=now)
+        for name, code in members.items():
+            health.record_channel(name, ok=not code, error=code, now=now)
         return str(health.status(now=now)["state"])
     except OSError as exc:
         log.error("rd-barb notify health not recorded: %s", type(exc).__name__)

@@ -15,7 +15,9 @@ from oauth_config import OAuthConfig
 from routers import auth
 from starlette.middleware.sessions import SessionMiddleware
 
-PRIVATE = "https://deskcomputer.tail2bbcc7.ts.net"
+pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
+
+PRIVATE = "https://hub-a.fleet-example.ts.net"
 PUBLIC = "https://ops.example.invalid"
 OTHER = "https://other.example.invalid"
 EDGE = {"CF-Ray": "test-ray"}
@@ -31,7 +33,7 @@ def flow(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Mock, dict[str, s
         "GITHUB_OAUTH_CALLBACK_URL": PRIVATE + "/api/auth/callback",
         "SESSION_SECRET": "b" * 32,
         "DASHBOARD_TLS": "1",
-        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": f"{PUBLIC},{OTHER}",
+        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": f"{PRIVATE},{PUBLIC},{OTHER}",
     }
     monkeypatch.setenv("DASHBOARD_BROWSER_PUBLIC_ORIGIN", PUBLIC)
     monkeypatch.setenv("DASHBOARD_OWNER_GITHUB_ID", "12345")

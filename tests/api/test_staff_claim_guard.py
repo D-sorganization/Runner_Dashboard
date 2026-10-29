@@ -158,6 +158,64 @@ def test_issue_attempt_blocker_enforces_attempt_cap(tmp_path: Any) -> None:
     assert verdict is not None and verdict.code == "attempt_cap_reached"
 
 
+def test_issue_attempt_blocker_caps_are_scoped_per_role(tmp_path: Any) -> None:
+    """Per-role scoping is intentional (#3278): a saturated role's cap does not block another role."""
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    for idx in range(3):
+        when = now - timedelta(hours=idx + 1)
+        store.create_run(
+            RunRecord(
+                id=f"run-{idx}",
+                role="issue-remediator",
+                provider="claude",
+                model=None,
+                machine="Desk",
+                repo="Runner_Dashboard",
+                target_kind="issue",
+                target_ref="#11",
+                prompt="x",
+                status="failed",
+                created_at=when.isoformat().replace("+00:00", "Z"),
+                ended_at=(when + timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            )
+        )
+    saturated = claim_guard.issue_attempt_blocker(
+        store, role="issue-remediator", repo="Runner_Dashboard", issue=11, now=now
+    )
+    other_role = claim_guard.issue_attempt_blocker(
+        store, role="pr-remediator", repo="Runner_Dashboard", issue=11, now=now
+    )
+    assert saturated is not None and saturated.code == "attempt_cap_reached"
+    assert other_role is None
+
+
+def test_issue_attempt_blocker_matches_pr_targets(tmp_path: Any) -> None:
+    """A PR target's attempts are stored as ``PR #N`` (``plan.py``'s ``target_ref``), not ``#N`` (#3278)."""
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    for idx in range(3):
+        when = now - timedelta(hours=idx + 1)
+        store.create_run(
+            RunRecord(
+                id=f"run-pr-{idx}",
+                role="pr-remediator",
+                provider="claude",
+                model=None,
+                machine="Desk",
+                repo="Runner_Dashboard",
+                target_kind="pr",
+                target_ref="PR #42",
+                prompt="x",
+                status="failed",
+                created_at=when.isoformat().replace("+00:00", "Z"),
+                ended_at=(when + timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            )
+        )
+    verdict = claim_guard.issue_attempt_blocker(store, role="pr-remediator", repo="Runner_Dashboard", pr=42, now=now)
+    assert verdict is not None and verdict.code == "attempt_cap_reached"
+
+
 # ── manual dispatch enforcement ──────────────────────────────────────────────
 
 
@@ -300,6 +358,32 @@ def test_scheduler_gate_refuses_skip_label_even_without_claim() -> None:
         REPO, 7, None, "issue-remediator", fetch=lambda ep: _sync(ep, _issue("do-not-automate"))
     )
     assert "skip_label" in reason
+
+
+def test_scheduler_gate_enforces_attempt_cap_for_pr_target(tmp_path: Any) -> None:
+    """A scheduled run against a PR must count attempts stored against that PR (#3278)."""
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    for idx in range(3):
+        when = now - timedelta(hours=idx + 1)
+        store.create_run(
+            RunRecord(
+                id=f"run-pr-{idx}",
+                role="pr-remediator",
+                provider="claude",
+                model=None,
+                machine="Desk",
+                repo=REPO,
+                target_kind="pr",
+                target_ref="PR #42",
+                prompt="x",
+                status="failed",
+                created_at=when.isoformat().replace("+00:00", "Z"),
+                ended_at=(when + timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            )
+        )
+    reason = claim_guard.scheduler_blocker(REPO, None, 42, "pr-remediator", store=store, now=now)
+    assert reason and "attempt_cap_reached" in reason
 
 
 def _sync(endpoint: str, issue: dict[str, Any]) -> Any:

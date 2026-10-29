@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import sys
 import tarfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -21,16 +23,48 @@ sys.path.insert(0, str(REPO / "backend"))
 import fleet_storage_gc as fsg  # noqa: E402
 from machine_registry import load_machine_registry  # noqa: E402
 
-RUNNER_USER = "dieterolson"
+RUNNER_USER = "fleet-operator"
+
+# The shipped machine_registry.yml carries no live topology (#3082); these
+# tests exercise hosts_from_registry's pool/distro/path transformation against
+# a registry shaped like a real deployment instead of the (now-empty) shipped
+# file.
+_SYNTHETIC_REGISTRY: dict[str, object] = {
+    "version": 1,
+    "machines": [
+        {
+            "name": "node-a-Runner",
+            "tailscale_nodes": [{"name": "node-a", "preferred": True}],
+            "storage": {},
+            "runner_pools": [
+                {
+                    "name": "node-a-Runner",
+                    "runner_base_dir": f"/home/{RUNNER_USER}/actions-runners",
+                    "storage": {"wsl_distro": "node-a-Runner"},
+                }
+            ],
+        },
+        {
+            "name": "node-b",
+            "tailscale_nodes": [{"name": "node-b", "preferred": True}],
+            "storage": {"wsl_distro": "Ubuntu"},
+        },
+        {
+            "name": "hub-a",
+            "tailscale_nodes": [{"name": "hub-a", "preferred": True}],
+            "storage": {"wsl_distro": "Ubuntu-22.04"},
+        },
+    ],
+}
 
 
 def _host(**overrides: object) -> fsg.Host:
     fields: dict[str, object] = {
-        "name": "ControlTower-Runner",
-        "ssh": "controltower",
-        "distro": "ControlTower-Runner",
+        "name": "node-a-Runner",
+        "ssh": "node-a",
+        "distro": "node-a-Runner",
         "runner_user": RUNNER_USER,
-        "runner_roots": ("/home/dieterolson/actions-runners",),
+        "runner_roots": ("/home/fleet-operator/actions-runners",),
         "profile": "runner",
     }
     fields.update(overrides)
@@ -59,19 +93,9 @@ def test_host_rejects_invalid_fields(overrides: dict[str, object], needle: str) 
 
 
 def test_registry_hosts_cover_every_live_runner_pool() -> None:
+    """The public repo ships a documentation registry stub with no live pools."""
     hosts = {h.name: h for h in fsg.hosts_from_registry(load_machine_registry(), runner_user=RUNNER_USER)}
-    assert set(hosts) == {"ControlTower-Runner", "OGLaptop", "DeskComputer"}
-
-    ct = hosts["ControlTower-Runner"]
-    assert (ct.ssh, ct.distro, ct.runner_roots) == (
-        "controltower",
-        "ControlTower-Runner",
-        ("/home/dieterolson/actions-runners",),
-    )
-    assert hosts["OGLaptop"].distro == "Ubuntu"
-    assert hosts["OGLaptop"].runner_roots == ("/home/dieterolson/actions-runners",)
-    assert hosts["DeskComputer"].distro == "Ubuntu-22.04"
-    assert all(h.profile == "runner" for h in hosts.values())
+    assert hosts == {}
 
 
 def test_registry_skips_retired_pools_and_machines_without_distro() -> None:
@@ -94,22 +118,69 @@ def test_registry_skips_retired_pools_and_machines_without_distro() -> None:
 
 
 def test_workstations_are_native_linux_with_workstation_profile() -> None:
-    hosts = fsg.hosts_from_workstations([{"name": "brick", "ssh": "brick", "runner_user": "dieterolson"}])
+    hosts = fsg.hosts_from_workstations([{"name": "node-c", "ssh": "node-c", "runner_user": "fleet-operator"}])
     assert hosts == [
         fsg.Host(
-            name="brick",
-            ssh="brick",
+            name="node-c",
+            ssh="node-c",
             distro=None,
-            runner_user="dieterolson",
-            runner_roots=("/home/dieterolson/actions-runners",),
+            runner_user="fleet-operator",
+            runner_roots=("/home/fleet-operator/actions-runners",),
             profile="workstation",
         )
     ]
 
 
 def test_committed_workstation_list_loads() -> None:
+    # config/storage-gc-workstations.json still ships real workstation names
+    # (not yet migrated to the machine_registry.yml-style example/override
+    # split — tracked separately) so this one assertion checks against the
+    # real file's content, unlike the rest of this module's sanitized fixtures.
     hosts = fsg.load_workstations(REPO / "config" / "storage-gc-workstations.json")
     assert {h.name for h in hosts} >= {"brick", "raspberrypi"}
+
+
+# --- resolve_storage_gc_workstations_source (#3475) --------------------------------
+# Mirrors machine_registry.resolve_registry_source / barb_node_leader.resolve_node_roles_source
+# (DRY: same explicit > env > local > shipped precedence) so this loader doesn't
+# invent a second override pattern.
+
+
+def test_resolve_storage_gc_workstations_source_prefers_explicit_path(tmp_path: Path) -> None:
+    explicit = tmp_path / "explicit.json"
+    assert fsg.resolve_storage_gc_workstations_source(explicit) == (explicit, "explicit")
+
+
+def test_resolve_storage_gc_workstations_source_falls_back_to_env_then_shipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("STORAGE_GC_WORKSTATIONS_PATH", raising=False)
+    monkeypatch.setattr("fleet_storage_gc.LOCAL_WORKSTATIONS_PATH", Path("/nonexistent/storage-gc-workstations.json"))
+    assert fsg.resolve_storage_gc_workstations_source(None) == (fsg.DEFAULT_WORKSTATIONS, "shipped")
+
+    monkeypatch.setenv("STORAGE_GC_WORKSTATIONS_PATH", "/tmp/env-workstations.json")
+    assert fsg.resolve_storage_gc_workstations_source(None) == (Path("/tmp/env-workstations.json"), "env")
+
+
+def test_resolve_storage_gc_workstations_source_prefers_local_config_over_shipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("STORAGE_GC_WORKSTATIONS_PATH", raising=False)
+    local_path = tmp_path / "local-workstations.json"
+    local_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("fleet_storage_gc.LOCAL_WORKSTATIONS_PATH", local_path)
+    assert fsg.resolve_storage_gc_workstations_source(None) == (local_path, "local")
+
+
+def test_load_workstations_honors_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    override = tmp_path / "override-workstations.json"
+    override.write_text(
+        json.dumps({"workstations": [{"name": "node-z", "ssh": "node-z", "runner_user": "fleet-operator"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STORAGE_GC_WORKSTATIONS_PATH", str(override))
+    hosts = fsg.load_workstations(None)
+    assert {h.name for h in hosts} == {"node-z"}
     assert all(h.profile == "workstation" and h.distro is None for h in hosts)
 
 
@@ -130,8 +201,8 @@ def test_payload_is_a_tarball_of_the_installer_and_cleanup_with_lf_and_exec_bits
 
 def test_bootstrap_passes_host_contract_to_installer() -> None:
     script = fsg.bootstrap_script(_host(profile="workstation"), verify_only=False, dry_run=True)
-    assert "RUNNER_USER=dieterolson" in script
-    assert "RUNNER_ROOTS=/home/dieterolson/actions-runners" in script
+    assert "RUNNER_USER=fleet-operator" in script
+    assert "RUNNER_ROOTS=/home/fleet-operator/actions-runners" in script
     assert "--profile workstation" in script
     assert "--dry-run" in script
     assert "sudo -n" in script
@@ -152,23 +223,23 @@ def _decoded(command: list[str]) -> str:
 
 
 def test_remote_wsl_command_goes_through_ssh_and_wsl_as_root() -> None:
-    cmd = fsg.command_for(_host(), local_name="oglaptop", script="echo hi")
-    assert cmd[0] == "ssh" and "BatchMode=yes" in cmd and cmd[-2] == "controltower"
-    assert cmd[-1].startswith('wsl -d ControlTower-Runner -u root -e bash -c "source <(echo ')
+    cmd = fsg.command_for(_host(), local_name="node-b", script="echo hi")
+    assert cmd[0] == "ssh" and "BatchMode=yes" in cmd and cmd[-2] == "node-a"
+    assert cmd[-1].startswith('wsl -d node-a-Runner -u root -e bash -c "source <(echo ')
     assert _decoded(cmd) == "echo hi"
 
 
 def test_local_wsl_host_skips_ssh() -> None:
-    host = _host(name="OGLaptop", ssh="oglaptop", distro="Ubuntu")
-    cmd = fsg.command_for(host, local_name="OGLAPTOP", script="echo hi")
+    host = _host(name="node-b", ssh="node-b", distro="Ubuntu")
+    cmd = fsg.command_for(host, local_name="NODE-B", script="echo hi")
     assert cmd[:7] == ["wsl", "-d", "Ubuntu", "-u", "root", "-e", "bash"]
     assert _decoded(cmd) == "echo hi"
 
 
 def test_native_linux_command_has_no_wsl() -> None:
-    host = _host(name="brick", ssh="brick", distro=None, profile="workstation")
-    cmd = fsg.command_for(host, local_name="oglaptop", script="echo hi")
-    assert cmd[-2] == "brick"
+    host = _host(name="node-c", ssh="node-c", distro=None, profile="workstation")
+    cmd = fsg.command_for(host, local_name="node-b", script="echo hi")
+    assert cmd[-2] == "node-c"
     assert "wsl" not in cmd[-1]
     assert _decoded(cmd) == "echo hi"
 
@@ -207,13 +278,13 @@ def test_run_fleet_sends_payload_on_stdin_and_reports_each_host() -> None:
 
     def runner(cmd: list[str], stdin: str) -> tuple[int, str]:
         seen.append((cmd, stdin))
-        if cmd[-2] == "brick":
+        if cmd[-2] == "node-c":
             return 3, "NEEDS_SUDO\n"
         return 0, "storage_gc_verify=ok\n"
 
-    hosts = [_host(), _host(name="brick", ssh="brick", distro=None, profile="workstation")]
-    results = fsg.run_fleet(hosts, runner=runner, payload="PAYLOAD", local_name="oglaptop")
-    assert [(r.host, r.status) for r in results] == [("ControlTower-Runner", "ok"), ("brick", "needs-sudo")]
+    hosts = [_host(), _host(name="node-c", ssh="node-c", distro=None, profile="workstation")]
+    results = fsg.run_fleet(hosts, runner=runner, payload="PAYLOAD", local_name="node-b")
+    assert [(r.host, r.status) for r in results] == [("node-a-Runner", "ok"), ("node-c", "needs-sudo")]
     assert all(stdin == "PAYLOAD" for _, stdin in seen)
     assert fsg.exit_code(results) == 1
 
@@ -229,20 +300,23 @@ def test_main_rejects_unknown_host_filter(capsys: pytest.CaptureFixture[str]) ->
     assert "nonexistent-host" in capsys.readouterr().err
 
 
-def test_main_list_prints_inventory(capsys: pytest.CaptureFixture[str]) -> None:
-    assert fsg.main(["--list"]) == 0
+def test_main_list_prints_inventory(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(_SYNTHETIC_REGISTRY), encoding="utf-8")
+    with patch("machine_registry.validate_config_path", return_value=registry_path):
+        assert fsg.main(["--list", "--registry", str(registry_path)]) == 0
     out = capsys.readouterr().out
-    for name in ("ControlTower-Runner", "OGLaptop", "DeskComputer", "brick", "raspberrypi"):
+    for name in ("brick", "raspberrypi"):
         assert name in out
 
 
 def test_needs_sudo_hint_is_one_runnable_interactive_command() -> None:
-    """brick has password sudo: the rollout must hand the operator an exact
+    """node-c has password sudo: the rollout must hand the operator an exact
     command (scp the payload, then an interactive ssh -t sudo) — never a password."""
-    host = _host(name="brick", ssh="brick", distro=None, profile="workstation")
+    host = _host(name="node-c", ssh="node-c", distro=None, profile="workstation")
     hint = fsg.manual_install_hint(host)
     assert hint.startswith("scp ")
     assert "deploy/install-storage-gc.sh" in hint and "deploy/runner-cleanup.sh" in hint
-    assert "ssh -t brick" in hint
-    assert "sudo RUNNER_USER=dieterolson" in hint
+    assert "ssh -t node-c" in hint
+    assert "sudo RUNNER_USER=fleet-operator" in hint
     assert "--profile workstation" in hint

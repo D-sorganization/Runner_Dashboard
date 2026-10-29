@@ -38,7 +38,7 @@ from staff.tokens import mint_run_token
 log = logging.getLogger("dashboard.staff.runner_ops")
 
 _GITHUB_AUTH_REMEDIATION = (
-    "On the fleet hub (DeskComputer), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
+    "On the fleet hub (hub-a), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
     "and GITHUB_APP_PRIVATE_KEY_FILE. On spoke nodes, ensure HUB_URL and HUB_FLEET_TOKEN "
     "are set so staff runs can mint tokens via POST /api/fleet/run-token on the hub. "
     "STAFF_ALLOW_OPERATOR_TOKEN=1 is hub-only and does not apply on fleet nodes."
@@ -285,7 +285,9 @@ def apply_staff_run_fleet_token(
 ) -> dict[str, str] | None:
     """Attach fleet API token and adapter runtime env, or fail the run on mint errors."""
     try:
-        token = mint_run_token(plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout)
+        token = mint_run_token(
+            plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout, library_read=role.library_read
+        )
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint staff run token for %s", rec.id)
         err = f"token minting failed: {exc}"
@@ -411,6 +413,7 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         target_ref=plan.target_ref,
         prompt=plan.prompt,
         requested_by=req.requested_by,
+        dispatch_origin=req.dispatch_origin,
         on_behalf_of=req.on_behalf_of,
         branch=plan.branch,
         strategy_mode=plan.strategy_mode,

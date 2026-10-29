@@ -259,6 +259,44 @@ def test_usage_route_groups_and_validates(
 
 
 @pytest.mark.unit
+def test_usage_snapshot_route_ingests_and_serves_the_fleet_view(
+    client: tuple[TestClient, store_mod.RunStore], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    c, _s = client
+    monkeypatch.setenv("STAFF_USAGE_SNAPSHOT_STATE", str(tmp_path / "snap.json"))
+    empty = c.get("/api/staff/usage/snapshot").json()
+    # response_model_exclude_none=True drops the None fields over the wire.
+    assert empty == {"snapshot_stale": True, "providers": []}
+
+    payload = {
+        "schema_version": "provider-availability.v1",
+        "checked_at": "2026-10-26T17:20:00Z",
+        "providers": [
+            {
+                "provider": "codex",
+                "label": "Codex",
+                "status": "ok",
+                "quota_used_pct": 7.0,
+                "near_limit_flag": False,
+                "rate_limits": {
+                    "readings": [{"machine": "hub-a", "observed_at": "2026-10-26T17:19:00Z", "used_percent": 7.0}]
+                },
+            }
+        ],
+    }
+    resp = c.post("/api/staff/usage/snapshot", json=payload, headers=_XHR)
+    assert resp.status_code == 200 and resp.json() == {"kept": True}
+
+    body = c.get("/api/staff/usage/snapshot").json()
+    assert body["snapshot_stale"] is False
+    assert body["providers"][0]["machines"][0]["machine"] == "hub-a"
+
+    bad = {**payload, "schema_version": "provider-availability.v2"}
+    resp = c.post("/api/staff/usage/snapshot", json=bad, headers=_XHR)
+    assert resp.status_code == 422 and "schema_version" in resp.json()["detail"]
+
+
+@pytest.mark.unit
 def test_export_route_503_without_rm_and_runs_export_with_it(
     client: tuple[TestClient, store_mod.RunStore], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
