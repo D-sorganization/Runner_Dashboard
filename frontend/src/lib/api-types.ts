@@ -7208,6 +7208,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/presentation-prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Presentation Prefs V1 */
+        get: operations["get_presentation_prefs_v1_api_v1_staff_presentation_prefs_get"];
+        /** Save Presentation Prefs V1 */
+        put: operations["save_presentation_prefs_v1_api_v1_staff_presentation_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/presentation-prefs/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset Presentation Prefs V1 */
+        post: operations["reset_presentation_prefs_v1_api_v1_staff_presentation_prefs_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/projects": {
         parameters: {
             query?: never;
@@ -10391,6 +10426,39 @@ export interface components {
              * @default 2
              */
             ttl_hours: number;
+        };
+        /** PresentationPrefsResponse */
+        PresentationPrefsResponse: {
+            /** Avatar Overrides */
+            avatar_overrides: {
+                [key: string]: string;
+            };
+            /** Display Label */
+            display_label: string;
+            /** Operator Id */
+            operator_id: string;
+            /** Revision */
+            revision: number;
+            /** Role Order */
+            role_order: string[];
+            /** Updated At */
+            updated_at: string;
+        };
+        /** PresentationPrefsSaveBody */
+        PresentationPrefsSaveBody: {
+            /** Avatar Overrides */
+            avatar_overrides?: {
+                [key: string]: string;
+            };
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Role Order */
+            role_order?: string[];
         };
         /** ProjectCreateBody */
         ProjectCreateBody: {
@@ -24207,6 +24275,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_presentation_prefs_v1_api_v1_staff_presentation_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationPrefsResponse"];
+                };
+            };
+        };
+    };
+    save_presentation_prefs_v1_api_v1_staff_presentation_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresentationPrefsSaveBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationPrefsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_presentation_prefs_v1_api_v1_staff_presentation_prefs_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationPrefsResponse"];
                 };
             };
         };
