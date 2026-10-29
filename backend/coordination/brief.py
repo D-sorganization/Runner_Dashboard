@@ -62,6 +62,19 @@ async def _queue_shepherd(repo: str | None) -> tuple[dict[str, Any], list[str]]:
         return {}, [f"queue-shepherd unavailable: {exc}"]
 
 
+async def _overload(repo: str | None) -> tuple[dict[str, Any], list[str]]:
+    """Read-only swarm overload, auto-DRAIN, and queue-batching snapshot for ``repo`` (#3293)."""
+    if not repo or "/" not in repo:
+        return {}, []
+    try:
+        from coordination.overload import build_overload_snapshot  # noqa: PLC0415
+
+        snap = await build_overload_snapshot(repo)
+        return snap, list(snap.get("warnings") or [])
+    except Exception as exc:  # noqa: BLE001 — orthogonality: overload failure must not break the brief
+        return {}, [f"overload unavailable: {exc}"]
+
+
 async def _issues_and_prs(repo: str | None, limit: int) -> tuple[dict[str, Any], list[str]]:
     try:
         from routers import repos as repos_mod  # noqa: PLC0415
@@ -85,6 +98,7 @@ async def build_fleet_brief(repo: str | None, *, limit: int = 100) -> dict[str, 
     hub_status, w_hub = await _hub_status()
     issues_and_prs, w_issues = await _issues_and_prs(repo, limit)
     queue_shepherd, w_shepherd = await _queue_shepherd(repo)
+    overload, w_overload = await _overload(repo)
     return {
         "generated_at": now_iso(),
         "repo": repo,
@@ -95,7 +109,8 @@ async def build_fleet_brief(repo: str | None, *, limit: int = 100) -> dict[str, 
         "hub_status": hub_status,
         **issues_and_prs,
         "queue_shepherd": queue_shepherd,
-        "warnings": [*briefing["warnings"], *w_queue, *w_hub, *w_issues, *w_shepherd],
+        "overload": overload,
+        "warnings": [*briefing["warnings"], *w_queue, *w_hub, *w_issues, *w_shepherd, *w_overload],
     }
 
 
@@ -132,6 +147,15 @@ def render_markdown(brief: dict[str, Any]) -> str:
             f"{len(shepherd.get('dependency_violations') or [])} dependency issue(s), "
             f"{len(shepherd.get('path_conflicts') or [])} conflict(s)"
         )
+    overload = brief.get("overload") or {}
+    if overload:
+        status_label = "OVERLOADED" if overload.get("overloaded") else "NORMAL"
+        mode = overload.get("mode", "NORMAL")
+        batching = overload.get("queue_batching") or {}
+        group_min = batching.get("observed_group_minutes")
+        group_str = f", avg group={group_min}m" if group_min is not None else ""
+        consolidations = len(overload.get("consolidation_suggestions") or [])
+        lines.append(f"- Swarm overload: {status_label} (mode={mode}){group_str}, consolidations={consolidations}")
     warnings = brief.get("warnings") or []
     if warnings:
         lines.append("")

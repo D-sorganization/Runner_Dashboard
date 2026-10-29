@@ -229,16 +229,20 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
         overflow: "hidden",
       }}
     >
-      {/* Top Header: product mark, name, collapse button */}
+      {/* Top Header: product mark, name, collapse button.
+          Collapsed: the mark (22px) and toggle (28px) stack vertically —
+          side-by-side they need 58px of width, more than the 56px rail has
+          after its border, which clipped/overflowed the rail (#3494). */}
       <div
         style={{
           flex: "0 0 auto",
           display: "flex",
+          flexDirection: railCollapsed ? "column" : "row",
           alignItems: "center",
           justifyContent: railCollapsed ? "center" : "space-between",
           padding: railCollapsed ? "10px 0 8px" : "12px 12px 10px",
           borderBottom: "1px solid var(--border, #30363d)",
-          gap: 8,
+          gap: railCollapsed ? 6 : 8,
           minHeight: 48,
           boxSizing: "border-box",
         }}

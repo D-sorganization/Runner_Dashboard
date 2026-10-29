@@ -351,6 +351,14 @@ class AgentBusStore:
                     "last_message": msg,
                 }
         backlog = self.build_backlog()
+        empty_reason: str | None = None
+        if not agents:
+            # #3504: a bare empty `agents` list alone must never be read as proof
+            # no fleet agents exist. Distinguish "nothing has ever registered"
+            # from "sessions registered, but all are now stale/expired" -- the
+            # same complete_empty/local_empty contract #3503 established for
+            # activity sessions.
+            empty_reason = "complete_empty" if not principal_rows else "local_empty"
         return {
             "agents": agents,
             "threads": list(threads.values()),
@@ -359,6 +367,7 @@ class AgentBusStore:
                 "stale_sessions": backlog["stale_sessions"],
                 "blocked": backlog["blocked"],
             },
+            "empty_reason": empty_reason,
             "generated_at": utc_now_iso(),
         }
 

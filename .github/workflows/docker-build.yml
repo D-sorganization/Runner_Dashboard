@@ -4,6 +4,7 @@ name: Docker Build & Trivy Scan
 
 permissions:
   contents: read
+  pull-requests: read
   security-events: write
 
 on:
@@ -23,6 +24,7 @@ on:
     # No workflow-level path filter: a skipped workflow never reports
     # `docker-build-scan`, which leaves optional branch rules stuck pending.
   merge_group:
+  workflow_call:
   workflow_dispatch:
 
 # Main-push and live merge_group runs are never concurrency-cancelled. Only
@@ -33,6 +35,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  pr-guard:
+    if: >-
+      github.event_name != 'merge_group' &&
+      github.event_name == 'pull_request' &&
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
   queue-entry-alive:
     name: Merge queue ref guard
     if: >-
@@ -57,11 +67,15 @@ jobs:
 
   decide-docker-scope:
     name: Decide Docker validation scope
+    needs: [pr-guard]
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      github.event_name != 'merge_group' &&
+      always() &&
       (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository)
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
     timeout-minutes: 5
     outputs:
@@ -113,7 +127,8 @@ jobs:
       BUILDX_BUILDER: rd-ci-${{ github.run_id }}-${{ github.run_attempt }}
     needs: decide-docker-scope
     if: >-
-      github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
       needs.decide-docker-scope.outputs.run_docker == 'true' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
@@ -217,7 +232,6 @@ jobs:
       - docker-image
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      github.event_name != 'merge_group' &&
       always() &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
@@ -258,7 +272,6 @@ jobs:
       - docker-image
     # Fork PRs never run on the self-hosted fleet (RM#1989).
     if: >-
-      github.event_name != 'merge_group' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.decide-docker-scope.outputs.run_docker == 'true' &&

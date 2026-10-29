@@ -32,10 +32,10 @@ machines:
 """
 
 
-def test_preflight_rejects_stale_controltower_hub(tmp_path: Path) -> None:
+def test_preflight_rejects_stale_node_a_hub(tmp_path: Path) -> None:
     secrets = tmp_path / "env"
     secrets.write_text(
-        "HUB_URL=http://controltower.tail2bbcc7.ts.net:8321\n",
+        "HUB_URL=http://node-a.fleet-example.ts.net:8321\n",
         encoding="utf-8",
     )
     repo_root = _repo_root_with_synthetic_registry(tmp_path, _SYNTHETIC_HUB_REGISTRY)
@@ -60,7 +60,7 @@ def test_preflight_rejects_stale_controltower_hub(tmp_path: Path) -> None:
 def test_preflight_allows_override_env_in_secrets(tmp_path: Path) -> None:
     secrets = tmp_path / "env"
     secrets.write_text(
-        "HUB_URL=http://controltower.tail2bbcc7.ts.net:8321\nHUB_URL_REGISTRY_OVERRIDE=1\n",
+        "HUB_URL=http://node-a.fleet-example.ts.net:8321\nHUB_URL_REGISTRY_OVERRIDE=1\n",
         encoding="utf-8",
     )
     result = subprocess.run(

@@ -165,7 +165,14 @@ test.describe("accessibility (axe-core)", () => {
     page,
   }, testInfo) => {
     await gotoApp(page);
-    await page.locator("body").press("?");
+    // The default Staff Console route auto-focuses its composer textarea once
+    // the conversation finishes opening, which can land after gotoApp()
+    // returns. The '?' shortcut deliberately ignores text fields, so pressing
+    // it while the composer holds focus types a literal '?' instead of opening
+    // help. Park focus on a non-text control first: the composer only claims
+    // focus while document.body is active, so it cannot take it back.
+    await page.getByRole("navigation").getByRole("button").first().focus();
+    await page.keyboard.press("?");
     const dialog = page.getByRole("dialog", { name: /help/i });
     await expect(dialog).toBeVisible({ timeout: 5000 });
     await expect(dialog).toContainText("Navigate staff roster roles");

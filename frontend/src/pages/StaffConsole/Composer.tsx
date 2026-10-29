@@ -64,6 +64,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   const conversationOpeningRef = useRef(false);
   const latestTextRef = useRef(text);
   latestTextRef.current = text;
+  const sendInFlightRef = useRef(false); // set before any await; sendState alone misses a same-task double-tap
 
   useEffect(() => {
     if (!autoFocus || disabled || isPanel || conversationOpening) return;
@@ -239,7 +240,8 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
   const executeSend = async (retryKey?: string) => {
     const trimmed = text.trim();
-    if ((!trimmed && !attachedItems.length) || hasUnsettledAttachments || sendState === "sending" || disabled || isPanel || conversationOpening) return;
+    if ((!trimmed && !attachedItems.length) || hasUnsettledAttachments || sendState === "sending" || disabled || isPanel || conversationOpening || sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
 
     const key = retryKey || idempotencyKey || generateIdempotencyKey(threadId);
     setIdempotencyKey(key);
@@ -268,8 +270,9 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       setTimeout(() => setSendState("idle"), 1000);
     } catch (err: unknown) {
       setSendState("failed");
-      const msg = err instanceof Error ? err.message : "Failed to send message";
-      setErrorMessage(msg);
+      setErrorMessage(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      sendInFlightRef.current = false;
     }
   };
 

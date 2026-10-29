@@ -1150,6 +1150,29 @@
         "title": "CIFixDispatchRequest",
         "type": "object"
       },
+      "CIFixSweepRequest": {
+        "description": "30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.\n\nThis node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,\n``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live\nfetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.",
+        "properties": {
+          "prs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Prs",
+            "type": "array"
+          },
+          "repo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo"],
+        "title": "CIFixSweepRequest",
+        "type": "object"
+      },
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
@@ -2117,6 +2140,38 @@
           }
         },
         "title": "DispatchChildrenPayload",
+        "type": "object"
+      },
+      "DispatcherFallbackBody": {
+        "additionalProperties": false,
+        "description": "Validated, bounded ledger entry for a dispatcher fallback.",
+        "properties": {
+          "est_grok_turns": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Est Grok Turns",
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "hub_unreachable",
+              "held",
+              "rejected",
+              "no_provider",
+              "small_task"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "task_class": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Task Class",
+            "type": "string"
+          }
+        },
+        "required": ["reason", "task_class", "est_grok_turns"],
+        "title": "DispatcherFallbackBody",
         "type": "object"
       },
       "DraftEdit": {
@@ -4037,6 +4092,85 @@
         "title": "PresenceBody",
         "type": "object"
       },
+      "PresentationPrefsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_overrides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Avatar Overrides",
+            "type": "object"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "operator_id": {
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "role_order": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Order",
+            "type": "array"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id",
+          "display_label",
+          "role_order",
+          "avatar_overrides",
+          "revision",
+          "updated_at"
+        ],
+        "title": "PresentationPrefsResponse",
+        "type": "object"
+      },
+      "PresentationPrefsSaveBody": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_overrides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Avatar Overrides",
+            "type": "object"
+          },
+          "display_label": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Display Label",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "role_order": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Role Order",
+            "type": "array"
+          }
+        },
+        "required": ["expected_revision"],
+        "title": "PresentationPrefsSaveBody",
+        "type": "object"
+      },
       "ProjectCreateBody": {
         "additionalProperties": false,
         "properties": {
@@ -5247,6 +5381,30 @@
         "title": "RequestTarget",
         "type": "object"
       },
+      "RoleModelOverrideBody": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RoleModelOverrideBody",
+        "type": "object"
+      },
       "RoleScheduleOverrideBody": {
         "properties": {
           "enabled": {
@@ -6018,6 +6176,18 @@
       "SessionsPage": {
         "description": "A bounded page of :class:`SessionSummary` rows.",
         "properties": {
+          "empty_reason": {
+            "anyOf": [
+              {
+                "enum": ["complete_empty", "local_empty"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty Reason"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/SessionSummary"
@@ -7206,6 +7376,13 @@
             "title": "Active Runs",
             "type": "integer"
           },
+          "allowed_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Models",
+            "type": "array"
+          },
           "avatar": {
             "anyOf": [
               {
@@ -7236,6 +7413,17 @@
             "default": true,
             "title": "Dispatchable",
             "type": "boolean"
+          },
+          "effective_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Model"
           },
           "error": {
             "anyOf": [
@@ -7293,6 +7481,17 @@
               }
             ],
             "title": "Model"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "name": {
             "title": "Name",
@@ -7672,6 +7871,16 @@
           "created_at": {
             "default": "",
             "title": "Created At",
+            "type": "string"
+          },
+          "dispatch_origin": {
+            "default": "other",
+            "title": "Dispatch Origin",
+            "type": "string"
+          },
+          "dispatched_by": {
+            "default": "",
+            "title": "Dispatched By",
             "type": "string"
           },
           "ended_at": {
@@ -16204,6 +16413,56 @@
         "tags": ["remediation", "agents", "remediation", "ci-fix"]
       }
     },
+    "/api/remediation/ci-fix/sweep": {
+      "post": {
+        "description": "Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.",
+        "operationId": "sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CIFixSweepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sweep Ci Fix Endpoint Api Remediation Ci Fix Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Sweep Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
     "/api/remediation/ci-fix/webhook": {
       "post": {
         "description": "Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.",
@@ -18647,6 +18906,67 @@
           }
         ],
         "summary": "Roster",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
         "tags": ["staff"]
       }
     },
@@ -24085,6 +24405,53 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/avatars/{avatar_rel}": {
+      "get": {
+        "description": "Serve a role's persona image from RM ``staff/avatars/`` (#2680).",
+        "operationId": "avatar_v1_api_v1_staff_avatars__avatar_rel__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "avatar_rel",
+            "required": true,
+            "schema": {
+              "title": "Avatar Rel",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Avatar V1",
+        "tags": ["staff-v1", "staff-avatars"]
+      }
+    },
     "/api/v1/staff/barb/classify-surface": {
       "post": {
         "operationId": "post_barb_classify_surface_api_v1_staff_barb_classify_surface_post",
@@ -24930,7 +25297,123 @@
           }
         ],
         "summary": "Context Agents Sync V1",
-        "tags": ["staff-v1"]
+        "tags": ["staff-v1", "staff-context"]
+      }
+    },
+    "/api/v1/staff/dispatcher/ledger": {
+      "post": {
+        "description": "Append one bounded fallback record; the dedicated scope has no read access.",
+        "operationId": "write_dispatcher_ledger_api_v1_staff_dispatcher_ledger_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatcherFallbackBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Write Dispatcher Ledger"
+      }
+    },
+    "/api/v1/staff/dispatcher/metrics": {
+      "get": {
+        "description": "Return measured dispatcher counts and visibly labelled estimates.",
+        "operationId": "read_dispatcher_metrics_api_v1_staff_dispatcher_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Dispatcher Metrics Api V1 Staff Dispatcher Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Dispatcher Metrics"
       }
     },
     "/api/v1/staff/exclusions": {
@@ -26205,6 +26688,335 @@
         "tags": ["staff-panels"]
       }
     },
+    "/api/v1/staff/playbooks": {
+      "get": {
+        "operationId": "list_playbooks_api_v1_staff_playbooks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Playbooks Api V1 Staff Playbooks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Playbooks",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/assignments/{assignment_id}": {
+      "get": {
+        "operationId": "fetch_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lane_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Fetch Assignment Endpoint Api V1 Staff Playbooks Assignments  Assignment Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Fetch Assignment Endpoint",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/assignments/{assignment_id}/ack": {
+      "post": {
+        "operationId": "acknowledge_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__ack_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Acknowledge Assignment Endpoint Api V1 Staff Playbooks Assignments  Assignment Id  Ack Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Acknowledge Assignment Endpoint",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/assignments/{assignment_id}/complete": {
+      "post": {
+        "operationId": "complete_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Assignment Endpoint Api V1 Staff Playbooks Assignments  Assignment Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Complete Assignment Endpoint",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/{playbook_id}": {
+      "get": {
+        "operationId": "render_playbook_api_v1_staff_playbooks__playbook_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Render Playbook Api V1 Staff Playbooks  Playbook Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Render Playbook",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/{playbook_id}/assign": {
+      "post": {
+        "operationId": "assign_playbook_api_v1_staff_playbooks__playbook_id__assign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Assign Playbook Api V1 Staff Playbooks  Playbook Id  Assign Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Assign Playbook",
+        "tags": ["staff-playbooks"]
+      }
+    },
     "/api/v1/staff/pr-hygiene": {
       "post": {
         "description": "Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run reruns only the failed\nruns it planned to rerun, and the batch is always audited.",
@@ -26303,6 +27115,155 @@
         ],
         "summary": "Pr Hygiene Closes Refs",
         "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene/rearm": {
+      "post": {
+        "description": "Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run re-arms only a PR that\nis open, not already armed and not held back (``automerge_guard.evaluate_hold``),\nand the batch is always audited. Never admin-merges, force-pushes or closes.",
+        "operationId": "pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Rearm Api V1 Staff Pr Hygiene Rearm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene Rearm",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/presentation-prefs": {
+      "get": {
+        "operationId": "get_presentation_prefs_v1_api_v1_staff_presentation_prefs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresentationPrefsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Presentation Prefs V1",
+        "tags": ["staff-presentation-prefs"]
+      },
+      "put": {
+        "operationId": "save_presentation_prefs_v1_api_v1_staff_presentation_prefs_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresentationPrefsSaveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresentationPrefsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Save Presentation Prefs V1",
+        "tags": ["staff-presentation-prefs"]
+      }
+    },
+    "/api/v1/staff/presentation-prefs/reset": {
+      "post": {
+        "operationId": "reset_presentation_prefs_v1_api_v1_staff_presentation_prefs_reset_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresentationPrefsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reset Presentation Prefs V1",
+        "tags": ["staff-presentation-prefs"]
       }
     },
     "/api/v1/staff/projects": {
@@ -27110,6 +28071,67 @@
           }
         ],
         "summary": "Roster V1",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_v1_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api V1 Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
         "tags": ["staff-v1"]
       }
     },

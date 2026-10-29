@@ -2,7 +2,7 @@
 issue: 2089
 summary: "Restore Explicit Loopback Fleet Reads Without Credential Fallback"
 dl_state: "in_review"
-next_step: "Qualify the combined source, merge through the queue, then verify actual local fleet reads on Brick."
+next_step: "Qualify the combined source, merge through the queue, then verify actual local fleet reads on node-c."
 title: "Explicit Loopback Fleet Reads"
 owner: "codex"
 branch: "codex/2081-artifact-provenance"

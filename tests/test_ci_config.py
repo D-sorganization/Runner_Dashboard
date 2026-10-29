@@ -228,19 +228,15 @@ def test_docker_build_routes_public_repo_to_hosted_with_self_hosted_fallback() -
     assert "prune" not in str(job)
 
 
-def test_docker_workflow_skips_merge_queue_jobs() -> None:
-    """Merge-queue runs use the slim gate; Docker build stays on pull_request (#2891)."""
+def test_docker_workflow_runs_on_merge_group_jobs() -> None:
+    """Merge-queue runs must execute Docker build & scan (issue #3450, tracking #2891 reversal)."""
     workflow = _workflow_yaml(DOCKER_WORKFLOW)
     triggers = workflow.get("on") or workflow.get(True) or {}
-    assert "merge_group" in triggers, "docker-build.yml keeps merge_group for required-check trigger parity"
-    for job_id, job in workflow["jobs"].items():
-        if job_id == "queue-entry-alive":
-            assert "github.event_name == 'merge_group'" in str(job.get("if", ""))
-            continue
-        condition = str(job.get("if", ""))
-        assert "github.event_name != 'merge_group'" in condition, (
-            f"docker job {job_id} must skip merge_group"
-        )
+    assert "merge_group" in triggers, "docker-build.yml keeps merge_group"
+    assert "workflow_call" in triggers, "docker-build.yml supports workflow_call"
+    for job_id in ("decide-docker-scope", "docker-image", "docker-build-scan"):
+        condition = str(workflow["jobs"][job_id].get("if", ""))
+        assert "github.event_name != 'merge_group'" not in condition, f"docker job {job_id} must not skip merge_group"
 
 
 def test_docker_pull_request_has_no_workflow_path_filter() -> None:

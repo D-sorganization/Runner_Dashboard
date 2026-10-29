@@ -19,6 +19,7 @@ Then open http://localhost:8321 in your browser.
 """
 
 import asyncio
+import contextlib
 import datetime as _dt_mod
 import errno
 import json
@@ -545,10 +546,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-# Issue #331 — request_id correlation middleware (outermost so all subsequent
-# middleware and handlers have access to the request_id context var).
-app.add_middleware(RequestIdMiddleware)
-
 # Issue #350 — early body-size guard (ASGI middleware, runs before routing)
 app.add_middleware(
     MaxBodySizeMiddleware,
@@ -620,8 +617,7 @@ async def _watchdog_heartbeat() -> None:
         try:
             _notifier("WATCHDOG=1")
         except Exception as exc:  # noqa: BLE001
-            log.warning("watchdog_heartbeat: sd_notify failed (%s), exiting task", exc)
-            return
+            log.warning("watchdog_heartbeat: sd_notify failed (%s), continuing", exc)
 
 
 _LEASE_REAPER_INTERVAL_S: int = max(30, int(os.environ.get("LEASE_REAPER_INTERVAL_S", "300")))
@@ -781,6 +777,7 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_barb as _staff_barb_router  # noqa: E402
 from routers import staff_concerns as _staff_concerns_router  # noqa: E402
+from routers import staff_dispatcher as _staff_dispatcher_router  # noqa: E402
 from routers import staff_exclusions as _staff_exclusions_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
@@ -800,6 +797,7 @@ from routers import staff_v1 as _staff_v1_router  # noqa: E402
 from routers import staff_work_items as _staff_work_items_router  # noqa: E402
 
 app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
+app.include_router(_staff_dispatcher_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
 app.include_router(_staff_export_router.router, prefix="/api/v1/staff")  # Thread export & retention (issue #1490)
 app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
@@ -846,6 +844,14 @@ app.include_router(_fleet_friction_router.router)  # friction ledger + owner que
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
+from routers import staff_playbooks as _staff_playbooks_router  # noqa: E402
+
+app.include_router(_staff_playbooks_router.router)  # playbooks list/render/assign (issue #3488)
+
+from routers import staff_presentation_prefs as _staff_presentation_prefs_router  # noqa: E402
+
+app.include_router(_staff_presentation_prefs_router.router)  # personal presentation preferences (issue #3495)
 
 from routers import overload as _fleet_overload_router  # noqa: E402
 
@@ -1185,7 +1191,10 @@ async def run_cmd(
             stderr.decode("utf-8", errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         return -1, "", "Command timed out"
 
 
@@ -2248,6 +2257,11 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# Issue #331 / #3034 — request_id correlation middleware added last so
+# Starlette inserts it at index 0 (outermost) of app.user_middleware.
+app.add_middleware(RequestIdMiddleware)
+
+
 # ─── Operator diagnostics ────────────────────────────────────────────────────
 #
 # /api/diagnostics surfaces the config-load and fleet-federation state that
@@ -2941,9 +2955,6 @@ async def _startup() -> None:
         log.info("Sent systemd READY=1 notification")
     else:
         log.debug("systemd.daemon not available; omitting sd_notify")
-
-    # Start systemd watchdog heartbeat task (issue #707)
-    asyncio.create_task(_watchdog_heartbeat())
 
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())

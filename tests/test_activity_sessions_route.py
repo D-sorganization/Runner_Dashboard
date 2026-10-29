@@ -96,6 +96,62 @@ def test_malformed_status_query_param_fails_closed(tmp_path, monkeypatch):
         assert response.status_code == 422
 
 
+def test_empty_store_reports_complete_empty_over_the_wire(tmp_path, monkeypatch):
+    """#3503: a client reading an empty page must be able to tell that the hub
+    never recorded anything, rather than assuming no agents exist."""
+    store = ActivityStore(tmp_path / "activity.sqlite")
+    reader = Principal(id="reader", type="bot", name="fixture", scopes=["activity.read"])
+    app = make_app(store, monkeypatch, reader)
+    with TestClient(app) as client:
+        response = client.get("/api/v1/activity/sessions")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["items"] == []
+        assert body["empty_reason"] == "complete_empty"
+
+
+def test_filtered_empty_reports_local_empty_over_the_wire(tmp_path, monkeypatch):
+    store = ActivityStore(tmp_path / "activity.sqlite")
+    store.ingest([envelope(node="node-a")], principal="agent-a")
+    reader = Principal(id="reader", type="bot", name="fixture", scopes=["activity.read"])
+    app = make_app(store, monkeypatch, reader)
+    with TestClient(app) as client:
+        response = client.get("/api/v1/activity/sessions", params={"node": "node-missing"})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["items"] == []
+        assert body["empty_reason"] == "local_empty"
+
+
+def test_unauthorized_response_never_echoes_the_caller_supplied_token(tmp_path, monkeypatch):
+    """#3503: unauthorized must be distinguishable (403) without leaking credentials."""
+    store = ActivityStore(tmp_path / "activity.sqlite")
+    app = FastAPI()
+    app.include_router(activity.router)
+    monkeypatch.setattr(activity, "get_activity_store", lambda: store)
+    import identity
+
+    no_scope = Principal(id="agent-a", type="bot", name="fixture", scopes=[])
+    monkeypatch.setattr(identity, "_resolve_principal_optional", lambda *_args: no_scope)
+    caller_supplied_bearer_value = "fixture-bearer-must-not-appear-in-body"
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/v1/activity/sessions", headers={"Authorization": f"Bearer {caller_supplied_bearer_value}"}
+        )
+        assert response.status_code == 403
+        assert caller_supplied_bearer_value not in response.text
+
+
+def test_session_summary_never_implies_transcript_capture():
+    """#3503: registration/activity metadata must not claim transcript capture
+    that was never performed -- no field name in the response contract may
+    imply raw transcript/terminal content capture."""
+    from activity_sessions import SessionSummary
+
+    field_names = set(SessionSummary.model_fields)
+    assert not any("transcript" in name or "capture" in name for name in field_names)
+
+
 def test_limit_is_bounded(tmp_path, monkeypatch):
     store = ActivityStore(tmp_path / "activity.sqlite")
     reader = Principal(id="reader", type="bot", name="fixture", scopes=["activity.read"])

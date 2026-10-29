@@ -409,23 +409,23 @@ def test_build_index_empty_registry() -> None:
 
 
 def test_is_portable_machine_true_for_flagged_entry() -> None:
-    registry = {"machines": [{"name": "Brick", "aliases": ["brick"], "portable": True}]}
-    assert mr.is_portable_machine("Brick", registry) is True
-    assert mr.is_portable_machine("brick", registry) is True
+    registry = {"machines": [{"name": "Node-C", "aliases": ["node-c"], "portable": True}]}
+    assert mr.is_portable_machine("Node-C", registry) is True
+    assert mr.is_portable_machine("node-c", registry) is True
 
 
 def test_is_portable_machine_false_when_unset() -> None:
-    registry = {"machines": [{"name": "DeskComputer", "aliases": []}]}
-    assert mr.is_portable_machine("DeskComputer", registry) is False
+    registry = {"machines": [{"name": "hub-a", "aliases": []}]}
+    assert mr.is_portable_machine("hub-a", registry) is False
 
 
 def test_is_portable_machine_false_for_unknown_machine() -> None:
-    registry = {"machines": [{"name": "DeskComputer", "aliases": [], "portable": True}]}
+    registry = {"machines": [{"name": "hub-a", "aliases": [], "portable": True}]}
     assert mr.is_portable_machine("SomeOtherHost", registry) is False
 
 
 def test_normalize_machine_entry_portable_flag_coerced() -> None:
-    entry = mr._normalize_machine_entry({"name": "brick", "portable": "true"})
+    entry = mr._normalize_machine_entry({"name": "node-c", "portable": "true"})
     assert entry["portable"] is True
     entry = mr._normalize_machine_entry({"name": "desk"})
     assert entry["portable"] is False
@@ -439,11 +439,11 @@ def test_loaded_registry_preserves_portable_machine(tmp_path: Path) -> None:
     like a real deployment instead of the (now-empty) shipped file.
     """
     p = tmp_path / "registry.json"
-    p.write_text(json.dumps({"version": 1, "machines": [{"name": "Brick", "portable": True}]}), encoding="utf-8")
+    p.write_text(json.dumps({"version": 1, "machines": [{"name": "node-c", "portable": True}]}), encoding="utf-8")
     with patch("machine_registry.validate_config_path", return_value=p):
         registry = mr.load_machine_registry(path=p)
-    brick = next(m for m in registry["machines"] if m["name"] == "Brick")
-    assert brick["portable"] is True
+    node_c_entry = next(m for m in registry["machines"] if m["name"] == "node-c")
+    assert node_c_entry["portable"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -123,10 +123,13 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
             manager.principals[agent_id] = Principal(**fields)
             log.info("agent principal provisioned from defaults: %s", agent_id)
             continue
+        merged_roles = (
+            ["checkin-only"] if "checkin-only" in fields["roles"] else _union_list(existing.roles, fields["roles"])
+        )
         manager.principals[agent_id] = existing.model_copy(
             update={
                 "name": fields["name"] if fields["name"] else existing.name,
-                "roles": _union_list(existing.roles, fields["roles"]),
+                "roles": merged_roles,
                 "scopes": _union_list(existing.scopes, fields["scopes"]),
                 "assistant_kind": fields["assistant_kind"] or existing.assistant_kind,
             }

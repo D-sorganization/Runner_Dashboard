@@ -26,7 +26,7 @@ os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 
 
-def _patch_hermetic_host_identity(monkeypatch: pytest.MonkeyPatch, hostname: str = "ControlTower") -> None:
+def _patch_hermetic_host_identity(monkeypatch: pytest.MonkeyPatch, hostname: str = "node-a") -> None:
     """Pin local runner identity so tests do not depend on the real host (#2519)."""
     import dashboard_config as dc  # noqa: PLC0415
 
@@ -771,9 +771,9 @@ class TestHelperFunctions:
         """Test that runner number extraction works for this host's fleet names."""
         _patch_hermetic_host_identity(monkeypatch)
         runners = [
-            {"id": 1, "name": "d-sorg-local-ControlTower-1"},
-            {"id": 2, "name": "d-sorg-local-ControlTower-2"},
-            {"id": 3, "name": "d-sorg-local-ControlTower-10"},
+            {"id": 1, "name": "d-sorg-local-node-a-1"},
+            {"id": 2, "name": "d-sorg-local-node-a-2"},
+            {"id": 3, "name": "d-sorg-local-node-a-10"},
         ]
 
         assert runners_router.runner_num_from_id(1, runners) == 1
@@ -783,13 +783,13 @@ class TestHelperFunctions:
     def test_runner_num_from_id_rejects_other_machine(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Cross-node runner IDs must not map to a local slot (#2519)."""
         _patch_hermetic_host_identity(monkeypatch)
-        runners = [{"id": 1, "name": "d-sorg-local-DeskComputer-1"}]
+        runners = [{"id": 1, "name": "d-sorg-local-hub-a-1"}]
         assert runners_router.runner_num_from_id(1, runners) is None
 
     def test_runner_num_from_id_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that non-existent runner ID returns None."""
         _patch_hermetic_host_identity(monkeypatch)
-        runners = [{"id": 1, "name": "d-sorg-local-ControlTower-1"}]
+        runners = [{"id": 1, "name": "d-sorg-local-node-a-1"}]
         assert runners_router.runner_num_from_id(999, runners) is None
 
 
@@ -809,7 +809,7 @@ class TestRunnerControlHostGuard:
                 "runners": [
                     {
                         "id": 99,
-                        "name": "d-sorg-local-DeskComputer-1",
+                        "name": "d-sorg-local-hub-a-1",
                         "status": "online",
                         "busy": False,
                         "labels": [],

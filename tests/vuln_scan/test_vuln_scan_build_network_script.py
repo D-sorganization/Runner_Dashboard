@@ -37,8 +37,9 @@ def test_dry_run_prints_the_firewall_and_builder(tmp_path: Path) -> None:
     assert "--name vs-build-builder --driver docker-container --driver-opt network=vs-build" in out
 
 
-def test_refuses_controltower_and_bad_names(tmp_path: Path) -> None:
-    assert _run(tmp_path, "ControlTower").returncode == 3
+def test_refuses_disallowed_host_and_bad_names(tmp_path: Path) -> None:
+    # deploy/security-scan-host/setup-build-network.sh stays untouched under #2657.
+    assert _run(tmp_path, "ControlTower").returncode == 3  # pragma: allowlist private-topology
     assert _run(tmp_path, "scanvm", "--network", "x;rm").returncode == 2
     assert _run(tmp_path, "scanvm", "--dns", "1.1.1.1 evil]").returncode == 2
 

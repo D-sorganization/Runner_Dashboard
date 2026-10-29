@@ -16,7 +16,7 @@ def _record(run_id: str = "run-1") -> RunRecord:
         role="librarian",
         provider="claude",
         model=None,
-        machine="brick",
+        machine="node-c",
         repo="Runner_Dashboard",
         target_kind="prompt",
         target_ref="",
@@ -47,7 +47,7 @@ def test_append_event_emits_a_staff_run_activity_envelope(tmp_path: Path, activi
     envelope = page.items[0]
     assert envelope.source == "staff_run"
     assert envelope.seq == seq
-    assert envelope.node == "brick"
+    assert envelope.node == "node-c"
     assert envelope.repo == "Runner_Dashboard"
     assert envelope.branch == "claude/2859-x"
     assert envelope.payload == {"text": "claude in /work"}

@@ -23,8 +23,8 @@ from scripts import rd_threads_envelope as envelope
 def _config() -> NodeLeaderConfig:
     return NodeLeaderConfig(
         nodes=(
-            NodeRoleEntry(name="DeskComputer", role="leader", priority=1),
-            NodeRoleEntry(name="ControlTower", role="standby", priority=2),
+            NodeRoleEntry(name="hub-a", role="leader", priority=1),
+            NodeRoleEntry(name="node-a", role="standby", priority=2),
         )
     )
 
@@ -38,16 +38,16 @@ def _sealed_alert(node: str, *, detail: str, now: float) -> dict:
 # ── cross_node_alert_key: identity is kind + normalized body, not the node ──
 @pytest.mark.unit
 def test_cross_node_alert_key_matches_across_nodes_for_the_same_condition() -> None:
-    desk = _sealed_alert("DeskComputer", detail="GH_TOKEN env var not set", now=1_000.0)
-    tower = _sealed_alert("ControlTower", detail="GH_TOKEN env var not set", now=1_050.0)
+    desk = _sealed_alert("hub-a", detail="GH_TOKEN env var not set", now=1_000.0)
+    tower = _sealed_alert("node-a", detail="GH_TOKEN env var not set", now=1_050.0)
     assert desk["from"] != tower["from"]
     assert cross_node_alert_key(desk) == cross_node_alert_key(tower)
 
 
 @pytest.mark.unit
 def test_cross_node_alert_key_differs_for_a_different_condition() -> None:
-    a = _sealed_alert("DeskComputer", detail="GH_TOKEN env var not set", now=1_000.0)
-    b = _sealed_alert("DeskComputer", detail="sqlite read failed", now=1_000.0)
+    a = _sealed_alert("hub-a", detail="GH_TOKEN env var not set", now=1_000.0)
+    b = _sealed_alert("hub-a", detail="sqlite read failed", now=1_000.0)
     assert cross_node_alert_key(a) != cross_node_alert_key(b)
 
 
@@ -112,12 +112,12 @@ def test_deduplicator_reset_clears_debounce_state() -> None:
 def test_surface_alert_records_a_fleet_event_on_first_occurrence() -> None:
     store = EventStore()
     dedup = AlertDeduplicator(window_seconds=300.0)
-    sealed = _sealed_alert("DeskComputer", detail="GH_TOKEN env var not set", now=1_000.0)
+    sealed = _sealed_alert("hub-a", detail="GH_TOKEN env var not set", now=1_000.0)
     event = surface_alert(sealed, dedup, now=1_000.0, store=store)
     assert event is not None
     assert event.kind == ALERT_EVENT_KIND
     assert event.severity == "warning"
-    assert event.node == "DeskComputer"
+    assert event.node == "hub-a"
     assert "GH_TOKEN" in event.detail
     assert list(store.recent()) == [event]
 
@@ -126,8 +126,8 @@ def test_surface_alert_records_a_fleet_event_on_first_occurrence() -> None:
 def test_surface_alert_suppresses_a_duplicate_from_a_different_node() -> None:
     store = EventStore()
     dedup = AlertDeduplicator(window_seconds=300.0)
-    first = _sealed_alert("DeskComputer", detail="GH_TOKEN env var not set", now=1_000.0)
-    second = _sealed_alert("ControlTower", detail="GH_TOKEN env var not set", now=1_010.0)
+    first = _sealed_alert("hub-a", detail="GH_TOKEN env var not set", now=1_000.0)
+    second = _sealed_alert("node-a", detail="GH_TOKEN env var not set", now=1_010.0)
     assert surface_alert(first, dedup, now=1_000.0, store=store) is not None
     assert surface_alert(second, dedup, now=1_010.0, store=store) is None
     assert len(store.recent()) == 1
@@ -137,8 +137,8 @@ def test_surface_alert_suppresses_a_duplicate_from_a_different_node() -> None:
 def test_surface_alert_surfaces_a_genuinely_different_condition() -> None:
     store = EventStore()
     dedup = AlertDeduplicator(window_seconds=300.0)
-    first = _sealed_alert("DeskComputer", detail="GH_TOKEN env var not set", now=1_000.0)
-    second = _sealed_alert("DeskComputer", detail="sqlite read failed", now=1_000.0)
+    first = _sealed_alert("hub-a", detail="GH_TOKEN env var not set", now=1_000.0)
+    second = _sealed_alert("hub-a", detail="sqlite read failed", now=1_000.0)
     assert surface_alert(first, dedup, now=1_000.0, store=store) is not None
     assert surface_alert(second, dedup, now=1_000.0, store=store) is not None
     assert len(store.recent()) == 2

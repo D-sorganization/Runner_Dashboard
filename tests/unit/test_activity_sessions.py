@@ -233,6 +233,47 @@ def test_response_is_bounded_by_limit(store):
     assert len(page.items) == 2
 
 
+def test_empty_store_reports_complete_empty(store):
+    """#3503: a log that has never recorded anything must say so explicitly,
+    not just return an empty page indistinguishable from a narrow filter."""
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW)
+    assert page.items == []
+    assert page.empty_reason == "complete_empty"
+
+
+def test_filtered_query_matching_nothing_reports_local_empty(store):
+    """#3503: the log has data, but this call's own filter matched none of it --
+    that must read as 'local_empty', never as 'no agents exist anywhere'."""
+    ingest(store, envelope(node="node-a", ts="2026-10-28T12:09:00Z", kind="heartbeat"))
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW, node="node-missing")
+    assert page.items == []
+    assert page.empty_reason == "local_empty"
+
+
+def test_nonempty_page_has_no_empty_reason(store):
+    ingest(store, envelope(ts="2026-10-28T12:09:00Z", kind="heartbeat"))
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW)
+    assert page.items
+    assert page.empty_reason is None
+
+
+def test_stale_session_is_excluded_from_live_status_filter(store):
+    """#3503: a stale/expired session must never claim liveness; filtering for
+    'live' must exclude it even though the store is otherwise non-empty."""
+    ingest(store, envelope(ts="2026-10-27T00:00:00Z", kind="heartbeat"))
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW, status="live")
+    assert page.items == []
+    assert page.empty_reason == "local_empty"
+
+
 def test_sessions_are_grouped_by_source_and_session_id_not_just_session_id(store):
     # Two different sources can legitimately reuse the same session_id string; they
     # must not be merged into one row (DRY on the store's own uniqueness contract,

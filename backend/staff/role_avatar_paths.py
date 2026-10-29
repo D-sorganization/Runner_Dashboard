@@ -10,6 +10,14 @@ from staff.roles import roles_dir
 # Relative to Repository_Management ``staff/avatars/`` (e.g. ``barb.webp``, ``personas/marge.webp``).
 AVATAR_YML_RE = re.compile(r"^(?:[a-z0-9-]+/)*[a-z0-9-]+\.webp$", re.IGNORECASE)
 
+# Base path of the RD endpoint that serves ``staff/avatars/`` files (#2680 slice 2).
+AVATAR_URL_PREFIX = "/api/v1/staff/avatars/"
+
+
+def avatar_url_for(avatar_rel: str) -> str:
+    """Public URL the frontend can use as an ``<img src>`` for a role's ``avatar`` path."""
+    return AVATAR_URL_PREFIX + avatar_rel
+
 
 def staff_avatars_dir_for_roles(roles_directory: Path) -> Path:
     """``staff/avatars/`` beside the ``staff/roles/`` tree being loaded."""

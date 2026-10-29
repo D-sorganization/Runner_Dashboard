@@ -1,0 +1,48 @@
+name: Recurring Public-Repo Scan
+
+on:
+  schedule:
+    - cron: "40 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recurring-scan-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    # Hosted once public (#3084); self-hosted until then, as architecture-map-contract.yml does.
+    runs-on: >-
+      ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' ||
+      github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' ||
+      github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Run recurring scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RD_BARB_WEBHOOK_URL: ${{ secrets.RD_BARB_WEBHOOK_URL }}
+          RD_BARB_WEBHOOK_KEY: ${{ secrets.RD_BARB_WEBHOOK_KEY }}
+          RD_BARB_THREAD_ID: ${{ secrets.RD_BARB_THREAD_ID }}
+        run: |
+          set -euo pipefail
+          STATE_BRANCH=bot/recurring-scan-state
+          CURSOR_FILE=.recurring-scan-cursor.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git fetch origin "$STATE_BRANCH" 2>/dev/null && git cat-file -e "origin/$STATE_BRANCH:cursor.json" 2>/dev/null; then
+            git show "origin/$STATE_BRANCH:cursor.json" > "$CURSOR_FILE"
+          fi
+          python3 scripts/recurring_scan.py --repo . --cursor "$CURSOR_FILE"
+          BLOB=$(git hash-object -w "$CURSOR_FILE")
+          TREE=$(printf '100644 blob %s\tcursor.json\n' "$BLOB" | git mktree)
+          PARENT=$(git rev-parse "origin/$STATE_BRANCH" 2>/dev/null || true)
+          PARENT_FLAG=(); [ -n "$PARENT" ] && PARENT_FLAG=(-p "$PARENT")
+          COMMIT=$(git commit-tree "$TREE" "${PARENT_FLAG[@]}" -m "chore(scan-state): update recurring-scan cursor")
+          git push origin "$COMMIT:refs/heads/$STATE_BRANCH"

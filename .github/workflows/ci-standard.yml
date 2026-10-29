@@ -37,15 +37,21 @@ on:
         required: false
         type: string
 
-# Main-push and live merge_group runs are never concurrency-cancelled. Only
-# pull_request runs cancel in progress. Obsolete merge_group runs self-cancel
-# when their gh-readonly-queue ref is deleted (queue-entry-alive); bots use
-# merge_queue_cancel_safety (GraphQL entries) before cancelling anything else.
+# PR and superseded main-push runs cancel in progress. merge_group is never
+# concurrency-cancelled; superseded queue entries use merge_queue_cancel_safety.
+# Main-push shares one group (not per-SHA) so the fleet is not flooded after #2491.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 jobs:
+  pr-guard:
+    if: >-
+      github.event_name == 'pull_request' &&
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
   pick-runner:
     name: Select reversible CI runner
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
@@ -291,7 +297,13 @@ jobs:
 
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
-    needs: [pick-runner, changes]
+    needs: [pick-runner, changes, pr-guard]
+    if: >-
+      always() &&
+      !cancelled() &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -475,8 +487,14 @@ jobs:
           fi
 
   lint:
-    needs: [pick-runner, changes, ci-health-check]
-    if: needs.changes.outputs.run_python_tests == 'true'
+    needs: [pick-runner, changes, ci-health-check, pr-guard]
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.changes.outputs.run_python_tests == 'true' &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -576,7 +594,10 @@ jobs:
           github.event_name != 'merge_group' &&
           needs.changes.outputs.run_python_tests == 'true' &&
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
-          needs.changes.outputs.full_suite == 'true')
+          needs.changes.outputs.full_suite == 'true') &&
+          (github.event_name != 'pull_request' ||
+          needs.pr-guard.result == 'skipped' ||
+          needs.pr-guard.outputs.skip_heavy != 'true')
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
         # MEDIUM findings are allow-listed in bandit.yaml with rationale per finding.
         # Exits non-zero on HIGH; MEDIUM/LOW are suppressed via config.
@@ -625,7 +646,10 @@ jobs:
           github.event_name != 'merge_group' &&
           needs.changes.outputs.run_python_tests == 'true' &&
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
-          needs.changes.outputs.full_suite == 'true')
+          needs.changes.outputs.full_suite == 'true') &&
+          (github.event_name != 'pull_request' ||
+          needs.pr-guard.result == 'skipped' ||
+          needs.pr-guard.outputs.skip_heavy != 'true')
         # Blocking for CRITICAL/HIGH CVEs.
         # Known LOW/MEDIUM CVEs are allow-listed in requirements-audit-ignore.txt
         # with rationale and expiry date per entry.
@@ -652,13 +676,18 @@ jobs:
           fi
 
   security-scan:
-    needs: [pick-runner, changes, ci-health-check]
+    needs: [pick-runner, changes, ci-health-check, pr-guard]
     # pull_request (in scope), schedule, or workflow_dispatch — not merge_group (#2891).
     if: >-
+      always() &&
+      !cancelled() &&
       github.event_name != 'merge_group' &&
       needs.changes.outputs.run_python_tests == 'true' &&
       (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
-      needs.changes.outputs.full_suite == 'true')
+      needs.changes.outputs.full_suite == 'true') &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -706,7 +735,14 @@ jobs:
       - changes
       - ci-health-check
       - pick-runner
-    if: needs.changes.outputs.run_python_tests == 'true'
+      - pr-guard
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.changes.outputs.run_python_tests == 'true' &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     permissions:
       actions: write
       contents: read
@@ -824,7 +860,13 @@ jobs:
       - ci-health-check
       - tests
       - pick-runner
-    if: always()
+      - pr-guard
+    if: >-
+      always() &&
+      !cancelled() &&
+      (needs.pr-guard.result == 'success' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -835,6 +877,9 @@ jobs:
       - name: Confirm Python test matrix
         shell: bash
         env:
+          PR_GUARD_RESULT: ${{ needs.pr-guard.result }}
+          GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
+          GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
           CHANGES: ${{ needs.changes.result }}
           TIER: ${{ needs.changes.outputs.tier }}
           HEALTH: ${{ needs.ci-health-check.result }}
@@ -844,6 +889,12 @@ jobs:
           RUN_HEAD_SHA: ${{ github.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          if [ "$PR_GUARD_RESULT" = "skipped" ]; then
+            echo "::notice::tests-required: pr-guard skipped on $GITHUB_EVENT_NAME"
+          elif [ "$PR_GUARD_RESULT" = "success" ] && [ "$GUARD_SKIP" = "true" ]; then
+            echo "::notice::tests-required skipped heavy CI ($GUARD_REASON)"
+            exit 0
+          fi
           pr_supersession_lane() { [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ]; }
           merge_queue_lane() { [ "${GITHUB_EVENT_NAME:-}" = "merge_group" ]; }
           pr_superseded_cancel() {
@@ -916,13 +967,19 @@ jobs:
     needs:
       [
         pick-runner,
+        pr-guard,
         changes,
         ci-health-check,
         lint,
         tests-required,
         security-scan,
       ]
-    if: always()
+    if: >-
+      always() &&
+      !cancelled() &&
+      (needs.pr-guard.result == 'success' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -930,9 +987,20 @@ jobs:
       'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          sparse-checkout: scripts/ci/verify_merge_group_companion_checks.py
+          sparse-checkout-cone-mode: false
       - name: Require every gated job to succeed
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_GUARD_RESULT: ${{ needs.pr-guard.result }}
+          GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
+          GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
           CHANGES: ${{ needs.changes.result }}
           TIER: ${{ needs.changes.outputs.tier }}
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
@@ -959,6 +1027,12 @@ jobs:
             [ "$(echo "$RUN_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" != "$(echo "$PR_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" ]
           }
           failed=0
+          if [ "$PR_GUARD_RESULT" = "skipped" ]; then
+            echo "::notice::quality-gate: pr-guard skipped on $GITHUB_EVENT_NAME"
+          elif [ "$PR_GUARD_RESULT" = "success" ] && [ "$GUARD_SKIP" = "true" ]; then
+            echo "::notice::quality-gate skipped heavy CI ($GUARD_REASON)"
+            exit 0
+          fi
           echo "changes: $CHANGES (tier=$TIER, full_suite=$FULL_SUITE, run_python_tests=$RUN_PYTHON_TESTS)"
           if [ "$CHANGES" = "cancelled" ] && pr_supersession_lane; then
             if pr_superseded_cancel cancelled changes; then
@@ -1026,5 +1100,8 @@ jobs:
           if [ "$failed" -ne 0 ]; then
             echo "::error::quality-gate: one or more gated jobs did not succeed."
             exit 1
+          fi
+          if merge_queue_lane && [ -n "${RUN_HEAD_SHA:-}" ] && [ -n "${GH_TOKEN:-}" ]; then
+            python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."

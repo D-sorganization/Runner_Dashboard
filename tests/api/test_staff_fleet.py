@@ -66,8 +66,14 @@ def test_choose_machine_prefers_least_loaded_with_provider_and_ties_to_local() -
 @pytest.mark.unit
 def test_scheduler_watchdog_alerts_when_no_host_running() -> None:
     machines = {
-        "DeskComputer": {"status": "online", "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30}},
-        "OGLaptop": {"status": "online", "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30}},
+        "hub-a": {
+            "status": "online",
+            "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30},
+        },
+        "node-b": {
+            "status": "online",
+            "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30},
+        },
     }
     alerts = fleet_mod.scheduler_watchdog_alerts(machines, now=datetime.now(UTC))
     assert len(alerts) == 1
@@ -78,7 +84,7 @@ def test_scheduler_watchdog_alerts_when_no_host_running() -> None:
 def test_scheduler_watchdog_alerts_when_next_fire_stale() -> None:
     stale = (datetime.now(UTC) - timedelta(minutes=3)).isoformat()
     machines = {
-        "DeskComputer": {
+        "hub-a": {
             "status": "online",
             "scheduler": {
                 "enabled": True,
@@ -90,7 +96,7 @@ def test_scheduler_watchdog_alerts_when_next_fire_stale() -> None:
     }
     alerts = fleet_mod.scheduler_watchdog_alerts(machines, now=datetime.now(UTC))
     assert len(alerts) == 1
-    assert alerts[0]["key"].startswith("stale-next-fire:DeskComputer:issue-remediator")
+    assert alerts[0]["key"].startswith("stale-next-fire:hub-a:issue-remediator")
 
 
 @pytest.mark.unit

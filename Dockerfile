@@ -69,6 +69,7 @@ COPY --from=frontend-build --chown=appuser:appuser /build/dist ./dist/
 COPY --chown=appuser:appuser backend/ ./backend/
 COPY --chown=appuser:appuser config/ ./config/
 COPY --chown=appuser:appuser frontend/ ./frontend/
+COPY --chown=appuser:appuser scripts/ ./scripts/
 
 # Environment defaults
 ENV PYTHONPATH=/app

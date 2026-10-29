@@ -231,6 +231,16 @@ def test_select_repo_lessons_filtering() -> None:
     assert "les-06" not in res.injected_ids and "les-07" not in res.injected_ids
 
 
+def test_select_repo_lessons_pages_past_more_than_one_page_of_noise() -> None:
+    s = get_memory_store()
+    _add(s, "les-old-accepted", text="Old accepted lesson that must survive paging.")
+    for i in range(150):
+        _add(s, f"les-noise-{i:03d}", status="proposed", text=f"noise {i}")
+
+    res = select_repo_lessons("Tools", memory_store=s)
+    assert res.injected_ids == ("les-old-accepted",)
+
+
 def test_select_repo_lessons_budget_and_whole_selection() -> None:
     s = get_memory_store()
     _add(s, "les-a", text="Short lesson A.")
@@ -241,6 +251,59 @@ def test_select_repo_lessons_budget_and_whole_selection() -> None:
     assert res.injected_ids == ("les-a", "les-b")
     assert res.skipped_ids.get("les-c") == "budget"
     assert res.tokens <= 65 and "les-c" not in res.block
+
+
+def test_select_repo_lessons_rejects_tampered_evidence_like_prompt_lessons(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """select_repo_lessons must share get_prompt_lessons's evidence re-verification (#2669):
+    an accepted lesson whose underlying evidence was changed after acceptance must not be
+    injected into repo prompts, even though it still reads review_status == "accepted"."""
+    from staff import store as run_stores
+    from staff.lesson_locator import locate_lesson_evidence
+
+    run_store = RunStore(tmp_path / "runs.sqlite3")
+    monkeypatch.setattr(run_stores, "get_store", lambda: run_store)
+    run_store.create_run(
+        RunRecord(
+            "run-1",
+            "swe",
+            "claude",
+            None,
+            "machine",
+            "Tools",
+            "prompt",
+            "",
+            "test",
+            status="running",
+            requested_by="operator",
+            standards_version="v1",
+        )
+    )
+    run_store.append_event("run-1", "assistant", "STAFF_LESSON: Trust but verify.", lesson_evidence="assistant_answer")
+    locator = locate_lesson_evidence(run_store, "run-1", "Tools", "Trust but verify.")
+    assert locator is not None
+
+    s = get_memory_store()
+    s.append(
+        MemoryEntry(
+            id="les-tampered",
+            entry_type="lesson",
+            author_principal="a",
+            source_product="staff-runner",
+            repo="Tools",
+            review_status="accepted",
+            source_run="run-1",
+            created_at=datetime.now(UTC).isoformat(),
+            body={"text": "Trust but verify.", "locator": locator},
+        )
+    )
+
+    run_store._conn.execute("UPDATE events SET text = 'STAFF_LESSON: Tampered.' WHERE seq = 1")  # noqa: SLF001
+
+    res = select_repo_lessons("Tools", memory_store=s)
+    assert res.injected_ids == ()
+    assert res.skipped_ids.get("les-tampered") == "evidence"
 
 
 def test_compose_prompt_repo_lessons_untrusted_label() -> None:

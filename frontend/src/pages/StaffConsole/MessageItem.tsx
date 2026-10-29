@@ -14,6 +14,7 @@ import { parseGroupTurn } from "./groupTurn";
 import { panelMeta } from "./panelTurn";
 import { PanelTurnCard } from "./PanelTurnCard";
 import { PanelConsensusCard } from "./PanelConsensusCard";
+import { PersonaAvatar } from "./PersonaAvatar";
 import {
   type ActionProposalData,
   type ActionRiskLevel,
@@ -55,6 +56,8 @@ export interface MessageItemProps {
   onAnswerRun?: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   onRerouteHandoff?: (targetRole: string) => void;
   onFollowHandoff?: (targetRole: string) => void;
+  /** URL of the author's persona image, served by the backend (#2680); falls back to the letter avatar. */
+  avatarUrl?: string;
 }
 
 /** #1774: a message whose action was dropped (permission/unknown/bad params) says so. */
@@ -71,21 +74,6 @@ function ActionWarnings({ warnings }: { warnings: string[] }) {
   );
 }
 
-function getRoleTint(role: string): { bg: string; fg: string } {
-  const tints = [
-    { bg: "rgba(88, 166, 255, 0.15)", fg: "var(--accent-blue, #58a6ff)" },
-    { bg: "rgba(188, 140, 255, 0.15)", fg: "var(--accent-purple, #bc8cff)" },
-    { bg: "rgba(63, 185, 80, 0.15)", fg: "var(--accent-green, #3fb950)" },
-    { bg: "rgba(240, 136, 62, 0.15)", fg: "var(--accent-orange, #f0883e)" },
-    { bg: "rgba(210, 153, 34, 0.15)", fg: "var(--accent-yellow, #d29922)" },
-  ];
-  let hash = 0;
-  for (let i = 0; i < role.length; i++) {
-    hash = (hash << 5) - hash + role.charCodeAt(i);
-  }
-  return tints[Math.abs(hash) % tints.length];
-}
-
 export const MessageItem: React.FC<MessageItemProps> = ({
   message,
   isStreaming = false,
@@ -98,6 +86,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onAnswerRun,
   onRerouteHandoff,
   onFollowHandoff,
+  avatarUrl,
 }) => {
   const [copied, setCopied] = useState(false);
   const isUser = message.author_kind === "user" || message.author === "user";
@@ -111,7 +100,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const roleName = message.author || "staff";
   const roleDisplayName = isUser ? "You" : roleName.charAt(0).toUpperCase() + roleName.slice(1);
   const roleInitial = roleName.charAt(0).toUpperCase();
-  const roleTint = getRoleTint(roleName);
+  // The "Ask Barb" auto-route persona never shows a photo on any surface (RosterRow/RosterGroup
+  // apply the same rule), so a message authored by barb must match, not fall back to a real photo here.
+  const isAutoRoute = !isUser && roleName === "barb";
   const warnings = !isUser && Array.isArray(message.meta?.warnings) ? (message.meta!.warnings as string[]) : [];
 
   const handleCopy = async () => {
@@ -325,16 +316,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       {/* Header with Avatar, Author and Time (collapsible) */}
       {showHeader && !isUser && (
         <div className="thread-message-header">
-          <div
-            className="thread-avatar"
-            style={{
-              background: roleTint.bg,
-              color: roleTint.fg,
-            }}
-            aria-hidden="true"
-          >
-            {roleInitial}
-          </div>
+          <PersonaAvatar
+            roleName={roleName}
+            initial={roleInitial}
+            avatarUrl={avatarUrl}
+            isAutoRoute={isAutoRoute}
+            variant="thread"
+          />
           <span className="thread-author-name">{roleDisplayName}</span>
           {timeStr && (
             <span className="thread-message-time" title={absoluteTime}>

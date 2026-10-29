@@ -6,7 +6,7 @@ Issue: `#757`
 
 The current fleet still routes almost every workflow to the neutral
 `d-sorg-fleet` label. That is safe for today's single-pool host, but it is not
-specific enough for the planned dual-tier ControlTower design.
+specific enough for the planned dual-tier node-a design.
 
 This runbook defines the label taxonomy that `Runner_Dashboard` should use once
 the NVMe and HDD pools are live, and it documents the offline audit that keeps
@@ -36,7 +36,7 @@ tracks the current routing plan.
 
 ## Current Transition Rule
 
-Until ControlTower exposes distinct NVMe and HDD pools, workflows may remain on
+Until node-a exposes distinct NVMe and HDD pools, workflows may remain on
 the neutral `d-sorg-fleet` label. The audit is intentionally conservative:
 
 - it fails only when a workflow is explicitly misrouted to a forbidden tier;

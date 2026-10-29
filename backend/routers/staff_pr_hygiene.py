@@ -8,16 +8,27 @@ admin-merging, force-pushing or closing anything:
 - ``POST /pr-hygiene/closes-refs`` retexts a ``Closes #N`` in a PR body to
   ``Refs #N`` when ``N`` is an epic tracker, so merging the PR cannot wrongly
   auto-close it.
+- ``POST /pr-hygiene/rearm`` re-arms auto-merge on a PR that is open, not
+  already armed and not held back, via
+  ``scripts.automerge_guard.arm_auto_merge`` -- the fleet's one sanctioned
+  arming seam (see that module's own docstring: "every fleet code path that
+  arms auto-merge must go through it").
 
-Both default to a dry run that only reports the plan; update-branch and
-merge-queue re-arming remain out of scope, tracked as follow-up work on #3311.
+All three default to a dry run that only reports the plan. ``update-branch``
+remains out of scope: AGENTS.md's Merge Queue section ("Never update PR
+branches to keep up with main ... Rebase only for a real conflict"), synced
+fleet-wide after this issue was filed, rules out "update a PR's branch just to
+keep it fresh" as a batch hygiene action.
 """
 
 # ruff: noqa: B008
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+import sys
+from pathlib import Path
 from typing import Any
 
 import gh_client
@@ -27,6 +38,23 @@ from pydantic import BaseModel, Field
 from staff.audit import record_audit
 from staff.maintenance_github import repo_full
 from staff.maintenance_policy import MaintenancePreconditionError
+
+# Production (start-dashboard.sh) and the E2E harness (start_e2e_backend.py) both
+# launch server.py with only backend/ on sys.path; the repo-root scripts package
+# needs this explicit shim (#3311 follow-up).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts import automerge_guard  # noqa: E402
+
+#: Strategy passed to the automerge_guard seam. The issue's own text asks for
+#: "plain --auto for RD/RM, --auto --squash elsewhere", but arm_auto_merge has
+#: no "no strategy" mode -- every call names one explicitly -- and squash is
+#: the only strategy this fleet's own AGENTS.md documents for any repo
+#: (Quick Reference's own Runner_Dashboard example). Applied uniformly here;
+#: flagged to Barb as an assumption rather than guessed silently per-repo.
+_REARM_STRATEGY = "squash"
 
 log = logging.getLogger("dashboard.staff.pr_hygiene")
 
@@ -220,6 +248,69 @@ async def pr_hygiene_closes_refs(
         principal=caller.id,
         surface="api",
         outcome="success",
+        detail={"dry_run": body.dry_run, "items": results},
+    )
+    return {"dry_run": body.dry_run, "results": results}
+
+
+async def _plan_one_rearm(item: PrHygieneItem) -> dict[str, Any]:
+    """Pre: ``item.repo`` is in the org. Post: a plan naming whether ``item`` needs re-arming."""
+    full = repo_full(item.repo)
+    pr = await gh_client.get(f"/repos/{full}/pulls/{item.pr}")
+    state = pr.get("state") if isinstance(pr, dict) else None
+    if state != "open":
+        return {"repo": item.repo, "pr": item.pr, "state": state, "action": "none", "reason": "PR is not open"}
+    if isinstance(pr, dict) and pr.get("auto_merge"):
+        return {
+            "repo": item.repo,
+            "pr": item.pr,
+            "state": state,
+            "action": "none",
+            "reason": "auto-merge already armed",
+        }
+    verdict = await asyncio.to_thread(automerge_guard.evaluate_hold, full, item.pr)
+    if verdict.held:
+        return {"repo": item.repo, "pr": item.pr, "state": state, "action": "none", "reason": verdict.describe()}
+    return {"repo": item.repo, "pr": item.pr, "state": state, "action": "rearm"}
+
+
+async def _apply_one_rearm(plan: dict[str, Any]) -> dict[str, Any]:
+    """Re-arm auto-merge for a ``plan`` naming ``action == "rearm"``; any other plan is a no-op."""
+    if plan["action"] != "rearm":
+        return {**plan, "armed": False}
+    full = repo_full(plan["repo"])
+    result = await asyncio.to_thread(automerge_guard.arm_auto_merge, full, plan["pr"], strategy=_REARM_STRATEGY)
+    armed = result.armed or result.merged
+    return {**plan, "armed": armed, "detail": result.detail if armed else result.reason()}
+
+
+@router.post("/pr-hygiene/rearm")
+async def pr_hygiene_rearm(
+    body: PrHygieneRequest,
+    caller: Principal = Depends(_STAFF_ADMIN),
+) -> dict[str, Any]:
+    """Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.
+
+    Pre: every item names an in-org repo and an existing PR. Post: one result per
+    item; a dry run changes nothing on GitHub, a live run re-arms only a PR that
+    is open, not already armed and not held back (``automerge_guard.evaluate_hold``),
+    and the batch is always audited. Never admin-merges, force-pushes or closes.
+    """
+    plans = await _collect_plans(body.items, _plan_one_rearm)
+
+    if body.dry_run:
+        results = [{**plan, "dry_run": True} for plan in plans]
+        outcome = "success"
+    else:
+        results = [{**(await _apply_one_rearm(plan)), "dry_run": False} for plan in plans]
+        outcome = "success" if all(r["action"] == "none" or r["armed"] for r in results) else "failure"
+
+    record_audit(
+        action="maintenance",
+        target="pr-hygiene-rearm",
+        principal=caller.id,
+        surface="api",
+        outcome=outcome,
         detail={"dry_run": body.dry_run, "items": results},
     )
     return {"dry_run": body.dry_run, "results": results}

@@ -86,7 +86,7 @@ def test_exit0_run_with_bwrap_error_recorded_failed(tmp_path: Path) -> None:
         result_line="",
         provider="codex",
         transcript_path=transcript,
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert status == "failed"
     assert failure_class == "environment_error"
@@ -105,7 +105,7 @@ def test_staff_result_line_does_not_mask_sandbox_failure(tmp_path: Path) -> None
         result_line="STAFF_RESULT: ok",
         provider="codex",
         transcript_path=transcript,
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert status == "failed"
     assert failure_class == "environment_error"
@@ -123,7 +123,7 @@ def test_clean_run_still_succeeds(tmp_path: Path) -> None:
         result_line="STAFF_RESULT: ok",
         provider="codex",
         transcript_path=transcript,
-        machine="DeskComputer",
+        machine="hub-a",
     )
     assert status == "succeeded"
     assert failure_class == ""

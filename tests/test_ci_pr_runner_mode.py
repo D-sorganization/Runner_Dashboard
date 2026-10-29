@@ -20,7 +20,7 @@ PR_SWITCH = "github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'h
 LIGHT_JOBS = {
     "ci-standard.yml": ["pick-runner"],
     "frontend-tests.yml": ["frontend-required", "frontend-scope", "typecheck", "vitest", "perf-budget"],
-    "ci-secrets.yml": None,
+    "ci-secrets.yml": ["gitleaks", "detect-secrets"],
     "anti-phantom-merge.yml": None,
     "ci-spec-check.yml": None,
     "lint-workflow-files.yml": None,
@@ -103,7 +103,7 @@ def test_heavy_jobs_stay_local(workflow: str, only: list[str] | None) -> None:
 QUEUE_SWITCH = "github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest'"
 QUEUE_LIGHT_JOBS = {
     "frontend-tests.yml": ["frontend-required", "frontend-scope", "typecheck", "vitest", "perf-budget"],
-    "ci-secrets.yml": None,
+    "ci-secrets.yml": ["gitleaks", "detect-secrets"],
     "architecture-map-contract.yml": None,
 }
 
