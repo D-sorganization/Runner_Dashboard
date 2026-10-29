@@ -11,6 +11,18 @@ export interface StorageDevice {
   used_bytes?: number;
 }
 
+export interface IoPressureWindow {
+  avg10?: number;
+  avg60?: number;
+  avg300?: number;
+  total?: number;
+}
+
+export interface IoPressureSnapshot {
+  some?: IoPressureWindow;
+  full?: IoPressureWindow;
+}
+
 export interface MachineNode {
   name: string;
   online?: boolean;
@@ -37,12 +49,39 @@ export interface MachineNode {
     swap?: {
       percent?: number;
     };
+    io_pressure?: IoPressureSnapshot | number | null;
     storage?: StorageDevice[];
     os?: {
       wsl_distro?: string;
       kernel?: string;
     };
   };
+}
+
+function formatIoPressureSummary(io?: IoPressureSnapshot | number | null): {
+  compact: string | null;
+  detail: string | null;
+} {
+  if (typeof io === "number" && Number.isFinite(io)) {
+    const formatted = `${io.toFixed(1)}%`;
+    return { compact: formatted, detail: formatted };
+  }
+  if (io && typeof io === "object") {
+    const full10 = io.full?.avg10;
+    const some10 = io.some?.avg10;
+    const hasFull = typeof full10 === "number" && Number.isFinite(full10);
+    const hasSome = typeof some10 === "number" && Number.isFinite(some10);
+    if (hasFull || hasSome) {
+      const primary = hasFull ? full10! : some10!;
+      const compact = `${primary.toFixed(1)}%`;
+      const detail =
+        hasFull && hasSome
+          ? `full ${full10!.toFixed(1)}% · some ${some10!.toFixed(1)}%`
+          : compact;
+      return { compact, detail };
+    }
+  }
+  return { compact: null, detail: null };
 }
 
 export interface FleetMachinesSectionProps {
@@ -177,6 +216,7 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
                 const isOnline = m.online !== false;
                 const cpuVal = m.system?.cpu?.percent_1m_avg ?? m.system?.cpu?.percent ?? 0;
                 const memVal = m.system?.memory?.percent ?? 0;
+                const ioFormatted = formatIoPressureSummary(m.system?.io_pressure);
                 const isExp = Boolean(expanded[m.name]);
                 const mRunners = runnersByMachine[m.name] || [];
                 const onlineRunners = mRunners.filter((r) => r.status === "online").length;
@@ -232,6 +272,7 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
                         {isOnline ? (
                           <span>
                             CPU {Math.round(cpuVal)}% · RAM {Math.round(memVal)}%
+                            {ioFormatted.compact ? ` · IO ${ioFormatted.compact}` : ""}
                           </span>
                         ) : (
                           <span style={{ color: "var(--text-muted, #8b949e)" }}>{m.offline_reason || "unreachable"}</span>
@@ -285,6 +326,11 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
                               {m.system?.memory?.total && (
                                 <div>
                                   Memory: {formatBytes(m.system.memory.used || 0)} / {formatBytes(m.system.memory.total)}
+                                </div>
+                              )}
+                              {ioFormatted.detail && (
+                                <div data-testid={`io-pressure-${m.name}`}>
+                                  IO Pressure (PSI): {ioFormatted.detail}
                                 </div>
                               )}
                             </div>
