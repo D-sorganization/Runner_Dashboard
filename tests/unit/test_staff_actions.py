@@ -173,9 +173,7 @@ def test_dashboard_navigate_allowlist_covers_every_registered_frontend_tab() -> 
     """Regression for #2759: a tab registered in the frontend nav must be
     navigable, same technique as test_frontend_integrity.py's
     test_every_registered_desktop_tab_has_native_route_content."""
-    nav_data_path = (
-        Path(__file__).resolve().parents[2] / "frontend" / "src" / "shell" / "navRegistryData.ts"
-    )
+    nav_data_path = Path(__file__).resolve().parents[2] / "frontend" / "src" / "shell" / "navRegistryData.ts"
     nav_data = nav_data_path.read_text(encoding="utf-8")
     registered_tab_ids = set(re.findall(r'tabId:\s*"([^"]+)"', nav_data))
 
@@ -247,9 +245,14 @@ def test_approval_policy_accepts_role_presets_for_approve() -> None:
     )
     action = ACTION_REGISTRY.get("staff.dispatch")
 
-    # Real loopback principal shape: role preset only, no explicit scopes.
+    # Operator role preset only, no explicit scopes.
+    operator = Principal(id="op-preset", type="human", name="Operator", roles=["operator"])
+    check_approval_policy(action, prop_medium, operator)
+
+    # Fail closed (#3540): loopback preset does not grant staff.approve or staff.dispatch.
     loopback = Principal(id="__loopback__", type="human", name="Loopback development admin", roles=["loopback"])
-    check_approval_policy(action, prop_medium, loopback)
+    with pytest.raises(PermissionError, match="staff.approve"):
+        check_approval_policy(action, prop_medium, loopback)
 
     # Fail closed: the bot preset may propose/dispatch but does not grant staff.approve.
     bot = Principal(id="barb", type="bot", name="Barb", roles=["bot"])

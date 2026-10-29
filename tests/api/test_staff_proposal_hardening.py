@@ -257,9 +257,9 @@ def test_execute_route_accepts_a_decide_capable_role_preset(client: TestClient) 
     ``require_scope`` guard, but the approval policy used to 403 it because it only read
     the principal's explicit scopes.
     """
-    loopback = Principal(id="__loopback__", type="human", name="Loopback development admin", roles=["loopback"])
-    app.dependency_overrides[require_principal] = lambda: loopback
-    app.dependency_overrides[require_scope("staff.approve")] = lambda: loopback
+    operator_preset = Principal(id="op-preset", type="human", name="Operator", roles=["operator"])
+    app.dependency_overrides[require_principal] = lambda: operator_preset
+    app.dependency_overrides[require_scope("staff.approve")] = lambda: operator_preset
 
     prop_id = _proposal()
     decided = client.post(

@@ -333,7 +333,7 @@ async def test_require_scope_checker_admits_tailnet_principal(monkeypatch: pytes
     _mock_whois_matching(monkeypatch, login=_LOGIN, host=_LOOPBACK_PEER[0], port=_LOOPBACK_PEER[1])
 
     app = FastAPI()
-    _scope_dep = Depends(_identity.require_scope("staff.dispatch"))
+    _scope_dep = Depends(_identity.require_scope("staff.read"))
 
     @app.get("/scoped")
     def scoped(principal: Principal = _scope_dep):
@@ -457,23 +457,23 @@ def test_tailnet_signin_from_other_device_can_approve(monkeypatch: pytest.Monkey
     assert not _identity.principal_has_scope(prin, "staff.admin")
 
 
-def test_tailnet_signin_from_host_itself_can_approve(monkeypatch: pytest.MonkeyPatch) -> None:
-    """#1786: the owner approves from anywhere, including a browser on this host."""
+def test_tailnet_signin_from_host_itself_cannot_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#1770 / #3540: loopback role alone does not grant staff.approve."""
     prin = _signed_in(monkeypatch, _SELF_TAILNET_IP, _SELF_TAILNET_IP)
     assert prin.roles == ["loopback"]
-    assert _identity.principal_has_scope(prin, "staff.approve")
+    assert not _identity.principal_has_scope(prin, "staff.approve")
 
 
-def test_tailnet_signin_without_self_ips_can_approve(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tailnet_signin_without_self_ips_cannot_approve(monkeypatch: pytest.MonkeyPatch) -> None:
     prin = _signed_in(monkeypatch, _TAILNET_CLIENT_IP, None)
     assert prin.roles == ["loopback"]
-    assert _identity.principal_has_scope(prin, "staff.approve")
+    assert not _identity.principal_has_scope(prin, "staff.approve")
 
 
-def test_loopback_principal_can_approve_but_is_not_admin() -> None:
-    """#1786: Desk approves; approval still does not grant admin."""
+def test_loopback_principal_cannot_approve_or_admin() -> None:
+    """#3540: loopback principal gets read/agent scopes only, not staff.approve or staff.admin."""
     prin = _identity._loopback_principal()
-    assert _identity.principal_has_scope(prin, "staff.approve")
+    assert not _identity.principal_has_scope(prin, "staff.approve")
     assert not _identity.principal_has_scope(prin, "staff.admin")
 
 
