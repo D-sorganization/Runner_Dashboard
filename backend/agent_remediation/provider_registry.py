@@ -108,8 +108,17 @@ OLLAMA_TAGS_ENDPOINT = f"{OLLAMA_BASE_URL}/api/tags"
 # Curated, current CLI model lists. ``models.length > 0`` is what now marks a
 # provider as supporting model selection (replacing the old hardcoded
 # ``_PROVIDERS_WITH_MODEL_SELECTION`` set in the remediation router).
-_CLAUDE_MODELS = ("claude-opus-4", "claude-sonnet-4", "claude-haiku-4")
-_CODEX_MODELS = ("gpt-5-codex", "gpt-5", "o4-mini")
+_CLAUDE_MODELS = (
+    "claude-opus-5-5",
+    "claude-fable-5-1",
+    "opus",
+    "sonnet",
+    "haiku",
+    "claude-opus-4",
+    "claude-sonnet-4",
+    "claude-haiku-4",
+)
+_CODEX_MODELS = ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra", "gpt-5-codex", "gpt-5", "o4-mini")
 _GEMINI_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
 # Cursor Agent routes to several vendors under one Cursor subscription. The
 # Grok entries are how Grok is used as a worker seat (#1193): the standalone

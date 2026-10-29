@@ -12,6 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
+from model_catalog import catalog_models_for_provider
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.provider_defaults import default_model_for_provider
 
@@ -26,14 +27,14 @@ _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "staff_model_tie
 # claude-opus-5-5 (the Grok-offload epic's #3295 S2 default role-override model). Validation
 # only -- ``ProviderAdapter.build_command`` gates on ``adapter.models`` directly, which stays
 # empty for claude so these aliases keep resolving through the CLI's own model names.
-_CLAUDE_CLI_ALIASES = frozenset({"haiku", "sonnet", "opus", "claude-opus-5-5"})
+_CLAUDE_CLI_ALIASES = frozenset({"haiku", "sonnet", "opus", "claude-opus-5-5", "claude-fable-5-1"})
 _CODEX_CLI_MODELS = frozenset({"gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"})
 
 
 def allowed_models_for_provider(provider_id: str, adapter: ProviderAdapter | None = None) -> frozenset[str]:
     """CLI-accepted model ids for validation (fail closed on unknown)."""
     adapter = adapter or ADAPTERS.get(provider_id)
-    allowed: set[str] = set()
+    allowed: set[str] = set(catalog_models_for_provider(provider_id))
     if adapter is not None:
         allowed.update(adapter.models)
         if adapter.default_model:
