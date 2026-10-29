@@ -6,7 +6,7 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { Composer } from "../Composer";
 import type { StaffRoleItem } from "../types";
 
@@ -200,6 +200,28 @@ describe("Composer Component", () => {
       // Must match same idempotency key for deduplication!
       expect(secondCallKey).toBe(firstCallKey);
     });
+  });
+
+  it("sends exactly once when the send button is tapped twice before the first send settles (mobile double-tap)", async () => {
+    let resolveSend: (value: { ok: boolean }) => void = () => {};
+    const onSend = vi.fn(() => new Promise<{ ok: boolean }>((resolve) => { resolveSend = resolve; }));
+    render(<Composer threadId="thread-double-tap" roles={MOCK_ROLES} onSendMessage={onSend} />);
+
+    const textarea = screen.getByPlaceholderText(/message barb/i);
+    fireEvent.change(textarea, { target: { value: "Don't send me twice" } });
+    const sendButton = screen.getByRole("button", { name: /send/i });
+
+    // Both native clicks land in the same task, before React re-renders to
+    // disable the button -- the real shape of a mobile double-tap.
+    act(() => {
+      sendButton.click();
+      sendButton.click();
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    resolveSend({ ok: true });
+    await waitFor(() => expect(textarea).toHaveValue(""));
   });
 
   it("uses a new idempotency key when editing a failed draft before retry", async () => {
