@@ -190,6 +190,6 @@ def test_api_detect_stalled_high_risk_creates_proposal_for_approval(
         )
     assert decide_res.status_code == 200, decide_res.text
     decide_data = decide_res.json()
-    assert decide_data["state"] == "executed"
+    assert decide_data["state"] == "done"
     assert decide_data["execution_result"]["success"] is True
     assert decide_data["execution_result"]["result"]["removed"] is True
