@@ -25,6 +25,8 @@ from routers.staff import (
     MAX_LIMIT,
     RunBody,
 )
+from routers.staff_avatars import router as staff_avatars_router
+from routers.staff_context import router as staff_context_router
 from routers.staff_knowledge import router as staff_knowledge_router
 from routers.staff_pr_hygiene import router as staff_pr_hygiene_router
 from routers.staff_projects import router as staff_projects_router
@@ -63,6 +65,7 @@ from staff.models import (
 )
 from staff.pagination import CursorPage, paginate_items
 from staff.pricing import price_table_rows
+from staff.role_avatar_paths import avatar_url_for
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
 
@@ -73,6 +76,8 @@ router.include_router(staff_skills_router)
 router.include_router(staff_projects_router)
 router.include_router(staff_references_router)
 router.include_router(staff_pr_hygiene_router)
+router.include_router(staff_avatars_router)
+router.include_router(staff_context_router)
 
 
 def _reservation_conflict(state: str, operation_id: str) -> HTTPException:
@@ -196,9 +201,15 @@ async def roster_v1(
     runner = get_runner()
     roles, active = runner.roles(), runner.store.active_runs()
     per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
+    role_dicts = []
+    for name, spec in sorted(roles.items()):
+        role_dict = {**spec.to_dict(), "active_runs": per_role.get(name, 0)}
+        if role_dict.get("avatar"):
+            role_dict["avatar"] = avatar_url_for(role_dict["avatar"])
+        role_dicts.append(role_dict)
     return {
         "machine": runner.machine,
-        "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
+        "roles": role_dicts,
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "chat_only_providers": chat_only_providers(),
@@ -239,27 +250,6 @@ async def board_v1(
     if not peers:
         return mine
     return await staff_fleet.aggregate_board(mine, peers)
-
-
-@router.get("/context/agents-sync")
-async def context_agents_sync_v1(
-    _peer: Principal = Depends(require_scope("staff.read")),
-) -> dict[str, Any]:
-    """Compare published managed AGENTS blocks with the Repository_Management source."""
-    from cache_utils import cache_get, cache_set
-    from projects.service import configured_repos, fetch_repo_file
-    from staff.agents_sync import build_agents_sync_report
-
-    cached = cache_get("context:agents-sync", 600)
-    if cached is not None:
-        return cached
-
-    async def fetch_file(repo: str, path: str) -> str | None:
-        return await fetch_repo_file(repo, path)
-
-    report = await build_agents_sync_report(fetch_file, configured_repos())
-    cache_set("context:agents-sync", report)
-    return report
 
 
 @router.get("/summary", response_model=StaffSummaryResponse, response_model_exclude_none=True)

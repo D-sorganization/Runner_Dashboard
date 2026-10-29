@@ -56,6 +56,7 @@ from staff.models import (
     StaffSummaryResponse,
 )
 from staff.rm_sync import source_status as source_status  # noqa: F401
+from staff.role_avatar_paths import avatar_url_for
 from staff.runner import get_runner
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES, default_db_path
 from staff.summary_view import build_staff_summary
@@ -121,9 +122,15 @@ async def roster(
     runner = get_runner()
     roles, active = runner.roles(), runner.store.active_runs()
     per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
+    role_dicts = []
+    for name, spec in sorted(roles.items()):
+        role_dict = {**spec.to_dict(), "active_runs": per_role.get(name, 0)}
+        if role_dict.get("avatar"):
+            role_dict["avatar"] = avatar_url_for(role_dict["avatar"])
+        role_dicts.append(role_dict)
     return {
         "machine": runner.machine,
-        "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
+        "roles": role_dicts,
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "chat_only_providers": chat_only_providers(),
