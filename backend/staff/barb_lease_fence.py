@@ -18,9 +18,11 @@ Barb seat (:func:`is_barb_seat`) that carries neither header is not silently tru
 ``DASHBOARD_BARB_FENCE_MODE`` selects what :func:`claim_for_write` does with it:
 
 - ``off``: nothing; the write runs unfenced (the pre-#3279 behaviour).
-- ``warn`` (default; unknown values fall back to it): log a warning naming the principal and surface
-  (never header values or credentials), count it in ``dashboard_barb_unclaimed_writes_total``, allow it.
-- ``enforce``: count it and refuse with the fence's ``stale_barb_lease`` 409, reason ``claim_required``.
+- ``warn``: log a warning naming the principal and surface (never header values or credentials),
+  count it in ``dashboard_barb_unclaimed_writes_total``, allow it.
+- ``enforce`` (default; unknown values fall back to it, #3318): count it and refuse with the fence's
+  ``stale_barb_lease`` 409, reason ``claim_required`` (audited via :func:`reject_stale`, no duplicate warning log).
+  Set ``DASHBOARD_BARB_FENCE_MODE=warn`` (or ``off``) to revert enforcement without a code change.
 
 Non-Barb requests are unaffected in every mode.
 """
@@ -49,7 +51,7 @@ STALE_ERROR = "stale_barb_lease"
 MODE_ENV = "DASHBOARD_BARB_FENCE_MODE"
 FenceMode = Literal["off", "warn", "enforce"]
 _MODES: tuple[FenceMode, ...] = ("off", "warn", "enforce")
-DEFAULT_MODE: FenceMode = "warn"
+DEFAULT_MODE: FenceMode = "enforce"
 BARB_SEAT_IDS = frozenset({"barb", "agent-grok"})
 
 
@@ -113,7 +115,7 @@ def is_barb_seat(principal: Principal | None) -> bool:
 
 
 def fence_mode() -> FenceMode:
-    """The configured unclaimed-write mode; an unset or unknown value is ``warn``."""
+    """The configured unclaimed-write mode; an unset or unknown value is ``enforce`` (#3318)."""
     raw = os.environ.get(MODE_ENV, "").strip().lower()
     for mode in _MODES:
         if raw == mode:
@@ -124,10 +126,11 @@ def fence_mode() -> FenceMode:
 
 
 def claim_for_write(headers: Mapping[str, str], principal: Principal, *, surface: str) -> BarbClaim | None:
-    """Parse the request's Barb claim and apply the unclaimed-write policy for Barb seats (#3279).
+    """Parse the request's Barb claim and apply the unclaimed-write policy for Barb seats (#3279, #3318).
 
     Pre-condition: ``surface`` is non-empty. Post-condition: the result is exactly
-    :func:`parse_barb_claim`'s; the only extra effect is a log line, a metric increment or (``enforce``) a 409.
+    :func:`parse_barb_claim`'s; the only extra effect is a metric increment and either a 409
+    rejection (``enforce``, default) or a warning log line (``warn``).
     """
     assert surface, "surface must be non-empty"
     claim = parse_barb_claim(headers, principal.id)
@@ -139,18 +142,18 @@ def claim_for_write(headers: Mapping[str, str], principal: Principal, *, surface
     from prometheus_metrics import record_barb_unclaimed_write  # noqa: PLC0415
 
     record_barb_unclaimed_write(surface)
-    log.warning(
-        "barb fence: write by Barb principal %s on %s arrived without lease claim headers (mode=%s)",
-        principal.id,
-        surface,
-        mode,
-    )
     if mode == "enforce":
         exc = StaleBarbLease(reason="claim_required", scope="", current_epoch=0, holder="", claimed_epoch=0)
         from identity import format_caller  # noqa: PLC0415
 
         caller = format_caller(principal)
         raise reject_stale(exc, claimed_holder=principal.id, surface=surface, target=surface, principal=caller)
+    log.warning(
+        "barb fence: write by Barb principal %s on %s arrived without lease claim headers (mode=%s)",
+        principal.id,
+        surface,
+        mode,
+    )
     return None
 
 
