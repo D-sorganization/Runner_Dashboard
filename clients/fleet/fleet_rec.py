@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
-"""Opt-in Linux/WSL PTY session recorder for fleet CLIs (#2868, epic #2856 slice T2)."""
+"""Opt-in Linux/WSL PTY and Windows ConPTY/PowerShell session recorder for fleet CLIs (#2868, #2869)."""
 
 from __future__ import annotations
 
 import argparse
 import contextlib
 import errno
-import fcntl
 import json
 import os
-import pty
 import re
 import select
 import signal
 import subprocess
 import sys
-import termios
 import time
-import tty
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl
+    import pty
+    import termios
+    import tty
+except ImportError:  # pragma: no cover - Windows runtime lacks POSIX pty/termios
+    fcntl = pty = termios = tty = None  # type: ignore[assignment]
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -30,6 +34,9 @@ from fleet_validators import PATTERNS, _check, _match, _opt, _positive_int, defa
 
 SUPPORTED_CLIS: tuple[str, ...] = ("claude", "codex", "agy", "cursor-agent")
 CLI_AGENT_MAP: dict[str, str] = {"claude": "claude", "codex": "codex", "agy": "antigravity", "cursor-agent": "cursor"}
+_WIN_SUFFIX_RE = re.compile(r"(?i)\.(?:exe|cmd|ps1|bat)$")
+_POSIX_PLATFORMS = frozenset({"posix", "linux", "wsl"})
+_WINDOWS_PLATFORMS = frozenset({"windows", "win32", "nt", "conpty", "powershell"})
 EVENTS_PATH = "/api/v1/activity/events"
 DEFAULT_MAX_CHUNK_BYTES = 32_768
 DEFAULT_MAX_SPOOL_CHUNKS = 200
@@ -89,10 +96,31 @@ def is_recorder_enabled(explicit: bool | None = None) -> bool:
     )
 
 
-def default_recorder_spool_path(explicit: str | Path | None = None) -> Path:
+def normalize_cli_name(raw_arg0: str) -> str:
+    """Normalize a POSIX or Windows/PowerShell CLI executable path to its canonical CLI name."""
+    leaf = re.split(r"[/\\]", str(raw_arg0 or "").strip())[-1]
+    return _WIN_SUFFIX_RE.sub("", leaf).lower()
+
+
+def _resolve_platform(explicit: str | None = None) -> str:
+    raw = str(explicit or os.environ.get("FLEET_REC_PLATFORM") or ("windows" if os.name == "nt" else "posix")).strip()
+    low = raw.lower()
+    if low in _POSIX_PLATFORMS:
+        return "posix"
+    if low in _WINDOWS_PLATFORMS:
+        return "windows"
+    raise FleetArgumentError(f"unsupported recorder platform {raw!r}; expected posix or windows")
+
+
+def default_recorder_spool_path(explicit: str | Path | None = None, *, platform: str | None = None) -> Path:
     if raw := str(explicit or os.environ.get("FLEET_REC_SPOOL") or "").strip():
         return Path(raw).expanduser()
+    plat = _resolve_platform(platform)
     cfg = os.environ.get("RUNNER_DASHBOARD_CONFIG_DIR", "").strip()
+    if plat == "windows":
+        win_base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Local")
+        root = Path(cfg).expanduser() if cfg else Path(win_base).expanduser() / "runner-dashboard"
+        return root / "fleet-rec-spool-windows.json"
     root = (
         Path(cfg).expanduser()
         if cfg
@@ -276,18 +304,73 @@ def run_pty_process(argv: Sequence[str], *, on_output: Callable[[bytes], None], 
                     os.close(fd)
 
 
+def run_conpty_process(argv: Sequence[str], *, on_output: Callable[[bytes], None], **kw: Any) -> int:
+    """Spawn ``argv`` in a Windows ConPTY / PowerShell stream harness and stream chunks."""
+    _check(bool(argv) and bool(str(argv[0]).strip()), "argv must not be empty")
+    _check(callable(on_output), "on_output must be callable")
+    cmd = list(kw.get("conpty_argv") or argv)
+    initial_input: bytes | None = kw.get("initial_input")
+    if factory := kw.get("conpty_factory"):
+        proc_pty = factory(cmd, cols=int(kw.get("cols", 120)), rows=int(kw.get("rows", 32)))
+        if initial_input and hasattr(proc_pty, "write"):
+            proc_pty.write(initial_input)
+        while True:
+            chunk = proc_pty.read(DEFAULT_MAX_CHUNK_BYTES)
+            if not chunk:
+                break
+            raw = chunk.encode("utf-8", errors="replace") if isinstance(chunk, str) else bytes(chunk)
+            if kw.get("passthrough_stdout"):
+                with contextlib.suppress(OSError):
+                    os.write(sys.stdout.fileno(), raw)
+            on_output(raw)
+        return int(proc_pty.wait())
+
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if proc.stdin is not None:
+        if initial_input:
+            with contextlib.suppress(OSError):
+                proc.stdin.write(initial_input)
+                proc.stdin.flush()
+        with contextlib.suppress(OSError):
+            proc.stdin.close()
+    if proc.stdout is not None:
+        read_fn = getattr(proc.stdout, "read1", proc.stdout.read)
+        while data := read_fn(DEFAULT_MAX_CHUNK_BYTES):
+            if kw.get("passthrough_stdout"):
+                with contextlib.suppress(OSError):
+                    os.write(sys.stdout.fileno(), data)
+            on_output(data)
+    return int(proc.wait())
+
+
+def render_powershell_profile_snippet(python_exe: str = "python", script_path: str | Path | None = None) -> str:
+    """Render PowerShell ``$PROFILE`` wrappers routing fleet CLIs through ``fleet-rec`` on Windows."""
+    script = str(Path(script_path) if script_path else Path(__file__).resolve())
+    lines = ["# Runner Dashboard fleet-rec PowerShell wrappers (#2869)"]
+    for cli in SUPPORTED_CLIS:
+        lines.append(
+            f"function Invoke-FleetRec-{cli} {{ "
+            f'if ($env:FLEET_REC_ENABLED -in @("1","true","yes","on")) {{ '
+            f'& "{python_exe}" "{script}" --platform windows -- "{cli}" @args '
+            f'}} else {{ & (Get-Command "{cli}" -CommandType Application | Select-Object -First 1) @args }} }}\n'
+            f"Set-Alias -Name {cli} -Value Invoke-FleetRec-{cli} -Scope Global"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def run_recorded_cli(argv: Sequence[str], **opts: Any) -> int:
     """Run ``argv`` wrapped in ``fleet-rec`` when opt-in node recording is enabled."""
     _check(bool(argv) and bool(str(argv[0]).strip()), "command argv must not be empty")
-    cli_name = Path(str(argv[0])).name
+    cli_name = normalize_cli_name(str(argv[0]))
     _check(cli_name in SUPPORTED_CLIS, f"unsupported CLI {cli_name!r}; fleet-rec wraps {', '.join(SUPPORTED_CLIS)}")
+    plat = _resolve_platform(opts.get("platform"))
     max_chunks = int(opts.get("max_spool_chunks", DEFAULT_MAX_SPOOL_CHUNKS))
     max_bytes = int(opts.get("max_spool_bytes", DEFAULT_MAX_SPOOL_BYTES))
     _check(max_chunks >= 1 and max_bytes >= 1, "spool bounds must be >= 1")
     if not is_recorder_enabled(opts.get("enabled")):
         return int((opts.get("passthrough_runner") or subprocess.call)(list(argv)))
 
-    spool_path = default_recorder_spool_path(opts.get("spool_file"))
+    spool_path = default_recorder_spool_path(opts.get("spool_file"), platform=plat)
     state = _load_spool(spool_path)
     raw_ag = opts.get("agent") or os.environ.get("FLEET_AGENT") or CLI_AGENT_MAP[cli_name]
     agent = _match(PATTERNS.agent, raw_ag, "agent")
@@ -322,7 +405,13 @@ def run_recorded_cli(argv: Sequence[str], **opts: Any) -> int:
 
     exit_code = 1
     try:
-        runner = opts.get("pty_runner") or (lambda cmd, cb: run_pty_process(cmd, on_output=cb, passthrough_stdout=True))
+        rkw = {k: opts[k] for k in ("conpty_factory", "conpty_argv", "initial_input") if k in opts}
+        default_run = (
+            (lambda cmd, cb: run_conpty_process(cmd, on_output=cb, passthrough_stdout=True, **rkw))
+            if plat == "windows"
+            else (lambda cmd, cb: run_pty_process(cmd, on_output=cb, passthrough_stdout=True))
+        )
+        runner = opts.get("pty_runner") or default_run
         exit_code = int(runner(list(argv), _on_chunk))
         return exit_code
     finally:
@@ -334,16 +423,23 @@ def run_recorded_cli(argv: Sequence[str], **opts: Any) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="fleet-rec", description="Opt-in PTY recorder for fleet CLIs (#2868).")
-    for flag in ("--url", "--session", "--agent", "--node", "--repo", "--branch", "--spool-file"):
+    p = argparse.ArgumentParser(
+        prog="fleet-rec", description="Opt-in PTY/ConPTY recorder for fleet CLIs (#2868/#2869)."
+    )
+    for flag in ("--url", "--session", "--agent", "--node", "--repo", "--branch", "--spool-file", "--platform"):
         p.add_argument(flag)
     p.add_argument("--enable", action="store_true", default=None)
+    p.add_argument("--print-powershell-profile", action="store_true")
     p.add_argument("--issue", type=int)
     p.add_argument("--pr", type=int)
     p.add_argument("cmd", nargs=argparse.REMAINDER)
     ns = p.parse_args(argv)
+    if ns.print_powershell_profile:
+        sys.stdout.write(render_powershell_profile_snippet())
+        return 0
     cmd = list(ns.cmd[1:] if ns.cmd and ns.cmd[0] == "--" else ns.cmd)
-    kw = {k: getattr(ns, k) for k in ("url", "agent", "session", "node", "repo", "issue", "branch", "pr", "spool_file")}
+    keys = ("url", "agent", "session", "node", "repo", "issue", "branch", "pr", "spool_file", "platform")
+    kw = {k: getattr(ns, k) for k in keys}
     try:
         return run_recorded_cli(cmd, enabled=True if ns.enable else None, **kw)
     except FleetArgumentError as exc:
