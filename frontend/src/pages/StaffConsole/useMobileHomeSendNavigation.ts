@@ -9,6 +9,8 @@ interface MobileHomeSendNavigationOptions {
   isHomeView: () => boolean;
   onOpenThread?: (threadId: string) => void;
   setThreadView: () => void;
+  /** Role whose thread the home composer just opened; stamped into the pushed URL. */
+  role: string;
 }
 
 export function pushThreadUrl(roleName: string, threadId: string): void {
@@ -49,6 +51,7 @@ export function useMobileHomeSendNavigation({
   isHomeView,
   onOpenThread,
   setThreadView,
+  role,
 }: MobileHomeSendNavigationOptions): () => void {
   const [pending, setPending] = useState(false);
 
@@ -57,9 +60,9 @@ export function useMobileHomeSendNavigation({
     setPending(false);
     if (!isHomeView()) return;
     setThreadView();
-    pushThreadUrl("barb", activeThread.id);
+    pushThreadUrl(role, activeThread.id);
     onOpenThread?.(activeThread.id);
-  }, [activeThread, isHomeView, onOpenThread, pending, setThreadView]);
+  }, [activeThread, isHomeView, onOpenThread, pending, setThreadView, role]);
 
   return useCallback(() => setPending(true), []);
 }

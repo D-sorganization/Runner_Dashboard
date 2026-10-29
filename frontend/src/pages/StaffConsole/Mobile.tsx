@@ -22,6 +22,12 @@ import "./mobile.css";
 
 export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
 
+// The primary phone flow is a direct conversation with the persistent RD
+// Barb seat, not the fleet-wide "barb" auto-route role (#3493). Resolved
+// against the authorized roster below; never falls back to "barb" if
+// rd-barb is missing.
+export const PRIMARY_CHAT_ROLE = "rd-barb";
+
 export interface StaffConsoleMobileProps {
   roles?: StaffRoleItem[];
   initialView?: MobileView;
@@ -64,8 +70,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     onSendMessage,
     onApproveProposal,
     onDenyProposal,
+    defaultSendRole: PRIMARY_CHAT_ROLE,
   });
-  const { roles, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
+  const { roles, rosterLoading, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
+  // Known-missing only once the roster has actually loaded; never silently
+  // treated as the auto-route "barb" role.
+  const primaryRole = useMemo(() => roles.find((r) => r.name === PRIMARY_CHAT_ROLE) ?? null, [roles]);
+  const primaryRoleUnavailable = !rosterLoading && !primaryRole;
   const [view, setView] = useState<MobileView>(initialView);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -93,6 +104,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     isHomeView: () => viewRef.current === "home",
     onOpenThread,
     setThreadView: () => setView("thread"),
+    role: primaryRole?.name ?? PRIMARY_CHAT_ROLE,
   });
 
   // Deep Link Handling (?thread=, ?role=, ?tab=): see useMobileThreadUrlSync
@@ -283,6 +295,15 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             <button type="button" className="staff-mobile__details-btn" onClick={() => setView("roster")}>Choose staff</button>
           </header>
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
+          {primaryRoleUnavailable && (
+            <div
+              className="staff-mobile__primary-role-unavailable"
+              role="alert"
+              data-testid="staff-mobile-rd-barb-unavailable"
+            >
+              rd-barb is unavailable right now — the primary chat can&apos;t open.
+            </div>
+          )}
           {/* A <div>, not <main>: the page already has one <main> landmark
               (MobileShell's #main-content); a second here would duplicate it. */}
           <div className="staff-mobile__main-content staff-mobile__home-content">
@@ -301,7 +322,16 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </div>
           <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
             <GroupCostConfirm guard={sc.costGuard} />
-            <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} prefillSeq={prefillSeq} />
+            <Composer
+              threadId="new"
+              roles={roles}
+              selectedRole={primaryRole?.name ?? PRIMARY_CHAT_ROLE}
+              onSendMessage={handleSendMessage}
+              placeholder={`Message ${primaryRole?.title || "RD Barb"}...`}
+              disabled={primaryRoleUnavailable}
+              prefilledText={composerPrefill}
+              prefillSeq={prefillSeq}
+            />
           </div>
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Choose staff</button>
