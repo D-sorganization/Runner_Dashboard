@@ -299,6 +299,9 @@ def reconcile_orphaned_runs(
           leases are released, clean worktrees removed, fleet events emitted,
           and interrupted chat messages and executing proposals reconciled.
     """
+    from staff import verification  # noqa: PLC0415
+
+    verification.log_startup_mode()
     try:
         reconcile_interrupted_chat_messages(conv_store=conv_store)
     except Exception as exc:  # noqa: BLE001

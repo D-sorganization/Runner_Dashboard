@@ -13,9 +13,9 @@ claimed nothing, its role does not open PRs, or it reported an explicit skip / "
 with nothing pushed). Red head CI within ``STAFF_VERIFY_CI_GRACE_SECONDS`` (default 1800) of the
 run ending is ``unverified``, not ``failed``: CI starts seconds after the push, so a verdict taken at
 exit races it. A ``failed`` CI verdict is rechecked while the run is younger than
-:data:`RECHECK_WINDOW`, and a later green flips it to ``verified``. ``STAFF_VERIFY_MODE``: ``report``
-(default) records only; ``enforce`` also fails a ``succeeded`` run whose verdict is
-``failed``; ``off`` skips the check.
+:data:`RECHECK_WINDOW`, and a later green flips it to ``verified``. ``STAFF_VERIFY_MODE``: ``enforce``
+(default, #3544) fails a ``succeeded`` run whose verdict is ``failed``; ``report`` (opt-in)
+records only; ``off`` skips the check.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ log = logging.getLogger("dashboard.staff.verification")
 
 MODE_ENV = "STAFF_VERIFY_MODE"
 MODES = ("off", "report", "enforce")
+DEFAULT_MODE = "enforce"
 UNVERIFIED_OUTPUT = "unverified_output"
 PENDING_LIMIT = timedelta(hours=6)
 RECHECK_WINDOW = timedelta(hours=24)
@@ -65,11 +66,18 @@ RECHECK_BATCH = 20
 
 
 def verify_mode() -> str:
-    """``STAFF_VERIFY_MODE``, defaulting to ``report`` when unset or unknown."""
+    """``STAFF_VERIFY_MODE``, defaulting to ``enforce`` when unset or unknown (#3544)."""
     raw = os.environ.get(MODE_ENV, "").strip().lower()
     if raw and raw not in MODES:
-        log.warning("unknown %s=%r; using report", MODE_ENV, raw)
-    return raw if raw in MODES else "report"
+        log.warning("unknown %s=%r; using %s", MODE_ENV, raw, DEFAULT_MODE)
+    return raw if raw in MODES else DEFAULT_MODE
+
+
+def log_startup_mode() -> str:
+    """Log and return the active ``STAFF_VERIFY_MODE`` at startup (#3544)."""
+    mode = verify_mode()
+    log.info("staff verification mode: %s=%s", MODE_ENV, mode)
+    return mode
 
 
 def ci_grace() -> timedelta:
