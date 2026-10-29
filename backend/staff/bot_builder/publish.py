@@ -1,19 +1,21 @@
-"""Draft/validate/preview/publish API for template/scratch/clone/edit (RD #3104).
+"""Draft/validate/preview/publish API for template/scratch/clone/edit (RD #3104, #3105).
 
 One draft flow serves every mode; clone always re-validates fresh against
 the current ceiling, never inheriting a prior pass. Publish/rollback reuse
 ``validate_builder_role`` and ``escalation_diff`` and log to the shared RD
-audit log. Widening or any persona/instructions edit needs confirmation —
-modelled as the ``confirmed`` flag, since human-approval plumbing is not
-built yet.
+audit log. New bots and materially changed bots start disabled until a
+supervised dry run is approved by Dieter; non-material edits preserve
+existing activation.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import enum
 from dataclasses import dataclass
 
 from orchestration_audit import append_orchestration_audit
+from staff.bot_builder.activation import is_material_change
 from staff.bot_builder.escalation import EscalationDiff, escalation_diff
 from staff.bot_builder.grant_ceiling import GrantCeiling
 from staff.bot_builder.schema import BuilderRoleDefinition, parse_builder_role
@@ -57,13 +59,16 @@ def create_draft(
     source: RoleVersion | None = None,
 ) -> Draft:
     """DbC: ``data`` is a full role payload for every mode; clone/edit always revalidate fresh."""
-    role = parse_builder_role(data)
+    parsed = parse_builder_role(data)
 
     if mode is DraftMode.EDIT:
         if ledger is None or ledger.current is None:
             raise ValueError("edit mode requires a ledger with an existing published version")
+        keep_active = ledger.is_active and not is_material_change(ledger.current.role, parsed)
+        role = dataclasses.replace(parsed, enabled=keep_active)
         return Draft(mode, role, baseline_previous=ledger.current.role, baseline_original=ledger.original_role)
 
+    role = dataclasses.replace(parsed, enabled=False)
     if mode is DraftMode.CLONE:
         if source is None:
             raise ValueError("clone mode requires a source version")
@@ -75,7 +80,7 @@ def create_draft(
             source_version_id=source.version_id,
         )
 
-    # SCRATCH/TEMPLATE: fresh lineage, nothing to diff or confirm yet.
+    # SCRATCH/TEMPLATE: fresh lineage, starts disabled until supervised dry run is approved.
     return Draft(mode, role)
 
 
@@ -127,7 +132,16 @@ async def publish_draft(
             "publish blocked without confirmation: " + ", ".join(sorted(set(reasons))),
         )
 
-    version = ledger.publish(draft.role)
+    previous = ledger.current
+    was_active = ledger.is_active
+    material = previous is None or is_material_change(previous.role, draft.role)
+    role_to_publish = dataclasses.replace(draft.role, enabled=(False if material else was_active))
+    version = ledger.publish(role_to_publish)
+    if material:
+        ledger.revoke_activation()
+    else:
+        ledger.enable_activation_gate()
+
     await append_orchestration_audit(
         {
             "orchestration_type": "bot_builder",
@@ -159,7 +173,10 @@ async def rollback_publish(
             f"rollback blocked: target version fails current ceiling ({'; '.join(validation.reasons)})",
         )
 
+    previous = ledger.current
     version = ledger.rollback(target_version_id)
+    if previous is None or is_material_change(previous.role, target.role):
+        ledger.revoke_activation()
     await append_orchestration_audit(
         {
             "orchestration_type": "bot_builder",
