@@ -36,7 +36,7 @@ from identity import Principal, require_principal  # noqa: E402
 from tailnet_identity import TransportPeerMiddleware, WhoIsIdentity, build_asgi_app, tailnet_principal  # noqa: E402
 
 _LOOPBACK_PEER = ("127.0.0.1", 54321)
-_TAILNET_CLIENT_IP = "100.87.12.4"
+_TAILNET_CLIENT_IP = "100.64.0.4"
 _NON_TAILNET_IP = "203.0.113.7"
 _LOGIN = "alice@example.com"
 
@@ -408,7 +408,7 @@ async def test_middleware_records_transport_peer_for_direct_tailnet_caller() -> 
     ) as ac:
         # Even if a forged header is present, ProxyHeadersMiddleware only
         # trusts loopback proxies, so scope["client"] stays the raw peer.
-        resp = await ac.get("/", headers={"X-Forwarded-For": "100.99.99.99"})
+        resp = await ac.get("/", headers={"X-Forwarded-For": "100.64.254.99"})
 
     assert resp.status_code == 200
     assert captured["transport_peer"] == _TAILNET_CLIENT_IP
@@ -431,7 +431,7 @@ async def test_transport_peer_middleware_sets_none_when_no_client() -> None:
 # #1770 / #1786: every tailnet and loopback sign-in may approve
 # ---------------------------------------------------------------------------
 
-_SELF_TAILNET_IP = "100.101.102.103"
+_SELF_TAILNET_IP = "100.64.254.103"
 
 
 def _signed_in(monkeypatch: pytest.MonkeyPatch, client_host: str, self_ips: str | None) -> Principal:

@@ -193,10 +193,10 @@ def test_retired_rows_are_excluded_from_alerts_and_do_not_notify(monkeypatch: py
         {"role": "night-watch", "status": "retired", "schedule": "0 22 * * *", "last_success": None},
         {"role": "hourly", "status": "dead", "schedule": "0 * * * *", "last_success": None},
     ]
-    assert liveness_mod.alerts(rows, "ControlTower") == [
-        {"role": "hourly", "status": "dead", "schedule": "0 * * * *", "last_success": None, "machine": "ControlTower"}
+    assert liveness_mod.alerts(rows, "node-a") == [
+        {"role": "hourly", "status": "dead", "schedule": "0 * * * *", "last_success": None, "machine": "node-a"}
     ]
-    assert liveness_mod.notify_dead(rows, "ControlTower", clock=1_000_000.0) == ["hourly"]
+    assert liveness_mod.notify_dead(rows, "node-a", clock=1_000_000.0) == ["hourly"]
 
 
 @pytest.mark.unit

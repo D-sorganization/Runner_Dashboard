@@ -175,11 +175,11 @@ def test_runner_num_from_id_ignores_platform_node_without_display_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Self-hosted CI hosts must not treat foreign names as local when HOSTNAME is patched."""
-    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+    monkeypatch.setattr(dc, "HOSTNAME", "node-a")
     monkeypatch.setattr(dc, "DISPLAY_NAME", None)
-    monkeypatch.setattr(dc, "PLATFORM_NODE", "DeskComputer")
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "hub-a")
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
-    runners = [{"id": 1, "name": "d-sorg-local-DeskComputer-1"}]
+    runners = [{"id": 1, "name": "d-sorg-local-hub-a-1"}]
     assert runner_num_from_id(1, runners) is None
 
 
@@ -187,11 +187,11 @@ def test_runner_num_from_id_accepts_platform_node_when_display_name_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Split-pool DISPLAY_NAME labels still resolve legacy d-sorg-local-<node>-N names."""
-    monkeypatch.setattr(dc, "DISPLAY_NAME", "ControlTower-NVMe")
-    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower-NVMe")
-    monkeypatch.setattr(dc, "PLATFORM_NODE", "ControlTower")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", "node-a-NVMe")
+    monkeypatch.setattr(dc, "HOSTNAME", "node-a-NVMe")
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "node-a")
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
-    runners = [{"id": 1, "name": "d-sorg-local-ControlTower-1"}]
+    runners = [{"id": 1, "name": "d-sorg-local-node-a-1"}]
     assert runner_num_from_id(1, runners) == 1
 
 

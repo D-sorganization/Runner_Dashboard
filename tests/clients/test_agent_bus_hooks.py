@@ -66,7 +66,7 @@ def test_session_start_registers_and_persists_token(state_file: Path) -> None:
         raise AssertionError(path)
 
     with mock.patch.object(client, "request", side_effect=fake_request):
-        summary = hooks.session_start(client, role="local", provider="cursor", node="Brick")
+        summary = hooks.session_start(client, role="local", provider="cursor", node="node-c")
 
     assert summary["registered"] is True
     assert summary["inbox_count"] == 1
@@ -128,12 +128,12 @@ def test_session_start_feeds_the_activity_log(state_file: Path, activity_store: 
         raise AssertionError(path)
 
     with mock.patch.object(client, "request", side_effect=fake_request):
-        hooks.session_start(client, role="local", provider="cursor", node="Brick")
+        hooks.session_start(client, role="local", provider="cursor", node="node-c")
 
     page = activity_store.read(session_id=client.session)
     assert [item.kind for item in page.items] == ["session_start"]
     assert page.items[0].source == "agent_bus"
-    assert page.items[0].node == "Brick"
+    assert page.items[0].node == "node-c"
 
 
 @pytest.mark.unit
