@@ -905,6 +905,11 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     uses: ./.github/workflows/frontend-tests.yml
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -914,6 +919,10 @@ jobs:
   secrets-audit:
     name: CI Secrets
     uses: ./.github/workflows/ci-secrets.yml
+    permissions:
+      actions: write
+      contents: read
+    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -923,6 +932,9 @@ jobs:
   api-contract-regeneration:
     name: API Contract Regeneration
     uses: ./.github/workflows/api-contract-regeneration.yml
+    permissions:
+      contents: read
+    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -932,6 +944,10 @@ jobs:
   docker-build:
     name: Docker Build & Trivy Scan
     uses: ./.github/workflows/docker-build.yml
+    permissions:
+      contents: read
+      security-events: write
+    secrets: inherit
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
