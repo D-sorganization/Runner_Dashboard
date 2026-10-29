@@ -97,12 +97,14 @@ const MOCK_CREDENTIALS = {
 
 function setupFetch({
   credentialsOk = true,
+  emptyProbes = false,
   setKeyOk = true,
   clearKeyOk = true,
   beginOk = true,
   completeOk = true,
 }: {
   credentialsOk?: boolean;
+  emptyProbes?: boolean;
   setKeyOk?: boolean;
   clearKeyOk?: boolean;
   beginOk?: boolean;
@@ -113,7 +115,12 @@ function setupFetch({
       return Promise.resolve({
         ok: credentialsOk,
         status: credentialsOk ? 200 : 500,
-        json: () => Promise.resolve(MOCK_CREDENTIALS),
+        json: () =>
+          Promise.resolve(
+            emptyProbes
+              ? { probes: [], summary: { total: 0, ready: 0, not_ready: 0 } }
+              : MOCK_CREDENTIALS,
+          ),
       } as Response);
     }
     if (url.includes("/api/credentials/set-key")) {
@@ -341,17 +348,7 @@ describe("CredentialsMobile", () => {
   });
 
   it("shows empty state when no probes are returned", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () =>
-            Promise.resolve({ probes: [], summary: { total: 0, ready: 0, not_ready: 0 } }),
-        } as Response),
-      ),
-    );
+    setupFetch({ emptyProbes: true });
 
     render(<CredentialsMobile />);
 
