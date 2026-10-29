@@ -120,41 +120,52 @@ class AssistantMemoryStore:
 
     def append(self, entry: MemoryEntry) -> MemoryEntry:
         payload = len(json.dumps(entry.body, separators=(",", ":")).encode("utf-8"))
-        if self.total_payload_bytes() + payload > MAX_STORE_BYTES:
-            raise ValueError("store_size_cap_exceeded")
         with self._lock:
-            self._db.execute(
-                """
-                INSERT INTO memory_entries (
-                  id, entry_type, author_principal, source_product, tags_json, body_json,
-                  created_at, expires_at, supersedes_id, superseded_by,
-                  repo, review_status, source_run, visibility, reviewed_by, accepted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    entry.id,
-                    entry.entry_type,
-                    entry.author_principal,
-                    entry.source_product,
-                    json.dumps(entry.tags),
-                    json.dumps(entry.body),
-                    entry.created_at,
-                    entry.expires_at,
-                    entry.supersedes_id,
-                    entry.superseded_by,
-                    entry.repo,
-                    entry.review_status,
-                    entry.source_run,
-                    entry.visibility,
-                    entry.reviewed_by,
-                    entry.accepted_at,
-                ),
-            )
-            if entry.supersedes_id:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                if self.total_payload_bytes() + payload > MAX_STORE_BYTES:
+                    raise ValueError("store_size_cap_exceeded")
+                if entry.supersedes_id:
+                    cur = self._db.execute(
+                        "UPDATE memory_entries SET superseded_by = ? WHERE id = ? AND superseded_by IS NULL",
+                        (entry.id, entry.supersedes_id),
+                    )
+                    if cur.rowcount == 0:
+                        if self.get(entry.supersedes_id) is None:
+                            raise KeyError(f"memory entry {entry.supersedes_id} not found")
+                        raise ValueError("stale_supersession_conflict")
                 self._db.execute(
-                    "UPDATE memory_entries SET superseded_by = ? WHERE id = ? AND superseded_by IS NULL",
-                    (entry.id, entry.supersedes_id),
+                    """
+                    INSERT INTO memory_entries (
+                      id, entry_type, author_principal, source_product, tags_json, body_json,
+                      created_at, expires_at, supersedes_id, superseded_by,
+                      repo, review_status, source_run, visibility, reviewed_by, accepted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        entry.id,
+                        entry.entry_type,
+                        entry.author_principal,
+                        entry.source_product,
+                        json.dumps(entry.tags),
+                        json.dumps(entry.body),
+                        entry.created_at,
+                        entry.expires_at,
+                        entry.supersedes_id,
+                        entry.superseded_by,
+                        entry.repo,
+                        entry.review_status,
+                        entry.source_run,
+                        entry.visibility,
+                        entry.reviewed_by,
+                        entry.accepted_at,
+                    ),
                 )
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
         return entry
 
     def append_idempotent(
