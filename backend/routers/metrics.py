@@ -89,6 +89,9 @@ def collect_metrics_snapshot() -> dict[str, Any]:
     liveness = board.get("liveness") or []
     liveness_alerts = [item for item in liveness if isinstance(item, dict) and item.get("state") in ("late", "dead")]
     ci_slo = cache_get("ci_slo_metrics", 86400.0) or {}
+    # #2766: PRs red for more than 24h with zero CI-fix attempts, refreshed by the sweep
+    # (``ci_fix_service.run_ci_fix_sweep``); 0 until the first sweep has run.
+    ci_fix_red = cache_get("ci_fix_red_24h_zero_fix_total", 86400.0) or {}
     return {
         "nodes": nodes,
         "in_flight": len(board.get("running", [])) + len(board.get("queued", [])),
@@ -98,6 +101,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "liveness_alerts": len(liveness_alerts),
         "holds_active": len(staff_fleet.holds_snapshot()),
         "ci_slo": ci_slo if isinstance(ci_slo, dict) else {},
+        "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
     }
 
 
@@ -166,6 +170,9 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
             "# HELP rd_holds_active_total Active fleet/staff holds.",
             "# TYPE rd_holds_active_total gauge",
             f"rd_holds_active_total {int(snapshot.get('holds_active', 0))}",
+            "# HELP rd_ci_fix_red_24h_zero_fix_total Open PRs red >24h with zero CI-fix attempts.",
+            "# TYPE rd_ci_fix_red_24h_zero_fix_total gauge",
+            f"rd_ci_fix_red_24h_zero_fix_total {int(snapshot.get('ci_fix_red_24h_zero_fix_total', 0))}",
         ]
     )
     ci_slo = snapshot.get("ci_slo") or {}

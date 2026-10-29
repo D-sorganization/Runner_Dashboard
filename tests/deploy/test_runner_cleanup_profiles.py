@@ -1,7 +1,7 @@
 """Behavioural tests for the runner-cleanup knobs the storage-GC profiles rely on (#1925).
 
 * ``cleanup_rustup_tmp`` — the reaper whose absence leaked 35k dirs (23 GB) on
-  OGLaptop and 9k on DeskComputer; previously only string-asserted.
+  node-b and 9k on hub-a; previously only string-asserted.
 * ``CLEANUP_TMP=0`` — workstation hosts must not have /tmp/tmp* reaped under a
   logged-in user's running apps.
 * ``PRUNE_DOCKER_CONTAINERS=0`` — a workstation's stopped containers are user

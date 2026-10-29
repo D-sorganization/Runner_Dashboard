@@ -286,7 +286,11 @@ export function CredentialsTab({
         <div style={{ color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.45, marginBottom: 14 }}>
           Mobile access to credential metadata requires a fresh biometric assertion. Secret values are never shown.
         </div>
-        <button className="btn" onClick={requestMobileCredentialUnlock}>
+        <button
+          className="btn"
+          onClick={requestMobileCredentialUnlock}
+          title="Unlock credentials with biometrics"
+        >
           Show credentials
         </button>
         {mobileUnlockStatus ? (
@@ -304,7 +308,13 @@ export function CredentialsTab({
         <Stat label="Total" value={sum.total || probeList.length} sub="providers probed" />
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
-        <button className="btn" onClick={onRefresh} disabled={loading} aria-label="Re-probe runner status">
+        <button
+          className="btn"
+          onClick={onRefresh}
+          disabled={loading}
+          aria-label="Re-probe runner status"
+          title={loading ? "Probing credential providers" : "Re-probe credential providers"}
+        >
           <RefreshGlyph size={12} />
           {loading ? "Probing..." : "Re-probe"}
         </button>
@@ -340,6 +350,7 @@ export function CredentialsTab({
               <span
                 className="section-badge"
                 style={{ background: statusBg(probe.status), color: statusColor(probe.status) }}
+                title={`Credential status: ${statusLabel(probe.status)}`}
               >
                 {statusLabel(probe.status)}
               </span>
@@ -365,6 +376,8 @@ export function CredentialsTab({
                   target="_blank"
                   rel="noopener noreferrer"
                   style={{ fontSize: 12, color: "var(--text-secondary)" }}
+                  title={`Open setup documentation for ${probe.label || probe.name || probe.id || "provider"}`}
+                  aria-label={`Open setup documentation for ${probe.label || probe.name || probe.id || "provider"}`}
                 >
                   Docs ↗
                 </a>

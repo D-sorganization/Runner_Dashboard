@@ -51,11 +51,14 @@ export function OutcomesTable() {
               variant={groupBy === g.id ? "primary" : "default"}
               pressed={groupBy === g.id}
               onClick={() => setGroupBy(g.id)}
+              title={`Group the outcome scorecard ${g.label.toLowerCase()}`}
             >
               {g.label}
             </TouchButton>
           ))}
-          <TouchButton onClick={() => void refetch()}>Refresh</TouchButton>
+          <TouchButton onClick={() => void refetch()} title="Reload outcome metrics from the server">
+            Refresh
+          </TouchButton>
         </div>
       </div>
       {error ? (

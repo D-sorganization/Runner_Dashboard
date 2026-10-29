@@ -2,6 +2,9 @@ version = 1
 revision = 5
 requires-python = ">=3.11, <3.14"
 
+[manifest]
+constraints = [{ name = "msgpack", specifier = ">=1.2.2" }]
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.4"

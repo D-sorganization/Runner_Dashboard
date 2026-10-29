@@ -21,6 +21,7 @@ from staff.barb_task_inventory import (  # noqa: F401 - re-exported for existing
     _now_iso,
     classify_task_surface,
 )
+from staff.redaction import redact_sensitive_content, redact_value
 
 BARB_SCOPES: tuple[str, ...] = tuple(
     (
@@ -62,10 +63,16 @@ CREATE INDEX IF NOT EXISTS idx_barb_tasks_status ON barb_task_inventory(status, 
 
 
 def normalize_scope(scope: str) -> str:
-    """Return the canonical (stripped) scope; ``ValueError`` unless known or ``barb:<subrole>``."""
+    """Return the canonical (stripped) scope; ``ValueError`` unless known, ``barb:<subrole>``, or ``persona:<role>``."""
     norm = scope.strip()
-    if norm not in BARB_SCOPES and not (norm.startswith("barb:") and len(norm) > len("barb:")):
-        raise ValueError(f"Invalid Barb scope '{scope}'. Expected one of {BARB_SCOPES} or 'barb:<subrole>'.")
+    if (
+        norm not in BARB_SCOPES
+        and not (norm.startswith("barb:") and len(norm) > len("barb:"))
+        and not (norm.startswith("persona:") and len(norm) > len("persona:"))
+    ):
+        raise ValueError(
+            f"Invalid Barb scope '{scope}'. Expected one of {BARB_SCOPES}, 'barb:<subrole>', or 'persona:<role>'."
+        )
     return norm
 
 
@@ -275,7 +282,13 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
         blockers: list[str] | None = None,
         next_actions: list[str] | None = None,
     ) -> str:
-        """Insert a turnover row in the caller's transaction (lock held) and return its id."""
+        """Insert a turnover row in the caller's transaction (lock held) and return its id.
+
+        The turnover ledger is a shared surface (#3095): every free-text field
+        runs through the same deny-by-default gate as conversation threads
+        (``staff.redaction``, which also resolves private-role classification
+        spans -- ``staff.private_surface_gate``) before it is persisted.
+        """
         if not summary.strip():
             raise ValueError("Turnover summary must not be empty")
         entry_id = f"to-{uuid.uuid4().hex[:10]}"
@@ -291,11 +304,11 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
                 persona,
                 machine,
                 now_s,
-                summary.strip(),
-                json.dumps(completed or []),
-                json.dumps(in_progress or []),
-                json.dumps(blockers or []),
-                json.dumps(next_actions or []),
+                redact_sensitive_content(summary.strip()),
+                json.dumps(redact_value(completed or [])),
+                json.dumps(redact_value(in_progress or [])),
+                json.dumps(redact_value(blockers or [])),
+                json.dumps(redact_value(next_actions or [])),
                 int(live["epoch"]) if live is not None else 0,
             ),
         )

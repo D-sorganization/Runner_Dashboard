@@ -156,6 +156,7 @@ class StaffRunner:
         with provider_sema, self._sema:
             if rec.id in self._cancel_flags:
                 return
+            crashed = False
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
                 handle_run_status_change(rec, "preparing")
@@ -187,6 +188,7 @@ class StaffRunner:
                     lease_note = note
                 self._execute(rec, plan, workdir, lease_note, pre_pr_entrypoint=pre_pr_entrypoint)
             except Exception as exc:  # noqa: BLE001
+                crashed = True
                 log.exception("staff run %s crashed", rec.id)
                 store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
                 claim_guard.release_claim(rec.id, "failed")
@@ -199,6 +201,7 @@ class StaffRunner:
                         repo=plan.repo,
                         issue=plan.issue_number,
                         agent=self._adapters[plan.provider].lease_agent,
+                        reason=lease_ritual.release_reason(store.get_run(rec.id), crashed=crashed),
                     )
         retry_mod.handle_post_execution_retry(self, rec, plan)
 

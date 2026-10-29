@@ -1,0 +1,36 @@
+name: PR early-exit guard
+description: >-
+  On pull_request events, skip heavy work when the PR is closed or the workflow
+  was triggered for a commit that is no longer the PR head.
+outputs:
+  skip:
+    description: When true, downstream heavy jobs should not run.
+    value: ${{ steps.guard.outputs.skip }}
+  reason:
+    description: Human-readable skip reason when skip is true.
+    value: ${{ steps.guard.outputs.reason }}
+runs:
+  using: composite
+  steps:
+    - name: Evaluate PR freshness
+      id: guard
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_STATE: ${{ github.event.pull_request.state }}
+        EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        if [ "$EVENT_NAME" != "pull_request" ]; then
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "reason=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        python3 shared_scripts/pr_workflow_early_exit.py \
+          --event-name "$EVENT_NAME" \
+          --pr-state "$PR_STATE" \
+          --event-head-sha "$EVENT_HEAD_SHA" \
+          --github-api

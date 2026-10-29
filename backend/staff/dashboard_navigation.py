@@ -15,6 +15,7 @@ DASHBOARD_NAV_TABS = frozenset(
         "staff",
         "fleet-command",
         "agent-bus",
+        "activity",
         "library",
         "context",
         "queue",

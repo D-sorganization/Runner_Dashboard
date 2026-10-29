@@ -39,11 +39,11 @@ def _board(machine: str, running: int = 0, queued: int = 0, providers: dict[str,
 # ── pure fleet helpers ───────────────────────────────────────────────────
 @pytest.mark.unit
 def test_resolve_machine_handles_local_aliases_case_and_unknown() -> None:
-    peers = {"OGLaptop": "http://og:8321", "ControlTower": "http://ct:8321"}
-    assert fleet_mod.resolve_machine("local", "DeskComputer", peers) == "local"
-    assert fleet_mod.resolve_machine("deskcomputer", "DeskComputer", peers) == "local"
-    assert fleet_mod.resolve_machine("oglaptop", "DeskComputer", peers) == "OGLaptop"
-    assert fleet_mod.resolve_machine("Mars", "DeskComputer", peers) is None
+    peers = {"node-b": "http://og:8321", "node-a": "http://ct:8321"}
+    assert fleet_mod.resolve_machine("local", "hub-a", peers) == "local"
+    assert fleet_mod.resolve_machine("hub-a", "hub-a", peers) == "local"
+    assert fleet_mod.resolve_machine("node-b", "hub-a", peers) == "node-b"
+    assert fleet_mod.resolve_machine("Mars", "hub-a", peers) is None
 
 
 @pytest.mark.unit
@@ -66,8 +66,14 @@ def test_choose_machine_prefers_least_loaded_with_provider_and_ties_to_local() -
 @pytest.mark.unit
 def test_scheduler_watchdog_alerts_when_no_host_running() -> None:
     machines = {
-        "DeskComputer": {"status": "online", "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30}},
-        "OGLaptop": {"status": "online", "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30}},
+        "hub-a": {
+            "status": "online",
+            "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30},
+        },
+        "node-b": {
+            "status": "online",
+            "scheduler": {"enabled": True, "running": False, "roles": [], "tick_seconds": 30},
+        },
     }
     alerts = fleet_mod.scheduler_watchdog_alerts(machines, now=datetime.now(UTC))
     assert len(alerts) == 1
@@ -78,7 +84,7 @@ def test_scheduler_watchdog_alerts_when_no_host_running() -> None:
 def test_scheduler_watchdog_alerts_when_next_fire_stale() -> None:
     stale = (datetime.now(UTC) - timedelta(minutes=3)).isoformat()
     machines = {
-        "DeskComputer": {
+        "hub-a": {
             "status": "online",
             "scheduler": {
                 "enabled": True,
@@ -90,7 +96,7 @@ def test_scheduler_watchdog_alerts_when_next_fire_stale() -> None:
     }
     alerts = fleet_mod.scheduler_watchdog_alerts(machines, now=datetime.now(UTC))
     assert len(alerts) == 1
-    assert alerts[0]["key"].startswith("stale-next-fire:DeskComputer:issue-remediator")
+    assert alerts[0]["key"].startswith("stale-next-fire:hub-a:issue-remediator")
 
 
 @pytest.mark.unit
@@ -98,19 +104,19 @@ async def test_aggregate_board_merges_online_peers_and_marks_offline(monkeypatch
     async def fake_get(url: str, headers: dict[str, str]) -> dict[str, Any]:
         assert headers["X-Requested-With"] == "XMLHttpRequest"
         if "og:" in url:
-            return _board("OGLaptop", running=2, queued=1)
+            return _board("node-b", running=2, queued=1)
         raise ConnectionError("boom")
 
     monkeypatch.setattr(fleet_mod, "get_json", fake_get)
     merged = await fleet_mod.aggregate_board(
-        _board("Desk", running=1), {"OGLaptop": "http://og:8321", "ControlTower": "http://ct:8321"}
+        _board("Desk", running=1), {"node-b": "http://og:8321", "node-a": "http://ct:8321"}
     )
     assert merged["hub"] == "Desk"
-    assert merged["online"] == ["Desk", "OGLaptop"] and merged["offline"] == ["ControlTower"]
+    assert merged["online"] == ["Desk", "node-b"] and merged["offline"] == ["node-a"]
     assert len(merged["running"]) == 3 and len(merged["queued"]) == 1
     assert merged["spend_today_usd"] == {"claude": 2.0, "total": 2.0}
-    assert merged["machines"]["ControlTower"]["status"] == "offline"
-    assert set(merged["providers"]) == {"Desk", "OGLaptop"}
+    assert merged["machines"]["node-a"]["status"] == "offline"
+    assert set(merged["providers"]) == {"Desk", "node-b"}
 
 
 # ── routes ───────────────────────────────────────────────────────────────
@@ -168,11 +174,11 @@ def client(staff: runner_mod.StaffRunner) -> Iterator[TestClient]:
 
 @pytest.fixture
 def peers(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    nodes = {"OGLaptop": "http://og:8321"}
+    nodes = {"node-b": "http://og:8321"}
     monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: nodes)
 
     async def fake_get(url: str, headers: dict[str, str]) -> dict[str, Any]:
-        return _board("OGLaptop", running=0, providers={"claude": True})
+        return _board("node-b", running=0, providers={"claude": True})
 
     monkeypatch.setattr(fleet_mod, "get_json", fake_get)
     return nodes
@@ -183,7 +189,7 @@ def test_board_is_local_without_peers_and_with_local_flag(client: TestClient, mo
     monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {})
     body = client.get("/api/staff/board").json()
     assert body["machine"] == "Desk" and "machines" not in body
-    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
+    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"node-b": "http://og:8321"})
     assert "machines" not in client.get("/api/staff/board", params={"local": "true"}).json()
 
 
@@ -191,8 +197,8 @@ def test_board_is_local_without_peers_and_with_local_flag(client: TestClient, mo
 def test_board_aggregates_with_peers(client: TestClient, peers: dict[str, str]) -> None:
     body = client.get("/api/staff/board").json()
     assert body["hub"] == "Desk"
-    assert body["online"] == ["Desk", "OGLaptop"]
-    assert body["machines"]["OGLaptop"]["status"] == "online"
+    assert body["online"] == ["Desk", "node-b"]
+    assert body["machines"]["node-b"]["status"] == "online"
 
 
 @pytest.mark.unit
@@ -238,14 +244,14 @@ def test_dispatch_forwards_to_named_peer(
 
     async def fake_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         seen.update({"url": url, "body": body, "headers": headers})
-        return 200, {"dry_run": True, "plan": {"provider": "claude"}, "machine": "OGLaptop"}
+        return 200, {"dry_run": True, "plan": {"provider": "claude"}, "machine": "node-b"}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
     resp = client.post(
-        "/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "oglaptop", "dry_run": True}, headers=_XHR
+        "/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "node-b", "dry_run": True}, headers=_XHR
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["forwarded_to"] == "OGLaptop"
+    assert resp.json()["forwarded_to"] == "node-b"
     assert seen["url"] == "http://og:8321/api/staff/ad-hoc/run"
     assert seen["body"]["machine"] == "local" and seen["body"]["dry_run"] is True
     assert seen["headers"]["X-Requested-With"] == "XMLHttpRequest"
@@ -265,7 +271,7 @@ def test_dispatch_auto_picks_idle_peer_and_falls_back_locally(
 
     async def fake_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         calls.append(url)
-        return 200, {"dry_run": True, "plan": {}, "machine": "OGLaptop"}
+        return 200, {"dry_run": True, "plan": {}, "machine": "node-b"}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
     resp = client.post(
@@ -273,7 +279,7 @@ def test_dispatch_auto_picks_idle_peer_and_falls_back_locally(
         json={"prompt": "hi", "provider": "claude", "machine": "auto", "dry_run": True},
         headers=_XHR,
     )
-    assert resp.status_code == 200 and resp.json()["forwarded_to"] == "OGLaptop"
+    assert resp.status_code == 200 and resp.json()["forwarded_to"] == "node-b"
     assert calls == ["http://og:8321/api/staff/ad-hoc/run"]
 
     # Peer unreachable → auto stays local (degraded fleet still runs work).
@@ -297,14 +303,14 @@ def test_forward_errors_map_to_503_and_4xx(
         raise ConnectionError("down")
 
     monkeypatch.setattr(fleet_mod, "post_json", dead_post)
-    resp = client.post("/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "OGLaptop"}, headers=_XHR)
+    resp = client.post("/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "node-b"}, headers=_XHR)
     assert resp.status_code == 503
 
     async def rejecting_post(url: str, body: dict[str, Any], headers: dict[str, str]) -> tuple[int, dict[str, Any]]:
         return 422, {"detail": "role scoped elsewhere"}
 
     monkeypatch.setattr(fleet_mod, "post_json", rejecting_post)
-    resp = client.post("/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "OGLaptop"}, headers=_XHR)
+    resp = client.post("/api/staff/ad-hoc/run", json={"prompt": "hi", "machine": "node-b"}, headers=_XHR)
     assert resp.status_code == 422 and resp.json()["detail"] == "role scoped elsewhere"
 
 
@@ -381,17 +387,17 @@ async def test_fetch_peer_board_serves_cached_board_on_transient_timeout(monkeyp
         nonlocal calls
         calls += 1
         if calls == 1:
-            return _board("ControlTower-Runner", running=1)
+            return _board("node-a-Runner", running=1)
         raise TimeoutError("peer sqlite read stalled during CI")
 
     monkeypatch.setattr(fleet_mod, "get_json", fake_get)
-    name1, board1 = await fleet_mod.fetch_peer_board("ControlTower-Runner", "http://ct-grace:8321")
-    assert name1 == "ControlTower-Runner"
+    name1, board1 = await fleet_mod.fetch_peer_board("node-a-Runner", "http://ct-grace:8321")
+    assert name1 == "node-a-Runner"
     assert board1["status"] == "online"
     assert not board1.get("stale")
 
-    name2, board2 = await fleet_mod.fetch_peer_board("ControlTower-Runner", "http://ct-grace:8321")
-    assert name2 == "ControlTower-Runner"
+    name2, board2 = await fleet_mod.fetch_peer_board("node-a-Runner", "http://ct-grace:8321")
+    assert name2 == "node-a-Runner"
     assert board2["status"] == "online"
     assert board2["stale"] is True
     assert len(board2["running"]) == 1

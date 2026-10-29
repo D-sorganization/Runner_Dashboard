@@ -241,7 +241,8 @@ describe("BarbSidebar", () => {
   it("fills and sends an UpstreamDrift starter through Barb chat", async () => {
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /triage upstreamdrift/i }));
+    const starter = await screen.findByRole("button", { name: /triage upstreamdrift/i });
+    fireEvent.click(starter);
     const input = screen.getByRole("textbox", { name: /staff conversation input/i });
     expect((input as HTMLTextAreaElement).value).toContain("UpstreamDrift");
     expect((input as HTMLTextAreaElement).value).toContain("review open issues and pull requests in the UpstreamDrift repository");
@@ -265,7 +266,7 @@ it("shows named project starters in an active Barb thread and after New chat wit
   mockUseStaffConsole.mockReturnValue(staffConsoleState({ activeThread: thread, newConversation }));
   const view = render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} onThreadSelected={onThreadSelected} />);
   for (const project of ["UpstreamDrift", "AffineDrift"]) {
-    fireEvent.click(screen.getByRole("button", { name: `Start ${project}` }));
+    fireEvent.click(await screen.findByRole("button", { name: `Start ${project}` }));
     expect((screen.getByRole("textbox", { name: /staff conversation input/i }) as HTMLTextAreaElement).value).toContain(`Triage ${project}`);
     expect(sendMessage).not.toHaveBeenCalled();
     expect(onThreadSelected).not.toHaveBeenCalled();
@@ -275,6 +276,6 @@ it("shows named project starters in an active Barb thread and after New chat wit
   await waitFor(() => expect(newConversation).toHaveBeenCalledOnce());
   mockUseStaffConsole.mockReturnValue(staffConsoleState({ activeThread: { ...thread, id: "barb-new" }, newConversation }));
   view.rerender(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} onThreadSelected={onThreadSelected} />);
-  expect(screen.getByRole("button", { name: "Start UpstreamDrift" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Start AffineDrift" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Start UpstreamDrift" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Start AffineDrift" })).toBeInTheDocument();
 });

@@ -390,6 +390,14 @@ class TestRegistryV2Providers:
         for dashboard_id in ("claude_code_cli", "codex_cli", "antigravity", "cursor_agent"):
             assert by_dash[dashboard_id]["enabled"] is True
 
+    def test_anthropic_api_is_listed_but_disabled(self, client: TestClient) -> None:
+        """Ships inert (#3123 slice 4): listed for visibility, never selectable yet."""
+        by_dash = _by_dashboard_id(_registry(client))
+        entry = by_dash["anthropic_api"]
+        assert entry["enabled"] is False
+        assert entry["auth_mode"] == "api_key"
+        assert entry["dispatch_mode"] == "future"
+
     def test_selectable_conductor_ids_match_enabled_registry_rows(self) -> None:
         from agent_remediation.provider_registry import (  # noqa: PLC0415
             PROVIDER_REGISTRY,

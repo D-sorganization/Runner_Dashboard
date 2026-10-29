@@ -9,6 +9,7 @@ from identity import Principal
 from staff import fleet as staff_fleet
 from staff.barb_lease_fence import claim_for_write
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
+from staff.dispatcher_metrics import dispatcher_origin
 
 
 async def run_dispatch(
@@ -37,10 +38,17 @@ async def run_dispatch(
         origin_node = obo.get("origin_node") or origin_node
 
     is_force = force_duplicate
+    authenticated_origin = dispatcher_origin(caller_id, caller.type)
+    if caller.assistant_kind == "grokbot":
+        authenticated_origin = "grok"
     try:
         raw_json = await request.json()
-        if isinstance(raw_json, dict) and raw_json.get("force_duplicate"):
-            is_force = True
+        if isinstance(raw_json, dict):
+            if raw_json.get("force_duplicate"):
+                is_force = True
+            forwarded_origin = raw_json.get("dispatch_origin")
+            if is_peer and obo and forwarded_origin in {"grok", "schedule", "console", "watch_tick", "other"}:
+                authenticated_origin = forwarded_origin
     except Exception:
         pass
 
@@ -69,6 +77,7 @@ async def run_dispatch(
         force_claim_override=body.force_claim_override,
         claim_override_reason=body.claim_override_reason,
         execution_mode=getattr(body, "execution_mode", "local") or "local",
+        dispatch_origin=authenticated_origin,
     )
     # A request that declares Barb authority is fenced on its lease epoch (#2734); others are unaffected.
     return await dispatch_staff_run(

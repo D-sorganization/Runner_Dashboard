@@ -17,9 +17,17 @@ const buildId = resolveBuildId({ explicit: process.env.VITE_BUILD_ID, gitSha: gi
 const backendProxyTarget =
   process.env.VITE_BACKEND_URL ?? `http://127.0.0.1:${process.env.DASHBOARD_PORT ?? '5001'}`
 
+const offlineDemoPlugin = {
+  name: 'offline-demo-html',
+  transformIndexHtml(html: string) {
+    if (process.env.VITE_RUNNER_DASHBOARD_DEMO !== '1') return html
+    return html.replace(/\s*<link rel="preconnect" href="https:\/\/fonts\.[^"]+"[^>]*\/?>(?:\s*)/g, '\n')
+  },
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), offlineDemoPlugin],
   define: {
     'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
   },

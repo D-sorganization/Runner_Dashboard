@@ -84,13 +84,26 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_grok_writes_session_digest(remote_client: TestClient, memory_env: dict[str, str]) -> None:
+def test_grok_writes_session_digest(
+    remote_client: TestClient, memory_env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff import barb_continuity  # noqa: PLC0415
+
+    store = barb_continuity.BarbContinuityStore(tmp_path / "barb_continuity.sqlite3")
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", store)
+    lease = store.checkout_lease(scope="barb:memory", holder="agent-grok")["lease"]
+
     read = remote_client.get("/api/v1/memory/context-pack", headers=_auth(memory_env["grok"]))
     assert read.status_code == 200
 
     write = remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["grok"])},
+        headers={
+            **_XHR,
+            **_auth(memory_env["grok"]),
+            "X-Barb-Scope": "barb:memory",
+            "X-Barb-Lease-Epoch": str(lease["epoch"]),
+        },
         json={
             "entry_type": "session_digest",
             "source_product": "grokbot",

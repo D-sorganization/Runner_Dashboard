@@ -148,6 +148,7 @@ def _workflow_run(
     conclusion: str = "failure",
     prs: list[dict[str, Any]] | None = None,
     head_branch: str = "feat/x",
+    head_sha: str = "deadbeef",
     event: str = "pull_request",
 ) -> dict[str, Any]:
     return {
@@ -159,6 +160,7 @@ def _workflow_run(
             "event": event,
             "conclusion": conclusion,
             "head_branch": head_branch,
+            "head_sha": head_sha,
             "pull_requests": [{"number": 42, "head": {"ref": "feat/x"}, "base": {"ref": "main"}}]
             if prs is None
             else prs,
@@ -629,3 +631,181 @@ def test_webhook_path_is_exempt_from_operator_perimeter_only() -> None:
     assert is_auth_exempt(WEBHOOK_PATH)
     assert not is_auth_exempt("/api/remediation/ci-fix/dispatch")
     assert ci_fix_events.GITHUB_WEBHOOK_SECRET_ENV == "GITHUB_WEBHOOK_SECRET"  # pragma: allowlist secret
+
+
+# ─── #2766: cancelled supersession, cursor-authored PRs, infra routing, sweep ───────────────
+
+
+def test_webhook_cancelled_run_superseded_by_newer_run_is_not_dispatched(
+    client: TestClient,
+    webhook_env: None,
+    launcher: FakeLauncher,
+    locks: CIFixLockManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gh = FakeGitHub(
+        {
+            "/repos/D-sorganization/Runner_Dashboard/pulls/42": {
+                "number": 42,
+                "state": "open",
+                "draft": False,
+                "auto_merge": {"merge_method": "squash"},
+                "head": {"ref": "feat/x"},
+                "base": {"ref": "main"},
+            },
+            "/repos/D-sorganization/Runner_Dashboard/actions/runs?head_sha=": {
+                "workflow_runs": [{"id": 999, "name": "CI Standard"}]
+            },
+        }
+    )
+    monkeypatch.setattr(ci_fix_service, "gh_client", gh)
+    resp = _post(client, "workflow_run", _workflow_run(conclusion="cancelled"))
+    assert resp.json()["accepted"] is True
+    assert launcher.commands == []
+    assert not locks.is_locked("Runner_Dashboard", 42)
+
+
+def test_webhook_cancelled_run_not_superseded_is_dispatched(
+    client: TestClient,
+    webhook_env: None,
+    launcher: FakeLauncher,
+    locks: CIFixLockManager,
+    audit_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gh = FakeGitHub(
+        {
+            "/repos/D-sorganization/Runner_Dashboard/pulls/42": {
+                "number": 42,
+                "state": "open",
+                "draft": False,
+                "auto_merge": {"merge_method": "squash"},
+                "head": {"ref": "feat/x"},
+                "base": {"ref": "main"},
+            },
+            "/repos/D-sorganization/Runner_Dashboard/actions/runs?head_sha=": {"workflow_runs": []},
+            "/repos/D-sorganization/Runner_Dashboard/actions/runs/555/jobs": {"jobs": []},
+        }
+    )
+    monkeypatch.setattr(ci_fix_service, "gh_client", gh)
+    resp = _post(client, "workflow_run", _workflow_run(conclusion="cancelled"))
+    assert resp.json()["accepted"] is True
+    assert len(launcher.commands) == 1
+
+
+def test_cursor_authored_pr_is_not_launched_locally(
+    client: TestClient,
+    webhook_env: None,
+    launcher: FakeLauncher,
+    locks: CIFixLockManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#2766 item 3: a cursor/* branch is routed to a Cursor cloud follow-up, never a local CLI."""
+    gh = FakeGitHub(
+        {
+            "/repos/D-sorganization/Runner_Dashboard/pulls/42": {
+                "number": 42,
+                "state": "open",
+                "draft": False,
+                "auto_merge": {"merge_method": "squash"},
+                "head": {"ref": "cursor/fix-red-ci"},
+                "base": {"ref": "main"},
+            },
+            "/repos/D-sorganization/Runner_Dashboard/actions/runs/555/jobs": {"jobs": []},
+        }
+    )
+    monkeypatch.setattr(ci_fix_service, "gh_client", gh)
+    resp = _post(client, "workflow_run", _workflow_run(head_branch="cursor/fix-red-ci"))
+    data = resp.json()
+    assert data["accepted"] is True
+    assert launcher.commands == []  # no local CLI session was launched
+    assert not locks.is_locked("Runner_Dashboard", 42)  # the lock was released on refusal
+
+
+def test_infra_failure_dispatches_to_night_watch_role(
+    client: TestClient,
+    webhook_env: None,
+    launcher: FakeLauncher,
+    locks: CIFixLockManager,
+    audit_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = "ImportError: libpython3.11.so.1.0: cannot open shared object file: No such file or directory"
+    gh = FakeGitHub(
+        {
+            "/repos/D-sorganization/Runner_Dashboard/pulls/42": {
+                "number": 42,
+                "state": "open",
+                "draft": False,
+                "auto_merge": {"merge_method": "squash"},
+                "head": {"ref": "feat/x"},
+                "base": {"ref": "main"},
+            },
+            "/repos/D-sorganization/Runner_Dashboard/actions/runs/555/jobs": {
+                "jobs": [{"id": 9, "name": "tests", "conclusion": "failure"}]
+            },
+        },
+        {"/repos/D-sorganization/Runner_Dashboard/actions/jobs/9/logs": log},
+    )
+    monkeypatch.setattr(ci_fix_service, "gh_client", gh)
+    resp = _post(client, "workflow_run", _workflow_run())
+    assert resp.json()["accepted"] is True
+    assert len(launcher.commands) == 1
+    cmd = launcher.commands[0]
+    assert cmd.role == "night-watch"
+
+
+async def test_sweep_dispatches_a_fix_for_a_candidate_pr(
+    launcher: FakeLauncher, locks: CIFixLockManager, audit_file: Path
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from ci_fix_service import run_ci_fix_sweep
+
+    now = datetime.now(UTC)
+
+    async def provider() -> list[dict]:
+        return [
+            {
+                "repo": "Runner_Dashboard",
+                "number": 55,
+                "branch": "feat/stuck",
+                "is_draft": False,
+                "auto_merge_armed": True,
+                "red_since": (now - timedelta(minutes=45)).isoformat(),
+                "labels": [],
+            }
+        ]
+
+    result = await run_ci_fix_sweep("Runner_Dashboard", pr_provider=provider, now=now)
+    assert result["candidates"] == 1
+    assert len(result["dispatched"]) == 1
+    assert len(launcher.commands) == 1
+    assert launcher.commands[0].pr == 55
+
+
+async def test_sweep_endpoint_dispatches_from_posted_facts(
+    operator_client: TestClient, launcher: FakeLauncher, locks: CIFixLockManager, audit_file: Path
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    payload = {
+        "repo": "Runner_Dashboard",
+        "prs": [
+            {
+                "repo": "Runner_Dashboard",
+                "number": 66,
+                "branch": "feat/also-stuck",
+                "is_draft": False,
+                "auto_merge_armed": True,
+                "red_since": (now - timedelta(minutes=45)).isoformat(),
+                "labels": [],
+            }
+        ],
+    }
+    resp = operator_client.post("/api/remediation/ci-fix/sweep", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["candidates"] == 1
+    assert len(data["dispatched"]) == 1

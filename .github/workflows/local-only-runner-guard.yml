@@ -68,7 +68,6 @@ jobs:
               "issue-taxonomy-backfill.yml",
               "labels-sync.yml",
               "lockfile-upgrade.yml",
-              "maxwell-contract-drift.yml",
               "ci-secrets.yml",
               "ci-spec-check.yml",
               "docker-build.yml",
