@@ -6176,6 +6176,18 @@
       "SessionsPage": {
         "description": "A bounded page of :class:`SessionSummary` rows.",
         "properties": {
+          "empty_reason": {
+            "anyOf": [
+              {
+                "enum": ["complete_empty", "local_empty"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty Reason"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/SessionSummary"
@@ -26702,6 +26714,196 @@
           }
         ],
         "summary": "List Playbooks",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/assignments/{assignment_id}": {
+      "get": {
+        "operationId": "fetch_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lane_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lane Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Fetch Assignment Endpoint Api V1 Staff Playbooks Assignments  Assignment Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Fetch Assignment Endpoint",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/assignments/{assignment_id}/ack": {
+      "post": {
+        "operationId": "acknowledge_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__ack_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Acknowledge Assignment Endpoint Api V1 Staff Playbooks Assignments  Assignment Id  Ack Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Acknowledge Assignment Endpoint",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/assignments/{assignment_id}/complete": {
+      "post": {
+        "operationId": "complete_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "title": "Assignment Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Complete Assignment Endpoint Api V1 Staff Playbooks Assignments  Assignment Id  Complete Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Complete Assignment Endpoint",
         "tags": ["staff-playbooks"]
       }
     },

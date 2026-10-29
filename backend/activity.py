@@ -270,6 +270,23 @@ class ActivityStore:
         items = [ActivityEnvelope.model_validate_json(row["envelope"]) for row in rows]
         return ActivityPage(items=items, next_cursor=int(rows[-1]["cursor"]) if more and rows else None)
 
+    def has_any_events(self) -> bool:
+        """True if the log has ever recorded a single envelope, ignoring all filters.
+
+        Cheap existence probe (``LIMIT 1``, no filters) so a read-model can tell
+        a genuinely empty store ("complete-empty": nothing was ever ingested,
+        e.g. ingestion is unwired) apart from a filtered query that simply
+        matched nothing ("local-empty") -- an empty page alone cannot prove
+        that no agents exist (#3503).
+        """
+        with self._lock:
+            conn = self._connection()
+            try:
+                row = conn.execute("SELECT 1 FROM activity_events LIMIT 1").fetchone()
+            finally:
+                conn.close()
+        return row is not None
+
     def scan_recent(
         self,
         *,

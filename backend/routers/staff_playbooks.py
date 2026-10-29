@@ -10,7 +10,14 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from identity import require_fleet_peer
-from staff.playbooks.assignments import PlaybookUnauthorizedError, create_assignment
+from staff.playbooks.assignments import (
+    PlaybookLaneError,
+    PlaybookUnauthorizedError,
+    acknowledge_assignment,
+    complete_assignment,
+    create_assignment,
+    fetch_assignment,
+)
 from staff.playbooks.schema import PlaybookDefinition, PlaybookValidationError
 from staff.playbooks.store import load_playbooks
 
@@ -72,6 +79,60 @@ async def assign_playbook(
     try:
         return create_assignment(pb, role, parameters)
     except PlaybookUnauthorizedError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PlaybookValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/assignments/{assignment_id}")
+async def fetch_assignment_endpoint(
+    assignment_id: int, lane_id: str | None = None, _peer: str = Depends(require_fleet_peer)
+) -> dict[str, Any]:
+    try:
+        return fetch_assignment(assignment_id, lane_id=lane_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlaybookLaneError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+def _require_lane_and_version(payload: dict[str, Any]) -> tuple[str, str]:
+    lane_id, version_hash = payload.get("lane_id"), payload.get("version_hash")
+    if not isinstance(lane_id, str) or not lane_id.strip():
+        raise HTTPException(status_code=400, detail="lane_id is required")
+    if not isinstance(version_hash, str) or not version_hash.strip():
+        raise HTTPException(status_code=400, detail="version_hash is required")
+    return lane_id, version_hash
+
+
+@router.post("/assignments/{assignment_id}/ack")
+async def acknowledge_assignment_endpoint(
+    assignment_id: int, payload: dict[str, Any] = Body(...), _peer: str = Depends(require_fleet_peer)
+) -> dict[str, Any]:
+    lane_id, version_hash = _require_lane_and_version(payload)
+    try:
+        return acknowledge_assignment(assignment_id, lane_id, version_hash)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlaybookLaneError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except PlaybookValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/assignments/{assignment_id}/complete")
+async def complete_assignment_endpoint(
+    assignment_id: int, payload: dict[str, Any] = Body(...), _peer: str = Depends(require_fleet_peer)
+) -> dict[str, Any]:
+    lane_id, version_hash = _require_lane_and_version(payload)
+    outcome = payload.get("outcome")
+    if outcome not in ("COMPLETED", "FAILED"):
+        raise HTTPException(status_code=400, detail="outcome must be 'COMPLETED' or 'FAILED'")
+    try:
+        return complete_assignment(assignment_id, lane_id, version_hash, outcome)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PlaybookLaneError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except PlaybookValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
