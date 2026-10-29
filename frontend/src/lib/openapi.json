@@ -1150,6 +1150,29 @@
         "title": "CIFixDispatchRequest",
         "type": "object"
       },
+      "CIFixSweepRequest": {
+        "description": "30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.\n\nThis node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,\n``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live\nfetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.",
+        "properties": {
+          "prs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Prs",
+            "type": "array"
+          },
+          "repo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo"],
+        "title": "CIFixSweepRequest",
+        "type": "object"
+      },
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
@@ -3606,6 +3629,22 @@
             ],
             "title": "Quorum"
           },
+          "refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refs"
+          },
           "repos": {
             "anyOf": [
               {
@@ -5231,6 +5270,30 @@
         "title": "RequestTarget",
         "type": "object"
       },
+      "RoleModelOverrideBody": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RoleModelOverrideBody",
+        "type": "object"
+      },
       "RoleScheduleOverrideBody": {
         "properties": {
           "enabled": {
@@ -5771,6 +5834,105 @@
         "title": "SessionDigestAppendResponse",
         "type": "object"
       },
+      "SessionSummary": {
+        "description": "The latest known state of one ``(source, session_id)`` activity session.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "last_event_at": {
+            "format": "date-time",
+            "title": "Last Event At",
+            "type": "string"
+          },
+          "last_event_id": {
+            "title": "Last Event Id",
+            "type": "string"
+          },
+          "last_kind": {
+            "title": "Last Kind",
+            "type": "string"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "session_id",
+          "node",
+          "status",
+          "repo",
+          "branch",
+          "issue",
+          "pr",
+          "last_kind",
+          "last_seq",
+          "last_event_id",
+          "last_event_at"
+        ],
+        "title": "SessionSummary",
+        "type": "object"
+      },
       "SessionTelemetryPayload": {
         "description": "Session telemetry payload (issue #1849 / RD-4).",
         "properties": {
@@ -5898,6 +6060,29 @@
         },
         "required": ["session_id"],
         "title": "SessionTelemetryPayload",
+        "type": "object"
+      },
+      "SessionsPage": {
+        "description": "A bounded page of :class:`SessionSummary` rows.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "scan_limit": {
+            "title": "Scan Limit",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": ["items", "scan_limit", "truncated"],
+        "title": "SessionsPage",
         "type": "object"
       },
       "StaffAuditListResponse": {
@@ -7068,6 +7253,13 @@
             "title": "Active Runs",
             "type": "integer"
           },
+          "allowed_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Models",
+            "type": "array"
+          },
           "avatar": {
             "anyOf": [
               {
@@ -7098,6 +7290,17 @@
             "default": true,
             "title": "Dispatchable",
             "type": "boolean"
+          },
+          "effective_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Model"
           },
           "error": {
             "anyOf": [
@@ -7155,6 +7358,17 @@
               }
             ],
             "title": "Model"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "name": {
             "title": "Name",
@@ -16066,6 +16280,56 @@
         "tags": ["remediation", "agents", "remediation", "ci-fix"]
       }
     },
+    "/api/remediation/ci-fix/sweep": {
+      "post": {
+        "description": "Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.",
+        "operationId": "sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CIFixSweepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sweep Ci Fix Endpoint Api Remediation Ci Fix Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Sweep Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
     "/api/remediation/ci-fix/webhook": {
       "post": {
         "description": "Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.",
@@ -18512,6 +18776,67 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/roles/{role}/schedule": {
       "put": {
         "description": "Enable or disable scheduling for a specific role (SC-D6, Issue #1320).",
@@ -20137,6 +20462,109 @@
           }
         ],
         "summary": "Ingest Activity",
+        "tags": ["activity"]
+      }
+    },
+    "/api/v1/activity/sessions": {
+      "get": {
+        "description": "Every agent/session checked into the fleet, grouped by node and status (#2860).\n\nStatus is derived entirely from persisted activity-log events (never from an\nin-memory cache), so this is identical after a restart. See\n``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.",
+        "operationId": "read_activity_sessions_api_v1_activity_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Activity Sessions",
         "tags": ["activity"]
       }
     },
@@ -23844,6 +24272,53 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/avatars/{avatar_rel}": {
+      "get": {
+        "description": "Serve a role's persona image from RM ``staff/avatars/`` (#2680).",
+        "operationId": "avatar_v1_api_v1_staff_avatars__avatar_rel__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "avatar_rel",
+            "required": true,
+            "schema": {
+              "title": "Avatar Rel",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Avatar V1",
+        "tags": ["staff-v1", "staff-avatars"]
+      }
+    },
     "/api/v1/staff/barb/classify-surface": {
       "post": {
         "operationId": "post_barb_classify_surface_api_v1_staff_barb_classify_surface_post",
@@ -24689,7 +25164,7 @@
           }
         ],
         "summary": "Context Agents Sync V1",
-        "tags": ["staff-v1"]
+        "tags": ["staff-v1", "staff-context"]
       }
     },
     "/api/v1/staff/exclusions": {
@@ -25913,6 +26388,57 @@
         "tags": ["staff-panels"]
       }
     },
+    "/api/v1/staff/panels/{thread_id}/digest": {
+      "get": {
+        "description": "Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel.",
+        "operationId": "get_panel_digest_api_v1_staff_panels__thread_id__digest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Panel Digest Api V1 Staff Panels  Thread Id  Digest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Expert panel verdict digest",
+        "tags": ["staff-panels"]
+      }
+    },
     "/api/v1/staff/pr-hygiene": {
       "post": {
         "description": "Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run reruns only the failed\nruns it planned to rerun, and the batch is always audited.",
@@ -25960,6 +26486,106 @@
           }
         ],
         "summary": "Pr Hygiene",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene/closes-refs": {
+      "post": {
+        "description": "Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run retexts only the flagged\n``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.",
+        "operationId": "pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Closes Refs Api V1 Staff Pr Hygiene Closes Refs Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene Closes Refs",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene/rearm": {
+      "post": {
+        "description": "Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run re-arms only a PR that\nis open, not already armed and not held back (``automerge_guard.evaluate_hold``),\nand the batch is always audited. Never admin-merges, force-pushes or closes.",
+        "operationId": "pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Rearm Api V1 Staff Pr Hygiene Rearm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene Rearm",
         "tags": ["staff-v1", "staff-pr-hygiene"]
       }
     },
@@ -26768,6 +27394,67 @@
           }
         ],
         "summary": "Roster V1",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_v1_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api V1 Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
         "tags": ["staff-v1"]
       }
     },

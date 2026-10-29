@@ -44,6 +44,7 @@ from staff.cli_version import provider_versions
 from staff.dispatch_auth import require_staff_run_dispatch
 from staff.github_app_preflight import run_preflight_and_cache
 from staff.github_credential_service import mint_github_credential_for_run
+from staff.model_tiers import allowed_models_for_provider
 from staff.models import (
     StaffAuditListResponse,
     StaffBoardResponse,
@@ -56,7 +57,9 @@ from staff.models import (
     StaffSummaryResponse,
 )
 from staff.rm_sync import source_status as source_status  # noqa: F401
+from staff.role_avatar_paths import avatar_url_for
 from staff.runner import get_runner
+from staff.scheduler import get_scheduler
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES, default_db_path
 from staff.summary_view import build_staff_summary
 
@@ -119,11 +122,26 @@ async def roster(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     runner = get_runner()
+    sched = get_scheduler()
     roles, active = runner.roles(), runner.store.active_runs()
     per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
+
+    role_dicts = []
+    for name, spec in sorted(roles.items()):
+        override = sched.role_model_override(name)
+        role_dict = {
+            **spec.to_dict(),
+            "active_runs": per_role.get(name, 0),
+            "model_override": override,
+            "effective_model": override or spec.model,
+            "allowed_models": sorted(allowed_models_for_provider(spec.providers[0])) if spec.providers else [],
+        }
+        if role_dict.get("avatar"):
+            role_dict["avatar"] = avatar_url_for(role_dict["avatar"])
+        role_dicts.append(role_dict)
     return {
         "machine": runner.machine,
-        "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
+        "roles": role_dicts,
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "chat_only_providers": chat_only_providers(),

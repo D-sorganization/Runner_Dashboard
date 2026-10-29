@@ -63,3 +63,10 @@ agents:
       - email-intake
     scopes:
       - intake.proposals.create
+  - id: agent-cursor
+    kind: other
+    name: Cursor cloud check-in agent
+    roles:
+      - checkin-only
+    scopes:
+      - activity.checkin

@@ -37,6 +37,7 @@
         "codex-review-request.yml",
         "collate-changes.yml",
         "ci-private-roles-redaction-gate.yml",
+        "ci-standalone-smoke.yml",
         "conflict-disarm.yml",
         "arm-cap-reconcile.yml",
         "dependabot-auto-merge.yml",

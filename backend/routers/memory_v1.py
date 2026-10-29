@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from identity import Principal, format_caller, require_scope
+from identity import Principal, format_caller, require_principal, require_scope
 from memory.models import (
     MemoryAppendRequest,
     MemoryAppendResponse,
@@ -58,8 +58,11 @@ async def get_context_pack(
 async def post_memory_entry(
     body: MemoryAppendRequest,
     request: Request,
-    writer: Principal = Depends(require_scope("memory.write")),
+    writer: Principal = Depends(require_principal),
 ) -> MemoryAppendResponse:
+    # Authorization is entry-type-specific and enforced inside append_entry: a
+    # lesson proposal is authorized by active-run binding (authenticated_lesson_run),
+    # everything else still requires the "memory.write" scope (#2665).
     claim = claim_for_write(request.headers, writer, surface="memory")
     with barb_write_fence(claim, surface="memory", target="memory:append", principal=format_caller(writer)):
         entry = append_entry(writer, body)

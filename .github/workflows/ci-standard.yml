@@ -37,13 +37,12 @@ on:
         required: false
         type: string
 
-# Main-push and live merge_group runs are never concurrency-cancelled. Only
-# pull_request runs cancel in progress. Obsolete merge_group runs self-cancel
-# when their gh-readonly-queue ref is deleted (queue-entry-alive); bots use
-# merge_queue_cancel_safety (GraphQL entries) before cancelling anything else.
+# PR and superseded main-push runs cancel in progress. merge_group is never
+# concurrency-cancelled; superseded queue entries use merge_queue_cancel_safety.
+# Main-push shares one group (not per-SHA) so the fleet is not flooded after #2491.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 jobs:
   pick-runner:
@@ -52,7 +51,7 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
+      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE != 'hosted' && vars.CI_QUEUE_RUNNER_LABEL || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
     permissions:
       actions: write
@@ -102,6 +101,7 @@ jobs:
         env:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
           CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
+          CI_QUEUE_RUNNER_LABEL: ${{ vars.CI_QUEUE_RUNNER_LABEL }}
           CI_PR_RUNNER_MODE: ${{ vars.CI_PR_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
@@ -132,6 +132,14 @@ jobs:
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-queue" >> "$GITHUB_OUTPUT"
             echo "Merge queue on GitHub-hosted runners (CI_QUEUE_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Postcondition (#3046): merge_group only, not hosted, label set ->
+          # route to the reserved queue label instead of the shared fleet pool.
+          if [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" != "hosted" ] && [ -n "$CI_QUEUE_RUNNER_LABEL" ]; then
+            echo "runner=$CI_QUEUE_RUNNER_LABEL" >> "$GITHUB_OUTPUT"
+            echo "mode=queue-label" >> "$GITHUB_OUTPUT"
+            echo "Merge queue routed to reserved runner label $CI_QUEUE_RUNNER_LABEL (#3046)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$CI_PR_RUNNER_MODE" = "hosted" ]; then
@@ -696,7 +704,6 @@ jobs:
     needs:
       - changes
       - ci-health-check
-      - lint
       - pick-runner
     if: needs.changes.outputs.run_python_tests == 'true'
     permissions:
@@ -714,8 +721,10 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        python:
-          - "3.11"
+        include: >-
+          ${{ github.event_name == 'merge_group' &&
+          fromJSON('[{"python":"3.11","shard":1,"shards":2},{"python":"3.11","shard":2,"shards":2}]') ||
+          fromJSON('[{"python":"3.11","shard":1,"shards":1}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -747,6 +756,8 @@ jobs:
           PYTHONPATH: backend:.
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
           EXPECTED_PYTHON: ${{ matrix.python }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
         # Full tier (merge_group): whole suite with coverage (issue #342); the
@@ -771,12 +782,19 @@ jobs:
             echo "No tests directory found - skipping"
             exit 0
           fi
+          FAST_MARKER="not integration and not playwright and not slow"
           if [ "$FULL_SUITE" = "true" ]; then
             pip install pytest-cov==6.1.1 --quiet
             pytest tests/ --tb=short -n auto -m "not integration and not playwright" \
               --cov=backend --cov-report=xml --cov-report=term-missing
+          elif [ "$SHARDS" -gt 1 ]; then
+            echo "merge_group shard ${SHARD}/${SHARDS}"
+            pytest tests/ --tb=short -n auto -m "$FAST_MARKER" \
+              -p scripts.pytest_ci_shard \
+              --ci-shard-groups "$SHARDS" \
+              --ci-shard-index "$SHARD"
           else
-            pytest tests/ --tb=short -n auto -m "not integration and not playwright and not slow"
+            pytest tests/ --tb=short -n auto -m "$FAST_MARKER"
           fi
       - name: Re-check merge queue entry during long tests
         if: github.event_name == 'merge_group'

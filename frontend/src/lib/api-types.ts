@@ -3453,6 +3453,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remediation/ci-fix/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sweep Ci Fix Endpoint
+         * @description Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.
+         */
+        post: operations["sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remediation/ci-fix/webhook": {
         parameters: {
             query?: never;
@@ -4612,6 +4632,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_staff_roles__role__model_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/roles/{role}/schedule": {
         parameters: {
             query?: never;
@@ -5270,6 +5313,30 @@ export interface paths {
         put?: never;
         /** Ingest Activity */
         post: operations["ingest_activity_api_v1_activity_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Activity Sessions
+         * @description Every agent/session checked into the fleet, grouped by node and status (#2860).
+         *
+         *     Status is derived entirely from persisted activity-log events (never from an
+         *     in-memory cache), so this is identical after a restart. See
+         *     ``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.
+         */
+        get: operations["read_activity_sessions_api_v1_activity_sessions_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6277,6 +6344,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/avatars/{avatar_rel}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Avatar V1
+         * @description Serve a role's persona image from RM ``staff/avatars/`` (#2680).
+         */
+        get: operations["avatar_v1_api_v1_staff_avatars__avatar_rel__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/barb/classify-surface": {
         parameters: {
             query?: never;
@@ -6937,6 +7024,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/panels/{thread_id}/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expert panel verdict digest
+         * @description Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel.
+         */
+        get: operations["get_panel_digest_api_v1_staff_panels__thread_id__digest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/pr-hygiene": {
         parameters: {
             query?: never;
@@ -6955,6 +7062,55 @@ export interface paths {
          *     runs it planned to rerun, and the batch is always audited.
          */
         post: operations["pr_hygiene_api_v1_staff_pr_hygiene_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pr-hygiene/closes-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene Closes Refs
+         * @description Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run retexts only the flagged
+         *     ``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pr-hygiene/rearm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene Rearm
+         * @description Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run re-arms only a PR that
+         *     is open, not already armed and not held back (``automerge_guard.evaluate_hold``),
+         *     and the batch is always audited. Never admin-merges, force-pushes or closes.
+         */
+        post: operations["pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7218,6 +7374,29 @@ export interface paths {
         /** Roster V1 */
         get: operations["roster_v1_api_v1_staff_roles_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_v1_staff_roles__role__model_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -8817,6 +8996,22 @@ export interface components {
             workflow_name: string;
         };
         /**
+         * CIFixSweepRequest
+         * @description 30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.
+         *
+         *     This node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,
+         *     ``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live
+         *     fetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.
+         */
+        CIFixSweepRequest: {
+            /** Prs */
+            prs?: {
+                [key: string]: unknown;
+            }[];
+            /** Repo */
+            repo: string;
+        };
+        /**
          * ChildExecutionRecord
          * @description Runtime tracking record for one planned child issue.
          */
@@ -9912,6 +10107,8 @@ export interface components {
             preload_codebase: boolean;
             /** Quorum */
             quorum?: number | null;
+            /** Refs */
+            refs?: string[] | null;
             /** Repos */
             repos?: string[] | null;
             /**
@@ -10645,6 +10842,16 @@ export interface components {
             /** Run Id */
             run_id?: number | null;
         };
+        /** RoleModelOverrideBody */
+        RoleModelOverrideBody: {
+            /** Model */
+            model?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
             /** Enabled */
@@ -10885,6 +11092,42 @@ export interface components {
             replayed: boolean;
         };
         /**
+         * SessionSummary
+         * @description The latest known state of one ``(source, session_id)`` activity session.
+         */
+        SessionSummary: {
+            /** Branch */
+            branch: string | null;
+            /** Issue */
+            issue: number | null;
+            /**
+             * Last Event At
+             * Format: date-time
+             */
+            last_event_at: string;
+            /** Last Event Id */
+            last_event_id: string;
+            /** Last Kind */
+            last_kind: string;
+            /** Last Seq */
+            last_seq: number;
+            /** Node */
+            node: string;
+            /** Pr */
+            pr: number | null;
+            /** Repo */
+            repo: string | null;
+            /** Session Id */
+            session_id: string;
+            /** Source */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "idle" | "stale" | "ended" | "uncaptured";
+        };
+        /**
          * SessionTelemetryPayload
          * @description Session telemetry payload (issue #1849 / RD-4).
          */
@@ -10975,6 +11218,18 @@ export interface components {
              * @default 0
              */
             wakeups_count: number;
+        };
+        /**
+         * SessionsPage
+         * @description A bounded page of :class:`SessionSummary` rows.
+         */
+        SessionsPage: {
+            /** Items */
+            items: components["schemas"]["SessionSummary"][];
+            /** Scan Limit */
+            scan_limit: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * StaffAuditListResponse
@@ -11532,6 +11787,8 @@ export interface components {
              * @default 0
              */
             active_runs: number;
+            /** Allowed Models */
+            allowed_models?: string[];
             /** Avatar */
             avatar?: string | null;
             budget: components["schemas"]["StaffRoleBudget"];
@@ -11546,6 +11803,8 @@ export interface components {
              * @default true
              */
             dispatchable: boolean;
+            /** Effective Model */
+            effective_model?: string | null;
             /** Error */
             error?: string | null;
             /** Errors */
@@ -11566,6 +11825,8 @@ export interface components {
             instructions: string;
             /** Model */
             model?: string | null;
+            /** Model Override */
+            model_override?: string | null;
             /** Name */
             name: string;
             /** Permissions */
@@ -17538,6 +17799,41 @@ export interface operations {
             };
         };
     };
+    sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CIFixSweepRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     github_ci_fix_webhook_api_remediation_ci_fix_webhook_post: {
         parameters: {
             query?: never;
@@ -19037,6 +19333,43 @@ export interface operations {
             };
         };
     };
+    put_role_model_api_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     put_role_schedule_api_staff_roles__role__schedule_put: {
         parameters: {
             query?: never;
@@ -20039,6 +20372,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivityEnvelope"][];
+                };
+            };
+        };
+    };
+    read_activity_sessions_api_v1_activity_sessions_get: {
+        parameters: {
+            query?: {
+                node?: string | null;
+                status?: ("live" | "idle" | "stale" | "ended" | "uncaptured") | null;
+                repo?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -22173,6 +22540,37 @@ export interface operations {
             };
         };
     };
+    avatar_v1_api_v1_staff_avatars__avatar_rel__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                avatar_rel: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_barb_classify_surface_api_v1_staff_barb_classify_surface_post: {
         parameters: {
             query?: never;
@@ -23399,7 +23797,110 @@ export interface operations {
             };
         };
     };
+    get_panel_digest_api_v1_staff_panels__thread_id__digest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     pr_hygiene_api_v1_staff_pr_hygiene_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -23891,6 +24392,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    put_role_model_api_v1_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

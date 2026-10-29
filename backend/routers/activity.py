@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from activity import MAX_BATCH_BYTES, MAX_BATCH_EVENTS, ActivityEnvelope, ActivityPage, get_activity_store
+from activity_sessions import DEFAULT_SESSIONS_LIMIT, MAX_SESSIONS_LIMIT, SessionsPage, SessionStatus, compute_sessions
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, require_scope
 from pydantic import TypeAdapter, ValidationError
@@ -19,11 +20,18 @@ _CHECKIN_MAX_EVENTS = 20
 _CHECKIN_MAX_BYTES = 65_536
 
 
-async def _read_bounded_body(request: Request) -> list[ActivityEnvelope]:
+async def _read_bounded_body(
+    request: Request,
+    *,
+    max_bytes: int = MAX_BATCH_BYTES,
+    max_events: int = MAX_BATCH_EVENTS,
+) -> list[ActivityEnvelope]:
     """Bound the wire body before parsing; never trust source-side redaction."""
+    if max_bytes < 1 or max_events < 1:
+        raise ValueError("max_bytes and max_events must be positive")
     body = bytearray()
     async for chunk in request.stream():
-        if len(body) + len(chunk) > MAX_BATCH_BYTES:
+        if len(body) + len(chunk) > max_bytes:
             raise HTTPException(413, "activity batch exceeds byte limit")
         body.extend(chunk)
     try:
@@ -31,7 +39,7 @@ async def _read_bounded_body(request: Request) -> list[ActivityEnvelope]:
     except ValidationError as exc:
         # Do not reflect unredacted input through validation errors.
         raise HTTPException(422, "invalid activity batch") from exc
-    if len(events) > MAX_BATCH_EVENTS:
+    if len(events) > max_events:
         raise HTTPException(413, "activity batch exceeds event limit")
     return events
 
@@ -68,7 +76,7 @@ async def checkin_activity(
     so a check-in credential cannot read activity, staff threads or anything else.
     """
     check_rate_limit("activity.checkin", caller)
-    events = await _read_bounded_body(request)
+    events = await _read_bounded_body(request, max_bytes=_CHECKIN_MAX_BYTES)
     for event in events:
         _validate_checkin(event)
     return await run_in_threadpool(
@@ -89,3 +97,20 @@ def read_activity(
 ) -> ActivityPage:
     """Return a bounded cursor page; readers cannot mutate stored metadata."""
     return get_activity_store().read(since=since, repo=repo, node=node, session_id=session_id, limit=limit)
+
+
+@router.get("/sessions", response_model=SessionsPage)
+def read_activity_sessions(
+    node: str | None = Query(default=None, max_length=128),
+    status: SessionStatus | None = Query(default=None),  # noqa: B008
+    repo: str | None = Query(default=None, max_length=128),
+    limit: int = Query(default=DEFAULT_SESSIONS_LIMIT, ge=1, le=MAX_SESSIONS_LIMIT),
+    _caller: Principal = Depends(require_scope("activity.read")),  # noqa: B008
+) -> SessionsPage:
+    """Every agent/session checked into the fleet, grouped by node and status (#2860).
+
+    Status is derived entirely from persisted activity-log events (never from an
+    in-memory cache), so this is identical after a restart. See
+    ``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.
+    """
+    return compute_sessions(get_activity_store(), node=node, status=status, repo=repo, limit=limit)

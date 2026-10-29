@@ -94,6 +94,7 @@ def file_proposed_lessons(
         return []
 
     from memory.service import _validate_and_resolve_expires_at
+    from staff.lesson_locator import locate_lesson_evidence
 
     mem_store = get_memory_store()
     now_str = datetime.now(UTC).isoformat()
@@ -109,6 +110,12 @@ def file_proposed_lessons(
             "commit": getattr(rec, "commit", "") or getattr(rec, "head_ref", "") or "",
             "standards_version": rec.standards_version,
         }
+        try:
+            locator = locate_lesson_evidence(run_store, rec.id, rec.repo, text)
+        except ValueError:
+            locator = None
+        if locator is not None:
+            body["locator"] = locator
         try:
             enforce_entry_size(body, "lesson")
         except HTTPException:
@@ -159,8 +166,16 @@ def select_repo_lessons(
     if not repo:
         return RepoLessonsResult("", (), {}, 0)
 
+    from memory.service import _lesson_evidence_still_verifies
+
     store = memory_store or get_memory_store()
-    all_entries = store.list_entries(entry_type="lesson", repo=repo, limit=100)
+    all_entries: list[MemoryEntry] = []
+    cursor: tuple[str, str] | None = None
+    while True:
+        page, cursor = store.list_entries_page(entry_type="lesson", repo=repo, cursor=cursor)
+        all_entries.extend(page)
+        if cursor is None:
+            break
 
     now_iso = datetime.now(UTC).isoformat()
     eligible: list[MemoryEntry] = []
@@ -176,6 +191,9 @@ def select_repo_lessons(
             continue
         if not expiry_is_future(e.expires_at, now_iso):
             skipped_ids[e.id] = "expired"
+            continue
+        if not _lesson_evidence_still_verifies(e):
+            skipped_ids[e.id] = "evidence"
             continue
         eligible.append(e)
 

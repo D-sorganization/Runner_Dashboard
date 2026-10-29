@@ -22,8 +22,11 @@ TIER_NAMES: tuple[TierName, ...] = ("routine", "standard", "complex")
 
 _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "staff_model_tiers.json"
 
-# Claude Code CLI short names used in staff (``review.py``, ``test_staff_chat.py``).
-_CLAUDE_CLI_ALIASES = frozenset({"haiku", "sonnet", "opus"})
+# Claude Code CLI short names used in staff (``review.py``, ``test_staff_chat.py``), plus
+# claude-opus-5-5 (the Grok-offload epic's #3295 S2 default role-override model). Validation
+# only -- ``ProviderAdapter.build_command`` gates on ``adapter.models`` directly, which stays
+# empty for claude so these aliases keep resolving through the CLI's own model names.
+_CLAUDE_CLI_ALIASES = frozenset({"haiku", "sonnet", "opus", "claude-opus-5-5"})
 
 
 def allowed_models_for_provider(provider_id: str, adapter: ProviderAdapter | None = None) -> frozenset[str]:

@@ -19,6 +19,7 @@ GAP_KINDS = ("OverflowGap", "RetentionGap", "CaptureGap")
 MAX_PAYLOAD_BYTES = 16_384
 MAX_BATCH_BYTES = 262_144
 MAX_BATCH_EVENTS = 100
+MAX_SCAN_LIMIT = 10_000
 REDACTION_VERSION = 1
 _initialization_lock = threading.RLock()
 ActivitySource = Literal[
@@ -112,6 +113,15 @@ class ActivityStore:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS activity_ingestion_usage ("
                 "principal TEXT NOT NULL, ts REAL NOT NULL, events INTEGER NOT NULL, bytes INTEGER NOT NULL)"
+            )
+            # Indexes so scan_recent's node/repo filters never fall back to a full scan.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS activity_events_node_idx "
+                "ON activity_events(json_extract(envelope, '$.node'))"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS activity_events_repo_idx "
+                "ON activity_events(json_extract(envelope, '$.repo'))"
             )
             conn.close()
 
@@ -242,15 +252,9 @@ class ActivityStore:
     ) -> ActivityPage:
         if since < 0 or not 1 <= limit <= 500:
             raise ValueError("since must be nonnegative and limit must be between 1 and 500")
-        clauses: list[str] = ["cursor > ?"]
-        params: list[int | str] = [since]
-        for column, value in (("repo", repo), ("node", node), ("session_id", session_id)):
-            if value is not None:
-                if column == "repo":
-                    clauses.append("json_extract(envelope, '$.repo') = ?")
-                else:
-                    clauses.append(f"json_extract(envelope, '$.{column}') = ?")
-                params.append(value)
+        clauses, params = _json_filters(repo=repo, node=node, session_id=session_id)
+        clauses.insert(0, "cursor > ?")
+        params.insert(0, since)
         with self._lock:
             conn = self._connection()
             try:
@@ -265,6 +269,47 @@ class ActivityStore:
         rows = rows[:limit]
         items = [ActivityEnvelope.model_validate_json(row["envelope"]) for row in rows]
         return ActivityPage(items=items, next_cursor=int(rows[-1]["cursor"]) if more and rows else None)
+
+    def scan_recent(
+        self,
+        *,
+        node: str | None = None,
+        repo: str | None = None,
+        limit: int = 2000,
+    ) -> list[ActivityEnvelope]:
+        """Up to ``limit`` most recently ingested envelopes, newest first.
+
+        Bounded and indexed (``cursor`` order, indexed node/repo filters) so
+        this never degrades to a full scan; callers needing complete, gap-free
+        history should use :meth:`read`'s cursor pagination instead.
+        """
+        if not 1 <= limit <= MAX_SCAN_LIMIT:
+            raise ValueError(f"limit must be between 1 and {MAX_SCAN_LIMIT}")
+        clauses, params = _json_filters(repo=repo, node=node)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            conn = self._connection()
+            try:
+                rows = conn.execute(
+                    f"SELECT envelope FROM activity_events {where} ORDER BY cursor DESC LIMIT ?",
+                    (*params, limit),
+                ).fetchall()
+            finally:
+                conn.close()
+        return [ActivityEnvelope.model_validate_json(row["envelope"]) for row in rows]
+
+
+def _json_filters(
+    *, repo: str | None = None, node: str | None = None, session_id: str | None = None
+) -> tuple[list[str], list[int | str]]:
+    """Build ``WHERE`` clauses for the handful of indexed envelope columns callers filter on."""
+    clauses: list[str] = []
+    params: list[int | str] = []
+    for column, value in (("repo", repo), ("node", node), ("session_id", session_id)):
+        if value is not None:
+            clauses.append(f"json_extract(envelope, '$.{column}') = ?")
+            params.append(value)
+    return clauses, params
 
 
 _store: ActivityStore | None = None

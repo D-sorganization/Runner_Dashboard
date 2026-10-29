@@ -4,6 +4,9 @@
 - The cost guard reuses ``group_cost_guard_threshold_exceeded`` and is bypassed by ``confirm_cost``.
 - GET /api/v1/staff/panels lists recent panel threads with compact status (#3313).
 - GET /api/v1/staff/panels/{id} returns turns, stances, consensus and synthesis; 404 for other threads.
+- GET /api/v1/staff/panels/{id}/digest returns a compact verdict capped at 4 KB (#3313).
+- POST /api/v1/staff/panels accepts ``refs: [repo#n]``; RD fetches each issue/PR's own
+  facts and prepends them to the topic rather than the caller pasting them in (#3313).
 - Posting into a panel thread is a 409; a panel thread is never created through POST /threads.
 """
 
@@ -12,7 +15,9 @@ from __future__ import annotations
 import time
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
+import gh_client
 import pytest
 from fastapi.testclient import TestClient
 from identity import Principal, require_principal, require_scope
@@ -215,6 +220,55 @@ def test_a_non_panel_thread_is_404(client: TestClient) -> None:
 
 
 @pytest.mark.unit
+def test_digest_is_404_for_a_non_panel_thread(client: TestClient) -> None:
+    thread = get_conversation_store().create_thread(title="chat", kind="direct")
+    assert client.get(f"/api/v1/staff/panels/{thread.id}/digest").status_code == 404
+    assert client.get("/api/v1/staff/panels/th_missing/digest").status_code == 404
+
+
+@pytest.mark.unit
+def test_digest_carries_the_verdict_without_the_turn_transcript(client: TestClient) -> None:
+    started = client.post("/api/v1/staff/panels", json=BODY)
+    thread_id = started.json()["thread"]["id"]
+    full = _wait_done(client, thread_id)
+
+    digest = client.get(f"/api/v1/staff/panels/{thread_id}/digest")
+    assert digest.status_code == 200, digest.text
+    body = digest.json()
+    assert body["thread_id"] == thread_id
+    assert body["status"] == full["status"] == "complete"
+    assert body["consensus"] == full["consensus"] is True
+    assert body["rounds_used"] == full["rounds_used"]
+    assert body["tally"] == full["tally"]
+    assert body["quorum_met"] == full["quorum_met"]
+    assert body["synthesis"] == full["synthesis"]
+    assert body["truncated"] is False
+    assert "turns" not in body and "experts" not in body
+
+
+@pytest.mark.unit
+def test_digest_truncates_a_long_synthesis_to_stay_under_4kb(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def verbose_runner(speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str) -> TurnOutcome:
+        if speaker.name == "Moderator":
+            return TurnOutcome(ok=True, text="**Consensus:** " + "x" * 10_000)
+        return await agreeing_runner(speaker, prompt, thread_id, message_id)
+
+    monkeypatch.setattr(staff_panels, "_turn_runner", lambda: verbose_runner)
+    started = client.post("/api/v1/staff/panels", json=BODY)
+    thread_id = started.json()["thread"]["id"]
+    _wait_done(client, thread_id)
+
+    digest = client.get(f"/api/v1/staff/panels/{thread_id}/digest")
+    assert digest.status_code == 200
+    assert len(digest.content) <= 4096
+    body = digest.json()
+    assert body["truncated"] is True
+    assert body["synthesis"].endswith("…")
+
+
+@pytest.mark.unit
 def test_posting_into_a_panel_is_409_and_panels_are_not_made_through_threads(client: TestClient) -> None:
     thread_id = client.post("/api/v1/staff/panels", json=BODY).json()["thread"]["id"]
     _wait_done(client, thread_id)
@@ -286,3 +340,67 @@ def test_the_fleet_decision_experts_are_a_valid_panel_request(client: TestClient
     experts = [{k: e[k] for k in keys} for e in _presets_by_id(client)["fleet-decision"]["experts"]]
     res = client.post("/api/v1/staff/panels", json={**BODY, "experts": experts})
     assert res.status_code == 202, res.text
+
+
+def _issue(number: int, title: str, body: str = "facts from GitHub") -> dict[str, Any]:
+    return {
+        "number": number,
+        "title": title,
+        "state": "open",
+        "html_url": f"https://github.com/D-sorganization/Runner_Dashboard/issues/{number}",
+        "body": body,
+    }
+
+
+@pytest.mark.unit
+def test_refs_has_rd_fetch_facts_and_prepend_them_to_every_seat_prompt(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen_prompts: list[str] = []
+
+    async def capturing_runner(speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str) -> TurnOutcome:
+        seen_prompts.append(prompt)
+        return await agreeing_runner(speaker, prompt, thread_id, message_id)
+
+    monkeypatch.setattr(staff_panels, "_turn_runner", lambda: capturing_runner)
+    with patch.object(gh_client, "get", AsyncMock(return_value=_issue(3313, "feat(panels): refs"))) as get:
+        res = client.post("/api/v1/staff/panels", json={**BODY, "refs": ["Runner_Dashboard#3313"]})
+    get.assert_awaited_once_with("/repos/D-sorganization/Runner_Dashboard/issues/3313")
+    assert res.status_code == 202, res.text
+    _wait_done(client, res.json()["thread"]["id"])
+    assert seen_prompts, "no seat ran"
+    assert all("feat(panels): refs" in p and "facts from GitHub" in p for p in seen_prompts)
+
+
+@pytest.mark.unit
+def test_refs_default_title_uses_the_original_topic_not_the_fetched_facts(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(staff_panels, "_turn_runner", lambda: agreeing_runner)
+    with patch.object(gh_client, "get", AsyncMock(return_value=_issue(3313, "feat(panels): refs"))):
+        res = client.post("/api/v1/staff/panels", json={**BODY, "refs": ["Runner_Dashboard#3313"]})
+    assert res.json()["thread"]["title"] == f"Panel: {BODY['topic'][:80]}"
+
+
+@pytest.mark.unit
+def test_a_ref_github_has_no_issue_or_pr_for_is_400_not_500(client: TestClient) -> None:
+    with patch.object(gh_client, "get", AsyncMock(side_effect=gh_client.GhNotFound("/repos/x/issues/999999"))):
+        res = client.post("/api/v1/staff/panels", json={**BODY, "refs": ["Runner_Dashboard#999999"]})
+    assert res.status_code == 400, res.text
+    assert get_conversation_store().list_threads() == []
+
+
+@pytest.mark.unit
+def test_github_unavailable_while_fetching_a_ref_is_503(client: TestClient) -> None:
+    with patch.object(gh_client, "get", AsyncMock(side_effect=gh_client.GhServerError(500, "/x", "boom"))):
+        res = client.post("/api/v1/staff/panels", json={**BODY, "refs": ["Runner_Dashboard#3313"]})
+    assert res.status_code == 503, res.text
+    assert get_conversation_store().list_threads() == []
+
+
+@pytest.mark.unit
+def test_a_malformed_ref_is_422_before_any_github_call(client: TestClient) -> None:
+    with patch.object(gh_client, "get", AsyncMock()) as get:
+        res = client.post("/api/v1/staff/panels", json={**BODY, "refs": ["not-a-ref"]})
+    assert res.status_code == 422, res.text
+    get.assert_not_awaited()

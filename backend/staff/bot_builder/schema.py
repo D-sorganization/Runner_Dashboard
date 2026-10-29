@@ -50,6 +50,7 @@ class BuilderRoleDefinition:
     capabilities: tuple[str, ...]
     private_context_ref: str | None
     household_data_opt_in: bool
+    description: str = ""
 
 
 def _require_str(data: dict[str, Any], key: str) -> str:
@@ -132,6 +133,14 @@ def parse_builder_role(data: dict[str, Any]) -> BuilderRoleDefinition:
 
     opt_in = bool(data.get("household_data_opt_in", False))
 
+    description_raw = data.get("description", "")
+    if description_raw is None:
+        description = ""
+    elif isinstance(description_raw, str):
+        description = description_raw.strip()
+    else:
+        raise ValueError("description must be a string when set")
+
     for cap in caps_raw:
         if cap.startswith("hold."):
             raise ValueError("hold capabilities are not grantable")
@@ -155,4 +164,5 @@ def parse_builder_role(data: dict[str, Any]) -> BuilderRoleDefinition:
         capabilities=tuple(caps_raw),
         private_context_ref=ref,
         household_data_opt_in=opt_in,
+        description=description,
     )

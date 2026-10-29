@@ -161,7 +161,9 @@ export const FleetMachinesSection: React.FC<FleetMachinesSectionProps> = ({
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, textAlign: "left" }}>
             <thead>
               <tr style={{ borderBottom: "1px solid var(--border, #30363d)", color: "var(--text-muted, #8b949e)" }}>
-                <th style={{ padding: "8px 6px", width: 32 }}></th>
+                <th style={{ padding: "8px 6px", width: 32 }}>
+                  <span className="visually-hidden">Expand</span>
+                </th>
                 <th style={{ padding: "8px 10px" }}>Machine</th>
                 <th style={{ padding: "8px 10px" }}>Reachability</th>
                 <th style={{ padding: "8px 10px" }}>Runners</th>
