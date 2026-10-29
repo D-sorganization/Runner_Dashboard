@@ -122,7 +122,7 @@ def test_second_install_is_idempotent(sandbox: dict[str, Path]) -> None:
 
 
 def test_execstart_override_dropin_is_neutralised_but_its_tuning_is_kept(sandbox: dict[str, Path]) -> None:
-    """The DeskComputer failure: a drop-in silently swapped in a frozen fork."""
+    """The hub-a failure: a drop-in silently swapped in a frozen fork."""
     dropin_dir = sandbox["root"] / "etc/systemd/system/runner-cleanup.service.d"
     dropin_dir.mkdir(parents=True)
     original = (

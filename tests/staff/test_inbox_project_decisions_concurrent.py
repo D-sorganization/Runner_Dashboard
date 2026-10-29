@@ -1,7 +1,7 @@
 """The inbox fetches every repo's project overview concurrently (#1712 follow-up).
 
 Awaiting 41 repos one after another made a cold ``GET /api/v1/staff/inbox`` take
-17-26 s on DeskComputer, and the Staff page polls it every 30 s.
+17-26 s on hub-a, and the Staff page polls it every 30 s.
 """
 
 from __future__ import annotations

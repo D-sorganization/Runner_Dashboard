@@ -283,7 +283,7 @@ def test_run_status_changes_update_work_item_lifecycle(store: WorkItemStore) -> 
         role="ad-hoc",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="prompt",
         target_ref="",
