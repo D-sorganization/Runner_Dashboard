@@ -90,10 +90,29 @@ def chain(config: Mapping[str, str], *, role: str = "rd-barb") -> tuple[Failover
 
 
 def select(
-    config: Mapping[str, str], current: str | None = None, failure_class: str | None = None, *, role: str = "rd-barb"
+    config: Mapping[str, str],
+    current: str | None = None,
+    failure_class: str | None = None,
+    *,
+    role: str = "rd-barb",
+    now: float | None = None,
+    max_age_s: float | None = None,
 ) -> Decision:
     """Pick the provider for the next start. Switch only on provider failures."""
     steps = chain(config, role=role)
+    if current is None and failure_class is None:
+        from staff.rd_barb_provider_state import read_active_provider  # noqa: PLC0415
+
+        snap = read_active_provider(
+            normalize_role(role),
+            max_age_s=max_age_s,
+            now=now,
+            allowed_providers=tuple(s.provider for s in steps),
+        )
+        if snap is not None:
+            matched = next((s for s in steps if s.provider == snap.provider), None)
+            model = snap.model if snap.model is not None else (matched.model if matched else None)
+            return Decision(snap.provider, model, False, snap.previous)
     if current is None:
         return Decision(steps[0].provider, steps[0].model, False)
     idx = next((i for i, s in enumerate(steps) if s.provider == current), None)

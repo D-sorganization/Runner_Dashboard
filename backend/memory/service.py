@@ -159,7 +159,11 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
     )
     try:
         return store.append(entry)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="supersedes_id not found") from exc
     except ValueError as exc:
+        if str(exc) == "stale_supersession_conflict":
+            raise HTTPException(status_code=409, detail="supersedes_id was already superseded") from exc
         if str(exc) == "store_size_cap_exceeded":
             raise HTTPException(status_code=507, detail="assistant memory store size cap exceeded") from exc
         raise
