@@ -79,7 +79,7 @@ describe("Fleet usage snapshot (#3042)", () => {
         near_limit_flag: false,
         machines: [
           {
-            machine: "DeskComputer",
+            machine: "hub-a",
             used_percent: 7,
             resets_at: null,
             observed_at: "2026-10-26T17:19:00Z",
@@ -87,7 +87,7 @@ describe("Fleet usage snapshot (#3042)", () => {
             stale: false,
           },
           {
-            machine: "ControlTower",
+            machine: "node-a",
             used_percent: 37,
             resets_at: null,
             observed_at: "2026-10-24T22:25:00Z",
@@ -107,9 +107,9 @@ describe("Fleet usage snapshot (#3042)", () => {
   it("renders the snapshot age line and a stale machine row in the danger tone", () => {
     render(<UsageSnapshotView report={SNAPSHOT} error={null} />);
     expect(screen.getByTestId("usage-snapshot").textContent).toContain("Snapshot 1 min ago");
-    const stale = screen.getByTestId("usage-snapshot-codex-ControlTower");
+    const stale = screen.getByTestId("usage-snapshot-codex-node-a");
     expect(stale.querySelector(".badge-tone-danger")).toBeTruthy();
-    const fresh = screen.getByTestId("usage-snapshot-codex-DeskComputer");
+    const fresh = screen.getByTestId("usage-snapshot-codex-hub-a");
     expect(fresh.querySelector(".badge-tone-danger")).toBeNull();
   });
 
