@@ -2142,6 +2142,38 @@
         "title": "DispatchChildrenPayload",
         "type": "object"
       },
+      "DispatcherFallbackBody": {
+        "additionalProperties": false,
+        "description": "Validated, bounded ledger entry for a dispatcher fallback.",
+        "properties": {
+          "est_grok_turns": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Est Grok Turns",
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "hub_unreachable",
+              "held",
+              "rejected",
+              "no_provider",
+              "small_task"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "task_class": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Task Class",
+            "type": "string"
+          }
+        },
+        "required": ["reason", "task_class", "est_grok_turns"],
+        "title": "DispatcherFallbackBody",
+        "type": "object"
+      },
       "DraftEdit": {
         "properties": {
           "plan": {
@@ -7748,6 +7780,16 @@
           "created_at": {
             "default": "",
             "title": "Created At",
+            "type": "string"
+          },
+          "dispatch_origin": {
+            "default": "other",
+            "title": "Dispatch Origin",
+            "type": "string"
+          },
+          "dispatched_by": {
+            "default": "",
+            "title": "Dispatched By",
             "type": "string"
           },
           "ended_at": {
@@ -25167,6 +25209,122 @@
         "tags": ["staff-v1", "staff-context"]
       }
     },
+    "/api/v1/staff/dispatcher/ledger": {
+      "post": {
+        "description": "Append one bounded fallback record; the dedicated scope has no read access.",
+        "operationId": "write_dispatcher_ledger_api_v1_staff_dispatcher_ledger_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispatcherFallbackBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Write Dispatcher Ledger"
+      }
+    },
+    "/api/v1/staff/dispatcher/metrics": {
+      "get": {
+        "description": "Return measured dispatcher counts and visibly labelled estimates.",
+        "operationId": "read_dispatcher_metrics_api_v1_staff_dispatcher_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Dispatcher Metrics Api V1 Staff Dispatcher Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Dispatcher Metrics"
+      }
+    },
     "/api/v1/staff/exclusions": {
       "get": {
         "operationId": "list_exclusions_api_v1_staff_exclusions_get",
@@ -26437,6 +26595,145 @@
         ],
         "summary": "Expert panel verdict digest",
         "tags": ["staff-panels"]
+      }
+    },
+    "/api/v1/staff/playbooks": {
+      "get": {
+        "operationId": "list_playbooks_api_v1_staff_playbooks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Playbooks Api V1 Staff Playbooks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Playbooks",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/{playbook_id}": {
+      "get": {
+        "operationId": "render_playbook_api_v1_staff_playbooks__playbook_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Render Playbook Api V1 Staff Playbooks  Playbook Id  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Render Playbook",
+        "tags": ["staff-playbooks"]
+      }
+    },
+    "/api/v1/staff/playbooks/{playbook_id}/assign": {
+      "post": {
+        "operationId": "assign_playbook_api_v1_staff_playbooks__playbook_id__assign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Assign Playbook Api V1 Staff Playbooks  Playbook Id  Assign Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Assign Playbook",
+        "tags": ["staff-playbooks"]
       }
     },
     "/api/v1/staff/pr-hygiene": {

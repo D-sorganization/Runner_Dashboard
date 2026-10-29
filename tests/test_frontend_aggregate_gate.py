@@ -16,6 +16,15 @@ JOBS = ("typecheck", "vitest", "perf-budget", "playwright-e2e", "staff-console-e
 _MERGE_GROUP_HEAVY_SKIPS = frozenset({"perf-budget", "playwright-e2e", "staff-console-e2e"})
 
 
+def _frontend_aggregate_if_allows_skipped_pr_guard(job_if: object) -> bool:
+    text = str(job_if)
+    return (
+        "always()" in text
+        and "!cancelled()" in text
+        and "needs.pr-guard.result == 'skipped'" in text
+    )
+
+
 def _run_gate(
     *,
     frontend: bool,
@@ -25,9 +34,10 @@ def _run_gate(
 ) -> int:
     workflow = yaml.safe_load((ROOT / ".github/workflows/frontend-tests.yml").read_text())
     gate = workflow["jobs"]["frontend-required"]
-    assert gate["if"] == "always()"
-    assert set(gate["needs"]) == {"frontend-scope", *JOBS}
+    assert _frontend_aggregate_if_allows_skipped_pr_guard(gate["if"])
+    assert set(gate["needs"]) == {"pr-guard", "frontend-scope", *JOBS}
     needs = {job: {"result": "success"} for job in JOBS}
+    needs["pr-guard"] = {"result": "skipped", "outputs": {}}
     if not frontend:
         for job in ("vitest", "perf-budget", "playwright-e2e"):
             needs[job]["result"] = "skipped"

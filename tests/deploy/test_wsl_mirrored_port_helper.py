@@ -139,7 +139,7 @@ def test_clear_removes_http_tailscale_binding(tmp_path: Path) -> None:
 set -euo pipefail
 printf '%s\\n' "$*" >> '{calls_for_bash}'
 if [[ "$*" == "serve status" ]]; then
-  printf 'http://controltower.tail2bbcc7.ts.net:8321 (tailnet only)\\n'
+  printf 'http://node-a.fleet-example.ts.net:8321 (tailnet only)\\n'
   printf '|-- / proxy http://127.0.0.1:8321\\n'
   exit 0
 fi

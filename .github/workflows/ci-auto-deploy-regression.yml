@@ -57,13 +57,29 @@ jobs:
           MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
         run: bash .github/scripts/merge-queue-ref-guard.sh
 
-  auto-deploy-regression:
-    name: Auto-deploy live regression
+  pr-guard:
     if: >-
-      github.event_name != 'merge_group' &&
+      github.event_name == 'pull_request' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet' }}
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
+  auto-deploy-regression:
+    name: Auto-deploy live regression
+    needs: [pr-guard]
+    if: >-
+      github.event_name != 'merge_group' &&
+      always() &&
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
+    # Heavy job: stays self-hosted even once the repo is public (#3084); see
+    # config/public_repo_heavy_jobs.json and docs/runner-labels.md.
+    environment:
+      name: ci-self-hosted-heavy-public
+    runs-on: ${{ github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet-public-heavy' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

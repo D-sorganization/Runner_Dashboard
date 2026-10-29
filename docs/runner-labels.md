@@ -16,7 +16,7 @@ to the correct runner tier.
 | `d-sorg-fleet-docker`  | NVMe or SSD  | Docker image builds, Trivy scans, container-layer cache churn                                    | Lightweight maintenance workflows                              |
 | `d-sorg-fleet-bulk`    | HDD          | Governance, issue taxonomy sync, label sync, spec checks, secret scans, lease reaper, verify-tag | Docker builds, native-build CI, lockfile refreshes, Playwright |
 | `d-sorg-fleet-queue`   | Reserved slot | `merge_group` validation only, to keep merge-queue checks from waiting behind PR builds         | Pull-request builds, scheduled and manual jobs                |
-| `d-sorg-fleet-browser` | Playwright/Vitest-capable | Frontend/E2E jobs in `frontend-tests.yml`, opt-in via the `CI_BROWSER_RUNNER_LABEL` repo variable (#3045) | The Brick runners (Brick-1/-2); never assign this label to them |
+| `d-sorg-fleet-browser` | Playwright/Vitest-capable | Frontend/E2E jobs in `frontend-tests.yml`, opt-in via the `CI_BROWSER_RUNNER_LABEL` repo variable (#3045) | The node-c runners (node-c-1/-2); never assign this label to them |
 
 ## Neutral Labels (safe during transition)
 
@@ -112,17 +112,50 @@ the variable unset, those jobs resolve exactly as they do today (bare
 **Rollout order:**
 
 1. Org admin adds the `d-sorg-fleet-browser` label (Playwright system deps +
-   Node, never Brick-1/-2) to the runners that should carry it.
+   Node, never node-c-1/-2) to the runners that should carry it.
 2. Verify at least 8 of those runners are online and advertising the label.
 3. Set the repository variable `CI_BROWSER_RUNNER_LABEL=d-sorg-fleet-browser`.
    Frontend/E2E jobs route to the new label on the next run; fork PRs and
    hosted-mode PRs are unaffected (RM#1989).
-4. Restart Brick-1 and Brick-2 last, now that they no longer need to serve
+4. Restart node-c-1 and node-c-2 last, now that they no longer need to serve
    frontend/E2E jobs under the bare `d-sorg-fleet` label.
 
 **Rollback:** unset `CI_BROWSER_RUNNER_LABEL` (frontend/E2E jobs fall back to
-`d-sorg-fleet` immediately); stop Brick-1/-2 again first if they were
+`d-sorg-fleet` immediately); stop node-c-1/-2 again first if they were
 restarted into serving frontend/E2E traffic.
+
+### Public-repo heavy-job group (#3084, epic #3077 slice 6)
+
+`d-sorg-fleet-public-heavy` is the dedicated label for the three CI jobs
+that must stay self-hosted forever, even once this repository's visibility
+flips to public: Playwright e2e and Staff Console e2e (`frontend-tests.yml`)
+and the auto-deploy regression suite (`ci-auto-deploy-regression.yml`). This
+is the opposite of the generic `!github.event.repository.private &&
+vars.CI_RUNNER_MODE != 'local'` switch that light jobs use to move to
+`ubuntu-latest` once public — `docker-build.yml`'s `docker-image` job
+deliberately keeps that generic switch instead (#2577: a dedicated
+self-hosted docker pool would starve the deploy check), but these three jobs
+have no such starvation concern, so they are carved out onto their own label
+rather than following the generic switch. Each job also sets `environment:
+ci-self-hosted-heavy-public` as an approval point. `config/public_repo_heavy_jobs.json`
+is the single source of truth naming these jobs, the label and the
+environment; `tests/test_public_repo_heavy_job_runner_split.py` checks every
+entry against its workflow file.
+
+**Owner step (not performed by this PR — no runner re-registration or
+reconfiguration happens here):**
+
+1. Create a self-hosted runner group restricted to this repository and to
+   the `Frontend Tests` and `Node auto-deploy regression` workflows (GitHub
+   organization settings → Actions → Runner groups), and register the
+   `d-sorg-fleet-public-heavy` label on the runners assigned to it.
+2. Optionally add required reviewers or a wait timer to the
+   `ci-self-hosted-heavy-public` environment (repository settings →
+   Environments) if an extra approval gate is wanted before a heavy job runs.
+
+Until that owner step runs, `d-sorg-fleet-public-heavy` behaves like any
+other as-yet-unregistered label: matching jobs queue and time out rather
+than silently falling back to a different pool.
 
 ## Workflow Classes
 
@@ -207,7 +240,7 @@ GET /api/runners/label-guidance
 
 ## Current Status
 
-Until ControlTower exposes distinct NVMe and HDD pools, all labels resolve to
+Until node-a exposes distinct NVMe and HDD pools, all labels resolve to
 the same physical runners. The taxonomy labels are registered but not yet
 enforced by GitHub Actions runner groups. The audit is intentionally
 conservative: it only fails on explicit misrouting, not on neutral-label usage.

@@ -214,5 +214,5 @@ def test_hosted_merge_queue_preserves_required_check_context_names() -> None:
     assert "quality-gate" in workflow["jobs"]
     assert "name" not in quality_gate
     assert tests_required["name"] == "tests"
-    assert quality_gate["if"] == "always()"
-    assert tests_required["if"] == "always()"
+    assert "always()" in str(quality_gate["if"])
+    assert "always()" in str(tests_required["if"])

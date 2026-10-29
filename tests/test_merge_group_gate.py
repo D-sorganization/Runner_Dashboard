@@ -100,6 +100,17 @@ def _job_if(job: dict) -> str:
     return str(job.get("if", "")).strip()
 
 
+def _required_context_job_if_ok(cond: str) -> bool:
+    """Required contexts use plain ``always()`` or the PR early-exit aggregator guard."""
+    if cond in ("", "always()"):
+        return True
+    return (
+        "always()" in cond
+        and "!cancelled()" in cond
+        and "needs.pr-guard.result == 'skipped'" in cond
+    )
+
+
 def _job_runs_on_merge_group(job: dict) -> bool:
     """True when the job is not explicitly excluded from merge_group."""
     cond = _job_if(job)
@@ -165,7 +176,10 @@ def test_required_context_jobs_always_run_on_merge_group(filename: str, job_id: 
     assert "merge_group" not in cond or "!=" in cond, (
         f"{job_id} must not use a merge_group-skipping `if:` (got {cond!r})"
     )
-    assert cond in ("", "always()"), f"{job_id} must use `if: always()` so merge_group never skips the required context"
+    assert _required_context_job_if_ok(cond), (
+        f"{job_id} must use `if: always()` (or the PR early-exit aggregator guard) "
+        f"so merge_group never skips the required context (got {cond!r})"
+    )
 
 
 def test_merge_group_triggers_have_no_path_filters() -> None:

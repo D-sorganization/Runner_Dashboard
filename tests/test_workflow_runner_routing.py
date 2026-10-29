@@ -49,6 +49,9 @@ _UNCLASSIFIED: dict[str, str] = {
     ),
     "local-only-runner-guard.yml": "runs-on is an expression that falls back to ubuntu-latest on public forks.",
     "util-queued-job-reaper.yml": "Neutral self-hosted placement; the reaper must run wherever the queue is.",
+    "reusable-pr-freshness-guard.yml": (
+        "Reusable workflow_call guard; fleet placement is set on the guard job, not workflow-wide."
+    ),
     "ci-slo-check.yml": "Neutral d-sorg-fleet placement; scheduled read-only queue SLO metrics.",
 }
 

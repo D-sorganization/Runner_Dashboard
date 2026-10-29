@@ -98,7 +98,7 @@ def is_fixed_capacity_pool(pool: Mapping[str, Any]) -> bool:
     """True for an active pool with ``capacity_mode: fixed``.
 
     Fixed pools are always-on runners in a separate distro with no dashboard
-    or autoscaler (e.g. ControlTower's CT-NVMe distro). They are outside the
+    or autoscaler (e.g. node-a's CT-NVMe distro). They are outside the
     host autoscaler's cap, need no ``dashboard_url``, and are never dashboard
     peers.
     """
