@@ -4612,6 +4612,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_staff_roles__role__model_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/roles/{role}/schedule": {
         parameters: {
             query?: never;
@@ -7331,6 +7354,29 @@ export interface paths {
         /** Roster V1 */
         get: operations["roster_v1_api_v1_staff_roles_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_v1_staff_roles__role__model_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -10760,6 +10806,16 @@ export interface components {
             /** Run Id */
             run_id?: number | null;
         };
+        /** RoleModelOverrideBody */
+        RoleModelOverrideBody: {
+            /** Model */
+            model?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
             /** Enabled */
@@ -11709,6 +11765,8 @@ export interface components {
              * @default true
              */
             dispatchable: boolean;
+            /** Effective Model */
+            effective_model?: string | null;
             /** Error */
             error?: string | null;
             /** Errors */
@@ -11729,6 +11787,8 @@ export interface components {
             instructions: string;
             /** Model */
             model?: string | null;
+            /** Model Override */
+            model_override?: string | null;
             /** Name */
             name: string;
             /** Permissions */
@@ -19200,6 +19260,43 @@ export interface operations {
             };
         };
     };
+    put_role_model_api_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     put_role_schedule_api_staff_roles__role__schedule_put: {
         parameters: {
             query?: never;
@@ -24222,6 +24319,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    put_role_model_api_v1_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

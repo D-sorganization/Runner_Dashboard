@@ -467,6 +467,27 @@ def test_roster_lists_roles_and_providers(client: TestClient, monkeypatch: pytes
 
 
 @pytest.mark.unit
+def test_roster_reports_model_override(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /roster surfaces a role's runtime model override (epic #3295 S2)."""
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
+
+    class _FakeSched:
+        def role_model_override(self, role_name: str) -> str | None:
+            return "claude-opus-5-5" if role_name == "night-watch" else None
+
+    monkeypatch.setattr("routers.staff.get_scheduler", lambda: _FakeSched())
+    body = client.get("/api/staff/roster").json()
+    roles_by_name = {r["name"]: r for r in body["roles"]}
+    overridden = roles_by_name["night-watch"]
+    assert overridden["model_override"] == "claude-opus-5-5"
+    assert overridden["effective_model"] == "claude-opus-5-5"
+    plain = roles_by_name["ad-hoc"]
+    assert plain.get("model_override") is None
+    # response_model_exclude_none=True drops effective_model too when it's None (no override, no YAML model).
+    assert plain.get("effective_model") == plain.get("model")
+
+
+@pytest.mark.unit
 def test_roster_reports_an_outdated_claude_cli(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from staff import cli_version
 
