@@ -21,7 +21,10 @@ export default function PushSettings() {
   const [testMessage, setTestMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/push/vapid-public-key")
+    fetch("/api/push/vapid-public-key", {
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    })
       .then((r) => {
         if (r.status === 503) {
           setNotConfigured(true);
@@ -56,7 +59,11 @@ export default function PushSettings() {
         .map(([k]) => k);
       const resp = await fetch("/api/push/subscribe", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
         body: JSON.stringify({
           endpoint: payload.endpoint,
           keys: payload.keys,
@@ -92,7 +99,11 @@ export default function PushSettings() {
     try {
       const resp = await fetch("/api/push/test", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
         body: JSON.stringify({
           topic: "agent.completed",
           deep_link: "/settings/push",

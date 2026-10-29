@@ -8,17 +8,23 @@ or a later real VAPID implementation.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
 import sys
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
-import httpx
 import webpush_crypto
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+try:
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover
+    httpx = None  # type: ignore[assignment]
 from identity import Principal, require_principal
 from push_store import (
     PUSH_TOPICS,
@@ -35,7 +41,57 @@ log = logging.getLogger(__name__)
 
 MAX_PUSH_PAYLOAD_BYTES = 4096
 
+ALLOWED_PUSH_ENDPOINT_HOST_SUFFIXES: tuple[str, ...] = (
+    "fcm.googleapis.com",
+    "android.googleapis.com",
+    "push.googleapis.com",
+    "push.services.mozilla.com",
+    "updates.services.mozilla.com",
+    "push.apple.com",
+    "notify.windows.com",
+)
+
+
+def _require_push_csrf(request: Request) -> None:
+    """Require CSRF header/token on state-changing Web Push endpoints."""
+    if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.headers.get("x-csrf-token"):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="CSRF check failed: missing X-Requested-With header",
+    )
+
+
 router = APIRouter(prefix="/api/push", tags=["push"])
+
+
+def validate_push_endpoint(value: str) -> str:
+    """Validate that a Web Push endpoint uses HTTPS and targets an allowlisted push service host."""
+    parsed = urlsplit(value)
+    if parsed.scheme != "https":
+        raise ValueError("endpoint must use https")
+    if parsed.username or parsed.password:
+        raise ValueError("endpoint must not include credentials")
+    if parsed.port not in (None, 443):
+        raise ValueError("endpoint must use standard https port")
+    hostname = (parsed.hostname or "").rstrip(".").lower()
+    if not hostname or not parsed.path or parsed.path == "/":
+        raise ValueError("endpoint must include a valid host and subscription path")
+    if hostname in {"localhost", "ip6-localhost"} or hostname.endswith((".localhost", ".local", ".internal")):
+        raise ValueError("endpoint host must not be loopback or local")
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("endpoint host must be a known push-service domain, not an IP address")
+
+    extra_raw = os.environ.get("DASHBOARD_PUSH_ALLOWED_HOSTS", "")
+    extra_hosts = tuple(h.strip().rstrip(".").lower() for h in extra_raw.split(",") if h.strip())
+    allowed_suffixes = ALLOWED_PUSH_ENDPOINT_HOST_SUFFIXES + extra_hosts
+    if not any(hostname == suffix or hostname.endswith(f".{suffix}") for suffix in allowed_suffixes):
+        raise ValueError("endpoint host is not an allowlisted Web Push service")
+    return value
 
 
 class PushSubscriptionRequest(BaseModel):
@@ -46,9 +102,7 @@ class PushSubscriptionRequest(BaseModel):
     @field_validator("endpoint")
     @classmethod
     def _validate_endpoint(cls, value: str) -> str:
-        if not value.startswith(("https://", "http://localhost", "http://127.0.0.1")):
-            raise ValueError("endpoint must be https or loopback http")
-        return value
+        return validate_push_endpoint(value)
 
     @field_validator("topics")
     @classmethod
@@ -115,6 +169,7 @@ class WebPushTransport:
         self.urgency = urgency
 
     async def send(self, subscription: PushSubscription, payload: dict[str, Any]) -> int:
+        validate_push_endpoint(subscription.endpoint)
         json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         body_bytes, enc_headers = webpush_crypto.encrypt_webpush_payload(
             plaintext=json_bytes,
@@ -281,6 +336,7 @@ async def subscribe_push(
     body: PushSubscriptionRequest,
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
+    _require_push_csrf(request)
     subscription = upsert_subscription(
         user_id=principal.id,
         endpoint=body.endpoint,
@@ -297,9 +353,11 @@ async def subscribe_push(
 
 @router.delete("/subscribe/{subscription_id}")
 async def unsubscribe_push(
+    request: Request,
     subscription_id: int,
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
+    _require_push_csrf(request)
     deleted = delete_subscription(
         subscription_id,
         principal.id,
@@ -312,9 +370,11 @@ async def unsubscribe_push(
 
 @router.post("/test")
 async def test_push(
+    request: Request,
     body: PushTestRequest,
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
+    _require_push_csrf(request)
     payload = {
         "topic": body.topic,
         "title": "Runner Dashboard test notification",
