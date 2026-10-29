@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import random
 import re
 import sys
 from collections.abc import Callable
@@ -168,11 +169,89 @@ def test_mixed_public_and_private_content_in_one_payload() -> None:
 
 
 @pytest.mark.unit
-def test_malformed_level_name_is_withheld_not_passed_through() -> None:
-    malformed = "<<PRIVATE:NOT_A_LEVEL>>" + SENTINEL + "<<END_PRIVATE>>"
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        f"<<PRIVATE:NOT_A_LEVEL>>{SENTINEL}<<END_PRIVATE>>",
+        f"<<PRIVATE:SENSITIVE!>>{SENTINEL}<<END_PRIVATE>>",
+        f"<<PRIVATE:SENSITIVE >>{SENTINEL}<<END_PRIVATE>>",
+        f"<<PRIVATE:123>>{SENTINEL}<<END_PRIVATE>>",
+        f"<<PRIVATE:>>{SENTINEL}<<END_PRIVATE>>",
+        f"<<PRIVATE>>{SENTINEL}<<END_PRIVATE>>",
+        f"<<PRIVATE SENSITIVE>>{SENTINEL}<<END_PRIVATE>>",
+        f"<<private:PUBLIC>>{SENTINEL}<<end_private>>",
+        f"<<PRIVATE:PUBLIC>>{SENTINEL}<<end_private>>",
+        f"<< PRIVATE:PUBLIC>>{SENTINEL}<<END_PRIVATE>>",
+        f"<<PRIVATE:PUBLIC>>{SENTINEL}<< END_PRIVATE>>",
+        f"<<PRIVATE:PUBLIC>>{SENTINEL}",
+        f"prefix <<END_PRIVATE>> {SENTINEL}",
+        f"<<PRIVATE:PUBLIC>><<PRIVATE:SENSITIVE!>>{SENTINEL}<<END_PRIVATE>><<END_PRIVATE>>",
+        f"<<PRIVATE:SENSITIVE {SENTINEL}",
+    ],
+)
+def test_malformed_level_name_is_withheld_not_passed_through(malformed: str) -> None:
     out = gate_text(malformed)
     assert SENTINEL not in out
+    assert "<<PRIVATE" not in out.upper()
+    assert "<<END_PRIVATE" not in out.upper()
     assert MALFORMED_PLACEHOLDER in out
+
+
+@pytest.mark.unit
+def test_marker_parsing_property_and_fuzz() -> None:
+    """Property and fuzz tests on marker parsing (#3545, F02)."""
+    rng = random.Random(3545)
+    bad_headers = [
+        "<<PRIVATE:SENSITIVE!>>",
+        "<<PRIVATE:PUBLIC?>>",
+        "<<PRIVATE:INTERNAL-1>>",
+        "<<PRIVATE:>>",
+        "<<PRIVATE>>",
+        "<<private:PUBLIC>>",
+        "<< PRIVATE:PUBLIC>>",
+        "<<PRIVATE:PUBLIC >>",
+        "<<PRIVATE:PUBLIC",
+        "<<END_PRIVATE>>",
+        "<<end_private>>",
+    ]
+    for i in range(120):
+        prefix = f"pre-{i}-{rng.randint(0, 999)} "
+        suffix = f" post-{i}-{rng.randint(0, 999)}"
+        secret = f"{SENTINEL}-fuzz-{i}"
+        mode = i % 5
+        if mode == 0:
+            header = rng.choice(bad_headers)
+            closer = rng.choice(["<<END_PRIVATE>>", "<<end_private>>", ""])
+            payload = f"{prefix}{header}{secret}{closer}{suffix}"
+            out = redact_sensitive_content(payload)
+            assert secret not in out
+            assert MALFORMED_PLACEHOLDER in out
+        elif mode == 1:
+            mutated_lvl = "".join(rng.choices("PUBLIC_SENSITIVE!@#123 -", k=rng.randint(0, 12)))
+            if mutated_lvl in {"PUBLIC", "INTERNAL", "SENSITIVE"}:
+                mutated_lvl += "!"
+            payload = f"{prefix}<<PRIVATE:{mutated_lvl}>>{secret}<<END_PRIVATE>>{suffix}"
+            out = redact_sensitive_content(payload)
+            assert secret not in out
+            assert MALFORMED_PLACEHOLDER in out
+        elif mode == 2:
+            lvl = rng.choice([Level.INTERNAL, Level.SENSITIVE])
+            payload = f"{prefix}{tag(secret, lvl)}{suffix}"
+            out = redact_sensitive_content(payload)
+            assert secret not in out
+            assert PLACEHOLDER in out
+        elif mode == 3:
+            pub_val = f"shareable-{i}"
+            payload = f"{prefix}{tag(pub_val, Level.PUBLIC)}{suffix}"
+            out = redact_sensitive_content(payload)
+            assert pub_val in out
+        else:
+            payload = f"{prefix}<<PRIVATE:PUBLIC>>ok {rng.choice(bad_headers)} {secret}<<END_PRIVATE>>{suffix}"
+            out = redact_sensitive_content(payload)
+            assert secret not in out
+            assert MALFORMED_PLACEHOLDER in out
+        assert "<<PRIVATE" not in out.upper()
+        assert "<<END_PRIVATE" not in out.upper()
 
 
 @pytest.mark.unit
@@ -346,12 +425,21 @@ def test_pm5_canary_of_the_canary_bypass_fails_gate(form: str) -> None:
 
 @pytest.mark.unit
 def test_pm5_flag_off_behaviour_unchanged() -> None:
-    """PM-5 (#3255): when private_mode is DISABLED, emit_shared preserves PUBLIC behaviour."""
-    proj = pm.emit_shared(
+    """F03 (#3545): when private_mode is DISABLED, SENSITIVE stays SENSITIVE while PUBLIC stays PUBLIC."""
+    sens_proj = pm.emit_shared(
         "board",
-        {"id": "example-corp/widgets#1", "status": "ok", "summary": "Example Corp public status"},
+        {"id": "example-corp/widgets#1", "status": "ok", "summary": f"Example Corp {SENTINEL}"},
         level=Level.SENSITIVE,
         config=pm.DISABLED,
     )
-    assert proj.level is Level.PUBLIC and proj.withheld is False
-    assert proj.content["summary"] == "Example Corp public status"
+    assert sens_proj.level is Level.SENSITIVE and sens_proj.withheld is True
+    assert sens_proj.content is None and SENTINEL not in str(sens_proj.to_dict())
+
+    pub_proj = pm.emit_shared(
+        "board",
+        {"id": "example-corp/widgets#1", "status": "ok", "summary": "Example Corp public status"},
+        level=Level.PUBLIC,
+        config=pm.DISABLED,
+    )
+    assert pub_proj.level is Level.PUBLIC and pub_proj.withheld is False
+    assert pub_proj.content["summary"] == "Example Corp public status"
