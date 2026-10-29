@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import subprocess
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
@@ -307,14 +308,73 @@ def test_a_github_error_past_the_limit_still_never_fails_the_run() -> None:
 
 # ── modes ────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize(
-    ("raw", "mode"), [(None, "report"), ("", "report"), ("enforce", "enforce"), ("OFF", "off"), ("bogus", "report")]
+    ("raw", "mode"),
+    [
+        (None, "enforce"),
+        ("", "enforce"),
+        ("enforce", "enforce"),
+        ("report", "report"),
+        ("REPORT", "report"),
+        ("OFF", "off"),
+        ("bogus", "enforce"),
+    ],
 )
-def test_verify_mode_defaults_to_report(raw: str | None, mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_verify_mode_defaults_to_enforce(raw: str | None, mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
     if raw is None:
         monkeypatch.delenv(v.MODE_ENV, raising=False)
     else:
         monkeypatch.setenv(v.MODE_ENV, raw)
     assert v.verify_mode() == mode
+
+
+def test_unset_verify_mode_enforces_failed_verification_and_report_requires_opt_in(
+    store: RunStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(v.MODE_ENV, raising=False)
+    store.create_run(_rec(id="run_default_enforce"))
+    verdict = v.verify_and_record(
+        store,
+        "run_default_enforce",
+        opens_pr=True,
+        probe=FakeProbe(v.PullRequest(9, "closed", "green")),
+        now=NOW,
+    )
+    assert verdict is not None and verdict.verification == "failed"
+    enforced_rec = store.get_run("run_default_enforce")
+    assert enforced_rec is not None
+    assert (enforced_rec.status, enforced_rec.failure_class) == ("failed", v.UNVERIFIED_OUTPUT)
+
+    monkeypatch.setenv(v.MODE_ENV, "report")
+    store.create_run(_rec(id="run_opt_in_report"))
+    report_verdict = v.verify_and_record(
+        store,
+        "run_opt_in_report",
+        opens_pr=True,
+        probe=FakeProbe(v.PullRequest(9, "closed", "green")),
+        now=NOW,
+    )
+    assert report_verdict is not None and report_verdict.verification == "failed"
+    report_rec = store.get_run("run_opt_in_report")
+    assert report_rec is not None
+    assert (report_rec.status, report_rec.verification) == ("succeeded", "failed")
+
+
+def test_startup_logs_active_verify_mode(
+    store: RunStore, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from staff import reconcile  # noqa: PLC0415
+
+    monkeypatch.delenv(v.MODE_ENV, raising=False)
+    runner = SimpleNamespace(store=store, machine="TestNode", opens_pr=lambda role: True)
+    with caplog.at_level(logging.INFO, logger="dashboard.staff.verification"):
+        reconcile.reconcile_orphaned_runs(runner, event_store=object())  # type: ignore[arg-type]
+    assert any("STAFF_VERIFY_MODE=enforce" in rec.getMessage() for rec in caplog.records)
+
+    caplog.clear()
+    monkeypatch.setenv(v.MODE_ENV, "report")
+    with caplog.at_level(logging.INFO, logger="dashboard.staff.verification"):
+        assert v.log_startup_mode() == "report"
+    assert any("STAFF_VERIFY_MODE=report" in rec.getMessage() for rec in caplog.records)
 
 
 FAILED = v.Verdict("failed", "no PR", None)
