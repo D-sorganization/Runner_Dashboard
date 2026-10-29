@@ -4,7 +4,7 @@ Rare **priority:expedite** work skips the self-hosted runner queue and (after sl
 
 ## Apply the expedite label
 
-Trusted GitHub actors: `dieterolson` and `d-sorggeneralagent[bot]` (fleet GitHub App). Anyone else gets the label removed by `priority-expedite-guard`.
+Trusted GitHub actors: the fleet owner GitHub login (configured in hub credentials) and `d-sorggeneralagent[bot]` (fleet GitHub App). Anyone else gets the label removed by `priority-expedite-guard`.
 
 **Dieter** — use personal GitHub CLI on the box:
 

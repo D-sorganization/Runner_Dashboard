@@ -15,6 +15,7 @@ from staff.rd_barb_inbox import DashboardInbox, default_inbox_path
 from staff.rd_barb_memory import GuidelinesDoc, default_guidelines_path
 from staff.rd_barb_notify_health import NotifyHealth, default_health_path
 from staff.rd_barb_policy import LockedPolicyError, load_locked_policy
+from staff.rd_barb_provider_state import active_provider_payload
 from staff.role_health import RoleHealthStore, default_role_health_path
 
 router = APIRouter(prefix="/api/v1/staff", tags=["staff", "rd-barb"], include_in_schema=False)
@@ -58,6 +59,12 @@ def get_inbox(_principal: Principal = Depends(require_scope("fleet.read"))) -> d
     """Unacknowledged questions and alerts delivered to the dashboard channel, newest first (#3075)."""
     items = DashboardInbox(default_inbox_path()).unacknowledged()
     return {"unacknowledged": len(items), "items": items}
+
+
+@router.get("/rd-barb/provider-active")
+def get_provider_active(_principal: Principal = Depends(require_scope("fleet.read"))) -> dict[str, Any]:  # noqa: B008
+    """Current rd-barb subscription CLI provider after automatic failover (#3527)."""
+    return active_provider_payload("rd-barb")
 
 
 @router.get("/roles/health")

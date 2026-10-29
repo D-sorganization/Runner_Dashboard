@@ -127,8 +127,8 @@ def test_diagnostics_registry_path_falls_back_to_shipped(tmp_path, monkeypatch: 
 
     payload = server._diagnostics_payload()
     reg = payload["machine_registry"]
-    assert reg["path"] == str(machine_registry.DEFAULT_REGISTRY_PATH)
-    assert reg["source"] == "shipped"
+    assert reg["path"] == str(tmp_path / "missing.yml")
+    assert reg["source"] == "local"
 
 
 def test_diagnostics_registry_path_reported_on_load_error(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

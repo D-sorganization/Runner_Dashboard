@@ -60,8 +60,11 @@ jobs:
        (github.event.label.name == 'rollout:taxonomy' || github.event.label.name == 'rollout:taxonomy-apply'))
     # Decide what stage to run based on the triggering label (or dispatch
     # input). Exposed as outputs for downstream jobs.
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      issues: write
+      contents: read
     outputs:
       epic: ${{ steps.decide.outputs.epic }}
       stage: ${{ steps.decide.outputs.stage }}
@@ -97,7 +100,10 @@ jobs:
   preview:
     needs: route
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'preview'
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -208,7 +214,10 @@ jobs:
   apply:
     needs: route
     if: needs.route.outputs.should_run == 'true' && needs.route.outputs.stage == 'apply'
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
