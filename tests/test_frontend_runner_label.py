@@ -3,6 +3,12 @@
 Verified red on origin/main @ 91057286 before the runs-on edit landed, green
 after. See scripts/fork_pr_runner_guard.py for the fork-PR-routing contract
 these jobs must keep (RM#1989).
+
+Scoped to the five light jobs only: #3084 (epic #3077 slice 6) gave
+`playwright-e2e` and `staff-console-e2e` a different, later runs-on shape
+(no public-repo-hosted branch, a dedicated `d-sorg-fleet-public-heavy`
+fallback) that this #3045-era literal diff no longer models. Their contract
+now lives in tests/test_public_repo_heavy_job_runner_split.py.
 """
 
 from __future__ import annotations
@@ -33,20 +39,12 @@ _LONG_CHAIN_OLD = (
     "'ubuntu-latest' || github.event_name == 'merge_group' && "
     "vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet' }}"
 )
-_SHORT_CHAIN_OLD = (
-    "${{ github.event.pull_request && github.event.pull_request.head.repo.full_name "
-    "!= github.repository && 'ubuntu-latest' || !github.event.repository.private && "
-    "vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == "
-    "'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet' }}"
-)
 _OLD_RUNS_ON: dict[str, str] = {
     "frontend-required": _LONG_CHAIN_OLD,
     "frontend-scope": _LONG_CHAIN_OLD,
     "typecheck": _LONG_CHAIN_OLD,
     "vitest": _LONG_CHAIN_OLD,
     "perf-budget": _LONG_CHAIN_OLD,
-    "playwright-e2e": _SHORT_CHAIN_OLD,
-    "staff-console-e2e": _SHORT_CHAIN_OLD,
 }
 _SWITCH_SUFFIX = "|| vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}"
 
@@ -58,24 +56,23 @@ def _load_jobs() -> dict[str, dict[str, Any]]:
 
 def test_every_frontend_job_uses_browser_label_switch() -> None:
     jobs = _load_jobs()
-    assert set(jobs) == set(_OLD_RUNS_ON), "job list changed; update _OLD_RUNS_ON"
-    for job_id, job in jobs.items():
+    assert set(_OLD_RUNS_ON) <= set(jobs), "a light job disappeared; update _OLD_RUNS_ON"
+    for job_id in _OLD_RUNS_ON:
+        job = jobs[job_id]
         runs_on = job["runs-on"]
         assert isinstance(runs_on, str), f"{job_id}: runs-on must stay a single expression"
         assert runs_on.endswith(_SWITCH_SUFFIX), (
-            f"{job_id}: runs-on must fall back through "
-            f"vars.CI_BROWSER_RUNNER_LABEL before 'd-sorg-fleet'"
+            f"{job_id}: runs-on must fall back through vars.CI_BROWSER_RUNNER_LABEL before 'd-sorg-fleet'"
         )
 
 
 def test_fork_and_hosted_branches_unchanged() -> None:
     jobs = _load_jobs()
-    for job_id, job in jobs.items():
-        old = _OLD_RUNS_ON[job_id]
+    for job_id, old in _OLD_RUNS_ON.items():
+        job = jobs[job_id]
         expected = old.replace("|| 'd-sorg-fleet' }}", _SWITCH_SUFFIX)
         assert job["runs-on"] == expected, (
-            f"{job_id}: runs-on changed somewhere other than the trailing "
-            f"'d-sorg-fleet' fallback"
+            f"{job_id}: runs-on changed somewhere other than the trailing 'd-sorg-fleet' fallback"
         )
         # Fork PRs must still be routed to a hosted label first (RM#1989);
         # appending an alternative at the tail must not disturb that.
@@ -172,9 +169,12 @@ def test_no_frontend_job_targets_bare_fleet_when_switch_set() -> None:
                 f"switch set; it must never fall through to bare 'd-sorg-fleet'"
             )
 
-        # Same scenario, switch unset: must resolve exactly like today's main.
+        # Same scenario, switch unset: light jobs must resolve exactly like
+        # today's main; heavy jobs (#3084) fall back to their own dedicated
+        # label instead, covered by test_public_repo_heavy_job_runner_split.py.
         unset_context = {**base_context, "vars.CI_BROWSER_RUNNER_LABEL": None}
-        for job_id, job in jobs.items():
+        for job_id in _OLD_RUNS_ON:
+            job = jobs[job_id]
             resolved = _eval_runs_on(job["runs-on"], unset_context)
             old_resolved = _eval_runs_on(_OLD_RUNS_ON[job_id], unset_context)
             assert resolved == old_resolved == "d-sorg-fleet", (
