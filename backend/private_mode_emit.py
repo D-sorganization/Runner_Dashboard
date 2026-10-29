@@ -272,8 +272,6 @@ def _project_metadata(
 def _resolve_emission_level(level: Level | ClassificationEnvelope | None, *, config: PrivateModeConfig) -> Level:
     if not isinstance(config, PrivateModeConfig):
         raise ClassificationError("emit_shared: config must be a PrivateModeConfig")
-    if not config.enabled:
-        return Level.PUBLIC
     if isinstance(level, ClassificationEnvelope):
         base = validate_envelope(level).level
     elif isinstance(level, Level):
@@ -281,6 +279,8 @@ def _resolve_emission_level(level: Level | ClassificationEnvelope | None, *, con
     elif level is None:
         active = current_envelope()
         if active is None:
+            if not config.enabled:
+                return config.default_level
             raise ClassificationError("emit_shared: explicit level or active envelope is required")
         base = active.level
     else:
