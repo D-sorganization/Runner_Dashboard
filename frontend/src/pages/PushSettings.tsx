@@ -11,20 +11,32 @@ const PUSH_TOPICS = [
   { id: "staff.escalation", label: "Staff escalation", desc: "Notify on proposals and approvals waiting on you" },
 ] as const;
 
+interface HydratedPushSubscription {
+  id: number;
+  endpoint: string;
+  topics: string[];
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+}
+
 export default function PushSettings() {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [subscribed, setSubscribed] = useState(false);
+  const [subscriptionId, setSubscriptionId] = useState<number | null>(null);
   const [topics, setTopics] = useState<Record<string, boolean>>({});
+  const [quietHoursStart, setQuietHoursStart] = useState("");
+  const [quietHoursEnd, setQuietHoursEnd] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notConfigured, setNotConfigured] = useState(false);
   const [testStatus, setTestStatus] = useState<"idle" | "sending" | "success" | "error">("idle");
   const [testMessage, setTestMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/push/vapid-public-key", {
+    const reqInit: RequestInit = {
       credentials: "same-origin",
       headers: { "X-Requested-With": "XMLHttpRequest" },
-    })
+    };
+    fetch("/api/push/vapid-public-key", reqInit)
       .then((r) => {
         if (r.status === 503) {
           setNotConfigured(true);
@@ -37,7 +49,47 @@ export default function PushSettings() {
         if (data && data.publicKey) setPublicKey(data.publicKey);
       })
       .catch(() => setError("Failed to load VAPID key"));
+
+    fetch("/api/push/subscriptions", reqInit)
+      .then((r) => (r && r.ok ? r.json() : null))
+      .then((data) => {
+        const list: HydratedPushSubscription[] = Array.isArray(data?.subscriptions)
+          ? data.subscriptions
+          : [];
+        if (list.length === 0) return;
+        const active = list[0];
+        setSubscribed(true);
+        setSubscriptionId(typeof active.id === "number" ? active.id : 1);
+        setTopics(Object.fromEntries((active.topics ?? []).map((t) => [t, true])));
+        setQuietHoursStart(active.quiet_hours_start ?? "");
+        setQuietHoursEnd(active.quiet_hours_end ?? "");
+      })
+      .catch(() => {});
   }, []);
+
+  const persistPreferences = useCallback(
+    async (nextTopicsMap: Record<string, boolean>, nextStart: string, nextEnd: string) => {
+      const selectedTopics = Object.entries(nextTopicsMap)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+      try {
+        const resp = await fetch(`/api/push/subscribe/${subscriptionId ?? 1}`, {
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+          body: JSON.stringify({
+            topics: selectedTopics,
+            quiet_hours_start: nextStart || null,
+            quiet_hours_end: nextEnd || null,
+          }),
+        });
+        if (!resp.ok) throw new Error(`Failed to save push settings: ${resp.status}`);
+      } catch (e) {
+        setError((e instanceof Error ? e.message : String(e)) || "Failed to save push settings");
+      }
+    },
+    [subscriptionId],
+  );
 
   const subscribe = useCallback(async () => {
     if (notConfigured) {
@@ -57,6 +109,7 @@ export default function PushSettings() {
       const selectedTopics = Object.entries(topics)
         .filter(([, v]) => v)
         .map(([k]) => k);
+      const effectiveTopics = selectedTopics.length ? selectedTopics : ["agent.completed"];
       const resp = await fetch("/api/push/subscribe", {
         method: "POST",
         credentials: "same-origin",
@@ -67,31 +120,51 @@ export default function PushSettings() {
         body: JSON.stringify({
           endpoint: payload.endpoint,
           keys: payload.keys,
-          topics: selectedTopics.length ? selectedTopics : ["agent.completed"],
+          topics: effectiveTopics,
+          quiet_hours_start: quietHoursStart || null,
+          quiet_hours_end: quietHoursEnd || null,
         }),
       });
       if (!resp.ok) throw new Error(`Subscribe failed: ${resp.status}`);
+      const data = await resp.json().catch(() => ({}));
+      setSubscriptionId(typeof data?.id === "number" ? data.id : 1);
       setSubscribed(true);
       setError(null);
     } catch (e) {
       setError((e instanceof Error ? e.message : String(e)) || "Subscription failed");
     }
-  }, [notConfigured, publicKey, topics]);
+  }, [notConfigured, publicKey, quietHoursEnd, quietHoursStart, topics]);
 
   const unsubscribe = useCallback(async () => {
     try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) await sub.unsubscribe();
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg?.pushManager?.getSubscription?.();
+        if (sub) await sub.unsubscribe();
+      }
+      const targetId = subscriptionId ?? 1;
+      const resp = await fetch(`/api/push/subscribe/${targetId}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      if (!resp.ok && resp.status !== 404) {
+        throw new Error(`Unsubscribe failed: ${resp.status}`);
+      }
       setSubscribed(false);
+      setSubscriptionId(null);
       setTopics({});
+      setQuietHoursStart("");
+      setQuietHoursEnd("");
       setError(null);
       setTestStatus("idle");
       setTestMessage(null);
     } catch (e) {
       setError((e instanceof Error ? e.message : String(e)) || "Unsubscribe failed");
     }
-  }, []);
+  }, [subscriptionId]);
 
   const sendTestNotification = useCallback(async () => {
     setTestStatus("sending");
@@ -127,7 +200,15 @@ export default function PushSettings() {
   }, []);
 
   const toggleTopic = (topic: string) => {
-    setTopics((prev) => ({ ...prev, [topic]: !prev[topic] }));
+    const nextTopics = { ...topics, [topic]: !topics[topic] };
+    setTopics(nextTopics);
+    if (subscribed) void persistPreferences(nextTopics, quietHoursStart, quietHoursEnd);
+  };
+
+  const updateQuietHours = (nextStart: string, nextEnd: string) => {
+    setQuietHoursStart(nextStart);
+    setQuietHoursEnd(nextEnd);
+    if (subscribed) void persistPreferences(topics, nextStart, nextEnd);
   };
 
   if (notConfigured) {
@@ -164,14 +245,10 @@ export default function PushSettings() {
 
       <div className="push-settings__topics">
         {PUSH_TOPICS.map((t) => (
-          <label
-            key={t.id}
-            className={`push-settings__topic${subscribed ? " push-settings__topic--locked" : ""}`}
-          >
+          <label key={t.id} className="push-settings__topic">
             <input
               className="push-settings__checkbox"
               checked={!!topics[t.id]}
-              disabled={subscribed}
               onChange={() => toggleTopic(t.id)}
               type="checkbox"
             />
@@ -181,6 +258,26 @@ export default function PushSettings() {
             </span>
           </label>
         ))}
+      </div>
+
+      <div className="push-settings__quiet-hours">
+        <h3 className="push-settings__subtitle">Quiet hours (UTC)</h3>
+        <div className="push-settings__quiet-hours-row">
+          <input
+            aria-label="Quiet hours start"
+            className="push-settings__time-input"
+            onChange={(e) => updateQuietHours(e.target.value, quietHoursEnd)}
+            type="time"
+            value={quietHoursStart}
+          />
+          <input
+            aria-label="Quiet hours end"
+            className="push-settings__time-input"
+            onChange={(e) => updateQuietHours(quietHoursStart, e.target.value)}
+            type="time"
+            value={quietHoursEnd}
+          />
+        </div>
       </div>
 
       <div className="push-settings__actions">
