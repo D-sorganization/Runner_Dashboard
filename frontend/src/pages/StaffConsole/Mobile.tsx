@@ -22,10 +22,8 @@ import "./mobile.css";
 
 export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
 
-// The primary phone flow is a direct conversation with the persistent RD
-// Barb seat, not the fleet-wide "barb" auto-route role (#3493). Resolved
-// against the authorized roster below; never falls back to "barb" if
-// rd-barb is missing.
+// Primary phone flow: direct conversation with the persistent RD Barb seat,
+// resolved from the roster, never a silent fallback to auto-route "barb" (#3493).
 export const PRIMARY_CHAT_ROLE = "rd-barb";
 
 export interface StaffConsoleMobileProps {
@@ -73,8 +71,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     defaultSendRole: PRIMARY_CHAT_ROLE,
   });
   const { roles, rosterLoading, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
-  // Known-missing only once the roster has actually loaded; never silently
-  // treated as the auto-route "barb" role.
+  // Missing only once the roster has actually loaded (never mid-fetch).
   const primaryRole = useMemo(() => roles.find((r) => r.name === PRIMARY_CHAT_ROLE) ?? null, [roles]);
   const primaryRoleUnavailable = !rosterLoading && !primaryRole;
   const [view, setView] = useState<MobileView>(initialView);
@@ -296,11 +293,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </header>
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
           {primaryRoleUnavailable && (
-            <div
-              className="staff-mobile__primary-role-unavailable"
-              role="alert"
-              data-testid="staff-mobile-rd-barb-unavailable"
-            >
+            <div className="staff-mobile__primary-role-unavailable" role="alert" data-testid="staff-mobile-rd-barb-unavailable">
               rd-barb is unavailable right now — the primary chat can&apos;t open.
             </div>
           )}
@@ -322,16 +315,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </div>
           <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
             <GroupCostConfirm guard={sc.costGuard} />
-            <Composer
-              threadId="new"
-              roles={roles}
-              selectedRole={primaryRole?.name ?? PRIMARY_CHAT_ROLE}
-              onSendMessage={handleSendMessage}
-              placeholder={`Message ${primaryRole?.title || "RD Barb"}...`}
-              disabled={primaryRoleUnavailable}
-              prefilledText={composerPrefill}
-              prefillSeq={prefillSeq}
-            />
+            <Composer threadId="new" roles={roles} selectedRole={primaryRole?.name ?? PRIMARY_CHAT_ROLE} onSendMessage={handleSendMessage} placeholder={`Message ${primaryRole?.title || "RD Barb"}...`} disabled={primaryRoleUnavailable} prefilledText={composerPrefill} prefillSeq={prefillSeq} />
           </div>
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Choose staff</button>
