@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -164,6 +165,21 @@ def _copy_tree_contents(source: Path, target: Path, source_root: Path, target_ro
 
 _MUTABLE_TREES = (Path("config"), Path("backend/data"))
 _MUTABLE_FILES = (Path("backend/machine_registry.yml"), Path("agent_profiles.json"), Path("local_apps.json"))
+
+
+def _migrate_machine_registry_to_local_config(live_dashboard_root: Path) -> None:
+    backend_dir = live_dashboard_root / "backend"
+    if not backend_dir.is_dir():
+        return
+    repo_root = Path(__file__).resolve().parents[2]
+    backend_path = str(repo_root / "backend")
+    if backend_path not in sys.path:
+        sys.path.insert(0, backend_path)
+    from machine_registry import migrate_legacy_registry_to_local_config  # noqa: PLC0415
+
+    migrate_legacy_registry_to_local_config(deploy_backend_dir=backend_dir)
+
+
 _MUTABLE_SUFFIXES = (
     ".db",
     ".db-wal",
@@ -221,6 +237,7 @@ def _copy_runtime_artifacts(source: Path, target: Path, source_root: Path, targe
 def copy_mutable_state(source_dir: Path, candidate: Path) -> None:
     """Copy documented operator state into the candidate without following symlinks."""
     source = source_dir.resolve(strict=True)
+    _migrate_machine_registry_to_local_config(source)
     target = candidate.resolve(strict=True)
     if source == target:
         raise UnsafeDeploymentPathError("source and candidate must differ")

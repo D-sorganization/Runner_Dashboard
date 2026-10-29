@@ -2291,6 +2291,7 @@ def _diagnostics_payload() -> dict:
         registry_status = {
             "loaded": True,
             "machines": machines_count,
+            "empty": machines_count == 0,
             "version": _registry.get("version"),
             "path": str(_registry_path),
             "source": _registry_source,

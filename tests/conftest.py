@@ -642,11 +642,12 @@ def mock_registry_hub_as_example(monkeypatch: pytest.MonkeyPatch) -> None:
     placeholder hub (``hub-a.fleet-example.ts.net``) for exactly this purpose.
     """
     import oauth_config  # noqa: PLC0415
-    from machine_registry import load_machine_registry  # noqa: PLC0415
+    from security import safe_yaml_load  # noqa: PLC0415
 
     example_path = REPO_ROOT / "backend" / "machine_registry.example.yml"
+    example_registry = safe_yaml_load(example_path)
     monkeypatch.setattr(
         oauth_config,
         "load_machine_registry",
-        lambda *_a, **_k: load_machine_registry(example_path),
+        lambda *_a, **_k: example_registry,
     )

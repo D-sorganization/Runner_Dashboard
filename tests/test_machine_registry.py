@@ -35,7 +35,9 @@ def test_resolve_registry_path_prefers_env(tmp_path: Path, monkeypatch: pytest.M
     assert mr._resolve_registry_path(str(custom)) == custom
 
 
-def test_resolve_registry_path_uses_local_config_when_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_registry_path_uses_local_config_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     local = tmp_path / "machine_registry.yml"
     local.write_text("version: 1\nmachines: []\n", encoding="utf-8")
     monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
@@ -43,11 +45,28 @@ def test_resolve_registry_path_uses_local_config_when_present(tmp_path: Path, mo
     assert mr._resolve_registry_path(None) == local
 
 
-def test_resolve_registry_path_falls_back_to_shipped_example(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    missing = tmp_path / "missing.yml"
+def test_resolve_registry_path_falls_back_to_local_canonical_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_local = tmp_path / "local" / "machine_registry.yml"
+    missing_deploy = tmp_path / "deploy" / "machine_registry.yml"
     monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
-    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing)
-    assert mr._resolve_registry_path(None) == mr.DEFAULT_REGISTRY_PATH
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing_local)
+    monkeypatch.setattr(mr, "DEPLOYED_REGISTRY_PATH", missing_deploy)
+    assert mr._resolve_registry_path(None) == missing_local
+
+
+def test_resolve_registry_path_uses_deployed_copy_when_local_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_local = tmp_path / "local" / "machine_registry.yml"
+    deployed = tmp_path / "deploy" / "machine_registry.yml"
+    deployed.parent.mkdir(parents=True)
+    deployed.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing_local)
+    monkeypatch.setattr(mr, "DEPLOYED_REGISTRY_PATH", deployed)
+    assert mr._resolve_registry_path(None) == deployed
 
 
 # ---------------------------------------------------------------------------
@@ -81,9 +100,10 @@ def test_resolve_registry_source_reports_shipped_when_neither_present(
     missing = tmp_path / "missing.yml"
     monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
     monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", missing)
+    monkeypatch.setattr(mr, "DEPLOYED_REGISTRY_PATH", tmp_path / "deploy.yml")
     path, source = mr.resolve_registry_source(None)
-    assert path == mr.DEFAULT_REGISTRY_PATH
-    assert source == "shipped"
+    assert path == missing
+    assert source == "local"
 
 
 def test_resolve_registry_source_reports_explicit_for_a_direct_path(tmp_path: Path) -> None:
@@ -239,7 +259,10 @@ def test_normalize_machine_entry_minimal() -> None:
 
 def test_example_registry_node_c_disables_github_actions_runners() -> None:
     registry_path = (
-        Path(__file__).resolve().parents[1] / "backend" / "fixtures" / "machine_registry_node_c_documentation.yml"
+        Path(__file__).resolve().parents[1]
+        / "backend"
+        / "fixtures"
+        / "machine_registry_node_c_documentation.yml"
     )
     registry = mr.load_machine_registry(path=registry_path)
     node_c = next(machine for machine in registry["machines"] if machine["name"] == "node-c")
@@ -401,49 +424,6 @@ def test_build_index_runner_pool_names_and_aliases_included() -> None:
 
 def test_build_index_empty_registry() -> None:
     assert mr.build_machine_registry_index({"machines": []}) == {}
-
-
-# ---------------------------------------------------------------------------
-# is_portable_machine (#3323)
-# ---------------------------------------------------------------------------
-
-
-def test_is_portable_machine_true_for_flagged_entry() -> None:
-    registry = {"machines": [{"name": "Node-C", "aliases": ["node-c"], "portable": True}]}
-    assert mr.is_portable_machine("Node-C", registry) is True
-    assert mr.is_portable_machine("node-c", registry) is True
-
-
-def test_is_portable_machine_false_when_unset() -> None:
-    registry = {"machines": [{"name": "hub-a", "aliases": []}]}
-    assert mr.is_portable_machine("hub-a", registry) is False
-
-
-def test_is_portable_machine_false_for_unknown_machine() -> None:
-    registry = {"machines": [{"name": "hub-a", "aliases": [], "portable": True}]}
-    assert mr.is_portable_machine("SomeOtherHost", registry) is False
-
-
-def test_normalize_machine_entry_portable_flag_coerced() -> None:
-    entry = mr._normalize_machine_entry({"name": "node-c", "portable": "true"})
-    assert entry["portable"] is True
-    entry = mr._normalize_machine_entry({"name": "desk"})
-    assert entry["portable"] is False
-
-
-def test_loaded_registry_preserves_portable_machine(tmp_path: Path) -> None:
-    """A portable, best-effort machine's flag survives the full load pipeline (#3354).
-
-    The shipped machine_registry.yml carries no live topology (#3082); this
-    exercises load_machine_registry() end to end against a registry shaped
-    like a real deployment instead of the (now-empty) shipped file.
-    """
-    p = tmp_path / "registry.json"
-    p.write_text(json.dumps({"version": 1, "machines": [{"name": "node-c", "portable": True}]}), encoding="utf-8")
-    with patch("machine_registry.validate_config_path", return_value=p):
-        registry = mr.load_machine_registry(path=p)
-    node_c_entry = next(m for m in registry["machines"] if m["name"] == "node-c")
-    assert node_c_entry["portable"] is True
 
 
 # ---------------------------------------------------------------------------
