@@ -471,6 +471,8 @@ _EMIT_EXPORTS = frozenset(
 
 
 def __getattr__(name: str) -> Any:
+    if name.startswith("_"):
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     if name in _EMIT_EXPORTS:
         import private_mode_emit as _pme  # noqa: PLC0415
 
@@ -483,4 +485,8 @@ def __getattr__(name: str) -> Any:
 
     if name in _pmna.EXPORTS:
         return getattr(_pmna, name)
+    import private_mode_chaos as _pmc  # noqa: PLC0415
+
+    if name in _pmc.EXPORTS:
+        return getattr(_pmc, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
