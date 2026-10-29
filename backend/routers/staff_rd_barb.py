@@ -11,11 +11,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from pydantic import BaseModel, Field
+from staff.conversations import get_conversation_store
 from staff.rd_barb_inbox import DashboardInbox, default_inbox_path
+from staff.rd_barb_ledger import DecisionLedger
 from staff.rd_barb_memory import GuidelinesDoc, default_guidelines_path
 from staff.rd_barb_notify_health import NotifyHealth, default_health_path
 from staff.rd_barb_policy import LockedPolicyError, load_locked_policy
 from staff.rd_barb_provider_state import active_provider_payload
+from staff.rd_barb_relay import CorrelationRejectedError, RelayRetryQueue, default_relay_queue_path, route_answer
 from staff.role_health import RoleHealthStore, default_role_health_path
 
 router = APIRouter(prefix="/api/v1/staff", tags=["staff", "rd-barb"], include_in_schema=False)
@@ -27,6 +30,12 @@ class RoleHeartbeatRequest(BaseModel):
     expected_slot_at: float | None = None
     chain_exhausted: bool | None = None
     now: float | None = None
+
+
+class CorrelatedAnswerRequest(BaseModel):
+    correlation_id: str = Field(min_length=1, max_length=256)
+    decision: str = Field(min_length=1, max_length=32)
+    body: str = Field(default="", max_length=4000)
 
 
 def guidelines_doc() -> GuidelinesDoc:
@@ -59,6 +68,37 @@ def get_inbox(_principal: Principal = Depends(require_scope("fleet.read"))) -> d
     """Unacknowledged questions and alerts delivered to the dashboard channel, newest first (#3075)."""
     items = DashboardInbox(default_inbox_path()).unacknowledged()
     return {"unacknowledged": len(items), "items": items}
+
+
+@router.get("/rd-barb/relay-status")
+def get_relay_status(
+    now: float | None = Query(default=None),
+    _principal: Principal = Depends(require_scope("fleet.read")),  # noqa: B008
+) -> dict[str, Any]:
+    """Grok webhook relay health, retry queue depth, 5-min degraded banner flag, and unread inbox count (#3075)."""
+    at = time.time() if now is None else now
+    status = RelayRetryQueue(default_relay_queue_path()).status(now=at)
+    status["unread_inbox_count"] = len(DashboardInbox(default_inbox_path()).unacknowledged())
+    return status
+
+
+@router.post("/rd-barb/answers")
+def post_correlated_answer(
+    body: CorrelatedAnswerRequest,
+    principal: Principal = Depends(require_scope("staff.dispatch")),  # noqa: B008
+) -> dict[str, Any]:
+    """Route Dieter's correlated answer to its rd-barb thread and record in the #3066 decision ledger (#3075)."""
+    try:
+        return route_answer(
+            get_conversation_store(),
+            DecisionLedger(),
+            correlation_id=body.correlation_id,
+            decision=body.decision,
+            body=body.body,
+            author=principal.id or "grok-barb",
+        )
+    except (CorrelationRejectedError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/rd-barb/provider-active")
