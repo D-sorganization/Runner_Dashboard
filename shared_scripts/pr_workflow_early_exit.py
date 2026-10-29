@@ -15,11 +15,7 @@ class GuardDecision:
 
 
 def evaluate_pull_request_guard(
-    *,
-    event_name: str,
-    pr_state: str,
-    event_head_sha: str,
-    live_head_sha: str,
+    *, event_name: str, pr_state: str, event_head_sha: str, live_head_sha: str
 ) -> GuardDecision:
     """Return whether heavy jobs should no-op for this workflow run."""
     if event_name != "pull_request":
@@ -28,10 +24,7 @@ def evaluate_pull_request_guard(
     if state and state != "open":
         return GuardDecision(skip=True, reason=f"pull request is {state}")
     if event_head_sha and live_head_sha and event_head_sha != live_head_sha:
-        return GuardDecision(
-            skip=True,
-            reason="event pull_request.head.sha is no longer the PR head",
-        )
+        return GuardDecision(skip=True, reason="event pull_request.head.sha is no longer the PR head")
     return GuardDecision(skip=False)
 
 
