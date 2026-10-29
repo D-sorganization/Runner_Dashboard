@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -33,9 +34,14 @@ from push_store import (
     _delete_stale_subscription,
     _subscriptions_for_topic,
     delete_subscription,
+    is_in_quiet_hours,
+    list_subscriptions,
+    update_subscription_preferences,
     upsert_subscription,
+    validate_quiet_hour_time,
 )
 from pydantic import BaseModel, Field, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
 log = logging.getLogger(__name__)
 
@@ -94,10 +100,24 @@ def validate_push_endpoint(value: str) -> str:
     return value
 
 
+def _normalize_topics(value: list[str]) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for topic in value:
+        if topic not in PUSH_TOPICS:
+            raise ValueError(f"unsupported topic: {topic}")
+        if topic not in seen:
+            normalized.append(topic)
+            seen.add(topic)
+    return normalized
+
+
 class PushSubscriptionRequest(BaseModel):
     endpoint: str = Field(..., min_length=1, max_length=2048)
     keys: PushKeys
     topics: list[str] = Field(default_factory=list, max_length=20)
+    quiet_hours_start: SkipJsonSchema[str | None] = Field(default=None)
+    quiet_hours_end: SkipJsonSchema[str | None] = Field(default=None)
 
     @field_validator("endpoint")
     @classmethod
@@ -107,15 +127,28 @@ class PushSubscriptionRequest(BaseModel):
     @field_validator("topics")
     @classmethod
     def _validate_topics(cls, value: list[str]) -> list[str]:
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for topic in value:
-            if topic not in PUSH_TOPICS:
-                raise ValueError(f"unsupported topic: {topic}")
-            if topic not in seen:
-                normalized.append(topic)
-                seen.add(topic)
-        return normalized
+        return _normalize_topics(value)
+
+    @field_validator("quiet_hours_start", "quiet_hours_end")
+    @classmethod
+    def _validate_quiet_hours(cls, value: str | None) -> str | None:
+        return validate_quiet_hour_time(value)
+
+
+class PushPreferencesUpdateRequest(BaseModel):
+    topics: list[str] | None = Field(default=None, max_length=20)
+    quiet_hours_start: str | None = Field(default=None)
+    quiet_hours_end: str | None = Field(default=None)
+
+    @field_validator("topics")
+    @classmethod
+    def _validate_topics(cls, value: list[str] | None) -> list[str] | None:
+        return _normalize_topics(value) if value is not None else None
+
+    @field_validator("quiet_hours_start", "quiet_hours_end")
+    @classmethod
+    def _validate_quiet_hours(cls, value: str | None) -> str | None:
+        return validate_quiet_hour_time(value)
 
 
 class PushTestRequest(BaseModel):
@@ -273,6 +306,7 @@ async def send_push(
     user_id: str | None = None,
     transport: PushTransport | None = None,
     db_path: Path | None = None,
+    now: datetime | None = None,
 ) -> dict[str, int]:
     if topic not in PUSH_TOPICS:
         raise ValueError(f"unsupported topic: {topic}")
@@ -282,6 +316,8 @@ async def send_push(
     failed = 0
     purged = 0
     for subscription in _subscriptions_for_topic(topic, user_id, db_path):
+        if is_in_quiet_hours(subscription.quiet_hours_start, subscription.quiet_hours_end, now=now):
+            continue
         try:
             status_code = await sender.send(subscription, payload)
         except Exception as e:
@@ -330,6 +366,24 @@ def notify(topic: str, title: str, body: str) -> None:
     task.add_done_callback(_log_notify_failure)
 
 
+def _serialize_subscription(sub: PushSubscription) -> dict[str, Any]:
+    return {
+        "id": sub.id,
+        "user_id": sub.user_id,
+        "endpoint": sub.endpoint,
+        "topics": list(sub.topics),
+        "quiet_hours_start": sub.quiet_hours_start,
+        "quiet_hours_end": sub.quiet_hours_end,
+    }
+
+
+@router.get("/subscriptions", include_in_schema=False)
+async def get_push_subscriptions(
+    principal: Principal = Depends(require_principal),  # noqa: B008
+) -> dict[str, Any]:
+    return {"subscriptions": [_serialize_subscription(sub) for sub in list_subscriptions(principal.id)]}
+
+
 @router.post("/subscribe")
 async def subscribe_push(
     request: Request,
@@ -343,12 +397,32 @@ async def subscribe_push(
         keys=body.keys,
         user_agent=request.headers.get("user-agent", ""),
         topics=body.topics,
+        quiet_hours_start=body.quiet_hours_start,
+        quiet_hours_end=body.quiet_hours_end,
     )
-    return {
-        "id": subscription.id,
-        "user_id": subscription.user_id,
-        "topics": list(subscription.topics),
-    }
+    return _serialize_subscription(subscription)
+
+
+@router.patch("/subscribe/{subscription_id}", include_in_schema=False)
+async def update_push_subscription(
+    request: Request,
+    subscription_id: int,
+    body: PushPreferencesUpdateRequest,
+    principal: Principal = Depends(require_principal),  # noqa: B008
+) -> dict[str, Any]:
+    _require_push_csrf(request)
+    fields_set = body.model_fields_set
+    updated = update_subscription_preferences(
+        subscription_id,
+        principal.id,
+        topics=body.topics,
+        quiet_hours_start=body.quiet_hours_start,
+        quiet_hours_end=body.quiet_hours_end,
+        update_quiet_hours=("quiet_hours_start" in fields_set or "quiet_hours_end" in fields_set),
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    return _serialize_subscription(updated)
 
 
 @router.delete("/subscribe/{subscription_id}")

@@ -315,3 +315,55 @@ async def test_push_subscribe_csrf_flow_from_pwa(mock_auth, push_db: Path) -> No
         Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "PushSettings.tsx"
     ).read_text(encoding="utf-8")
     assert '"X-Requested-With": "XMLHttpRequest"' in push_settings_tsx
+
+
+@pytest.mark.asyncio
+async def test_push_lifecycle_hydrate_update_topics_quiet_hours_and_delete(client, push_db: Path) -> None:
+    from datetime import UTC, datetime
+
+    sub_resp = await client.post(
+        "/api/push/subscribe",
+        json={
+            "endpoint": "https://fcm.googleapis.com/fcm/send/lifecycle-sub-1",
+            "keys": {"p256dh": "client-public-key", "auth": "client-auth-secret"},
+            "topics": ["agent.completed"],
+            "quiet_hours_start": "22:00",
+            "quiet_hours_end": "06:00",
+        },
+    )
+    assert sub_resp.status_code == 200
+    sub_id = sub_resp.json()["id"]
+
+    list_resp = await client.get("/api/push/subscriptions")
+    assert list_resp.status_code == 200
+    subs = list_resp.json()["subscriptions"]
+    assert len(subs) == 1 and subs[0]["id"] == sub_id and subs[0]["quiet_hours_start"] == "22:00"
+
+    patch_resp = await client.patch(
+        f"/api/push/subscribe/{sub_id}",
+        json={"topics": ["agent.completed", "ci.failed"], "quiet_hours_start": "23:00", "quiet_hours_end": "07:00"},
+    )
+    assert patch_resp.status_code == 200 and patch_resp.json()["topics"] == ["agent.completed", "ci.failed"]
+
+    transport = RecordingTransport()
+    suppressed = await push.send_push(
+        "ci.failed",
+        {"title": "Night"},
+        user_id="test-admin",
+        transport=transport,
+        db_path=push_db,
+        now=datetime(2026, 10, 29, 2, 0, tzinfo=UTC),
+    )
+    delivered = await push.send_push(
+        "ci.failed",
+        {"title": "Day"},
+        user_id="test-admin",
+        transport=transport,
+        db_path=push_db,
+        now=datetime(2026, 10, 29, 15, 0, tzinfo=UTC),
+    )
+    assert suppressed["sent"] == 0 and delivered["sent"] == 1
+
+    del_resp = await client.delete(f"/api/push/subscribe/{sub_id}")
+    assert del_resp.status_code == 200 and del_resp.json() == {"deleted": True, "id": sub_id}
+    assert (await client.get("/api/push/subscriptions")).json()["subscriptions"] == []

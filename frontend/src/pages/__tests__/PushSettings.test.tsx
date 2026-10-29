@@ -190,4 +190,73 @@ describe("PushSettings", () => {
       (subscribeCall![1].headers as Record<string, string>)["X-Requested-With"],
     ).toBe("XMLHttpRequest");
   });
+
+  it("hydrates on load, edits topics + quiet hours after subscribe, and calls DELETE on unsubscribe", async () => {
+    const unsubscribeBrowserSpy = vi.fn(() => Promise.resolve(true));
+    Object.defineProperty(window, "PushManager", { configurable: true, value: function PushManager() {}, writable: true });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: Promise.resolve({
+          pushManager: {
+            getSubscription: vi.fn(() =>
+              Promise.resolve({ endpoint: "https://fcm.googleapis.com/fcm/send/sub-7", unsubscribe: unsubscribeBrowserSpy }),
+            ),
+          },
+        }),
+      },
+      writable: true,
+    });
+
+    const fetchSpy = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("vapid-public-key")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ publicKey: "dGVzdC12YXBpZC1rZXk" }) } as Response);
+      }
+      if (url.includes("/api/push/subscriptions") && (!init?.method || init.method === "GET")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              subscriptions: [
+                { id: 7, endpoint: "https://fcm.googleapis.com/fcm/send/sub-7", topics: ["agent.completed"], quiet_hours_start: "23:00", quiet_hours_end: "07:00" },
+              ],
+            }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ id: 7, deleted: true }) } as Response);
+    });
+    global.fetch = fetchSpy;
+
+    render(<PushSettings />);
+    await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
+
+    const checkboxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    expect(checkboxes[0].checked).toBe(true);
+    expect(checkboxes[2].disabled).toBe(false);
+    expect((screen.getByLabelText("Quiet hours start") as HTMLInputElement).value).toBe("23:00");
+    expect((screen.getByLabelText("Quiet hours end") as HTMLInputElement).value).toBe("07:00");
+
+    await act(async () => fireEvent.click(checkboxes[2]));
+    const patchCall = fetchSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "/api/push/subscribe/7" && (call[1] as RequestInit | undefined)?.method === "PATCH",
+    ) as [string, RequestInit] | undefined;
+    expect(patchCall).toBeDefined();
+    expect(JSON.parse(patchCall![1].body as string)).toEqual({
+      topics: ["agent.completed", "ci.failed"],
+      quiet_hours_start: "23:00",
+      quiet_hours_end: "07:00",
+    });
+
+    await act(async () => fireEvent.change(screen.getByLabelText("Quiet hours start"), { target: { value: "21:30" } }));
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: /unsubscribe/i })));
+    await waitFor(() => expect(screen.getByText("Not subscribed")).toBeInTheDocument());
+    expect(unsubscribeBrowserSpy).toHaveBeenCalled();
+
+    const deleteCall = fetchSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "/api/push/subscribe/7" && (call[1] as RequestInit | undefined)?.method === "DELETE",
+    ) as [string, RequestInit] | undefined;
+    expect(deleteCall).toBeDefined();
+    expect((deleteCall![1].headers as Record<string, string>)["X-Requested-With"]).toBe("XMLHttpRequest");
+  });
 });
