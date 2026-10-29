@@ -1150,6 +1150,29 @@
         "title": "CIFixDispatchRequest",
         "type": "object"
       },
+      "CIFixSweepRequest": {
+        "description": "30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.\n\nThis node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,\n``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live\nfetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.",
+        "properties": {
+          "prs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Prs",
+            "type": "array"
+          },
+          "repo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo"],
+        "title": "CIFixSweepRequest",
+        "type": "object"
+      },
       "ChildExecutionRecord": {
         "description": "Runtime tracking record for one planned child issue.",
         "properties": {
@@ -16247,6 +16270,56 @@
           }
         ],
         "summary": "Release Ci Fix Lock Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
+    "/api/remediation/ci-fix/sweep": {
+      "post": {
+        "description": "Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.",
+        "operationId": "sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CIFixSweepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sweep Ci Fix Endpoint Api Remediation Ci Fix Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Sweep Ci Fix Endpoint",
         "tags": ["remediation", "agents", "remediation", "ci-fix"]
       }
     },

@@ -3453,6 +3453,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remediation/ci-fix/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sweep Ci Fix Endpoint
+         * @description Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.
+         */
+        post: operations["sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remediation/ci-fix/webhook": {
         parameters: {
             query?: never;
@@ -8974,6 +8994,22 @@ export interface components {
              * @default
              */
             workflow_name: string;
+        };
+        /**
+         * CIFixSweepRequest
+         * @description 30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.
+         *
+         *     This node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,
+         *     ``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live
+         *     fetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.
+         */
+        CIFixSweepRequest: {
+            /** Prs */
+            prs?: {
+                [key: string]: unknown;
+            }[];
+            /** Repo */
+            repo: string;
         };
         /**
          * ChildExecutionRecord
@@ -17738,6 +17774,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CIFixSweepRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
