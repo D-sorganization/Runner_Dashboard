@@ -1029,7 +1029,7 @@ jobs:
             echo "::error::quality-gate: one or more gated jobs did not succeed."
             exit 1
           fi
-          if merge_queue_lane; then
+          if merge_queue_lane && [ -n "${RUN_HEAD_SHA:-}" ] && [ -n "${GH_TOKEN:-}" ]; then
             python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."

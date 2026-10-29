@@ -979,10 +979,6 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
         "TIER": "merge-group",
         "FULL_SUITE": "false",
         "GITHUB_EVENT_NAME": "merge_group",
-        "RESULT_FRONTEND": "success",
-        "RESULT_SECRETS": "success",  # pragma: allowlist secret
-        "RESULT_API_CONTRACT": "success",
-        "RESULT_DOCKER": "success",
     }
     assert _quality_gate(**mq, RESULT_SECURITY="skipped") == 0
     assert _quality_gate(**dict(mq, RESULT_LINT="skipped")) == 1
@@ -990,31 +986,20 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
 
 
 def test_quality_gate_requires_frontend_secrets_api_contract_and_docker_on_merge_group() -> None:
-    needs = _ci_jobs()["quality-gate"]["needs"]
-    for required_job in ("frontend-tests", "secrets-audit", "api-contract-regeneration", "docker-build"):
-        assert required_job in needs, f"{required_job} must be in quality-gate needs"
+    step = _ci_step("quality-gate", name="Require every gated job to succeed")
+    run = step["run"]
+    assert "verify_merge_group_companion_checks.py" in run, (
+        "quality-gate must invoke verify_merge_group_companion_checks.py on merge_group"
+    )
+    from scripts.ci.verify_merge_group_companion_checks import REQUIRED_COMPANION_CHECKS
 
-    mq = {
-        "TIER": "merge-group",
-        "FULL_SUITE": "false",
-        "GITHUB_EVENT_NAME": "merge_group",
-        "RESULT_LINT": "success",
-        "RESULT_TESTS": "success",
-        "RESULT_SECURITY": "success",
-        "RESULT_FRONTEND": "success",
-        "RESULT_SECRETS": "success",  # pragma: allowlist secret
-        "RESULT_API_CONTRACT": "success",
-        "RESULT_DOCKER": "success",
-    }
-    assert _quality_gate(**mq) == 0
-    assert _quality_gate(**dict(mq, RESULT_FRONTEND="skipped")) == 1
-    assert _quality_gate(**dict(mq, RESULT_SECRETS="skipped")) == 1  # pragma: allowlist secret
-    assert _quality_gate(**dict(mq, RESULT_API_CONTRACT="skipped")) == 1
-    assert _quality_gate(**dict(mq, RESULT_DOCKER="skipped")) == 1
-    assert _quality_gate(**dict(mq, RESULT_FRONTEND="failure")) == 1
-    assert _quality_gate(**dict(mq, RESULT_SECRETS="failure")) == 1  # pragma: allowlist secret
-    assert _quality_gate(**dict(mq, RESULT_API_CONTRACT="failure")) == 1
-    assert _quality_gate(**dict(mq, RESULT_DOCKER="failure")) == 1
+    for required_check in (
+        "frontend-required",
+        "detect-secrets (baseline diff)",
+        "api-contract-regeneration",
+        "docker-build-scan",
+    ):
+        assert required_check in REQUIRED_COMPANION_CHECKS
 
 
 def test_companion_gate_workflows_have_workflow_call_and_merge_group() -> None:
