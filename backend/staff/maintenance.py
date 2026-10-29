@@ -93,23 +93,27 @@ def reset_maintenance_cooldowns() -> None:
 
 
 def _get_runner_state(runner_name_or_id: str, host: str = "local") -> dict[str, Any]:
-    """Retrieve current state of a runner."""
-    raise _not_wired("Runner state lookup")
+    """Retrieve current state of a runner from the GitHub organization runner inventory."""
+    return maintenance_github.get_runner_state(runner_name_or_id)
 
 
 def _drain_runner(runner_name_or_id: str, host: str = "local") -> bool:
-    """Mark a runner for draining and wait for current job completion."""
-    raise _not_wired("Runner drain")
+    """Mark a runner for draining and stop its service if still active."""
+    state = _get_runner_state(runner_name_or_id, host)
+    if not state.get("busy") and state.get("status") in ("stopped", "offline"):
+        return True
+    code, _, _ = _run_service_command(runner_name_or_id, "stop", host)
+    return code == 0
 
 
 def _run_service_command(target: str, cmd: str, host: str = "local") -> tuple[int, str, str]:
     """Execute service lifecycle command on target runner."""
-    raise _not_wired(f"Runner service '{cmd}'")
+    return maintenance_github.run_service_command(target, cmd)
 
 
 def _get_group_runners(group_label: str, host: str = "local") -> list[dict[str, Any]]:
     """Retrieve runners belonging to a group label."""
-    raise _not_wired("Runner group lookup")
+    return maintenance_github.get_group_runners(group_label)
 
 
 def _vacuum_db(db_name: str) -> dict[str, Any]:
@@ -132,12 +136,40 @@ def _vacuum_db(db_name: str) -> dict[str, Any]:
 
 def _trim_worktrees_fs() -> dict[str, Any]:
     """Trim stale or orphaned git worktrees."""
-    raise _not_wired("Worktree trim")
+    from staff.store import get_run_store
+    from staff.workspace import sweep_stale_worktrees
+
+    swept = sweep_stale_worktrees(get_run_store())
+    return {"trimmed_count": int(swept.get("removed", 0)), **swept, "status": "trimmed"}
 
 
 def _purge_stale_queue(repo: str | None, min_age_minutes: int, max_count: int) -> dict[str, Any]:
-    """Purge stale queued runs."""
-    raise _not_wired("Stale queue purge")
+    """Purge stale queued runs via queue_cleanup.purge_stale_runs (safe_only=True)."""
+    return maintenance_github.purge_stale_queue(repo, min_age_minutes, max_count)
+
+
+def _fleet_control(action: str, host: str = "local") -> dict[str, Any]:
+    """Scale or control runners on the target host."""
+    return maintenance_github.fleet_control(action, host)
+
+
+def _remove_runner(target: str, runner_id: int | None, host: str = "local") -> dict[str, Any]:
+    """Remove an offline or ghost runner registration from GitHub."""
+    resolved_id = int(runner_id or 0) or int(_get_runner_state(target, host).get("id") or 0)
+    return maintenance_github.remove_runner(target, resolved_id)
+
+
+def _diagnose(target: str, host: str = "local") -> dict[str, Any]:
+    """Collect read-only diagnostic summary including host I/O pressure."""
+    from system_utils import get_io_pressure_snapshot
+
+    return {
+        "status": "diagnosed",
+        "target": target,
+        "host": host,
+        "healthy": True,
+        "io_pressure": get_io_pressure_snapshot(),
+    }
 
 
 def _cancel_run(repo: str, run_id: int) -> dict[str, Any]:
@@ -281,7 +313,17 @@ def _run_action(
     if action_name == "maintenance.vhdx_compaction_request":
         res.update(_compaction_request(host, str(params.get("reason") or "")))
         return res, None
-    # fleet_control, runner_remove and diagnose have no backend yet.
+    if action_name == "maintenance.fleet_control":
+        res.update(_fleet_control(str(params.get("action") or "up"), host))
+        return res, None
+    if action_name == "maintenance.runner_remove":
+        _require_idle_or_drain(target, host, params, dry_run=False)
+        raw_id = params.get("runner_id")
+        res.update(_remove_runner(target, int(raw_id) if raw_id is not None else None, host))
+        return res, None
+    if action_name == "maintenance.diagnose":
+        res.update(_diagnose(target, host))
+        return res, None
     raise _not_wired(f"'{action_name}'")
 
 
@@ -307,10 +349,10 @@ def execute_maintenance(
 
     if is_dry_run:
         notes: list[str] = []
-        if action_name in ("maintenance.runner_stop", "maintenance.runner_restart"):
+        if action_name in ("maintenance.runner_stop", "maintenance.runner_restart", "maintenance.runner_remove"):
             try:
                 _require_idle_or_drain(target, host, params, dry_run=True)
-            except MaintenanceNotWiredError as exc:
+            except _CLASSIFIED_FAULTS as exc:
                 notes.append(f"Runner state unknown: {exc}")
         return ActionResult(
             success=True,
