@@ -29,10 +29,9 @@ host, not only ``tailscaled``, can open a loopback connection and send the
 same forged headers. Condition 5 closes that gap by asking the one party who
 cannot be impersonated — tailscaled itself — who really owns the connection.
 
-Approvals: the loopback power includes ``staff.approve``, so the owner approves
-from any device (#1786). The ``tailnet-approver`` role (#1770) is still added for
-a sign-in from *another* tailnet device, i.e. not one of
-``DASHBOARD_TAILSCALE_SELF_IPS``, so the audit trail can tell a phone from Desk.
+Approvals (#1770, #3540): ``LOOPBACK_SCOPES`` does not include ``staff.approve``;
+the ``tailnet-approver`` role (#1770) grants ``staff.approve`` for a sign-in
+from *another* tailnet device, i.e. not one of ``DASHBOARD_TAILSCALE_SELF_IPS``.
 """
 
 from __future__ import annotations
