@@ -724,13 +724,12 @@ def build_machine_registry_index(
     return index
 
 
-
-
 def is_portable_machine(name: str, registry: dict[str, Any] | None = None) -> bool:
     """True when ``name`` resolves to a registry machine flagged ``portable: true`` (#3323)."""
     reg = registry if registry is not None else load_machine_registry()
     entry = build_machine_registry_index(reg).get(_normalize_token(name))
     return bool(entry.get("portable")) if entry else False
+
 
 def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
