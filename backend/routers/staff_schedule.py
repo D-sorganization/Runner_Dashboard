@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -79,18 +80,21 @@ def scheduler_enabled() -> bool:
 
 def start_scheduler() -> None:
     """Reconcile orphaned staff runs and start the background ticker once. Called by ``server.py`` on startup."""
-    try:
-        from staff.reconcile import reconcile_orphaned_runs
-        from staff.runner import get_runner
-
-        reconcile_orphaned_runs(get_runner())
-    except Exception as exc:  # noqa: BLE001
-        log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
-
     if not scheduler_enabled():
         log.info("staff scheduler disabled by %s", SCHEDULER_ENABLED_ENV)
         return
-    get_scheduler().start()
+
+    def _reconcile_then_start() -> None:
+        try:
+            from staff.reconcile import reconcile_orphaned_runs
+            from staff.runner import get_runner
+
+            reconcile_orphaned_runs(get_runner())
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
+        get_scheduler().start()
+
+    threading.Thread(target=_reconcile_then_start, name="staff-scheduler-bootstrap", daemon=True).start()
 
 
 def current_holds() -> list[dict[str, Any]]:
