@@ -33,11 +33,8 @@ from staff.conversation_models import (
     RelayRunCardRequest,
     UpdateThreadRequest,
 )
-from staff.conversations import (
-    ConversationsUnavailableError,
-    get_conversation_store,
-)
-from staff.loop_guard import enforce_loop_guard_or_raise
+from staff.conversations import ConversationsUnavailableError, get_conversation_store
+from staff.loop_guard import enforce_loop_guard_or_raise, principal_author_kind
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
 from staff.request_cards import request_message_card
@@ -252,7 +249,8 @@ async def post_message(
     check_rate_limit("messages", caller)
     store = _get_store_or_503()
     caller_id = format_caller(caller)
-    enforce_loop_guard_or_raise(thread_id, store, getattr(caller, "type", "bot"))
+    author_kind = principal_author_kind(caller)
+    enforce_loop_guard_or_raise(thread_id, store, getattr(caller, "type", "bot"), message_kind=body.kind or "text")
 
     try:
         thread = store.get_thread(thread_id)
@@ -264,10 +262,7 @@ async def post_message(
             user_msg_dict, reply_placeholder = existing
             response.status_code = status.HTTP_200_OK
             response.headers["Idempotent-Replay"] = "true"
-            return {
-                "message": user_msg_dict,
-                "reply_placeholder": reply_placeholder,
-            }
+            return {"message": user_msg_dict, "reply_placeholder": reply_placeholder}
 
         if thread.kind == "panel":
             raise HTTPException(
@@ -276,17 +271,19 @@ async def post_message(
             )
 
         if (thread.meta or {}).get("no_auto_reply"):
-            return store_without_turn(store, get_thread_bus(), thread_id, body, caller_id, idempotency_key.strip())
+            return store_without_turn(
+                store, get_thread_bus(), thread_id, body, caller_id, idempotency_key.strip(), author_kind=author_kind
+            )
 
         from staff.group_threads import dispatch_group_message, is_group_thread
 
         if is_group_thread(thread):
             return await dispatch_group_message(thread, body, caller, caller_id, idempotency_key, store)
 
-        # Persist user message
+        # Persist caller message
         user_msg = store.add_message(
             thread_id=thread_id,
-            author_kind="user",
+            author_kind=author_kind,
             author=caller_id,
             kind=body.kind or "text",
             body_md=body.body,

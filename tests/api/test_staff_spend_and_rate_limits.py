@@ -353,3 +353,140 @@ def test_loop_guard_resets_when_human_user_sends_message(client: TestClient) -> 
     tripped_after, count_after = guard.check(thread.id, conv_store)
     assert tripped_after is False
     assert count_after == 0
+
+
+def test_bot_to_bot_loop_persists_author_kind_bot_and_halts_at_cap(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bot principals persist as author_kind='bot' so bot-to-bot HTTP turns do not reset LoopGuard (#3548)."""
+    monkeypatch.setenv("STAFF_LOOP_GUARD_TURNS", "3")
+    app.dependency_overrides[require_principal] = lambda: BOT_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.chat")] = lambda: BOT_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.read")] = lambda: BOT_PRINCIPAL
+
+    conv_store = get_conversation_store()
+    thread = conv_store.create_thread(
+        title="Bot-to-Bot Loop",
+        kind="direct",
+        participants=["agent-claude", "scout"],
+        created_by="agent-claude",
+        meta={"no_auto_reply": True},
+    )
+
+    for turn in range(1, 4):
+        res = client.post(
+            f"/api/v1/staff/threads/{thread.id}/messages",
+            headers={"Idempotency-Key": f"bot-turn-{turn}"},
+            json={"body": f"Bot message {turn}"},
+        )
+        assert res.status_code == 202
+        msg_payload = res.json()["message"]
+        assert msg_payload["author_kind"] == "bot"
+
+    stored_msgs = conv_store.list_messages(thread.id)
+    assert [m.author_kind for m in stored_msgs] == ["bot", "bot", "bot"]
+
+    # 4th consecutive bot turn exceeds cap=3 and halts fail-closed with 429
+    res_blocked = client.post(
+        f"/api/v1/staff/threads/{thread.id}/messages",
+        headers={"Idempotency-Key": "bot-turn-4"},
+        json={"body": "Bot message 4 should be blocked"},
+    )
+    assert res_blocked.status_code == 429
+    error_obj = res_blocked.json().get("error", res_blocked.json().get("detail", res_blocked.json()))
+    assert error_obj.get("code") == "loop_guard_triggered"
+
+
+def test_handoff_hop_cap_halts_handoff_loop_fail_closed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Handoff hop cap stops multi-hop bot/role handoff loops fail-closed at the configured limit (#3548)."""
+    import asyncio
+
+    from staff.chat_handoff import post_reply_handoff
+    from staff.loop_guard import HandoffHopCapExceededError
+    from staff.router import BarbRouter, RoutingDecision
+
+    monkeypatch.setenv("STAFF_HANDOFF_HOP_CAP", "2")
+    app.dependency_overrides[require_principal] = lambda: BOT_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.chat")] = lambda: BOT_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.read")] = lambda: BOT_PRINCIPAL
+
+    conv_store = get_conversation_store()
+    source_th = conv_store.create_thread(
+        title="Handoff Chain",
+        kind="auto",
+        participants=["barb", "agent-claude"],
+        created_by="agent-claude",
+    )
+    user_msg = conv_store.add_message(
+        thread_id=source_th.id,
+        author_kind="bot",
+        author="principal:agent-claude",
+        body_md="Investigate runner failure",
+    )
+
+    router = BarbRouter()
+    # Hop 1: barb -> scout (allowed, hop 1 of 2)
+    hop1 = router.execute_handoff(
+        decision=RoutingDecision(chosen_role="scout", confidence=0.9, reason="Hop 1", mode="manual"),
+        original_message=user_msg.body_md,
+        caller_id="principal:agent-claude",
+        source_thread_id=source_th.id,
+        store=conv_store,
+        from_role="barb",
+    )
+    assert hop1.target_role == "scout"
+
+    # Hop 2: scout -> barb from hop1's target thread (allowed, hop 2 of 2)
+    hop2 = router.execute_handoff(
+        decision=RoutingDecision(chosen_role="barb", confidence=0.9, reason="Hop 2", mode="manual"),
+        original_message=user_msg.body_md,
+        caller_id="principal:agent-claude",
+        source_thread_id=hop1.target_thread_id,
+        store=conv_store,
+        from_role="scout",
+    )
+    assert hop2.target_role == "barb"
+
+    # Hop 3: barb -> scout exceeds cap=2 and fails closed
+    with pytest.raises(HandoffHopCapExceededError):
+        router.execute_handoff(
+            decision=RoutingDecision(chosen_role="scout", confidence=0.9, reason="Hop 3", mode="manual"),
+            original_message=user_msg.body_md,
+            caller_id="principal:agent-claude",
+            source_thread_id=hop2.target_thread_id,
+            store=conv_store,
+            from_role="barb",
+        )
+
+    # Reply handoff helper also halts fail-closed (returns None) at the cap
+    reply_res = asyncio.run(
+        post_reply_handoff(
+            thread_id=hop2.target_thread_id,
+            user_message_id=user_msg.id,
+            from_role="barb",
+            to_role="scout",
+            reply="Handing back to scout again.",
+            caller_id="principal:agent-claude",
+            known_roles={"barb", "scout"},
+            store=conv_store,
+        )
+    )
+    assert reply_res is None
+
+    # HTTP /routing/handoff endpoint also returns 429 handoff_hop_cap_exceeded
+    api_res = client.post(
+        "/api/v1/staff/routing/handoff",
+        json={
+            "text": user_msg.body_md,
+            "target_role": "scout",
+            "source_thread_id": hop2.target_thread_id,
+            "reason": "Hop 3 via API",
+        },
+    )
+    assert api_res.status_code == 429
+    err = api_res.json().get("error", api_res.json().get("detail", api_res.json()))
+    assert err.get("code") == "handoff_hop_cap_exceeded"

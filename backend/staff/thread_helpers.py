@@ -100,14 +100,20 @@ def thread_readable_by(thread: Any, caller: Any) -> bool:
 
 
 def store_without_turn(
-    store: ConversationStore, bus: Any, thread_id: str, body: Any, caller_id: str, idempotency_key: str
+    store: ConversationStore,
+    bus: Any,
+    thread_id: str,
+    body: Any,
+    caller_id: str,
+    idempotency_key: str,
+    author_kind: str = "user",
 ) -> dict[str, Any]:
     """Persist and broadcast a post to a no_auto_reply thread; no reply slot, no chat turn (#3017)."""
     import asyncio
 
     user_msg = store.add_message(
         thread_id=thread_id,
-        author_kind="user",
+        author_kind=author_kind,
         author=caller_id,
         kind=body.kind or "text",
         body_md=body.body,
