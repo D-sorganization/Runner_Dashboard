@@ -902,42 +902,6 @@ jobs:
           fi
           echo "Python test matrix passed."
 
-  frontend-tests:
-    name: Frontend Tests
-    uses: ./.github/workflows/frontend-tests.yml
-    if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
-    needs: [changes]
-
-  secrets-audit:
-    name: CI Secrets
-    uses: ./.github/workflows/ci-secrets.yml
-    if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
-    needs: [changes]
-
-  api-contract-regeneration:
-    name: API Contract Regeneration
-    uses: ./.github/workflows/api-contract-regeneration.yml
-    if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
-    needs: [changes]
-
-  docker-build:
-    name: Docker Build & Trivy Scan
-    uses: ./.github/workflows/docker-build.yml
-    if: >-
-      (!github.event.pull_request ||
-      github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name == 'merge_group' || needs.changes.outputs.full_suite == 'true')
-    needs: [changes]
-
   # Required branch-protection context for `main` (org ruleset
   # Repository_Protections requires exactly this name). Before 2026-09-15 this
   # name belonged to the lint job above, conditioned on the PR touching
@@ -956,10 +920,6 @@ jobs:
         lint,
         tests-required,
         security-scan,
-        frontend-tests,
-        secrets-audit,
-        api-contract-regeneration,
-        docker-build,
       ]
     if: always()
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
@@ -972,6 +932,9 @@ jobs:
       - name: Require every gated job to succeed
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           CHANGES: ${{ needs.changes.result }}
           TIER: ${{ needs.changes.outputs.tier }}
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
@@ -980,10 +943,6 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TESTS: ${{ needs.tests-required.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
-          RESULT_FRONTEND: ${{ needs.frontend-tests.result }}
-          RESULT_SECRETS: ${{ needs.secrets-audit.result }}
-          RESULT_API_CONTRACT: ${{ needs.api-contract-regeneration.result }}
-          RESULT_DOCKER: ${{ needs.docker-build.result }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           RUN_HEAD_SHA: ${{ github.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -1028,7 +987,7 @@ jobs:
             echo "::error::ci-health-check reported '$HEALTH', expected 'success'."
             failed=1
           fi
-          for pair in "lint=$RESULT_LINT" "tests=$RESULT_TESTS" "security-scan=$RESULT_SECURITY" "frontend-tests=$RESULT_FRONTEND" "secrets-audit=$RESULT_SECRETS" "api-contract-regeneration=$RESULT_API_CONTRACT" "docker-build=$RESULT_DOCKER"; do
+          for pair in "lint=$RESULT_LINT" "tests=$RESULT_TESTS" "security-scan=$RESULT_SECURITY"; do
             job="${pair%%=*}"
             result="${pair#*=}"
             echo "$job: $result"
@@ -1058,10 +1017,6 @@ jobs:
             # (docs-only PR, post-merge push); tests-required always runs and
             # encodes that rule itself.
             if [ "$result" = "skipped" ] && [ "$TIER" != "full" ]; then
-              if [ "$job" = "frontend-tests" ] || [ "$job" = "secrets-audit" ] || [ "$job" = "api-contract-regeneration" ] || [ "$job" = "docker-build" ]; then
-                echo "::notice::$job skipped: companion workflows run in their own lanes on PR tier."
-                continue
-              fi
               if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$job" != "tests" ]; then
                 echo "::notice::$job skipped: Python lane is off for tier '$TIER'."
                 continue
@@ -1073,5 +1028,8 @@ jobs:
           if [ "$failed" -ne 0 ]; then
             echo "::error::quality-gate: one or more gated jobs did not succeed."
             exit 1
+          fi
+          if merge_queue_lane; then
+            python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."

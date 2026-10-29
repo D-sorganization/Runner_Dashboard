@@ -27,10 +27,6 @@ MERGE_GROUP_JOB_ALLOWLIST: dict[str, frozenset[str]] = {
             "tests",
             "tests-required",
             "quality-gate",
-            "frontend-tests",
-            "secrets-audit",
-            "api-contract-regeneration",
-            "docker-build",
         }
     ),
     "frontend-tests.yml": frozenset(
@@ -211,3 +207,22 @@ def test_tests_required_fails_closed_on_merge_group_cancel() -> None:
     step = next(s for s in jobs["tests-required"]["steps"] if "Confirm" in s.get("name", ""))
     run = step["run"]
     assert "merge_group" in run, "tests-required must treat cancelled/skipped matrix as failure on merge_group"
+
+
+def test_quality_gate_verifies_companion_checks_on_merge_group() -> None:
+    jobs = _load(_CI_STANDARD)["jobs"]
+    step = next(s for s in jobs["quality-gate"]["steps"] if s.get("name") == "Require every gated job to succeed")
+    run = step["run"]
+    assert "verify_merge_group_companion_checks.py" in run, (
+        "quality-gate must invoke verify_merge_group_companion_checks.py on merge_group"
+    )
+    script_path = _WORKFLOWS.parent.parent / "scripts" / "ci" / "verify_merge_group_companion_checks.py"
+    assert script_path.is_file(), "companion check verification script must exist"
+    script_text = script_path.read_text(encoding="utf-8")
+    for check in (
+        "frontend-required",
+        "detect-secrets (baseline diff)",
+        "api-contract-regeneration",
+        "docker-build-scan",
+    ):
+        assert check in script_text, f"verify_merge_group_companion_checks must verify {check}"
