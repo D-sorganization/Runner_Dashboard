@@ -13,7 +13,6 @@ import math
 import os
 import sys
 import threading
-import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -21,8 +20,11 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 _ROOT = Path(__file__).resolve().parents[2]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+for _p in (str(_ROOT / "backend"), str(_ROOT)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from staff.role_health import _check_ts  # noqa: E402
 
 from scripts import rd_barb_notify as _notify  # noqa: E402
 from scripts import rd_threads_envelope as _envelope  # noqa: E402
@@ -41,13 +43,6 @@ Opener = Callable[[Request, float], Any]
 
 def _default_opener(req: Request, timeout: float) -> Any:
     return urlopen(req, timeout=timeout)  # noqa: S310
-
-
-def _check_ts(value: float | None, name: str = "now") -> float:
-    ts = time.time() if value is None else float(value)
-    if not math.isfinite(ts) or ts < 0:
-        raise ValueError(f"{name} must be a non-negative finite timestamp")
-    return ts
 
 
 def _scrub(text: str, secret: str | None) -> str:
