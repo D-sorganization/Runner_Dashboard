@@ -79,7 +79,22 @@ async def run_dispatch(
         execution_mode=getattr(body, "execution_mode", "local") or "local",
         dispatch_origin=authenticated_origin,
     )
-    # A request that declares Barb authority is fenced on its lease epoch (#2734); others are unaffected.
+    # A request that declares Barb authority is fenced on its lease epoch (#2734, #3543);
+    # when a peer forwards on behalf of another principal, evaluate the fence against the
+    # original caller identity so Barb-authority forwards cannot bypass the lease fence.
+    fence_principal = caller
+    if obo and on_behalf_of:
+        raw_id = on_behalf_of.removeprefix("principal:").removeprefix("user:")
+        fence_principal = Principal(
+            id=raw_id,
+            type="bot" if raw_id.startswith("agent-") or raw_id == "barb" else caller.type,
+            name=raw_id,
+            roles=list(caller.roles),
+            scopes=list(caller.scopes),
+            assistant_kind="grokbot" if authenticated_origin == "grok" else caller.assistant_kind,
+        )
     return await dispatch_staff_run(
-        cmd, caller, barb_claim=claim_for_write(request.headers, caller, surface="staff.dispatch")
+        cmd,
+        caller,
+        barb_claim=claim_for_write(request.headers, fence_principal, surface="staff.dispatch"),
     )

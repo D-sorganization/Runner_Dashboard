@@ -168,12 +168,31 @@ async def _resolve_target(
     return resolved
 
 
-async def _forward(target: str, cmd: DispatchCommand, on_behalf_of: str) -> dict[str, Any]:
-    url = staff_fleet.peer_nodes().get(target)
-    if url is None:
-        raise HTTPException(status_code=422, detail=f"unknown machine '{target}'")
+async def _forward(
+    target: str,
+    cmd: DispatchCommand,
+    on_behalf_of: str,
+    *,
+    barb_claim: BarbClaim | None = None,
+    caller_str: str = "",
+) -> dict[str, Any]:
+    with barb_write_fence(
+        barb_claim,
+        surface=cmd.surface,
+        target=f"role:{cmd.role}",
+        principal=caller_str or cmd.requested_by,
+    ):
+        url = staff_fleet.peer_nodes().get(target)
+        if url is None:
+            raise HTTPException(status_code=422, detail=f"unknown machine '{target}'")
     try:
-        status, data = await staff_fleet.forward_run(url, cmd.role, cmd.forward_body(), on_behalf_of=on_behalf_of)
+        status, data = await staff_fleet.forward_run(
+            url,
+            cmd.role,
+            cmd.forward_body(),
+            on_behalf_of=on_behalf_of,
+            barb_claim=barb_claim,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"machine '{target}' unreachable: {exc}") from exc
     if status >= 400:
@@ -328,7 +347,13 @@ async def dispatch_staff_run(
                 cmd.thread_id,
                 origin_node=cmd.origin_node or runner.machine,
             )
-            return await _forward(resolved_target, cmd, obo_hdr)
+            return await _forward(
+                resolved_target,
+                cmd,
+                obo_hdr,
+                barb_claim=barb_claim,
+                caller_str=format_caller(caller),
+            )
 
     req = RunRequest(
         role=cmd.role,
@@ -372,7 +397,13 @@ async def dispatch_staff_run(
             cmd.thread_id,
             origin_node=cmd.origin_node or runner.machine,
         )
-        return await _forward(target, cmd, obo_hdr)
+        return await _forward(
+            target,
+            cmd,
+            obo_hdr,
+            barb_claim=barb_claim,
+            caller_str=format_caller(caller),
+        )
     if cmd.dry_run:
         try:
             record_audit(
