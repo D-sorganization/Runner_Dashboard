@@ -2,7 +2,7 @@
  * RdBarbRelayBanner — 5-minute degraded relay banner for rd-barb (#3075).
  */
 
-export const DEGRADED_AFTER_S = 300
+const DEGRADED_AFTER_S = 300
 
 export interface RdBarbRelayStatus {
   state: string
@@ -13,7 +13,7 @@ export interface RdBarbRelayStatus {
   degraded_after_s?: number
 }
 
-export function isRelayBannerVisible(status: RdBarbRelayStatus | null | undefined, now?: number): boolean {
+function isRelayBannerVisible(status: RdBarbRelayStatus | null | undefined, now?: number): boolean {
   if (!status || status.state === "ok" || status.state === "never_attempted") return false
   const threshold = status.degraded_after_s ?? DEGRADED_AFTER_S
   if (typeof status.failing_since === "number" && typeof now === "number") {

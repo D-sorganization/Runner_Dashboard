@@ -2,15 +2,12 @@
 import "@testing-library/jest-dom/vitest"
 import { afterEach, describe, expect, it } from "vitest"
 import { cleanup, render, screen } from "@testing-library/react"
-import { RdBarbRelayBanner, isRelayBannerVisible } from "../RdBarbRelayBanner"
+import { RdBarbRelayBanner } from "../RdBarbRelayBanner"
 
 afterEach(cleanup)
 
 describe("RdBarbRelayBanner", () => {
   it("stays hidden before 5 minutes of failure, appears at 5 minutes, and clears on success", () => {
-    expect(isRelayBannerVisible({ state: "failing", failing_since: 1000 }, 1299)).toBe(false)
-    expect(isRelayBannerVisible({ state: "degraded", failing_since: 1000 }, 1300)).toBe(true)
-
     const { rerender } = render(<RdBarbRelayBanner status={{ state: "failing", failing_since: 1000, queued_count: 1 }} now={1299} />)
     expect(screen.queryByTestId("rd-barb-degraded-banner")).toBeNull()
 
