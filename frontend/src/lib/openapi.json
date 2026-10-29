@@ -6176,6 +6176,18 @@
       "SessionsPage": {
         "description": "A bounded page of :class:`SessionSummary` rows.",
         "properties": {
+          "empty_reason": {
+            "anyOf": [
+              {
+                "enum": ["complete_empty", "local_empty"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty Reason"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/SessionSummary"
