@@ -39,6 +39,20 @@ from scripts.rd_barb_notify import normalize_role, role_env_prefix  # noqa: E402
 DEFAULT_PROVIDER = "claude"
 DEFAULT_MODEL = "opus"
 DEFAULT_CHAIN = ("claude", "codex", "antigravity", "cursor-agent")
+PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
+    "rd-barb": (
+        FailoverStep("claude", "opus"),
+        FailoverStep("codex", None),
+        FailoverStep("antigravity", None),
+        FailoverStep("cursor-agent", None),
+    ),
+    "bob": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("antigravity", "gemini-3.8-flash-high"),
+        FailoverStep("cursor-agent", None),
+        FailoverStep("codex", "gpt-6.1-sol"),
+    ),
+}
 SWITCH_ON = frozenset({"auth_expired", "rate_limited", "quota_exhausted", "provider_capacity", "crash"})
 
 
@@ -52,11 +66,20 @@ class Decision:
 
 def chain(config: Mapping[str, str], *, role: str = "rd-barb") -> tuple[FailoverStep, ...]:
     """Ordered failover steps; the head uses RD_<ROLE>_MODEL (default opus for claude)."""
-    prefix = role_env_prefix(role)
-    raw = config.get(f"{prefix}FAILOVER") or ",".join(DEFAULT_CHAIN)
-    providers = tuple(p.strip() for p in raw.split(",") if p.strip() in DEFAULT_CHAIN) or DEFAULT_CHAIN
+    norm = normalize_role(role)
+    prefix = role_env_prefix(norm)
+    role_defaults = PERSONA_ROLE_CHAINS.get(norm)
+    raw = config.get(f"{prefix}FAILOVER")
+    if raw:
+        providers = tuple(p.strip() for p in raw.split(",") if p.strip() in DEFAULT_CHAIN) or DEFAULT_CHAIN
+        steps = tuple(FailoverStep(p, None) for p in providers)
+    elif role_defaults:
+        providers = tuple(s.provider for s in role_defaults)
+        steps = role_defaults
+    else:
+        providers = DEFAULT_CHAIN
+        steps = tuple(FailoverStep(p, None) for p in providers)
     model = (config.get(f"{prefix}MODEL") or "").strip() or None
-    steps = tuple(FailoverStep(p, None) for p in providers)
     role_obj = SimpleNamespace(providers=providers, model=model, failover_chain=steps)
     requested = (config.get(f"{prefix}PROVIDER") or "").strip() or None
     resolved = resolve_failover_chain(role_obj, requested_provider=requested if requested in providers else None)
