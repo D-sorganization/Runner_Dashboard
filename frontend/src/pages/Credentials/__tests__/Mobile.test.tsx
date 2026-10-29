@@ -97,19 +97,30 @@ const MOCK_CREDENTIALS = {
 
 function setupFetch({
   credentialsOk = true,
+  emptyProbes = false,
   setKeyOk = true,
   clearKeyOk = true,
+  beginOk = true,
+  completeOk = true,
 }: {
   credentialsOk?: boolean;
+  emptyProbes?: boolean;
   setKeyOk?: boolean;
   clearKeyOk?: boolean;
+  beginOk?: boolean;
+  completeOk?: boolean;
 } = {}) {
   const fetchMock = vi.fn((url: string, _options?: RequestInit) => {
     if (url.includes("/api/credentials") && !url.includes("set-key") && !url.includes("clear-key")) {
       return Promise.resolve({
         ok: credentialsOk,
         status: credentialsOk ? 200 : 500,
-        json: () => Promise.resolve(MOCK_CREDENTIALS),
+        json: () =>
+          Promise.resolve(
+            emptyProbes
+              ? { probes: [], summary: { total: 0, ready: 0, not_ready: 0 } }
+              : MOCK_CREDENTIALS,
+          ),
       } as Response);
     }
     if (url.includes("/api/credentials/set-key")) {
@@ -136,12 +147,31 @@ function setupFetch({
           ),
       } as Response);
     }
-    // WebAuthn begin — return 404 so fallback path is taken
     if (url.includes("/api/auth/webauthn/assert/begin")) {
       return Promise.resolve({
-        ok: false,
-        status: 404,
-        json: () => Promise.resolve({ detail: "Not found" }),
+        ok: beginOk,
+        status: beginOk ? 200 : 404,
+        json: () =>
+          Promise.resolve(
+            beginOk
+              ? {
+                  challenge: "dGVzdC1jaGFsbGVuZ2U",
+                  challenge_signature: "sig-1",
+                  allow_credentials: [{ id: "Y3JlZC0x", type: "public-key" }],
+                  timeout_ms: 60000,
+                }
+              : { detail: "No active WebAuthn credential registered for this user" },
+          ),
+      } as Response);
+    }
+    if (url.includes("/api/auth/webauthn/assert/complete")) {
+      return Promise.resolve({
+        ok: completeOk,
+        status: completeOk ? 200 : 401,
+        json: () =>
+          Promise.resolve(
+            completeOk ? { ok: true } : { detail: "Invalid WebAuthn assertion signature" },
+          ),
       } as Response);
     }
     return Promise.resolve({
@@ -155,7 +185,28 @@ function setupFetch({
   return fetchMock;
 }
 
-// Stub WebAuthn as unavailable so unlock always falls back
+function stubWebAuthnAvailable() {
+  Object.defineProperty(window, "PublicKeyCredential", {
+    configurable: true,
+    value: {
+      isUserVerifyingPlatformAuthenticatorAvailable: vi.fn(() => Promise.resolve(true)),
+    },
+    writable: true,
+  });
+  Object.defineProperty(navigator, "credentials", {
+    configurable: true,
+    value: {
+      get: vi.fn(() =>
+        Promise.resolve({
+          id: "cred-1",
+          type: "public-key",
+        }),
+      ),
+    },
+    writable: true,
+  });
+}
+
 function stubWebAuthnUnavailable() {
   Object.defineProperty(window, "PublicKeyCredential", {
     configurable: true,
@@ -182,7 +233,7 @@ describe("CredentialsMobile", () => {
   beforeEach(() => {
     stubMatchMedia();
     vi.spyOn(console, "error").mockImplementation(() => {});
-    stubWebAuthnUnavailable();
+    stubWebAuthnAvailable();
   });
 
   afterEach(() => {
@@ -203,17 +254,30 @@ describe("CredentialsMobile", () => {
     ).toBeInTheDocument();
   });
 
-  it("unlocks and shows credentials when WebAuthn is unavailable (fallback)", async () => {
+  it("stays locked when WebAuthn is unavailable or verification fails", async () => {
+    stubWebAuthnUnavailable();
     setupFetch();
     render(<CredentialsMobile />);
 
-    await unlockCredentials();
-
-    await waitFor(() => {
-      expect(screen.getByText("Claude Code CLI")).toBeInTheDocument();
+    const unlockBtn = screen.getByRole("button", { name: /unlock credentials with biometrics/i });
+    await act(async () => {
+      fireEvent.click(unlockBtn);
     });
 
-    expect(screen.getByText("Codex CLI")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /unlock credentials with biometrics/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Claude Code CLI")).not.toBeInTheDocument();
+
+    stubWebAuthnAvailable();
+    setupFetch({ completeOk: false });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /unlock credentials with biometrics/i }));
+    });
+    expect(
+      screen.getByRole("button", { name: /unlock credentials with biometrics/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Claude Code CLI")).not.toBeInTheDocument();
   });
 
   it("shows credential summary after unlock", async () => {
@@ -284,17 +348,7 @@ describe("CredentialsMobile", () => {
   });
 
   it("shows empty state when no probes are returned", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () =>
-            Promise.resolve({ probes: [], summary: { total: 0, ready: 0, not_ready: 0 } }),
-        } as Response),
-      ),
-    );
+    setupFetch({ emptyProbes: true });
 
     render(<CredentialsMobile />);
 

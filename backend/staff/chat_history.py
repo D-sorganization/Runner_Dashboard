@@ -138,7 +138,7 @@ def format_history_replay(
             continue
         if m.kind in ("text", "action_result") and m.body_md.strip():
             role_title = getattr(role, "title", None) or (role.name.title() if role else "Assistant")
-            prefix = "User" if m.author_kind == "user" else role_title
+            prefix = "User" if m.author_kind in ("user", "bot") else role_title
             turns.append(f"{prefix}: {m.body_md.strip()}")
             last_collected = m
         elif m.kind == "action_proposal":
@@ -153,7 +153,7 @@ def format_history_replay(
     # Drop current user message if already persisted as the last turn (#1631).
     if (
         last_collected
-        and last_collected.author_kind == "user"
+        and last_collected.author_kind in ("user", "bot")
         and last_collected.body_md.strip() == current_prompt.strip()
     ):
         turns.pop()

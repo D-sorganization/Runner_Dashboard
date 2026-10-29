@@ -48,7 +48,9 @@ def push_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return path
 
 
-def _request(endpoint: str = "https://updates.push.services.example/sub/1") -> push.PushSubscriptionRequest:
+def _request(
+    endpoint: str = "https://updates.push.services.mozilla.com/wpush/v2/sub/1",
+) -> push.PushSubscriptionRequest:
     return push.PushSubscriptionRequest(
         endpoint=endpoint,
         keys=push.PushKeys(p256dh="client-public-key", auth="client-auth-secret"),
@@ -83,7 +85,7 @@ def test_subscribe_upserts_subscription(push_db: Path) -> None:
 async def test_send_push_filters_by_topic_and_payload(push_db: Path) -> None:
     push.upsert_subscription(
         user_id="alice",
-        endpoint="https://updates.push.services.example/sub/1",
+        endpoint="https://updates.push.services.mozilla.com/wpush/v2/sub/1",
         keys=_request().keys,
         user_agent="pytest",
         topics=["agent.completed"],
@@ -91,7 +93,7 @@ async def test_send_push_filters_by_topic_and_payload(push_db: Path) -> None:
     )
     push.upsert_subscription(
         user_id="alice",
-        endpoint="https://updates.push.services.example/sub/2",
+        endpoint="https://updates.push.services.mozilla.com/wpush/v2/sub/2",
         keys=_request().keys,
         user_agent="pytest",
         topics=["ci.failed"],
@@ -116,7 +118,7 @@ async def test_send_push_filters_by_topic_and_payload(push_db: Path) -> None:
 async def test_send_push_purges_404_or_410_subscriptions(push_db: Path) -> None:
     subscription = push.upsert_subscription(
         user_id="alice",
-        endpoint="https://updates.push.services.example/stale",
+        endpoint="https://updates.push.services.mozilla.com/wpush/v2/stale",
         keys=_request().keys,
         user_agent="pytest",
         topics=["agent.completed"],
@@ -138,7 +140,7 @@ async def test_send_push_purges_404_or_410_subscriptions(push_db: Path) -> None:
 def test_unsubscribe_is_scoped_to_owner(push_db: Path) -> None:
     subscription = push.upsert_subscription(
         user_id="alice",
-        endpoint="https://updates.push.services.example/sub/1",
+        endpoint="https://updates.push.services.mozilla.com/wpush/v2/sub/1",
         keys=_request().keys,
         user_agent="pytest",
         topics=["agent.completed"],
@@ -235,7 +237,7 @@ async def test_push_test_endpoint_returns_sent_result(client, push_db: Path) -> 
 
     push.upsert_subscription(
         user_id="test-admin",
-        endpoint="https://updates.push.services.example/sub/test",
+        endpoint="https://updates.push.services.mozilla.com/wpush/v2/sub/test",
         keys=push.PushKeys(p256dh="client-key", auth="client-auth"),
         user_agent="pytest",
         topics=["agent.completed"],
@@ -253,3 +255,63 @@ async def test_push_test_endpoint_returns_sent_result(client, push_db: Path) -> 
     assert len(transport.sent) == 1
     assert transport.sent[0][1]["url"] == "/staff?thread=123"
     assert transport.sent[0][1]["deep_link"] == "/staff?thread=123"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_endpoint",
+    [
+        "http://localhost:8321/push",
+        "http://127.0.0.1:8321/push",
+        "https://127.0.0.1/push",
+        "https://10.0.0.1/push",
+        "https://172.16.0.1/push",
+        "https://192.168.1.1/push",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://[::1]/push",
+        "https://evil.example.com/sub/1",
+        "https://fcm.googleapis.com.evil.example/sub/1",
+    ],
+)
+async def test_push_subscribe_rejects_private_ip_and_arbitrary_hosts(client, push_db: Path, bad_endpoint: str) -> None:
+    resp = await client.post(
+        "/api/push/subscribe",
+        json={
+            "endpoint": bad_endpoint,
+            "keys": {"p256dh": "client-public-key", "auth": "client-auth-secret"},
+            "topics": ["agent.completed"],
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_push_subscribe_csrf_flow_from_pwa(mock_auth, push_db: Path) -> None:  # noqa: ARG001
+    from httpx import ASGITransport, AsyncClient  # noqa: PLC0415
+    from server import app  # noqa: PLC0415
+
+    payload = {
+        "endpoint": "https://fcm.googleapis.com/fcm/send/pwa-sub-1",
+        "keys": {"p256dh": "client-public-key", "auth": "client-auth-secret"},
+        "topics": ["agent.completed"],
+    }
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+        headers={"Authorization": "Bearer test-key"},
+    ) as raw_client:
+        missing_csrf = await raw_client.post("/api/push/subscribe", json=payload)
+        assert missing_csrf.status_code == 403
+
+        with_csrf = await raw_client.post(
+            "/api/push/subscribe",
+            json=payload,
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        assert with_csrf.status_code == 200
+        assert with_csrf.json()["topics"] == ["agent.completed"]
+
+    push_settings_tsx = (
+        Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages" / "PushSettings.tsx"
+    ).read_text(encoding="utf-8")
+    assert '"X-Requested-With": "XMLHttpRequest"' in push_settings_tsx
