@@ -5,9 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from backend.andon.intake import (
     AndonIntakeDeps,
     AndonIntakeError,
@@ -15,6 +12,8 @@ from backend.andon.intake import (
     build_andon_app,
     process_andon_intake,
 )
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from shared_scripts.andon_fingerprint import AndonSchemaError
 
 
