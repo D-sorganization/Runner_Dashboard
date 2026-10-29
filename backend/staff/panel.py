@@ -45,6 +45,7 @@ from staff.panel_prompts import (
     parse_stance,
 )
 from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_scratch
+from staff.seat_fallback import run_turn_with_fallback
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.panel")
@@ -156,7 +157,10 @@ async def _speak(
     )
     await _publish(store, placeholder.id)
     try:
-        outcome = await asyncio.wait_for(runner(speaker, prompt, thread_id, placeholder.id), timeout=timeout)
+        outcome = await asyncio.wait_for(
+            run_turn_with_fallback(speaker, prompt, thread_id, placeholder.id, runner),
+            timeout=timeout,
+        )
         status, text, error = ("ok", outcome.text, None) if outcome.ok else ("error", "", outcome.error or "failed")
     except TimeoutError:
         status, text, error = "timeout", "", f"no reply within {timeout:.0f} s"
