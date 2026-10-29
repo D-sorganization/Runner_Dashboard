@@ -17,6 +17,7 @@ import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import { selectMobileThread, startNewMobileConversation, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
+import { usePendingThreadId, useMobileThreadUrlSync } from "./useMobileThreadUrlSync";
 import "./mobile.css";
 
 export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
@@ -36,17 +37,6 @@ export interface StaffConsoleMobileProps {
   className?: string;
 }
 
-function parseUrlParams(): { threadId: string | null; roleName: string | null; tab: string | null } {
-  if (typeof window === "undefined") return { threadId: null, roleName: null, tab: null };
-  const p = new URLSearchParams(window.location.search);
-  const tabParam = p.get("tab") || (p.get("inbox") ? "inbox" : p.get("runs") ? "runs" : null);
-  return {
-    threadId: p.get("thread"),
-    roleName: p.get("role"),
-    tab: tabParam,
-  };
-}
-
 export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   roles: initialRoles,
   initialView = "roster",
@@ -61,18 +51,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   onDenyProposal,
   className = "",
 }) => {
-  // A thread id the shell asked for (sidebar tap or deep link) that this
-  // console has not yet locally confirmed. The backend is the only authority
-  // on a thread's content: while this is unresolved against activeThread, or
-  // if resolving it fails, the composer stays locked on the thread that is
-  // actually loaded (#2663 fail-closed contract from #2652). Never
-  // synthesize a thread object for this id — only ever hand it to
-  // useStaffConsole's initialThreadId fetch-and-authorize path. A console's
-  // own local selection (openRole/newConversation) is already authorized by
-  // the backend, so it clears this instead of setting it.
-  const [pendingThreadId, setPendingThreadId] = useState<string | null>(
-    () => parseUrlParams().threadId,
-  );
+  const [pendingThreadId, setPendingThreadId] = usePendingThreadId();
   // initialThread only seeds useStaffConsole's very first render; once a
   // pending id names a different thread, stop offering it so the fetch path
   // takes over instead of being short-circuited by a stale seed.
@@ -87,7 +66,6 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     onDenyProposal,
   });
   const { roles, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
-  const composerLocked = Boolean(pendingThreadId) && activeThread?.id !== pendingThreadId;
   const [view, setView] = useState<MobileView>(initialView);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -117,55 +95,16 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     setThreadView: () => setView("thread"),
   });
 
-  // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
-  // push link and is real; a ?role= link resolves to the role's backend thread.
-  const syncWithUrl = () => {
-    const { threadId, roleName, tab } = parseUrlParams();
-    if (threadId) {
-      // Never build a thread object from the URL: hand the id to
-      // useStaffConsole's initialThreadId fetch, which loads and authorizes
-      // it against the backend. The composer stays locked to whatever is
-      // already loaded until that resolves (see composerLocked above). A
-      // thread we already have loaded (e.g. our own selection echoed back
-      // through the shell's URL) needs no fetch and no lock.
-      if (threadId !== activeThread?.id) setPendingThreadId(threadId);
-      setView("thread");
-      return;
-    }
-    if (roleName) {
-      if (initialThread?.participants.includes(roleName)) {
-        sc.openThread(initialThread, roleName);
-        setView("thread");
-      } else {
-        void sc.openRole(roleName).then((thread) => thread && setView("thread"));
-      }
-      return;
-    }
-    if (tab === "inbox") setView("inbox");
-    else if (tab === "runs") setView("runs");
-  };
-  const syncWithUrlRef = useRef(syncWithUrl);
-  syncWithUrlRef.current = syncWithUrl;
-
-  useEffect(() => {
-    const onPopState = () => syncWithUrlRef.current();
-    onPopState();
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  // A sibling surface (the Barb sidebar) can select a thread through the same
-  // onThreadSelected callback and navigate the shell's URL without firing a
-  // native "popstate" (SPA history.pushState doesn't). Re-read the URL after
-  // every render so that external selection reaches this mounted console too.
-  const lastSyncedSearchRef = useRef(
-    typeof window !== "undefined" ? window.location.search : "",
-  );
-  useEffect(() => {
-    const currentSearch = typeof window !== "undefined" ? window.location.search : "";
-    if (currentSearch === lastSyncedSearchRef.current) return;
-    lastSyncedSearchRef.current = currentSearch;
-    syncWithUrlRef.current();
+  // Deep Link Handling (?thread=, ?role=, ?tab=): see useMobileThreadUrlSync
+  // for the fail-closed, fetch-and-authorize contract (#2663, from #2652).
+  const composerLocked = useMobileThreadUrlSync({
+    pendingThreadId,
+    setPendingThreadId,
+    activeThread,
+    initialThread,
+    openRole: sc.openRole,
+    openThread: sc.openThread,
+    setView,
   });
 
   const displayMessages = sc.messages;
@@ -184,7 +123,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
       setView("thread");
       selectMobileThread(thread.id, roleName, onThreadSelected, onOpenThread);
     },
-    [sc, onOpenThread, onThreadSelected],
+    [sc, onOpenThread, onThreadSelected, setPendingThreadId],
   );
 
   // Return to roster view
