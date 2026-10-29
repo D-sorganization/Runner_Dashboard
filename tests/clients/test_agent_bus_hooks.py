@@ -90,6 +90,88 @@ def test_session_start_noop_when_dashboard_unreachable(state_file: Path) -> None
 
 
 @pytest.mark.unit
+def test_session_start_reregisters_when_cached_token_is_rejected(state_file: Path) -> None:
+    """#3496: a dashboard restart wipes in-memory ephemeral tokens, so a cached
+    token from a prior session can come back 401/403. session_start must drop
+    it and re-register instead of crashing the caller."""
+    sess = "local-testhost-20261022-stale"
+    state_file.write_text(
+        json.dumps({"session": sess, "token": "tok_stale_revoked", "role": "local"}),
+        encoding="utf-8",
+    )
+    client = FleetClient(base_url="http://127.0.0.1:9", agent="local", session=sess)
+    calls: list[tuple[str, str]] = []
+
+    def fake_request(method: str, path: str, **kwargs):  # noqa: ANN003
+        calls.append((method, path))
+        if path.startswith("/api/v1/agent/inbox"):
+            if client.token == "tok_stale_revoked":
+                raise FleetAPIError(401, {"detail": "unknown or revoked token"})
+            return {"session": sess, "messages": [], "next_cursor": 0}
+        if path == "/api/v1/agent/register":
+            return {"session": sess, "token": "tok_fresh_reregistered", "principal_id": f"fleet-session:{sess}"}
+        raise AssertionError(path)
+
+    with mock.patch.object(client, "request", side_effect=fake_request):
+        summary = hooks.session_start(client, role="local", provider="cursor", node="node-c")
+
+    assert summary["registered"] is True
+    assert summary["offline"] is False
+    assert [p for _, p in calls].count("/api/v1/agent/register") == 1
+    saved = json.loads(state_file.read_text(encoding="utf-8"))
+    assert saved["token"] == "tok_fresh_reregistered"
+
+
+@pytest.mark.unit
+def test_session_start_reraises_non_auth_errors_with_cached_token(state_file: Path) -> None:
+    """A non-auth failure (e.g. 500) with a cached token must not be treated as
+    a stale-token condition; it should propagate like any other API error."""
+    sess = "local-testhost-20261022-stale500"
+    state_file.write_text(
+        json.dumps({"session": sess, "token": "tok_cached", "role": "local"}),
+        encoding="utf-8",
+    )
+    client = FleetClient(base_url="http://127.0.0.1:9", agent="local", session=sess)
+
+    def fake_request(method: str, path: str, **kwargs):  # noqa: ANN003
+        if path.startswith("/api/v1/agent/inbox"):
+            raise FleetAPIError(500, {"detail": "internal error"})
+        raise AssertionError(path)
+
+    with mock.patch.object(client, "request", side_effect=fake_request):
+        with pytest.raises(FleetAPIError) as excinfo:
+            hooks.session_start(client, role="local", provider="cursor", node="node-c")
+    assert excinfo.value.status == 500
+
+
+@pytest.mark.unit
+def test_pre_push_clears_stale_state_when_token_is_rejected(state_file: Path) -> None:
+    """#3496: pre_push has no role to re-register with, so on a rejected/expired
+    token it must clear the stale cached state (forcing a full re-register at
+    the next session_start) and return cleanly instead of raising."""
+    sess = "issue-remediator-host-20261022-stale"
+    state_file.write_text(
+        json.dumps({"session": sess, "token": "tok_stale_revoked", "role": "issue-remediator"}),
+        encoding="utf-8",
+    )
+    client = FleetClient(
+        base_url="http://127.0.0.1:9", token="tok_stale_revoked", session=sess, agent="issue-remediator"
+    )
+
+    def fake_request(method: str, path: str, **kwargs):  # noqa: ANN003
+        if path == "/api/v1/agent/heartbeat":
+            raise FleetAPIError(403, {"detail": "unknown or revoked token"})
+        raise AssertionError(path)
+
+    with mock.patch.object(client, "request", side_effect=fake_request):
+        out = hooks.pre_push(client)
+
+    assert out["heartbeat"] is False
+    assert out.get("stale_token") is True
+    assert not state_file.exists()
+
+
+@pytest.mark.unit
 def test_pre_push_heartbeats_with_saved_token(state_file: Path) -> None:
     sess = "issue-remediator-host-20261022-xyz"
     state_file.write_text(
