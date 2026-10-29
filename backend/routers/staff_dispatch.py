@@ -91,7 +91,7 @@ async def run_dispatch(
             name=raw_id,
             roles=list(caller.roles),
             scopes=list(caller.scopes),
-            assistant_kind="grokbot" if authenticated_origin == "grok" else caller.assistant_kind,
+            assistant_kind="grokbot" if authenticated_origin == "grok" else (caller.assistant_kind or ""),
         )
     return await dispatch_staff_run(
         cmd,

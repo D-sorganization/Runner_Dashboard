@@ -172,38 +172,23 @@ async def _forward(
     target: str,
     cmd: DispatchCommand,
     on_behalf_of: str,
-    *,
     barb_claim: BarbClaim | None = None,
     caller_str: str = "",
 ) -> dict[str, Any]:
-    with barb_write_fence(
-        barb_claim,
-        surface=cmd.surface,
-        target=f"role:{cmd.role}",
-        principal=caller_str or cmd.requested_by,
-    ):
+    principal = caller_str or cmd.requested_by
+    with barb_write_fence(barb_claim, surface=cmd.surface, target=f"role:{cmd.role}", principal=principal):
         url = staff_fleet.peer_nodes().get(target)
         if url is None:
             raise HTTPException(status_code=422, detail=f"unknown machine '{target}'")
     try:
-        status, data = await staff_fleet.forward_run(
-            url,
-            cmd.role,
-            cmd.forward_body(),
-            on_behalf_of=on_behalf_of,
-            barb_claim=barb_claim,
-        )
+        body = cmd.forward_body()
+        status, data = await staff_fleet.forward_run(url, cmd.role, body, on_behalf_of, barb_claim=barb_claim)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"machine '{target}' unreachable: {exc}") from exc
     if status >= 400:
         raise HTTPException(status_code=status if status < 500 else 502, detail=data.get("detail", data))
-    log.info(
-        "staff: forwarded %s run for role=%s to %s by %s",
-        "dry-run" if cmd.dry_run else "dispatch",
-        cmd.role,
-        target,
-        cmd.requested_by,
-    )
+    kind = "dry-run" if cmd.dry_run else "dispatch"
+    log.info("staff: forwarded %s run for role=%s to %s by %s", kind, cmd.role, target, cmd.requested_by)
     return {**data, "machine": data.get("machine", target), "forwarded_to": target}
 
 
@@ -341,19 +326,9 @@ async def dispatch_staff_run(
                     detail="internal model_tier is supported only for local dispatch",
                 )
             check_rate_limit("dispatches", caller)
-            obo_hdr = staff_fleet.sign_on_behalf_of(
-                cmd.requested_by,
-                cmd.surface,
-                cmd.thread_id,
-                origin_node=cmd.origin_node or runner.machine,
-            )
-            return await _forward(
-                resolved_target,
-                cmd,
-                obo_hdr,
-                barb_claim=barb_claim,
-                caller_str=format_caller(caller),
-            )
+            origin = cmd.origin_node or runner.machine
+            obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin)
+            return await _forward(resolved_target, cmd, obo_hdr, barb_claim, format_caller(caller))
 
     req = RunRequest(
         role=cmd.role,
@@ -391,19 +366,9 @@ async def dispatch_staff_run(
     check_rate_limit("dispatches", caller)
     target = resolved_target or await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
     if target != "local":
-        obo_hdr = staff_fleet.sign_on_behalf_of(
-            cmd.requested_by,
-            cmd.surface,
-            cmd.thread_id,
-            origin_node=cmd.origin_node or runner.machine,
-        )
-        return await _forward(
-            target,
-            cmd,
-            obo_hdr,
-            barb_claim=barb_claim,
-            caller_str=format_caller(caller),
-        )
+        origin = cmd.origin_node or runner.machine
+        obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin)
+        return await _forward(target, cmd, obo_hdr, barb_claim, format_caller(caller))
     if cmd.dry_run:
         try:
             record_audit(
