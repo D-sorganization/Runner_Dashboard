@@ -43,8 +43,7 @@ _FAILURE_CLASS_BY_STATUS = {
 class DispatchCommand:
     """A validated dispatch request, independent of the surface it came from.
 
-    ``requested_by`` / ``on_behalf_of`` / ``surface`` / ``thread_id`` are provenance;
-    the rest mirrors the /run body.
+    ``requested_by`` / ``on_behalf_of`` / ``surface`` / ``thread_id`` are provenance; the rest mirrors the /run body.
     """
 
     role: str
