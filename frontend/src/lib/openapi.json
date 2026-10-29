@@ -115,6 +115,168 @@
         "title": "ActionRiskLevel",
         "type": "string"
       },
+      "ActivityEnvelope": {
+        "additionalProperties": false,
+        "description": "Canonical v1 metadata record. Extra fields fail closed.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "event_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Event Id",
+            "type": "string"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "kind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "node": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Node",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "principal": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Principal",
+            "type": "string"
+          },
+          "redaction_version": {
+            "minimum": 1.0,
+            "title": "Redaction Version",
+            "type": "integer"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seq": {
+            "minimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "staff_run",
+              "coordination",
+              "agent_bus",
+              "recorder",
+              "desktop_adapter",
+              "checkin",
+              "job_board",
+              "github"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "event_id",
+          "source",
+          "principal",
+          "node",
+          "session_id",
+          "seq",
+          "ts",
+          "kind",
+          "redaction_version"
+        ],
+        "title": "ActivityEnvelope",
+        "type": "object"
+      },
+      "ActivityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityEnvelope"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": ["items", "next_cursor"],
+        "title": "ActivityPage",
+        "type": "object"
+      },
       "AnswerNeedsInputRequest": {
         "properties": {
           "answer": {
@@ -153,31 +315,6 @@
         },
         "required": ["credential"],
         "title": "AssertCompleteRequest",
-        "type": "object"
-      },
-      "AssistantChatResponse": {
-        "description": "AI assistant response.",
-        "properties": {
-          "context_used": {
-            "additionalProperties": true,
-            "title": "Context Used",
-            "type": "object"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "response": {
-            "title": "Response",
-            "type": "string"
-          },
-          "timestamp": {
-            "title": "Timestamp",
-            "type": "string"
-          }
-        },
-        "required": ["response", "provider", "context_used", "timestamp"],
-        "title": "AssistantChatResponse",
         "type": "object"
       },
       "AuditHistoryResponse": {
@@ -641,6 +778,12 @@
       "BoardRoutingCriteria": {
         "description": "Explicit requester-declared or system-extracted routing flags.",
         "properties": {
+          "confidential_data_egress": {
+            "default": false,
+            "description": "Confidential partner data egress; requires user sign-off before Board routing.",
+            "title": "Confidential Data Egress",
+            "type": "boolean"
+          },
           "cross_repo_contract": {
             "default": false,
             "title": "Cross Repo Contract",
@@ -650,11 +793,6 @@
             "default": 0,
             "title": "Estimated Child Issues",
             "type": "integer"
-          },
-          "inentec_data_egress": {
-            "default": false,
-            "title": "Inentec Data Egress",
-            "type": "boolean"
           },
           "new_dependency_or_egress": {
             "default": false,
@@ -1010,6 +1148,29 @@
         },
         "required": ["repo", "pr_number", "branch"],
         "title": "CIFixDispatchRequest",
+        "type": "object"
+      },
+      "CIFixSweepRequest": {
+        "description": "30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.\n\nThis node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,\n``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live\nfetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.",
+        "properties": {
+          "prs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Prs",
+            "type": "array"
+          },
+          "repo": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo"],
+        "title": "CIFixSweepRequest",
         "type": "object"
       },
       "ChildExecutionRecord": {
@@ -2737,6 +2898,35 @@
         "title": "HoldsBody",
         "type": "object"
       },
+      "HostSettingsPutBody": {
+        "properties": {
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "global": {
+            "additionalProperties": true,
+            "title": "Global",
+            "type": "object"
+          },
+          "roles": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Roles",
+            "type": "object"
+          },
+          "schema_version": {
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "title": "HostSettingsPutBody",
+        "type": "object"
+      },
       "InitializeExecutorPayload": {
         "additionalProperties": false,
         "description": "Children always come from the filed plan; the caller may only tune execution.",
@@ -2765,6 +2955,32 @@
         },
         "required": ["provider"],
         "title": "LaunchAuthRequest",
+        "type": "object"
+      },
+      "LeaderLeaseBody": {
+        "properties": {
+          "machine": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 3600.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Seconds"
+          }
+        },
+        "required": ["machine"],
+        "title": "LeaderLeaseBody",
         "type": "object"
       },
       "LeaseRequest": {
@@ -2964,52 +3180,6 @@
           "citation"
         ],
         "title": "LibraryRunReference",
-        "type": "object"
-      },
-      "MaxwellChatBody": {
-        "description": "Request body for POST /api/maxwell/chat.\n\n``repo``/``repo_root`` (issue #838) scope a codebase Q&A session to a single\nrepository. Both are optional so the existing fleet-status chat keeps working\nunchanged; when supplied they are forwarded to Maxwell-Daemon, which jails its\nagentic tools (read_file/grep_files/glob_files/run_bash) to that root. The\ndaemon-side capability is tracked in Maxwell_Daemon#948; until it ships the\ndaemon may answer 501 Not Implemented, which this proxy degrades gracefully.",
-        "properties": {
-          "history": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "maxItems": 20,
-            "title": "History",
-            "type": "array"
-          },
-          "message": {
-            "maxLength": 4000,
-            "title": "Message",
-            "type": "string"
-          },
-          "repo": {
-            "anyOf": [
-              {
-                "maxLength": 200,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Repo"
-          },
-          "repo_root": {
-            "anyOf": [
-              {
-                "maxLength": 1000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Repo Root"
-          }
-        },
-        "required": ["message"],
-        "title": "MaxwellChatBody",
         "type": "object"
       },
       "MemoryAppendRequest": {
@@ -3401,6 +3571,11 @@
             "title": "Experts",
             "type": "array"
           },
+          "ground_repos": {
+            "default": true,
+            "title": "Ground Repos",
+            "type": "boolean"
+          },
           "mode": {
             "default": "debate",
             "enum": ["debate", "brainstorm"],
@@ -3453,6 +3628,22 @@
               }
             ],
             "title": "Quorum"
+          },
+          "refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 4,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refs"
           },
           "repos": {
             "anyOf": [
@@ -3764,6 +3955,45 @@
         },
         "required": ["body"],
         "title": "PostMessageRequest",
+        "type": "object"
+      },
+      "PrHygieneItem": {
+        "properties": {
+          "pr": {
+            "exclusiveMinimum": 0.0,
+            "title": "Pr",
+            "type": "integer"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": ["repo", "pr"],
+        "title": "PrHygieneItem",
+        "type": "object"
+      },
+      "PrHygieneRequest": {
+        "properties": {
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrHygieneItem"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": ["items"],
+        "title": "PrHygieneRequest",
         "type": "object"
       },
       "PresenceBody": {
@@ -5040,6 +5270,30 @@
         "title": "RequestTarget",
         "type": "object"
       },
+      "RoleModelOverrideBody": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RoleModelOverrideBody",
+        "type": "object"
+      },
       "RoleScheduleOverrideBody": {
         "properties": {
           "enabled": {
@@ -5580,6 +5834,105 @@
         "title": "SessionDigestAppendResponse",
         "type": "object"
       },
+      "SessionSummary": {
+        "description": "The latest known state of one ``(source, session_id)`` activity session.",
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch"
+          },
+          "issue": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue"
+          },
+          "last_event_at": {
+            "format": "date-time",
+            "title": "Last Event At",
+            "type": "string"
+          },
+          "last_event_id": {
+            "title": "Last Event Id",
+            "type": "string"
+          },
+          "last_kind": {
+            "title": "Last Kind",
+            "type": "string"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "pr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pr"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "session_id",
+          "node",
+          "status",
+          "repo",
+          "branch",
+          "issue",
+          "pr",
+          "last_kind",
+          "last_seq",
+          "last_event_id",
+          "last_event_at"
+        ],
+        "title": "SessionSummary",
+        "type": "object"
+      },
       "SessionTelemetryPayload": {
         "description": "Session telemetry payload (issue #1849 / RD-4).",
         "properties": {
@@ -5707,6 +6060,29 @@
         },
         "required": ["session_id"],
         "title": "SessionTelemetryPayload",
+        "type": "object"
+      },
+      "SessionsPage": {
+        "description": "A bounded page of :class:`SessionSummary` rows.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "scan_limit": {
+            "title": "Scan Limit",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": ["items", "scan_limit", "truncated"],
+        "title": "SessionsPage",
         "type": "object"
       },
       "StaffAuditListResponse": {
@@ -6877,6 +7253,24 @@
             "title": "Active Runs",
             "type": "integer"
           },
+          "allowed_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Models",
+            "type": "array"
+          },
+          "avatar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar"
+          },
           "budget": {
             "$ref": "#/components/schemas/StaffRoleBudget"
           },
@@ -6896,6 +7290,17 @@
             "default": true,
             "title": "Dispatchable",
             "type": "boolean"
+          },
+          "effective_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Model"
           },
           "error": {
             "anyOf": [
@@ -6953,6 +7358,17 @@
               }
             ],
             "title": "Model"
+          },
+          "model_override": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Override"
           },
           "name": {
             "title": "Name",
@@ -8112,6 +8528,73 @@
         "title": "StaffUsageResponse",
         "type": "object"
       },
+      "StaffUsageSnapshotIngestResponse": {
+        "additionalProperties": true,
+        "description": "Response model for POST /api/staff/usage/snapshot (#3042).",
+        "properties": {
+          "kept": {
+            "title": "Kept",
+            "type": "boolean"
+          }
+        },
+        "required": ["kept"],
+        "title": "StaffUsageSnapshotIngestResponse",
+        "type": "object"
+      },
+      "StaffUsageSnapshotResponse": {
+        "additionalProperties": true,
+        "description": "Response model for GET /api/staff/usage/snapshot (#3042): fleet quota + staleness.",
+        "properties": {
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "providers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "snapshot_age_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Age Seconds"
+          },
+          "snapshot_stale": {
+            "title": "Snapshot Stale",
+            "type": "boolean"
+          }
+        },
+        "required": ["snapshot_stale"],
+        "title": "StaffUsageSnapshotResponse",
+        "type": "object"
+      },
       "StaffV1AuditPage": {
         "properties": {
           "count": {
@@ -9246,32 +9729,6 @@
         "tags": ["remediation", "agents"]
       }
     },
-    "/api/agent-remediation/dispatch-jules": {
-      "post": {
-        "description": "Retired: Dispatch one of this repo's agent workflows via workflow_dispatch.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
-        "operationId": "dispatch_jules_workflow_api_agent_remediation_dispatch_jules_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Dispatch Jules Workflow",
-        "tags": ["remediation", "agents", "remediation"]
-      }
-    },
     "/api/agent-remediation/history": {
       "get": {
         "description": "Return recent remediation dispatch history.",
@@ -9366,32 +9823,6 @@
         },
         "summary": "Get Agent Providers",
         "tags": ["remediation", "agents"]
-      }
-    },
-    "/api/agents/quick-dispatch": {
-      "post": {
-        "description": "Retired: Dispatch an ad-hoc agent task via Agent-Quick-Dispatch.yml.\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to /api/v1/staff/requests (SC-G5-6 #1503).",
-        "operationId": "api_quick_dispatch_api_agents_quick_dispatch_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Api Quick Dispatch",
-        "tags": ["remediation", "agents", "remediation"]
       }
     },
     "/api/analysis/workflow-machines": {
@@ -9537,34 +9968,6 @@
           }
         },
         "summary": "Get Tool Audit History",
-        "tags": ["assistant", "assistant"]
-      }
-    },
-    "/api/assistant/chat": {
-      "post": {
-        "description": "Retired endpoint (SC-D11, issue #1330).\n\nReturns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console\nconversation API at /api/v1/staff/threads.",
-        "operationId": "assistant_chat_api_assistant_chat_post",
-        "responses": {
-          "410": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AssistantChatResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Assistant Chat",
         "tags": ["assistant", "assistant"]
       }
     },
@@ -10661,7 +11064,7 @@
     },
     "/api/cline/status": {
       "get": {
-        "description": "Return Cline extension detection status.",
+        "description": "Return Cline CLI detection status.",
         "operationId": "get_cline_status_api_cline_status_get",
         "responses": {
           "200": {
@@ -14153,420 +14556,6 @@
         "summary": "Get Local Apps"
       }
     },
-    "/api/maxwell/backends": {
-      "get": {
-        "description": "Proxy GET /api/v1/backends from Maxwell-Daemon (contract-filtered; secrets stripped).",
-        "operationId": "get_maxwell_backends_api_maxwell_backends_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Backends Api Maxwell Backends Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Maxwell Backends",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/chat": {
-      "post": {
-        "description": "Proxy chat messages to Maxwell-Daemon and surface the answer text (#957).\n\nMD's ``/api/chat`` is a request/response JSON endpoint (``ChatResponse``);\nit does not stream and now *rejects* the legacy ``history``/``stream`` fields\nwith a 422 (``extra=\"forbid\"``, MD #995). This proxy therefore:\n\n* carries multi-turn context in MD's ``messages[]`` (translated from the UI's\n  history) so chat is no longer amnesiac;\n* parses the JSON ``ChatResponse`` and emits its ``content`` (not the raw\n  JSON serialization the UI previously rendered);\n* routes codebase-scoped chat to MD's dedicated ``/api/chat/codebase`` route.\n\nThe browser still consumes a ``text/plain`` body via a stream reader, so the\nanswer text is delivered as a single chunk \u2014 no frontend change required\n(the response is single-turn / non-incremental until MD advertises streaming\nas a negotiated capability).",
-        "operationId": "maxwell_chat_api_maxwell_chat_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MaxwellChatBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Maxwell Chat",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/control": {
-      "post": {
-        "description": "Start or stop Maxwell-Daemon service (confirmation required).",
-        "operationId": "maxwell_control_api_maxwell_control_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Maxwell Control Api Maxwell Control Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Maxwell Control",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/cost": {
-      "get": {
-        "description": "Proxy GET /api/v1/cost from Maxwell-Daemon (contract-filtered).",
-        "operationId": "get_maxwell_cost_api_maxwell_cost_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Cost Api Maxwell Cost Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Maxwell Cost",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/daemon-status": {
-      "get": {
-        "description": "Proxy GET /api/status from Maxwell-Daemon (pipeline state + counts, #955).",
-        "operationId": "get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Daemon Status Detail Api Maxwell Daemon Status Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Maxwell Daemon Status Detail",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/dispatch": {
-      "post": {
-        "description": "Proxy POST /api/dispatch to Maxwell-Daemon (issues #349, #953).\n\nPosts to MD's confirmation-gated, idempotent ``POST /api/dispatch`` \u2014 the\nendpoint that actually enforces ``hmac.compare_digest`` on\n``confirmation_token`` and keys idempotency on ``idempotency_key``. The\nprevious target, ``POST /api/v1/tasks``, silently discarded both fields\n(Pydantic ``extra=\"ignore\"``), so the confirmation gate was security theatre\nand retries created duplicate tasks (#953). Caller must supply\n``confirmation_token`` and ``prompt``; server-side injection of the token is\nnot done so the dashboard cannot bypass the daemon-side gate.",
-        "operationId": "maxwell_dispatch_task_api_maxwell_dispatch_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Maxwell Dispatch Task Api Maxwell Dispatch Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Maxwell Dispatch Task",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/pipeline-control/{action}": {
-      "post": {
-        "description": "Proxy POST /api/control/{action} to Maxwell-Daemon (issue #349).\n\nCaller must provide ``confirmation_token``; server-side injection removed.",
-        "operationId": "maxwell_pipeline_control_api_maxwell_pipeline_control__action__post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "action",
-            "required": true,
-            "schema": {
-              "title": "Action",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Maxwell Pipeline Control Api Maxwell Pipeline Control  Action  Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Maxwell Pipeline Control",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/pipeline-state": {
-      "get": {
-        "description": "Proxy GET /api/status (pipeline state + counts) from Maxwell-Daemon (#955).",
-        "operationId": "get_maxwell_pipeline_state_api_maxwell_pipeline_state_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Pipeline State Api Maxwell Pipeline State Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Maxwell Pipeline State",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/status": {
-      "get": {
-        "description": "Probe Maxwell-Daemon status and connectivity (Dashboard-facing).",
-        "operationId": "get_maxwell_status_api_maxwell_status_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Status Api Maxwell Status Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Maxwell Status",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/tasks": {
-      "get": {
-        "description": "Proxy GET /api/tasks from Maxwell-Daemon (contract-filtered).",
-        "operationId": "get_maxwell_tasks_api_maxwell_tasks_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cursor"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Tasks Api Maxwell Tasks Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Maxwell Tasks",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/tasks/{task_id}": {
-      "get": {
-        "description": "Proxy GET /api/tasks/{task_id} from Maxwell-Daemon (contract-filtered).",
-        "operationId": "get_maxwell_task_detail_api_maxwell_tasks__task_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "task_id",
-            "required": true,
-            "schema": {
-              "title": "Task Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Task Detail Api Maxwell Tasks  Task Id  Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Maxwell Task Detail",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/version": {
-      "get": {
-        "description": "Proxy GET /api/version from Maxwell-Daemon (contract-negotiated, #956).\n\nSurfaces the daemon's real version and its advertised contract version, plus a\n``contract_compatible`` flag the Maxwell tab uses to show a degraded-mode\nbanner on a major-version mismatch instead of rendering defaulted data.",
-        "operationId": "get_maxwell_version_api_maxwell_version_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Version Api Maxwell Version Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Maxwell Version",
-        "tags": ["maxwell"]
-      }
-    },
-    "/api/maxwell/workers": {
-      "get": {
-        "description": "Proxy GET /api/v1/workers from Maxwell-Daemon (contract-filtered).",
-        "operationId": "get_maxwell_workers_api_maxwell_workers_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Maxwell Workers Api Maxwell Workers Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Maxwell Workers",
-        "tags": ["maxwell"]
-      }
-    },
     "/api/metrics/web-vitals": {
       "get": {
         "operationId": "get_web_vitals_aggregated_api_metrics_web_vitals_get",
@@ -16291,6 +16280,56 @@
         "tags": ["remediation", "agents", "remediation", "ci-fix"]
       }
     },
+    "/api/remediation/ci-fix/sweep": {
+      "post": {
+        "description": "Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.",
+        "operationId": "sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CIFixSweepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Sweep Ci Fix Endpoint Api Remediation Ci Fix Sweep Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Sweep Ci Fix Endpoint",
+        "tags": ["remediation", "agents", "remediation", "ci-fix"]
+      }
+    },
     "/api/remediation/ci-fix/webhook": {
       "post": {
         "description": "Receive a signed GitHub webhook and queue at most one CI-fix dispatch for its PR.",
@@ -16873,6 +16912,58 @@
           }
         ],
         "summary": "Get Matlab Runner Health",
+        "tags": ["runners"]
+      }
+    },
+    "/api/runners/slot-health/evaluate": {
+      "post": {
+        "description": "Read-only slot-health analysis; optional publish to hub events and Barb lane.",
+        "operationId": "evaluate_slot_health_api_runners_slot_health_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Evaluate Slot Health Api Runners Slot Health Evaluate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Evaluate Slot Health",
         "tags": ["runners"]
       }
     },
@@ -17561,6 +17652,36 @@
         ],
         "summary": "Update Prompt Notes",
         "tags": ["code_requests"]
+      }
+    },
+    "/api/staff/activity/summary": {
+      "get": {
+        "description": "Bounded aggregate for the node auto-deploy activity probe (#2353).\n\nNo runner/provider initialisation and no peer fan-out (see\n``staff.activity_summary`` for the read-only aggregate query).",
+        "operationId": "activity_summary_api_staff_activity_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Activity Summary Api Staff Activity Summary Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Activity Summary",
+        "tags": ["staff"]
       }
     },
     "/api/staff/audit": {
@@ -18264,6 +18385,82 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/host-settings": {
+      "get": {
+        "operationId": "get_host_settings_api_staff_host_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Settings Api Staff Host Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Host Settings",
+        "tags": ["staff"]
+      },
+      "put": {
+        "operationId": "put_host_settings_api_staff_host_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostSettingsPutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Host Settings Api Staff Host Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Host Settings",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/inbox": {
       "get": {
         "description": "Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.",
@@ -18576,6 +18773,67 @@
           }
         ],
         "summary": "Roster",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
         "tags": ["staff"]
       }
     },
@@ -19035,6 +19293,56 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/schedule/leader-lease": {
+      "post": {
+        "description": "Acquire or renew the scheduler leader lease (fleet peer internal contract).",
+        "operationId": "post_leader_lease_api_staff_schedule_leader_lease_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaderLeaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Leader Lease Api Staff Schedule Leader Lease Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Leader Lease",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/schedule/toggle": {
       "post": {
         "description": "Toggle the background scheduler on or off (SC-A8, Issue #1298).",
@@ -19231,6 +19539,82 @@
           }
         ],
         "summary": "Get Pricing",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/usage/snapshot": {
+      "get": {
+        "description": "Fleet-wide provider usage: newest Usage-Tracker snapshot, per-machine staleness (#3042).",
+        "operationId": "get_usage_snapshot_api_staff_usage_snapshot_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffUsageSnapshotResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Usage Snapshot",
+        "tags": ["staff"]
+      },
+      "post": {
+        "description": "Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042).",
+        "operationId": "ingest_usage_snapshot_api_staff_usage_snapshot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Payload",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffUsageSnapshotIngestResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Usage Snapshot",
         "tags": ["staff"]
       }
     },
@@ -19904,6 +20288,286 @@
         "tags": ["usage-metrics"]
       }
     },
+    "/api/v1/activity": {
+      "get": {
+        "description": "Return a bounded cursor page; readers cannot mutate stored metadata.",
+        "operationId": "read_activity_api_v1_activity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Activity",
+        "tags": ["activity"]
+      }
+    },
+    "/api/v1/activity/checkins": {
+      "post": {
+        "description": "Write-only tier for agents off the tailnet (Cursor cloud, unconnected boxes).\n\nThe ``activity.checkin`` scope is never combined with a read or chat scope,\nso a check-in credential cannot read activity, staff threads or anything else.",
+        "operationId": "checkin_activity_api_v1_activity_checkins_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityEnvelope"
+                  },
+                  "title": "Response Checkin Activity Api V1 Activity Checkins Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Checkin Activity",
+        "tags": ["activity"]
+      }
+    },
+    "/api/v1/activity/events": {
+      "post": {
+        "operationId": "ingest_activity_api_v1_activity_events_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityEnvelope"
+                  },
+                  "title": "Response Ingest Activity Api V1 Activity Events Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ingest Activity",
+        "tags": ["activity"]
+      }
+    },
+    "/api/v1/activity/sessions": {
+      "get": {
+        "description": "Every agent/session checked into the fleet, grouped by node and status (#2860).\n\nStatus is derived entirely from persisted activity-log events (never from an\nin-memory cache), so this is identical after a restart. See\n``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.",
+        "operationId": "read_activity_sessions_api_v1_activity_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Node"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Activity Sessions",
+        "tags": ["activity"]
+      }
+    },
     "/api/v1/agent/backlog": {
       "get": {
         "operationId": "get_backlog_api_v1_agent_backlog_get",
@@ -20372,6 +21036,85 @@
         "tags": ["diagnostics"]
       }
     },
+    "/api/v1/fleet/brief": {
+      "get": {
+        "operationId": "get_fleet_brief_api_v1_fleet_brief_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|markdown)$",
+              "title": "Format",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Fleet Brief Api V1 Fleet Brief Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet Brief",
+        "tags": ["fleet-brief"]
+      }
+    },
     "/api/v1/fleet/friction": {
       "get": {
         "operationId": "list_friction_api_v1_fleet_friction_get",
@@ -20607,6 +21350,67 @@
         ],
         "summary": "Friction Recurrence",
         "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/overload": {
+      "get": {
+        "operationId": "get_fleet_overload_api_v1_fleet_overload_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "open_count_threshold",
+            "required": false,
+            "schema": {
+              "default": 15,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Open Count Threshold",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Fleet Overload Api V1 Fleet Overload Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet Overload",
+        "tags": ["fleet-overload"]
       }
     },
     "/api/v1/fleet/owner-questions": {
@@ -23468,6 +24272,53 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/avatars/{avatar_rel}": {
+      "get": {
+        "description": "Serve a role's persona image from RM ``staff/avatars/`` (#2680).",
+        "operationId": "avatar_v1_api_v1_staff_avatars__avatar_rel__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "avatar_rel",
+            "required": true,
+            "schema": {
+              "title": "Avatar Rel",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Avatar V1",
+        "tags": ["staff-v1", "staff-avatars"]
+      }
+    },
     "/api/v1/staff/barb/classify-surface": {
       "post": {
         "operationId": "post_barb_classify_surface_api_v1_staff_barb_classify_surface_post",
@@ -24313,7 +25164,7 @@
           }
         ],
         "summary": "Context Agents Sync V1",
-        "tags": ["staff-v1"]
+        "tags": ["staff-v1", "staff-context"]
       }
     },
     "/api/v1/staff/exclusions": {
@@ -24834,6 +25685,82 @@
         "tags": ["staff-v1"]
       }
     },
+    "/api/v1/staff/host-settings": {
+      "get": {
+        "operationId": "get_host_settings_api_v1_staff_host_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Settings Api V1 Staff Host Settings Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Host Settings",
+        "tags": ["staff"]
+      },
+      "put": {
+        "operationId": "put_host_settings_api_v1_staff_host_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HostSettingsPutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Host Settings Api V1 Staff Host Settings Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Host Settings",
+        "tags": ["staff"]
+      }
+    },
     "/api/v1/staff/inbox": {
       "get": {
         "description": "Retrieve aggregated 'Waiting on you' inbox items requiring operator attention.",
@@ -24981,6 +25908,24 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
             }
           }
         ],
@@ -25245,6 +26190,74 @@
       }
     },
     "/api/v1/staff/panels": {
+      "get": {
+        "description": "Recent panel threads with status and progress; newest activity first.",
+        "operationId": "list_panels_api_v1_staff_panels_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Panels Api V1 Staff Panels Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List recent expert panels",
+        "tags": ["staff-panels"]
+      },
       "post": {
         "description": "Create a panel thread and run it in the background.\n\nPre: ``body`` passed :class:`PanelCreateRequest`; fewer than ``MAX_ACTIVE_PANELS`` are running;\nthe estimate is under the group cost threshold or ``confirm_cost`` is true.\nPost: 202 with the thread and the estimate; the turns arrive on the thread's stream.",
         "operationId": "create_panel_api_v1_staff_panels_post",
@@ -25296,7 +26309,7 @@
     },
     "/api/v1/staff/panels/presets": {
       "get": {
-        "description": "Ready-made expert line-ups; every seat defaults to ``claude``. Providers switched off here are left out.",
+        "description": "Ready-made line-ups; each seat carries provider, model and ``available`` (False if its provider is off here).",
         "operationId": "get_panel_presets_api_v1_staff_panels_presets_get",
         "responses": {
           "200": {
@@ -25373,6 +26386,207 @@
         ],
         "summary": "Expert panel state",
         "tags": ["staff-panels"]
+      }
+    },
+    "/api/v1/staff/panels/{thread_id}/digest": {
+      "get": {
+        "description": "Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel.",
+        "operationId": "get_panel_digest_api_v1_staff_panels__thread_id__digest_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Panel Digest Api V1 Staff Panels  Thread Id  Digest Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Expert panel verdict digest",
+        "tags": ["staff-panels"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene": {
+      "post": {
+        "description": "Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run reruns only the failed\nruns it planned to rerun, and the batch is always audited.",
+        "operationId": "pr_hygiene_api_v1_staff_pr_hygiene_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Api V1 Staff Pr Hygiene Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene/closes-refs": {
+      "post": {
+        "description": "Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run retexts only the flagged\n``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.",
+        "operationId": "pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Closes Refs Api V1 Staff Pr Hygiene Closes Refs Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene Closes Refs",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/pr-hygiene/rearm": {
+      "post": {
+        "description": "Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.\n\nPre: every item names an in-org repo and an existing PR. Post: one result per\nitem; a dry run changes nothing on GitHub, a live run re-arms only a PR that\nis open, not already armed and not held back (``automerge_guard.evaluate_hold``),\nand the batch is always audited. Never admin-merges, force-pushes or closes.",
+        "operationId": "pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrHygieneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pr Hygiene Rearm Api V1 Staff Pr Hygiene Rearm Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Pr Hygiene Rearm",
+        "tags": ["staff-v1", "staff-pr-hygiene"]
       }
     },
     "/api/v1/staff/projects": {
@@ -26180,6 +27394,67 @@
           }
         ],
         "summary": "Roster V1",
+        "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/roles/{role}/model": {
+      "put": {
+        "description": "Audited runtime model-selector override for a role (epic #3295 S2).\n\nThe YAML ``failover_chain``/``model`` stays the default; this persists an\noperator override on top of it, one audit row and one persona fyi per switch.",
+        "operationId": "put_role_model_api_v1_staff_roles__role__model_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RoleModelOverrideBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Role Model Api V1 Staff Roles  Role  Model Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Role Model",
         "tags": ["staff-v1"]
       }
     },

@@ -16,9 +16,9 @@ every run, and streams the output to the operator console.
 | Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir                                                 |
 | Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent` on `PATH`; an Ollama server for `ollama`/`claude-ollama` |
 
-On DeskComputer-class nodes the dashboard service runs in **WSL** while provider CLIs are often
+On hub-a-class nodes the dashboard service runs in **WSL** while provider CLIs are often
 installed on Windows. Symlink `~/.local/bin/agy` to the WinGet `agy.exe` (see
-`docs/operations/controltower-staff-worker.md`). Staff dispatch executes `agy` from WSL `PATH`; a
+`docs/operations/node-a-staff-worker.md`). Staff dispatch executes `agy` from WSL `PATH`; a
 missing binary is classified `cli_missing`, an expired Google session `auth_expired` (run
 `agy` in WSL (select Google OAuth) and complete the browser flow).
 
@@ -45,7 +45,7 @@ missing binary is classified `cli_missing`, an expired Google session `auth_expi
 | POST   | `/api/staff/usage/export`     | orchestrator peer         | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout)                                                    |
 | GET    | `/api/staff/quota`            | fleet peer                | Billing kind and live plan windows per provider (#1587); local files only                                                                                                                                 |
 
-Fleet hub only (DeskComputer):
+Fleet hub only (hub-a):
 
 | Method | Path                   | Auth                        | Purpose                                                                      |
 | ------ | ---------------------- | --------------------------- | ---------------------------------------------------------------------------- |
@@ -324,11 +324,11 @@ them and never to contradict a directive. The paragraph appears as `focus` in a 
 
 Verified machine state, deployment identity, provider health evidence, network
 configuration, and rollback paths are recorded in the
-[OGLaptop worker runbook](operations/oglaptop-staff-worker.md) and
-[ControlTower worker runbook](operations/controltower-staff-worker.md). Check their
+[node-b worker runbook](operations/node-b-staff-worker.md) and
+[node-a worker runbook](operations/node-a-staff-worker.md). Check their
 verification dates and the live API before assuming the recorded state still holds.
 
-A node that runs staff roles needs four things beyond the dashboard install. DeskComputer was set up this
+A node that runs staff roles needs four things beyond the dashboard install. hub-a was set up this
 way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspace does all of it.
 
 1. **systemd drop-in** `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf`. The provider CLIs are
@@ -363,14 +363,14 @@ Use the dedicated **Linux** clone on `main`, with these absolute paths in
 `~/.config/runner-dashboard/env` (back up that file before changing it):
 
 ```ini
-STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management
-STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles
-GIT_CONFIG_GLOBAL=/home/dieterolson/.config/runner-dashboard/staff.gitconfig
+STAFF_RM_ROOT=/home/fleet-operator/staff-repos/Repository_Management
+STAFF_ROLES_DIR=/home/fleet-operator/staff-repos/Repository_Management/staff/roles
+GIT_CONFIG_GLOBAL=/home/fleet-operator/.config/runner-dashboard/staff.gitconfig
 ```
 
 Keep the former `~/staff-bundle/rm` directory for rollback; it is no longer the
-role source after migration. Preserve each node's scheduler setting: OGLaptop
-and ControlTower stay at `STAFF_SCHEDULER_ENABLED=0`; DeskComputer owns scheduling.
+role source after migration. Preserve each node's scheduler setting: node-b
+and node-a stay at `STAFF_SCHEDULER_ENABLED=0`; hub-a owns scheduling.
 
 Install the packaged `deploy/systemd-user/runner-dashboard-rm-sync.service` and
 `.timer` into `~/.config/systemd/user` (back up existing units first), then:
@@ -422,7 +422,7 @@ powershell.exe -NoProfile -File .\deploy\windows\ollama-wsl-bridge.ps1 -Install 
 ```
 
 The **owner**, in an elevated PowerShell, installs it with the same command
-without `-DryRun`. OGLaptop's earlier manually configured bridge requires the
+without `-DryRun`. node-b's earlier manually configured bridge requires the
 explicit `-AdoptExisting` flag on both commands; adoption only accepts its exact
 narrow address/subnet/interface rule and loopback forward. Foreign resources
 are refused, including conflicting port 11434 forwards and same-name tasks.
@@ -456,14 +456,14 @@ curl --fail --max-time 10 "http://$gateway:11434/api/version"
 Then run the `ollama` and `claude-ollama` dashboard ad-hoc health checks and
 confirm both reach `succeeded`. From a different tailnet host, port 11434 must
 remain unreachable. These are operator acceptance steps; dry-run tests do not
-establish reboot or external-connectivity success. OGLaptop remains scheduler-off.
+establish reboot or external-connectivity success. node-b remains scheduler-off.
 
 ### Node LAN addressing: duplicate-address outages (#1270)
 
 A node that reboots can be handed a DHCP address that another LAN device still
 uses. Windows then logs System/Tcpip event **4199** ("duplicate IP address"),
 and the node loses DNS, internet and Tailscale although its services recover.
-This happened to OGLaptop on 2026-09-23. The other device kept answering ARP,
+This happened to node-b on 2026-09-23. The other device kept answering ARP,
 but not ping, for an address outside the router's lease table. Typical sources
 are TVs, cameras and IoT devices with a static address inside the DHCP pool, or
 devices that keep an old lease across a router or mesh-node restart. Firewall
@@ -506,9 +506,9 @@ does not repeat it.
 
 The Staff Hub operates across three primary hardware nodes:
 
-1. **DeskComputer** — The dedicated fleet scheduler (`STAFF_SCHEDULER_ENABLED=1`).
-2. **OGLaptop** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [OGLaptop worker runbook](operations/oglaptop-staff-worker.md).
-3. **ControlTower** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [ControlTower worker runbook](operations/controltower-staff-worker.md).
+1. **hub-a** — The dedicated fleet scheduler (`STAFF_SCHEDULER_ENABLED=1`).
+2. **node-b** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [node-b worker runbook](operations/node-b-staff-worker.md).
+3. **node-a** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [node-a worker runbook](operations/node-a-staff-worker.md).
 
 ### Unified Acceptance Standard
 
@@ -522,7 +522,7 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 
 ### Fleet Qualification Matrix
 
-| Dimension                     | DeskComputer                               | OGLaptop                                   | ControlTower                               |
+| Dimension                     | hub-a                               | node-b                                   | node-a                               |
 | ----------------------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
 | **Role**                      | Scheduler                                  | Worker                                     | Worker                                     |
 | **`STAFF_SCHEDULER_ENABLED`** | `1`                                        | `0`                                        | `0`                                        |
@@ -544,7 +544,7 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 4. **Service Drop-in**: `staff-hub.conf` has `MemoryDenyWriteExecute=false`, provider PATH, and all required `ReadWritePaths`.
 5. **Dynamic Role Sync**: `rm_source` in `/api/staff/board?local=1` reports status `updated` or `unchanged`, checked within the last hour; active timer refreshes at most every 15 min.
 6. **Holds**: `/api/staff/schedule` reports no worker roles blocked by active holds.
-7. **Scheduler Invariant**: Only DeskComputer runs with `STAFF_SCHEDULER_ENABLED=1`; worker nodes strictly enforce `0`.
+7. **Scheduler Invariant**: Only hub-a runs with `STAFF_SCHEDULER_ENABLED=1`; worker nodes strictly enforce `0`.
 8. **Ollama Reachability**: Gateway `11434/api/version` returns HTTP 200 without exposing Ollama to the physical LAN or Tailscale.
 9. **Provider Verification**: Ad-hoc health check runs succeed with exit code 0 and emit `STAFF_RESULT: ok`.
 
@@ -700,6 +700,14 @@ External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) int
 - [**Claude Code & Cowork Guide**](agents/claude.md) — Claude MCP setup, `staff.chat` token scopes, and conversing with Barb.
 - [**Codex CLI Guide**](agents/codex.md) — `config.toml` MCP configuration, bot principals, and work-item tracking.
 - [**Grok Bot Guide**](agents/grok.md) — Local-exec `curl` recipes, active Barb/Orchestrator roles, and remote connector notes.
+
+## Panel repo grounding (#2511)
+
+When a panel request includes `repos`, each expert seat runs with its working directory set to a disposable, read-only snapshot of `origin/main` (`git archive`: tracked files only, no `.git`, one folder per repo) and may use only read tools (Read, Grep, Glob; the CLI keeps its read-only flag), so it can verify the code it cites. The moderator still gets no tools. The snapshot is deleted when the panel ends. Set `ground_repos: false` to keep the old prompt-only behaviour (the Cartographer excerpt preload is unaffected). A repo with no local checkout, or an oversized one (> 400 MB), is skipped with a log line.
+
+```bash
+curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Bearer $DASHBOARD_TOKEN" -H "Content-Type: application/json" -H "X-Requested-With: XMLHttpRequest" -d '{"topic": "Does the heater model match the data?", "rounds": 2, "mode": "debate", "confirm_cost": true, "repos": ["Runner_Dashboard"], "experts": [{"name": "Ada", "perspective": "numerical methods"}, {"name": "Brook", "perspective": "experiments"}, {"name": "Cy", "perspective": "operations"}]}'
+```
 
 ## Not yet here (tracked in the epic)
 

@@ -21,6 +21,7 @@ import userEvent from "@testing-library/user-event";
 // Thread resolution hits the backend (#1446); keep it hermetic.
 const threadApi = vi.hoisted(() => ({
   fetchThreads: vi.fn(),
+  fetchThread: vi.fn(),
   fetchThreadMessages: vi.fn(),
   fetchRoster: vi.fn(),
   fetchRuns: vi.fn(),
@@ -111,10 +112,10 @@ const MOCK_MESSAGES: ThreadMessage[] = [
         thread_id: "thread-barb-auto",
         message_id: "msg-prop",
         action: "maintenance.trim_worktrees",
-        description: "Trim 12 stale git worktrees on ControlTower",
+        description: "Trim 12 stale git worktrees on node-a",
         risk_level: "medium",
         status: "proposed",
-        params: { host: "ControlTower" },
+        params: { host: "node-a" },
         created_at: "2026-09-25T12:01:00Z",
       },
     },
@@ -415,7 +416,7 @@ describe("StaffConsoleMobile (SC-D8)", () => {
 
     await waitFor(() => expect(approveBtn).toBeEnabled());
     fireEvent.click(approveBtn);
-    expect(onApproveProposal).toHaveBeenCalledWith("prop-999", { host: "ControlTower" }, "e".repeat(64));
+    expect(onApproveProposal).toHaveBeenCalledWith("prop-999", { host: "node-a" }, "e".repeat(64));
   });
 
   it("opens thread view directly when ?thread=<id> is present in the URL", () => {
@@ -540,5 +541,127 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(css).toMatch(/\.staff-mobile__tab\s*\{[^}]*min-height:\s*44px/);
     expect(css).toMatch(/\.staff-action-card__btn\s*\{[^}]*min-height:\s*44px/);
     expect(css).toMatch(/env\(safe-area-inset-bottom/);
+  });
+
+  // #2663: the mobile console must follow a Barb thread selected from the
+  // shell's sidebar (same onThreadSelected contract as #2652's Desktop fix)
+  // and fail closed — never send to a stale thread — while the newly
+  // selected id is still being fetched and authorized, or if that fails.
+  describe("route-selected thread sync and fail-closed composer lock (#2663)", () => {
+    const THREAD_B: ThreadInfo = {
+      id: "thread-barb-b",
+      title: "New Barb Mission",
+      kind: "auto",
+      participants: ["user", "barb"],
+      status: "active",
+    };
+    const THREAD_MAINT: ThreadInfo = {
+      id: "thread-maint",
+      title: "Fleet Maintenance",
+      kind: "direct",
+      participants: ["user", "maintenance"],
+      status: "active",
+    };
+
+    function renderOnThreadA() {
+      return render(
+        <StaffConsoleMobile
+          roles={MOCK_ROLES}
+          initialThread={MOCK_BARB_THREAD}
+          initialMessages={MOCK_MESSAGES}
+          initialView="thread"
+        />,
+      );
+    }
+
+    it("mobile console follows sidebar Barb selection", async () => {
+      const { rerender } = renderOnThreadA();
+      expect(screen.getByText("Conversation with Barb")).toBeInTheDocument();
+
+      threadApi.fetchThread.mockResolvedValue({ thread: THREAD_B, messages: [] });
+      window.location.search = "?role=barb&thread=thread-barb-b";
+      rerender(
+        <StaffConsoleMobile
+          roles={MOCK_ROLES}
+          initialThread={MOCK_BARB_THREAD}
+          initialMessages={MOCK_MESSAGES}
+          initialView="thread"
+        />,
+      );
+
+      await waitFor(() => expect(screen.getByText("New Barb Mission")).toBeInTheDocument());
+      expect(threadApi.fetchThread).toHaveBeenCalledWith("thread-barb-b", expect.anything());
+    });
+
+    it("mobile composer cannot send or stage attachments while selected thread is pending or failed", async () => {
+      let resolveFetch!: (value: { thread: ThreadInfo; messages: ThreadMessage[] }) => void;
+      threadApi.fetchThread.mockReturnValue(
+        new Promise((resolve) => { resolveFetch = resolve; }),
+      );
+
+      const { rerender } = renderOnThreadA();
+      window.location.search = "?role=barb&thread=thread-barb-b";
+      rerender(
+        <StaffConsoleMobile
+          roles={MOCK_ROLES}
+          initialThread={MOCK_BARB_THREAD}
+          initialMessages={MOCK_MESSAGES}
+          initialView="thread"
+        />,
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole("status")).toHaveTextContent(/opening a conversation/i),
+      );
+      expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+      expect(screen.getByTestId("composer-attach-btn")).toBeDisabled();
+
+      await act(async () => { resolveFetch({ thread: THREAD_B, messages: [] }); });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("composer-attach-btn")).not.toBeDisabled(),
+      );
+    });
+
+    it("dismissing a load error does not unlock the previous thread", async () => {
+      threadApi.fetchThread.mockRejectedValue(new Error("not authorized for this thread"));
+
+      const { rerender } = renderOnThreadA();
+      window.location.search = "?role=barb&thread=thread-barb-b";
+      rerender(
+        <StaffConsoleMobile
+          roles={MOCK_ROLES}
+          initialThread={MOCK_BARB_THREAD}
+          initialMessages={MOCK_MESSAGES}
+          initialView="thread"
+        />,
+      );
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(/not authorized for this thread/i);
+      expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
+
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByText("Conversation with Barb")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    });
+
+    it("specialist routing stays isolated from sidebar selection; drafts stay with their thread", async () => {
+      threadApi.fetchThreads.mockResolvedValue({ threads: [MOCK_BARB_THREAD, THREAD_MAINT] });
+      renderOnThreadA();
+      expect(screen.getByText("Conversation with Barb")).toBeInTheDocument();
+      expect(screen.getByTestId("composer-attach-btn")).not.toBeDisabled();
+
+      fireEvent.click(screen.getByTestId("staff-mobile-back-btn"));
+      fireEvent.click(screen.getByTestId("staff-mobile-role-maintenance"));
+
+      await waitFor(() => expect(screen.getByText("Fleet Maintenance")).toBeInTheDocument());
+      // A stale Barb route id from the first thread must not lock the
+      // composer once the console has locally, and successfully, switched
+      // to a specialist's own authorized thread.
+      expect(screen.getByTestId("composer-attach-btn")).not.toBeDisabled();
+    });
   });
 });

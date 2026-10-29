@@ -45,14 +45,14 @@ function endpointPayload(url: string): unknown {
         runners: [
           {
             id: 1,
-            name: "d-sorg-local-ControlTower-1",
+            name: "d-sorg-local-node-a-1",
             status: "online",
             busy: false,
             labels: ["self-hosted"],
           },
           {
             id: 2,
-            name: "d-sorg-local-DeskComputer-1",
+            name: "d-sorg-local-hub-a-1",
             status: "offline",
             busy: false,
             labels: [],
@@ -69,7 +69,7 @@ function endpointPayload(url: string): unknown {
       return {
         nodes: [
           {
-            name: "ControlTower",
+            name: "node-a",
             online: true,
             dashboard_reachable: true,
             health: { runners_registered: 1 },
@@ -182,7 +182,7 @@ describe("OverviewPage", () => {
       ),
     );
 
-    const stopRunner = screen.getByRole("button", { name: /^Stop$/ });
+    const stopRunner = screen.getByRole("button", { name: /Stop runner/i });
     await waitFor(() => expect(stopRunner).not.toBeDisabled());
     fireEvent.click(stopRunner);
     await waitFor(() =>
@@ -234,7 +234,7 @@ describe("OverviewPage", () => {
 
     // Open row actions menu for runner
     const runnerActionsBtn = await screen.findByRole("button", {
-      name: "Actions for runner d-sorg-local-ControlTower-1",
+      name: "Actions for runner d-sorg-local-node-a-1",
     });
     fireEvent.click(runnerActionsBtn);
 
@@ -255,14 +255,14 @@ describe("OverviewPage", () => {
     // Verifies execution
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/api/runners/d-sorg-local-ControlTower-1/stop"),
+        expect.stringContaining("/api/runners/d-sorg-local-node-a-1/stop"),
         expect.objectContaining({ method: "POST" }),
       );
     });
 
     await waitFor(() => {
       expect(
-        screen.getByText(/verified: Runner 'd-sorg-local-ControlTower-1' verified stopped/i),
+        screen.getByText(/verified: Runner 'd-sorg-local-node-a-1' verified stopped/i),
       ).toBeInTheDocument();
     });
   });

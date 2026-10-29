@@ -20,7 +20,7 @@ The Antigravity CLI (`agy`) provides headless and unattended execution using Goo
 
 `agy` must be accessible on `PATH` for the user running the dashboard daemon or staff worker.
 
-### Windows (DeskComputer, OGLaptop)
+### Windows (hub-a, node-b)
 
 Install via WinGet or direct installer:
 
@@ -34,7 +34,7 @@ Verify binary presence:
 agy --version
 ```
 
-### Linux / WSL (ControlTower, DeskComputer WSL)
+### Linux / WSL (node-a, hub-a WSL)
 
 Install the native Linux CLI using the [official installer](https://antigravity.google/cli/install.sh), as the service user. Ensure the installed `agy` is on the dashboard service PATH. Avoid linking a Windows `agy.exe`: sign-in can work from a Windows directory and fail from a Linux worktree.
 

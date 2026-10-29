@@ -104,6 +104,37 @@ describe("StatsTab", () => {
     expect(screen.getByText(/Not enough data yet/)).toBeInTheDocument();
   });
 
+  it("does not refresh when Collect now is rejected by the backend (#3028)", async () => {
+    global.fetch = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: { message: "collector down" } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve(jsonResponse(ROWS));
+    }) as unknown as typeof fetch;
+    render(<StatsTab />);
+    await waitFor(() => expect(screen.getByText("CI Standard")).toBeInTheDocument());
+    const getCalls = () =>
+      (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method !== "POST",
+      ).length;
+    const before = getCalls();
+
+    fireEvent.click(screen.getByText("Collect now"));
+
+    await waitFor(() => {
+      const posts = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(posts.length).toBe(1);
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(getCalls()).toBe(before);
+  });
+
   it("changing the group-by control refetches", async () => {
     routeFetch([["/api/stats/workflows", ROWS]]);
     render(<StatsTab />);
@@ -156,7 +187,7 @@ describe("AnalysisOutcomesTab", () => {
           success_rate: 88,
           failure_reasons: { timeout: 3, oom: 1 },
           machines: [
-            { machine_name: "ControlTower", count: 50, success_rate: 90, avg_duration_seconds: 120 },
+            { machine_name: "node-a", count: 50, success_rate: 90, avg_duration_seconds: 120 },
           ],
           workflows: [
             {
@@ -173,7 +204,7 @@ describe("AnalysisOutcomesTab", () => {
               key: "rd/ci/ct",
               repo: "Runner_Dashboard",
               workflow_name: "CI",
-              machine_name: "ControlTower",
+              machine_name: "node-a",
               count: 30,
               success_rate: 92,
               avg_duration_seconds: 150,
@@ -183,8 +214,8 @@ describe("AnalysisOutcomesTab", () => {
       ],
     ]);
     render(<AnalysisOutcomesTab />);
-    // "ControlTower" appears in both the machine table and the matrix table.
-    await waitFor(() => expect(screen.getAllByText("ControlTower").length).toBeGreaterThan(0));
+    // "node-a" appears in both the machine table and the matrix table.
+    await waitFor(() => expect(screen.getAllByText("node-a").length).toBeGreaterThan(0));
     expect(screen.getByText("Recent enriched runs")).toBeInTheDocument();
     expect(screen.getByText("88%")).toBeInTheDocument();
     expect(screen.getByText("Machine Health From Jobs")).toBeInTheDocument();

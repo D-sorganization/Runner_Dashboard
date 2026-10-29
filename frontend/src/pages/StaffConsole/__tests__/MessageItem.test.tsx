@@ -2,7 +2,7 @@
 /** System-authored card messages keep their card; plain system notices render markdown (#1718). */
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MessageItem } from "../MessageItem";
 import type { ThreadMessage } from "../threadTypes";
@@ -95,5 +95,45 @@ describe("MessageItem action warnings (#1774)", () => {
   it("renders nothing when the message has no warnings", () => {
     render(<MessageItem message={roleMessage({})} />);
     expect(screen.queryByRole("note", { name: /action warnings/i })).not.toBeInTheDocument();
+  });
+});
+
+/** #2680: a persona avatar image replaces the letter circle in the thread header when available. */
+describe("MessageItem avatar", () => {
+  function roleMessage(overrides: Partial<ThreadMessage>): ThreadMessage {
+    return {
+      id: "m3",
+      thread_id: "t1",
+      author: "barb",
+      author_kind: "staff",
+      kind: "text",
+      body_md: "On it.",
+      delivery: "complete",
+      created_at: "2026-09-28T00:00:00Z",
+      ...overrides,
+    } as ThreadMessage;
+  }
+
+  it("renders an <img> when avatarUrl is provided", () => {
+    render(<MessageItem message={roleMessage({})} avatarUrl="/api/v1/staff/avatars/barb.webp" />);
+    const img = screen.getByTestId("message-m3").querySelector("img.thread-avatar--image");
+    expect(img).toHaveAttribute("src", "/api/v1/staff/avatars/barb.webp");
+  });
+
+  it("falls back to the letter circle when avatarUrl is absent", () => {
+    render(<MessageItem message={roleMessage({})} />);
+    const header = screen.getByTestId("message-m3");
+    expect(header?.querySelector("img")).toBeNull();
+    expect(header?.querySelector(".thread-avatar")).toHaveTextContent("B");
+  });
+
+  it("falls back to the letter circle when the avatar image fails to load", () => {
+    render(<MessageItem message={roleMessage({})} avatarUrl="/api/v1/staff/avatars/missing.webp" />);
+    const header = screen.getByTestId("message-m3");
+    const img = header.querySelector("img.thread-avatar--image") as HTMLImageElement;
+    expect(img).not.toBeNull();
+    fireEvent.error(img);
+    expect(header.querySelector("img")).toBeNull();
+    expect(header.querySelector(".thread-avatar")).toHaveTextContent("B");
   });
 });

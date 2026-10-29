@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, format_caller, principal_has_scope, require_scope
 from pydantic import BaseModel, Field
 from staff.barb_continuity import classify_task_surface, get_barb_continuity_store
-from staff.barb_lease_fence import barb_write_fence, parse_barb_claim
+from staff.barb_lease_fence import barb_write_fence, claim_for_write
 from staff.barb_runtime import barb_status
 from staff.runner import get_runner
 
@@ -282,7 +282,7 @@ async def post_barb_turnover(
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     author = bind_holder(_caller, req.holder)
-    claim = parse_barb_claim(request.headers, _caller.id)
+    claim = claim_for_write(request.headers, _caller, surface="barb.turnover")
     if claim is not None and claim.scope != req.scope:
         raise HTTPException(
             status_code=422, detail={"error": "barb_scope_mismatch", "header": claim.scope, "body": req.scope}
@@ -322,7 +322,7 @@ async def post_barb_inventory(
     request: Request,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
-    claim = parse_barb_claim(request.headers, _caller.id)
+    claim = claim_for_write(request.headers, _caller, surface="barb.inventory")
     with barb_write_fence(
         claim, surface="barb.inventory", target=f"barb:inventory:{req.scope}", principal=format_caller(_caller)
     ):
@@ -358,7 +358,7 @@ async def post_barb_handoff(
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     target_state = _HANDOFF_ACTION_MAP.get(req.action, req.action)
-    claim = parse_barb_claim(request.headers, _caller.id)
+    claim = claim_for_write(request.headers, _caller, surface="barb.handoff")
     try:
         with barb_write_fence(
             claim, surface="barb.handoff", target=f"barb:handoff:{req.task_id}", principal=format_caller(_caller)

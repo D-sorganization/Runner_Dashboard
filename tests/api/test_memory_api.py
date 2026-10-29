@@ -84,13 +84,26 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_grok_writes_session_digest(remote_client: TestClient, memory_env: dict[str, str]) -> None:
+def test_grok_writes_session_digest(
+    remote_client: TestClient, memory_env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff import barb_continuity  # noqa: PLC0415
+
+    store = barb_continuity.BarbContinuityStore(tmp_path / "barb_continuity.sqlite3")
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", store)
+    lease = store.checkout_lease(scope="barb:memory", holder="agent-grok")["lease"]
+
     read = remote_client.get("/api/v1/memory/context-pack", headers=_auth(memory_env["grok"]))
     assert read.status_code == 200
 
     write = remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["grok"])},
+        headers={
+            **_XHR,
+            **_auth(memory_env["grok"]),
+            "X-Barb-Scope": "barb:memory",
+            "X-Barb-Lease-Epoch": str(lease["epoch"]),
+        },
         json={
             "entry_type": "session_digest",
             "source_product": "grokbot",
@@ -135,7 +148,7 @@ def test_task_supersede_chain(remote_client: TestClient, memory_env: dict[str, s
             "source_product": "codex",
             "body": {
                 "title": "Ship memory API",
-                "owner": "dieter",
+                "owner": "operator",
                 "status": "open",
                 "recommendation": "merge PR1",
             },
@@ -153,7 +166,7 @@ def test_task_supersede_chain(remote_client: TestClient, memory_env: dict[str, s
             "supersedes_id": first_id,
             "body": {
                 "title": "Ship memory API",
-                "owner": "dieter",
+                "owner": "operator",
                 "status": "in_progress",
                 "recommendation": "merge PR2",
             },
@@ -221,7 +234,7 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
         "source_product": "dashboard",
         "conversation_id": "thread-42",
         "user_message_id": "message-8",
-        "reported_origin_principal": f"human:dieterolson token {origin_secret}",
+        "reported_origin_principal": f"human:fleet-operator token {origin_secret}",
         "summary": f"Decided to ship; token {secret}",
         "decisions": ["Keep memory canonical"],
         "open_items": ["Verify replay"],
@@ -237,7 +250,7 @@ def test_session_digest_is_bounded_redacted_and_idempotent(
     assert first.json()["entry"]["id"] == replay.json()["entry"]["id"]
     entry = first.json()["entry"]
     assert entry["author_principal"].endswith("memory-digest-summarizer-test")
-    assert entry["body"]["reported_origin_principal"] == "human:dieterolson token [REDACTED_GITHUB_TOKEN]"
+    assert entry["body"]["reported_origin_principal"] == "human:fleet-operator token [REDACTED_GITHUB_TOKEN]"
     assert "[REDACTED_GITHUB_TOKEN]" in entry["body"]["summary"]
     assert secret not in first.text
     assert origin_secret not in first.text

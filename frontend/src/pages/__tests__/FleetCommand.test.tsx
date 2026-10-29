@@ -43,7 +43,7 @@ describe("FleetCommandPage — priorities", () => {
     const table = screen.getByTestId("priorities-active");
     expect(within(table).getByText("Coordination API")).toBeInTheDocument();
     expect(within(table).getByText("claude")).toBeInTheDocument();
-    expect(within(table).getByRole("link", { name: "#1229" })).toHaveAttribute(
+    expect(within(table).getByRole("link", { name: /Open tracking link for Coordination API/i })).toHaveAttribute(
       "href",
       "https://github.com/D-sorganization/Runner_Dashboard/issues/1229",
     );
@@ -110,7 +110,7 @@ describe("FleetCommandPage — priorities", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Board meeting" }), { target: { value: "2026-09-14" } });
     await waitFor(() => expect(screen.getByText("Staff Hub")).toBeInTheDocument());
     expect(screen.getByTestId("priorities-date")).toHaveTextContent("2026-09-14");
-    expect(screen.getByRole("link", { name: "Runner_Dashboard#1192" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Open tracking link for Staff Hub/i })).toHaveAttribute(
       "href",
       "https://github.com/D-sorganization/Runner_Dashboard/issues/1192",
     );
@@ -227,7 +227,7 @@ describe("FleetCommandPage — messages", () => {
     expect(screen.getByLabelText("Repo")).toHaveValue("Runner_Dashboard");
     fireEvent.change(screen.getByLabelText("Issue"), { target: { value: "7" } });
     fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Please rebase on main" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: /Send fleet message/i }));
 
     await waitFor(() => expect(writes(fetchMock, "POST")).toHaveLength(2));
     expect(writes(fetchMock, "POST")[0][0]).toBe("/api/coordination/presence");

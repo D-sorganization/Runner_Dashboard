@@ -28,6 +28,7 @@ from typing import Any
 
 from fleet_barb_claim import BarbClaimMixin
 from fleet_barb_seat import BarbSeatMixin
+from fleet_checkin import CheckinClientMixin
 from fleet_exclusion_tools import ExclusionClientMixin
 from fleet_friction_tools import FrictionClientMixin
 from fleet_memory_brief import MemoryBriefMixin
@@ -94,7 +95,9 @@ DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
-class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin):
+class FleetClient(
+    BarbClaimMixin, BarbSeatMixin, CheckinClientMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin
+):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""
 
@@ -146,7 +149,7 @@ class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionC
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
-    def request(
+    def request(  # type: ignore[override]
         self,
         method: str,
         path: str,
@@ -155,6 +158,7 @@ class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionC
         body: Any = None,
         headers: dict[str, str] | None = None,
         timeout: float | None = None,
+        retry_idempotent: bool = True,
     ) -> Any:
         """Send request and return decoded JSON. Network errors retried for idempotent calls only."""
         _check(path.startswith("/api/"), f"path must start with /api/: {path!r}")
@@ -173,7 +177,7 @@ class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionC
 
         call_timeout = timeout if timeout is not None else self.timeout
         is_idempotent = method in ("GET", "HEAD", "PUT", "DELETE") or "Idempotency-Key" in req_headers
-        max_attempts = 2 if is_idempotent else 1
+        max_attempts = 2 if is_idempotent and retry_idempotent else 1
 
         for attempt in range(max_attempts):
             req = urllib.request.Request(url, data=data, method=method, headers=req_headers)
@@ -256,9 +260,15 @@ class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionC
         machine: str = "auto",
         dry_run: bool = False,
         model: str | None = None,
+        idempotency_key: str | None = None,
+        api_version: int = 0,
+        validate_only: bool = False,
+        retry_idempotent: bool = True,
     ) -> Any:
         role = _match(PATTERNS.role, role, "role")
         _check(issue is not None or pr is not None or bool(prompt), "one of issue, pr or prompt is required")
+        _check(api_version in (0, 1), "api_version must be 0 or 1")
+        _check(idempotency_key is None or bool(idempotency_key.strip()), "idempotency_key must be non-empty")
         body = {
             "repo": _opt(PATTERNS.bare_repo, repo, "repo (bare name, no owner)"),
             "issue": None if issue is None else _positive_int(issue, "issue"),
@@ -269,7 +279,12 @@ class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionC
             "machine": _match(PATTERNS.ident, machine, "machine"),
             "dry_run": bool(dry_run),
         }
-        return self.request("POST", f"/api/staff/{role}/run", body=_compact(body))
+        path = f"/api/v{api_version}/staff/{role}/run" if api_version else f"/api/staff/{role}/run"
+        headers = {"Idempotency-Key": idempotency_key.strip()} if idempotency_key else None
+        compact_body = _compact(body)
+        if validate_only:
+            return {"path": path, "body": compact_body, "headers": headers}
+        return self.request("POST", path, body=compact_body, headers=headers, retry_idempotent=retry_idempotent)
 
     def cancel(self, run_id: str) -> Any:
         rid = _match(PATTERNS.ident, run_id, "run_id")

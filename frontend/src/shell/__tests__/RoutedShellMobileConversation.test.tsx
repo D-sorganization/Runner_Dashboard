@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../hooks/useBreakpoint", () => ({ useBreakpoint: mocks.breakpoint }));
 vi.mock("../../hooks/useSession", () => ({
-  useSession: () => ({ loggedIn: false, refresh: vi.fn() }),
+  useSession: () => ({ loading: false, loggedIn: false, refresh: vi.fn() }),
 }));
 vi.mock("../../pages/Staff/staffApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../pages/Staff/staffApi")>()),
@@ -104,7 +104,11 @@ describe("mobile Staff new-conversation route integration", () => {
     mocks.fetchThreadMessages.mockClear();
     renderStaffRoute();
 
-    expect(await screen.findByRole("heading", { name: "Conversation with barb" })).toBeInTheDocument();
+    // #2663: the reload no longer synthesizes a "Conversation with barb"
+    // placeholder from the URL — it fetches and authorizes th-created
+    // against the backend, so the real thread title renders.
+    expect(await screen.findByRole("heading", { name: "New conversation" })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.fetchThread).toHaveBeenCalledWith("th-created", expect.any(AbortSignal)));
     await waitFor(() => expect(mocks.fetchThreadMessages).toHaveBeenCalledWith("th-created", expect.any(AbortSignal)));
   });
 });

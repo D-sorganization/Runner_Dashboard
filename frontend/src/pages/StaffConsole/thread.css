@@ -30,6 +30,19 @@
   gap: 8px;
 }
 
+.thread-messages-container--virtual {
+  display: block;
+  position: relative;
+}
+
+.thread-virtual-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  padding-bottom: 8px;
+}
+
 /* ── Date and Round Separators ── */
 
 .thread-date-separator,
@@ -112,6 +125,10 @@
   flex-shrink: 0;
   user-select: none;
   border: 1px solid var(--border);
+}
+
+.thread-avatar--image {
+  object-fit: cover;
 }
 
 .thread-author-name {

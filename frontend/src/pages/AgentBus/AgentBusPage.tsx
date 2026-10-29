@@ -45,7 +45,10 @@ export function AgentBusPage(): React.ReactElement {
         if (!r.ok) throw new Error(`overview ${r.status}`);
         return r.json() as Promise<OverviewResponse>;
       })
-      .then(setData)
+      .then((res) => {
+        setData(res);
+        setError(null);
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 

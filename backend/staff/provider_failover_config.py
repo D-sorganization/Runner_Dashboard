@@ -145,7 +145,8 @@ def resolve_failover_chain(
     default_chain = default_failover_chain()
 
     if override:
-        filtered = [step for step in override if step.provider in allowed]
+        raw_allowed = frozenset(raw_providers)
+        filtered = [step for step in override if step.provider in raw_allowed]
     else:
         filtered = [step for step in default_chain if step.provider in allowed]
         included = {step.provider for step in filtered}

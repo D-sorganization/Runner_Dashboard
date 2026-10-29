@@ -78,6 +78,14 @@ export function toRoleDetail(role: StaffRoleItem, src: RoleSources = {}): RoleDe
           hold,
         }
       : undefined,
+    model:
+      role.allowed_models && role.allowed_models.length > 0
+        ? {
+            effective: role.effective_model ?? role.model ?? null,
+            override: role.model_override ?? null,
+            allowed: role.allowed_models,
+          }
+        : undefined,
     active_runs: (src.runs ?? []).filter((r) => ACTIVE_STATUSES.has(r.status)).map(toRunSummary),
     recent_work_items: (src.workItems ?? []).map(toWorkItemSummary),
     readiness: computeRoleStatus(withHold, src.availableProviders),

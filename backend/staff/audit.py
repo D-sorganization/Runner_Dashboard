@@ -55,6 +55,7 @@ ALLOWED_ACTIONS = frozenset(
         "email_intake",
         "intake_proposal_create",
         "intake_proposal_decide",
+        "host_flip",
     }
 )
 
@@ -79,6 +80,7 @@ MUTATING_ACTIONS = frozenset(
         "intake_proposal_create",
         "intake_proposal_decide",
         "email_intake",
+        "host_flip",
     }
 )
 
@@ -414,6 +416,16 @@ def archive_old_audit_entries(
         with gzip.open(archive_path, "at", encoding="utf-8") as gz:
             for rec in records:
                 gz.write(json.dumps(rec.to_dict(), separators=(",", ":")) + "\n")
+            gz.flush()
+        try:
+            with archive_path.open("rb") as raw_fh:
+                os.fsync(raw_fh.fileno())
+            with gzip.open(archive_path, "rt", encoding="utf-8") as verify_gz:
+                verified_lines = sum(1 for _ in verify_gz)
+            if verified_lines < len(records):
+                raise AuditError(f"Archive verification count mismatch: {verified_lines} < {len(records)}")
+        except (OSError, EOFError, AuditError) as exc:
+            raise AuditError(f"Failed to verify audit archive {archive_path}: {exc}") from exc
 
         ids_to_delete = [r.id for r in records if r.id is not None]
         chunk_size = 500

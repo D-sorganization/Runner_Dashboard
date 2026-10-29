@@ -26,6 +26,22 @@ WORKFLOW_CONCURRENCY_GROUP_EXPR = (
 
 CANCEL_IN_PROGRESS_EXPR = "${{ github.event_name == 'pull_request' }}"
 
+# CI Standard only: post-merge main pushes share one group so superseded
+# runs cancel and release fleet slots. #2491 keeps per-SHA groups for deploy-blocking
+# workflows (frontend-tests, docker-build, …) so auto-deploy can finish one commit.
+CI_STANDARD_WORKFLOW_CONCURRENCY_GROUP_EXPR = (
+    "${{ github.workflow }}-${{ "
+    "github.event_name == 'pull_request' && github.ref || "
+    "github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || "
+    "github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || "
+    "format('{0}-{1}', github.event_name, github.sha) "
+    "}}"
+)
+
+CI_STANDARD_CANCEL_IN_PROGRESS_EXPR = (
+    "${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+)
+
 
 def normalize_queue_head_ref(ref: str) -> str:
     """Normalize merge-queue head refs for comparison."""

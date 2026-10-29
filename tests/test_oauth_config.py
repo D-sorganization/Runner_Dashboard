@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import pytest
 from oauth_config import (
-    EXPECTED_GITHUB_ORG,
     OAUTH_CALLBACK_PATH,
     OAuthConfig,
     OAuthConfigurationError,
+    validate_oauth_startup,
 )
 
-_DESK_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
+
+_DESK_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _DESK_CALLBACK = f"{_DESK_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 
@@ -18,9 +20,10 @@ def _valid_env() -> dict[str, str]:
     return {
         "GITHUB_CLIENT_ID": "12345678",
         "GITHUB_CLIENT_SECRET": "a" * 32,
-        "GITHUB_ORG": EXPECTED_GITHUB_ORG,
+        "GITHUB_ORG": "D-sorganization",
         "DASHBOARD_PUBLIC_ORIGIN": _DESK_ORIGIN,
         "GITHUB_OAUTH_CALLBACK_URL": _DESK_CALLBACK,
+        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": _DESK_ORIGIN,
         "SESSION_SECRET": "b" * 32,
         "DASHBOARD_TLS": "1",
     }
@@ -59,6 +62,43 @@ def test_oauth_config_blocked_missing_fields() -> None:
 
     with pytest.raises(OAuthConfigurationError):
         cfg.require_ready()
+
+
+def test_oauth_config_uses_configured_github_organization() -> None:
+    env = _valid_env()
+    env["GITHUB_ORG"] = "example-org"
+
+    cfg = OAuthConfig.from_env(env)
+
+    assert cfg.diagnostic()["ready"] is True
+    assert cfg.github_org == "example-org"
+
+
+def test_oauth_config_fails_closed_when_github_organization_is_missing() -> None:
+    env = _valid_env()
+    env.pop("GITHUB_ORG")
+
+    cfg = OAuthConfig.from_env(env)
+
+    assert cfg.diagnostic()["reason"] == "github_org_missing"
+    with pytest.raises(OAuthConfigurationError):
+        cfg.require_ready()
+
+
+def test_oauth_startup_requires_organization_only_when_oauth_is_enabled() -> None:
+    validate_oauth_startup(OAuthConfig.from_env({}))
+
+    with pytest.raises(RuntimeError, match="GITHUB_ORG"):
+        validate_oauth_startup(OAuthConfig.from_env({"GITHUB_CLIENT_ID": "configured"}))
+
+
+def test_oauth_config_rejects_invalid_organization_names() -> None:
+    env = _valid_env()
+    env["GITHUB_ORG"] = "example/org"
+
+    cfg = OAuthConfig.from_env(env)
+
+    assert cfg.diagnostic()["reason"] == "github_org_invalid"
 
 
 def test_oauth_config_invalid_state_and_code() -> None:

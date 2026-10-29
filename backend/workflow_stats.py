@@ -25,6 +25,7 @@ recorded, it is never updated (runs are immutable once conclusion is set).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as _dt_mod
 import json
 import logging
@@ -72,7 +73,10 @@ async def _gh_api_json(path: str, timeout: int = 20) -> Any:
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except TimeoutError:
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         log.warning("workflow_stats: gh api %s timed out", path)
         return None
     if proc.returncode != 0:
