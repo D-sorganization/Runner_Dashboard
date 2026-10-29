@@ -137,9 +137,46 @@ class PostmanLeader:
         self.guard = RelayGuard(roster=kw["roster"])
         self._last_heartbeat_at: float | None = None
         self._in_outage = self._outage_fallback_posted = False
+        self._pending_relays: list[dict[str, Any]] = []
+        self._relayed_keys: set[str] = set()
 
     def dead_letters(self) -> tuple[DeadLetter, ...]:
-        return self.guard.dead_letters()
+        return tuple(self.guard.dead_letters())
+
+    def relay(self, msg: Mapping[str, Any]) -> dict[str, Any]:
+        """Relay a message or alert to the Grok webhook; queue in order on outage without duplicates."""
+        item = dict(msg)
+        key = str(item.get("dedupe_key") or item.get("id") or "").strip()
+        if key and key in self._relayed_keys:
+            return {"ok": True, "status": "deduped"}
+        if not self._in_outage and self._webhook(item).get("ok"):
+            if key:
+                self._relayed_keys.add(key)
+            return {"ok": True, "status": "sent"}
+        self._enter_outage()
+        if not key or not any(str(q.get("dedupe_key") or q.get("id") or "") == key for q in self._pending_relays):
+            self._pending_relays.append(item)
+        return {"ok": False, "status": "queued"}
+
+    def _enter_outage(self) -> None:
+        self._in_outage = True
+        if not self._outage_fallback_posted:
+            self._outage_fallback_posted = True
+            self._post_board_status("[rd-barb heartbeat] webhook unreachable (outage fallback); queuing relays.")
+
+    def _flush_pending_relays(self) -> None:
+        remaining: list[dict[str, Any]] = []
+        for idx, item in enumerate(self._pending_relays):
+            key = str(item.get("dedupe_key") or item.get("id") or "").strip()
+            if key and key in self._relayed_keys:
+                continue
+            if not self._webhook(item).get("ok"):
+                remaining.extend(self._pending_relays[idx:])
+                self._in_outage = True
+                break
+            if key:
+                self._relayed_keys.add(key)
+        self._pending_relays = remaining
 
     def tick(self, *, dry_run: bool = False) -> TickReport:
         """Run one fenced leader pass. Raises :class:`StaleBarbLease` if fenced off."""
@@ -155,7 +192,7 @@ class PostmanLeader:
             return TickReport(dry_run, False, tuple(p), tuple(d), tuple(w), tuple(dr), not_modified, hb_sent)
 
     def _collect_candidates(self, *, dry_run: bool) -> tuple[list[dict[str, Any]], bool]:
-        items = [dict(e) for e in self._stream.drain()]
+        items: list[dict[str, Any]] = [e if isinstance(e, dict) else dict(e) for e in self._stream.drain()]
         resp: ProbeResponse = self._board_probe.get(BOARD_PROBE_KEY, etag=self._etag_cache.etag_for(BOARD_PROBE_KEY))
         if resp.status_code == 304:
             return items, True
@@ -193,6 +230,7 @@ class PostmanLeader:
                 dropped.append(eid)
                 continue
             self.state.mark(eid)
+            self.state.save(self._state_path)
             delivered.append(msg)
             recipient = str(msg.get("to") or "rd-barb")
             if classify_wake(msg, target_agent="rd-barb" if recipient == "*" else recipient) == "wake":
@@ -209,11 +247,9 @@ class PostmanLeader:
             if self._in_outage:
                 self._in_outage = self._outage_fallback_posted = False
                 self._post_board_status("[rd-barb heartbeat] webhook recovered; normal relay resumed.")
+                self._flush_pending_relays()
             return True
-        self._in_outage = True
-        if not self._outage_fallback_posted:
-            self._outage_fallback_posted = True
-            self._post_board_status("[rd-barb heartbeat] webhook unreachable (outage fallback); queuing relays.")
+        self._enter_outage()
         return False
 
     def _post_board_status(self, line: str) -> None:
