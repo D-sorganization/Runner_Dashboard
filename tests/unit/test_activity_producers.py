@@ -24,7 +24,7 @@ def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ActivityStore:
 @pytest.mark.unit
 def test_emit_activity_appends_a_durable_envelope(store: ActivityStore) -> None:
     activity_producers.emit_activity(
-        source="staff_run", session_id="run-1", node="brick", kind="start", payload={"text": "hello"}
+        source="staff_run", session_id="run-1", node="node-c", kind="start", payload={"text": "hello"}
     )
     page = store.read(session_id="run-1")
     assert [item.kind for item in page.items] == ["start"]
@@ -46,10 +46,10 @@ def test_seq_is_monotonically_increasing_per_source_and_session(store: ActivityS
 @pytest.mark.unit
 def test_explicit_seq_is_reused_so_a_retry_is_idempotent(store: ActivityStore) -> None:
     activity_producers.emit_activity(
-        source="staff_run", session_id="run-1", node="brick", kind="exit", seq=7, payload={"text": "exit 0"}
+        source="staff_run", session_id="run-1", node="node-c", kind="exit", seq=7, payload={"text": "exit 0"}
     )
     activity_producers.emit_activity(
-        source="staff_run", session_id="run-1", node="brick", kind="exit", seq=7, payload={"text": "exit 0"}
+        source="staff_run", session_id="run-1", node="node-c", kind="exit", seq=7, payload={"text": "exit 0"}
     )
     page = store.read(session_id="run-1")
     assert len(page.items) == 1
@@ -62,7 +62,7 @@ def test_emit_activity_never_raises_when_the_store_is_broken(monkeypatch: pytest
         raise RuntimeError("activity store unavailable")
 
     monkeypatch.setattr(activity_producers, "get_activity_store", broken_store)
-    activity_producers.emit_activity(source="agent_bus", session_id="s-1", node="brick", kind="session_start")
+    activity_producers.emit_activity(source="agent_bus", session_id="s-1", node="node-c", kind="session_start")
 
 
 @pytest.mark.unit
@@ -73,4 +73,4 @@ def test_emit_activity_never_raises_when_ingest_itself_fails(
         raise RuntimeError("ingest exploded")
 
     monkeypatch.setattr(store, "ingest", broken_ingest)
-    activity_producers.emit_activity(source="agent_bus", session_id="s-1", node="brick", kind="pre_push_heartbeat")
+    activity_producers.emit_activity(source="agent_bus", session_id="s-1", node="node-c", kind="pre_push_heartbeat")
