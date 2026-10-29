@@ -59,6 +59,7 @@ def test_require_local_registry_fails_when_missing(monkeypatch: pytest.MonkeyPat
     shipped.write_text(yaml.dump({"version": 1, "machines": []}), encoding="utf-8")
     local = _BACKEND / "_pytest_missing_local_registry.yml"
     monkeypatch.setattr(mr, "DEFAULT_REGISTRY_PATH", shipped)
+    monkeypatch.setattr(mr, "DEPLOYED_REGISTRY_PATH", shipped)
     monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", local)
     monkeypatch.setenv("RUNNER_DASHBOARD_REQUIRE_LOCAL_REGISTRY", "1")
     try:

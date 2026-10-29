@@ -563,8 +563,10 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
 
     registry_path = _resolve_registry_path(path)
     if not registry_path.exists():
+        empty = {"version": 1, "machines": []}
+        assert_safe_registry_source(registry_path, empty)
         _mark_registry_empty(path=registry_path, path_existed=False)
-        return {"version": 1, "machines": []}
+        return empty
 
     # Validate the path before loading (security check for issue #355).
     #
