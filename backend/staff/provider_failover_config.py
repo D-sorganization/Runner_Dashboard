@@ -164,6 +164,17 @@ def resolve_failover_chain(
                 return tuple(filtered[i:])
         if req in allowed:
             return (FailoverStep(req, role_model),) + tuple(s for s in filtered if s.provider != req)
+    else:
+        role_name = str(getattr(role, "name", "") or "").strip().lower()
+        if role_name:
+            from staff.rd_barb_provider_state import read_active_provider  # noqa: PLC0415
+
+            snap = read_active_provider(role_name, allowed_providers=allowed)
+            if snap is not None:
+                matched = next((s for s in filtered if s.provider == snap.provider), None)
+                active_model = snap.model if snap.model is not None else (matched.model if matched else None)
+                head = FailoverStep(snap.provider, active_model)
+                return (head, *(s for s in filtered if s.provider != snap.provider))
     return tuple(filtered)
 
 
