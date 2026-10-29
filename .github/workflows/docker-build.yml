@@ -4,6 +4,7 @@ name: Docker Build & Trivy Scan
 
 permissions:
   contents: read
+  pull-requests: read
   security-events: write
 
 on:
@@ -127,6 +128,8 @@ jobs:
     needs: decide-docker-scope
     if: >-
       github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
       needs.decide-docker-scope.outputs.run_docker == 'true' &&
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository)
