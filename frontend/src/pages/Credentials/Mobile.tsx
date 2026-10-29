@@ -123,7 +123,8 @@ export function CredentialsMobile() {
       typeof window !== "undefined" &&
       "PublicKeyCredential" in window &&
       typeof (window as any).PublicKeyCredential
-        ?.isUserVerifyingPlatformAuthenticatorAvailable === "function";
+        ?.isUserVerifyingPlatformAuthenticatorAvailable === "function" &&
+      typeof (navigator as any)?.credentials?.get === "function";
 
     let unlocked = false;
 
@@ -132,56 +133,96 @@ export function CredentialsMobile() {
         const available = await (window as any).PublicKeyCredential
           .isUserVerifyingPlatformAuthenticatorAvailable();
 
-        if (available) {
-          const beginResp = await fetch("/api/auth/webauthn/assert/begin", {
-            body: JSON.stringify({}),
-            headers: {
-              "Content-Type": "application/json",
-              "X-Requested-With": "XMLHttpRequest",
-            },
-            method: "POST",
-          });
-
-          if (beginResp.ok) {
-            const options = await beginResp.json();
-            const challenge = base64urlToBuffer(options.challenge);
-
-            const assertion = await (navigator as any).credentials.get({
-              publicKey: {
-                allowCredentials: (options.allow_credentials || []).map(
-                  (c: any) => ({
-                    id: base64urlToBuffer(c.id),
-                    type: c.type,
-                  }),
-                ),
-                challenge,
-                timeout: options.timeout_ms ?? 60000,
-                userVerification: "required",
-              },
-            });
-
-            if (assertion) {
-              unlocked = true;
-            }
-          } else {
-            // No registered credentials yet — fall through to local auth
-            unlocked = true;
-          }
-        } else {
-          unlocked = true;
-        }
-      } catch (e: any) {
-        if (e?.name === "NotAllowedError" || e?.name === "AbortError") {
+        if (!available) {
           setLockState("error");
-          setLockError("Authentication was cancelled. Tap to try again.");
+          setLockError("Platform biometric authenticator is not available.");
           haptic.error();
           return;
         }
+
+        const beginResp = await fetch("/api/auth/webauthn/assert/begin", {
+          body: JSON.stringify({}),
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          method: "POST",
+        });
+
+        if (!beginResp.ok) {
+          const errData = await beginResp.json().catch(() => ({}));
+          setLockState("error");
+          setLockError(errData?.detail || "WebAuthn assertion failed to start.");
+          haptic.error();
+          return;
+        }
+
+        const options = await beginResp.json();
+        const challenge = base64urlToBuffer(options.challenge);
+
+        const assertion = await (navigator as any).credentials.get({
+          publicKey: {
+            allowCredentials: (options.allow_credentials || []).map(
+              (c: any) => ({
+                id: base64urlToBuffer(c.id),
+                type: c.type,
+              }),
+            ),
+            challenge,
+            timeout: options.timeout_ms ?? 60000,
+            userVerification: "required",
+          },
+        });
+
+        if (!assertion) {
+          setLockState("error");
+          setLockError("Biometric assertion returned no credential.");
+          haptic.error();
+          return;
+        }
+
+        const completeResp = await fetch("/api/auth/webauthn/assert/complete", {
+          body: JSON.stringify({
+            credential: {
+              challenge: options.challenge,
+              challenge_signature: options.challenge_signature,
+              id: assertion.id,
+              type: assertion.type,
+            },
+          }),
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          method: "POST",
+        });
+
+        if (!completeResp.ok) {
+          const errData = await completeResp.json().catch(() => ({}));
+          setLockState("error");
+          setLockError(errData?.detail || "WebAuthn assertion was not accepted.");
+          haptic.error();
+          return;
+        }
+
         unlocked = true;
+      } catch (e: any) {
+        setLockState("error");
+        if (e?.name === "NotAllowedError" || e?.name === "AbortError") {
+          setLockError("Authentication was cancelled. Tap to try again.");
+        } else {
+          setLockError(
+            e?.message || "Biometric authentication failed. Tap to try again.",
+          );
+        }
+        haptic.error();
+        return;
       }
     } else {
-      // WebAuthn not supported — grant access with a warning
-      unlocked = true;
+      setLockState("error");
+      setLockError("WebAuthn biometric authentication is not available.");
+      haptic.error();
+      return;
     }
 
     if (unlocked) {

@@ -77,7 +77,7 @@ def _upsert(
 
 def test_push_subscription_request_valid() -> None:
     req = PushSubscriptionRequest(
-        endpoint="https://push.example.com/sub/1",
+        endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
         keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
         topics=["agent.completed"],
     )
@@ -94,28 +94,28 @@ def test_push_subscription_request_rejects_http_non_loopback() -> None:
         )
 
 
-def test_push_subscription_request_allows_localhost() -> None:
-    req = PushSubscriptionRequest(
-        endpoint="http://localhost:8321/push",
-        keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
-        topics=[],
-    )
-    assert "localhost" in req.endpoint
+def test_push_subscription_request_rejects_localhost_ssrf() -> None:
+    with pytest.raises(ValueError, match="https|allowlisted|loopback"):
+        PushSubscriptionRequest(
+            endpoint="http://localhost:8321/push",
+            keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
+            topics=[],
+        )
 
 
-def test_push_subscription_request_allows_loopback_127() -> None:
-    req = PushSubscriptionRequest(
-        endpoint="http://127.0.0.1:8321/push",
-        keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
-        topics=[],
-    )
-    assert "127.0.0.1" in req.endpoint
+def test_push_subscription_request_rejects_loopback_127() -> None:
+    with pytest.raises(ValueError, match="https|allowlisted|loopback"):
+        PushSubscriptionRequest(
+            endpoint="http://127.0.0.1:8321/push",
+            keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
+            topics=[],
+        )
 
 
 def test_push_subscription_request_rejects_unknown_topic() -> None:
     with pytest.raises(ValueError):
         PushSubscriptionRequest(
-            endpoint="https://push.example.com/sub/1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
             keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
             topics=["unknown.topic"],
         )
@@ -123,7 +123,7 @@ def test_push_subscription_request_rejects_unknown_topic() -> None:
 
 def test_push_subscription_request_deduplicates_topics() -> None:
     req = PushSubscriptionRequest(
-        endpoint="https://push.example.com/sub/1",
+        endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
         keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
         topics=["agent.completed", "agent.completed", "ci.failed"],
     )
@@ -132,7 +132,7 @@ def test_push_subscription_request_deduplicates_topics() -> None:
 
 def test_push_subscription_request_empty_topics_allowed() -> None:
     req = PushSubscriptionRequest(
-        endpoint="https://push.example.com/sub/1",
+        endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
         keys=PushKeys(p256dh="A" * 20, auth="B" * 10),
         topics=[],
     )
@@ -432,3 +432,54 @@ def test_push_migrations_v1_state(db_path: Path) -> None:
     row = conn2.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
     assert row[0] >= 1
     conn2.close()
+
+
+def test_push_subscription_request_allowlist_and_private_ips(db_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from identity import Principal, require_principal
+
+    for valid in (
+        "https://fcm.googleapis.com/fcm/send/sub/1",
+        "https://updates.push.services.mozilla.com/wpush/v2/sub/1",
+        "https://web.push.apple.com/sub/1",
+        "https://wns2-par02p.notify.windows.com/sub/1",
+    ):
+        req = PushSubscriptionRequest(endpoint=valid, keys=PushKeys(p256dh="A" * 20, auth="B" * 10), topics=[])
+        assert req.endpoint == valid
+
+    for bad in (
+        "https://127.0.0.1/push",
+        "https://10.0.0.1/push",
+        "https://172.16.0.1/push",
+        "https://192.168.1.1/push",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://[::1]/push",
+        "https://evil.example.com/sub/1",
+    ):
+        with pytest.raises(ValueError):
+            PushSubscriptionRequest(endpoint=bad, keys=PushKeys(p256dh="A" * 20, auth="B" * 10), topics=[])
+
+    monkeypatch.setenv("RUNNER_DASHBOARD_PUSH_DB", str(db_path))
+    app = FastAPI()
+    app.dependency_overrides[require_principal] = lambda: Principal(
+        id="human:test", type="human", name="Test User", roles=["operator"]
+    )
+    app.include_router(push.router)
+    client = TestClient(app)
+    payload = {
+        "endpoint": "https://fcm.googleapis.com/fcm/send/pwa-1",
+        "keys": {"p256dh": "A" * 20, "auth": "B" * 10},
+        "topics": [],
+    }
+    assert client.post("/api/push/subscribe", json=payload).status_code == 403
+    ok_resp = client.post(
+        "/api/push/subscribe",
+        json=payload,
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert ok_resp.status_code == 200
+    push_settings_tsx = (Path(__file__).parent.parent / "frontend" / "src" / "pages" / "PushSettings.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert push_settings_tsx.count('"X-Requested-With": "XMLHttpRequest"') >= 3

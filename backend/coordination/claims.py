@@ -25,7 +25,8 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
-from coordination.board import RMScriptError
+from coordination import board as board_mod
+from coordination.board import BOARD_COMMENT_LIMIT, BOARD_ISSUE, RMScriptError
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.claim_guard import closing_pr_for, full_repo
 
@@ -128,6 +129,53 @@ def _issue_lock(repo: str, issue: int) -> threading.Lock:
         return _issue_locks.setdefault(key, threading.Lock())
 
 
+def _check_incomplete(data: dict[str, Any]) -> str | None:
+    if data.get("complete") is False or data.get("truncated") or data.get("comment_limit_exceeded"):
+        warnings = [str(w) for w in data.get("warnings") or []]
+        return "; ".join(warnings) or "board comment limit reached; claim check incomplete"
+    if data.get("page_limit_reached"):
+        return "board page limit reached; claim check incomplete"
+    count = data.get("comment_count")
+    if isinstance(count, int) and count > BOARD_COMMENT_LIMIT and not data.get("complete", False):
+        return f"comment count ({count}) exceeds {BOARD_COMMENT_LIMIT} without complete pagination"
+    for warning in data.get("warnings") or []:
+        text = str(warning)
+        lowered = text.lower()
+        if "page limit" in lowered or "comment limit" in lowered or "incomplete" in lowered:
+            return text
+    return None
+
+
+def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
+    state = board_mod.cached_board_state()
+    if state is None and board_mod.board_page_fetcher is not None:
+        state = board_mod.read_sessions(repo)
+    if state is None:
+        return None
+    if not state.get("available"):
+        return {
+            "available": False,
+            "reason": str(state.get("reason") or "coordination board unavailable"),
+            "held": None,
+        }
+    for sess in state.get("sessions") or []:
+        if str(sess.get("repo") or "").casefold() == repo.casefold() and sess.get("issue") == issue:
+            return {
+                "available": True,
+                "held": True,
+                "agent": str(sess.get("agent") or ""),
+                "session": str(sess.get("session") or ""),
+                "reason": f"active board presence on RM #{BOARD_ISSUE}",
+                "expires_at": sess.get("expires") or None,
+            }
+    if state.get("comment_limit_exceeded") or (
+        not state.get("complete", True) and board_mod._comment_limit_reached(state)
+    ):
+        detail = "; ".join(state.get("warnings") or [f"RM #{BOARD_ISSUE} comment limit exceeded"])
+        return {"available": False, "reason": f"coordination board incomplete ({detail})", "held": None}
+    return None
+
+
 def check(repo: str, issue: int) -> dict[str, Any]:
     """``{available, held, agent, session, reason, expires_at}``; unavailable when RM cannot answer."""
     res = run_module("check_agent_claim", "--repo", repo, "--issue", str(issue))
@@ -137,9 +185,21 @@ def check(repo: str, issue: int) -> dict[str, Any]:
     reason = str(data.get("reason") or "")
     if reason.startswith(FAIL_OPEN_PREFIX):
         return {"available": False, "reason": f"check_agent_claim failed open ({reason})", "held": None}
+    held = bool(data.get("held"))
+    if not held:
+        incomplete_reason = _check_incomplete(data)
+        if incomplete_reason is not None:
+            return {
+                "available": False,
+                "reason": f"check_agent_claim incomplete ({incomplete_reason})",
+                "held": None,
+            }
+        override = _board_claim_override(repo, issue)
+        if override is not None:
+            return override
     return {
         "available": True,
-        "held": bool(data.get("held")),
+        "held": held,
         "agent": data.get("agent") or "",
         "session": data.get("session") or "",
         "reason": reason,

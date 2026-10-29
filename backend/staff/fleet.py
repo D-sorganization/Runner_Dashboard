@@ -34,6 +34,7 @@ from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
 from staff import liveness as staff_liveness
 from staff.adapters import available_providers, chat_only_providers
+from staff.barb_lease_fence import BarbClaim
 from staff.liveness import _parse_iso
 from staff.rm_sync import source_status
 from staff.store import ACTIVE_STATUSES
@@ -405,12 +406,18 @@ async def forward_run(
     role: str,
     body: dict[str, Any],
     on_behalf_of: str | None = None,
+    barb_claim: BarbClaim | None = None,
 ) -> tuple[int, dict[str, Any]]:
     """POST a dispatch to a peer node; returns (status_code, json)."""
     payload = {**body, "machine": "local"}
     headers = fleet_headers()
     if on_behalf_of:
         headers["X-Staff-On-Behalf-Of"] = on_behalf_of
+    if barb_claim is not None:
+        headers["X-Barb-Scope"] = barb_claim.scope
+        headers["X-Barb-Lease-Epoch"] = str(barb_claim.epoch)
+        if barb_claim.holder:
+            headers["X-Barb-Holder"] = barb_claim.holder
     return await post_json(f"{url}/api/staff/{role}/run", payload, headers)
 
 
