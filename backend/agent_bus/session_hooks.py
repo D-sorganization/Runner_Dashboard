@@ -121,7 +121,29 @@ def session_start(
             if isinstance(minted, str) and minted:
                 client.token = minted
                 _save_state(session, minted, resolved_role)
-        inbox = client.agent_inbox(session=session, since_cursor=0, limit=50)
+        try:
+            inbox = client.agent_inbox(session=session, since_cursor=0, limit=50)
+        except FleetAPIError as exc:
+            if not token or exc.status not in (401, 403):
+                raise
+            # Cached token was minted by a dashboard process that has since
+            # restarted; ephemeral tokens are in-memory only, so the server no
+            # longer recognizes it. Drop it and register fresh instead of
+            # crashing the caller.
+            log.warning("agent bus session start: cached token rejected (status=%s); re-registering", exc.status)
+            client.token = None
+            reg = client.agent_register(
+                session=session,
+                role=resolved_role,
+                provider=provider or _provider(),
+                node=node or _node(short_host),
+                lease_seconds=lease_seconds,
+            )
+            minted = reg.get("token") if isinstance(reg, dict) else None
+            if isinstance(minted, str) and minted:
+                client.token = minted
+                _save_state(session, minted, resolved_role)
+            inbox = client.agent_inbox(session=session, since_cursor=0, limit=50)
         messages = inbox.get("messages", []) if isinstance(inbox, dict) else []
         count = len(messages) if isinstance(messages, list) else 0
         log.info("agent bus session start: session=%s inbox=%d", session, count)
@@ -175,4 +197,14 @@ def pre_push(client: Any | None = None, *, lease_seconds: int = DEFAULT_LEASE_SE
     except FleetAPIError as exc:
         if exc.status == 0:
             return _offline_summary(exc)
+        if exc.status in (401, 403):
+            # No role/provider is available here to re-register; clear the
+            # stale state so the next session_start registers fresh instead
+            # of this hook crashing on every push.
+            log.warning("agent bus pre-push: cached token rejected (status=%s); clearing stale state", exc.status)
+            try:
+                state_file_path().unlink()
+            except OSError:
+                pass
+            return {"heartbeat": False, "offline": False, "stale_token": True}
         raise
