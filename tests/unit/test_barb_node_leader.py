@@ -9,8 +9,9 @@ does not add automatic promotion on a missed heartbeat (see docs/adr/0008 and th
 
 from __future__ import annotations
 
+import datetime as _dt_mod
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -22,10 +23,16 @@ from staff.barb_node_leader import (
     assume_leadership,
     claim_for,
     current_leader,
+    leader_scope_for,
     load_node_leader_config,
     release_leadership,
     renew_leadership,
 )
+
+if not hasattr(_dt_mod, "UTC"):
+    _dt_mod.UTC = _dt_mod.timezone.utc  # type: ignore[attr-defined]  # noqa: UP017
+
+UTC = _dt_mod.UTC
 
 
 def _write_config(tmp_path: Path, nodes: list[dict]) -> Path:
@@ -169,3 +176,22 @@ def test_fencing_rejects_a_stale_epoch_from_the_same_node_after_it_expired_and_r
     with pytest.raises(StaleBarbLease, match="stale_epoch"):
         with store.fence(claim_for("DeskComputer", stale_epoch), now=later):
             raise AssertionError("must not execute: the fence must reject before the body runs")
+
+
+@pytest.mark.unit
+def test_role_scoped_node_leader_lease_isolates_personas(tmp_path: Path) -> None:
+    assert leader_scope_for() == NODE_LEADER_SCOPE and leader_scope_for("barb") == NODE_LEADER_SCOPE
+    assert leader_scope_for("bob") == "barb:node-leader:bob"
+    with pytest.raises(ValueError, match="role"):
+        leader_scope_for("../bad")
+    store = BarbContinuityStore(tmp_path / "barb.db")
+    barb_acq = assume_leadership(store, node="DeskComputer")
+    bob_acq = assume_leadership(store, node="ControlTower", role="bob")
+    assert barb_acq["acquired"] is True and bob_acq["acquired"] is True
+    assert current_leader(store)["holder"] == "DeskComputer"
+    assert current_leader(store, role="bob")["holder"] == "ControlTower"
+    with store.fence(claim_for("ControlTower", bob_acq["lease"]["epoch"], role="bob")) as fenced:
+        assert fenced["scope"] == "barb:node-leader:bob"
+    assert renew_leadership(store, node="ControlTower", epoch=bob_acq["lease"]["epoch"], role="bob")["renewed"] is True
+    assert release_leadership(store, node="ControlTower", role="bob")["released"] is True
+    assert current_leader(store, role="bob") is None and current_leader(store)["holder"] == "DeskComputer"

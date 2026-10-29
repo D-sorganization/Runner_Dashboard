@@ -81,3 +81,16 @@ def test_main_prints_decision_and_sends_notice(capsys: pytest.CaptureFixture[str
     out = capsys.readouterr().out
     assert rc == 0 and '"provider": "codex"' in out
     assert sent and sent[0]["kind"] == "update"
+
+
+def test_role_flag_reads_role_prefixed_env_and_stamps_switch_notice(capsys: pytest.CaptureFixture[str]) -> None:
+    cfg = {"RD_BOB_PROVIDER": "codex", "RD_BOB_MODEL": "gpt-6.1-sol", "RD_BOB_FAILOVER": "codex,claude,antigravity"}
+    assert rp.select(cfg, role="bob") == rp.Decision("codex", "gpt-6.1-sol", False)
+    sent: list[dict] = []
+    rc = rp.main(
+        ["--role", "bob", "next", "--current", "codex", "--failure", "rate_limited"], config=cfg, notify=sent.append
+    )
+    out = capsys.readouterr().out
+    assert rc == 0 and '"provider": "claude"' in out
+    assert sent[0]["sender_role"] == "bob" and sent[0]["dedupe_key"] == "bob-provider-codex-claude-rate_limited"
+    assert sent[0]["summary"].startswith("bob switched provider codex -> claude")

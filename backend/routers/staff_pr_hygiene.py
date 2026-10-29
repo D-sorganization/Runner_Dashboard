@@ -27,6 +27,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sys
+from pathlib import Path
 from typing import Any
 
 import gh_client
@@ -37,7 +39,14 @@ from staff.audit import record_audit
 from staff.maintenance_github import repo_full
 from staff.maintenance_policy import MaintenancePreconditionError
 
-from scripts import automerge_guard
+# Production (start-dashboard.sh) and the E2E harness (start_e2e_backend.py) both
+# launch server.py with only backend/ on sys.path; the repo-root scripts package
+# needs this explicit shim (#3311 follow-up).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts import automerge_guard  # noqa: E402
 
 #: Strategy passed to the automerge_guard seam. The issue's own text asks for
 #: "plain --auto for RD/RM, --auto --squash elsewhere", but arm_auto_merge has
