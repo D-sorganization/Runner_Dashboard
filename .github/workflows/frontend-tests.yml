@@ -311,7 +311,11 @@ jobs:
 
   playwright-e2e:
     name: Playwright E2E smoke tests
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
+    # Heavy job: stays self-hosted even once the repo is public (#3084); see
+    # config/public_repo_heavy_jobs.json and docs/runner-labels.md.
+    environment:
+      name: ci-self-hosted-heavy-public
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet-public-heavy' }}
     timeout-minutes: 20
     needs:
       - frontend-scope
@@ -395,7 +399,11 @@ jobs:
   staff-console-e2e:
     # Staff Console flows against the real backend with fake provider CLIs (#1341).
     name: Staff Console e2e (fake providers)
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
+    # Heavy job: stays self-hosted even once the repo is public (#3084); see
+    # config/public_repo_heavy_jobs.json and docs/runner-labels.md.
+    environment:
+      name: ci-self-hosted-heavy-public
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet-public-heavy' }}
     timeout-minutes: 20
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
