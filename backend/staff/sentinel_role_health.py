@@ -1,6 +1,6 @@
-"""Brick sentinel per-role health probe, 2-reading hysteresis, and push wake envelopes (#3295 S6).
+"""node-c sentinel per-role health probe, 2-reading hysteresis, and push wake envelopes (#3295 S6).
 
-Extends the out-of-band Brick sentinel (#3050) to per-role health (`GET /api/v1/staff/roles/health`):
+Extends the out-of-band node-c sentinel (#3050) to per-role health (`GET /api/v1/staff/roles/health`):
 unknown health fails closed to ``degraded``; 2 outside probes >=10 min apart confirm ``hub_unreachable``
 (``decision_authority="grok"``); reachable role health uses 2-reading hysteresis (``decision_authority="rd"``).
 """
@@ -122,7 +122,7 @@ def probe_roles_health(
 def build_sentinel_wake_envelope(
     role: str, *, reasons: Sequence[str], epoch: int = 1, decision_authority: str = "rd", now: float | None = None
 ) -> dict[str, Any]:
-    """Build and seal a Brick sentinel ``role_unhealthy`` wake envelope (#3295 S6)."""
+    """Build and seal a node-c sentinel ``role_unhealthy`` wake envelope (#3295 S6)."""
     norm, ep, authority = _notify.normalize_role(role), int(epoch), str(decision_authority or "").strip()
     if ep < 1:
         raise ValueError("epoch must be >= 1")
@@ -130,7 +130,7 @@ def build_sentinel_wake_envelope(
         raise ValueError(f"decision_authority must be one of {sorted(VALID_AUTHORITIES)}")
     reason_list = [str(r).strip() for r in reasons if str(r).strip()] or ["unknown_health"]
     reason_str = ", ".join(reason_list)
-    body = f"Brick sentinel confirmed {norm} unhealthy at epoch {ep} (authority={authority}, reasons={reason_str})."
+    body = f"node-c sentinel confirmed {norm} unhealthy at epoch {ep} (authority={authority}, reasons={reason_str})."
     return _envelope.seal(
         {
             "kind": "alert",
@@ -182,7 +182,7 @@ def _latch_unhealthy(
 
 
 class SentinelRoleHealthMonitor:
-    """Out-of-band Brick sentinel state machine for per-role health (#3295 S6)."""
+    """Out-of-band node-c sentinel state machine for per-role health (#3295 S6)."""
 
     def __init__(self, state_path: Path | None = None) -> None:
         self._path = default_sentinel_role_health_path() if state_path is None else Path(state_path)
