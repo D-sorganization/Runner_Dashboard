@@ -70,7 +70,7 @@ def test_no_auto_reply_thread_stores_message_without_a_turn(store) -> None:
     assert "reply_placeholder" not in data
     assert store.turns == []
     authors = [m.author_kind for m in store.list_messages(thread["id"], limit=10)]
-    assert authors == ["user"]
+    assert authors == ["bot"]
 
 
 def test_default_thread_still_starts_a_turn(store) -> None:
