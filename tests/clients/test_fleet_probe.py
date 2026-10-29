@@ -18,7 +18,7 @@ from fleet_probe import (
 )
 
 
-@pytest.mark.parametrize("shell", ["bash", "zsh", "powershell"])
+@pytest.mark.parametrize("shell", ("bash", "zsh", "powershell"))
 def test_shim_install_and_uninstall_are_idempotent_and_reversible(tmp_path: Path, shell: str) -> None:
     rc_file = tmp_path / f"profile.{shell}"
     original = '# Existing user config\nexport PATH="$HOME/bin:$PATH"\n'
