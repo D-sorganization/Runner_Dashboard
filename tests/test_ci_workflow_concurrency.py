@@ -9,6 +9,8 @@ import yaml
 
 from shared_scripts.ci_workflow_concurrency import (
     CANCEL_IN_PROGRESS_EXPR,
+    CI_STANDARD_CANCEL_IN_PROGRESS_EXPR,
+    CI_STANDARD_WORKFLOW_CONCURRENCY_GROUP_EXPR,
     WORKFLOW_CONCURRENCY_GROUP_EXPR,
     pr_number_from_queue_ref,
 )
@@ -16,12 +18,13 @@ from shared_scripts.ci_workflow_concurrency import (
 _WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 _MERGE_GROUP_HEAVY = [
-    "ci-standard.yml",
     "docker-build.yml",
     "frontend-tests.yml",
     "ci-secrets.yml",
     "ci-auto-deploy-regression.yml",
 ]
+
+_CI_STANDARD = "ci-standard.yml"
 
 _PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
 
@@ -72,6 +75,19 @@ def test_main_push_still_unique_per_sha(name: str) -> None:
     assert "github.sha" in group
 
 
+def test_ci_standard_uses_main_push_shared_concurrency_group() -> None:
+    block = _load(_CI_STANDARD)["concurrency"]
+    assert block["group"] == CI_STANDARD_WORKFLOW_CONCURRENCY_GROUP_EXPR
+    assert block["cancel-in-progress"] == CI_STANDARD_CANCEL_IN_PROGRESS_EXPR
+    assert "refs/heads/main' && 'main'" in block["group"]
+
+
+def test_ci_standard_merge_group_still_not_cancel_in_progress() -> None:
+    cancel = _load(_CI_STANDARD)["concurrency"]["cancel-in-progress"]
+    assert "merge_group" not in cancel
+    assert cancel == CI_STANDARD_CANCEL_IN_PROGRESS_EXPR
+
+
 def test_cancel_in_progress_limited_to_pull_request() -> None:
     assert CANCEL_IN_PROGRESS_EXPR == _PR_ONLY_CANCEL
     assert "merge_group" not in CANCEL_IN_PROGRESS_EXPR
@@ -87,16 +103,21 @@ def test_cancel_in_progress_limited_to_pull_request() -> None:
 
 
 def _cancel_in_progress_for_event(expr: str, event_name: str) -> bool:
-    """Evaluate the fixed-shape ``${{ github.event_name == '<literal>' }}`` expression."""
+    """Evaluate concurrency cancel-in-progress expressions for a given event."""
     body = expr.strip()
     assert body.startswith("${{") and body.endswith("}}"), expr
-    lhs, op, rhs = body[3:-2].split()
-    assert (lhs, op) == ("github.event_name", "=="), expr
-    return event_name == rhs.strip("'")
+    for clause in body[3:-2].split("||"):
+        conjuncts = [part.strip() for part in clause.split("&&")]
+        lhs, op, rhs = conjuncts[0].split()
+        assert (lhs, op) == ("github.event_name", "=="), expr
+        if event_name == rhs.strip("'"):
+            return True
+    return False
 
 
 @pytest.mark.parametrize("name", ["ci-standard.yml", "frontend-tests.yml", "ci-secrets.yml"])
 @pytest.mark.parametrize("event_name", ["merge_group", "push"])
 def test_merge_group_and_push_never_cancel_in_progress(name: str, event_name: str) -> None:
     expr = _load(name)["concurrency"]["cancel-in-progress"]
-    assert _cancel_in_progress_for_event(expr, event_name) is False
+    expected = name == _CI_STANDARD and event_name == "push"
+    assert _cancel_in_progress_for_event(expr, event_name) is expected
