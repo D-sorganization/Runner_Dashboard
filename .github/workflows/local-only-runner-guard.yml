@@ -59,6 +59,10 @@ jobs:
               "Agent-Redundant-PR-Closer.yml",
               "Verify-Issue-Closure.yml",
               "agent-panel-review.yml",
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> cursor/go-public-runners-part3-ba99
               "apply-required-checks-supplement.yml",
               "arm-cap-reconcile.yml",
               "ci-nightly.yml",
@@ -68,6 +72,14 @@ jobs:
               "issue-taxonomy-backfill.yml",
               "labels-sync.yml",
               "lockfile-upgrade.yml",
+<<<<<<< HEAD
+=======
+              "maxwell-contract-drift.yml",
+              "reusable-pr-cap.yml",
+              "taxonomy-rollout.yml",
+=======
+>>>>>>> origin/main
+>>>>>>> cursor/go-public-runners-part3-ba99
               "ci-secrets.yml",
               "ci-spec-check.yml",
               "docker-build.yml",
