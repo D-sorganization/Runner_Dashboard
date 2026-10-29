@@ -18,6 +18,7 @@ it does not decide who calls ``assume_leadership`` or when.
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,6 +32,26 @@ NODE_LEADER_SCOPE = "barb:node-leader"
 _VALID_ROLES = ("leader", "standby", "forwarder")
 _ROLE_SLUG_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 DEFAULT_NODE_ROLES_PATH = Path(__file__).resolve().parents[2] / "config" / "rd_barb_node_roles.json"
+LOCAL_NODE_ROLES_PATH = Path("~/.config/runner-dashboard/rd_barb_node_roles.json").expanduser()
+
+
+def resolve_node_roles_source(path: str | Path | None) -> tuple[Path, str]:
+    """Pick the node-roles file and report which source supplied it.
+
+    Order: explicit ``path`` argument, then ``$RD_BARB_NODE_ROLES_PATH``, then the
+    local operator config, then the shipped (example) default — mirrors
+    :func:`machine_registry.resolve_registry_source` so real per-node topology
+    never has to live in the shipped example file (DRY: one override pattern).
+    """
+
+    if path is not None:
+        return Path(path), "explicit"
+    env_path = os.environ.get("RD_BARB_NODE_ROLES_PATH", "").strip()
+    if env_path:
+        return Path(env_path), "env"
+    if LOCAL_NODE_ROLES_PATH.is_file():
+        return LOCAL_NODE_ROLES_PATH, "local"
+    return DEFAULT_NODE_ROLES_PATH, "shipped"
 
 
 def _normalize_persona_role(role: str = "rd-barb") -> str:
@@ -99,10 +120,16 @@ def _validated_entries(data: object) -> tuple[NodeRoleEntry, ...]:
     return tuple(entries)
 
 
-def load_node_leader_config(path: Path = DEFAULT_NODE_ROLES_PATH) -> NodeLeaderConfig:
-    """Read the node-roles config through a read-only open. Raises :class:`NodeRoleConfigError`."""
+def load_node_leader_config(path: str | Path | None = None) -> NodeLeaderConfig:
+    """Read the node-roles config through a read-only open. Raises :class:`NodeRoleConfigError`.
+
+    ``path`` is resolved via :func:`resolve_node_roles_source` when omitted, so an
+    operator's real topology can live outside the repo (env var or local config)
+    instead of in the shipped example file.
+    """
+    resolved, _source = resolve_node_roles_source(path)
     try:
-        with open(path, encoding="utf-8") as handle:
+        with open(resolved, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, ValueError) as exc:
         raise NodeRoleConfigError(f"cannot read node-roles config: {exc}") from exc
