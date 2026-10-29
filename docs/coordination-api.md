@@ -224,6 +224,14 @@ every repository):
 - `holds` are the active Staff Hub holds (`/api/staff/holds`).
 - `rules` carries `staff.workspace.FLEET_RULES`, the guardrails every staff prompt ends with.
 
+### `GET /api/coordination/postman/reports?limit=`
+
+Read-only. The newest postman dry-run reports (`limit` 1 to 50, default 10), written by
+`scripts/postman_dry_run.py`. Each report lists what the postman would do on the board (`presence`,
+`message`, `alert`, `rejection`, `rollover`, `warning`), or an `error` when the board could not be read.
+The postman runs in dry run only, so the response's `live` is always `false` and nothing is delivered
+(proposal: `docs/agents/messenger-agents.md`).
+
 ## Configuration
 
 | Variable                  | Meaning                                                                       |
@@ -232,3 +240,4 @@ every repository):
 | `STAFF_RM_PYTHON`         | Interpreter for the RM scripts (default `python3`).                           |
 | `COORDINATION_REPOS`      | Comma-separated repos for the per-repo fallback read.                         |
 | `DASHBOARD_LOOPBACK_AUTH` | `1` lets the node's own loopback Conductor write without a token.             |
+| `POSTMAN_DATA_DIR`        | Where postman dry-run reports are kept (default `backend/data`).              |

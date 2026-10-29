@@ -112,6 +112,21 @@ def test_broadcast_reaches_every_roster_agent_once() -> None:
     assert [d.board_message_id for d in delivered_to(bus, "codex")] == ["b1"]
 
 
+def test_broadcast_read_by_one_session_reaches_codex_and_antigravity_too() -> None:
+    """A ``*`` seen only by a Claude session still fans out to every runtime agent (PR #3231 dry run)."""
+    board, bus = FakeBoard(), FakeBus()
+    board.live("claude-rd-1", "claude", 100)
+    board.live("codex-rd-1", "codex", 100)
+    board.inboxes["claude-rd-1"] = [msg("b2", "codex-rd-1", "*", "all hands")]
+    roster = ("user", "claude", "codex", "antigravity")
+    pm = Postman(board, bus, Source(BoardRef(issue=2376)), roster, PostmanState(board_issue=2376), clock=lambda: NOW)
+    pm.cycle()
+    assert [d.board_message_id for d in delivered_to(bus, "claude")] == ["b2"]
+    assert [d.board_message_id for d in delivered_to(bus, "antigravity")] == ["b2"]
+    assert delivered_to(bus, "codex") == []  # the sender's own agent gets no copy back
+    assert delivered_to(bus, "user") == []  # a person, not a runtime
+
+
 def test_claim_and_direct_mention_alert_barb_and_addressee() -> None:
     board, bus = FakeBoard(), FakeBus()
     board.live("lane-x", "claude", 100)

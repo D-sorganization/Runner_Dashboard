@@ -12555,6 +12555,60 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/postman/reports": {
+      "get": {
+        "description": "Read-only: the postman runs in dry run only, so ``live`` is always False.",
+        "operationId": "get_postman_reports_api_coordination_postman_reports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Postman Reports Api Coordination Postman Reports Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Postman Reports",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/presence": {
       "post": {
         "operationId": "post_presence_api_coordination_presence_post",

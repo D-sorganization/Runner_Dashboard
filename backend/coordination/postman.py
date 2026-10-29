@@ -28,6 +28,7 @@ BOARD_REPO = "Repository_Management"
 BOARD_OWNER_REPO = f"D-sorganization/{BOARD_REPO}"
 POSTMAN_SESSION = "postman-bus"
 BARB = "barb"
+NOT_BROADCAST = frozenset({"user"})  # a person, not a runtime: board broadcasts are agent traffic
 RENEW_MARGIN = timedelta(minutes=30)
 MAX_BODY = 4000
 MAX_DELIVERED = 5000
@@ -198,16 +199,23 @@ class Postman:
     def _read_inboxes(self, sessions: list[dict[str, Any]]) -> tuple[list[tuple[dict[str, Any], str]], list[str]]:
         msgs: dict[str, tuple[dict[str, Any], str]] = {}
         warnings: list[str] = []
+        agents = {str(s.get("session")): str(s.get("agent") or "") for s in sessions}
         for s in sessions:
             sid, agent = str(s.get("session")), str(s.get("agent") or "")
             data = self.board.read_inbox(sid, str(s.get("repo") or BOARD_REPO))
             warnings += [str(w) for w in data.get("warnings") or []]
             for m in data.get("messages") or []:
-                mid, target = str(m["id"]), (m["recipient"] if m["recipient"] != "*" else agent)
-                msgs.setdefault(
-                    f"{mid}|{target if target in self.roster else sid}", (m, target if target in self.roster else sid)
-                )
+                for target in self._recipients(m, agent, sid, agents.get(str(m.get("session")), "")):
+                    msgs.setdefault(f"{m['id']}|{target}", (m, target))
         return list(msgs.values()), warnings
+
+    def _recipients(self, m: dict[str, Any], reader: str, reader_session: str, sender: str) -> list[str]:
+        """Who gets a copy. A ``*`` broadcast goes to every runtime agent but its sender, not only the reader."""
+        if m["recipient"] == "*":
+            fanout = [a for a in self.roster if a not in NOT_BROADCAST and a != sender]
+            return fanout or [reader if reader in self.roster else reader_session]
+        target = str(m["recipient"])
+        return [target if target in self.roster else reader_session]
 
     def _alert_targets(self, m: dict[str, Any]) -> set[str]:
         text, names = str(m.get("text", "")), (*self.roster, BARB)
@@ -226,14 +234,15 @@ class Postman:
         for m, to in inboxes:
             mid, text = str(m["id"]), str(m.get("text", ""))
             head = f"[board #{issue}] {m.get('session')} -> {m.get('recipient')}: "
-            out.append(self._pair("message", "request", to, mid, head + text, issue))
+            out.append(self._pair("message", "request", to, mid, head + text, issue, str(m.get("at") or "")))
             claim = bool(CLAIM_RE.search(text))
             for target in sorted(self._alert_targets(m)):
                 if f"{mid}|{target}" in alerted:
                     continue
                 alerted.add(f"{mid}|{target}")
                 label = "claim/checkout" if claim else "addressed to you"
-                out.append(self._pair("alert", "status", target, mid, f"[postman alert: {label}] {head}{text}", issue))
+                body = f"[postman alert: {label}] {head}{text}"
+                out.append(self._pair("alert", "status", target, mid, body, issue, str(m.get("at") or "")))
         return out
 
     def _plan_rejections(self, warnings: list[str], issue: int) -> list[tuple[Action, Delivery]]:
@@ -248,10 +257,11 @@ class Postman:
         return out
 
     @staticmethod
-    def _pair(kind: str, typ: str, to: str, mid: str, body: str, issue: int) -> tuple[Action, Delivery]:
+    def _pair(kind: str, typ: str, to: str, mid: str, body: str, issue: int, at: str = "") -> tuple[Action, Delivery]:
         key = delivery_key(kind, to, mid)
         delivery = Delivery(to, kind, typ, body[:MAX_BODY], mid, key, work_number=issue)
-        return Action(kind, key, f"to {to}", {"to": to, "board_message_id": mid}), delivery
+        payload = {"to": to, "board_message_id": mid, **({"at": at} if at else {})}
+        return Action(kind, key, f"to {to}", payload), delivery
 
     # -- one cycle ---------------------------------------------------------------------
     def cycle(self, dry_run: bool = False) -> CycleReport:
