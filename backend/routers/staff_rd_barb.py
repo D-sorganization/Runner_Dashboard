@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 from staff.rd_barb_inbox import DashboardInbox, default_inbox_path
 from staff.rd_barb_memory import GuidelinesDoc, default_guidelines_path
 from staff.rd_barb_notify_health import NotifyHealth, default_health_path
-from staff.rd_barb_provider_state import active_provider_payload
 from staff.rd_barb_policy import LockedPolicyError, load_locked_policy
+from staff.rd_barb_provider_state import active_provider_payload
 from staff.role_health import RoleHealthStore, default_role_health_path
 
 router = APIRouter(prefix="/api/v1/staff", tags=["staff", "rd-barb"], include_in_schema=False)
