@@ -35,6 +35,15 @@ class TriggerEdge:
 
 
 @dataclass(frozen=True)
+class ScheduleBounds:
+    """Per-role declared schedule bounds validated against locked SchedulePolicy (slice 13)."""
+
+    runs_per_day: int
+    concurrency: int = 1
+    quiet_hours_utc: tuple[int, int] = (0, 6)
+
+
+@dataclass(frozen=True)
 class BuilderRoleDefinition:
     schema_version: int
     name: str
@@ -51,6 +60,7 @@ class BuilderRoleDefinition:
     private_context_ref: str | None
     household_data_opt_in: bool
     description: str = ""
+    schedule_bounds: ScheduleBounds | None = None
 
 
 def _require_str(data: dict[str, Any], key: str) -> str:
@@ -86,6 +96,29 @@ def _parse_triggers(raw: object) -> tuple[TriggerEdge, ...]:
             raise ValueError("trigger needs event")
         edges.append(TriggerEdge(target_role=target.strip(), event=event.strip()))
     return tuple(edges)
+
+
+def _parse_schedule_bounds(raw: object) -> ScheduleBounds | None:
+    if raw is None:
+        return None
+    if isinstance(raw, ScheduleBounds):
+        return raw
+    if not isinstance(raw, dict):
+        raise ValueError("schedule_bounds must be an object")
+    runs = raw.get("runs_per_day")
+    concurrency = raw.get("concurrency", 1)
+    quiet = raw.get("quiet_hours_utc", [0, 6])
+    if not isinstance(runs, int) or isinstance(runs, bool) or runs < 1:
+        raise ValueError("schedule_bounds.runs_per_day must be a positive int")
+    if not isinstance(concurrency, int) or isinstance(concurrency, bool) or concurrency < 1:
+        raise ValueError("schedule_bounds.concurrency must be a positive int")
+    if (
+        not isinstance(quiet, (list, tuple))
+        or len(quiet) != 2
+        or not all(isinstance(h, int) and not isinstance(h, bool) and 0 <= h <= 24 for h in quiet)
+    ):
+        raise ValueError("schedule_bounds.quiet_hours_utc must be [start_hour, end_hour] in 0..24")
+    return ScheduleBounds(runs_per_day=runs, concurrency=concurrency, quiet_hours_utc=(quiet[0], quiet[1]))
 
 
 def parse_builder_role(data: dict[str, Any]) -> BuilderRoleDefinition:
@@ -141,6 +174,8 @@ def parse_builder_role(data: dict[str, Any]) -> BuilderRoleDefinition:
     else:
         raise ValueError("description must be a string when set")
 
+    schedule_bounds = _parse_schedule_bounds(data.get("schedule_bounds"))
+
     for cap in caps_raw:
         if cap.startswith("hold."):
             raise ValueError("hold capabilities are not grantable")
@@ -165,4 +200,5 @@ def parse_builder_role(data: dict[str, Any]) -> BuilderRoleDefinition:
         private_context_ref=ref,
         household_data_opt_in=opt_in,
         description=description,
+        schedule_bounds=schedule_bounds,
     )

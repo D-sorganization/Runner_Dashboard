@@ -176,6 +176,10 @@ class Notifier:
         if self._is_duplicate(state, out["dedupe_key"]):
             return {"ok": True, "status": "deduped"}
         if out["kind"] in ("fyi", "update"):
+            if (self._cfg.get(f"{self._prefix}SHADOW") or "").strip().lower() in _TRUTHY:
+                self._mirror(out)
+                self._mark(state, out["dedupe_key"])
+                return {"ok": True, "status": "shadow"}
             state["digest"].append(out)
             self._mark(state, out["dedupe_key"])
             return {"ok": True, "status": "queued_for_digest"}

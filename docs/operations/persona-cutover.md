@@ -1,0 +1,6 @@
+# Persona Role Shadow & Cutover Runbook (`#3295` / `#3296`)
+
+1. **Preconditions (`staff/roles/<role>.yml`)**: For `bob`, `permissions.code_read_only: true`, `open_pr/merge/lease: false`, `notify_user: true`, `reports_to: barb`, `surface: both`, `failover_chain` (`claude/claude-opus-5-5 -> antigravity/gemini-3.8-flash-high -> cursor-agent -> codex/gpt-6.1-sol`), and schedules `0 10,16 * * 1-5`, `0 17 * * 1-5`, `0 8 * * 1` (`America/Los_Angeles`).
+2. **3-Weekday Shadow (`RD_BOB_SHADOW=1`)**: RD runs scheduled slots and posts only to `RD_BOB_THREAD_ID` (`status: "shadow"`), suppressing webhook calls while Barb compares thread output and `capsules/bob.json` against Grok Bob.
+3. **Staging Fallback Drill (`run_bob_fallback_drill`)**: On 2 unhealthy readings (`role_unhealthy`), Grok Bob claims `persona:bob` (`grok-fallback`), sends one `"Bob took over on Grok Bot"` note, runs the 5 PM daily note (`bob/daily_note/<slot>`), and writes capsule `epoch + 1`. After 2 healthy readings (`resume`), Grok Bob releases `persona:bob`, sends one `"Bob is back on RD"` note, and RD skips `bob/daily_note/<slot>`.
+4. **Live Cutover**: Clear `RD_BOB_SHADOW`, delete Grok Bob scheduled routines (retaining the 4h aggregate health check), and switch Grok Bob to messenger instructions.
