@@ -82,7 +82,7 @@ def test_sensitive_role_emits_metadata_only_projection_to_mirror(tmp_path: Path)
         epoch=2,
         classification="SENSITIVE",
         open_items=[{"id": "sec-1", "title": "Private internal audit detail", "url": "https://internal.invalid/a"}],
-        cursors={"secret_stream": "cursor_private_value"},
+        cursors={"audit_stream": "cursor_private_value"},
         next_slots=["2026-10-29T08:00:00-07:00"],
         now=2000.0,
     )
@@ -91,7 +91,7 @@ def test_sensitive_role_emits_metadata_only_projection_to_mirror(tmp_path: Path)
     shared = emit_shared(cap)
     assert shared["projection"] == "metadata_only"
     assert shared["open_item_count"] == 1
-    assert shared["cursor_keys"] == ["secret_stream"]
+    assert shared["cursor_keys"] == ["audit_stream"]
     assert "open_items" not in shared and "cursors" not in shared
     assert "Private internal audit detail" not in str(shared)
     assert mirrored["capsules/smithers.json"] == shared
