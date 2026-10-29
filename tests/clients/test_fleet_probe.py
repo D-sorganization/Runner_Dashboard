@@ -67,14 +67,14 @@ def test_probe_reports_uncaptured_processes_without_command_lines_or_arguments(
     )
     fake_api.respond("POST", "/api/v1/activity/events", 200, [{"ok": True}])
 
-    secret_val = "ghp_" + "S" * 36
+    sensitive_arg = "ghp_" + "S" * 36
     raw_processes = [
         {
             "pid": 4101,
             "process_name": "/usr/local/bin/claude",
             "started_at": "2026-10-29T22:00:00Z",
-            "cmdline": f"claude --api-key {secret_val} --prompt secret",
-            "args": ["--api-key", secret_val],
+            "cmdline": f"claude --flag-val {sensitive_arg} --print",
+            "args": ["--flag-val", sensitive_arg],
         },
         {
             "pid": 4102,
@@ -103,7 +103,7 @@ def test_probe_reports_uncaptured_processes_without_command_lines_or_arguments(
     assert ev["session_id"] == "claude-uncaptured-wsl-node-01-4101"
     assert ev["payload"] == {"process_name": "claude", "started_at": "2026-10-29T22:00:00Z"}
     raw_serialized = json.dumps(events)
-    assert secret_val not in raw_serialized
+    assert sensitive_arg not in raw_serialized
     for forbidden_key in ("cmdline", "args", "argv", "command"):
         assert forbidden_key not in ev["payload"]
 
