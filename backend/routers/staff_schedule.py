@@ -80,9 +80,9 @@ def scheduler_enabled() -> bool:
 
 def start_scheduler() -> None:
     """Reconcile orphaned staff runs and start the background ticker once. Called by ``server.py`` on startup."""
-    if not scheduler_enabled():
+    enabled = scheduler_enabled()
+    if not enabled:
         log.info("staff scheduler disabled by %s", SCHEDULER_ENABLED_ENV)
-        return
 
     def _reconcile_then_start() -> None:
         try:
@@ -92,7 +92,8 @@ def start_scheduler() -> None:
             reconcile_orphaned_runs(get_runner())
         except Exception as exc:  # noqa: BLE001
             log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
-        get_scheduler().start()
+        if enabled:
+            get_scheduler().start()
 
     threading.Thread(target=_reconcile_then_start, name="staff-scheduler-bootstrap", daemon=True).start()
 
