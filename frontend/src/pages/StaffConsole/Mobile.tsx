@@ -11,13 +11,13 @@ import { GroupCostConfirm } from "./GroupCostConfirm";
 import { MobileContextDrawer } from "./MobileContextDrawer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { InboxPanel } from "../Staff/InboxPanel";
-import { threadKindForRole } from "./consoleThreads";
 import { isPanelThread } from "./panelTurn";
 import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import { selectMobileThread, startNewMobileConversation, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
+import { usePendingThreadId, useMobileThreadUrlSync } from "./useMobileThreadUrlSync";
 import "./mobile.css";
 
 export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
@@ -37,17 +37,6 @@ export interface StaffConsoleMobileProps {
   className?: string;
 }
 
-function parseUrlParams(): { threadId: string | null; roleName: string | null; tab: string | null } {
-  if (typeof window === "undefined") return { threadId: null, roleName: null, tab: null };
-  const p = new URLSearchParams(window.location.search);
-  const tabParam = p.get("tab") || (p.get("inbox") ? "inbox" : p.get("runs") ? "runs" : null);
-  return {
-    threadId: p.get("thread"),
-    roleName: p.get("role"),
-    tab: tabParam,
-  };
-}
-
 export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   roles: initialRoles,
   initialView = "roster",
@@ -62,10 +51,15 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   onDenyProposal,
   className = "",
 }) => {
+  const [pendingThreadId, setPendingThreadId] = usePendingThreadId();
+  // initialThread only seeds useStaffConsole's very first render; once a
+  // pending id names a different thread, stop offering it so the fetch path
+  // takes over instead of being short-circuited by a stale seed.
   const sc = useStaffConsole({
     roles: initialRoles,
     initialRole,
-    initialThread,
+    initialThread: pendingThreadId && initialThread?.id !== pendingThreadId ? undefined : initialThread,
+    initialThreadId: pendingThreadId,
     initialMessages,
     onSendMessage,
     onApproveProposal,
@@ -101,46 +95,17 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     setThreadView: () => setView("thread"),
   });
 
-  // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
-  // push link and is real; a ?role= link resolves to the role's backend thread.
-  const syncWithUrl = () => {
-    const { threadId, roleName, tab } = parseUrlParams();
-    if (threadId) {
-      const known = initialThread?.id === threadId ? initialThread : null;
-      sc.openThread(
-        known ?? {
-          id: threadId,
-          title: roleName ? `Conversation with ${roleName}` : "Conversation",
-          kind: roleName ? threadKindForRole(roleName) : "direct",
-          participants: roleName ? [roleName] : [],
-          status: "active",
-        },
-        roleName ?? undefined,
-      );
-      setView("thread");
-      return;
-    }
-    if (roleName) {
-      if (initialThread?.participants.includes(roleName)) {
-        sc.openThread(initialThread, roleName);
-        setView("thread");
-      } else {
-        void sc.openRole(roleName).then((thread) => thread && setView("thread"));
-      }
-      return;
-    }
-    if (tab === "inbox") setView("inbox");
-    else if (tab === "runs") setView("runs");
-  };
-  const syncWithUrlRef = useRef(syncWithUrl);
-  syncWithUrlRef.current = syncWithUrl;
-
-  useEffect(() => {
-    const onPopState = () => syncWithUrlRef.current();
-    onPopState();
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  // Deep Link Handling (?thread=, ?role=, ?tab=): see useMobileThreadUrlSync
+  // for the fail-closed, fetch-and-authorize contract (#2663, from #2652).
+  const composerLocked = useMobileThreadUrlSync({
+    pendingThreadId,
+    setPendingThreadId,
+    activeThread,
+    initialThread,
+    openRole: sc.openRole,
+    openThread: sc.openThread,
+    setView,
+  });
 
   const displayMessages = sc.messages;
 
@@ -149,11 +114,16 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     async (roleName: string, prefill = "") => {
       const thread = await sc.openRole(roleName);
       if (!thread) return;
+      // openRole already authorized this against the backend: clear any
+      // unrelated pending id instead of waiting on a URL round-trip back
+      // from the shell, so a local specialist pick is never locked out by a
+      // stale sidebar selection.
+      setPendingThreadId(null);
       applyComposerPrefill(prefill);
       setView("thread");
       selectMobileThread(thread.id, roleName, onThreadSelected, onOpenThread);
     },
-    [sc, onOpenThread, onThreadSelected],
+    [sc, onOpenThread, onThreadSelected, setPendingThreadId],
   );
 
   // Return to roster view
@@ -233,7 +203,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 className="staff-mobile__details-btn"
                 data-testid="staff-mobile-new-conversation-btn"
                 aria-label="New conversation"
-                onClick={() => void startNewMobileConversation(sc.newConversation, currentRoleObj.name, onThreadSelected, onOpenThread)}
+                onClick={() => {
+                  void startNewMobileConversation(sc.newConversation, currentRoleObj.name, onThreadSelected, onOpenThread)
+                    .then((thread) => thread && setPendingThreadId(null));
+                }}
               >
                 New conversation
               </button>
@@ -288,6 +261,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               selectedRole={selectedRole || undefined}
               onSendMessage={handleSendMessage}
               placeholder={`Message ${currentRoleObj.title || "staff"}…`} isPanel={isPanelThread(activeThread)} prefilledText={composerPrefill} prefillSeq={prefillSeq}
+              conversationOpening={composerLocked}
             />
           </div>
 
