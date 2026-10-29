@@ -6,4 +6,4 @@ next_step: "Pass protected checks and connect the local assistant to the existin
 branch: "bot/issue-2199-runtime-integration"
 ---
 
-Adds access to existing scoped memory APIs. It does not copy memory databases or promote a Barb authority. The ControlTower assistant connection and cross-interface acceptance remain tracked in #2199.
+Adds access to existing scoped memory APIs. It does not copy memory databases or promote a Barb authority. The node-a assistant connection and cross-interface acceptance remain tracked in #2199.

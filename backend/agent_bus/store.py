@@ -171,73 +171,85 @@ class AgentBusStore:
             raise RuntimeError(f"session {session_id!r} is not registered or lease expired")
         return row
 
+    @staticmethod
+    def _find_by_key(conn: sqlite3.Connection, body: SendBody) -> sqlite3.Row | None:
+        row: sqlite3.Row | None = conn.execute(
+            "SELECT * FROM agent_bus_inbox WHERE from_session = ? AND idempotency_key = ?",
+            (body.session, body.idempotency_key),
+        ).fetchone()
+        return row
+
     def send(self, body: SendBody) -> dict[str, Any]:
         if len(body.body.encode("utf-8")) > MAX_BODY:
             raise ValueError("message body exceeds size cap")
         sender = self.require_live(body.session)
         to_address = normalize_to_address(body.to)
+        # One critical section for SELECT -> thread write -> INSERT (#3024) so a
+        # concurrent duplicate cannot slip between the replay check and the insert.
         with self._lock:
             conn = self._conn()
-            existing = conn.execute(
-                "SELECT * FROM agent_bus_inbox WHERE from_session = ? AND idempotency_key = ?",
-                (body.session, body.idempotency_key),
-            ).fetchone()
-            if existing:
-                conn.close()
-                return {"message": message_dict(existing), "replayed": True}
-            conn.close()
+            try:
+                existing = self._find_by_key(conn, body)
+                if existing is not None:
+                    return {"message": message_dict(existing), "replayed": True}
 
-        work_number = body.work_number
-        work_kind = body.work_kind
-        assert work_number is not None and work_kind is not None  # noqa: S101
-        cstore = get_conversation_store()
-        thread_id = ensure_work_thread(cstore, body.repo, work_number, work_kind)
-        msg_kind = body.type if body.type in ("handoff", "status") else "text"
-        meta = {
-            "agent_bus": True,
-            "type": body.type,
-            "repo": body.repo,
-            "work_kind": work_kind,
-            "work_number": work_number,
-            "to": to_address,
-            "from_session": body.session,
-            "from_role": sender.role,
-        }
-        thread_msg = cstore.add_message(
-            thread_id=thread_id,
-            author_kind="role",
-            author=sender.role,
-            kind=msg_kind,
-            body_md=body.body,
-            meta=meta,
-            idempotency_key=body.idempotency_key,
-        )
-        message_id = f"abm_{uuid.uuid4().hex[:12]}"
-        now = _now()
-        with self._lock:
-            conn = self._conn()
-            conn.execute(
-                "INSERT INTO agent_bus_inbox "
-                "(message_id, idempotency_key, from_session, to_address, msg_type, repo, work_kind, work_number, "
-                "body_md, thread_id, thread_message_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    message_id,
-                    body.idempotency_key,
-                    body.session,
-                    to_address,
-                    body.type,
-                    body.repo,
-                    body.work_kind,
-                    body.work_number,
-                    body.body,
-                    thread_id,
-                    thread_msg.id,
-                    now,
-                ),
-            )
-            row = conn.execute("SELECT * FROM agent_bus_inbox WHERE message_id = ?", (message_id,)).fetchone()
-            conn.close()
+                work_number = body.work_number
+                work_kind = body.work_kind
+                assert work_number is not None and work_kind is not None  # noqa: S101
+                cstore = get_conversation_store()
+                thread_id = ensure_work_thread(cstore, body.repo, work_number, work_kind)
+                msg_kind = body.type if body.type in ("handoff", "status") else "text"
+                meta = {
+                    "agent_bus": True,
+                    "type": body.type,
+                    "repo": body.repo,
+                    "work_kind": work_kind,
+                    "work_number": work_number,
+                    "to": to_address,
+                    "from_session": body.session,
+                    "from_role": sender.role,
+                }
+                thread_msg = cstore.add_message(
+                    thread_id=thread_id,
+                    author_kind="role",
+                    author=sender.role,
+                    kind=msg_kind,
+                    body_md=body.body,
+                    meta=meta,
+                    idempotency_key=body.idempotency_key,
+                )
+                message_id = f"abm_{uuid.uuid4().hex[:12]}"
+                now = _now()
+                try:
+                    conn.execute(
+                        "INSERT INTO agent_bus_inbox "
+                        "(message_id, idempotency_key, from_session, to_address, msg_type, repo, work_kind, "
+                        "work_number, body_md, thread_id, thread_message_id, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            message_id,
+                            body.idempotency_key,
+                            body.session,
+                            to_address,
+                            body.type,
+                            body.repo,
+                            body.work_kind,
+                            body.work_number,
+                            body.body,
+                            thread_id,
+                            thread_msg.id,
+                            now,
+                        ),
+                    )
+                except sqlite3.IntegrityError:
+                    # Another connection/process won UNIQUE(from_session, idempotency_key): replay its row.
+                    existing = self._find_by_key(conn, body)
+                    if existing is None:
+                        raise
+                    return {"message": message_dict(existing), "replayed": True}
+                row = conn.execute("SELECT * FROM agent_bus_inbox WHERE message_id = ?", (message_id,)).fetchone()
+            finally:
+                conn.close()
         log.info(
             "agent_bus: message %s %s -> %s %s#%s",
             message_id,
@@ -339,6 +351,14 @@ class AgentBusStore:
                     "last_message": msg,
                 }
         backlog = self.build_backlog()
+        empty_reason: str | None = None
+        if not agents:
+            # #3504: a bare empty `agents` list alone must never be read as proof
+            # no fleet agents exist. Distinguish "nothing has ever registered"
+            # from "sessions registered, but all are now stale/expired" -- the
+            # same complete_empty/local_empty contract #3503 established for
+            # activity sessions.
+            empty_reason = "complete_empty" if not principal_rows else "local_empty"
         return {
             "agents": agents,
             "threads": list(threads.values()),
@@ -347,6 +367,7 @@ class AgentBusStore:
                 "stale_sessions": backlog["stale_sessions"],
                 "blocked": backlog["blocked"],
             },
+            "empty_reason": empty_reason,
             "generated_at": utc_now_iso(),
         }
 

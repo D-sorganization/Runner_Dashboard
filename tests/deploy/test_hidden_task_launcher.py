@@ -168,7 +168,7 @@ def test_installer_guards_schtasks_fallback_length() -> None:
 
 
 def test_installer_threads_task_path_through_write_and_reread() -> None:
-    """Regression guard (found live on ControlTower's ``matlab-runner``):
+    """Regression guard (found live on node-a's ``matlab-runner``):
     ``Get-ScheduledTask -TaskName`` finds a task in any folder, but
     ``Set-ScheduledTask`` without ``-TaskPath`` looks only at the root and
     fails with 0x80070002. The discovered TaskPath must be passed to the

@@ -1,6 +1,6 @@
 """Cursor Agent and Ollama provider options for Staff Hub runs (issue #1252).
 
-Shapes and flags were captured from the installed CLIs on DeskComputer WSL on
+Shapes and flags were captured from the installed CLIs on hub-a WSL on
 2026-09-23: cursor-agent 2026.09.18, codex 0.156.1 ``--oss``, Claude Code on
 Ollama 0.33.3's Anthropic-compatible API.
 """

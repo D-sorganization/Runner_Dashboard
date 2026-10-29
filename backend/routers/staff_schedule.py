@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,12 +25,22 @@ from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
 from staff.audit import record_audit
 from staff.holds import MAX_TEXT
+from staff.model_tiers import validate_role_model
 from staff.models import (
     StaffHoldsResponse,
     StaffScheduleResponse,
     StaffScheduleToggleResponse,
 )
 from staff.scheduler import get_scheduler
+
+# Production (start-dashboard.sh) and the E2E harness both launch server.py with only
+# backend/ on sys.path; the repo-root scripts package needs this explicit shim (#3311
+# follow-up, reused here for the #3295 S2 role-model-override "one fyi" notification).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.rd_barb_notify import persona_notify  # noqa: E402
 
 log = logging.getLogger("dashboard.staff.schedule")
 router = APIRouter(prefix="/api/staff", tags=["staff"])
@@ -99,13 +111,21 @@ def schedule_snapshot() -> dict[str, Any]:
     """Per role: next fire, window, blocking hold, budget, last fired; shared by both route versions."""
     sched = get_scheduler()
     now = datetime.now(UTC)
+    enabled = scheduler_enabled()
+    roles = sched.status(now)
+    if not enabled:
+        for row in roles:
+            row["enabled"] = False
+            row["next_fire"] = None
+            row["hold"] = f"inactive on this node: {SCHEDULER_ENABLED_ENV}=0"
     return {
         "machine": sched.runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
-        "enabled": scheduler_enabled(),
+        "enabled": enabled,
         "running": sched.running,
         "tick_seconds": sched.tick_seconds,
-        "roles": sched.status(now),
+        "leader_lease": sched.leader_status(now),
+        "roles": roles,
     }
 
 
@@ -137,6 +157,11 @@ async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("
 
 class ScheduleToggleBody(BaseModel):
     enabled: bool
+
+
+class LeaderLeaseBody(BaseModel):
+    machine: str = Field(min_length=1, max_length=80)
+    ttl_seconds: float | None = Field(default=None, gt=0, le=3600)
 
 
 @router.post(
@@ -172,6 +197,16 @@ async def get_schedule(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     return schedule_snapshot()
+
+
+@router.post("/schedule/leader-lease", response_model_exclude_none=True)
+async def post_leader_lease(
+    body: LeaderLeaseBody,
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Acquire or renew the scheduler leader lease (fleet peer internal contract)."""
+    sched = get_scheduler()
+    return sched.acquire_leader_lease(body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds)
 
 
 v1_router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
@@ -214,4 +249,68 @@ async def put_role_schedule(
         "next_fire": report.get("next_fire"),
         "reason": body.reason,
         "status": "enabled" if body.enabled else "disabled",
+    }
+
+
+class RoleModelOverrideBody(BaseModel):
+    model: str | None = Field(default=None, max_length=200)
+    reason: str = Field(default="", max_length=500)
+
+
+@v1_router.put("/roles/{role}/model")
+@router.put("/roles/{role}/model")
+async def put_role_model(
+    role: str,
+    body: RoleModelOverrideBody,
+    caller: Principal = Depends(require_scope("staff.holds.write")),
+) -> dict[str, Any]:
+    """Audited runtime model-selector override for a role (epic #3295 S2).
+
+    The YAML ``failover_chain``/``model`` stays the default; this persists an
+    operator override on top of it, one audit row and one persona fyi per switch.
+    """
+    sched = get_scheduler()
+    roles = sched.runner.roles()
+    if role not in roles:
+        raise HTTPException(status_code=404, detail=f"role '{role}' not found")
+    role_spec = roles[role]
+    model = body.model.strip() if body.model else None
+    if model:
+        provider_id = role_spec.providers[0] if role_spec.providers else "claude"
+        problems = validate_role_model(provider_id, model)
+        if problems:
+            raise HTTPException(status_code=422, detail="; ".join(problems))
+
+    previous = sched.role_model_override(role)
+    sched.set_role_model_override(role, model)
+    caller_str = format_caller(caller)
+    record_audit(
+        action="role_model_override",
+        target=role,
+        principal=caller_str,
+        surface="api_v1",
+        outcome="success",
+        detail={"role": role, "model": model, "previous": previous, "reason": body.reason},
+        fail_closed=True,
+    )
+    try:
+        persona_notify(
+            role,
+            {
+                "kind": "fyi",
+                "text": (
+                    f"{role}: model override {previous or 'default'} -> {model or 'default'}"
+                    f" ({body.reason or 'no reason given'})"
+                ),
+            },
+        )
+    except Exception:  # noqa: BLE001 — a notify failure must not block a recorded override
+        log.exception("persona_notify failed for role model override %s", role)
+    return {
+        "role": role,
+        "model": model,
+        "previous": previous,
+        "effective_model": model or role_spec.model,
+        "reason": body.reason,
+        "status": "overridden" if model else "cleared",
     }

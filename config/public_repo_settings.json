@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "description": "Declarative settings for the fresh public Runner_Dashboard repo (#3077 slice 5, issue #3083). scripts/bootstrap_public_repo.py plans this file's state against the live repo in dry-run by default; apply is an owner-run step. Required checks and merge-queue parameters are NOT duplicated here: they are read from config/required_status_checks_policy.json (the existing source of truth) to keep one shared source per #3077's DRY constraint.",
+  "target_repo": {
+    "new_public": "Runner_Dashboard",
+    "private_archive": "Runner_Dashboard-private",
+    "overlay": "Runner_Dashboard-overlay"
+  },
+  "license": {
+    "spdx": "Apache-2.0",
+    "files": ["LICENSE", "NOTICE"]
+  },
+  "actions_permissions": {
+    "fork_pr_approval_required": true,
+    "default_workflow_permissions": "read"
+  },
+  "variables": [
+    "AUTO_RELEASE_PROTECTED_SHAS",
+    "CI_PR_RUNNER_MODE",
+    "CI_QUEUE_RUNNER_LABEL",
+    "CI_QUEUE_RUNNER_MODE",
+    "CI_RUNNER_MODE",
+    "EXPEDITE_CONCURRENT_CAP",
+    "QUEUED_JOB_REAPER_DISABLED"
+  ],
+  "environments": [
+    {
+      "name": "self-hosted-heavy",
+      "reason": "Gates heavy self-hosted jobs (Playwright/staff-console e2e, docker builds) planned for slice 6 (#3084); never triggered from a fork PR."
+    }
+  ]
+}

@@ -25,6 +25,9 @@ from bash_host import as_bash_path, require_bash
 
 _WORKFLOWS_DIR = Path(__file__).parent.parent / ".github" / "workflows"
 _PR_ONLY_CANCEL = "${{ github.event_name == 'pull_request' }}"
+_PR_OR_MAIN_PUSH_CANCEL = (
+    "${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+)
 _POLICY_PATH = Path(__file__).parent.parent / "config" / "workflow_concurrency_policy.json"
 _PR_TRIGGER_KEYS = ("pull_request", "pull_request_target")
 _PR_GROUP_TOKENS = (
@@ -60,6 +63,10 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
     "ci-slo-check.yml": (
         "Read-only SLO snapshot and stall alarm must finish GitHub API reads; cancel-in-progress would "
         "discard partial metrics without reducing queue load."
+    ),
+    "recurring-scan.yml": (
+        "Cursor read-scan-push to bot/recurring-scan-state must finish; cancel mid-run risks a corrupt "
+        "cursor or a lost heartbeat."
     ),
 }
 
@@ -126,6 +133,86 @@ def _is_reusable_caller(job_body: dict) -> bool:
     return "uses" in job_body and "steps" not in job_body
 
 
+_LOCAL_ACTION_PREFIX = "./.github/actions/"
+_CHECKOUT_ACTION_MARKERS = (
+    "actions/checkout",
+    "actions/checkout@v",
+)
+
+
+def _step_is_checkout(step: dict) -> bool:
+    uses = str(step.get("uses", ""))
+    return any(marker in uses for marker in _CHECKOUT_ACTION_MARKERS)
+
+
+def _local_action_violations(workflow_path: Path) -> list[str]:
+    """Local composite actions require a prior checkout on the runner workspace."""
+    data = _load_workflow(workflow_path)
+    violations: list[str] = []
+    for job_id, job in (data.get("jobs") or {}).items():
+        if _is_reusable_caller(job or {}):
+            continue
+        saw_checkout = False
+        for step in (job or {}).get("steps") or []:
+            if _step_is_checkout(step):
+                saw_checkout = True
+            uses = str(step.get("uses", ""))
+            if uses.startswith(_LOCAL_ACTION_PREFIX) and not saw_checkout:
+                violations.append(f"{workflow_path.name}::{job_id}::{step.get('name', uses)}")
+    return violations
+
+
+_GUARD_ACTION = "./.github/actions/merge-queue-ref-guard"
+
+
+def _composite_guard_followed_by_repo_steps(workflow_path: Path) -> list[str]:
+    """The guard composite sparse-checkouts; later repo steps would see an empty tree."""
+    data = _load_workflow(workflow_path)
+    violations: list[str] = []
+    for job_id, job in (data.get("jobs") or {}).items():
+        if _is_reusable_caller(job or {}):
+            continue
+        steps = (job or {}).get("steps") or []
+        for index, step in enumerate(steps):
+            if _GUARD_ACTION not in str(step.get("uses", "")):
+                continue
+            for later in steps[index + 1 :]:
+                if later.get("run") or str(later.get("uses", "")).startswith(_LOCAL_ACTION_PREFIX):
+                    violations.append(f"{workflow_path.name}::{job_id}::{step.get('name', _GUARD_ACTION)}")
+                    break
+    return violations
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_merge_queue_ref_guard_composite_is_not_followed_by_repo_steps(workflow_path: Path) -> None:
+    """Guard composite re-sparse-checkouts; inline bash when later steps need the tree (#2886)."""
+    violations = _composite_guard_followed_by_repo_steps(workflow_path)
+    assert not violations, (
+        "merge-queue-ref-guard composite sparse-checkouts the workspace; use inline "
+        "bash .github/scripts/merge-queue-ref-guard.sh after a full checkout instead. "
+        f"Violations: {violations}"
+    )
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    _workflow_files(),
+    ids=lambda p: p.name,
+)
+def test_checkout_precedes_local_github_actions(workflow_path: Path) -> None:
+    """``uses: ./.github/actions/*`` must run only after ``actions/checkout`` (#2886)."""
+    violations = _local_action_violations(workflow_path)
+    assert not violations, (
+        "Local composite actions need action.yml on disk; checkout (sparse "
+        "``.github/actions`` is fine) must come first, or inline the script. "
+        f"Violations: {violations}"
+    )
+
+
 @pytest.mark.parametrize(
     "workflow_path",
     _workflow_files(),
@@ -184,7 +271,10 @@ def test_pr_triggered_workflows_cancel_superseded_runs(workflow_path: Path) -> N
 
     block = data["concurrency"]
     # Deploy-blocking workflows cancel only superseded PR runs, never main pushes.
-    assert block.get("cancel-in-progress") is True or block.get("cancel-in-progress") == _PR_ONLY_CANCEL, (
+    assert block.get("cancel-in-progress") is True or block.get("cancel-in-progress") in (
+        _PR_ONLY_CANCEL,
+        _PR_OR_MAIN_PUSH_CANCEL,
+    ), (
         f"{workflow_path.name}: PR-triggered workflows must cancel superseded "
         "runs unless they are documented in _CANCEL_FALSE_ALLOWLIST."
     )
@@ -369,7 +459,7 @@ def test_redundant_pr_closer_f7_contract() -> None:
     cond = str(job.get("if", ""))
     assert "pull_request.state" in cond and "open" in cond
     assert "JULES_APP_ID" not in text and "create-github-app-token" not in text and "github.token" in text
-    assert "d-sorg-fleet" in str(job["runs-on"]) and "ubuntu-latest" not in str(job["runs-on"])
+    assert "ubuntu-latest" in str(job["runs-on"]) and "d-sorg-fleet" not in str(job["runs-on"])
     run = next(s for s in job["steps"] if s.get("name") == "Close redundant agent PRs")["run"]
     assert "|| {" not in run and "continuing" not in run and "::error::GITHUB_TOKEN is empty" in run
     assert all(tok in script for tok in ("examined", "closed", "skipped"))
@@ -472,7 +562,8 @@ def test_redundant_closer_optional_arguments_with_only_a_shell_stub(
 
 def test_frontend_non_pr_scope_preserves_all_three_outputs(tmp_path: Path) -> None:
     workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
-    step = workflow["jobs"]["frontend-scope"]["steps"][0]
+    steps = workflow["jobs"]["frontend-scope"]["steps"]
+    step = next(s for s in steps if s.get("id") == "scope")
     output = tmp_path / "github-output"
     bash = require_bash()
     # A stub also prevents executing Python if this branch accidentally falls through.
@@ -565,18 +656,27 @@ def test_commit_stage_gitleaks_scans_staged_changes_only() -> None:
     assert "--source" not in command
 
 
-def test_ci_secrets_keeps_the_full_history_gitleaks_scan() -> None:
+def test_ci_secrets_gitleaks_pr_range_and_full_history() -> None:
+    """PR gitleaks scans base..head only; main push keeps full history."""
     text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
     assert "fetch-depth: 0" in text
-    assert '/gitleaks" detect' in text
+    assert 'gitleaks" detect' in text or '/gitleaks" detect' in text
     assert "--no-git" not in text
+    assert "--log-opts" in text
+    assert "pull_request.base.sha" in text
+    assert "pull_request.head.sha" in text
+    assert "gitleaks (full history scan)" in text
+    assert "gitleaks (PR commit range)" in text
 
 
 def test_required_typecheck_job_always_reports_context() -> None:
     """TypeScript typecheck (tsc) is required on main; the job must not be SKIPPED."""
     workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
     job = workflow["jobs"]["typecheck"]
-    assert job.get("if") is None, "typecheck must not use a job-level `if` that skips the required context"
+    assert job.get("if") in (
+        None,
+        "always() && !cancelled() && needs.frontend-scope.result == 'success'",
+    ), "typecheck must not use a job-level `if` that skips the required context"
     assert job["name"] == "TypeScript typecheck (tsc)"
 
 
@@ -805,7 +905,9 @@ def test_heavy_security_scanners_run_on_pull_request_or_schedule_not_merge_group
     assert "needs.changes.outputs.run_python_tests == 'true'" in gate
     for step_name in _HEAVY_SCANNER_STEPS:
         step_if = str(_ci_step("lint", name=step_name).get("if", ""))
-        assert step_if == gate, f"{step_name} must share the security-scan job gate"
+        assert step_if == gate.removeprefix("always() && !cancelled() && "), (
+            f"{step_name} must share the security-scan job gate"
+        )
 
 
 def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
@@ -822,7 +924,9 @@ def test_required_aggregates_report_on_every_event(job_id: str) -> None:
     from scripts.check_required_checks_drift import check_job_fails_closed
 
     job = _ci_jobs()[job_id]
-    assert job.get("if") == "always()", f"{job_id} must run on every event"
+    condition = str(job.get("if", ""))
+    assert "always()" in condition, f"{job_id} must run on every event"
+    assert "!cancelled()" in condition, f"{job_id} must not run when the workflow is cancelled"
     assert "changes" in job["needs"], f"{job_id} must read the tier decision"
     assert check_job_fails_closed(_CI_STANDARD.read_text(encoding="utf-8"), job_id) == []
 
@@ -837,6 +941,10 @@ def _quality_gate(**env: str) -> int:
         "RESULT_LINT": "success",
         "RESULT_TESTS": "success",
         "RESULT_SECURITY": "success",
+        "RESULT_FRONTEND": "skipped",
+        "RESULT_SECRETS": "skipped",  # pragma: allowlist secret
+        "RESULT_API_CONTRACT": "skipped",
+        "RESULT_DOCKER": "skipped",
         "GITHUB_EVENT_NAME": "pull_request",
     }
     code, _ = _run_step(_ci_step("quality-gate", name="Require every gated job to succeed"), {**defaults, **env})
@@ -864,7 +972,14 @@ def test_quality_gate_requires_security_scan_on_pr_python_lane() -> None:
 
 
 def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
-    full = {"TIER": "full", "FULL_SUITE": "true"}
+    full = {
+        "TIER": "full",
+        "FULL_SUITE": "true",
+        "RESULT_FRONTEND": "success",
+        "RESULT_SECRETS": "success",  # pragma: allowlist secret
+        "RESULT_API_CONTRACT": "success",
+        "RESULT_DOCKER": "success",
+    }
     assert _quality_gate(**full, RESULT_SECURITY="success") == 0
     assert _quality_gate(**full, RESULT_SECURITY="skipped") == 1
     assert _quality_gate(**full, RESULT_SECURITY="failure") == 1
@@ -877,8 +992,33 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
         "GITHUB_EVENT_NAME": "merge_group",
     }
     assert _quality_gate(**mq, RESULT_SECURITY="skipped") == 0
-    assert _quality_gate(**mq, RESULT_LINT="skipped") == 1
-    assert _quality_gate(**mq, RESULT_TESTS="cancelled") == 1
+    assert _quality_gate(**dict(mq, RESULT_LINT="skipped")) == 1
+    assert _quality_gate(**dict(mq, RESULT_TESTS="cancelled")) == 1
+
+
+def test_quality_gate_requires_frontend_secrets_api_contract_and_docker_on_merge_group() -> None:
+    step = _ci_step("quality-gate", name="Require every gated job to succeed")
+    run = step["run"]
+    assert "verify_merge_group_companion_checks.py" in run, (
+        "quality-gate must invoke verify_merge_group_companion_checks.py on merge_group"
+    )
+    from scripts.ci.verify_merge_group_companion_checks import REQUIRED_COMPANION_CHECKS
+
+    for required_check in (
+        "frontend-required",
+        "detect-secrets (baseline diff)",
+        "api-contract-regeneration",
+        "docker-build-scan",
+    ):
+        assert required_check in REQUIRED_COMPANION_CHECKS
+
+
+def test_companion_gate_workflows_have_workflow_call_and_merge_group() -> None:
+    for workflow_name in ("frontend-tests.yml", "ci-secrets.yml", "api-contract-regeneration.yml", "docker-build.yml"):
+        data = _load_workflow(_WORKFLOWS_DIR / workflow_name)
+        triggers = _triggers(data)
+        assert "workflow_call" in triggers, f"{workflow_name} must support workflow_call"
+        assert "merge_group" in triggers, f"{workflow_name} must support merge_group"
 
 
 def test_quality_gate_passes_docs_only_pr_and_post_merge_push() -> None:

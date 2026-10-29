@@ -1,0 +1,60 @@
+name: API Contract Regeneration
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+  push:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Main-push / merge-group runs are never cancelled by a newer merge: a cancelled
+# required check leaves that commit permanently non-green. Only superseded
+# pull_request runs are cancelled. Contract: tests/test_main_push_concurrency.py
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  api-contract-regeneration:
+    name: api-contract-regeneration
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies for OpenAPI export
+        run: |
+          python -m venv "$RUNNER_TEMP/api-contract-venv"
+          source "$RUNNER_TEMP/api-contract-venv/bin/activate"
+          python -m pip install -U pip
+          python -m pip install -r requirements.txt
+          echo "$RUNNER_TEMP/api-contract-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install frontend tooling for openapi-typescript
+        run: |
+          cd frontend
+          npm ci --ignore-scripts
+
+      - name: Verify generated API contract matches OpenAPI export
+        env:
+          PYTHONPATH: backend
+        run: bash scripts/gen-api-client.sh --check

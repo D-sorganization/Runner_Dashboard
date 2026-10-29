@@ -19,6 +19,12 @@ import pytest
 import runner_autoscaler as ra
 
 
+@pytest.fixture(autouse=True)
+def _idle_stop_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep stop admission off the host; busy detection itself uses the facade."""
+    monkeypatch.setattr("autoscaler_busy._runner_is_busy", lambda unit: False)
+
+
 def test_main_identity_failure_exits_before_lock_or_poll(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ra, "AUTOSCALER_EXPECTED_WSL_DISTRO", "Ubuntu-22.04")
     monkeypatch.setattr(ra, "psutil", object())
@@ -218,25 +224,11 @@ def test_leased_runners_no_file(tmp_path: Path) -> None:
 def test_leased_runners_no_leases_key(tmp_path: Path) -> None:
     lease_file = tmp_path / "leases.yml"
     lease_file.write_text("{}", encoding="utf-8")
-    with patch("runner_autoscaler.Path") as mock_path_cls:
-        mock_path_cls.return_value.__truediv__ = lambda self, other: lease_file
-        # Easier: patch the open call path-level
-        pass
-    # Test via direct file
-    with patch.object(ra.Path, "__new__", return_value=lease_file):
-        pass
-    # Simpler integration: write a real file and patch the path resolution
-    import yaml
-
-    lease_file.write_text(yaml.dump({"leases": []}), encoding="utf-8")
-    # Monkeypatch the constant
-    original = ra.Path
-    try:
-        ra.Path = lambda *a, **kw: lease_file if "leases" in str(a) else original(*a, **kw)  # type: ignore[assignment]
-    except Exception:
-        pass
-    finally:
-        ra.Path = original
+    with patch("autoscaler_sampling._leases_path", return_value=lease_file):
+        assert ra._leased_runners() == set()
+    lease_file.write_text("leases: []\n", encoding="utf-8")
+    with patch("autoscaler_sampling._leases_path", return_value=lease_file):
+        assert ra._leased_runners() == set()
 
 
 def test_leased_runners_active_lease(tmp_path: Path) -> None:
@@ -617,18 +609,18 @@ def test_should_restore_recovery_floor_only_after_overload_clears(
 
 
 # ---------------------------------------------------------------------------
-# Default-pool overload decision — OGLaptop 2026-06-09 idle-host regression
+# Default-pool overload decision — node-b 2026-06-09 idle-host regression
 #
 # A fully idle host (load 0.23 on 20 cores, 1 GB / 62 GB RAM, 0 swap) was
 # wrongly scaled to the floor and the stop was logged as "(host overloaded)".
 # These tests pin the decision contract: idle metrics must NOT read overloaded
 # (so no overload-driven scale-down) and MUST read recovered (so runners are
-# restored), evaluated against OGLaptop's deployed thresholds.
+# restored), evaluated against node-b's deployed thresholds.
 # ---------------------------------------------------------------------------
 
-# OGLaptop's runner-autoscaler.service tunables, fed explicitly so the test is
+# node-b's runner-autoscaler.service tunables, fed explicitly so the test is
 # independent of the module constants resolved at import time.
-_OGLAPTOP_THRESHOLDS = {
+_NODE_B_THRESHOLDS = {
     "cpu_high": 75.0,
     "mem_high": 60.0,
     "load_per_core": 1.2,
@@ -649,8 +641,8 @@ _IDLE_METRICS = {
 
 def test_default_pool_not_overloaded_when_host_idle() -> None:
     """Idle host must NOT trigger overload → no overload-driven scale-down."""
-    assert ra._default_pool_overloaded(**_IDLE_METRICS, **_OGLAPTOP_THRESHOLDS) is False, (
-        "fully idle host was reported overloaded — the OGLaptop 2026-06-09 false positive"
+    assert ra._default_pool_overloaded(**_IDLE_METRICS, **_NODE_B_THRESHOLDS) is False, (
+        "fully idle host was reported overloaded — the node-b 2026-06-09 false positive"
     )
 
 
@@ -662,11 +654,11 @@ def test_default_pool_recovered_when_host_idle() -> None:
         avg_load=_IDLE_METRICS["avg_load"],
         avg_disk=_IDLE_METRICS["avg_disk"],
         min_disk_free=_IDLE_METRICS["min_disk_free"],
-        cpu_low=35.0,  # OGLaptop AUTOSCALER_CPU_LOW
-        mem_high=_OGLAPTOP_THRESHOLDS["mem_high"],
-        load_per_core=_OGLAPTOP_THRESHOLDS["load_per_core"],
-        disk_high=_OGLAPTOP_THRESHOLDS["disk_high"],
-        disk_min_free_gb=_OGLAPTOP_THRESHOLDS["disk_min_free_gb"],
+        cpu_low=35.0,  # node-b AUTOSCALER_CPU_LOW
+        mem_high=_NODE_B_THRESHOLDS["mem_high"],
+        load_per_core=_NODE_B_THRESHOLDS["load_per_core"],
+        disk_high=_NODE_B_THRESHOLDS["disk_high"],
+        disk_min_free_gb=_NODE_B_THRESHOLDS["disk_min_free_gb"],
     )
     assert recovered is True
 
@@ -685,7 +677,7 @@ def test_default_pool_overloaded_when_any_metric_breaches(overrides: dict) -> No
     """Each individual threshold breach must still trip overload (no regression
     from extracting the decision into a function)."""
     metrics = {**_IDLE_METRICS, **overrides}
-    assert ra._default_pool_overloaded(**metrics, **_OGLAPTOP_THRESHOLDS) is True
+    assert ra._default_pool_overloaded(**metrics, **_NODE_B_THRESHOLDS) is True
 
 
 def test_stop_unit_logs_scheduled_surplus_reason(caplog: pytest.LogCaptureFixture) -> None:
@@ -729,8 +721,8 @@ class TestRunnerNameForUnit:
     """_runner_name_for_unit: extract runner short-name from a systemd unit."""
 
     def test_strips_actions_runner_prefix_and_service_suffix(self) -> None:
-        unit = "actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service"
-        assert ra._runner_name_for_unit(unit) == "d-sorg-local-ControlTower-3"
+        unit = "actions.runner.D-sorganization.d-sorg-local-node-a-3.service"
+        assert ra._runner_name_for_unit(unit) == "d-sorg-local-node-a-3"
 
     def test_handles_arbitrary_org_segment_with_dots(self) -> None:
         unit = "actions.runner.org.with.dots.my-runner.service"
@@ -792,8 +784,8 @@ class TestRunnerBusyViaPickupDir:
 class TestRunnerBusyViaLockfile:
     """_runner_busy_via_lockfile: Worker-alive defense-in-depth signal."""
 
-    UNIT = "actions.runner.D-sorganization.d-sorg-local-ControlTower-3.service"
-    RUNNER_NAME = "d-sorg-local-ControlTower-3"
+    UNIT = "actions.runner.D-sorganization.d-sorg-local-node-a-3.service"
+    RUNNER_NAME = "d-sorg-local-node-a-3"
 
     def test_no_lockfile_returns_false(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(ra, "RUNNER_BUSY_LOCK_DIR", tmp_path)
@@ -991,3 +983,76 @@ class TestGracefulDrainDropin:
         assert "systemctl kill" not in code_src, (
             "_stop_unit must not use systemctl kill; that bypasses the graceful-drain drop-in"
         )
+
+
+# ---------------------------------------------------------------------------
+# Scale-down honours virtual / github-claim leases (issue #3025)
+# ---------------------------------------------------------------------------
+
+
+class _StopLoop(BaseException):
+    """Escapes the poll loop's ``except Exception`` once the decision tick ran."""
+
+
+def _run_scale_down_tick(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, leases_yaml: str) -> list[str]:
+    """Drive ``_run_poll_loop`` for one decision tick; return the units it stopped."""
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir()
+    (config_dir / "leases.yml").write_text(leases_yaml, encoding="utf-8")
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config_dir))
+
+    units = [
+        "actions.runner.org.runner-a.service",
+        "actions.runner.org.runner-b.service",
+    ]
+    sample = {
+        "cpu": 1.0,
+        "mem": 1.0,
+        "load": 0.1,
+        "disk": 1.0,
+        "disk_free": 500.0,
+        "cache_pressure": 0.0,
+        "io_pressure": 0.0,
+    }
+    stopped: list[str] = []
+    sleeps = {"n": 0}
+
+    def fake_sleep(_secs: float) -> None:
+        sleeps["n"] += 1
+        if sleeps["n"] >= 3:
+            raise _StopLoop
+
+    monkeypatch.setattr(ra, "_notify_systemd", lambda _s: True)
+    monkeypatch.setattr(ra, "_send_watchdog", lambda: None)
+    monkeypatch.setattr(ra, "_sample_all_pools", lambda: {p: dict(sample) for p in ("default", "nvme", "hdd")})
+    monkeypatch.setattr(ra, "_list_runner_units", lambda: list(units))
+    monkeypatch.setattr(ra, "process_disk_full_cordon_tick", lambda *a, **k: False)
+    monkeypatch.setattr(ra, "_classify_unit", lambda _u: "default")
+    monkeypatch.setattr(ra, "_unit_is_active", lambda _u: True)
+    monkeypatch.setattr(ra, "_runner_is_busy", lambda _u: False)
+    monkeypatch.setattr(ra, "_get_scheduled_pool_desired", lambda _p, _n: 0)
+    monkeypatch.setattr(ra, "_is_stop_allowed", lambda _p: True)
+    monkeypatch.setattr(ra, "_stop_in_cooldown", lambda _p: False)
+    monkeypatch.setattr(ra, "_record_stop_action", lambda _p: None)
+    monkeypatch.setattr(ra, "_stop_unit", lambda u, reason="": stopped.append(u) or True)
+    monkeypatch.setattr(ra, "MAX_STEP", 5)
+    monkeypatch.setattr(ra.time, "sleep", fake_sleep)
+    with pytest.raises(_StopLoop):
+        ra._run_poll_loop()
+    return stopped
+
+
+def test_scale_down_respects_virtual_leases(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A runner pinned by a virtual-{env} lease is never chosen for scale-down."""
+    stopped = _run_scale_down_tick(
+        monkeypatch,
+        tmp_path,
+        "leases:\n  - runner_id: virtual-prod\n    metadata:\n      runner_name: runner-a\n",
+    )
+    assert stopped == ["actions.runner.org.runner-b.service"]
+
+
+def test_scale_down_blocked_by_unpinned_github_claim_lease(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """An unresolvable github-claim lease fails closed: nothing is stopped this tick."""
+    stopped = _run_scale_down_tick(monkeypatch, tmp_path, "leases:\n  - runner_id: github-claim-42\n")
+    assert stopped == []

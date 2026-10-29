@@ -271,6 +271,7 @@ auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
 
 def _loopback_auth_enabled() -> bool:
+    # Trusted Host validation runs in middleware before this path (#3010).
     return os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1"
 
 
@@ -435,14 +436,23 @@ def require_principal(
 
 
 FLEET_PEER_SCOPES = frozenset(
-    {"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain", "fleet.read", "memory.read"}
+    {
+        "staff.read",
+        "staff.dispatch",
+        "staff.cancel",
+        "staff.chat",
+        "fleet.maintain",
+        "fleet.read",
+        "memory.read",
+        "activity.read",
+    }
 )
 LOOPBACK_SCOPES = frozenset(
     (
         "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write staff.approve "
         "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain fleet.read "
         "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write "
-        "memory.read"
+        "memory.read activity.read activity.write"
     ).split()
 )
 
@@ -455,7 +465,7 @@ SCOPE_PRESETS = {
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "
         "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin "
-        "fleet.maintain fleet.read"
+        "fleet.maintain fleet.read activity.read activity.write"
     ).split(),
     "viewer": ["assistant.chat", "staff.read", "fleet.read"],
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.

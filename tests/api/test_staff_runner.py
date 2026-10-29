@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 from staff import adapters as adapters_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -202,7 +203,7 @@ def staff(
         adapters=adapters,
         machine="TestNode",
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -463,6 +464,48 @@ def test_roster_lists_roles_and_providers(client: TestClient, monkeypatch: pytes
     assert {"night-watch", "barb", "ad-hoc"} <= names
     assert "claude" in body["providers"]
     assert body["active_runs"] == 0
+
+
+@pytest.mark.unit
+def test_roster_reports_model_override(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /roster surfaces a role's runtime model override (epic #3295 S2)."""
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
+
+    class _FakeSched:
+        def role_model_override(self, role_name: str) -> str | None:
+            return "claude-opus-5-5" if role_name == "night-watch" else None
+
+    monkeypatch.setattr("routers.staff.get_scheduler", lambda: _FakeSched())
+    body = client.get("/api/staff/roster").json()
+    roles_by_name = {r["name"]: r for r in body["roles"]}
+    overridden = roles_by_name["night-watch"]
+    assert overridden["model_override"] == "claude-opus-5-5"
+    assert overridden["effective_model"] == "claude-opus-5-5"
+    plain = roles_by_name["ad-hoc"]
+    assert plain.get("model_override") is None
+    # response_model_exclude_none=True drops effective_model too when it's None (no override, no YAML model).
+    assert plain.get("effective_model") == plain.get("model")
+
+
+@pytest.mark.unit
+def test_roster_reports_allowed_models_for_the_role_provider(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GET /roster lists selectable models for the Staff Console dropdown (epic #3295 S2)."""
+    from staff.model_tiers import allowed_models_for_provider
+
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
+    body = client.get("/api/staff/roster").json()
+    roles_by_name = {r["name"]: r for r in body["roles"]}
+    night_watch = roles_by_name["night-watch"]
+    assert night_watch["providers"], "fixture role must declare at least one provider"
+    assert night_watch["allowed_models"] == sorted(allowed_models_for_provider(night_watch["providers"][0]))
+
+    ad_hoc = roles_by_name["ad-hoc"]
+    assert ad_hoc["providers"], "ad-hoc must declare at least one provider"
+    expected_ad_hoc = sorted(allowed_models_for_provider(ad_hoc["providers"][0]))
+    assert expected_ad_hoc, "ad-hoc's first provider must have at least one allowed model"
+    assert ad_hoc["allowed_models"] == expected_ad_hoc
 
 
 @pytest.mark.unit

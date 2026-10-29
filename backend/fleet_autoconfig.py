@@ -72,20 +72,14 @@ def resolve_hub_public_origin_from_registry(registry: Mapping[str, Any]) -> str:
 
 def registry_machine_url(machine: Mapping[str, Any]) -> str:
     """Return the preferred dashboard URL for a registry machine."""
-    candidate = str(machine.get("dashboard_url") or "").strip()
-    if candidate:
+    if candidate := str(machine.get("dashboard_url") or "").strip():
         return candidate
     for pool in machine.get("runner_pools", []) or []:
-        if not isinstance(pool, Mapping) or pool.get("retired"):
-            continue
-        pool_url = str(pool.get("dashboard_url") or "").strip()
-        if pool_url:
-            return pool_url
+        if isinstance(pool, Mapping) and not pool.get("retired"):
+            if pool_url := str(pool.get("dashboard_url") or "").strip():
+                return pool_url
     for node in machine.get("tailscale_nodes", []) or []:
-        if not isinstance(node, Mapping):
-            continue
-        ip = str(node.get("ip", "")).strip()
-        if ip:
+        if isinstance(node, Mapping) and (ip := str(node.get("ip", "")).strip()):
             return f"http://{ip}:8321"
     return ""
 
@@ -98,6 +92,21 @@ def _pool_url_port(url: str) -> int | None:
         return urlsplit(url).port
     except ValueError:
         return None
+
+
+def is_fixed_capacity_pool(pool: Mapping[str, Any]) -> bool:
+    """True for an active pool with ``capacity_mode: fixed``.
+
+    Fixed pools are always-on runners in a separate distro with no dashboard
+    or autoscaler (e.g. node-a's CT-NVMe distro). They are outside the
+    host autoscaler's cap, need no ``dashboard_url``, and are never dashboard
+    peers.
+    """
+    return (
+        isinstance(pool, Mapping)
+        and not pool.get("retired")
+        and (str(pool.get("capacity_mode") or "").strip().lower() == "fixed")
+    )
 
 
 def derive_pool_topology(
@@ -116,17 +125,17 @@ def derive_pool_topology(
     so no phantom peer node is emitted.
     """
     identities = current_identity_names(
-        display_name=display_name,
-        platform_node=platform_node,
-        runner_aliases=runner_aliases,
+        display_name=display_name, platform_node=platform_node, runner_aliases=runner_aliases
     )
     for machine in registry.get("machines", []) or []:
         if not isinstance(machine, Mapping):
             continue
-        pools = [p for p in (machine.get("runner_pools") or []) if isinstance(p, Mapping) and not p.get("retired")]
-        if not pools:
-            continue
-        if not registry_machine_matches_current_dashboard(machine, identities):
+        pools = [
+            p
+            for p in (machine.get("runner_pools") or [])
+            if isinstance(p, Mapping) and not p.get("retired") and not is_fixed_capacity_pool(p)
+        ]
+        if not pools or not registry_machine_matches_current_dashboard(machine, identities):
             continue
 
         local_pool: Mapping[str, Any] | None = None
@@ -137,24 +146,21 @@ def derive_pool_topology(
                 local_pool = pool
                 break
         if local_pool is None:
-            for pool in pools:
-                if _pool_url_port(str(pool.get("dashboard_url") or "")) == local_port:
-                    local_pool = pool
-                    break
-        if local_pool is None and len(pools) == 1:
-            local_pool = pools[0]
+            local_pool = next(
+                (p for p in pools if _pool_url_port(str(p.get("dashboard_url") or "")) == local_port),
+                pools[0] if len(pools) == 1 else None,
+            )
         if local_pool is None:
             continue
 
         local_name = str(local_pool.get("name") or "").strip() or None
         peers: list[dict[str, Any]] = []
         for pool in pools:
-            if pool is local_pool:
-                continue
-            name = str(pool.get("name") or "").strip()
-            url = str(pool.get("dashboard_url") or "").strip().rstrip("/")
-            if name and url:
-                peers.append({"name": name, "url": url, "port": _pool_url_port(url)})
+            if pool is not local_pool:
+                name = str(pool.get("name") or "").strip()
+                url = str(pool.get("dashboard_url") or "").strip().rstrip("/")
+                if name and url:
+                    peers.append({"name": name, "url": url, "port": _pool_url_port(url)})
         return local_name, peers
     return None, []
 
@@ -162,18 +168,13 @@ def derive_pool_topology(
 def registry_dashboard_url_ports(registry: Mapping[str, Any]) -> set[int]:
     """Return every explicit port used by an active machine or pool ``dashboard_url``."""
     ports: set[int] = set()
-    for machine in registry.get("machines", []) or []:
-        if not isinstance(machine, Mapping) or machine.get("retired"):
-            continue
-        port = _pool_url_port(str(machine.get("dashboard_url") or ""))
-        if port is not None:
+    for machine in _active_machines(registry):
+        if (port := _pool_url_port(str(machine.get("dashboard_url") or ""))) is not None:
             ports.add(port)
         for pool in machine.get("runner_pools", []) or []:
-            if not isinstance(pool, Mapping) or pool.get("retired"):
-                continue
-            port = _pool_url_port(str(pool.get("dashboard_url") or ""))
-            if port is not None:
-                ports.add(port)
+            if isinstance(pool, Mapping) and not pool.get("retired"):
+                if (port := _pool_url_port(str(pool.get("dashboard_url") or ""))) is not None:
+                    ports.add(port)
     return ports
 
 
@@ -192,21 +193,14 @@ def derive_fleet_nodes_from_registry(
     false offline states or mirrored-network port conflicts.
     """
     identities = current_identity_names(
-        display_name=display_name,
-        platform_node=platform_node,
-        runner_aliases=runner_aliases,
+        display_name=display_name, platform_node=platform_node, runner_aliases=runner_aliases
     )
     nodes: dict[str, str] = {}
-    for machine in registry.get("machines", []) or []:
-        if not isinstance(machine, Mapping):
-            continue
-        if machine.get("retired"):
-            continue
+    for machine in _active_machines(registry):
         name = str(machine.get("name", "")).strip()
         if not name or registry_machine_matches_current_dashboard(machine, identities):
             continue
-        url = registry_machine_url(machine)
-        if url:
+        if url := registry_machine_url(machine):
             nodes[name] = url
     return nodes
 
@@ -450,6 +444,8 @@ def assert_valid_active_registry(registry: Mapping[str, Any]) -> None:
                 if not pool_name:
                     raise RuntimeError(f"Active runner pool under '{name}' missing name: {pool}")
                 pool_url = str(pool.get("dashboard_url") or "").strip()
+                if not pool_url and is_fixed_capacity_pool(pool):
+                    continue
                 if not pool_url:
                     raise RuntimeError(f"Active runner pool '{pool_name}' under '{name}' missing dashboard_url")
                 try:

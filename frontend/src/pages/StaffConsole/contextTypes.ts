@@ -25,6 +25,16 @@ export interface RoleScheduleInfo {
   hold?: string | null;
 }
 
+/** Runtime model-selector state for the Staff Console dropdown (epic #3295 S2). */
+export interface RoleModelInfo {
+  /** The role's effective model: the override when set, else the YAML `model` default. */
+  effective: string | null;
+  /** The runtime override, or `null` when the role runs on its YAML default. */
+  override: string | null;
+  /** Models the dropdown may select, from GET /roster's `allowed_models`. */
+  allowed: string[];
+}
+
 export interface RoleBudgetInfo {
   usd_per_day: number;
   /** Not yet served by GET /api/v1/staff/roster; unknown spend renders as "—" (#1744). */
@@ -60,6 +70,7 @@ export interface RoleDetail {
   mandate: string;
   providers: RoleProviderStatus[];
   schedule?: RoleScheduleInfo;
+  model?: RoleModelInfo;
   budget?: RoleBudgetInfo;
   active_runs?: ActiveRunSummary[];
   recent_work_items?: RecentWorkItemSummary[];
@@ -88,6 +99,10 @@ export interface ContextPaneProps {
   onToggleSchedule?: (roleName: string, enabled: boolean) => Promise<void> | void;
   /** Why the schedule switch is disabled, when it is (#1804). */
   scheduleDisabledReason?: string | null;
+  /** Persists a model-override change; rejecting rolls the dropdown back (epic #3295 S2). */
+  onChangeModel?: (roleName: string, model: string | null) => Promise<void> | void;
+  /** Why the model dropdown is disabled, when it is. */
+  modelDisabledReason?: string | null;
   className?: string;
   isLoading?: boolean;
 }

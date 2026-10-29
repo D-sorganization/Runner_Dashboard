@@ -136,7 +136,7 @@ def validate_seat_providers(seats: tuple[SeatSpec, ...]) -> tuple[SeatSpec, ...]
 
 
 # Board personas (owner request 2026-10-23): Fable, Astra, top Grok, Argon. Every model id
-# was checked on DeskComputer and Brick against the subscription CLI's own model list and a
+# was checked on hub-a and node-c against the subscription CLI's own model list and a
 # one-line turn; none is a pay-per-use API. Grok runs through the Cursor subscription.
 BOARD_SEATS: tuple[SeatSpec, ...] = validate_seat_providers(
     (

@@ -9,6 +9,7 @@ the backend) so no extra credentials are required.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime as _dt_mod
 import json
 import logging
@@ -47,7 +48,10 @@ async def _run_gh(args: list[str], timeout: int = 30) -> tuple[int, str, str]:
             stderr.decode(errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         return -1, "", "gh command timed out"
 
 

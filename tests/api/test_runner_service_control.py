@@ -77,19 +77,34 @@ async def test_run_runner_svc_calls_run_cmd(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(dc, "RUNNER_BASE_DIR", tmp_path)
     captured: dict = {}
 
-    async def fake_run_cmd(cmd, timeout=30, cwd=None):  # noqa: ANN001, ARG001
+    async def fake_run_cmd(cmd, timeout=30, cwd=None, *, input_text=None):  # noqa: ANN001, ARG001
         captured["cmd"] = cmd
         captured["cwd"] = cwd
+        captured["input"] = input_text
         return 0, "started", ""
 
     monkeypatch.setattr(sc, "run_cmd", fake_run_cmd)
     code, stdout, _ = await run_runner_svc(2, "start")
     assert code == 0
-    assert "sudo" in captured["cmd"]
-    assert "start" in captured["cmd"]
+    assert captured["cmd"] == ["sudo", "-n", "/usr/local/sbin/rd-runner-ctl"]
     expected_unit = f"actions.runner.{dc.ORG}.d-sorg-local-{dc.HOSTNAME}-2.service"
-    assert captured["cmd"] == ["sudo", "/usr/bin/systemctl", "start", expected_unit]
+    assert captured["input"] == f"start\n{expected_unit}\n"
     assert captured["cwd"] is None
+
+
+async def test_run_runner_svc_records_failed_control(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(dc, "RUNNER_BASE_DIR", tmp_path)
+
+    async def failed_run_cmd(*args, **kwargs):  # noqa: ANN002, ANN003
+        return 1, "", "helper failed"
+
+    monkeypatch.setattr(sc, "run_cmd", failed_run_cmd)
+    from runner_control_health import get_runner_control_health, reset_runner_control_health
+
+    reset_runner_control_health()
+    await run_runner_svc(2, "stop")
+    assert get_runner_control_health() == {"status": "degraded", "last_action": "stop"}
+    reset_runner_control_health()
 
 
 async def test_run_runner_svc_rejects_unsupported_action(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,11 +175,11 @@ def test_runner_num_from_id_ignores_platform_node_without_display_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Self-hosted CI hosts must not treat foreign names as local when HOSTNAME is patched."""
-    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower")
+    monkeypatch.setattr(dc, "HOSTNAME", "node-a")
     monkeypatch.setattr(dc, "DISPLAY_NAME", None)
-    monkeypatch.setattr(dc, "PLATFORM_NODE", "DeskComputer")
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "hub-a")
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
-    runners = [{"id": 1, "name": "d-sorg-local-DeskComputer-1"}]
+    runners = [{"id": 1, "name": "d-sorg-local-hub-a-1"}]
     assert runner_num_from_id(1, runners) is None
 
 
@@ -172,11 +187,11 @@ def test_runner_num_from_id_accepts_platform_node_when_display_name_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Split-pool DISPLAY_NAME labels still resolve legacy d-sorg-local-<node>-N names."""
-    monkeypatch.setattr(dc, "DISPLAY_NAME", "ControlTower-NVMe")
-    monkeypatch.setattr(dc, "HOSTNAME", "ControlTower-NVMe")
-    monkeypatch.setattr(dc, "PLATFORM_NODE", "ControlTower")
+    monkeypatch.setattr(dc, "DISPLAY_NAME", "node-a-NVMe")
+    monkeypatch.setattr(dc, "HOSTNAME", "node-a-NVMe")
+    monkeypatch.setattr(dc, "PLATFORM_NODE", "node-a")
     monkeypatch.setattr(dc, "RUNNER_ALIASES", [])
-    runners = [{"id": 1, "name": "d-sorg-local-ControlTower-1"}]
+    runners = [{"id": 1, "name": "d-sorg-local-node-a-1"}]
     assert runner_num_from_id(1, runners) == 1
 
 

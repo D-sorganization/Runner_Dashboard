@@ -19,6 +19,7 @@ def reap_once() -> dict[str, int]:
             released += store.release_tracked_claims(row.session_id, row.role, reason=RELEASE_REASON)
         except Exception as exc:  # noqa: BLE001 — reaper must not stall the loop
             log.warning("agent_bus reaper: claim release failed for %s: %s", row.session_id, exc)
+            continue
         store.drop_principal(row.session_id)
     if stale:
         log.info("agent_bus reaper: cleared %d stale sessions, released %d claims", len(stale), released)

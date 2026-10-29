@@ -103,6 +103,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 # unauthenticated paths. TLS-only protections are now gated on DASHBOARD_TLS:
 # unset (default) = HTTP-mode (no Secure cookie, no HSTS); set = TLS-mode.
 TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
+LIGHTWEIGHT_STARTUP = _env_flag("DASHBOARD_LIGHTWEIGHT_STARTUP", default=False)
 
 
 def _resolve_bind_host() -> str:
@@ -121,6 +122,8 @@ def _resolve_bind_host() -> str:
 
 
 HOST = _resolve_bind_host()
+
+
 def runner_limit() -> int:
     """Return the hard runner capacity this dashboard is allowed to manage."""
     return max(NUM_RUNNERS, MAX_RUNNERS)

@@ -37,26 +37,47 @@ import { NotFoundPanel } from "./NotFoundPanel";
 import { useToast } from "../primitives/Toaster";
 import { IntroHeader } from "../primitives/IntroHeader";
 import { useSession } from "../hooks/useSession";
+import { SessionIdentity } from "./SessionIdentity";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { useBreakpoint } from "../hooks/useBreakpoint";
 import { ShellDensityControl } from "./ShellDensityControl";
 import { ShellThemeControl } from "./ShellThemeControl";
-import { QueueMobile } from "../pages/Queue";
-import { QueueTab } from "../pages/Queue";
 import type { InFlightDispatch } from "../pages/Remediation/Mobile";
-import { AnalysisTab } from "../pages/Analysis";
-import { EventsTab } from "../pages/Events";
-import { CodeRequestsPage } from "../pages/CodeRequestsPage";
-import { MachinesPage } from "../pages/Machines";
-import { RunnerAuditPage } from "../pages/RunnerAudit";
-import { RunnerSchedulePage } from "../pages/RunnerSchedule";
-import { WorkflowsPage } from "../pages/WorkflowsPage";
-import { SettingsPage } from "../pages/Settings/SettingsPage";
 import { TabErrorBoundary } from "../primitives/TabErrorBoundary";
 import { SkeletonCard } from "../primitives/Skeleton";
 import { navItemById } from "./navRegistry";
 
+const LazyMachinesPage = React.lazy(() =>
+  import("../pages/Machines").then(({ MachinesPage }) => ({ default: MachinesPage })),
+);
+const LazyQueueTab = React.lazy(() =>
+  import("../pages/Queue").then(({ QueueTab }) => ({ default: QueueTab })),
+);
+const LazyQueueMobile = React.lazy(() =>
+  import("../pages/Queue").then(({ QueueMobile }) => ({ default: QueueMobile })),
+);
 const LazyOverviewPage = React.lazy(() => import("../pages/OverviewPage"));
+const LazyAnalysisTab = React.lazy(() =>
+  import("../pages/Analysis").then(({ AnalysisTab }) => ({ default: AnalysisTab })),
+);
+const LazyEventsTab = React.lazy(() =>
+  import("../pages/Events").then(({ EventsTab }) => ({ default: EventsTab })),
+);
+const LazyCodeRequestsPage = React.lazy(() =>
+  import("../pages/CodeRequestsPage").then(({ CodeRequestsPage }) => ({ default: CodeRequestsPage })),
+);
+const LazyRunnerSchedulePage = React.lazy(() =>
+  import("../pages/RunnerSchedule").then(({ RunnerSchedulePage }) => ({ default: RunnerSchedulePage })),
+);
+const LazyRunnerAuditPage = React.lazy(() =>
+  import("../pages/RunnerAudit").then(({ RunnerAuditPage }) => ({ default: RunnerAuditPage })),
+);
+const LazySettingsPage = React.lazy(() =>
+  import("../pages/Settings/SettingsPage").then(({ SettingsPage }) => ({ default: SettingsPage })),
+);
+const LazyWorkflowsPage = React.lazy(() =>
+  import("../pages/WorkflowsPage").then(({ WorkflowsPage }) => ({ default: WorkflowsPage })),
+);
 // #2990: mobile Fleet/Remediation views are lazy so they stay out of the entry chunk.
 const LazyFleetMobile = React.lazy(() =>
   import("../pages/Fleet").then(({ FleetMobile }) => ({ default: FleetMobile })),
@@ -82,6 +103,7 @@ const LazyFleetCommandPage = React.lazy(
   () => import("../pages/FleetCommand/FleetCommandPage"),
 );
 const LazyAgentBusPage = React.lazy(() => import("../pages/AgentBus/AgentBusPage"));
+const LazyActivityPage = React.lazy(() => import("../pages/Activity/ActivityPage"));
 const LazyLibraryPage = React.lazy(() => import("../pages/Library/LibraryPage"));
 const LazyContextPage = React.lazy(() => import("../pages/Context/ContextPage"));
 const LazyOperationsPage = React.lazy(
@@ -112,14 +134,14 @@ function ShellActiveProvider({
   );
 }
 
-function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
+function nativeDesktopTabContent(tabId: string, onThreadSelected?: (threadId: string, role: string) => void): React.ReactNode | null {
   switch (normalizeTabId(tabId)) {
     case "overview":
       return <LazyOverviewPage />;
     case "insights":
     case "analysis":
     case "reports":
-      return <AnalysisTab activeTab={tabId} />;
+      return <LazyAnalysisTab activeTab={tabId} />;
     case "operations":
     case "conductor":
     case "deployment":
@@ -129,38 +151,40 @@ function nativeDesktopTabContent(tabId: string): React.ReactNode | null {
     case "fleet-orchestration":
       return <LazyFleetOrchestrationPage />;
     case "runner-schedule":
-      return <RunnerSchedulePage />;
+      return <LazyRunnerSchedulePage />;
     case "events":
-      return <EventsTab />;
+      return <LazyEventsTab />;
     case "code-requests":
     case "feature-requests":
-      return <CodeRequestsPage />;
+      return <LazyCodeRequestsPage />;
     case "fleet-command":
       return <LazyFleetCommandPage />;
     case "agent-bus":
       return <LazyAgentBusPage />;
+    case "activity":
+      return <LazyActivityPage />;
     case "library":
       return <LazyLibraryPage />;
     case "context":
       return <LazyContextPage />;
     case "machines":
-      return <MachinesPage />;
+      return <LazyMachinesPage />;
     case "projects":
       return <LazyProjectsPage />;
     case "queue":
-      return <QueueTab />;
+      return <LazyQueueTab />;
     case "remediation":
       return <LazyRemediationPage />;
     case "runner-audit":
-      return <RunnerAuditPage />;
+      return <LazyRunnerAuditPage />;
     case "security":
       return <LazySecurityPage />;
     case "settings":
-      return <SettingsPage />;
+      return <LazySettingsPage />;
     case "staff":
-      return <LazyStaffPage />;
+      return <LazyStaffPage routeThreadId={new URLSearchParams(window.location.search).get("thread")} onThreadSelected={onThreadSelected} />;
     case "workflows":
-      return <WorkflowsPage />;
+      return <LazyWorkflowsPage />;
     default:
       return null;
   }
@@ -308,9 +332,9 @@ export function AppShell({
   const breakpoint = useBreakpoint();
   const isMobile = breakpoint !== "lg" && breakpoint !== "xl";
 
-  // Reactive dashboard-session state (#842): the topbar Login/Logout label
-  // derives from this hook, so it updates on focus / visibility / logout.
-  const { loggedIn, refresh: refreshSession } = useSession();
+  // Reactive identity from GET /api/auth/me (#3232, #842).
+  const session = useSession();
+  const { refresh: refreshSession } = session;
   const { showToast } = useToast();
 
   // Per-tab intro header dismissal (#822).
@@ -319,7 +343,6 @@ export function AppShell({
   >({});
   const [mobileRemediationDispatches, setMobileRemediationDispatches] =
     React.useState<InFlightDispatch[]>([]);
-
 
   if (isMobile) {
     if (isNotFound) {
@@ -344,7 +367,11 @@ export function AppShell({
           <LazyFleetMobile />
         </React.Suspense>
       ),
-      queue: <QueueMobile />,
+      queue: (
+        <React.Suspense fallback={<SkeletonCard lines={4} />}>
+          <LazyQueueMobile />
+        </React.Suspense>
+      ),
       remediation: (
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
           <LazyRemediationMobile
@@ -386,7 +413,7 @@ export function AppShell({
     const mobileFallback = mobileTabContent[mobileTab] ? null : (
       <TabErrorBoundary tabName={mobileTab} resetKey={mobileTab}>
         <React.Suspense fallback={<SkeletonCard lines={4} />}>
-          {nativeDesktopTabContent(mobileTab) ?? (
+          {nativeDesktopTabContent(mobileTab, onThreadSelected) ?? (
             <NotFoundPanel
               path={unmatchedPath || "/"}
               onNavigateHome={() => onSelectTab("staff")}
@@ -421,7 +448,7 @@ export function AppShell({
     ) : undefined;
   const navItem = navItemById(activeTab);
   const tabDisplayName = navItem ? navItem.label : activeTab;
-  const nativeContent = nativeDesktopTabContent(activeTab);
+  const nativeContent = nativeDesktopTabContent(activeTab, onThreadSelected);
   const wrappedContent = isNotFound ? (
     <NotFoundPanel
       path={unmatchedPath || "/"}
@@ -451,13 +478,14 @@ export function AppShell({
       activeTabId={activeTab}
       onSelect={onSelectTab}
       onThreadSelected={onThreadSelected}
-      actions={buildShellActions(loggedIn, refreshSession, () => {
+      actions={buildShellActions(session, refreshSession, () => {
         showToast("Could not sign out. Please try again.", { variant: "error" });
       })}
       helpAbout={<HelpAbout onNavigate={onSelectTab} />}
       intro={introNode}
       headerExtra={
         <>
+          <SessionIdentity session={session} />
           <ShellDensityControl />
           <ShellThemeControl />
           <ShellActiveProvider

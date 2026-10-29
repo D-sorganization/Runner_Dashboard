@@ -152,6 +152,7 @@ export function OperationsDiagnosticsSection({
             type="button"
             onClick={load}
             disabled={loading}
+            title="Reload diagnostics, memory, and service health"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -343,6 +344,7 @@ export function OperationsDiagnosticsSection({
                 type="button"
                 onClick={handleRestart}
                 disabled={restartLoading}
+                title="Restart the dashboard backend service on this node"
                 style={{
                   padding: "0.4rem 0.75rem",
                   fontSize: "0.8125rem",
@@ -416,6 +418,7 @@ export function OperationsDiagnosticsSection({
             type="button"
             onClick={handleGenerateLaunchers}
             disabled={launcherLoading}
+            title="Regenerate Windows desktop launcher batch files for runners"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",

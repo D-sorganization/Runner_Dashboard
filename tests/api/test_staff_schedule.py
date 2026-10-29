@@ -643,8 +643,11 @@ def test_schedule_route_reports_roles(client: TestClient, monkeypatch: pytest.Mo
     data = client.get("/api/staff/schedule").json()
     assert data["machine"] == "TestNode" and data["enabled"] is False and data["running"] is False
     roles = {r["role"]: r for r in data["roles"]}
-    assert roles["night-watch"]["schedule"] == "0 22 * * *" and roles["night-watch"]["next_fire"]
-    assert roles["ad-hoc"]["next_fire"] is None
+    assert roles["night-watch"]["schedule"] == "0 22 * * *"
+    assert roles["night-watch"]["enabled"] is False
+    assert roles["night-watch"]["next_fire"] is None
+    assert "inactive on this node" in roles["night-watch"]["hold"]
+    assert roles["ad-hoc"]["next_fire"] is None and roles["ad-hoc"]["enabled"] is False
 
 
 @pytest.mark.unit
@@ -664,6 +667,108 @@ def test_start_scheduler_respects_env_gate(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "1")
     schedule_router.start_scheduler()
     assert started == [True]
+
+
+@pytest.mark.unit
+def test_leader_lease_prefers_primary_and_expires_to_failover(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    s, _, clock = sched
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "hub-a,node-b")
+    t0 = _la(2026, 9, 22, 22, 0, 0)
+    desk = s.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
+    assert desk["granted"] is True and desk["holder"] == "hub-a"
+    blocked = s.acquire_leader_lease("node-b", now=t0 + timedelta(seconds=1), ttl_seconds=30)
+    assert blocked["granted"] is False and blocked["holder"] == "hub-a"
+    takeover = s.acquire_leader_lease("node-b", now=t0 + timedelta(seconds=31), ttl_seconds=30)
+    assert takeover["granted"] is True and takeover["holder"] == "node-b"
+    preempt = s.acquire_leader_lease("hub-a", now=t0 + timedelta(seconds=32), ttl_seconds=30)
+    assert preempt["granted"] is True and preempt["holder"] == "hub-a"
+
+
+@pytest.mark.unit
+def test_leader_lease_denies_portable_machine_even_in_chain(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A node flagged ``portable`` (#3323) never wins the leader lease, even if an
+    operator's env var mistakenly lists it in the chain, so no scheduled or
+    required role ever fires there."""
+    from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
+
+    s, _, _ = sched
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "node-c")
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "node-c,hub-a")
+    t0 = _la(2026, 9, 22, 22, 0, 0)
+    denied = s.acquire_leader_lease("node-c", now=t0, ttl_seconds=30)
+    assert denied["granted"] is False and denied["holder"] == ""
+    granted = s.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
+    assert granted["granted"] is True and granted["holder"] == "hub-a"
+
+
+@pytest.mark.unit
+def test_scheduler_tick_never_fires_on_portable_machine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No role is scheduled or required on a portable node, even with lease fencing
+    disabled entirely (no ``STAFF_SCHEDULER_LEADER_CHAIN``)."""
+    from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "node-c")
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "maintenance": roles_mod.parse_role(
+            {
+                "name": "maintenance",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "node-c"
+    clock = {"now": _la(2026, 9, 22, 22, 0, 0)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    state_file = tmp_path / "shared-state.json"
+    s = scheduler_mod.StaffScheduler(runner, holds, guard, clock=lambda: clock["now"], state_file=state_file)  # type: ignore[arg-type]
+    assert s.tick() == []
+    clock["now"] = _la(2026, 9, 22, 22, 1, 0)
+    assert s.tick() == []
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "night-watch": roles_mod.parse_role(
+            {
+                "name": "night-watch",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "node-b"
+    clock = {"now": _la(2026, 9, 22, 21, 59, 50)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    state_file = tmp_path / "shared-state.json"
+    s = scheduler_mod.StaffScheduler(runner, holds, guard, clock=lambda: clock["now"], state_file=state_file)  # type: ignore[arg-type]
+    assert s.tick() == []  # anchor cursor before the due slot while lease logic is disabled
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "hub-a,node-b")
+    s.acquire_leader_lease("hub-a", now=_la(2026, 9, 22, 22, 0, 0), ttl_seconds=20)
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    assert s.tick() == []
+    assert runner.submitted == []
+    clock["now"] = _la(2026, 9, 22, 22, 0, 25)
+    assert [d["fired"] for d in s.tick()] == [True]
 
 
 def test_scheduled_repo_rotates_one_repo_per_day() -> None:

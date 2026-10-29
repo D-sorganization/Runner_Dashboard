@@ -1,0 +1,30 @@
+{
+  "usageItems": [
+    {
+      "date": "2026-10-01",
+      "product": "Actions",
+      "sku": "Actions Linux",
+      "quantity": 120,
+      "unitType": "minutes",
+      "pricePerUnit": 0.0,
+      "grossAmount": 0.0,
+      "discountAmount": 0.0,
+      "netAmount": 0.0,
+      "organizationName": "D-sorganization",
+      "repositoryName": "D-sorganization/private-repo"
+    },
+    {
+      "date": "2026-10-01",
+      "product": "Actions",
+      "sku": "Actions Linux",
+      "quantity": 45,
+      "unitType": "minutes",
+      "pricePerUnit": 0.0,
+      "grossAmount": 0.0,
+      "discountAmount": 0.0,
+      "netAmount": 0.0,
+      "organizationName": "D-sorganization",
+      "repositoryName": "D-sorganization/public-repo"
+    }
+  ]
+}

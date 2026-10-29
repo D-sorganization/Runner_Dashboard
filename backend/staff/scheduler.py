@@ -44,6 +44,17 @@ from staff.scheduler_issue_pick import (
     pick_issue_target,
     scheduled_repo,
 )
+from staff.scheduler_leader_lease import (
+    acquire_leader_lease as _lease_acquire_leader_lease,
+)
+from staff.scheduler_leader_lease import (
+    leader_chain,
+    lease_allows_firing,
+    lease_ttl_seconds,
+)
+from staff.scheduler_leader_lease import (
+    leader_status as _lease_leader_status,
+)
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.scheduler")
@@ -178,6 +189,30 @@ class StaffScheduler:
         except ValueError:
             return False
 
+    # ── leader lease (fencing logic lives in scheduler_leader_lease.py; #cap) ──
+    def _lease_ttl_seconds(self) -> float:
+        return lease_ttl_seconds(self.tick_seconds)
+
+    def acquire_leader_lease(
+        self, machine: str, *, now: datetime | None = None, ttl_seconds: float | None = None
+    ) -> dict[str, Any]:
+        """Acquire/renew this scheduler lease on the local authority state file.
+
+        Precondition: ``machine`` is a non-empty fleet display name.
+        Postcondition: result includes ``granted`` and current ``holder``.
+        """
+        now = now or self._clock()
+        ttl = ttl_seconds if ttl_seconds is not None and ttl_seconds > 0 else self._lease_ttl_seconds()
+        with self._lock:
+            return _lease_acquire_leader_lease(self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl)
+
+    def _lease_allows_firing(self, now: datetime) -> bool:
+        return lease_allows_firing(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds())
+
+    def leader_status(self, now: datetime | None = None) -> dict[str, Any]:
+        now = now or self._clock()
+        return _lease_leader_status(self._load_state, leader_chain(), self.runner.machine, now)
+
     # ── evaluation ───────────────────────────────────────────────────────
     def evaluate(self, role: RoleSpec, now: datetime) -> dict[str, Any]:
         """Gate report for one role: what would happen if its slot were due right now."""
@@ -226,6 +261,22 @@ class StaffScheduler:
             return f"budget: {report['budget_reason']}"
         return ""
 
+    def role_model_override(self, role_name: str) -> str | None:
+        """Current runtime model override for ``role_name``, or ``None`` when unset (epic #3295 S2)."""
+        with self._lock:
+            raw = self._load_state().get(role_name, {}).get("model_override")
+            return str(raw) if raw else None
+
+    def set_role_model_override(self, role_name: str, model: str | None) -> None:
+        """Persist (or clear, when ``model`` is ``None``) a role's runtime model override."""
+        with self._lock:
+            entry = self._load_state().setdefault(role_name, {})
+            if model:
+                entry["model_override"] = model
+            else:
+                entry.pop("model_override", None)
+            self._save_state()
+
     def set_role_schedule_enabled(self, role_name: str, enabled: bool) -> dict[str, Any]:
         """Enable or disable scheduling for a specific role (SC-D6, Issue #1320)."""
         with self._lock:
@@ -242,6 +293,8 @@ class StaffScheduler:
         """Handle every due slot once. Returns one decision per due role."""
         now = now or self._clock()
         decisions: list[dict[str, Any]] = []
+        if not self._lease_allows_firing(now):
+            return decisions
         with self._lock:
             for name, role in sorted(self.runner.roles().items()):
                 if not (role.schedule and role.dispatchable):

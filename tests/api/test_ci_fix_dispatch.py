@@ -21,6 +21,7 @@ from identity import Principal, require_principal
 from backend.ci_fix_dispatch import (
     CIFixLockManager,
     build_ci_fix_prompt,
+    classify_failure_type,
     evaluate_ci_fix_trigger,
     extract_failing_test_names,
     record_ci_fix_audit,
@@ -484,3 +485,95 @@ def test_consecutive_attempts_count_only_the_same_failure_signature(tmp_path: Pa
     record(43, same)  # other PRs never count
     assert count_consecutive_attempts("Runner_Dashboard", 42, other, audit_file=audit_file) == 1
     assert count_consecutive_attempts("Runner_Dashboard", 42, same, audit_file=tmp_path / "missing.json") == 0
+
+
+# ─── #2766: superseded cancels, sweep, author-lane routing, infra classification ────────────
+
+
+def test_superseded_cancel_is_ineligible() -> None:
+    """A concurrency-group cancel superseded by a newer run of the same workflow is not a failure."""
+    decision = evaluate_ci_fix_trigger(
+        {
+            "conclusion": "cancelled",
+            "workflow_name": "CI Standard",
+            "repository": "Runner_Dashboard",
+            "run_id": 100,
+            "head_sha": "abc123",
+            "superseded_by_newer_run": True,
+            "pull_requests": [{"number": 42, "is_draft": False, "auto_merge_armed": True}],
+        }
+    )
+    assert decision.eligible is False
+    assert "superseded" in decision.reason.lower()
+
+
+def test_latest_cancel_is_eligible() -> None:
+    """A cancel that is the latest (not superseded) run for its head SHA is a real failure."""
+    decision = evaluate_ci_fix_trigger(
+        {
+            "conclusion": "cancelled",
+            "workflow_name": "CI Standard",
+            "repository": "Runner_Dashboard",
+            "run_id": 100,
+            "head_sha": "abc123",
+            "superseded_by_newer_run": False,
+            "pull_requests": [{"number": 42, "is_draft": False, "auto_merge_armed": True}],
+        }
+    )
+    assert decision.eligible is True
+    assert decision.pr_number == 42
+
+
+def test_cancel_without_head_sha_is_ineligible() -> None:
+    """DbC pre: a cancelled event missing repo/run id/head SHA cannot be judged, so it refuses."""
+    decision = evaluate_ci_fix_trigger(
+        {
+            "conclusion": "cancelled",
+            "workflow_name": "CI Standard",
+            "repository": "Runner_Dashboard",
+            "run_id": 100,
+            "pull_requests": [{"number": 42, "is_draft": False, "auto_merge_armed": True}],
+        }
+    )
+    assert decision.eligible is False
+    assert "head sha" in decision.reason.lower()
+
+
+def test_classify_failure_type_infra_libpython() -> None:
+    log = "ImportError: libpython3.11.so.1.0: cannot open shared object file: No such file or directory"
+    assert classify_failure_type("CI Standard", log) == "infra"
+
+
+def test_classify_failure_type_infra_403() -> None:
+    log = "requests.exceptions.HTTPError: 403 Forbidden for url https://api.github.com/..."
+    assert classify_failure_type("CI Standard", log) == "infra"
+
+
+def test_classify_failure_type_infra_buildx() -> None:
+    assert classify_failure_type("docker-build-scan", "") == "infra"
+    assert classify_failure_type("CI", "failed to solve: process did not complete") == "infra"
+
+
+def test_classify_failure_type_still_defaults_to_test() -> None:
+    assert classify_failure_type("CI Standard", "AssertionError: expected 200 got 500") == "test"
+
+
+def test_route_ci_fix_routes_cursor_branch_to_cloud_followup() -> None:
+    """#2766 item 3: cursor/* branches are handed to a Cursor cloud follow-up, not a local CLI."""
+    route = route_ci_fix(failure_type="test", attempt_number=1, max_attempts=3, branch="cursor/fix-ci-red")
+    assert route.provider == "cursor_cloud"
+    assert route.tier == "cloud"
+    assert "cursor" in route.reason.lower()
+    assert "cloud" in route.reason.lower()
+
+
+def test_route_ci_fix_non_cursor_branch_uses_current_routing() -> None:
+    route = route_ci_fix(failure_type="lint", attempt_number=1, max_attempts=3, branch="feat/my-feature")
+    assert route.provider == "codex_cli"
+
+
+def test_route_ci_fix_infra_routes_to_night_watch() -> None:
+    route = route_ci_fix(failure_type="infra", attempt_number=1, max_attempts=3)
+    assert route.provider == "night_watch"
+    assert route.tier == "infra"
+    assert "night watch" in route.reason.lower()

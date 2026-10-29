@@ -21,6 +21,7 @@ from staff.rm_mail_policy import refresh_mail_policy_cache
 from staff.rm_reconcile import HoldReconcileError, format_hold_reconcile_diff, reconcile_holds_for_roles_dir
 from staff.roles import role_validation_errors, roles_dir
 from staff.store import _config_dir
+from staff.workspace import is_standalone_mode
 
 log = logging.getLogger("dashboard.staff.rm_sync")
 INTERVAL_SECONDS = 15 * 60
@@ -79,6 +80,14 @@ def _prune_backups(path: Path) -> None:
 
 def source_status(root: Path | None = None, *, state_path: Path | None = None) -> dict[str, Any]:
     """Read revision/freshness without Git or network work in the request path."""
+    if root is None and is_standalone_mode():
+        return {
+            "status": "not_checked",
+            "commit": None,
+            "commit_age_seconds": None,
+            "check_age_seconds": None,
+            "validation_errors": {},
+        }
     configured = os.environ.get("STAFF_RM_ROOT")
     root = root or (Path(configured).expanduser() if configured else None)
     roles_path = (root / "staff" / "roles") if root and (root / "staff" / "roles").is_dir() else None
@@ -108,6 +117,8 @@ def stale_source_warning() -> str | None:
     Reads only the timer's status file (no Git, no role validation), so request paths can call it.
     Post: None unless the status belongs to ``STAFF_RM_ROOT`` and shows repeated skips or a failed refresh.
     """
+    if is_standalone_mode():
+        return None
     configured = os.environ.get("STAFF_RM_ROOT")
     if not configured:
         return None

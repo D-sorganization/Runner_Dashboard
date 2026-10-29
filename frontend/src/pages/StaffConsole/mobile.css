@@ -50,9 +50,11 @@
   max-width: 100%;
 }
 
+/* Keep New conversation and Details on one row: the label wraps inside its
+   button rather than pushing Details onto a third header row (#3047). */
 .staff-mobile__header-right {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   flex: 1 1 min-content;
@@ -120,7 +122,7 @@
   align-items: center;
   padding: 2px 6px;
   border-radius: 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
   margin-left: 6px;
@@ -343,7 +345,7 @@
 .staff-mobile__unread-badge {
   background: var(--accent-blue, #1f6feb);
   color: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   padding: 2px 8px;
   border-radius: 12px;
@@ -394,6 +396,30 @@
    (#1805), which also owns the safe area, so the composer needs no offset. */
 .mobile-shell__content .staff-mobile__composer-container {
   padding-bottom: 12px;
+}
+
+/* Short viewports (landscape phones, 200% zoom reflow): the 44px composer
+   targets (#2988) plus the header made the fixed composer taller than the
+   space above the shell nav, so the sticky composer covered the message list
+   and pushed the Staff/Inbox/Runs tabs under the nav (#3047). Trim chrome
+   around the composer instead of its targets; the hint is non-essential. */
+@media (max-height: 520px) {
+  .mobile-shell__content .staff-mobile__composer-container {
+    padding: 4px 8px;
+  }
+  .mobile-shell__content .staff-mobile__composer-container .staff-composer {
+    border-top: none;
+    padding: 0;
+  }
+  .mobile-shell__content .staff-mobile__composer-container .staff-composer__box {
+    padding: 4px 8px;
+  }
+  .mobile-shell__content .staff-mobile__composer-container .staff-composer__footer {
+    margin-top: 2px;
+  }
+  .mobile-shell__content .staff-mobile__composer-container .staff-composer__hint {
+    display: none;
+  }
 }
 
 /* ── Thumb-zone Floating Action Bar ──────────────────────────────────────── */
@@ -551,7 +577,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted, #8b949e);
 }
 
@@ -697,7 +723,7 @@
 
 .staff-mobile__project-starter span + span {
   color: var(--text-secondary, #8b949e);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .staff-mobile__project-starter:focus-visible {

@@ -113,6 +113,18 @@ def test_mint_staff_run_github_token_fail_closed_without_app(monkeypatch: pytest
             mint_staff_run_github_token(role=_role(), repo="D-sorganization/Runner_Dashboard")
 
 
+def test_mint_staff_run_github_token_never_uses_personal_token_without_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Operator ``ghp_`` env must not be used unless ``STAFF_ALLOW_OPERATOR_TOKEN=1`` (#3000)."""
+    monkeypatch.delenv("STAFF_ALLOW_OPERATOR_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", _FAKE_GHP)
+    monkeypatch.setenv("GITHUB_TOKEN", _FAKE_GHP)
+    with patch("staff.github_run_env.github_app_auth_configured", return_value=False):
+        with pytest.raises(RuntimeError, match="GitHub App"):
+            mint_staff_run_github_token(role=_role(), repo="")
+
+
 def test_mint_staff_run_github_token_operator_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("STAFF_ALLOW_OPERATOR_TOKEN", "1")
     monkeypatch.setenv("GH_TOKEN", _FAKE_GHP)

@@ -43,8 +43,7 @@ _FAILURE_CLASS_BY_STATUS = {
 class DispatchCommand:
     """A validated dispatch request, independent of the surface it came from.
 
-    ``requested_by`` / ``on_behalf_of`` / ``surface`` / ``thread_id`` are provenance;
-    the rest mirrors the /run body.
+    ``requested_by`` / ``on_behalf_of`` / ``surface`` / ``thread_id`` are provenance; the rest mirrors the /run body.
     """
 
     role: str
@@ -90,6 +89,7 @@ class DispatchCommand:
     force_claim_override: bool = False
     claim_override_reason: str = ""
     execution_mode: str = "local"
+    dispatch_origin: str = ""
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -352,6 +352,7 @@ async def dispatch_staff_run(
         standards_extra=cmd.standards_extra,
         requested_skill=cmd.requested_skill,
         execution_mode=cmd.execution_mode or "local",
+        dispatch_origin=cmd.dispatch_origin,
     )
     try:
         plan = runner.plan(req)
@@ -494,5 +495,6 @@ def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, aud
     """Leave an admitted run whose worker never started visibly ``failed`` (#1796)."""
     error = f"worker did not start: {exc}"
     runner.store.update_run(run_id, status="failed", error=error, failure_class="launch_failed", ended_at=_now())
+    claim_guard.release_claim(run_id, "failed")
     runner.store.append_event(run_id, "failed", error)
     record_audit(action="dispatch", **audit_ctx, outcome="launch_failed", detail={"error": str(exc)}, fail_closed=False)

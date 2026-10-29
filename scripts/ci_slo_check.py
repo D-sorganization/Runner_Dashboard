@@ -182,6 +182,25 @@ def _default_runner(cmd: Sequence[str]) -> Any:
     return subprocess.run(list(cmd), capture_output=True, text=True, check=False)
 
 
+def _decode_concatenated_json(text: str) -> list[Any]:
+    # `gh api --paginate` writes each page's JSON back-to-back with no
+    # separator (`[...][...]`, or `{...}{...}` for workflow runs), so a
+    # multi-page response is not valid JSON and `json.loads` once over the
+    # whole string (or per line) raises "Extra data".
+    decoder = json.JSONDecoder()
+    chunks: list[Any] = []
+    idx = 0
+    length = len(text)
+    while idx < length:
+        while idx < length and text[idx].isspace():
+            idx += 1
+        if idx >= length:
+            break
+        obj, idx = decoder.raw_decode(text, idx)
+        chunks.append(obj)
+    return chunks
+
+
 def gh_api(
     path: str,
     *,
@@ -191,14 +210,15 @@ def gh_api(
     if not (os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN") or "").strip():
         gh_error("GITHUB_TOKEN (or GH_TOKEN) is required for live GitHub reads")
         raise SystemExit(2)
-    cmd = ["gh", "api", path, "--paginate"]
+    # GET explicitly: `gh api -f` otherwise sends POST, which creates instead of reads.
+    cmd = ["gh", "api", "--method", "GET", path, "--paginate"]
     for key, value in (params or {}).items():
         cmd.extend(["-f", f"{key}={value}"])
     proc = runner(cmd)
     if proc.returncode != 0:
         gh_error((proc.stderr or proc.stdout or "gh api failed").strip())
         raise SystemExit(2)
-    chunks = [json.loads(line) for line in (proc.stdout or "").splitlines() if line.strip()]
+    chunks = _decode_concatenated_json(proc.stdout or "")
     if not chunks:
         return []
     if len(chunks) == 1:
