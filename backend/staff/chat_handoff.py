@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from identity import Principal
 
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.loop_guard import HandoffHopCapExceededError
 from staff.roles import load_roles
 from staff.router import BarbRouter
 from staff.router_models import HandoffResult, RoutingDecision
@@ -66,14 +67,18 @@ async def post_reply_handoff(
     decision = RoutingDecision(
         chosen_role=to_role, confidence=1.0, reason=handoff_reason(reply), mode=REPLY_HANDOFF_MODE
     )
-    result = BarbRouter().execute_handoff(
-        decision,
-        request.body_md if request else "",
-        caller_id,
-        source_thread_id=thread_id,
-        store=s,
-        from_role=from_role,
-    )
+    try:
+        result = BarbRouter().execute_handoff(
+            decision,
+            request.body_md if request else "",
+            caller_id,
+            source_thread_id=thread_id,
+            store=s,
+            from_role=from_role,
+        )
+    except HandoffHopCapExceededError as exc:
+        log.warning("Blocking reply handoff from %s to %s in thread %s: %s", from_role, to_role, thread_id, exc)
+        return None
     card = s.get_message(result.handoff_message_id)
     if card:
         await (bus or get_thread_bus()).publish_message(thread_id, card.to_dict())

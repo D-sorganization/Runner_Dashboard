@@ -12,7 +12,7 @@ from staff.store import _now
 
 THREAD_KINDS = ("direct", "group", "auto", "panel")
 THREAD_STATUSES = ("open", "archived")
-MESSAGE_AUTHOR_KINDS = ("user", "role", "system")
+MESSAGE_AUTHOR_KINDS = ("user", "bot", "role", "system")
 MESSAGE_KINDS = (
     "text",
     "action_proposal",
