@@ -69,7 +69,7 @@ __all__ = [
     "start_panel_thread",
 ]
 
-TurnRunner = Callable[[PanelSpeaker, str, str, str], Awaitable[TurnOutcome]]
+TurnRunner = Callable[[PanelSpeaker, str, str, str | None], Awaitable[TurnOutcome]]
 _ACTIVE_PANELS: set[str] = set()
 DIGEST_MAX_BYTES = 4096  # #3313: a caller gets one GET for the verdict instead of the full transcript.
 
