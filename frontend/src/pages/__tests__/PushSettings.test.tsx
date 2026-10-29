@@ -143,4 +143,51 @@ describe("PushSettings", () => {
       expect(screen.getByText(/phone-access-tailnet\.md/i)).toBeInTheDocument();
     });
   });
+
+  it("sends X-Requested-With CSRF header when subscribing from the PWA", async () => {
+    const fetchSpy = makeVapidFetch(200, "dGVzdC12YXBpZC1rZXk");
+    global.fetch = fetchSpy;
+    Object.defineProperty(window, "PushManager", {
+      configurable: true,
+      value: function PushManager() {},
+      writable: true,
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: Promise.resolve({
+          pushManager: {
+            subscribe: vi.fn(() =>
+              Promise.resolve({
+                toJSON: () =>
+                  Promise.resolve({
+                    endpoint: "https://fcm.googleapis.com/fcm/send/sub-1",
+                    keys: { p256dh: "k1", auth: "a1" },
+                  }),
+              }),
+            ),
+          },
+        }),
+      },
+      writable: true,
+    });
+
+    render(<PushSettings />);
+    const subscribeButton = await screen.findByRole("button", { name: /subscribe/i });
+    await act(async () => {
+      fireEvent.click(subscribeButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Active")).toBeInTheDocument();
+    });
+
+    const subscribeCall = fetchSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "/api/push/subscribe",
+    ) as [string, RequestInit] | undefined;
+    expect(subscribeCall).toBeDefined();
+    expect(
+      (subscribeCall![1].headers as Record<string, string>)["X-Requested-With"],
+    ).toBe("XMLHttpRequest");
+  });
 });
