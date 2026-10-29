@@ -226,11 +226,11 @@ def _path_matches_glob(rel_path: str, pattern: str) -> bool:
 def resolve(
     inputs: ClassificationInput, *, config: PrivateModeConfig = DISABLED, policy: ClassificationPolicy | None = None
 ) -> Level:
-    """Pure classification resolver (issue #3251, PM-1).
+    """Pure classification resolver (issue #3251, PM-1; #3545, F03).
 
     Preconditions (DbC):
     * *inputs* is a :class:`ClassificationInput` and *config* is a :class:`PrivateModeConfig`.
-    * When ``config.enabled`` is ``False``, returns ``Level.PUBLIC`` (flag-off invariant).
+    * Classification never lowers when ``config.enabled`` is ``False`` (#3545).
     * When ``config.enabled`` is ``True``, a validated *policy* is required; missing
       policy raises :class:`ClassificationError` (blocks private execution).
     * Downgrade attempts (where computed classification is strictly below
@@ -241,26 +241,33 @@ def resolve(
         raise ClassificationError("resolve: inputs must be a ClassificationInput")
     if not isinstance(config, PrivateModeConfig):
         raise ClassificationError("resolve: config must be a PrivateModeConfig")
-    if not config.enabled:
-        return Level.PUBLIC
-    if not isinstance(policy, ClassificationPolicy):
+    if policy is not None and not isinstance(policy, ClassificationPolicy):
+        raise ClassificationError("resolve: validated classification policy is required when private_mode is enabled")
+    if config.enabled and policy is None:
         raise ClassificationError("resolve: validated classification policy is required when private_mode is enabled")
 
-    base_unknown = max_join(policy.default_level, config.default_level, Level.INTERNAL)
-    level = policy.repos[inputs.repo] if inputs.repo and inputs.repo in policy.repos else base_unknown
-    for rel_path in inputs.paths:
-        for rule in policy.path_globs:
-            if _path_matches_glob(rel_path, rule.glob):
-                level = max_join(level, rule.level)
+    if policy is not None:
+        base_unknown = (
+            max_join(policy.default_level, config.default_level, Level.INTERNAL)
+            if config.enabled
+            else config.default_level
+        )
+        level = policy.repos[inputs.repo] if inputs.repo and inputs.repo in policy.repos else base_unknown
+        for rel_path in inputs.paths:
+            for rule in policy.path_globs:
+                if _path_matches_glob(rel_path, rule.glob):
+                    level = max_join(level, rule.level)
 
-    if inputs.is_legacy_thread:
-        level = max_join(level, Level.INTERNAL)
+        if inputs.is_legacy_thread and config.enabled:
+            level = max_join(level, Level.INTERNAL)
 
-    if inputs.target_id and inputs.target_id in policy.operator_marks:
-        mark_level = policy.operator_marks[inputs.target_id]
-        if mark_level < level:
-            raise ClassificationError("resolve: operator mark cannot downgrade classification level")
-        level = max_join(level, mark_level)
+        if inputs.target_id and inputs.target_id in policy.operator_marks:
+            mark_level = policy.operator_marks[inputs.target_id]
+            if mark_level < level:
+                raise ClassificationError("resolve: operator mark cannot downgrade classification level")
+            level = max_join(level, mark_level)
+    else:
+        level = config.default_level
 
     if inputs.operator_mark is not None:
         if not isinstance(inputs.operator_mark, Level):
@@ -274,8 +281,9 @@ def resolve(
     if inputs.prior_level is not None:
         if not isinstance(inputs.prior_level, Level):
             raise ClassificationError("resolve: prior_level must be a Level")
-        if level < inputs.prior_level:
+        if policy is not None and level < inputs.prior_level:
             raise ClassificationError("resolve: classification downgrade is refused without audited declassify")
+        level = max_join(level, inputs.prior_level)
 
     return level
 
@@ -331,7 +339,7 @@ def reset_level_distribution_counts() -> None:
 def stamp_envelope(
     level: Level, *, hop: str = "origin", epoch: int = 1, config: PrivateModeConfig = DISABLED
 ) -> ClassificationEnvelope:
-    """Stamp an initial immutable :class:`ClassificationEnvelope` (PUBLIC when flag is off)."""
+    """Stamp an initial immutable :class:`ClassificationEnvelope` (never lowers *level* when flag is off)."""
     if not isinstance(level, Level):
         raise ClassificationError("stamp_envelope: level must be a Level")
     if not isinstance(config, PrivateModeConfig):
@@ -340,7 +348,7 @@ def stamp_envelope(
         raise ClassificationError("stamp_envelope: hop must be a non-empty str")
     if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
         raise ClassificationError("stamp_envelope: epoch must be an int >= 1")
-    effective = Level.PUBLIC if not config.enabled else level
+    effective = max_join(level, config.default_level) if config.enabled else level
     _record_level(effective)
     return ClassificationEnvelope(
         schema_version=ENVELOPE_SCHEMA_VERSION, level=effective, epoch=epoch, hops=(hop.strip(),)
@@ -424,13 +432,11 @@ def copy_context_callable(fn: Callable[..., _T], *args: Any, **kwargs: Any) -> C
 def taint_target_level(
     target_level: Level, *, writer_envelope: ClassificationEnvelope | None = None, config: PrivateModeConfig = DISABLED
 ) -> Level:
-    """Writer-context taint: a writer at level *W* elevates its target to ``max(target, W)``."""
+    """Writer-context taint: a writer at level *W* elevates its target to ``max(target, W)`` (never lowers)."""
     if not isinstance(target_level, Level):
         raise ClassificationError("taint_target_level: target_level must be a Level")
     if not isinstance(config, PrivateModeConfig):
         raise ClassificationError("taint_target_level: config must be a PrivateModeConfig")
-    if not config.enabled:
-        return Level.PUBLIC
     active = validate_envelope(writer_envelope) if writer_envelope is not None else _envelope_ctx.get()
     return target_level if active is None else max_join(target_level, active.level)
 
@@ -440,8 +446,6 @@ def taint_target_envelope(
 ) -> ClassificationEnvelope:
     """Apply writer-context taint to *target* envelope, incrementing epoch on upgrade."""
     validated_target = validate_envelope(target)
-    if not config.enabled:
-        return stamp_envelope(Level.PUBLIC, hop="flag_off", config=config)
     tainted_level = taint_target_level(validated_target.level, writer_envelope=writer_envelope, config=config)
     if tainted_level > validated_target.level:
         return propagate_envelope(validated_target, hop="writer_taint", requested_level=tainted_level)

@@ -35,7 +35,8 @@ MALFORMED_PLACEHOLDER = "[private content withheld: malformed classification tag
 _TAG_PREFIX = "<<PRIVATE:"
 _TAG_SUFFIX = ">>"
 _CLOSE_TAG = "<<END_PRIVATE>>"
-_OPEN_RE = re.compile(re.escape(_TAG_PREFIX) + r"([A-Za-z_]*)" + re.escape(_TAG_SUFFIX))
+_ANY_MARKER_RE = re.compile(r"<<\s*(?:END[_\s-]*)?PRIVATE", re.IGNORECASE)
+_STRICT_OPEN_RE = re.compile(re.escape(_TAG_PREFIX) + r"([A-Za-z_]+)" + re.escape(_TAG_SUFFIX))
 
 
 class MalformedClassification(ValueError):
@@ -59,7 +60,7 @@ def tag(value: str, level: Level) -> str:
         raise MalformedClassification(f"private_surface_gate.tag: level must be a Level, got {type(level).__name__}")
     if not isinstance(value, str):
         raise MalformedClassification("private_surface_gate.tag: value must be a string")
-    if _TAG_PREFIX in value or _CLOSE_TAG in value:
+    if _TAG_PREFIX in value or _CLOSE_TAG in value or _ANY_MARKER_RE.search(value) is not None:
         raise MalformedClassification("private_surface_gate.tag: value must not contain gate delimiters")
     return f"{_TAG_PREFIX}{level.name}{_TAG_SUFFIX}{value}{_CLOSE_TAG}"
 
@@ -67,32 +68,33 @@ def tag(value: str, level: Level) -> str:
 def gate_text(text: str) -> str:
     """Resolve every classification span in *text*, deny-by-default.
 
-    Post: the result never contains ``<<PRIVATE:`` and never contains the
-    raw content of a span unless that span's level was exactly ``PUBLIC``.
-    A span naming an unknown level, missing its closing delimiter, or
-    containing a nested opening delimiter is malformed: it and everything
-    after it in *text* is withheld rather than guessed at (fail closed --
-    there is no reliable boundary to trust once a span is malformed).
+    Post: the result never contains ``<<PRIVATE`` or ``<<END_PRIVATE`` and
+    never contains the raw content of a span unless that span's level was
+    exactly ``PUBLIC``. Any malformed or ambiguous marker (unknown level,
+    non-alpha characters in the header, case/whitespace variants, missing or
+    orphan closing delimiter, or nested marker) fails closed as PRIVATE: it
+    and everything after it in *text* is replaced by ``MALFORMED_PLACEHOLDER``.
     """
-    if _TAG_PREFIX not in text:
+    if _ANY_MARKER_RE.search(text) is None:
         return text
     out: list[str] = []
     pos = 0
     while True:
-        match = _OPEN_RE.search(text, pos)
-        if match is None:
+        marker = _ANY_MARKER_RE.search(text, pos)
+        if marker is None:
             out.append(text[pos:])
             break
-        out.append(text[pos : match.start()])
-        close = text.find(_CLOSE_TAG, match.end())
-        nested = text.find(_TAG_PREFIX, match.end())
-        level_name = match.group(1)
-        malformed = close == -1 or level_name not in Level.__members__ or (nested != -1 and nested < close)
-        if malformed:
+        out.append(text[pos : marker.start()])
+        match = _STRICT_OPEN_RE.match(text, marker.start())
+        if match is None or match.group(1) not in Level.__members__:
             out.append(MALFORMED_PLACEHOLDER)
             break
-        level = Level[level_name]
-        inner = text[match.end() : close]
+        next_marker = _ANY_MARKER_RE.search(text, match.end())
+        if next_marker is None or not text.startswith(_CLOSE_TAG, next_marker.start()):
+            out.append(MALFORMED_PLACEHOLDER)
+            break
+        level = Level[match.group(1)]
+        inner = text[match.end() : next_marker.start()]
         out.append(inner if level is Level.PUBLIC else PLACEHOLDER)
-        pos = close + len(_CLOSE_TAG)
+        pos = next_marker.start() + len(_CLOSE_TAG)
     return "".join(out)

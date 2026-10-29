@@ -147,15 +147,17 @@ def verify_flag_off_rollback(
         raise ClassificationError("verify_flag_off_rollback: canary must be a non-empty string of length >= 8")
     root, now_dt, policy = Path(work_dir), _coerce_utc(now), default_chaos_overlay_policy()
     root.mkdir(parents=True, exist_ok=True)
-    resolved_off = resolve(ClassificationInput(repo=EXAMPLE_SENSITIVE_REPO), policy=policy, config=DISABLED)
+    resolved_off = resolve(ClassificationInput(repo=EXAMPLE_PUBLIC_REPO), policy=policy, config=DISABLED)
+    sens_off = resolve(ClassificationInput(repo=EXAMPLE_SENSITIVE_REPO), policy=policy, config=DISABLED)
     key_prov = KeyWrappingProvider(backend="vault", private_mode=DISABLED, env={})
     tx_store = EncryptedTranscriptStore(store_dir=root / "tx_off", key_provider=key_prov, private_mode=DISABLED)
     wiring = PrivateRequiredCheckWiring(overlay_policy=policy, private_mode=DISABLED)
     wf = [{"name": "ci", "jobs": {"test": {"runs-on": "ubuntu-latest"}}}]
     c_kw: dict[str, Any] = dict(run_id="rollback01", repo=EXAMPLE_SENSITIVE_REPO, sha="a" * 40, target_kind="pr_head")
     chk = wiring.evaluate_check(pool_healthy=False, workflows=wf, enabled=False, **c_kw)
-    board_in = {"id": "b-off", "repo": EXAMPLE_SENSITIVE_REPO, "author": "pm-rd", "status": "ok", "body": "public ok"}
-    board_proj = emit_shared("board", board_in, level=Level.SENSITIVE, config=DISABLED)
+    board_in = {"id": "b-off", "repo": EXAMPLE_PUBLIC_REPO, "author": "pm-rd", "status": "ok", "body": "public ok"}
+    board_proj = emit_shared("board", board_in, level=Level.PUBLIC, config=DISABLED)
+    sens_proj = emit_shared("board", board_in, level=Level.SENSITIVE, config=DISABLED)
     suite_off = run_chaos_suite(
         work_dir=root / "chaos_off", canary=canary.strip(), config=DISABLED, private_ci_enabled=False, now=now_dt
     )
@@ -163,6 +165,8 @@ def verify_flag_off_rollback(
     kp_on, tx_on = key_prov.is_enabled(), tx_store.is_enabled()
     ok = (
         resolved_off is Level.PUBLIC
+        and sens_off is Level.SENSITIVE
+        and sens_proj.withheld
         and not (kp_on or tx_on or board_proj.withheld)
         and chk.state == "disabled"
         and parked_sens == 0
@@ -264,7 +268,7 @@ def run_supervised_dry_run(
     exp_sens = Level.SENSITIVE if cfg.enabled else Level.PUBLIC
     s1 = DryRunStepResult(
         "overlay_policy",
-        bool(sens_level is exp_sens and pub_level is Level.PUBLIC and env.level is exp_sens),
+        bool(sens_level is Level.SENSITIVE and pub_level is Level.PUBLIC and env.level is Level.SENSITIVE),
         "overlay classification.json validated",
         {"sensitive_level": sens_level.name, "public_level": pub_level.name},
     )
