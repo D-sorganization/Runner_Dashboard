@@ -1,6 +1,7 @@
 """rd-barb -> Barbara snapshot: allowlisted sections, withheld rows, stripped secrets, fail-closed writes."""
 
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -146,3 +147,9 @@ def test_cli_clean_then_verify_round_trip(tmp_path: Any, capsys: Any) -> None:
     (tmp_path / "snap.json").write_text(json.dumps(out), encoding="utf-8")
     assert snap.main(["verify", "--snapshot", str(tmp_path / "snap.json")]) == 0
     assert snap.main(["verify", "--snapshot", str(tmp_path / "missing.json")]) == 1
+
+
+def test_no_private_topology_in_this_file() -> None:
+    source = Path(__file__).read_text(encoding="utf-8")
+    assert "controltower" not in source.lower()
+    assert "tail1234" not in source.lower()
