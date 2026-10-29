@@ -210,6 +210,40 @@ def test_uncaptured_is_reserved_but_never_produced(store):
     assert page.items == []
 
 
+def test_recorder_uncaptured_process_produces_uncaptured_status_and_ends_on_session_end(store):
+    ingest(
+        store,
+        envelope(
+            source="recorder",
+            session_id="claude-uncaptured-node-a-4242",
+            seq=1,
+            ts="2026-10-28T12:09:30Z",
+            kind="uncaptured_process",
+            payload={"process_name": "claude", "pid": 4242, "started_at": "2026-10-28T12:08:00Z"},
+        ),
+    )
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW, status="uncaptured")
+    assert len(page.items) == 1
+    assert page.items[0].session_id == "claude-uncaptured-node-a-4242"
+    assert page.items[0].status == "uncaptured"
+
+    ingest(
+        store,
+        envelope(
+            source="recorder",
+            session_id="claude-uncaptured-node-a-4242",
+            seq=2,
+            ts="2026-10-28T12:09:45Z",
+            kind="session_end",
+            payload={"process_name": "claude", "pid": 4242},
+        ),
+    )
+    ended_page = compute_sessions(store, now=NOW)
+    assert ended_page.items[0].status == "ended"
+
+
 @pytest.mark.parametrize("limit", [0, -1, 501])
 def test_limit_out_of_bounds_fails_closed(store, limit):
     from activity_sessions import compute_sessions
