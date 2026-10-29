@@ -138,6 +138,49 @@ def test_committed_workstation_list_loads() -> None:
     # real file's content, unlike the rest of this module's sanitized fixtures.
     hosts = fsg.load_workstations(REPO / "config" / "storage-gc-workstations.json")
     assert {h.name for h in hosts} >= {"brick", "raspberrypi"}
+
+
+# --- resolve_storage_gc_workstations_source (#3475) --------------------------------
+# Mirrors machine_registry.resolve_registry_source / barb_node_leader.resolve_node_roles_source
+# (DRY: same explicit > env > local > shipped precedence) so this loader doesn't
+# invent a second override pattern.
+
+
+def test_resolve_storage_gc_workstations_source_prefers_explicit_path(tmp_path: Path) -> None:
+    explicit = tmp_path / "explicit.json"
+    assert fsg.resolve_storage_gc_workstations_source(explicit) == (explicit, "explicit")
+
+
+def test_resolve_storage_gc_workstations_source_falls_back_to_env_then_shipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("STORAGE_GC_WORKSTATIONS_PATH", raising=False)
+    monkeypatch.setattr("fleet_storage_gc.LOCAL_WORKSTATIONS_PATH", Path("/nonexistent/storage-gc-workstations.json"))
+    assert fsg.resolve_storage_gc_workstations_source(None) == (fsg.DEFAULT_WORKSTATIONS, "shipped")
+
+    monkeypatch.setenv("STORAGE_GC_WORKSTATIONS_PATH", "/tmp/env-workstations.json")
+    assert fsg.resolve_storage_gc_workstations_source(None) == (Path("/tmp/env-workstations.json"), "env")
+
+
+def test_resolve_storage_gc_workstations_source_prefers_local_config_over_shipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("STORAGE_GC_WORKSTATIONS_PATH", raising=False)
+    local_path = tmp_path / "local-workstations.json"
+    local_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("fleet_storage_gc.LOCAL_WORKSTATIONS_PATH", local_path)
+    assert fsg.resolve_storage_gc_workstations_source(None) == (local_path, "local")
+
+
+def test_load_workstations_honors_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    override = tmp_path / "override-workstations.json"
+    override.write_text(
+        json.dumps({"workstations": [{"name": "node-z", "ssh": "node-z", "runner_user": "fleet-operator"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STORAGE_GC_WORKSTATIONS_PATH", str(override))
+    hosts = fsg.load_workstations(None)
+    assert {h.name for h in hosts} == {"node-z"}
     assert all(h.profile == "workstation" and h.distro is None for h in hosts)
 
 
