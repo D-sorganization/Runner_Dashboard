@@ -342,6 +342,13 @@ _UNATTENDED_CODEX = (
     "--skip-git-repo-check",
     "--json",
 )
+# ChatGPT-account Codex CLI ids validated on staff dispatch (``allowed_models_for_provider``).
+_CODEX_STAFF_MODELS = (
+    "gpt-6-luna",
+    "gpt-6.1-terra",
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+)
 
 ADAPTERS: dict[ProviderId, ProviderAdapter] = {
     "claude": ProviderAdapter(
@@ -361,6 +368,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         label="Codex CLI",
         executable="codex",
         argv=(*_UNATTENDED_CODEX, "--model", "{model}", "{prompt}"),
+        models=_CODEX_STAFF_MODELS,
         json_lines=True,
         chat_json_lines=False,
         notes=(
