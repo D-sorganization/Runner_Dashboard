@@ -37,4 +37,27 @@ describe("AgentBusPage", () => {
     await waitFor(() => expect(screen.getByText("local-node-c-1")).toBeInTheDocument());
     expect(screen.getByText(/Live agents \(1\)/)).toBeInTheDocument();
   });
+
+  it("clears error when a subsequent poll succeeds (RD-46)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("poll 1 network error"))
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          agents: [],
+          threads: [],
+          activity: [],
+          backlog: { stale_sessions: [], blocked: [] },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<AgentBusPage />);
+    await waitFor(() => expect(screen.getByText(/Agent bus overview unavailable/)).toBeInTheDocument());
+    await vi.advanceTimersByTimeAsync(30_000);
+    await waitFor(() => expect(screen.getByText(/Live agents \(0\)/)).toBeInTheDocument());
+    expect(screen.queryByText(/Agent bus overview unavailable/)).not.toBeInTheDocument();
+    vi.useRealTimers();
+  });
 });
