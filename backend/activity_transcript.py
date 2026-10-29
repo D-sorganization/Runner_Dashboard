@@ -1,10 +1,11 @@
-"""Transcript chunk spool, retention sweeps, and in-process activity metrics (#2876)."""
+"""Transcript chunk spool, retention sweeps, and in-process activity metrics (#2866, #2876)."""
 
 from __future__ import annotations
 
 import gzip
 import json
 import os
+import re
 import sqlite3
 import threading
 from dataclasses import dataclass, field
@@ -13,9 +14,13 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from activity import ActivityEnvelope, ActivityStore
+from activity import REDACTION_VERSION, ActivityEnvelope, ActivityStore
 
 DEFAULT_METADATA_ARCHIVE_DAYS = 180
+DEFAULT_MAX_CHUNK_BYTES = 65_536
+DEFAULT_SESSION_MAX_BYTES = 16 * 1024 * 1024
+DEFAULT_NODE_MAX_BYTES = 128 * 1024 * 1024
+_ANSI_RE = re.compile(r"(\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_])")
 _METRICS_LOCK = threading.Lock()
 _METRICS: dict[str, int] = {
     "ingest_events": 0,
@@ -25,6 +30,19 @@ _METRICS: dict[str, int] = {
     "reject_409": 0,
     "gaps_total": 0,
 }
+
+
+def strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+def redact_terminal_stream(text: str) -> str:
+    from staff.redaction import redact_sensitive_content
+
+    parts = _ANSI_RE.split(text)
+    redacted = "".join(part if idx % 2 else redact_sensitive_content(part) for idx, part in enumerate(parts))
+    plain = strip_ansi(redacted)
+    return redact_sensitive_content(plain) if redact_sensitive_content(plain) != plain else redacted
 
 
 def reset_activity_metrics() -> None:
@@ -59,6 +77,12 @@ class TranscriptChunkRef:
     byte_len: int
 
 
+def _where_clause(node: str | None = None, session_id: str | None = None) -> tuple[str, tuple[str, ...]]:
+    clauses = [f"{col}=?" for col, val in (("node", node), ("session_id", session_id)) if val is not None]
+    params = tuple(val for val in (node, session_id) if val is not None)
+    return (f"WHERE {' AND '.join(clauses)}" if clauses else ""), params
+
+
 class TranscriptChunkStore:
     def __init__(self, spool_dir: str | Path, db_path: str | Path) -> None:
         self.spool_dir = Path(spool_dir)
@@ -89,15 +113,18 @@ class TranscriptChunkStore:
         with self._lock:
             with self._connection() as conn:
                 row = conn.execute(
-                    "SELECT rel_path, byte_len FROM transcript_chunks WHERE session_id=? AND seq=?",
+                    "SELECT node, principal, stored_at, rel_path, byte_len "
+                    "FROM transcript_chunks WHERE session_id=? AND seq=?",
                     (session_id, seq),
                 ).fetchone()
                 if row:
                     current = self._read(Path(row["rel_path"]))
-                    if current != body:
+                    if current != body or row["node"] != node or row["principal"] != principal:
                         record_reject(409)
                         raise ValueError("conflicting transcript chunk payload")
-                    return TranscriptChunkRef(session_id, seq, node, principal, stored_at, int(row["byte_len"]))
+                    return TranscriptChunkRef(
+                        session_id, seq, node, principal, float(row["stored_at"]), int(row["byte_len"])
+                    )
                 path = self.spool_dir / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with gzip.open(path, "wb") as handle:
@@ -123,8 +150,8 @@ class TranscriptChunkStore:
             ).fetchone()
         return None if row is None else self._read(Path(row["rel_path"]))
 
-    def list_chunks(self, *, node: str | None = None) -> list[TranscriptChunkRef]:
-        clause, params = ("WHERE node=?", (node,)) if node else ("", ())
+    def list_chunks(self, *, node: str | None = None, session_id: str | None = None) -> list[TranscriptChunkRef]:
+        clause, params = _where_clause(node=node, session_id=session_id)
         with self._lock, self._connection() as conn:
             rows = conn.execute(
                 f"SELECT session_id,seq,node,principal,stored_at,byte_len FROM transcript_chunks {clause} "
@@ -147,8 +174,8 @@ class TranscriptChunkStore:
             path.unlink()
         return int(row["byte_len"])
 
-    def spool_bytes(self, *, node: str | None = None) -> int:
-        clause, params = ("WHERE node=?", (node,)) if node else ("", ())
+    def spool_bytes(self, *, node: str | None = None, session_id: str | None = None) -> int:
+        clause, params = _where_clause(node=node, session_id=session_id)
         with self._lock, self._connection() as conn:
             row = conn.execute(
                 f"SELECT COALESCE(SUM(byte_len),0) FROM transcript_chunks {clause}",
@@ -156,10 +183,53 @@ class TranscriptChunkStore:
             ).fetchone()[0]
             return int(row)
 
-    def spool_depth(self, *, node: str | None = None) -> int:
-        clause, params = ("WHERE node=?", (node,)) if node else ("", ())
+    def spool_depth(self, *, node: str | None = None, session_id: str | None = None) -> int:
+        clause, params = _where_clause(node=node, session_id=session_id)
         with self._lock, self._connection() as conn:
             return int(conn.execute(f"SELECT COUNT(*) FROM transcript_chunks {clause}", params).fetchone()[0])
+
+
+def emit_capture_gap(
+    activity: ActivityStore,
+    session_id: str,
+    chunk_seq: int,
+    principal: str,
+    node: str,
+    reason: str,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    with sqlite3.connect(str(activity.db_path)) as conn:
+        if conn.execute(
+            "SELECT 1 FROM activity_events WHERE session_id=? "
+            "AND json_extract(envelope,'$.kind') IN ('CaptureGap','RetentionGap') "
+            "AND json_extract(envelope,'$.payload.chunk_seq')=? LIMIT 1",
+            (session_id, chunk_seq),
+        ).fetchone():
+            return
+        max_seq = int(
+            conn.execute(
+                "SELECT COALESCE(MAX(seq), -1) FROM activity_events WHERE source='recorder' AND session_id=?",
+                (session_id,),
+            ).fetchone()[0]
+        )
+    activity.append(
+        ActivityEnvelope.model_validate(
+            {
+                "schema_version": 1,
+                "event_id": f"capture-gap:{session_id}:{chunk_seq}:{reason}",
+                "source": "recorder",
+                "principal": principal,
+                "node": node,
+                "session_id": session_id,
+                "seq": max(1_000_000 + chunk_seq, max_seq + 1),
+                "ts": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                "kind": "CaptureGap",
+                "redaction_version": REDACTION_VERSION,
+                "payload": {"reason": reason, "chunk_seq": chunk_seq, **(extra or {})},
+            }
+        )
+    )
+    record_gap()
 
 
 @dataclass(frozen=True)
