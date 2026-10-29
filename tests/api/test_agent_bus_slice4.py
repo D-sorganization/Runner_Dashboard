@@ -5,14 +5,11 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.api.test_agent_bus_slice1 import _auth, bus_env as _bus_env_fixture
+from tests.api.test_agent_bus_slice1 import _auth, bus_env
 
 _REMOTE = ("100.64.0.9", 51000)
 
-
-@pytest.fixture
-def bus_env(_bus_env_fixture: dict[str, str]) -> dict[str, str]:
-    return _bus_env_fixture
+__all__ = ["bus_env"]
 
 
 @pytest.fixture
