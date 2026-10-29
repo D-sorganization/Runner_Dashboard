@@ -45,6 +45,7 @@ _TERMINAL_KINDS: dict[str, frozenset[str]] = {
     "staff_run": frozenset({"exit", "cancel", "failed"}),
     "coordination": frozenset({"presence_release"}),
     "checkin": frozenset({"done"}),
+    "recorder": frozenset({"session_end", "exit"}),
 }
 
 

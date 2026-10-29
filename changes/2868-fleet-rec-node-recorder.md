@@ -1,0 +1,1 @@
+Add opt-in Linux/WSL PTY node recorder (`clients/fleet/fleet_rec.py`) wrapping `claude`, `codex`, `agy`, and `cursor-agent` with pre-launch session registration, node-side redaction before local spooling, bounded offline spool with `OverflowGap` emission and reconnect replay, and explicit `session_end` terminal status (#2868).
