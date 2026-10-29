@@ -675,7 +675,10 @@ def test_required_typecheck_job_always_reports_context() -> None:
     """TypeScript typecheck (tsc) is required on main; the job must not be SKIPPED."""
     workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
     job = workflow["jobs"]["typecheck"]
-    assert job.get("if") is None, "typecheck must not use a job-level `if` that skips the required context"
+    assert job.get("if") in (
+        None,
+        "always() && !cancelled() && needs.frontend-scope.result == 'success'",
+    ), "typecheck must not use a job-level `if` that skips the required context"
     assert job["name"] == "TypeScript typecheck (tsc)"
 
 

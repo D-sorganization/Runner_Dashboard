@@ -36,16 +36,40 @@ def test_reusable_pr_guard_concurrency_scoped_per_caller_workflow() -> None:
     assert "github.event.pull_request.number" in group or "github.run_id" in group
 
 
+def _jobs_transitively_needing(jobs: dict, root: str) -> set[str]:
+    dependents: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for job_name, job in jobs.items():
+            if job_name in dependents:
+                continue
+            raw_needs = job.get("needs") or []
+            needs = [raw_needs] if isinstance(raw_needs, str) else list(raw_needs)
+            if root in needs or any(dep in dependents for dep in needs):
+                dependents.add(job_name)
+                changed = True
+    return dependents
+
+
+def test_callers_grant_pull_requests_read_for_reusable_pr_guard() -> None:
+    for name in _CALLERS:
+        data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
+        perms = data.get("permissions")
+        if isinstance(perms, dict):
+            assert perms.get("contents") in ("read", "write"), name
+            assert perms.get("pull-requests") in ("read", "write"), name
+
+
 def test_jobs_needing_pr_guard_use_always_when_workflow_has_merge_group() -> None:
     for name in _CALLERS:
         data = yaml.safe_load((_WORKFLOWS / name).read_text(encoding="utf-8"))
         triggers = _triggers(data)
         if "merge_group" not in triggers and "merge_group" not in str(triggers):
             continue
-        for job_name, job in (data.get("jobs") or {}).items():
-            needs = job.get("needs") or []
-            if "pr-guard" not in needs and "pr-guard" not in str(needs):
-                continue
+        jobs = data.get("jobs") or {}
+        for job_name in _jobs_transitively_needing(jobs, "pr-guard"):
+            job = jobs[job_name]
             assert "always()" in str(job.get("if") or ""), f"{name}:{job_name}"
 
 
