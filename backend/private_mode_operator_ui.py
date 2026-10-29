@@ -154,13 +154,13 @@ def build_classification_badge(
     else:
         raise ClassificationError("build_classification_badge: unsupported source type")
 
-    eff_level = raw_level if cfg.enabled else Level.PUBLIC
+    eff_level = raw_level
     return ClassificationBadge(
         level=eff_level,
         label=eff_level.name,
         tone=_TONE_BY_LEVEL[eff_level],
-        visible=cfg.enabled,
-        withheld=cfg.enabled and eff_level is Level.SENSITIVE,
+        visible=cfg.enabled or eff_level > Level.PUBLIC,
+        withheld=eff_level is Level.SENSITIVE,
     )
 
 
@@ -179,7 +179,7 @@ def project_thread_for_operator_ui(
         raise ClassificationError("project_thread_for_operator_ui: source must be a SharedProjection or SinkEmission")
 
     badge = build_classification_badge(proj, config=cfg)
-    if cfg.enabled and (proj.withheld or proj.level is Level.SENSITIVE):
+    if proj.withheld or proj.level is Level.SENSITIVE:
         return OperatorThreadView(
             thread_id=proj.opaque_id,
             badge=badge,

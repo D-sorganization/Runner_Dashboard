@@ -70,6 +70,21 @@ def test_non_sensitive_and_flag_off_threads_preserve_redacted_content() -> None:
     assert internal_view.badge.level is pm.Level.INTERNAL and internal_view.badge.visible is True
 
     fake_tok = "ghp_" + "A" * 36
+    sens_off_emission = pms.emit_panel_entry(
+        thread_id="th-example-corp-sens-off",
+        seat="argus",
+        status="running",
+        outcome="ok",
+        body_md=f"Example Corp confidential {CANARY} {fake_tok}",
+        ts=_TS,
+        level=pm.Level.SENSITIVE,
+        config=pm.DISABLED,
+    )
+    sens_off_view = pmui.project_thread_for_operator_ui(sens_off_emission, config=pm.DISABLED)
+    assert sens_off_view.metadata_only is True and sens_off_view.badge.level is pm.Level.SENSITIVE
+    assert sens_off_view.badge.withheld is True and sens_off_view.body_md is None
+    pme.assert_no_canary_leak(sens_off_view.to_dict(), CANARY, sink_name="operator_ui:thread_off")
+
     off_emission = pms.emit_panel_entry(
         thread_id="th-example-corp-off",
         seat="argus",
@@ -77,7 +92,7 @@ def test_non_sensitive_and_flag_off_threads_preserve_redacted_content() -> None:
         outcome="ok",
         body_md=f"Example Corp note with token {fake_tok}",
         ts=_TS,
-        level=pm.Level.SENSITIVE,
+        level=pm.Level.PUBLIC,
         config=pm.DISABLED,
     )
     off_view = pmui.project_thread_for_operator_ui(off_emission, config=pm.DISABLED)
