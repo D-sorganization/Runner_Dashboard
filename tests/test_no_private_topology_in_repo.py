@@ -17,6 +17,16 @@ _ALLOWED_PATHS: frozenset[str] = frozenset(
     {
         "backend/private_topology_guard.py",
         "tests/test_no_private_topology_in_repo.py",
+        # Unit tests for the scanner itself exercise the blocked tokens as
+        # fixture input on purpose.
+        "tests/test_private_topology_guard.py",
+        # The sanitizer's own rename-mapping table necessarily names both the
+        # real tokens and their example replacements (#3461 epic child #1).
+        "scripts/sanitize_private_topology.py",
+        # #3080's self-test canary deliberately builds "...@gmail.com" at
+        # runtime to prove the publish guard's own secret scan works; no
+        # real address is shipped.
+        "scripts/publish_guard.py",
     }
 )
 
@@ -31,6 +41,20 @@ _HELD_UNTIL_DEPLOY_SANITIZE: tuple[str, ...] = (
     "deploy/",
     ".github/workflows/deploy-qualified-release.yml",
     "docs/runbooks/qualified-release-deploy.md",
+    # Asserts against the real deploy script's/workflow's literal content;
+    # same hold as the deploy/ tree itself, not a standalone leak.
+    "tests/deploy/test_fleet_health_monitor.py",
+    "tests/test_qualified_release_deploy_workflow.py",
+)
+
+# TODO(#3475): Drop once config/storage-gc-workstations.json and
+# config/runner-schedule-oglaptop.json gain an override-path like
+# machine_registry.yml's load_machine_registry(path), so live values can
+# move out of the tracked file without an entangled test rewrite.
+_HELD_FOR_CONFIG_OVERRIDE_PATH: tuple[str, ...] = (
+    "config/storage-gc-workstations.json",
+    "tests/deploy/test_fleet_storage_gc.py",
+    "tests/deploy/test_runner_scheduler.py",
 )
 
 
@@ -52,6 +76,8 @@ def _is_allowed(rel_path: str) -> bool:
     if any(rel_path.startswith(prefix) for prefix in _ALLOWED_PREFIXES):
         return True
     if rel_path in _HELD_UNTIL_DEPLOY_SANITIZE:
+        return True
+    if rel_path in _HELD_FOR_CONFIG_OVERRIDE_PATH:
         return True
     return rel_path.startswith("deploy/")
 
