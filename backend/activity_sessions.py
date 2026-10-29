@@ -8,6 +8,11 @@ by ``seq``, so late/out-of-order events can't regress or resurrect a session.
 Heartbeat absence alone only ever derives ``stale``, never ``ended`` — that
 needs an explicit terminal event from ``_TERMINAL_KINDS``, fail-closed for an
 undocumented source. ``uncaptured`` is reserved for the not-yet-built T4 slice.
+
+An empty ``SessionsPage`` carries ``empty_reason`` (#3503): ``complete_empty``
+when the log has never recorded a single envelope versus ``local_empty`` when
+this call's filters matched nothing in an otherwise non-empty log -- a client
+must never read a bare empty page as proof that no agents exist.
 """
 
 from __future__ import annotations
@@ -28,6 +33,12 @@ LIVE_WINDOW_SECONDS = 90.0  # 1.5x the 60s default heartbeat_interval
 IDLE_WINDOW_SECONDS = 900.0  # stale beyond this
 
 SessionStatus = Literal["live", "idle", "stale", "ended", "uncaptured"]
+
+#: Why a page came back with zero items (#3503): distinguishes "nothing has
+#: ever been recorded here" from "this filtered view matched nothing, but the
+#: log has other data" -- an empty page alone must never be read as proof
+#: that no agents exist.
+EmptyReason = Literal["complete_empty", "local_empty"]
 
 #: Per-source terminal kinds, from the #2859 producer adapters' vocabulary.
 _TERMINAL_KINDS: dict[str, frozenset[str]] = {
@@ -62,6 +73,7 @@ class SessionsPage(BaseModel):
     items: list[SessionSummary]
     scan_limit: int
     truncated: bool
+    empty_reason: EmptyReason | None = None
 
 
 def _is_terminal(source: str, kind: str) -> bool:
@@ -139,4 +151,10 @@ def compute_sessions(
     if status is not None:
         summaries = [item for item in summaries if item.status == status]
     summaries.sort(key=lambda item: item.last_event_at, reverse=True)
-    return SessionsPage(items=summaries[:limit], scan_limit=scan_limit, truncated=len(raw) >= scan_limit)
+    page = summaries[:limit]
+    empty_reason: EmptyReason | None = None
+    if not page:
+        empty_reason = "complete_empty" if not store.has_any_events() else "local_empty"
+    return SessionsPage(
+        items=page, scan_limit=scan_limit, truncated=len(raw) >= scan_limit, empty_reason=empty_reason
+    )

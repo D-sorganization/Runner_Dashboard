@@ -11398,6 +11398,8 @@ export interface components {
          * @description A bounded page of :class:`SessionSummary` rows.
          */
         SessionsPage: {
+            /** Empty Reason */
+            empty_reason?: ("complete_empty" | "local_empty") | null;
             /** Items */
             items: components["schemas"]["SessionSummary"][];
             /** Scan Limit */
