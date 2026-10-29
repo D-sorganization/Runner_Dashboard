@@ -28,17 +28,30 @@ DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
 
 
+def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
+    """Pick the registry file and report which source supplied it.
+
+    Order: explicit ``path`` argument, then ``$MACHINE_REGISTRY_PATH``, then the
+    local operator config, then the shipped default. Callers that only need the
+    path (loading, diagnostics) should go through this one resolver rather than
+    reimplementing the lookup, so they can never disagree about which file is
+    actually in effect.
+    """
+
+    if path is not None:
+        return Path(path), "explicit"
+    env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
+    if env_path:
+        return Path(env_path), "env"
+    if LOCAL_REGISTRY_PATH.is_file():
+        return LOCAL_REGISTRY_PATH, "local"
+    return DEFAULT_REGISTRY_PATH, "shipped"
+
+
 def _resolve_registry_path(path: str | Path | None) -> Path:
     """Pick the registry file: env override, local config, then shipped default."""
 
-    if path is not None:
-        return Path(path)
-    env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
-    if env_path:
-        return Path(env_path)
-    if LOCAL_REGISTRY_PATH.is_file():
-        return LOCAL_REGISTRY_PATH
-    return DEFAULT_REGISTRY_PATH
+    return resolve_registry_source(path)[0]
 
 
 _DOCUMENTATION_TOPOLOGY = "documentation"
@@ -390,6 +403,7 @@ def _normalize_machine_entry(entry: dict[str, Any]) -> dict[str, Any]:
     normalized["workload_capacity"] = _workload_capacity_from_hardware(normalized["hardware"])
     normalized["storage"] = _normalize_storage(normalized.get("storage"), field_prefix="storage")
     normalized["runner_pools"] = _normalize_runner_pools(normalized, parent_machine=name)
+    normalized["portable"] = bool(_coerce_bool(normalized.get("portable"), field="portable"))
 
     return normalized
 
@@ -573,6 +587,17 @@ def build_machine_registry_index(
                 if token:
                     index[token] = pool_dict
     return index
+
+
+def is_portable_machine(name: str, registry: dict[str, Any] | None = None) -> bool:
+    """True when ``name`` resolves to a registry machine flagged ``portable: true`` (#3323).
+
+    A portable machine (for example a laptop that travels and is often offline) carries
+    no required or scheduled staff roles; unknown/unregistered names are not portable.
+    """
+    reg = registry if registry is not None else load_machine_registry()
+    entry = build_machine_registry_index(reg).get(_normalize_token(name))
+    return bool(entry.get("portable")) if entry else False
 
 
 def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:

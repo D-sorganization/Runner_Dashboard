@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from activity_producers import record_staff_run_activity
 from staff.dispatcher_metrics import dispatcher_origin
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
@@ -426,6 +427,7 @@ class RunStore:
                     "UPDATE runs SET last_line = ? WHERE id = ?",
                     (text.strip()[:300], run_id),
                 )
+        record_staff_run_activity(self.get_run(run_id), seq, kind, text)
         return seq
 
     def last_result_line(self, run_id: str) -> str:

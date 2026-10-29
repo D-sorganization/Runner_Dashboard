@@ -323,12 +323,16 @@ export function DialogActions({
 export function DialogClose({
   children = "Close",
   onClick,
+  title = "Close dialog",
+  "aria-label": ariaLabel = "Close dialog",
   ...rest
 }: DialogCloseProps): React.ReactElement {
   const { onClose } = useDialogContext("DialogClose");
   return (
     <button
       type="button"
+      aria-label={ariaLabel}
+      title={title}
       onClick={(e) => {
         onClose();
         onClick?.(e);

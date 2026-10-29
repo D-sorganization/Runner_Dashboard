@@ -100,6 +100,7 @@ def install(
     from staff import store as store_mod  # noqa: PLC0415
 
     fake = FakeRM(tmp_path / "rm")
+    monkeypatch.setattr(claims_mod, "evidence_fetch", lambda _path: [])  # no live gh in a unit test (#3274)
     monkeypatch.setenv("STAFF_RM_ROOT", str(fake.root))
     monkeypatch.setenv("STAFF_RM_PYTHON", sys.executable)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))

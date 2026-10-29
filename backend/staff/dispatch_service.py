@@ -496,5 +496,6 @@ def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, aud
     """Leave an admitted run whose worker never started visibly ``failed`` (#1796)."""
     error = f"worker did not start: {exc}"
     runner.store.update_run(run_id, status="failed", error=error, failure_class="launch_failed", ended_at=_now())
+    claim_guard.release_claim(run_id, "failed")
     runner.store.append_event(run_id, "failed", error)
     record_audit(action="dispatch", **audit_ctx, outcome="launch_failed", detail={"error": str(exc)}, fail_closed=False)

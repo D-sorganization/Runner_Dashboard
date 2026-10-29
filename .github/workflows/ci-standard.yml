@@ -37,12 +37,12 @@ on:
         required: false
         type: string
 
-# Main-push and live merge_group runs are never concurrency-cancelled. Only
-# pull_request runs cancel in progress. merge_group supersession uses
-# merge_queue_cancel_safety (GraphQL entries) before any bot cancel.
+# PR and superseded main-push runs cancel in progress. merge_group is never
+# concurrency-cancelled; superseded queue entries use merge_queue_cancel_safety.
+# Main-push shares one group (not per-SHA) so the fleet is not flooded after #2491.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || format('{0}-{1}', github.event_name, github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 jobs:
   pick-runner:
@@ -51,8 +51,11 @@ jobs:
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
+      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE != 'hosted' && vars.CI_QUEUE_RUNNER_LABEL || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
     outputs:
       runner: ${{ steps.select.outputs.runner }}
       mode: ${{ steps.select.outputs.mode }}
@@ -81,12 +84,24 @@ jobs:
           fi
           echo "has_expedite=$has" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
+          sparse-checkout-cone-mode: false
+      - name: Stop obsolete merge queue entries
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - id: select
         name: Select runner without API polling
         shell: bash
         env:
           CONFIGURED_MODE: ${{ vars.CI_RUNNER_MODE }}
           CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
+          CI_QUEUE_RUNNER_LABEL: ${{ vars.CI_QUEUE_RUNNER_LABEL }}
           CI_PR_RUNNER_MODE: ${{ vars.CI_PR_RUNNER_MODE }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
@@ -117,6 +132,14 @@ jobs:
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-queue" >> "$GITHUB_OUTPUT"
             echo "Merge queue on GitHub-hosted runners (CI_QUEUE_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Postcondition (#3046): merge_group only, not hosted, label set ->
+          # route to the reserved queue label instead of the shared fleet pool.
+          if [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" != "hosted" ] && [ -n "$CI_QUEUE_RUNNER_LABEL" ]; then
+            echo "runner=$CI_QUEUE_RUNNER_LABEL" >> "$GITHUB_OUTPUT"
+            echo "mode=queue-label" >> "$GITHUB_OUTPUT"
+            echo "Merge queue routed to reserved runner label $CI_QUEUE_RUNNER_LABEL (#3046)" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$CI_PR_RUNNER_MODE" = "hosted" ]; then
@@ -339,7 +362,51 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|security.py|maxwell.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts|api-types.ts|identity.py|machine_registry.py"
+          # RD-33: exact repo-relative paths, matched whole-line (grep -vxF).
+          # The old unanchored regex let look-alikes slip through uncapped
+          # (e.g. "queue.py" also matched backend/staff/board_queue.py;
+          # "identity.py" also matched backend/tailnet_identity.py). Kept
+          # inline (not an external file) so the list travels with the step
+          # and can't go missing out from under it. Both branches below filter
+          # the file list *before* counting lines, so there's no "total"
+          # summary line to special-case either.
+          EXEMPT_PATHS=$(cat <<'PATHS'
+          backend/server.py
+          backend/dispatch_contract.py
+          backend/agent_dispatch_router.py
+          backend/routers/credentials.py
+          backend/security.py
+          backend/routers/maxwell.py
+          backend/routers/queue.py
+          backend/routers/remediation.py
+          backend/routers/diagnostics.py
+          backend/gh_client.py
+          backend/system_utils.py
+          backend/runner_autoscaler.py
+          backend/queue_cleanup.py
+          backend/identity.py
+          backend/machine_registry.py
+          frontend/src/pages/Queue/index.tsx
+          frontend/src/lib/api-types.ts
+          frontend/src/shell/navRegistry.ts
+          frontend/src/pages/Principals.tsx
+          frontend/src/pages/Analysis.tsx
+          frontend/src/pages/RemediationPRs.tsx
+          frontend/src/pages/Machines.tsx
+          frontend/src/pages/FleetTab.tsx
+          frontend/src/pages/FleetOrchestration.tsx
+          frontend/src/pages/FeatureRequests.tsx
+          frontend/src/pages/RemediationTab.tsx
+          frontend/src/pages/Workflows.tsx
+          frontend/src/pages/RemediationIssues.tsx
+          frontend/src/pages/Queue/__tests__/Mobile.test.tsx
+          frontend/src/pages/StaffConsole/__tests__/Mobile.test.tsx
+          frontend/src/pages/Fleet/__tests__/Mobile.test.tsx
+          frontend/src/pages/Credentials/__tests__/Mobile.test.tsx
+          frontend/src/pages/Remediation/__tests__/Mobile.test.tsx
+          frontend/src/pages/Reports/__tests__/Mobile.test.tsx
+          PATHS
+          )
           if [ "$EVENT_NAME" = "pull_request" ]; then
             # Fail CLOSED (RD#2730): a shallow checkout has no merge base, so
             # fetch the exact base commit and diff it against HEAD directly
@@ -355,14 +422,16 @@ jobs:
             printf '%s\n' "$CHANGED"
             FILES=$(printf '%s\n' "$CHANGED" \
               | { grep -E '\.(py|ts|tsx|js)$' || true; } \
-              | { grep -vE "$EXEMPT" || true; })
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; })
             if [ -z "$FILES" ]; then
               echo "No changed source files require line-cap enforcement."
               exit 0
             fi
             OVER=$(printf '%s\n' "$FILES" | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           else
-            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) -exec wc -l {} + 2>/dev/null | grep -vE "$EXEMPT" | awk '$1 > 500 {print $1, $2}')
+            OVER=$(find backend/ frontend/src/ -type f \( -name "*.py" -o -name "*.ts" -o -name "*.tsx" -o -name "*.js" \) \
+              | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; } \
+              | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           fi
           if [ -n "$OVER" ]; then
             echo "::error::Files exceeding 500-line soft cap found:"
@@ -440,6 +509,8 @@ jobs:
             pip install -r requirements.txt
             echo "$RUNNER_TEMP/ci-tools/bin" >> "$GITHUB_PATH"
           fi
+      - name: Validate private CI gate manifest
+        run: python -m backend.ci.private_gate_manifest --validate
       - name: Check Tool Version Consistency
         run: |
           echo "Validating tool versions match .pre-commit-config.yaml..."
@@ -493,6 +564,11 @@ jobs:
           mypy clients/fleet/ --ignore-missing-imports --no-implicit-optional
       - name: Runner disk guard vendored manifest
         run: python scripts/check_runner_disk_guard_drift.py --manifest-only --repo-root .
+      - name: Grok role bundle drift (fixture canary)
+        if: needs.changes.outputs.run_python_tests == 'true'
+        run: >
+          python -m scripts.export_grok_role_bundles --check
+          --roles-dir tests/fixtures/grok_role_sync/roles
       - name: Run bandit security scan
         # pull_request (in scope), schedule, or workflow_dispatch — not merge_group.
         if: >-
@@ -628,9 +704,11 @@ jobs:
     needs:
       - changes
       - ci-health-check
-      - lint
       - pick-runner
     if: needs.changes.outputs.run_python_tests == 'true'
+    permissions:
+      actions: write
+      contents: read
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
@@ -643,8 +721,10 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        python:
-          - "3.11"
+        include: >-
+          ${{ github.event_name == 'merge_group' &&
+          fromJSON('[{"python":"3.11","shard":1,"shards":2},{"python":"3.11","shard":2,"shards":2}]') ||
+          fromJSON('[{"python":"3.11","shard":1,"shards":1}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -676,6 +756,8 @@ jobs:
           PYTHONPATH: backend:.
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
           EXPECTED_PYTHON: ${{ matrix.python }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
         # Full tier (merge_group): whole suite with coverage (issue #342); the
@@ -700,13 +782,26 @@ jobs:
             echo "No tests directory found - skipping"
             exit 0
           fi
+          FAST_MARKER="not integration and not playwright and not slow"
           if [ "$FULL_SUITE" = "true" ]; then
             pip install pytest-cov==6.1.1 --quiet
             pytest tests/ --tb=short -n auto -m "not integration and not playwright" \
               --cov=backend --cov-report=xml --cov-report=term-missing
+          elif [ "$SHARDS" -gt 1 ]; then
+            echo "merge_group shard ${SHARD}/${SHARDS}"
+            pytest tests/ --tb=short -n auto -m "$FAST_MARKER" \
+              -p scripts.pytest_ci_shard \
+              --ci-shard-groups "$SHARDS" \
+              --ci-shard-index "$SHARD"
           else
-            pytest tests/ --tb=short -n auto -m "not integration and not playwright and not slow"
+            pytest tests/ --tb=short -n auto -m "$FAST_MARKER"
           fi
+      - name: Re-check merge queue entry during long tests
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - name: Upload coverage artifact
         if: always() && hashFiles('coverage.xml') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0

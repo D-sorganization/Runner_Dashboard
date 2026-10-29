@@ -126,14 +126,14 @@ describe("FleetCommandPage — claims", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check claim" }));
     await waitFor(() => expect(screen.getByTestId("claim-status")).toHaveTextContent("claimed by codex"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Claim" }));
+    fireEvent.click(screen.getByRole("button", { name: /Claim maintenance session/i }));
     await waitFor(() =>
       expect(screen.getByTestId("claim-error")).toHaveTextContent(
         "issue is claimed — held by codex — pick another issue",
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Release" }));
+    fireEvent.click(screen.getByRole("button", { name: /Release maintenance session/i }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Released Tools#42."));
     const release = writes(fetchMock, "POST").find(([u]) => u === "/api/coordination/claims/release");
     expect(release).toBeDefined();

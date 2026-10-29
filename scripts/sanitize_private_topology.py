@@ -12,12 +12,13 @@ import argparse
 import ast
 import re
 import sys
-from dataclasses import dataclass
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Iterable, Sequence
 
 # Longest keys first so ``controltower-nvme`` wins over ``controltower``.
-_LITERAL_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+# Public: also the single source of truth for the no-real-literals regression
+# test (DRY) — see tests/test_machine_registry_category1_overlay_migration.py.
+LITERAL_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("control-tower-runner-monitoring", "node-a-runner-monitoring"),
     ("control-tower-nvme", "node-a-nvme"),
     ("controltower-nvme", "node-a-nvme"),
@@ -29,6 +30,7 @@ _LITERAL_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("brick.tail2bbcc7.ts.net", "node-c.fleet-example.ts.net"),
     ("oglaptop.tail2bbcc7.ts.net", "node-b.fleet-example.ts.net"),
     ("tail2bbcc7.ts.net", "fleet-example.ts.net"),
+    ("100.93.80.7", "100.64.254.14"),
     ("DeskComputer", "hub-a"),
     ("ControlTower", "node-a"),
     ("OGLaptop", "node-b"),
@@ -41,14 +43,12 @@ _LITERAL_REPLACEMENTS: tuple[tuple[str, str], ...] = (
     ("diete", "fleet-operator"),
 )
 
-_STRING_CHUNK_RE = re.compile(
-    r'("(?:\\.|[^"\\])*")|(\'(?:\\.|[^\'\\])*\')|(`(?:\\.|[^`\\])*`)'
-)
+_STRING_CHUNK_RE = re.compile(r'("(?:\\.|[^"\\])*")|(\'(?:\\.|[^\'\\])*\')|(`(?:\\.|[^`\\])*`)')
 
 
 def apply_literal_replacements(text: str) -> str:
     out = text
-    for old, new in _LITERAL_REPLACEMENTS:
+    for old, new in LITERAL_REPLACEMENTS:
         out = out.replace(old, new)
     return out
 
@@ -89,6 +89,11 @@ def sanitize_quoted_text(source: str) -> str:
 def sanitize_file_text(path: Path, source: str) -> str:
     if path.suffix == ".py":
         return sanitize_python_source(source)
+    if path.suffix == ".md":
+        # Markdown prose has no identifiers to protect (unlike code), so a
+        # global replace is safe and also catches headings/bold text that a
+        # quoted-regions-only replace would miss.
+        return apply_literal_replacements(source)
     return sanitize_quoted_text(source)
 
 

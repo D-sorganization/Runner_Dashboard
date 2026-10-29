@@ -32,6 +32,7 @@ from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
 from routers.staff_dispatch import run_dispatch
 from staff import fleet as staff_fleet
+from staff.activity_summary import ActivitySummaryUnavailable, activity_summary_counts
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
     export_audit_csv,
@@ -55,8 +56,9 @@ from staff.models import (
     StaffSummaryResponse,
 )
 from staff.rm_sync import source_status as source_status  # noqa: F401
+from staff.role_avatar_paths import avatar_url_for
 from staff.runner import get_runner
-from staff.store import ACTIVE_STATUSES, RUN_STATUSES
+from staff.store import ACTIVE_STATUSES, RUN_STATUSES, default_db_path
 from staff.summary_view import build_staff_summary
 
 log = logging.getLogger("dashboard.staff")
@@ -120,9 +122,15 @@ async def roster(
     runner = get_runner()
     roles, active = runner.roles(), runner.store.active_runs()
     per_role = {s: sum(1 for a in active if a.role == s) for s in roles}
+    role_dicts = []
+    for name, spec in sorted(roles.items()):
+        role_dict = {**spec.to_dict(), "active_runs": per_role.get(name, 0)}
+        if role_dict.get("avatar"):
+            role_dict["avatar"] = avatar_url_for(role_dict["avatar"])
+        role_dicts.append(role_dict)
     return {
         "machine": runner.machine,
-        "roles": [{**spec.to_dict(), "active_runs": per_role.get(name, 0)} for name, spec in sorted(roles.items())],
+        "roles": role_dicts,
         "providers": available_providers(),
         "provider_versions": await asyncio.to_thread(provider_versions, ADAPTERS),
         "chat_only_providers": chat_only_providers(),
@@ -172,6 +180,22 @@ async def summary(
     roster with schedules.
     """
     return await build_staff_summary()
+
+
+@router.get("/activity/summary")
+async def activity_summary(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Bounded aggregate for the node auto-deploy activity probe (#2353).
+
+    No runner/provider initialisation and no peer fan-out (see
+    ``staff.activity_summary`` for the read-only aggregate query).
+    """
+    try:
+        counts = activity_summary_counts(default_db_path())
+    except ActivitySummaryUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {**counts, "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z")}
 
 
 @router.get("/github-app/preflight")

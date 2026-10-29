@@ -40,6 +40,8 @@ def enabled_panel_providers() -> tuple[str, ...]:
 # A model id is appended to the provider CLI argv (``--model <id>``); this shape can never be a flag
 # (no leading '-'), a shell fragment or whitespace, so it cannot inject arguments.
 MODEL_ID_RE = re.compile(r"^[A-Za-z0-9._:/][A-Za-z0-9._:/-]{0,79}$")
+# ``repo#number``, e.g. "Runner_Dashboard#3313" (#3313).
+REF_RE = re.compile(r"^([A-Za-z][\w.-]*)#([0-9]+)$")
 
 
 def _check_model(model: str | None, seat: str) -> str | None:
@@ -109,6 +111,10 @@ class PanelCreateRequest(BaseModel):
     pack_id: Literal["cartographer"] | None = "cartographer"
     repos: list[str] | None = Field(default=None, min_length=1, max_length=6)
     preload_codebase: bool = True
+    # With ``repos``: seats read a read-only snapshot of origin/main for those repos (#2511).
+    ground_repos: bool = True
+    # ``repo#n``: RD fetches each issue/PR's own facts and prepends them to the topic (#3313).
+    refs: list[str] | None = Field(default=None, min_length=1, max_length=4)
 
     @field_validator("repos")
     @classmethod
@@ -116,6 +122,19 @@ class PanelCreateRequest(BaseModel):
         if repos is not None and (len(set(repos)) != len(repos) or any(repo not in CODEBASE_REPOS for repo in repos)):
             raise ValueError("repos must contain unique configured fleet repository names")
         return repos
+
+    @field_validator("refs")
+    @classmethod
+    def _known_refs(cls, refs: list[str] | None) -> list[str] | None:
+        if refs is None:
+            return refs
+        if len(set(refs)) != len(refs):
+            raise ValueError("refs must be unique")
+        for ref in refs:
+            match = REF_RE.fullmatch(ref)
+            if not match or match.group(1) not in CODEBASE_REPOS:
+                raise ValueError(f"ref {ref!r} must be 'repo#number' naming a configured fleet repository")
+        return refs
 
     @field_validator("moderator_provider")
     @classmethod
@@ -165,11 +184,40 @@ class TurnOutcome:
     error: str | None = None
 
 
-def _expert(name: str, perspective: str) -> dict[str, Any]:
-    return {"name": name, "perspective": perspective}
+def _expert(name: str, perspective: str, provider: str | None = None, model: str | None = None) -> dict[str, Any]:
+    """A preset seat; ``provider``/``model`` are set only for presets that pin real CLI seats."""
+    seat: dict[str, Any] = {"name": name, "perspective": perspective}
+    if provider is not None:
+        seat["provider"] = provider
+        seat["model"] = model
+    return seat
 
 
 PANEL_PRESETS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "fleet-decision",
+        "title": "Fleet decision panel (Argon / Astra / Fable)",
+        "experts": [
+            _expert(
+                "Argon",
+                "Systems efficiency, cost and latency, algorithmic rigor.",
+                "antigravity",
+                "gemini-4-argon-high",
+            ),
+            _expert(
+                "Astra",
+                "Architecture, contracts, security boundaries and testability.",
+                "codex",
+                "gpt-6-astra",
+            ),
+            _expert(
+                "Fable",
+                "Skeptic: failure modes, edge cases and long-term maintainability.",
+                "claude",
+                "claude-fable-5-1",
+            ),
+        ],
+    },
     {
         "id": "engineering-review",
         "title": "Engineering design review",
@@ -199,3 +247,27 @@ PANEL_PRESETS: tuple[dict[str, Any], ...] = (
         ],
     },
 )
+
+
+def preset_view() -> list[dict[str, Any]]:
+    """The presets for the API: every seat gets its ``provider`` (default claude), ``model`` and ``available``.
+
+    Post: ``available`` is False exactly when the seat's provider is switched off on this node (#1597) or
+    has no read-only chat mode; the seat is never swapped here, the caller shows the fallback.
+    """
+    usable = set(enabled_panel_providers())
+    return [
+        {
+            **preset,
+            "experts": [
+                {
+                    **e,
+                    "provider": e.get("provider", "claude"),
+                    "model": e.get("model"),
+                    "available": e.get("provider", "claude") in usable,
+                }
+                for e in preset["experts"]
+            ],
+        }
+        for preset in PANEL_PRESETS
+    ]

@@ -55,6 +55,8 @@ export interface MessageItemProps {
   onAnswerRun?: (threadId: string, runId: string, answer: string) => Promise<boolean>;
   onRerouteHandoff?: (targetRole: string) => void;
   onFollowHandoff?: (targetRole: string) => void;
+  /** URL of the author's persona image, served by the backend (#2680); falls back to the letter avatar. */
+  avatarUrl?: string;
 }
 
 /** #1774: a message whose action was dropped (permission/unknown/bad params) says so. */
@@ -98,8 +100,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   onAnswerRun,
   onRerouteHandoff,
   onFollowHandoff,
+  avatarUrl,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
   const isUser = message.author_kind === "user" || message.author === "user";
   // System-authored cards (runs, proposals, handoffs) keep their card; only plain notices are pills.
   const isSystem =
@@ -112,6 +116,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({
   const roleDisplayName = isUser ? "You" : roleName.charAt(0).toUpperCase() + roleName.slice(1);
   const roleInitial = roleName.charAt(0).toUpperCase();
   const roleTint = getRoleTint(roleName);
+  const showAvatarImage = !isUser && !!avatarUrl && !avatarImageFailed;
   const warnings = !isUser && Array.isArray(message.meta?.warnings) ? (message.meta!.warnings as string[]) : [];
 
   const handleCopy = async () => {
@@ -325,16 +330,26 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       {/* Header with Avatar, Author and Time (collapsible) */}
       {showHeader && !isUser && (
         <div className="thread-message-header">
-          <div
-            className="thread-avatar"
-            style={{
-              background: roleTint.bg,
-              color: roleTint.fg,
-            }}
-            aria-hidden="true"
-          >
-            {roleInitial}
-          </div>
+          {showAvatarImage ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              className="thread-avatar thread-avatar--image"
+              aria-hidden="true"
+              onError={() => setAvatarImageFailed(true)}
+            />
+          ) : (
+            <div
+              className="thread-avatar"
+              style={{
+                background: roleTint.bg,
+                color: roleTint.fg,
+              }}
+              aria-hidden="true"
+            >
+              {roleInitial}
+            </div>
+          )}
           <span className="thread-author-name">{roleDisplayName}</span>
           {timeStr && (
             <span className="thread-message-time" title={absoluteTime}>
@@ -383,7 +398,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({
       {warnings.length > 0 && <ActionWarnings warnings={warnings} />}
       {!isUser && typeof message.meta?.shared_memory_summary === "string" &&
         SUMMARY_LABELS[message.meta.shared_memory_summary] && (
-          <div className="thread-message-item__warnings" role="status">
+          <div
+            className="thread-message-item__warnings"
+            role="status"
+            title={`Shared memory notice: ${SUMMARY_LABELS[message.meta.shared_memory_summary]}`}
+          >
             {SUMMARY_LABELS[message.meta.shared_memory_summary]}
           </div>
         )}

@@ -67,7 +67,12 @@ export function GroupDeliberationCard({ message, turn }: GroupDeliberationCardPr
       )}
 
       <div className="group-turn__actions">
-        <TouchButton variant="default" aria-expanded={proposing} onClick={() => setProposing((open) => !open)}>
+        <TouchButton
+          variant="default"
+          aria-expanded={proposing}
+          title={proposing ? "Hide the board proposal form" : "Draft a board proposal from this deliberation turn"}
+          onClick={() => setProposing((open) => !open)}
+        >
           {proposing ? "Hide proposal form" : "Turn into Board Proposal"}
         </TouchButton>
       </div>

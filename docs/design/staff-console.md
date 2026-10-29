@@ -197,7 +197,7 @@ Cards render inline inside conversation streams to represent executable staff ca
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ ⚠ ACTION PROPOSAL · High Risk Gate                                      │
 │ Operation: maintenance.runner_stop                                      │
-│ Target:    OGLaptop-runner-4 (host: OGLaptop)                           │
+│ Target:    node-b-runner-4 (host: node-b)                           │
 │ Rationale: Memory leak detected (> 95% RSS).                            │
 │ Proposed By: Fleet Maintenance (10:22 AM)                               │
 ├─────────────────────────────────────────────────────────────────────────┤
@@ -212,7 +212,7 @@ Cards render inline inside conversation streams to represent executable staff ca
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ ⚙ RUN CARD · maintenance.trim_worktrees                        [Running]│
-│ Node: ControlTower · Provider: codex · Elapsed: 14s                     │
+│ Node: node-a · Provider: codex · Elapsed: 14s                     │
 │ ─────────────────────────────────────────────────────────────────────── │
 │ Log: [10:24:01] Scanning worktree directory /data/worktrees...          │
 │      [10:24:08] Found 3 orphaned worktrees (> 7d stale). Deleting...    │
@@ -227,7 +227,7 @@ Cards render inline inside conversation streams to represent executable staff ca
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ ✖ ERROR CARD: Authentication Expired                           [Retryable]│
 │ Cause: Provider token expired or CLI signed out.                        │
-│ Remediation: Run `claude login` on host DeskComputer.                   │
+│ Remediation: Run `claude login` on host hub-a.                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ [ ↻ Retry Turn ]                                 [ Copy Diagnostics ]   │
 └─────────────────────────────────────────────────────────────────────────┘
