@@ -931,7 +931,7 @@ def _quality_gate(**env: str) -> int:
         "RESULT_TESTS": "success",
         "RESULT_SECURITY": "success",
         "RESULT_FRONTEND": "skipped",
-        "RESULT_SECRETS": "skipped",
+        "RESULT_SECRETS": "skipped",  # pragma: allowlist secret
         "RESULT_API_CONTRACT": "skipped",
         "RESULT_DOCKER": "skipped",
         "GITHUB_EVENT_NAME": "pull_request",
@@ -965,7 +965,7 @@ def test_quality_gate_requires_heavy_scans_in_the_full_tier() -> None:
         "TIER": "full",
         "FULL_SUITE": "true",
         "RESULT_FRONTEND": "success",
-        "RESULT_SECRETS": "success",
+        "RESULT_SECRETS": "success",  # pragma: allowlist secret
         "RESULT_API_CONTRACT": "success",
         "RESULT_DOCKER": "success",
     }
@@ -980,7 +980,7 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
         "FULL_SUITE": "false",
         "GITHUB_EVENT_NAME": "merge_group",
         "RESULT_FRONTEND": "success",
-        "RESULT_SECRETS": "success",
+        "RESULT_SECRETS": "success",  # pragma: allowlist secret
         "RESULT_API_CONTRACT": "success",
         "RESULT_DOCKER": "success",
     }
@@ -1002,17 +1002,17 @@ def test_quality_gate_requires_frontend_secrets_api_contract_and_docker_on_merge
         "RESULT_TESTS": "success",
         "RESULT_SECURITY": "success",
         "RESULT_FRONTEND": "success",
-        "RESULT_SECRETS": "success",
+        "RESULT_SECRETS": "success",  # pragma: allowlist secret
         "RESULT_API_CONTRACT": "success",
         "RESULT_DOCKER": "success",
     }
     assert _quality_gate(**mq) == 0
     assert _quality_gate(**dict(mq, RESULT_FRONTEND="skipped")) == 1
-    assert _quality_gate(**dict(mq, RESULT_SECRETS="skipped")) == 1
+    assert _quality_gate(**dict(mq, RESULT_SECRETS="skipped")) == 1  # pragma: allowlist secret
     assert _quality_gate(**dict(mq, RESULT_API_CONTRACT="skipped")) == 1
     assert _quality_gate(**dict(mq, RESULT_DOCKER="skipped")) == 1
     assert _quality_gate(**dict(mq, RESULT_FRONTEND="failure")) == 1
-    assert _quality_gate(**dict(mq, RESULT_SECRETS="failure")) == 1
+    assert _quality_gate(**dict(mq, RESULT_SECRETS="failure")) == 1  # pragma: allowlist secret
     assert _quality_gate(**dict(mq, RESULT_API_CONTRACT="failure")) == 1
     assert _quality_gate(**dict(mq, RESULT_DOCKER="failure")) == 1
 
