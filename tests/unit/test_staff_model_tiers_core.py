@@ -142,6 +142,22 @@ def test_launch_primary_keeps_explicit_model() -> None:
     assert (model, tier) == ("gpt-6-luna", "routine")
 
 
+def test_codex_gpt_6_1_terra_allowed_for_staff_dispatch() -> None:
+    """Codex CLI 0.164+ accepts gpt-6.1-terra; staff must not 422 it (#3532)."""
+    role = RoleSpec(name="r", title="R", providers=("codex",), tier="routine")
+    model, tier = resolve_launch_model(
+        req=RunRequest(role="r", provider="codex", model="gpt-6.1-terra"),
+        role=role,
+        provider="codex",
+        adapter=adapters_mod.ADAPTERS["codex"],
+        step=FailoverStep("codex"),
+        active_tier="routine",
+    )
+    assert (model, tier) == ("gpt-6.1-terra", "routine")
+    argv = adapters_mod.ADAPTERS["codex"].build_command("hi", "/tmp", model="gpt-6.1-terra")
+    assert argv[argv.index("--model") + 1] == "gpt-6.1-terra"
+
+
 def test_launch_fallback_uses_configured_primary_when_provider_is_omitted(monkeypatch: pytest.MonkeyPatch) -> None:
     from staff import provider_failover_config
 
