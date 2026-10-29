@@ -1,0 +1,48 @@
+name: Recurring Public-Repo Scan
+
+# Epic #3077 slice 8 (#3086); see docs/runbooks/public-repo-recurring-scan.md.
+# Private rd-barb alert only, never a public comment. Hosted per #3084.
+
+on:
+  schedule:
+    - cron: "40 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recurring-scan-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run recurring scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RD_BARB_WEBHOOK_URL: ${{ secrets.RD_BARB_WEBHOOK_URL }}
+          RD_BARB_WEBHOOK_KEY: ${{ secrets.RD_BARB_WEBHOOK_KEY }}
+          RD_BARB_THREAD_ID: ${{ secrets.RD_BARB_THREAD_ID }}
+        run: |
+          set -euo pipefail
+          STATE_BRANCH=bot/recurring-scan-state
+          CURSOR_FILE=.recurring-scan-cursor.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git fetch origin "$STATE_BRANCH" 2>/dev/null && git cat-file -e "origin/$STATE_BRANCH:cursor.json" 2>/dev/null; then
+            git show "origin/$STATE_BRANCH:cursor.json" > "$CURSOR_FILE"
+          fi
+          python3 scripts/recurring_scan.py --repo . --cursor "$CURSOR_FILE"
+          BLOB=$(git hash-object -w "$CURSOR_FILE")
+          TREE=$(printf '100644 blob %s\tcursor.json\n' "$BLOB" | git mktree)
+          PARENT=$(git rev-parse "origin/$STATE_BRANCH" 2>/dev/null || true)
+          PARENT_FLAG=(); [ -n "$PARENT" ] && PARENT_FLAG=(-p "$PARENT")
+          COMMIT=$(git commit-tree "$TREE" "${PARENT_FLAG[@]}" -m "chore(scan-state): update recurring-scan cursor")
+          git push origin "$COMMIT:refs/heads/$STATE_BRANCH"
