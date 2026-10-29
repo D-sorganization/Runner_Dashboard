@@ -23,10 +23,12 @@ def read_auto_deploy_fleet_status() -> dict[str, Any]:
     path = _state_path()
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"enabled": True, "attention": False, "last_result": None}
     except (OSError, json.JSONDecodeError):
-        return {"enabled": True, "attention": False, "last_result": None}
+        return {"enabled": True, "attention": True, "last_result": "error"}
     if not isinstance(payload, dict):
-        return {"enabled": True, "attention": False, "last_result": None}
+        return {"enabled": True, "attention": True, "last_result": "error"}
     return {
         "enabled": True,
         "attention": bool(payload.get("attention")),

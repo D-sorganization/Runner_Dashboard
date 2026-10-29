@@ -19,6 +19,7 @@ Then open http://localhost:8321 in your browser.
 """
 
 import asyncio
+import contextlib
 import datetime as _dt_mod
 import errno
 import json
@@ -545,10 +546,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-# Issue #331 — request_id correlation middleware (outermost so all subsequent
-# middleware and handlers have access to the request_id context var).
-app.add_middleware(RequestIdMiddleware)
-
 # Issue #350 — early body-size guard (ASGI middleware, runs before routing)
 app.add_middleware(
     MaxBodySizeMiddleware,
@@ -620,8 +617,7 @@ async def _watchdog_heartbeat() -> None:
         try:
             _notifier("WATCHDOG=1")
         except Exception as exc:  # noqa: BLE001
-            log.warning("watchdog_heartbeat: sd_notify failed (%s), exiting task", exc)
-            return
+            log.warning("watchdog_heartbeat: sd_notify failed (%s), continuing", exc)
 
 
 _LEASE_REAPER_INTERVAL_S: int = max(30, int(os.environ.get("LEASE_REAPER_INTERVAL_S", "300")))
@@ -1187,7 +1183,10 @@ async def run_cmd(
             stderr.decode("utf-8", errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         return -1, "", "Command timed out"
 
 
@@ -2250,6 +2249,11 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# Issue #331 / #3034 — request_id correlation middleware added last so
+# Starlette inserts it at index 0 (outermost) of app.user_middleware.
+app.add_middleware(RequestIdMiddleware)
+
+
 # ─── Operator diagnostics ────────────────────────────────────────────────────
 #
 # /api/diagnostics surfaces the config-load and fleet-federation state that
@@ -2943,9 +2947,6 @@ async def _startup() -> None:
         log.info("Sent systemd READY=1 notification")
     else:
         log.debug("systemd.daemon not available; omitting sd_notify")
-
-    # Start systemd watchdog heartbeat task (issue #707)
-    asyncio.create_task(_watchdog_heartbeat())
 
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())

@@ -271,6 +271,10 @@ async def _run_cmd(cmd: list[str], timeout: int = 30, cwd: str | Path | None = N
             proc.kill()
         except ProcessLookupError:
             pass
+        try:
+            await proc.wait()
+        except ProcessLookupError:
+            pass
         return -1, "", "timeout"
 
 
