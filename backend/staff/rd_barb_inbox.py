@@ -18,8 +18,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from staff.rd_barb_memory import rd_barb_state_dir
-from staff.redaction import redact_sensitive_content
+from staff.rd_barb_memory import rd_barb_state_dir, redact_sensitive_content
 
 log = logging.getLogger("dashboard.staff.rd_barb_inbox")
 
