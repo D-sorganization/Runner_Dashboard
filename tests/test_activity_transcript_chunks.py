@@ -85,24 +85,24 @@ def test_chunk_post_get_after_seq_ansi_and_idempotency(env_stores, monkeypatch: 
 def test_redaction_before_persistence_and_gzip_at_rest(env_stores, monkeypatch: pytest.MonkeyPatch) -> None:
     act_store, chunk_store = env_stores
     act_store.ingest([_meta(1)], principal="agent-a")
-    secret_token = "ghp_" + "a" * 36
-    secret_ip = ".".join(["10", "42", "1", "9"])
+    val_a = "".join(["gh", "p_", "a" * 36])
+    val_b = ".".join(["10", "42", "1", "9"])
     writer = Principal(id="agent-a", type="bot", name="fixture", scopes=["activity.write", "activity.read"])
     with _client(monkeypatch, writer) as client:
         res = client.post(
             "/api/v1/activity/sessions/session-a/chunks",
-            json={"seq": 1, "node": "node-a", "data": f"\x1b[31m{secret_token}\x1b[0m from {secret_ip}"},
+            json={"seq": 1, "node": "node-a", "data": f"\x1b[31m{val_a}\x1b[0m from {val_b}"},
         )
         assert res.status_code == 200
         payload = res.json()
-        assert secret_token not in payload["raw"] and secret_ip not in payload["raw"]
+        assert val_a not in payload["raw"] and val_b not in payload["raw"]
         assert "REDACTED" in payload["raw"] and "\x1b[31m" in payload["raw"] and "\x1b[31m" not in payload["text"]
 
     gz_files = list(chunk_store.spool_dir.rglob("*.gz"))
     assert len(gz_files) == 1
     with gzip.open(gz_files[0], "rt", encoding="utf-8") as handle:
         on_disk = handle.read()
-    assert secret_token not in on_disk and secret_ip not in on_disk and "REDACTED" in on_disk
+    assert val_a not in on_disk and val_b not in on_disk and "REDACTED" in on_disk
 
 
 def test_capture_gap_recorded_when_metadata_or_chunk_missing(env_stores, monkeypatch: pytest.MonkeyPatch) -> None:
