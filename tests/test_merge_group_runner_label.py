@@ -40,6 +40,11 @@ PICK_RUNNER_QUEUE_LABEL_SWITCH = (
 # The five in-scope workflows. ci-standard.yml routes through pick-runner's
 # outputs (tested via the bash harness below); the other four resolve
 # ``runs-on`` directly from a literal expression (tested textually).
+#
+# Split light vs. heavy (#3084, epic #3077 slice 6): heavy jobs end on their
+# own dedicated ``d-sorg-fleet-public-heavy`` fallback instead of the shared
+# ``d-sorg-fleet`` pool (config/public_repo_heavy_jobs.json is the source of
+# truth for which jobs those are).
 QUEUE_LABEL_JOBS: dict[str, list[str]] = {
     "frontend-tests.yml": [
         "frontend-required",
@@ -47,11 +52,12 @@ QUEUE_LABEL_JOBS: dict[str, list[str]] = {
         "typecheck",
         "vitest",
         "perf-budget",
-        "playwright-e2e",
-        "staff-console-e2e",
     ],
     "ci-secrets.yml": ["gitleaks", "detect-secrets"],
     "anti-phantom-merge.yml": ["guard"],
+}
+QUEUE_LABEL_HEAVY_JOBS: dict[str, list[str]] = {
+    "frontend-tests.yml": ["playwright-e2e", "staff-console-e2e"],
     "ci-auto-deploy-regression.yml": ["auto-deploy-regression"],
 }
 
@@ -109,6 +115,17 @@ def test_merge_group_jobs_use_queue_label_switch(workflow: str, only: list[str])
         assert runs_on.endswith("'d-sorg-fleet' }}"), f"{workflow}::{job_id} lost the fleet default"
 
 
+@pytest.mark.parametrize(("workflow", "only"), QUEUE_LABEL_HEAVY_JOBS.items())
+def test_merge_group_heavy_jobs_use_queue_label_switch(workflow: str, only: list[str]) -> None:
+    """Heavy jobs (#3084) honor the same switch but fall back to their own label."""
+    jobs = _jobs(workflow, only)
+    assert jobs
+    for job_id, job in jobs.items():
+        runs_on = " ".join(str(job["runs-on"]).split())
+        assert QUEUE_LABEL_SWITCH in runs_on, f"{workflow}::{job_id}"
+        assert runs_on.endswith("'d-sorg-fleet-public-heavy' }}"), f"{workflow}::{job_id} lost the heavy default"
+
+
 # --- test_pr_push_schedule_never_use_queue_label ----------------------------
 
 
@@ -119,7 +136,7 @@ def test_ci_standard_never_resolves_queue_label_for_non_merge_group(event_name: 
     assert outputs["runner"] != "d-sorg-fleet-queue"
 
 
-@pytest.mark.parametrize(("workflow", "only"), QUEUE_LABEL_JOBS.items())
+@pytest.mark.parametrize(("workflow", "only"), [*QUEUE_LABEL_JOBS.items(), *QUEUE_LABEL_HEAVY_JOBS.items()])
 def test_queue_label_switch_is_gated_on_merge_group_only(workflow: str, only: list[str]) -> None:
     """Every occurrence of the switch is literally gated on merge_group.
 
@@ -155,13 +172,19 @@ def test_runs_on_unset_label_falls_back_to_fleet_text(workflow: str, only: list[
         assert runs_on.endswith("'d-sorg-fleet' }}"), f"{workflow}::{job_id}"
 
 
+@pytest.mark.parametrize(("workflow", "only"), QUEUE_LABEL_HEAVY_JOBS.items())
+def test_runs_on_unset_label_falls_back_to_heavy_text(workflow: str, only: list[str]) -> None:
+    """Static sanity for heavy jobs (#3084): the bare heavy-label fallback survives."""
+    for job_id, job in _jobs(workflow, only).items():
+        runs_on = " ".join(str(job["runs-on"]).split())
+        assert runs_on.endswith("'d-sorg-fleet-public-heavy' }}"), f"{workflow}::{job_id}"
+
+
 # --- test_hosted_and_expedite_keep_precedence -------------------------------
 
 
 def test_hosted_mode_wins_over_queue_label_on_merge_group() -> None:
-    code, outputs = _run_select(
-        _base_env(CI_QUEUE_RUNNER_MODE="hosted", CI_QUEUE_RUNNER_LABEL="d-sorg-fleet-queue")
-    )
+    code, outputs = _run_select(_base_env(CI_QUEUE_RUNNER_MODE="hosted", CI_QUEUE_RUNNER_LABEL="d-sorg-fleet-queue"))
     assert code == 0
     assert outputs == {"runner": "ubuntu-latest", "mode": "hosted-queue"}
 
