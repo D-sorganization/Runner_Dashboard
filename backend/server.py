@@ -845,6 +845,10 @@ from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
 
+from routers import staff_playbooks as _staff_playbooks_router  # noqa: E402
+
+app.include_router(_staff_playbooks_router.router)  # playbooks list/render/assign (issue #3488)
+
 from routers import overload as _fleet_overload_router  # noqa: E402
 
 app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
