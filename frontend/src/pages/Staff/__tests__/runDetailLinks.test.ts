@@ -33,7 +33,7 @@ describe("runDetailLinks", () => {
   it("builds blob URLs for codebase run references", () => {
     const url = codebaseReferenceGithubUrl({
       kind: "codebase",
-      node: "DeskComputer",
+      node: "hub-a",
       repo: "Runner_Dashboard",
       commit_sha: "a".repeat(40),
       relative_path: "backend/staff/store.py",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
+import activity
 import pytest
 from activity import ActivityEnvelope, ActivityStore
 from fastapi import HTTPException
@@ -60,3 +61,25 @@ def test_read_is_filtered_bounded_and_cursor_paginated(tmp_path) -> None:
     second = store.read(since=page.next_cursor)
     assert second.items[0].kind == "OverflowGap"
     assert store.read(repo="other").items == []
+
+
+def test_scan_recent_is_bounded_newest_first_and_filterable(tmp_path) -> None:
+    # #2860's sessions projection reads through this primitive instead of an
+    # unbounded table scan; lock in that it stays bounded, ordered and indexed-filterable.
+    store = ActivityStore(tmp_path / "activity.sqlite")
+    store.append(envelope(event_id="event-1", seq=1, node="node-a", repo="repo-a"))
+    store.append(envelope(event_id="event-2", seq=2, node="node-b", repo="repo-b"))
+    store.append(envelope(event_id="event-3", seq=3, node="node-a", repo="repo-a"))
+    newest_first = store.scan_recent(limit=10)
+    assert [item.event_id for item in newest_first] == ["event-3", "event-2", "event-1"]
+    assert [item.event_id for item in store.scan_recent(limit=1)] == ["event-3"]
+    assert [item.event_id for item in store.scan_recent(node="node-b")] == ["event-2"]
+    assert [item.event_id for item in store.scan_recent(repo="repo-a")] == ["event-3", "event-1"]
+
+
+def test_scan_recent_rejects_out_of_bounds_limit(tmp_path) -> None:
+    store = ActivityStore(tmp_path / "activity.sqlite")
+    with pytest.raises(ValueError):
+        store.scan_recent(limit=0)
+    with pytest.raises(ValueError):
+        store.scan_recent(limit=activity.MAX_SCAN_LIMIT + 1)

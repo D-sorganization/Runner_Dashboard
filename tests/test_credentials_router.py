@@ -27,6 +27,7 @@ from routers.credentials import (  # noqa: E402
     _build_credentials_summary,
     _collect_all_probes,
     _env_present_anywhere,
+    _probe_anthropic_api,
     _probe_claude_code_cli,
     _probe_cline,
     _probe_codex_cli,
@@ -152,6 +153,25 @@ def test_probe_jules_api(monkeypatch: pytest.MonkeyPatch) -> None:
     assert probe_ok["authenticated"] is True
     assert probe_ok["usable"] is True
     assert probe_ok["status"] == "ready"
+
+
+def test_probe_anthropic_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ships inert (#3123 slice 4): no key exists yet, probe reports missing_key."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY_ENV_VAR", raising=False)
+    probe_missing = _probe_anthropic_api()
+    assert probe_missing["id"] == "anthropic_api"
+    assert probe_missing["authenticated"] is False
+    assert probe_missing["usable"] is False
+    assert probe_missing["status"] == "missing_key"
+    assert "ANTHROPIC_API_KEY" in probe_missing["detail"]
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-value")  # pragma: allowlist secret
+    probe_ok = _probe_anthropic_api()
+    assert probe_ok["authenticated"] is True
+    assert probe_ok["usable"] is True
+    assert probe_ok["status"] == "ready"
+    assert "sk-ant-test-value" not in str(probe_ok)  # the key's value never appears in any field
 
 
 def test_probe_codex_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -418,6 +438,7 @@ async def test_collect_all_probes(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "cline" in probe_ids
     assert "gemini_cli" in probe_ids
     assert "ollama" in probe_ids
+    assert "anthropic_api" in probe_ids
 
 
 @pytest.mark.asyncio

@@ -23,7 +23,7 @@
 #
 #   Hub — add fleet nodes after all machines are running (Tailscale IPs):
 #     ./deploy/setup.sh --runners 8 --machine-name ControlTower --role hub \
-#       --fleet-nodes "node-b:http://100.64.254.11:8321,hub-a:http://100.64.254.13:8321"
+#       --fleet-nodes "OGLaptop:http://100.125.64.108:8321,DeskComputer:http://100.122.254.109:8321"
 # ==============================================================================
 
 set -euo pipefail
@@ -60,6 +60,12 @@ PYTHON_BIN="${RUNNER_DASHBOARD_PYTHON:-$(command -v python3.11 || command -v pyt
 CHECK_ONLY=""
 DRY_RUN=""
 FORCE_RESTART=""
+FORCE_USER_SERVICE=""
+FORCE_SYSTEM_SERVICE=""
+ALLOW_HUB_URL_OVERRIDE=""
+
+# shellcheck source=deploy/setup-systemd-scope.sh
+source "${SCRIPT_DIR}/deploy/setup-systemd-scope.sh"
 
 # preflight() — assert deploy preconditions (issue #402). Idempotent.
 preflight() {
@@ -121,6 +127,9 @@ while [[ $# -gt 0 ]]; do
         --checksum)     ARTIFACT_CHECKSUM="$2"; shift 2 ;;
         --schedule-config) SCHEDULE_CONFIG_VAL="$2"; shift 2 ;;
         --force)        FORCE_RESTART=1;      shift ;;
+        --user-service) FORCE_USER_SERVICE=1; shift ;;
+        --system-service) FORCE_SYSTEM_SERVICE=1; shift ;;
+        --allow-hub-url-override) ALLOW_HUB_URL_OVERRIDE=1; shift ;;
         *) shift ;;
     esac
 done; if [[ -z "${ARTIFACT_SOURCE}" ]]; then source_deploy_guard "${DEPLOY_DIR}" || fail "Source deployment is unsafe for this artifact-backed release. Use --artifact with a verified artifact."; fi
@@ -130,6 +139,7 @@ done; if [[ -z "${ARTIFACT_SOURCE}" ]]; then source_deploy_guard "${DEPLOY_DIR}"
 # would-do summary (Codex P1 PR #483: announcing "no mutations" then
 # continuing to install / copy / write secrets is unsafe).
 preflight
+run_fleet_env_preflight "${HOME}/.config/runner-dashboard/env" "HUB_URL in ~/.config/runner-dashboard/env disagrees with machine_registry.yml (use --allow-hub-url-override if intentional)"
 if [[ -n "$CHECK_ONLY" ]]; then info "--check-only: preflight passed; exiting before any mutation"; exit 0; fi
 if [[ -n "$DRY_RUN" ]]; then
     info "[dry-run] preflight passed; aborting before any mutation."
@@ -141,27 +151,21 @@ fi
 PREVIOUS_DEPLOYED_SHA=""
 SERVICE_WAS_ACTIVE=""
 [[ -f "${DEPLOY_DIR}/deployment.json" ]] && PREVIOUS_DEPLOYED_SHA=$(python3 -c "import json; print(json.load(open('${DEPLOY_DIR}/deployment.json')).get('git_sha',''))" 2>/dev/null || echo "")
-systemctl is-active --quiet runner-dashboard.service 2>/dev/null && SERVICE_WAS_ACTIVE=1
+capture_dashboard_service_was_active && SERVICE_WAS_ACTIVE=1
 
 [[ -z "$MACHINE_NAME" ]] && MACHINE_NAME="$(hostname)"
 [[ -z "$DISPLAY_NAME_VAL" ]] && DISPLAY_NAME_VAL="$MACHINE_NAME"
 
-migrate_machine_registry_to_local() {
-    env PYTHONPATH="${SCRIPT_DIR}/backend" "${PYTHON_BIN}" -c "
-from pathlib import Path
-from machine_registry import migrate_legacy_registry_to_local_config
-print(migrate_legacy_registry_to_local_config(deploy_backend_dir=Path('${DEPLOY_DIR}') / 'backend'))
-" 2>/dev/null || true
-}
-
 registry_resolved_role() {
-    env -u MACHINE_ROLE PYTHONPATH="${DEPLOY_DIR}/backend" "${PYTHON_BIN}" -c "
+    env -u MACHINE_ROLE PYTHONPATH="${SCRIPT_DIR}/backend" "${PYTHON_BIN}" -c "
 from machine_registry import load_machine_registry, resolve_local_identity
 registry = load_machine_registry()
 identity = resolve_local_identity('${DISPLAY_NAME_VAL}', None, registry)
 print((identity.get('role') or 'node').strip().lower())
 " 2>/dev/null || echo "node"
 }
+
+EFFECTIVE_ROLE="${ROLE_ENV_OVERRIDE:-$(registry_resolved_role)}"
 
 header "Runner Dashboard Production Setup"
 echo "Source:       ${SCRIPT_DIR}"
@@ -172,6 +176,11 @@ echo "User:         ${USER}"
 echo "Machine:      ${MACHINE_NAME}"
 echo "Display:      ${DISPLAY_NAME_VAL}"
 [[ -n "$RUNNER_ALIASES_VAL" ]] && echo "Aliases:      ${RUNNER_ALIASES_VAL}"
+if [[ -n "${ROLE_ENV_OVERRIDE}" ]]; then
+    echo "Role:         ${EFFECTIVE_ROLE} (explicit --role override)"
+else
+    echo "Role:         ${EFFECTIVE_ROLE} (from machine_registry.yml at runtime)"
+fi
 echo "Runners:      ${NUM_RUNNERS}"
 echo "Schedule:     ${SCHEDULE_CONFIG_VAL}"
 echo "Python:       ${PYTHON_BIN}"
@@ -203,8 +212,6 @@ if [[ -z "${ARTIFACT_SOURCE}" ]]; then
     fi
     ok "backend dependencies installed into ${DEPLOY_DIR}/.venv"
 fi
-
-migrate_machine_registry_to_local
 
 # ── Step 2: Deploy dashboard files ───────────────────────────────────────────
 header "Step 2/5: Deploy Dashboard"
@@ -259,13 +266,6 @@ if [[ -n "${ARTIFACT_SOURCE}" ]]; then
     ok "Dashboard artifact deployed to ${DEPLOY_DIR}"
 fi
 
-EFFECTIVE_ROLE="${ROLE_ENV_OVERRIDE:-$(registry_resolved_role)}"
-if [[ -n "${ROLE_ENV_OVERRIDE}" ]]; then
-    info "Role: ${EFFECTIVE_ROLE} (explicit --role override)"
-else
-    info "Role: ${EFFECTIVE_ROLE} (from machine registry at runtime)"
-fi
-
 # ── Step 2.5: Token secrets file ─────────────────────────────────────────────
 header "Step 2.5/5: GitHub Token"
 
@@ -306,19 +306,6 @@ else
     warn "(The refresh-token.sh script will pick it up automatically on restart)"
 fi
 
-# Seed loopback operator auth (issue #924 fail-closed perimeter).
-# The dashboard is a local operator console reached at http://localhost:8321;
-# without this flag every /api/* request from the local browser is rejected with
-# 401 "Authentication required" once the perimeter is active. Only loopback
-# (127.0.0.1) callers are granted the admin principal — the service binds
-# 0.0.0.0 but network/tailnet peers still require a real service token or
-# session, so seeding this default is safe. Respect an explicit operator choice:
-# only seed when the key is absent, never override an existing value.
-if ! grep -qE '^DASHBOARD_LOOPBACK_AUTH=' "${SECRETS_FILE}"; then
-    printf 'DASHBOARD_LOOPBACK_AUTH=1\n' >> "${SECRETS_FILE}"
-    ok "DASHBOARD_LOOPBACK_AUTH=1 seeded (local operator access via loopback)"
-fi
-
 # Append FLEET_NODES to secrets file if provided
 if [[ -n "$FLEET_NODES_VAL" ]]; then
     # Remove existing FLEET_NODES line, then re-add
@@ -333,6 +320,8 @@ if [[ -n "$HUB_URL_VAL" ]]; then
     printf 'HUB_URL=%s\n' "${HUB_URL_VAL}" >> "${SECRETS_FILE}"
     ok "HUB_URL written to secrets file. API Proxying enabled."
 fi
+
+run_fleet_env_preflight "${SECRETS_FILE}" "HUB_URL disagrees with machine_registry.yml (clear it, fix registry, or use --allow-hub-url-override)"
 
 mkdir -p "$(dirname "${SCHEDULE_CONFIG_VAL}")"
 if [[ ! -f "${SCHEDULE_CONFIG_VAL}" ]]; then
@@ -366,8 +355,6 @@ done
 # ── Step 4: Systemd service ──────────────────────────────────────────────────
 header "Step 4/5: Systemd Service (Auto-Start)"
 
-SERVICE_FILE="/etc/systemd/system/runner-dashboard.service"
-
 TEMPLATE_FILE="${SCRIPT_DIR}/deploy/runner-dashboard.service"
 
 if [[ ! -f "${TEMPLATE_FILE}" ]]; then
@@ -392,30 +379,10 @@ fi
 # TasksMax=512
 # WatchdogSec=120
 mkdir -p "${HOME}/.config/runner-dashboard" "${HOME}/.local/share/runner-dashboard" "${RUNNER_BASE_DIR}" "${DEPLOY_DIR}"
-sed -e "s|Description=D-sorganization Runner Dashboard|Description=D-sorganization Runner Dashboard (${MACHINE_NAME})|g" \
-    -e "s|YOUR_USER|${USER}|g" \
-    -e "s|/home/YOUR_USER|${HOME}|g" \
-    -e "s|${HOME}/actions-runners/dashboard|${DEPLOY_DIR}|g" \
-    -e "s|/usr/bin/python3.11|${PYTHON_BIN}|g" \
-    -e "s|RUNNER_BASE_DIR=${HOME}/actions-runners|RUNNER_BASE_DIR=${RUNNER_BASE_DIR}|g" \
-    -e "s|ReadWritePaths=${HOME}/actions-runners$|ReadWritePaths=${RUNNER_BASE_DIR}|g" \
-    -e "s|NUM_RUNNERS=12|NUM_RUNNERS=${NUM_RUNNERS}|g" \
-    -e "s|DASHBOARD_PORT=8321|DASHBOARD_PORT=${PORT}|g" \
-    -e "s|DISPLAY_NAME=node-a|DISPLAY_NAME=${DISPLAY_NAME_VAL}|g" \
-    -e "s|RUNNER_ALIASES=node-a,node-a-runner-monitoring|RUNNER_ALIASES=${RUNNER_ALIASES_VAL}|g" \
-    -e "s|RUNNER_SCHEDULE_CONFIG=.*|RUNNER_SCHEDULE_CONFIG=${SCHEDULE_CONFIG_VAL}|g" \
-    "${TEMPLATE_FILE}" | sudo tee "${SERVICE_FILE}" > /dev/null
 
-# Role comes from machine_registry.yml at runtime; strip any legacy MACHINE_ROLE line
-# unless the operator explicitly passed --role (override-only).
-sudo sed -i '/^Environment=MACHINE_ROLE=/d' "${SERVICE_FILE}"
-if [[ -n "${ROLE_ENV_OVERRIDE}" ]]; then
-    sudo sed -i "/^Environment=DISPLAY_NAME=/a Environment=MACHINE_ROLE=${ROLE_ENV_OVERRIDE}" "${SERVICE_FILE}"
+if ! resolve_systemd_dashboard_scope "${FORCE_USER_SERVICE}" "${FORCE_SYSTEM_SERVICE}"; then
+    exit 1
 fi
-
-sudo systemctl daemon-reload
-sudo systemctl enable runner-dashboard.service
-
 # Version-skip restart (issue #402): only skip the restart when the
 # *previously*-deployed git_sha (captured before step 2 overwrote
 # deployment.json) matches the current checkout AND the service is already
@@ -431,9 +398,8 @@ if [[ -z "$FORCE_RESTART" && -n "$SERVICE_WAS_ACTIVE" && -n "$PREVIOUS_DEPLOYED_
     fi
 fi
 
-if [[ -z "$SKIP_RESTART" ]]; then
-    sudo systemctl restart runner-dashboard.service
-fi
+SERVICE_FILE="$(install_dashboard_systemd_unit "${TEMPLATE_FILE}" "${MACHINE_NAME}")"
+ok "Installed runner-dashboard unit at ${SERVICE_FILE} (${SYSTEMD_DASHBOARD_SCOPE} scope)"
 # Install tightly-scoped sudoers drop-in (issue #391 AC-6).
 sudo install -o root -g root -m 0755 "${SCRIPT_DIR}/deploy/rd-runner-ctl" /usr/local/sbin/rd-runner-ctl
 SUDOERS_SRC="${SCRIPT_DIR}/deploy/sudoers.d-runner-dashboard"
@@ -464,15 +430,19 @@ else
 fi
 
 sleep 3
-if sudo systemctl is-active --quiet runner-dashboard.service; then
-    ok "Dashboard service started and enabled at boot"
+if dashboard_systemctl_active; then
+    ok "Dashboard service started and enabled (${SYSTEMD_DASHBOARD_SCOPE} scope)"
     # Quick API check
     HEALTH=$(curl -s --max-time 5 "http://localhost:${PORT}/api/health" \
              | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['github_api'],'| runners:',d['runners_registered'])" \
              2>/dev/null || echo "starting...")
     ok "API health: ${HEALTH}"
 else
-    warn "Service may still be starting. Check: sudo systemctl status runner-dashboard"
+    if [[ "${SYSTEMD_DASHBOARD_SCOPE}" == "user" ]]; then
+        warn "Service may still be starting. Check: systemctl --user status runner-dashboard"
+    else
+        warn "Service may still be starting. Check: sudo systemctl status runner-dashboard"
+    fi
 fi
 
 # ── Step 5a: Register PWA launcher protocol (Windows only) ─────────────────
@@ -533,10 +503,16 @@ echo "  Queue:       http://localhost:${PORT}/api/queue"
 echo "  Fleet:       http://localhost:${PORT}/api/fleet/nodes"
 echo "  Schedule:    http://localhost:${PORT}/api/fleet/schedule"
 echo ""
-echo "  Service management:"
-echo "    sudo systemctl status runner-dashboard"
-echo "    sudo systemctl restart runner-dashboard"
-echo "    sudo journalctl -u runner-dashboard -f"
+echo "  Service management (${SYSTEMD_DASHBOARD_SCOPE} scope):"
+if [[ "${SYSTEMD_DASHBOARD_SCOPE}" == "user" ]]; then
+    echo "    systemctl --user status runner-dashboard"
+    echo "    systemctl --user restart runner-dashboard"
+    echo "    journalctl --user -u runner-dashboard -f"
+else
+    echo "    sudo systemctl status runner-dashboard"
+    echo "    sudo systemctl restart runner-dashboard"
+    echo "    sudo journalctl -u runner-dashboard -f"
+fi
 echo ""
 if [[ "${EFFECTIVE_ROLE}" == "hub" ]]; then
     echo "  ${BOLD}Hub mode:${NC} this machine aggregates all fleet nodes."

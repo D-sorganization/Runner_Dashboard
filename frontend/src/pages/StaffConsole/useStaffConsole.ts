@@ -50,6 +50,8 @@ export interface UseStaffConsoleOptions {
   initialMessages?: ThreadMessage[];
   /** Live SSE updates for the open thread (default true). */
   streamEnabled?: boolean;
+  /** Role opened when sending with no active thread yet (default: the auto-route role). */
+  defaultSendRole?: string;
   threadApi?: ThreadApi;
   onSendMessage?: (payload: SendMessagePayload) => Promise<SendResult>;
   onApproveProposal?: ProposalApproveHandler;
@@ -107,6 +109,7 @@ export function useStaffConsole({
   initialThreadId,
   initialMessages = NO_MESSAGES,
   streamEnabled = true,
+  defaultSendRole = AUTO_ROUTE_ROLE,
   threadApi = DEFAULT_THREAD_API,
   onSendMessage,
   onApproveProposal,
@@ -197,10 +200,13 @@ export function useStaffConsole({
     newThreadFromThisConsole.current = null;
     let cancelled = false;
     const revision = beginSelection("restore", initialRole);
-    let request = initialRoleThreads.current.get(initialRole);
+    // A newly selected id may have been created by another mounted console.
+    // Re-read its authorized role list instead of restoring from a stale snapshot.
+    const restoreKey = JSON.stringify([initialRole, preferredRoleThreadId ?? null]);
+    let request = initialRoleThreads.current.get(restoreKey);
     if (!request) {
       request = threadApi.listThreads(initialRole);
-      initialRoleThreads.current.set(initialRole, request);
+      initialRoleThreads.current.set(restoreKey, request);
     }
     setOpeningRole(initialRole);
     request
@@ -331,8 +337,8 @@ export function useStaffConsole({
     async (payload: SendMessagePayload): Promise<SendResult> => {
       if (onSendMessage) return onSendMessage(payload);
       // No conversation open yet (e.g. the landing composer): open the
-      // auto-route role thread first, then deliver the message to it (#1775).
-      const thread = activeThread ?? (await openRole(AUTO_ROUTE_ROLE));
+      // default role thread first, then deliver the message to it (#1775).
+      const thread = activeThread ?? (await openRole(defaultSendRole));
       if (!thread) return { ok: false, error: "No conversation is open" };
       try {
         const message = await postThreadMessage(
@@ -346,7 +352,7 @@ export function useStaffConsole({
         return { ok: false, error: errorMessage(err) };
       }
     },
-    [activeThread, onSendMessage, openRole, report],
+    [activeThread, onSendMessage, openRole, defaultSendRole, report],
   );
 
   const { send: sendMessage, pending: costPending, confirm: confirmCost, cancel: cancelCost } = useGroupCostGuard(

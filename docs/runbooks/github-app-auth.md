@@ -97,7 +97,7 @@ sudo systemctl restart runner-dashboard.service
 ```
 
 Repeat this on each WSL dashboard instance that calls GitHub directly, including
-`WSL` / node-a-NVMe and `ControlTower-SSD`.
+`WSL` / node-a-NVMe and `node-a-SSD`.
 
 ### node-a dual-distro pattern
 
@@ -107,7 +107,7 @@ to that distro.
 
 ```powershell
 wsl -d WSL -- bash -lc 'install -d -m 700 ~/.config/runner-dashboard && install -m 600 /mnt/c/ProgramData/CodexGithubApp/codex-github-app.pem ~/.config/runner-dashboard/github-app.private-key.pem'
-wsl -d ControlTower-SSD -- bash -lc 'install -d -m 700 ~/.config/runner-dashboard && install -m 600 /mnt/c/ProgramData/CodexGithubApp/codex-github-app.pem ~/.config/runner-dashboard/github-app.private-key.pem'
+wsl -d node-a-SSD -- bash -lc 'install -d -m 700 ~/.config/runner-dashboard && install -m 600 /mnt/c/ProgramData/CodexGithubApp/codex-github-app.pem ~/.config/runner-dashboard/github-app.private-key.pem'
 ```
 
 Then set `GITHUB_APP_ID`, `GITHUB_APP_INSTALLATION_ID`, and
@@ -117,7 +117,7 @@ the correct dashboard port:
 
 ```powershell
 wsl -d WSL -- bash -lc 'sudo systemctl restart runner-dashboard.service && curl -fsS http://127.0.0.1:8321/api/health'
-wsl -d ControlTower-SSD -- bash -lc 'sudo systemctl restart runner-dashboard.service && curl -fsS http://127.0.0.1:8322/api/health'
+wsl -d node-a-SSD -- bash -lc 'sudo systemctl restart runner-dashboard.service && curl -fsS http://127.0.0.1:8322/api/health'
 ```
 
 ## Verify

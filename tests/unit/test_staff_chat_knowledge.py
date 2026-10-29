@@ -203,7 +203,7 @@ async def test_chat_turn_execution_carries_knowledge_block(
     runner = ChatTurnRunner(conv_store=conv_store)
     dispatched_prompts: list[str] = []
 
-    def mock_spawn(cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+    def mock_spawn(cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None) -> MagicMock:
         for i, arg in enumerate(cmd):
             if arg == "-p" and i + 1 < len(cmd):
                 dispatched_prompts.append(cmd[i + 1])

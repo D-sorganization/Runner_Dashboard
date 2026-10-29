@@ -7,9 +7,12 @@ without requiring external dependencies like ``jsonschema``.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any, TypeGuard
 
 from staff.adapters import CHAT_READ_ONLY_TOOLS
+from staff.model_tiers import validate_role_tier, validate_tier_config
+from staff.provider_failover_config import validate_failover_chain_data
 from staff.provider_fallback import validate_provider_fallback_rules_data
 
 SURFACES: tuple[str, ...] = ("grok-chat", "dashboard", "both")
@@ -42,6 +45,8 @@ OPTIONAL_FIELDS: tuple[str, ...] = (
     "tools",
     "scopes",
     "retry",
+    "tier",
+    "allow_tier_escalation",
     "avatar",
 )
 STRATEGY_KEYS: tuple[str, ...] = ("consolidate_when",)
@@ -420,8 +425,30 @@ def validate_role_data(data: Any) -> list[str]:
     problems.extend(_validate_lifecycle(data))
     problems.extend(_validate_chat(data))
     problems.extend(validate_provider_fallback_rules_data(data))
+    problems.extend(validate_failover_chain_data(data))
+    problems.extend(validate_tier_config())
+    tier = data.get("tier")
+    if tier is not None:
+        problems.extend(validate_role_tier(str(tier)))
     problems.extend(_validate_retry_block(data))
+    problems.extend(_validate_avatar_field(data))
     return problems
+
+
+def _validate_avatar_field(data: dict[str, Any]) -> list[str]:
+    from staff.role_avatar_paths import AVATAR_YML_RE
+
+    raw = data.get("avatar")
+    if raw is None:
+        return []
+    if not isinstance(raw, str) or not raw.strip():
+        return ["avatar must be a non-empty string"]
+    rel = raw.strip().replace("\\", "/")
+    if rel.startswith("/") or ".." in Path(rel).parts:
+        return [f"avatar {rel!r} must be a safe path relative to staff/avatars/"]
+    if not AVATAR_YML_RE.match(rel):
+        return [f"avatar {rel!r} must match {AVATAR_YML_RE.pattern}"]
+    return []
 
 
 def _validate_retry_block(data: dict[str, Any]) -> list[str]:

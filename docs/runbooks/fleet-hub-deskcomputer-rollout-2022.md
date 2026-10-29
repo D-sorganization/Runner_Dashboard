@@ -1,4 +1,4 @@
-# Fleet hub rollout — DeskComputer hub (#2022)
+# Fleet hub rollout — hub-a hub (#2022)
 
 Apply after merging the PR that closes **#2022**. Hub topology and Codex defaults
 live in git (`backend/machine_registry.yml`, `config/staff_provider_defaults.json`);
@@ -6,7 +6,7 @@ per-host env is override-only.
 
 ## Before you restart any dashboard
 
-**DeskComputer interim state (2026-10-20):** operator edits may set
+**hub-a interim state (2026-10-20):** operator edits may set
 `HUB_URL=http://hub-a.fleet-example.ts.net:8321` and an explicit
 `FLEET_NODES=...` in `~/.config/runner-dashboard/env`. An explicit `FLEET_NODES`
 **disables** registry autoderive. Either remove those lines (restore from
@@ -15,7 +15,7 @@ before restarting.
 
 ## Per node
 
-### DeskComputer (hub)
+### hub-a (hub)
 
 1. Pull/deploy this merge to `main`.
 2. Remove interim `HUB_URL` / `FLEET_NODES` overrides unless you intentionally
@@ -31,28 +31,28 @@ before restarting.
 
 4. Confirm the unit has **no** `Environment=MACHINE_ROLE=` line unless you
    passed `--role` intentionally; restart if you only edited env files.
-5. Confirm `GET /api/fleet/status` on DeskComputer shows `_role: hub` and staff
-   summary names DeskComputer as hub.
+5. Confirm `GET /api/fleet/status` on hub-a shows `_role: hub` and staff
+   summary names hub-a as hub.
 
-### ControlTower (node)
+### node-a (node)
 
 1. Deploy merge.
 2. Remove `MACHINE_ROLE=hub` from env if still set.
-3. Remove `HUB_URL` pointing at ControlTower; spokes should derive hub URL from
-   registry (DeskComputer).
-4. Restart dashboard inside ControlTower-Runner WSL / host unit.
-5. Confirm `_role: node` and federation reaches DeskComputer.
+3. Remove `HUB_URL` pointing at node-a; spokes should derive hub URL from
+   registry (hub-a).
+4. Restart dashboard inside node-a-Runner WSL / host unit.
+5. Confirm `_role: node` and federation reaches hub-a.
 
-### OGLaptop (node)
+### node-b (node)
 
 1. Deploy merge.
-2. Clear custom `HUB_URL` unless debugging; let registry set hub to DeskComputer.
+2. Clear custom `HUB_URL` unless debugging; let registry set hub to hub-a.
 3. Restart dashboard.
-4. Spot-check `/api/fleet/nodes` includes Brick after Brick is redeployed.
+4. Spot-check `/api/fleet/nodes` includes node-c after node-c is redeployed.
 
-### Brick (node)
+### node-c (node)
 
-1. Follow [brick-dashboard-redeploy.md](./brick-dashboard-redeploy.md).
+1. Follow [node-c-dashboard-redeploy.md](./node-c-dashboard-redeploy.md).
 2. Ensure registry entry is present (post-merge `machine_registry.yml`).
 3. Reinstall the unit (drops stale hub role, derives `HUB_URL` at runtime):
 

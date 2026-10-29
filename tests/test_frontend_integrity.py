@@ -576,7 +576,10 @@ def test_queue_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "queue":' in routed_shell
-    assert "return <QueueTab />;" in routed_shell
+    assert "const LazyQueueTab = React.lazy(" in routed_shell
+    assert "return <LazyQueueTab />;" in routed_shell
+    assert 'import("../pages/Queue")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/Queue"', routed_shell, re.M)
     assert 'fetch("/api/queue")' in queue_page
     assert "p.queue ?? localQueue ?? {}" in queue_page
 
@@ -605,7 +608,10 @@ def test_machines_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "machines":' in routed_shell
-    assert "return <MachinesPage />;" in routed_shell
+    assert "const LazyMachinesPage = React.lazy(" in routed_shell
+    assert "return <LazyMachinesPage />;" in routed_shell
+    assert 'import("../pages/Machines")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/Machines"', routed_shell, re.M)
     assert 'legacyFetch("/api/fleet/nodes"' in machines_page
     assert 'legacyFetch("/api/runners"' in machines_page
     assert "export function MachinesPage" in machines_page
@@ -642,7 +648,8 @@ def test_runner_schedule_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "runner-schedule":' in routed_shell
-    assert "return <RunnerSchedulePage />;" in routed_shell
+    assert "const LazyRunnerSchedulePage = React.lazy(" in routed_shell
+    assert "return <LazyRunnerSchedulePage />;" in routed_shell
     assert 'legacyFetch("/api/fleet/schedule"' in schedule_page
     assert 'method: "POST"' in schedule_page
     assert "export function RunnerSchedulePage" in schedule_page
@@ -658,7 +665,8 @@ def test_workflows_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "workflows":' in routed_shell
-    assert "return <WorkflowsPage />;" in routed_shell
+    assert "const LazyWorkflowsPage = React.lazy(" in routed_shell
+    assert "return <LazyWorkflowsPage />;" in routed_shell
     assert 'legacyFetch("/api/workflows/list"' in workflows_page
     assert 'legacyFetch("/api/workflows/dispatch"' in workflows_page
     assert "export function WorkflowsPage" in workflows_page
@@ -691,7 +699,8 @@ def test_credentials_settings_section_bypasses_legacy_app() -> None:
     credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
 
     assert 'case "settings":' in routed_shell
-    assert "return <SettingsPage />;" in routed_shell
+    assert "const LazySettingsPage = React.lazy(" in routed_shell
+    assert "return <LazySettingsPage />;" in routed_shell
     assert "<CredentialsPage />" in settings_page
     assert "<CredentialsMobile />" in settings_page
     assert 'legacyFetch("/api/credentials"' in credentials_page
@@ -708,7 +717,8 @@ def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
 
     assert 'case "code-requests":' in routed_shell
     assert 'case "feature-requests":' in routed_shell
-    assert "return <CodeRequestsPage />;" in routed_shell
+    assert "const LazyCodeRequestsPage = React.lazy(" in routed_shell
+    assert "return <LazyCodeRequestsPage />;" in routed_shell
     assert 'legacyFetch("/api/repos"' in code_requests_page
     assert 'legacyFetch("/api/code-requests"' in code_requests_page
     assert 'legacyFetch("/api/code-requests/templates"' in code_requests_page
@@ -789,13 +799,14 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
     for marker in [
         "overview: (",
         "<LazyFleetMobile />",
-        "queue: <QueueMobile />",
+        "queue: (",
+        "<LazyQueueMobile />",
         "remediation: (",
         "<LazyRemediationMobile",
         "reports: (",
         "<LazyReportsMobile />",
         "const mobileFallback = mobileTabContent[mobileTab] ? null :",
-        "nativeDesktopTabContent(mobileTab)",
+        "nativeDesktopTabContent(mobileTab, onThreadSelected)",
     ]:
         assert marker in routed_shell
 
@@ -805,6 +816,7 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
         ("LazyFleetMobile", "FleetMobile"),
         ("LazyReportsMobile", "ReportsMobile"),
         ("LazyRemediationMobile", "RemediationMobile"),
+        ("LazyQueueMobile", "QueueMobile"),
     ]:
         assert f"const {lazy_name} = React.lazy(" in routed_shell
         assert re.search(rf"\{{\s*{export}\s*\}}\)\s*=>\s*\(\{{\s*default:\s*{export}", routed_shell)

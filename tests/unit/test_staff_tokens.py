@@ -111,6 +111,28 @@ def test_run_token_expires_after_ttl() -> None:
 
 
 @pytest.mark.unit
+def test_mint_run_token_without_library_read_mints_no_library_scope() -> None:
+    """#2623: default-off; no role gets ``library.read`` unless its spec sets it explicitly."""
+    run_id = "run-test-library-read-off"
+    raw_token = mint_run_token(role="maintenance", run_id=run_id, fleet_actions=[], ttl_seconds=300.0)
+
+    prin = identity_manager.verify_token(raw_token)
+    assert prin is not None
+    assert not principal_has_scope(prin, "library.read")
+
+
+@pytest.mark.unit
+def test_mint_run_token_with_library_read_true_mints_library_scope() -> None:
+    """#2623: an explicit ``True`` on the role spec mints exactly one extra scope."""
+    run_id = "run-test-library-read-on"
+    raw_token = mint_run_token(role="librarian", run_id=run_id, fleet_actions=[], ttl_seconds=300.0, library_read=True)
+
+    prin = identity_manager.verify_token(raw_token)
+    assert prin is not None
+    assert principal_has_scope(prin, "library.read")
+
+
+@pytest.mark.unit
 def test_mint_run_token_validation_errors() -> None:
     with pytest.raises(ValueError, match="role and run_id are required"):
         mint_run_token(role="", run_id="run-1", fleet_actions=[], ttl_seconds=10.0)

@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import contextvars
+import json
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -52,11 +53,15 @@ __all__ = [
     "PanelSpeaker",
     "TurnOutcome",
     "TurnRunner",
+    "DIGEST_MAX_BYTES",
     "compute_tally",
     "active_panel_count",
     "default_turn_runner",
     "estimate_panel_cost",
+    "list_panel_summaries",
+    "panel_digest",
     "panel_result",
+    "panel_summary",
     "parse_stance",
     "run_panel",
     "record_panel_turnover",
@@ -65,6 +70,7 @@ __all__ = [
 
 TurnRunner = Callable[[PanelSpeaker, str, str, str], Awaitable[TurnOutcome]]
 _ACTIVE_PANELS: set[str] = set()
+DIGEST_MAX_BYTES = 4096  # #3313: a caller gets one GET for the verdict instead of the full transcript.
 
 
 def active_panel_count() -> int:
@@ -304,6 +310,31 @@ async def run_panel(
             remove_snapshot(grounding_dir)
 
 
+def panel_summary(thread: ThreadRecord) -> dict[str, Any]:
+    """Compact panel row for list endpoints. Pre: ``thread.kind == \"panel\"``."""
+    assert thread.kind == "panel", f"panel_summary requires kind=panel, got {thread.kind!r}"  # noqa: S101
+    state = dict(thread.meta.get("panel", {}))
+    return {
+        "thread_id": thread.id,
+        "title": thread.title,
+        "status": state.get("status", "running"),
+        "mode": state.get("mode"),
+        "rounds": state.get("rounds"),
+        "rounds_used": state.get("rounds_used", 0),
+        "consensus": bool(state.get("consensus")),
+        "created_at": thread.created_at,
+        "updated_at": thread.updated_at,
+        "last_message_at": thread.last_message_at,
+    }
+
+
+def list_panel_summaries(store: ConversationStore, *, limit: int = 200) -> list[dict[str, Any]]:
+    """Recent panel threads, newest ``updated_at`` first. Pre: ``1 <= limit <= 200``."""
+    assert 1 <= limit <= 200, f"list_panel_summaries limit out of range: {limit}"  # noqa: S101
+    threads = store.list_threads(kind="panel", limit=limit)
+    return [panel_summary(t) for t in threads]
+
+
 def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | None:
     """The panel's state for the API: turns in order, stances, consensus and synthesis. None if not a panel."""
     thread = store.get_thread(thread_id)
@@ -345,6 +376,37 @@ def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | N
     }
 
 
+def panel_digest(store: ConversationStore, thread_id: str) -> dict[str, Any] | None:
+    """Compact verdict for ``thread_id``: status, tally and a synthesis excerpt, no turn transcript.
+
+    None if not a panel (the API turns that into a 404). Post: the UTF-8 JSON encoding of the
+    result is at most ``DIGEST_MAX_BYTES``; a synthesis too long to fit is cut short with
+    ``truncated: true`` rather than the digest ever growing past the cap.
+    """
+    result = panel_result(store, thread_id)
+    if result is None:
+        return None
+    digest: dict[str, Any] = {
+        "thread_id": result["thread_id"],
+        "title": result["title"],
+        "status": result["status"],
+        "mode": result["mode"],
+        "rounds_used": result["rounds_used"],
+        "consensus": result["consensus"],
+        "tally": result.get("tally"),
+        "quorum": result.get("quorum"),
+        "quorum_met": result.get("quorum_met"),
+        "abstentions": result.get("abstentions", []),
+        "synthesis": result.get("synthesis") or "",
+        "truncated": False,
+    }
+    while digest["synthesis"] and len(json.dumps(digest, ensure_ascii=False).encode("utf-8")) > DIGEST_MAX_BYTES:
+        keep = len(digest["synthesis"]) * 9 // 10
+        digest["synthesis"] = digest["synthesis"][:keep].rstrip() + "…"
+        digest["truncated"] = True
+    return digest
+
+
 # ── the real turn runner ────────────────────────────────────────────────────
 class _NullBus:
     """Null bus that discards all published tokens."""
@@ -382,7 +444,9 @@ async def default_turn_runner(
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             return TurnOutcome(ok=False, error=str(exc))
         env.update(adapter.runtime_env())
-        proc = spawn_cli_process(cmd=cmd, cwd=workdir, env=env)
+        stdin_text = adapter.chat_stdin(prompt)
+        extra: dict[str, Any] = {"stdin_text": stdin_text} if isinstance(stdin_text, str) else {}
+        proc = spawn_cli_process(cmd=cmd, cwd=workdir, env=env, **extra)
         bus = get_thread_bus() if message_id is not None else _NULL_BUS
         out = await stream_turn_output(
             reader=LiveProcessReader(proc),

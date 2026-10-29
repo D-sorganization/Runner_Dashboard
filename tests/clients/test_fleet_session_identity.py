@@ -27,11 +27,11 @@ def _inbox_session(client: FleetClient, fake_api: Any) -> str:
 
 def test_default_session_keeps_the_readable_prefix_and_adds_a_suffix() -> None:
     day = dt.date(2026, 9, 29)
-    fixed = fc.default_session("codex", "DeskComputer.ts.net", day, nonce="a1b2c3")
-    assert fixed == "codex-DeskComputer-20260929-a1b2c3"
-    first, second = (fc.default_session("codex", "DeskComputer", day) for _ in range(2))
+    fixed = fc.default_session("codex", "hub-a.fleet-example.ts.net", day, nonce="a1b2c3")
+    assert fixed == "codex-hub-a-20260929-a1b2c3"
+    first, second = (fc.default_session("codex", "hub-a", day) for _ in range(2))
     assert first != second
-    assert first.startswith("codex-DeskComputer-20260929-")
+    assert first.startswith("codex-hub-a-20260929-")
     long = fc.default_session("grok", "h" * 300, day)
     assert len(long) <= 128 and long.startswith("grok-") and fc.PATTERNS.session.match(long)
 
@@ -78,11 +78,11 @@ def test_deliberate_resume_reuses_the_session(fake_api: Any, monkeypatch: pytest
 
 
 def test_identity_separates_principal_host_and_session(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("socket.gethostname", lambda: "DeskComputer.tail.ts.net")
+    monkeypatch.setattr("socket.gethostname", lambda: "hub-a.fleet-example.ts.net")
     derived = FleetClient("http://127.0.0.1:9", agent="codex").identity()
     assert derived["agent"] == "codex"
-    assert derived["host"] == "DeskComputer"
-    assert derived["session"].startswith("codex-DeskComputer-")
+    assert derived["host"] == "hub-a"
+    assert derived["session"].startswith("codex-hub-a-")
     assert derived["session_source"] == "derived"
 
     monkeypatch.setenv("FLEET_SESSION", "codex-resume-1")

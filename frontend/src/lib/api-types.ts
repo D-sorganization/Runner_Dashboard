@@ -2726,296 +2726,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/maxwell/backends": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Backends
-         * @description Proxy GET /api/v1/backends from Maxwell-Daemon (contract-filtered; secrets stripped).
-         */
-        get: operations["get_maxwell_backends_api_maxwell_backends_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/chat": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Chat
-         * @description Proxy chat messages to Maxwell-Daemon and surface the answer text (#957).
-         *
-         *     MD's ``/api/chat`` is a request/response JSON endpoint (``ChatResponse``);
-         *     it does not stream and now *rejects* the legacy ``history``/``stream`` fields
-         *     with a 422 (``extra="forbid"``, MD #995). This proxy therefore:
-         *
-         *     * carries multi-turn context in MD's ``messages[]`` (translated from the UI's
-         *       history) so chat is no longer amnesiac;
-         *     * parses the JSON ``ChatResponse`` and emits its ``content`` (not the raw
-         *       JSON serialization the UI previously rendered);
-         *     * routes codebase-scoped chat to MD's dedicated ``/api/chat/codebase`` route.
-         *
-         *     The browser still consumes a ``text/plain`` body via a stream reader, so the
-         *     answer text is delivered as a single chunk — no frontend change required
-         *     (the response is single-turn / non-incremental until MD advertises streaming
-         *     as a negotiated capability).
-         */
-        post: operations["maxwell_chat_api_maxwell_chat_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/control": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Control
-         * @description Start or stop Maxwell-Daemon service (confirmation required).
-         */
-        post: operations["maxwell_control_api_maxwell_control_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/cost": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Cost
-         * @description Proxy GET /api/v1/cost from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_cost_api_maxwell_cost_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/daemon-status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Daemon Status Detail
-         * @description Proxy GET /api/status from Maxwell-Daemon (pipeline state + counts, #955).
-         */
-        get: operations["get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/dispatch": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Dispatch Task
-         * @description Proxy POST /api/dispatch to Maxwell-Daemon (issues #349, #953).
-         *
-         *     Posts to MD's confirmation-gated, idempotent ``POST /api/dispatch`` — the
-         *     endpoint that actually enforces ``hmac.compare_digest`` on
-         *     ``confirmation_token`` and keys idempotency on ``idempotency_key``. The
-         *     previous target, ``POST /api/v1/tasks``, silently discarded both fields
-         *     (Pydantic ``extra="ignore"``), so the confirmation gate was security theatre
-         *     and retries created duplicate tasks (#953). Caller must supply
-         *     ``confirmation_token`` and ``prompt``; server-side injection of the token is
-         *     not done so the dashboard cannot bypass the daemon-side gate.
-         */
-        post: operations["maxwell_dispatch_task_api_maxwell_dispatch_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/pipeline-control/{action}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Maxwell Pipeline Control
-         * @description Proxy POST /api/control/{action} to Maxwell-Daemon (issue #349).
-         *
-         *     Caller must provide ``confirmation_token``; server-side injection removed.
-         */
-        post: operations["maxwell_pipeline_control_api_maxwell_pipeline_control__action__post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/pipeline-state": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Pipeline State
-         * @description Proxy GET /api/status (pipeline state + counts) from Maxwell-Daemon (#955).
-         */
-        get: operations["get_maxwell_pipeline_state_api_maxwell_pipeline_state_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Status
-         * @description Probe Maxwell-Daemon status and connectivity (Dashboard-facing).
-         */
-        get: operations["get_maxwell_status_api_maxwell_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/tasks": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Tasks
-         * @description Proxy GET /api/tasks from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_tasks_api_maxwell_tasks_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/tasks/{task_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Task Detail
-         * @description Proxy GET /api/tasks/{task_id} from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_task_detail_api_maxwell_tasks__task_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Version
-         * @description Proxy GET /api/version from Maxwell-Daemon (contract-negotiated, #956).
-         *
-         *     Surfaces the daemon's real version and its advertised contract version, plus a
-         *     ``contract_compatible`` flag the Maxwell tab uses to show a degraded-mode
-         *     banner on a major-version mismatch instead of rendering defaulted data.
-         */
-        get: operations["get_maxwell_version_api_maxwell_version_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/maxwell/workers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Maxwell Workers
-         * @description Proxy GET /api/v1/workers from Maxwell-Daemon (contract-filtered).
-         */
-        get: operations["get_maxwell_workers_api_maxwell_workers_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/metrics/web-vitals": {
         parameters: {
             query?: never;
@@ -3743,6 +3453,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remediation/ci-fix/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sweep Ci Fix Endpoint
+         * @description Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock.
+         */
+        post: operations["sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remediation/ci-fix/webhook": {
         parameters: {
             query?: never;
@@ -4179,6 +3909,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runners/slot-health/evaluate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Slot Health
+         * @description Read-only slot-health analysis; optional publish to hub events and Barb lane.
+         */
+        post: operations["evaluate_slot_health_api_runners_slot_health_evaluate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runners/{runner_id}/diagnostics": {
         parameters: {
             query?: never;
@@ -4525,6 +4275,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/activity/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity Summary
+         * @description Bounded aggregate for the node auto-deploy activity probe (#2353).
+         *
+         *     No runner/provider initialisation and no peer fan-out (see
+         *     ``staff.activity_summary`` for the read-only aggregate query).
+         */
+        get: operations["activity_summary_api_staff_activity_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/audit": {
         parameters: {
             query?: never;
@@ -4724,6 +4497,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_staff_host_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/inbox": {
         parameters: {
             query?: never;
@@ -4834,6 +4625,29 @@ export interface paths {
         /** Roster */
         get: operations["roster_api_staff_roles_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_staff_roles__role__model_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -5102,6 +4916,30 @@ export interface paths {
         get: operations["get_pricing_api_staff_usage_pricing_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/usage/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Usage Snapshot
+         * @description Fleet-wide provider usage: newest Usage-Tracker snapshot, per-machine staleness (#3042).
+         */
+        get: operations["get_usage_snapshot_api_staff_usage_snapshot_get"];
+        put?: never;
+        /**
+         * Ingest Usage Snapshot
+         * @description Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042).
+         */
+        post: operations["ingest_usage_snapshot_api_staff_usage_snapshot_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5441,6 +5279,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/activity/checkins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Checkin Activity
+         * @description Write-only tier for agents off the tailnet (Cursor cloud, unconnected boxes).
+         *
+         *     The ``activity.checkin`` scope is never combined with a read or chat scope,
+         *     so a check-in credential cannot read activity, staff threads or anything else.
+         */
+        post: operations["checkin_activity_api_v1_activity_checkins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Activity */
+        post: operations["ingest_activity_api_v1_activity_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/activity/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Activity Sessions
+         * @description Every agent/session checked into the fleet, grouped by node and status (#2860).
+         *
+         *     Status is derived entirely from persisted activity-log events (never from an
+         *     in-memory cache), so this is identical after a restart. See
+         *     ``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.
+         */
+        get: operations["read_activity_sessions_api_v1_activity_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/backlog": {
         parameters: {
             query?: never;
@@ -5614,6 +5516,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fleet/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Brief */
+        get: operations["get_fleet_brief_api_v1_fleet_brief_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/fleet/friction": {
         parameters: {
             query?: never;
@@ -5663,6 +5582,23 @@ export interface paths {
          * @description Detectors call this when a closed or open friction recurs: increments the count, stamps last_seen_at.
          */
         post: operations["friction_recurrence_api_v1_fleet_friction__friction_id__recurrence_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/overload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Fleet Overload */
+        get: operations["get_fleet_overload_api_v1_fleet_overload_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6408,6 +6344,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/avatars/{avatar_rel}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Avatar V1
+         * @description Serve a role's persona image from RM ``staff/avatars/`` (#2680).
+         */
+        get: operations["avatar_v1_api_v1_staff_avatars__avatar_rel__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/barb/classify-surface": {
         parameters: {
             query?: never;
@@ -6663,6 +6619,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/dispatcher/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Write Dispatcher Ledger
+         * @description Append one bounded fallback record; the dedicated scope has no read access.
+         */
+        post: operations["write_dispatcher_ledger_api_v1_staff_dispatcher_ledger_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/dispatcher/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Dispatcher Metrics
+         * @description Return measured dispatcher counts and visibly labelled estimates.
+         */
+        get: operations["read_dispatcher_metrics_api_v1_staff_dispatcher_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/exclusions": {
         parameters: {
             query?: never;
@@ -6862,6 +6858,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/host-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Host Settings */
+        get: operations["get_host_settings_api_v1_staff_host_settings_get"];
+        /** Put Host Settings */
+        put: operations["put_host_settings_api_v1_staff_host_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/inbox": {
         parameters: {
             query?: never;
@@ -6989,7 +7003,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List recent expert panels
+         * @description Recent panel threads with status and progress; newest activity first.
+         */
+        get: operations["list_panels_api_v1_staff_panels_get"];
         put?: never;
         /**
          * Start an expert panel
@@ -7040,6 +7058,236 @@ export interface paths {
         get: operations["get_panel_api_v1_staff_panels__thread_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/panels/{thread_id}/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Expert panel verdict digest
+         * @description Compact verdict (status, tally, synthesis excerpt), at most 4 KB. 404 if not a panel.
+         */
+        get: operations["get_panel_digest_api_v1_staff_panels__thread_id__digest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/playbooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Playbooks */
+        get: operations["list_playbooks_api_v1_staff_playbooks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/playbooks/assignments/{assignment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch Assignment Endpoint */
+        get: operations["fetch_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/playbooks/assignments/{assignment_id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge Assignment Endpoint */
+        post: operations["acknowledge_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/playbooks/assignments/{assignment_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Assignment Endpoint */
+        post: operations["complete_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/playbooks/{playbook_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Render Playbook */
+        get: operations["render_playbook_api_v1_staff_playbooks__playbook_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/playbooks/{playbook_id}/assign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign Playbook */
+        post: operations["assign_playbook_api_v1_staff_playbooks__playbook_id__assign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pr-hygiene": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene
+         * @description Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run reruns only the failed
+         *     runs it planned to rerun, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_api_v1_staff_pr_hygiene_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pr-hygiene/closes-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene Closes Refs
+         * @description Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run retexts only the flagged
+         *     ``Closes #N`` occurrences to ``Refs #N``, and the batch is always audited.
+         */
+        post: operations["pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/pr-hygiene/rearm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pr Hygiene Rearm
+         * @description Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.
+         *
+         *     Pre: every item names an in-org repo and an existing PR. Post: one result per
+         *     item; a dry run changes nothing on GitHub, a live run re-arms only a PR that
+         *     is open, not already armed and not held back (``automerge_guard.evaluate_hold``),
+         *     and the batch is always audited. Never admin-merges, force-pushes or closes.
+         */
+        post: operations["pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/presentation-prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Presentation Prefs V1 */
+        get: operations["get_presentation_prefs_v1_api_v1_staff_presentation_prefs_get"];
+        /** Save Presentation Prefs V1 */
+        put: operations["save_presentation_prefs_v1_api_v1_staff_presentation_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/presentation-prefs/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset Presentation Prefs V1 */
+        post: operations["reset_presentation_prefs_v1_api_v1_staff_presentation_prefs_reset_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7303,6 +7551,29 @@ export interface paths {
         /** Roster V1 */
         get: operations["roster_v1_api_v1_staff_roles_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/roles/{role}/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Role Model
+         * @description Audited runtime model-selector override for a role (epic #3295 S2).
+         *
+         *     The YAML ``failover_chain``/``model`` stays the default; this persists an
+         *     operator override on top of it, one audit row and one persona fyi per switch.
+         */
+        put: operations["put_role_model_api_v1_staff_roles__role__model_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -8747,6 +9018,12 @@ export interface components {
          */
         BoardRoutingCriteria: {
             /**
+             * Confidential Data Egress
+             * @description Confidential partner data egress; requires user sign-off before Board routing.
+             * @default false
+             */
+            confidential_data_egress: boolean;
+            /**
              * Cross Repo Contract
              * @default false
              */
@@ -8756,11 +9033,6 @@ export interface components {
              * @default 0
              */
             estimated_child_issues: number;
-            /**
-             * Inentec Data Egress
-             * @default false
-             */
-            inentec_data_egress: boolean;
             /**
              * New Dependency Or Egress
              * @default false
@@ -8899,6 +9171,22 @@ export interface components {
              * @default
              */
             workflow_name: string;
+        };
+        /**
+         * CIFixSweepRequest
+         * @description 30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.
+         *
+         *     This node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,
+         *     ``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live
+         *     fetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.
+         */
+        CIFixSweepRequest: {
+            /** Prs */
+            prs?: {
+                [key: string]: unknown;
+            }[];
+            /** Repo */
+            repo: string;
         };
         /**
          * ChildExecutionRecord
@@ -9343,6 +9631,21 @@ export interface components {
             /** Keys */
             keys?: string[] | null;
         };
+        /**
+         * DispatcherFallbackBody
+         * @description Validated, bounded ledger entry for a dispatcher fallback.
+         */
+        DispatcherFallbackBody: {
+            /** Est Grok Turns */
+            est_grok_turns: number;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "hub_unreachable" | "held" | "rejected" | "no_provider" | "small_task";
+            /** Task Class */
+            task_class: string;
+        };
         /** DraftEdit */
         DraftEdit: {
             /**
@@ -9688,6 +9991,29 @@ export interface components {
             /** Holds */
             holds: components["schemas"]["HoldBody"][];
         };
+        /** HostSettingsPutBody */
+        HostSettingsPutBody: {
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Global */
+            global?: {
+                [key: string]: unknown;
+            };
+            /** Roles */
+            roles?: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            /**
+             * Schema Version
+             * @default 1
+             */
+            schema_version: number;
+        };
         /**
          * InitializeExecutorPayload
          * @description Children always come from the filed plan; the caller may only tune execution.
@@ -9806,29 +10132,6 @@ export interface components {
             source_id: string;
             /** Work Id */
             work_id: number;
-        };
-        /**
-         * MaxwellChatBody
-         * @description Request body for POST /api/maxwell/chat.
-         *
-         *     ``repo``/``repo_root`` (issue #838) scope a codebase Q&A session to a single
-         *     repository. Both are optional so the existing fleet-status chat keeps working
-         *     unchanged; when supplied they are forwarded to Maxwell-Daemon, which jails its
-         *     agentic tools (read_file/grep_files/glob_files/run_bash) to that root. The
-         *     daemon-side capability is tracked in Maxwell_Daemon#948; until it ships the
-         *     daemon may answer 501 Not Implemented, which this proxy degrades gracefully.
-         */
-        MaxwellChatBody: {
-            /** History */
-            history?: {
-                [key: string]: unknown;
-            }[];
-            /** Message */
-            message: string;
-            /** Repo */
-            repo?: string | null;
-            /** Repo Root */
-            repo_root?: string | null;
         };
         /** MemoryAppendRequest */
         MemoryAppendRequest: {
@@ -9996,6 +10299,8 @@ export interface components {
             preload_codebase: boolean;
             /** Quorum */
             quorum?: number | null;
+            /** Refs */
+            refs?: string[] | null;
             /** Repos */
             repos?: string[] | null;
             /**
@@ -10129,6 +10434,23 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** PrHygieneItem */
+        PrHygieneItem: {
+            /** Pr */
+            pr: number;
+            /** Repo */
+            repo: string;
+        };
+        /** PrHygieneRequest */
+        PrHygieneRequest: {
+            /**
+             * Dry Run
+             * @default true
+             */
+            dry_run: boolean;
+            /** Items */
+            items: components["schemas"]["PrHygieneItem"][];
+        };
         /**
          * PresenceBody
          * @description ``register``: advertise what this session is working on (advisory, not a lock).
@@ -10155,6 +10477,39 @@ export interface components {
              * @default 2
              */
             ttl_hours: number;
+        };
+        /** PresentationPrefsResponse */
+        PresentationPrefsResponse: {
+            /** Avatar Overrides */
+            avatar_overrides: {
+                [key: string]: string;
+            };
+            /** Display Label */
+            display_label: string;
+            /** Operator Id */
+            operator_id: string;
+            /** Revision */
+            revision: number;
+            /** Role Order */
+            role_order: string[];
+            /** Updated At */
+            updated_at: string;
+        };
+        /** PresentationPrefsSaveBody */
+        PresentationPrefsSaveBody: {
+            /** Avatar Overrides */
+            avatar_overrides?: {
+                [key: string]: string;
+            };
+            /**
+             * Display Label
+             * @default
+             */
+            display_label: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Role Order */
+            role_order?: string[];
         };
         /** ProjectCreateBody */
         ProjectCreateBody: {
@@ -10712,6 +11067,16 @@ export interface components {
             /** Run Id */
             run_id?: number | null;
         };
+        /** RoleModelOverrideBody */
+        RoleModelOverrideBody: {
+            /** Model */
+            model?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
         /** RoleScheduleOverrideBody */
         RoleScheduleOverrideBody: {
             /** Enabled */
@@ -10952,6 +11317,42 @@ export interface components {
             replayed: boolean;
         };
         /**
+         * SessionSummary
+         * @description The latest known state of one ``(source, session_id)`` activity session.
+         */
+        SessionSummary: {
+            /** Branch */
+            branch: string | null;
+            /** Issue */
+            issue: number | null;
+            /**
+             * Last Event At
+             * Format: date-time
+             */
+            last_event_at: string;
+            /** Last Event Id */
+            last_event_id: string;
+            /** Last Kind */
+            last_kind: string;
+            /** Last Seq */
+            last_seq: number;
+            /** Node */
+            node: string;
+            /** Pr */
+            pr: number | null;
+            /** Repo */
+            repo: string | null;
+            /** Session Id */
+            session_id: string;
+            /** Source */
+            source: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "idle" | "stale" | "ended" | "uncaptured";
+        };
+        /**
          * SessionTelemetryPayload
          * @description Session telemetry payload (issue #1849 / RD-4).
          */
@@ -11042,6 +11443,20 @@ export interface components {
              * @default 0
              */
             wakeups_count: number;
+        };
+        /**
+         * SessionsPage
+         * @description A bounded page of :class:`SessionSummary` rows.
+         */
+        SessionsPage: {
+            /** Empty Reason */
+            empty_reason?: ("complete_empty" | "local_empty") | null;
+            /** Items */
+            items: components["schemas"]["SessionSummary"][];
+            /** Scan Limit */
+            scan_limit: number;
+            /** Truncated */
+            truncated: boolean;
         };
         /**
          * StaffAuditListResponse
@@ -11599,6 +12014,10 @@ export interface components {
              * @default 0
              */
             active_runs: number;
+            /** Allowed Models */
+            allowed_models?: string[];
+            /** Avatar */
+            avatar?: string | null;
             budget: components["schemas"]["StaffRoleBudget"];
             /** Chat */
             chat?: {
@@ -11611,6 +12030,8 @@ export interface components {
              * @default true
              */
             dispatchable: boolean;
+            /** Effective Model */
+            effective_model?: string | null;
             /** Error */
             error?: string | null;
             /** Errors */
@@ -11631,6 +12052,8 @@ export interface components {
             instructions: string;
             /** Model */
             model?: string | null;
+            /** Model Override */
+            model_override?: string | null;
             /** Name */
             name: string;
             /** Permissions */
@@ -11861,6 +12284,16 @@ export interface components {
              * @default
              */
             created_at: string;
+            /**
+             * Dispatch Origin
+             * @default other
+             */
+            dispatch_origin: string;
+            /**
+             * Dispatched By
+             * @default
+             */
+            dispatched_by: string;
             /** Ended At */
             ended_at?: string | null;
             /**
@@ -12331,6 +12764,36 @@ export interface components {
             totals?: {
                 [key: string]: unknown;
             };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageSnapshotIngestResponse
+         * @description Response model for POST /api/staff/usage/snapshot (#3042).
+         */
+        StaffUsageSnapshotIngestResponse: {
+            /** Kept */
+            kept: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * StaffUsageSnapshotResponse
+         * @description Response model for GET /api/staff/usage/snapshot (#3042): fleet quota + staleness.
+         */
+        StaffUsageSnapshotResponse: {
+            /** Checked At */
+            checked_at?: string | null;
+            /** Providers */
+            providers?: {
+                [key: string]: unknown;
+            }[];
+            /** Received At */
+            received_at?: string | null;
+            /** Snapshot Age Seconds */
+            snapshot_age_seconds?: number | null;
+            /** Snapshot Stale */
+            snapshot_stale: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -16479,337 +16942,6 @@ export interface operations {
             };
         };
     };
-    get_maxwell_backends_api_maxwell_backends_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_chat_api_maxwell_chat_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MaxwellChatBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    maxwell_control_api_maxwell_control_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_cost_api_maxwell_cost_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_daemon_status_detail_api_maxwell_daemon_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_dispatch_task_api_maxwell_dispatch_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    maxwell_pipeline_control_api_maxwell_pipeline_control__action__post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                action: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_pipeline_state_api_maxwell_pipeline_state_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_status_api_maxwell_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_tasks_api_maxwell_tasks_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                cursor?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_task_detail_api_maxwell_tasks__task_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                task_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_maxwell_version_api_maxwell_version_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
-    get_maxwell_workers_api_maxwell_workers_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-        };
-    };
     get_web_vitals_aggregated_api_metrics_web_vitals_get: {
         parameters: {
             query?: never;
@@ -17904,6 +18036,41 @@ export interface operations {
             };
         };
     };
+    sweep_ci_fix_endpoint_api_remediation_ci_fix_sweep_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CIFixSweepRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     github_ci_fix_webhook_api_remediation_ci_fix_webhook_post: {
         parameters: {
             query?: never;
@@ -18330,6 +18497,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    evaluate_slot_health_api_runners_slot_health_evaluate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -18775,6 +18979,28 @@ export interface operations {
             };
         };
     };
+    activity_summary_api_staff_activity_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     list_audit_api_staff_audit_get: {
         parameters: {
             query?: {
@@ -19137,6 +19363,63 @@ export interface operations {
             };
         };
     };
+    get_host_settings_api_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_staff_inbox_api_staff_inbox_get: {
         parameters: {
             query?: never;
@@ -19283,6 +19566,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    put_role_model_api_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -19687,6 +20007,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffPricingResponse"];
+                };
+            };
+        };
+    };
+    get_usage_snapshot_api_staff_usage_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotResponse"];
+                };
+            };
+        };
+    };
+    ingest_usage_snapshot_api_staff_usage_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffUsageSnapshotIngestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -20198,6 +20573,80 @@ export interface operations {
             };
         };
     };
+    checkin_activity_api_v1_activity_checkins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEnvelope"][];
+                };
+            };
+        };
+    };
+    ingest_activity_api_v1_activity_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEnvelope"][];
+                };
+            };
+        };
+    };
+    read_activity_sessions_api_v1_activity_sessions_get: {
+        parameters: {
+            query?: {
+                node?: string | null;
+                status?: ("live" | "idle" | "stale" | "ended" | "uncaptured") | null;
+                repo?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionsPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_backlog_api_v1_agent_backlog_get: {
         parameters: {
             query?: never;
@@ -20521,6 +20970,39 @@ export interface operations {
             };
         };
     };
+    get_fleet_brief_api_v1_fleet_brief_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+                limit?: number;
+                format?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_friction_api_v1_fleet_friction_get: {
         parameters: {
             query?: {
@@ -20640,6 +21122,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FrictionItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fleet_overload_api_v1_fleet_overload_get: {
+        parameters: {
+            query: {
+                repo: string;
+                open_count_threshold?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -22263,6 +22777,37 @@ export interface operations {
             };
         };
     };
+    avatar_v1_api_v1_staff_avatars__avatar_rel__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                avatar_rel: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_barb_classify_surface_api_v1_staff_barb_classify_surface_post: {
         parameters: {
             query?: never;
@@ -22777,6 +23322,74 @@ export interface operations {
             };
         };
     };
+    write_dispatcher_ledger_api_v1_staff_dispatcher_ledger_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DispatcherFallbackBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_dispatcher_metrics_api_v1_staff_dispatcher_metrics_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_exclusions_api_v1_staff_exclusions_get: {
         parameters: {
             query?: never;
@@ -23114,6 +23727,63 @@ export interface operations {
             };
         };
     };
+    get_host_settings_api_v1_staff_host_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    put_host_settings_api_v1_staff_host_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostSettingsPutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_staff_inbox_api_v1_staff_inbox_get: {
         parameters: {
             query?: never;
@@ -23308,6 +23978,40 @@ export interface operations {
             };
         };
     };
+    list_panels_api_v1_staff_panels_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_panel_api_v1_staff_panels_post: {
         parameters: {
             query?: never;
@@ -23394,6 +24098,422 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_panel_digest_api_v1_staff_panels__thread_id__digest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_playbooks_api_v1_staff_playbooks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    fetch_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__get: {
+        parameters: {
+            query?: {
+                lane_id?: string | null;
+            };
+            header?: never;
+            path: {
+                assignment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acknowledge_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__ack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_assignment_endpoint_api_v1_staff_playbooks_assignments__assignment_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    render_playbook_api_v1_staff_playbooks__playbook_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playbook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_playbook_api_v1_staff_playbooks__playbook_id__assign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playbook_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_api_v1_staff_pr_hygiene_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_closes_refs_api_v1_staff_pr_hygiene_closes_refs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pr_hygiene_rearm_api_v1_staff_pr_hygiene_rearm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrHygieneRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_presentation_prefs_v1_api_v1_staff_presentation_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationPrefsResponse"];
+                };
+            };
+        };
+    };
+    save_presentation_prefs_v1_api_v1_staff_presentation_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresentationPrefsSaveBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationPrefsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_presentation_prefs_v1_api_v1_staff_presentation_prefs_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresentationPrefsResponse"];
                 };
             };
         };
@@ -23855,6 +24975,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffRosterResponse"];
+                };
+            };
+        };
+    };
+    put_role_model_api_v1_staff_roles__role__model_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleModelOverrideBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

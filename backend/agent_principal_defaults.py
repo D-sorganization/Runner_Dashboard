@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from overlay_contract import get_overlay
 from security import safe_yaml_load, validate_config_path
 
 if TYPE_CHECKING:
@@ -75,6 +76,28 @@ def _principal_fields(row: dict[str, Any], agent_id: str) -> dict[str, Any]:
     }
 
 
+def _overlay_token_paths() -> dict[str, Path]:
+    """Agent token file paths declared by the private overlay (optional; #3082 cat. 2).
+
+    The overlay is the single source of per-node token-path config (LoD: this
+    module only asks ``get_overlay()``, never reads overlay files itself). An
+    entry whose file does not exist is skipped with a warning, matching the
+    directory-glob fallback below, which already degrades gracefully when
+    nothing is there yet.
+    """
+    overlay = get_overlay()
+    if overlay is None:
+        return {}
+    paths: dict[str, Path] = {}
+    for agent_id, raw_path in overlay.agent_token_paths.items():
+        path = Path(raw_path).expanduser()
+        if not path.is_file():
+            log.warning("overlay token path for %s does not exist; skipping", agent_id)
+            continue
+        paths[agent_id] = validate_config_path(path, allowed_roots=[path.parent.resolve()])
+    return paths
+
+
 def merge_agent_principal_defaults(manager: IdentityManager) -> None:
     """Apply config/agent_principals.yml and ingest agent-tokens/*.token files."""
     from identity import Principal, TokenRecord  # noqa: PLC0415
@@ -87,6 +110,9 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
         validate_config_path(tok_dir, allowed_roots=[manager.config_dir.resolve()])
         for path in sorted(tok_dir.glob("*.token")):
             token_files[path.stem] = path
+    # Overlay-declared paths take priority over the local directory glob: the
+    # overlay is what category 2 moves this config behind (#3082).
+    token_files.update(_overlay_token_paths())
 
     for agent_id, row in defaults_by_id.items():
         fields = _principal_fields(row, agent_id)
@@ -97,10 +123,13 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
             manager.principals[agent_id] = Principal(**fields)
             log.info("agent principal provisioned from defaults: %s", agent_id)
             continue
+        merged_roles = (
+            ["checkin-only"] if "checkin-only" in fields["roles"] else _union_list(existing.roles, fields["roles"])
+        )
         manager.principals[agent_id] = existing.model_copy(
             update={
                 "name": fields["name"] if fields["name"] else existing.name,
-                "roles": _union_list(existing.roles, fields["roles"]),
+                "roles": merged_roles,
                 "scopes": _union_list(existing.scopes, fields["scopes"]),
                 "assistant_kind": fields["assistant_kind"] or existing.assistant_kind,
             }

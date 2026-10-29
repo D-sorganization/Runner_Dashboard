@@ -21,6 +21,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+import private_context_audit
 from cryptography.fernet import Fernet, InvalidToken
 from overlay_contract import Overlay, PrivateRole
 
@@ -38,6 +39,7 @@ _REASONS: frozenset[Reason] = frozenset(
         "store-missing",
         "version-skew",
         "decrypt-failed",
+        "audit-write-failed",
     }
 )
 
@@ -94,13 +96,51 @@ def read_private_context(
     host: str,
     provider_cli: str,
     env: Mapping[str, str] | None = None,
+    audit_store: private_context_audit.PrivateContextAuditStore | None = None,
 ) -> bytes | PrivateContextUnavailable:
     """Return decrypted context for an allowlisted template, or a degraded state.
 
     DbC preconditions (role ownership, template allowlist, provider approval,
     store/key presence, schema compatibility) are all checked here, inside
     the one accessor; no caller re-implements any of them (LoD).
+
+    Every call writes exactly one metadata-only audit entry (issue #3096); a
+    failed write fails closed, even on an otherwise-successful read.
     """
+    result = _read_private_context_unaudited(
+        overlay=overlay,
+        role_id=role_id,
+        requesting_role_id=requesting_role_id,
+        template_name=template_name,
+        host=host,
+        provider_cli=provider_cli,
+        env=env,
+    )
+    outcome = result.reason if isinstance(result, PrivateContextUnavailable) else "success"
+    try:
+        private_context_audit.record_access(
+            role_id=role_id,
+            template_name=template_name,
+            provider_cli=provider_cli,
+            host=host,
+            outcome=outcome,
+            store=audit_store,
+        )
+    except private_context_audit.PrivateContextAuditError:
+        return PrivateContextUnavailable(role_id, "audit-write-failed")
+    return result
+
+
+def _read_private_context_unaudited(
+    *,
+    overlay: Overlay | None,
+    role_id: str,
+    requesting_role_id: str,
+    template_name: str,
+    host: str,
+    provider_cli: str,
+    env: Mapping[str, str] | None = None,
+) -> bytes | PrivateContextUnavailable:
     env = os.environ if env is None else env
     role = find_role(overlay, role_id)
     if role is None:

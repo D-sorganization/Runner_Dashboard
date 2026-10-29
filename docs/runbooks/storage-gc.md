@@ -9,9 +9,9 @@ service + timer pairs (#1925). `install-runner-maintenance.sh` delegates to it.
 
 On 2026-10-11 every runner host was running a _different_ cleanup, and nothing noticed:
 
-- **OGLaptop** ran an old fork with no rustup reaper. It leaked 35k `~/.rustup/tmp` directories (23 GB), and Windows `C:` was down to 0.6 GB free.
-- **DeskComputer** had the right binary, but a drop-in (`30-bandwidth-policy.conf`) silently replaced `ExecStart` with a frozen fork.
-- **brick** and **raspberrypi** had no GC at all.
+- **node-b** ran an old fork with no rustup reaper. It leaked 35k `~/.rustup/tmp` directories (23 GB), and Windows `C:` was down to 0.6 GB free.
+- **hub-a** had the right binary, but a drop-in (`30-bandwidth-policy.conf`) silently replaced `ExecStart` with a frozen fork.
+- **node-c** and **raspberrypi** had no GC at all.
 
 The cause was three installers writing the same paths with no check of what actually ended up installed. The fix has three parts:
 

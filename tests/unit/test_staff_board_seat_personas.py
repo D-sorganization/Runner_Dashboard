@@ -1,6 +1,6 @@
 """Board seats are the Argon / Astra / Fable / top-Grok personas (owner request 2026-10-23).
 
-Each seat pins a CLI model id verified on DeskComputer and Brick with the node's
+Each seat pins a CLI model id verified on hub-a and node-c with the node's
 subscription CLI (``agy models``, ``codex`` models cache, ``cursor-agent --list-models``,
 and a one-line ``-p`` turn per seat), so the seat actually runs that model instead of
 the provider default. No pay-per-use API provider is used.

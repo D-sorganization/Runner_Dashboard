@@ -3,16 +3,16 @@
 One or more self-hosted GitHub Actions runners in the D-sorganization fleet
 are reporting `offline` to GitHub or are not picking up jobs.
 
-## Controlled DeskComputer Drain
+## Controlled hub-a Drain
 
-Use a drain when DeskComputer must remain responsive and local CI capacity is
+Use a drain when hub-a must remain responsive and local CI capacity is
 temporarily undesirable. The interlock is fail-closed: both the WSL keepalive
 and fleet health monitor exit before recovery side effects while the drain
 marker exists or the enable marker is absent:
 
 ```powershell
-C:\Users\fleet-operator\runner_fleet_monitor\hub-a-runner-drained.flag
-C:\Users\fleet-operator\runner_fleet_monitor\hub-a-runner-enabled.flag
+C:\Users\fleet\runner_fleet_monitor\hub-a-runner-drained.flag
+C:\Users\fleet\runner_fleet_monitor\hub-a-runner-enabled.flag
 ```
 
 1. Stop accepting new jobs by moving surplus runners to the no-access

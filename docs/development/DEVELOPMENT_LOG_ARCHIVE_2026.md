@@ -280,7 +280,7 @@
 - **PR:** #1703
 - **Paths:** `deploy/runner-dashboard.service`, `deploy/systemd-dropins/40-cursor-sandbox.conf`, `deploy/update-deployed.sh`, `deploy/staff-node-acceptance.sh`, `deploy/setup.sh`, `tests/test_deploy_hardening.py`, `tests/deploy/test_staff_node_acceptance.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-28 (`e302335e`; branch PR #1703 merged; pre-merge: 2026-09-27 (`tests/test_deploy_hardening.py tests/deploy/` 306 passed; cursor-agent ad-hoc runs pass on DeskComputer, ControlTower and OGLaptop with the drop-in))
+- **Last verified:** 2026-09-28 (`e302335e`; branch PR #1703 merged; pre-merge: 2026-09-27 (`tests/test_deploy_hardening.py tests/deploy/` 306 passed; cursor-agent ad-hoc runs pass on hub-a, node-a and node-b with the drop-in))
 - **Shipped:** 2026-09-28
 - **Summary:** `RestrictNamespaces=user mnt net ipc uts` plus a `SystemCallFilter` addition (`@mount`, Landlock, `seccomp`), measured as the minimum that Cursor's bubblewrap sandbox (#1586) needs. The rest of the unit's hardening is unchanged. Existing nodes get the same allowances as a drop-in that `update-deployed.sh` installs, and node acceptance checks the live setting.
 - **Next step:** None — shipped in PR #1703 (`e302335e`).
@@ -366,7 +366,7 @@
 - **Started:** 2026-09-27
 - **Last verified:** 2026-09-27 (`fb9c20a1`; branch PR #1696 merged; pre-merge: 2026-09-27 (Windows, targeted suites + full -x run))
 - **Shipped:** 2026-09-27
-- **Summary:** Two failures that stopped `pytest -x` on Windows nodes (every RD push from DeskComputer was blocked).
+- **Summary:** Two failures that stopped `pytest -x` on Windows nodes (every RD push from hub-a was blocked).
 - **Next step:** None — shipped in PR #1696 (`fb9c20a1`).
 
 ### DL-#1338-org — SC-G6: Organization folds into Projects
@@ -448,7 +448,7 @@
 - **PR:** #1682
 - **Paths:** `backend/wsl_disk_status.py`, `backend/routers/diagnostics.py`, `backend/staff/maintenance.py`, `backend/staff/maintenance_policy.py`, `docs/runbooks/wsl-vhdx-compaction.md`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (`6ccdab52`; branch PR #1682 merged; pre-merge: 2026-09-27 (targeted suites pass; live OGLaptop probe))
+- **Last verified:** 2026-09-27 (`6ccdab52`; branch PR #1682 merged; pre-merge: 2026-09-27 (targeted suites pass; live node-b probe))
 - **Shipped:** 2026-09-27
 - **Summary:** Reduced scope per the 2026-09-25 owner decision: read-only disk status plus an owner-approved compaction request; no orchestrated compaction.
 - **Next step:** None — shipped in PR #1682 (`6ccdab52`).
@@ -518,7 +518,7 @@
 - **PR:** #1699
 - **Paths:** `deploy/reap-wsl-leaked-chrome.sh`, `deploy/scheduled-dashboard-maintenance.sh`, `tests/test_reap_wsl_leaked_chrome.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (`6028848b`; consolidated PR #1699: Fixes #1678; pre-merge: 2026-09-27 (filter anchored to `--user-data-dir` after review; regex checked in PS 7 and 5.1 against leak, URL, and user-profile samples; `tests/test_reap_wsl_leaked_chrome.py` passes under WSL; OGLaptop read-only run: 0 matches, all 18 user Chrome excluded))
+- **Last verified:** 2026-09-27 (`6028848b`; consolidated PR #1699: Fixes #1678; pre-merge: 2026-09-27 (filter anchored to `--user-data-dir` after review; regex checked in PS 7 and 5.1 against leak, URL, and user-profile samples; `tests/test_reap_wsl_leaked_chrome.py` passes under WSL; node-b read-only run: 0 matches, all 18 user Chrome excluded))
 - **Shipped:** 2026-09-27
 - **Summary:** New standalone `deploy/reap-wsl-leaked-chrome.sh` stops Windows `chrome.exe` processes leaked into WSL hosts through `/mnt/c` interop (lhci/chrome-launcher). It matches only processes whose `CommandLine` has a `\AppData\Local\lighthouse.` temp profile AND whose `CreationDate` is older than `LEAKED_CHROME_MAX_AGE_HOURS` (default 2h, PowerShell 5.1 compatible `Get-CimInstance Win32_Process`), honours `DRY_RUN`, never deletes profile dirs, and exits 0 with a warning if `powershell.exe`/interop is unavailable or times out (wrapped in `timeout 120`). `POWERSHELL_BIN` is overridable for tests. Wired into `deploy/scheduled-dashboard-maintenance.sh` behind a WSL-only guard (`/proc/sys/fs/binfmt_misc/WSLInterop` or `WSL_DISTRO_NAME`).
 - **Next step:** None — shipped in PR #1699 (`6028848b`).
@@ -714,7 +714,7 @@
 - **PR:** #1640
 - **Paths:** `backend/staff/panel.py`, `backend/staff/panel_models.py`, `backend/routers/staff_panels.py`, `backend/routers/staff_threads.py`, `tests/staff/test_panel.py`, `tests/api/test_staff_panels_api.py`, `docs/agents/grok.md`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (DeskComputer redeployed at `6ddddf75`; live 3-seat haiku debate completed: 3 turns ok, stances parsed, synthesis written, no consensus reported)
+- **Last verified:** 2026-09-27 (hub-a redeployed at `6ddddf75`; live 3-seat haiku debate completed: 3 turns ok, stances parsed, synthesis written, no consensus reported)
 - **Summary:** 3-4 read-only expert seats take turns for N rounds on a topic (debate stops at unanimous agreement, brainstorm runs all rounds) and a moderator writes the consensus synthesis; `POST/GET /api/v1/staff/panels`.
 - **Next step:** Review the #1637 change that lets `default_turn_runner` take `message_id=None` for Board seats.
 
@@ -727,7 +727,7 @@
 - **PR:** #1639
 - **Paths:** `scripts/staff_chat_smoke.py`, `tests/test_staff_chat_smoke.py`
 - **Started:** 2026-09-27
-- **Last verified:** 2026-09-27 (`0760c416`; branch PR #1639 merged; pre-merge: 2026-09-27 (10 unit tests; live OGLaptop run detects #1630))
+- **Last verified:** 2026-09-27 (`0760c416`; branch PR #1639 merged; pre-merge: 2026-09-27 (10 unit tests; live node-b run detects #1630))
 - **Shipped:** 2026-09-27
 - **Summary:** One-command go-live check of the thread path Grok/Barb uses: pure check_thread over the messages list, injectable transport/clock/sleep.
 - **Next step:** None — shipped in PR #1639 (`0760c416`).
@@ -1628,7 +1628,7 @@
 - **Paths:** `backend/staff/adapters.py`, `backend/staff/chat.py`, `backend/staff/chat_failures.py`, `backend/staff/validator.py`, `tests/unit/test_staff_chat_read_only.py`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (new suite 24 passed; staff/chat/role/adapter/validator selection 618 passed, 15 skipped; ruff clean; `mypy backend/` clean in 249 files; chat.py 492 lines)
-- **Summary:** Every chat argv carries the provider's explicit read-only flag on fresh and resumed turns (the resumed claude turn had none); claude additionally denies the write tools; providers without a read-only mode fail closed with `provider_not_read_only`; `chat.read_only_tools` is a validated provider-neutral vocabulary mapped to the claude `--allowedTools` allowlist. `cursor-agent --mode ask` could not be verified locally (CLI not installed on DeskComputer); an unknown flag fails the turn visibly, never writable.
+- **Summary:** Every chat argv carries the provider's explicit read-only flag on fresh and resumed turns (the resumed claude turn had none); claude additionally denies the write tools; providers without a read-only mode fail closed with `provider_not_read_only`; `chat.read_only_tools` is a validated provider-neutral vocabulary mapped to the claude `--allowedTools` allowlist. `cursor-agent --mode ask` could not be verified locally (CLI not installed on hub-a); an unknown flag fails the turn visibly, never writable.
 - **Next step:** None (shipped in PR #1506). Verify a live cursor-agent chat turn on a node that has the CLI.
 
 ### DL-#1494 · Fix projects run steward missing Idempotency-Key
@@ -1784,7 +1784,7 @@
 - **Paths:** `backend/code_requests/board_gate.py`, `backend/routers/code_requests_board.py`, `backend/server.py`, `tests/code_requests/test_board_gate.py`, `tests/code_requests/test_board_gate_routes.py`, `frontend/src/lib/api-types.ts`, `frontend/src/lib/openapi.json`, `SPEC.md`, `docs/development/DEVELOPMENT_LOG.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-25
 - **Last verified:** 2026-09-25 (pytest 33/33 passed across test_board_gate and test_board_gate_routes; 61/61 passed across tests/code_requests/; vitest 1309/1309 passed; ruff check and format clean; mypy clean; line cap check <= 500 lines passed)
-- **Summary:** Implemented Board routing gate for Code Requests evaluating 7 architectural criteria, confidential InEnTec data egress user sign-off check, operator overrides (`force_board` / `skip_board`) requiring `operator` role and reason, automatic proposal creation via CR-7 proposal API, decision syncing (`board:accepted`, `board:declined`, `board:deferred`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py`.
+- **Summary:** Implemented Board routing gate for Code Requests evaluating 7 architectural criteria, confidential partner data egress user sign-off check, operator overrides (`force_board` / `skip_board`) requiring `operator` role and reason, automatic proposal creation via CR-7 proposal API, decision syncing (`board:accepted`, `board:declined`, `board:deferred`), and escalation deadline checks. Mounted endpoints in `backend/routers/code_requests_board.py` and `backend/server.py`.
 - **Next step:** None (shipped in PR #1469).
 
 ### DL-#1330 · SC-D11: Fold the three stray chat surfaces (Maxwell chat, Codebase chat, legacy assistant sidebar) into the Staff Console
@@ -2563,11 +2563,11 @@
 - **Issue:** #1276 (follow-up to #1273/#1274, epic #1192)
 - **Branch:** `fix/1276-staff-node-acceptance`
 - **PR:** #1277
-- **Paths:** `deploy/staff-node-acceptance.sh`, `tests/deploy/test_staff_node_acceptance.py`, `docs/operations/controltower-staff-worker.md`, `docs/staff-hub.md`
+- **Paths:** `deploy/staff-node-acceptance.sh`, `tests/deploy/test_staff_node_acceptance.py`, `docs/operations/node-a-staff-worker.md`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-24 (`31a91047`; branch PR #1277 merged; pre-merge: 2026-09-23 (`08e6746` + this change; DeskComputer live 38/0 with `--expect-sha 71500c9`, was 34/3))
+- **Last verified:** 2026-09-24 (`31a91047`; branch PR #1277 merged; pre-merge: 2026-09-23 (`08e6746` + this change; hub-a live 38/0 with `--expect-sha 71500c9`, was 34/3))
 - **Shipped:** 2026-09-24
-- **Summary:** The unified acceptance script from #1274 reported three false failures on a fully working node and had latent false failures (OGLaptop timer, 45 s ad-hoc wait) and a false pass (any rm_source status). Fixed with JSON parsing and the real endpoint fields; adds `--expect-sha` for same-commit fleet acceptance; corrects ControlTower runbook facts.
+- **Summary:** The unified acceptance script from #1274 reported three false failures on a fully working node and had latent false failures (node-b timer, 45 s ad-hoc wait) and a false pass (any rm_source status). Fixed with JSON parsing and the real endpoint fields; adds `--expect-sha` for same-commit fleet acceptance; corrects node-a runbook facts.
 - **Next step:** None — shipped in PR #1277 (`31a91047`).
 
 ### DL-#1270 · Node LAN Duplicate-Address Prevention
@@ -2577,9 +2577,9 @@
 - **Issue:** #1270 (epic #1192)
 - **Branch:** `docs/1270-duplicate-address-prevention`
 - **PR:** #1272
-- **Paths:** `docs/staff-hub.md`, `docs/operations/oglaptop-staff-worker.md`, `backend/machine_registry.yml`
+- **Paths:** `docs/staff-hub.md`, `docs/operations/node-b-staff-worker.md`, `backend/machine_registry.yml`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`5c143ac3`; branch PR #1272 merged; pre-merge: 2026-09-23 (`02adc74` + this change; conflicting device confirmed live from DeskComputer (wired) and OGLaptop (shop Wi-Fi): answers ARP, not ping; same gateway MAC from both, so one flat LAN))
+- **Last verified:** 2026-09-23 (`5c143ac3`; branch PR #1272 merged; pre-merge: 2026-09-23 (`02adc74` + this change; conflicting device confirmed live from hub-a (wired) and node-b (shop Wi-Fi): answers ARP, not ping; same gateway MAC from both, so one flat LAN))
 - **Shipped:** 2026-09-23
 - **Summary:** Docs-only prevention and diagnosis guidance for DHCP duplicate-address outages on staff nodes. Household LAN addresses and device MACs removed from current files (runbook, handoff, registry comment); history not rewritten by owner decision; specifics kept in private deploy notes.
 - **Next step:** None — shipped in PR #1272 (`5c143ac3`).
@@ -2593,14 +2593,14 @@
 - **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/1262
 - **Paths:** `backend/staff/rm_sync.py`, `backend/routers/staff.py`, `deploy/systemd-user/`, `tests/unit/test_staff_rm_sync.py`, `tests/api/test_staff_fleet.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`35686c4e`; pr-field PR #1262 merged; pre-merge: 2026-09-23 (`SELF`; #1262 merged, OGLaptop deployed at 35686c4; 62 combined tests pass, mypy/Ruff/unit checks pass; automatic RM fast-forward, 16-role API, empty holds and two Ollama health checks verified))
+- **Last verified:** 2026-09-23 (`35686c4e`; pr-field PR #1262 merged; pre-merge: 2026-09-23 (`SELF`; #1262 merged, node-b deployed at 35686c4; 62 combined tests pass, mypy/Ruff/unit checks pass; automatic RM fast-forward, 16-role API, empty holds and two Ollama health checks verified))
 - **Shipped:** 2026-09-23
 - **Summary:** Dedicated Linux RM clone refreshed by a serialized systemd user timer at most every 15 minutes, clean-main fast-forward only, backup refs, secret-safe errors, persisted freshness on board. Existing uncached roles load each evaluation; roles route aliases roster. No scheduler or hold changes in application code.
 - **Next step:** None — shipped in PR #1262 (`35686c4e`).
 
 ### DL-#1257 · Reboot-safe WSL Ollama bridge
 
-- **Fleet acceptance follow-up:** OGLaptop redeployed to requested 31a9104 on uv Python 3.11.15; worker acceptance 44 passed / 0 failed with all six provider runs. Previous deployment/env backed up; Staff scheduler stays 0. Owner removed invalid dashboard portproxy at 19:51 PT and disabled its legacy WSL-PortForward recreator at 19:56 PT; netsh confirms only the valid Ollama forward remains. Task XML, script and forwarding backups retained; acceptance confirmed exit 0. Owner reports eero reservations corrected for Xbox .202 and OGLaptop .203.
+- **Fleet acceptance follow-up:** node-b redeployed to requested 31a9104 on uv Python 3.11.15; worker acceptance 44 passed / 0 failed with all six provider runs. Previous deployment/env backed up; Staff scheduler stays 0. Owner removed invalid dashboard portproxy at 19:51 PT and disabled its legacy WSL-PortForward recreator at 19:56 PT; netsh confirms only the valid Ollama forward remains. Task XML, script and forwarding backups retained; acceptance confirmed exit 0. Owner reports eero reservations corrected for Xbox .202 and node-b .203.
 
 - **State:** shipped
 - **Owner:** codex
@@ -2611,7 +2611,7 @@
 - **Started:** 2026-09-23
 - **Last verified:** 2026-09-23 (`082ab515`; pr-field PR #1261 merged; pre-merge: 2026-09-23 (`SELF`; WSL and Windows reboots completed; bridge recovered automatically and all six providers succeeded afterward; duplicate-address evidence explains browser outage; all-profile-enabled DNS/HTTPS test passed; CI capacity restored; all firewall profiles enabled and Windows/WSL HTTPS plus Ollama bridge reverified))
 - **Shipped:** 2026-09-23
-- **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing OGLaptop bridge remains unchanged until owner installation.
+- **Summary:** Dynamic WSL NAT discovery, ownership-checked forward/rule reconciliation, explicit legacy adoption, disable-only firewall/task uninstall, backups and owner-installed hidden startup/logon/retry task. Existing node-b bridge remains unchanged until owner installation.
 - **Next step:** None — shipped in PR #1261 (`082ab515`).
 
 - **Post-reboot GPU follow-up:** Sonnet 750ex/RTX 5070 link was absent despite hardware rescan; owner power-cycle/reconnect restored Windows and WSL NVIDIA-SMI (driver 610.88, 12227 MiB). Future unattended GPU startup remains unproven.
@@ -2639,7 +2639,7 @@
 - **PR:** #1253
 - **Paths:** `backend/staff/adapters.py`, `backend/staff/ollama_env.py`, `backend/staff/runner.py`, `backend/staff/pricing.py`, `tests/api/test_staff_provider_options.py`, `docs/staff-hub.md`
 - **Started:** 2026-09-23
-- **Last verified:** 2026-09-23 (`ce601d44`; branch PR #1253 merged; pre-merge: 2026-09-23 (`a8c6f8c` + lease re-land of `8dd2220`, which missed the #1253 merge; WSL pytest `tests/api -k "staff or provider or pricing or usage"` 166 passed, 3 skipped; each CLI path verified by hand on DeskComputer WSL))
+- **Last verified:** 2026-09-23 (`ce601d44`; branch PR #1253 merged; pre-merge: 2026-09-23 (`a8c6f8c` + lease re-land of `8dd2220`, which missed the #1253 merge; WSL pytest `tests/api -k "staff or provider or pricing or usage"` 166 passed, 3 skipped; each CLI path verified by hand on hub-a WSL))
 - **Shipped:** 2026-09-23
 - **Summary:** cursor-agent unattended stream-json (Grok via Cursor); `ollama` = Ollama models inside Codex `--oss`; new `claude-ollama` = Ollama models inside Claude Code on Ollama's Anthropic API with its own config dir; Ollama URL from env, localhost or the WSL gateway; both Ollama providers lease as RM agent `local` (neither `ollama` nor `claude-ollama` is an RM agent id); drop-in docs add `~/.cursor`, `~/.config/cursor`.
 - **Next step:** None — shipped in PR #1253 (`ce601d44`).
@@ -2655,7 +2655,7 @@
 - **Started:** 2026-09-23
 - **Last verified:** 2026-09-23 (`c1748960`; branch PR #1250 merged; pre-merge: 2026-09-23 (`28959a2` + this change; WSL pytest `tests/api/test_staff_adapter_cli_contracts.py tests/api/test_staff_runner.py` 20 passed, RED first for the two contract tests))
 - **Shipped:** 2026-09-23
-- **Summary:** Health-check ad-hoc runs on DeskComputer failed for codex (`--full-auto` rejected by codex 0.156.1) and antigravity (answer and `STAFF_RESULT:` inside `result.response` were not read). Adapter flags and parsing fixed; the CLI contracts are pinned by tests.
+- **Summary:** Health-check ad-hoc runs on hub-a failed for codex (`--full-auto` rejected by codex 0.156.1) and antigravity (answer and `STAFF_RESULT:` inside `result.response` were not read). Adapter flags and parsing fixed; the CLI contracts are pinned by tests.
 - **Next step:** None — shipped in PR #1250 (`c1748960`).
 
 ### DL-#1243 · Priorities, staff focus and fleet clients hardening
@@ -2697,7 +2697,7 @@
 - **Started:** 2026-09-23
 - **Last verified:** 2026-09-23 (`c0399b67`; branch PR #1242 merged; pre-merge: 2026-09-23 (`62e45ba` + this change; vitest Staff + FleetCommand 25 passed; `npm run typecheck` and `npm run lint` clean))
 - **Shipped:** 2026-09-23
-- **Summary:** Found reviewing the live tab on DeskComputer: grok-chat roles were offered for dispatch, and raw replay warnings crowded Active work.
+- **Summary:** Found reviewing the live tab on hub-a: grok-chat roles were offered for dispatch, and raw replay warnings crowded Active work.
 - **Next step:** None — shipped in PR #1242 (`c0399b67`).
 
 ### DL-#1239 · Staff prompt fleet focus
@@ -2777,11 +2777,11 @@
 - **Issue:** #1223 (epic #1192)
 - **Branch:** `docs/staff-hub-node-setup`
 - **PR:** #1224
-- **Paths:** `docs/staff-hub.md`, `docs/operations/oglaptop-staff-worker.md`, `docs/development/HANDOFF.md`
+- **Paths:** `docs/staff-hub.md`, `docs/operations/node-b-staff-worker.md`, `docs/development/HANDOFF.md`
 - **Started:** 2026-09-22
-- **Last verified:** 2026-09-23 (`85098b10`; branch PR #1224 merged; pre-merge: 2026-09-23 (OGLaptop deployed `a82699223e07153ae85ca15707805665f15c96fe`, including #1250/#1253; all six provider health checks succeeded; running scheduler flag remains 0).)
+- **Last verified:** 2026-09-23 (`85098b10`; branch PR #1224 merged; pre-merge: 2026-09-23 (node-b deployed `a82699223e07153ae85ca15707805665f15c96fe`, including #1250/#1253; all six provider health checks succeeded; running scheduler flag remains 0).)
 - **Shipped:** 2026-09-23
-- **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh. OGLaptop now has a machine runbook with deployed identity, sign-in state, scoped Ollama forwarding, health run IDs, backups, and rollback. Follow-up documentation branch: `docs/issue-1192-oglaptop-worker-status`; PR not created pending owner approval; ControlTower was not changed in this session.
+- **Summary:** Node setup for staff roles (drop-in, `CLAUDE_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, Linux clones) moves from operator scripts into the Staff Hub doc, including why a read-only home blocks Claude token refresh. node-b now has a machine runbook with deployed identity, sign-in state, scoped Ollama forwarding, health run IDs, backups, and rollback. Follow-up documentation branch: `docs/issue-1192-node-b-worker-status`; PR not created pending owner approval; node-a was not changed in this session.
 - **Next step:** None — shipped in PR #1224 (`85098b10`).
 
 ### DL-#1237 · Coordination read latency and path normalisation
@@ -2920,7 +2920,7 @@
 - **Started:** 2026-09-22
 - **Last verified:** 2026-09-22 (`cde8c327`; branch PR #1210 merged; pre-merge: 2026-09-22 (`34cfdae`))
 - **Shipped:** 2026-09-22
-- **Summary:** Cut 4.10.0 (first release with the Fleet Staff Hub, epic #1192) so `release.yml` builds the artifact, and make the DeskComputer fleet health monitor probe `/api/staff/board?local=1` so a dead Staff Hub is alarmed instead of silently skipping scheduled roles.
+- **Summary:** Cut 4.10.0 (first release with the Fleet Staff Hub, epic #1192) so `release.yml` builds the artifact, and make the hub-a fleet health monitor probe `/api/staff/board?local=1` so a dead Staff Hub is alarmed instead of silently skipping scheduled roles.
 - **Next step:** None — shipped in PR #1210 (`cde8c327`).
 
 ### DL-#1193 · Provider registry v2 (antigravity, cursor-agent, maxwell; Jules disabled; node probe)
@@ -2970,13 +2970,13 @@
 - **State:** shipped
 - **Owner:** agent
 - **Issue:** #1184
-- **Branch:** `fix/monitor-controltower-runner-pool`
+- **Branch:** `fix/monitor-node-a-runner-pool`
 - **PR:** #1185
 - **Paths:** `deploy/fleet-health-monitor.ps1`, `deploy/runner-cleanup.sh`, `tests/deploy/test_fleet_health_monitor.py`, `tests/deploy/test_runner_cleanup_disk_guard.py`
 - **Started:** 2026-09-14
 - **Last verified:** 2026-09-15 (`9fba9f0b`; branch PR #1185 merged; pre-merge: 2026-09-14 (`4fee405`))
 - **Shipped:** 2026-09-15
-- **Summary:** Resolve Issue #1184: retarget the DeskComputer fleet monitor from the retired ControlTower-SSD pool to ControlTower-Runner, prune dangling docker images on a 6h window instead of 168h, and reap leaked ~/.rustup/tmp entries on the daily cleanup pass.
+- **Summary:** Resolve Issue #1184: retarget the hub-a fleet monitor from the retired node-a-SSD pool to node-a-Runner, prune dangling docker images on a 6h window instead of 168h, and reap leaked ~/.rustup/tmp entries on the daily cleanup pass.
 - **Next step:** None — shipped in PR #1185 (`9fba9f0b`).
 
 ### DL-0007 · Adopt Mermaid C4 Architecture Map Contract 1613
@@ -3021,7 +3021,7 @@
 - **Paths:** `backend/fleet_autoconfig.py`, `backend/machine_registry.py`, `backend/routers/fleet.py`, `backend/server.py`, `tests/test_fleet_autoconfig.py`, `tests/test_hub_fleet_aggregation.py`
 - **Started:** 2026-09-06
 - **Last verified:** 2026-09-06
-- **Summary:** Resolve Issue #1169: Hub dashboard telemetry aggregation and stale registry validation. Ensure /api/fleet/status polls and aggregates DeskComputer, OGLaptop, and ControlTower-Runner, while filtering out retired pools and validating non-retired machines on startup.
+- **Summary:** Resolve Issue #1169: Hub dashboard telemetry aggregation and stale registry validation. Ensure /api/fleet/status polls and aggregates hub-a, node-b, and node-a-Runner, while filtering out retired pools and validating non-retired machines on startup.
 
 ### DL-#1200 · Staff Hub usage ledger: pricing, /api/staff/usage, RM credit_usage export
 

@@ -1,10 +1,4 @@
-/**
- * Composer.tsx — Staff Console message input, supporting markdown, keyboard-first
- * @mentions and slash commands, voice input, persistent drafts, auto-growing input,
- * and reliable send with deduplication.
- *
- * Implements SC-D4 (Issue #1318) under Epic SC-D (#1350) / Workstream B (#1720).
- */
+/** Staff Console composer: markdown, mentions, voice, drafts (SC-D4). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useComposerAutosize } from "../../hooks/useComposerAutosize";
 import { useVoiceInput } from "../../hooks/useVoiceInput";
@@ -70,6 +64,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   const conversationOpeningRef = useRef(false);
   const latestTextRef = useRef(text);
   latestTextRef.current = text;
+  const sendInFlightRef = useRef(false); // set before any await; sendState alone misses a same-task double-tap
 
   useEffect(() => {
     if (!autoFocus || disabled || isPanel || conversationOpening) return;
@@ -245,7 +240,8 @@ export const Composer: React.FC<ComposerComponentProps> = ({
 
   const executeSend = async (retryKey?: string) => {
     const trimmed = text.trim();
-    if ((!trimmed && !attachedItems.length) || hasUnsettledAttachments || sendState === "sending" || disabled || isPanel || conversationOpening) return;
+    if ((!trimmed && !attachedItems.length) || hasUnsettledAttachments || sendState === "sending" || disabled || isPanel || conversationOpening || sendInFlightRef.current) return;
+    sendInFlightRef.current = true;
 
     const key = retryKey || idempotencyKey || generateIdempotencyKey(threadId);
     setIdempotencyKey(key);
@@ -274,8 +270,9 @@ export const Composer: React.FC<ComposerComponentProps> = ({
       setTimeout(() => setSendState("idle"), 1000);
     } catch (err: unknown) {
       setSendState("failed");
-      const msg = err instanceof Error ? err.message : "Failed to send message";
-      setErrorMessage(msg);
+      setErrorMessage(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      sendInFlightRef.current = false;
     }
   };
 
@@ -381,18 +378,23 @@ export const Composer: React.FC<ComposerComponentProps> = ({
           role="status"
           aria-live="polite"
           className="composer-panel-notice"
+          title="The thread is still being created on the server"
           style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}
         >
           Opening a conversation. You can keep typing; sending and file attachments will be available when ready.
         </div>
       )}
       {isPanel && (
-        <div role="status" className="composer-panel-notice" style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}>
+        <div
+          role="status"
+          className="composer-panel-notice"
+          title="Why the composer is limited for this panel thread"
+          style={{ background: "var(--badge-info-bg)", border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "6px 12px", marginBottom: 8, fontSize: 12, color: "var(--text-secondary)" }}
+        >
           {panelDisabledMessage}
         </div>
       )}
 
-      {/* Claude-grade Rounded Bordered Box */}
       <div
         className="staff-composer__box"
         data-testid="composer-box"
@@ -429,7 +431,6 @@ export const Composer: React.FC<ComposerComponentProps> = ({
             </select>
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={disabled || isPanel || conversationOpening || sendState === "sending"} title="Add files or context" aria-label="Add files or context" data-testid="composer-attach-btn" className="staff-composer__attach-btn">+</button>
           </div>
-          {/* Voice Input Button */}
           <button
             type="button"
             aria-label={

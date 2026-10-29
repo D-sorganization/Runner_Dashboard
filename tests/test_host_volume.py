@@ -10,10 +10,11 @@ Verifies:
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import yaml
 from host_volume import (
     DEFAULT_HOST_VOLUME_MIN_FREE_GB,
     DEFAULT_HOST_VOLUME_MIN_FREE_PERCENT,
@@ -45,29 +46,29 @@ def test_resolve_runner_backing_drive_from_registry() -> None:
         "version": 1,
         "machines": [
             {
-                "name": "ControlTower",
+                "name": "node-a",
                 "storage": {"runner_backing_drive": "F:"},
                 "runner_pools": [
                     {
-                        "name": "ControlTower-SSD",
+                        "name": "node-a-ssd",
                         "storage": {"runner_backing_drive": "F:"},
                     }
                 ],
             },
             {
-                "name": "DeskComputer",
+                "name": "hub-a",
                 "storage": {"runner_backing_drive": "D:"},
             },
             {
-                "name": "OGLaptop",
+                "name": "node-b",
                 "storage": {"runner_backing_drive": "C:"},
             },
         ],
     }
-    assert resolve_runner_backing_drive(machine_name="ControlTower", registry=fake_registry) == "F:"
-    assert resolve_runner_backing_drive(pool_name="ControlTower-SSD", registry=fake_registry) == "F:"
-    assert resolve_runner_backing_drive(machine_name="DeskComputer", registry=fake_registry) == "D:"
-    assert resolve_runner_backing_drive(machine_name="OGLaptop", registry=fake_registry) == "C:"
+    assert resolve_runner_backing_drive(machine_name="node-a", registry=fake_registry) == "F:"
+    assert resolve_runner_backing_drive(pool_name="node-a-ssd", registry=fake_registry) == "F:"
+    assert resolve_runner_backing_drive(machine_name="hub-a", registry=fake_registry) == "D:"
+    assert resolve_runner_backing_drive(machine_name="node-b", registry=fake_registry) == "C:"
 
 
 def test_resolve_runner_backing_drive_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -235,49 +236,47 @@ def test_get_host_volume_metrics_no_conflation() -> None:
     assert "hard_floor_hit" in metrics
 
 
-def test_machine_registry_preserves_runner_backing_drive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """machine_registry.py normalizes and preserves runner_backing_drive."""
+def test_machine_registry_preserves_runner_backing_drive(tmp_path: Path) -> None:
+    """machine_registry.py normalizes and preserves runner_backing_drive.
+
+    The shipped machine_registry.yml carries no live topology (#3082); this
+    exercises the loader against a registry shaped like a real deployment
+    instead of the (now-empty) shipped file.
+    """
     from machine_registry import load_machine_registry
 
-    registry_path = tmp_path / "machine_registry.yml"
-    registry_path.write_text(
-        """
-version: 1
-machines:
-  - name: node-a
-    storage:
-      runner_backing_drive: "F:"
-    runner_pools:
-      - name: node-a-SSD
-        storage:
-          runner_backing_drive: "F:"
-  - name: node-b
-    storage:
-      runner_backing_drive: "C:"
-  - name: hub-a
-    storage:
-      runner_backing_drive: "D:"
-""".lstrip(),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("MACHINE_REGISTRY_PATH", str(registry_path))
-    with (
-        patch("machine_registry.validate_config_path", return_value=registry_path),
-        patch("machine_registry.safe_yaml_load", return_value=yaml.safe_load(registry_path.read_text(encoding="utf-8"))),
-    ):
-        reg = load_machine_registry()
+    registry = {
+        "version": 1,
+        "machines": [
+            {
+                "name": "node-a",
+                "storage": {"runner_backing_drive": "F:"},
+                "runner_pools": [
+                    {"name": "node-a-runner", "storage": {"runner_backing_drive": "F:"}},
+                ],
+            },
+            {"name": "node-b", "storage": {"runner_backing_drive": "C:"}},
+            {"name": "hub-a", "storage": {"runner_backing_drive": "D:"}},
+        ],
+    }
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    with patch("machine_registry.validate_config_path", return_value=registry_path):
+        reg = load_machine_registry(path=registry_path)
     machines = {m["name"]: m for m in reg.get("machines", [])}
 
     assert "node-a" in machines
     assert "node-b" in machines
     assert "hub-a" in machines
 
+    # node-a storage and pool
     assert machines["node-a"]["storage"].get("runner_backing_drive") == "F:"
     ct_pools = {p["name"]: p for p in machines["node-a"].get("runner_pools", [])}
-    active_pool = ct_pools.get("node-a-SSD")
+    active_pool = ct_pools.get("node-a-runner") or ct_pools.get("node-a-ssd")
     assert active_pool is not None
     assert active_pool["storage"].get("runner_backing_drive") == "F:"
 
+    # node-b and hub-a storage
     assert machines["node-b"]["storage"].get("runner_backing_drive") == "C:"
     assert machines["hub-a"]["storage"].get("runner_backing_drive") == "D:"
 

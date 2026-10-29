@@ -10,7 +10,9 @@ from oauth_config import (
     validate_oauth_startup,
 )
 
-_DESK_ORIGIN = "https://deskcomputer.tail2bbcc7.ts.net"
+pytestmark = pytest.mark.usefixtures("mock_registry_hub_as_example")
+
+_DESK_ORIGIN = "https://hub-a.fleet-example.ts.net"
 _DESK_CALLBACK = f"{_DESK_ORIGIN}{OAUTH_CALLBACK_PATH}"
 
 
@@ -21,6 +23,7 @@ def _valid_env() -> dict[str, str]:
         "GITHUB_ORG": "D-sorganization",
         "DASHBOARD_PUBLIC_ORIGIN": _DESK_ORIGIN,
         "GITHUB_OAUTH_CALLBACK_URL": _DESK_CALLBACK,
+        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": _DESK_ORIGIN,
         "SESSION_SECRET": "b" * 32,
         "DASHBOARD_TLS": "1",
     }

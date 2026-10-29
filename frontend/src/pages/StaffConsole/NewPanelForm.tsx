@@ -49,19 +49,31 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
   const selectedPresetIdRef = useRef(selectedPresetId);
   selectedPresetIdRef.current = selectedPresetId;
 
+  const mapPresetExperts = useCallback((found: PanelPreset, providerList: string[]) => {
+    const defaultProvider = providerList[0] || "claude";
+    const notes: string[] = [];
+    const mapped: PanelFormExpert[] = found.experts.map((e) => {
+      if (!e.provider) {
+        return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
+      }
+      if (e.available === false || !providerList.includes(e.provider)) {
+        notes.push(
+          `${e.name}: ${e.provider}${e.model ? ` (${e.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
+        );
+        return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
+      }
+      return { name: e.name, perspective: e.perspective, provider: e.provider, model: e.model ?? "" };
+    });
+    return { experts: mapped, notes };
+  }, []);
+
   const applyPresetExperts = useCallback(
     (found: PanelPreset, providerList: string[] = providers) => {
-      const defaultProvider = providerList[0] || "claude";
-      setExperts(
-        found.experts.map((e) => ({
-          name: e.name,
-          perspective: e.perspective,
-          provider: defaultProvider,
-          model: "",
-        })),
-      );
+      const { experts: mapped, notes } = mapPresetExperts(found, providerList);
+      setSeatNotes(notes);
+      setExperts(mapped);
     },
-    [providers],
+    [mapPresetExperts, providers],
   );
 
   useEffect(() => {
@@ -80,15 +92,9 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
         if (!presetId) return;
         const found = loadedPresets.find((preset) => preset.id === presetId);
         if (!found) return;
-        const defaultProvider = providerList[0] || "claude";
-        setExperts(
-          found.experts.map((expert) => ({
-            name: expert.name,
-            perspective: expert.perspective,
-            provider: defaultProvider,
-            model: "",
-          })),
-        );
+        const { experts: mapped, notes } = mapPresetExperts(found, providerList);
+        setSeatNotes(notes);
+        setExperts(mapped);
       })
       .catch(() => {
         // fail-open with defaults
@@ -96,7 +102,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [mapPresetExperts]);
 
   const formState: PanelFormState = {
     topic,
@@ -113,22 +119,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
     if (!presetId) return;
     const found = presets.find((p) => p.id === presetId);
     if (!found) return;
-
-    const defaultProvider = providers[0] || "claude";
-    const notes: string[] = [];
-    const mapped: PanelFormExpert[] = found.experts.map((e) => {
-      if (!e.provider) return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
-      if (e.available === false || !providers.includes(e.provider)) {
-        // Never swap silently: say which seat fell back, to what, and what it was meant to be.
-        notes.push(
-          `${e.name}: ${e.provider}${e.model ? ` (${e.model})` : ""} is unavailable on this node; using ${defaultProvider} instead.`,
-        );
-        return { name: e.name, perspective: e.perspective, provider: defaultProvider, model: "" };
-      }
-      return { name: e.name, perspective: e.perspective, provider: e.provider, model: e.model ?? "" };
-    });
-    setSeatNotes(notes);
-    setExperts(mapped);
+    applyPresetExperts(found);
   };
 
   // Preset pick can beat fetchPanelPresets on a slow runner; apply when the catalog arrives.
@@ -409,7 +400,12 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
       {/* Actions */}
       <div className="panel-form__actions">
         {onCancel && (
-          <TouchButton type="button" onClick={onCancel} disabled={isSubmitting}>
+          <TouchButton
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            title="Close the panel form without starting a panel"
+          >
             Cancel
           </TouchButton>
         )}

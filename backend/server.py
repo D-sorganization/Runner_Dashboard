@@ -19,6 +19,7 @@ Then open http://localhost:8321 in your browser.
 """
 
 import asyncio
+import contextlib
 import datetime as _dt_mod
 import errno
 import json
@@ -460,6 +461,17 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
+from demo_mode import demo_api_block  # noqa: E402
+
+
+@app.middleware("http")
+async def _demo_api_guard(request: Request, call_next):
+    blocked = demo_api_block(
+        request.url.path,
+        enabled=os.environ.get("RUNNER_DASHBOARD_DEMO") == "1",
+    )
+    return blocked if blocked is not None else await call_next(request)
+
 
 @app.exception_handler(gh_utils.RateLimitedError)
 async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimitedError) -> JSONResponse:
@@ -534,10 +546,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-# Issue #331 — request_id correlation middleware (outermost so all subsequent
-# middleware and handlers have access to the request_id context var).
-app.add_middleware(RequestIdMiddleware)
-
 # Issue #350 — early body-size guard (ASGI middleware, runs before routing)
 app.add_middleware(
     MaxBodySizeMiddleware,
@@ -609,8 +617,7 @@ async def _watchdog_heartbeat() -> None:
         try:
             _notifier("WATCHDOG=1")
         except Exception as exc:  # noqa: BLE001
-            log.warning("watchdog_heartbeat: sd_notify failed (%s), exiting task", exc)
-            return
+            log.warning("watchdog_heartbeat: sd_notify failed (%s), continuing", exc)
 
 
 _LEASE_REAPER_INTERVAL_S: int = max(30, int(os.environ.get("LEASE_REAPER_INTERVAL_S", "300")))
@@ -770,10 +777,12 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_barb as _staff_barb_router  # noqa: E402
 from routers import staff_concerns as _staff_concerns_router  # noqa: E402
+from routers import staff_dispatcher as _staff_dispatcher_router  # noqa: E402
 from routers import staff_exclusions as _staff_exclusions_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
+from routers import staff_host_settings as _staff_host_settings_router  # noqa: E402
 from routers import staff_inbox as _staff_inbox_router  # noqa: E402
 from routers import staff_local_runs as _staff_local_runs_router  # noqa: E402
 from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
@@ -788,6 +797,7 @@ from routers import staff_v1 as _staff_v1_router  # noqa: E402
 from routers import staff_work_items as _staff_work_items_router  # noqa: E402
 
 app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
+app.include_router(_staff_dispatcher_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
 app.include_router(_staff_export_router.router, prefix="/api/v1/staff")  # Thread export & retention (issue #1490)
 app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
@@ -806,6 +816,8 @@ app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_exclusions_router.router, prefix="/api/staff")  # dispatch exclusions
 app.include_router(_staff_exclusions_router.router, prefix="/api/v1/staff")
+app.include_router(_staff_host_settings_router.router, prefix="/api/staff")  # host settings (#3101)
+app.include_router(_staff_host_settings_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
@@ -828,6 +840,22 @@ app.include_router(_coordination_router.router)
 from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
+
+from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+
+app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
+from routers import staff_playbooks as _staff_playbooks_router  # noqa: E402
+
+app.include_router(_staff_playbooks_router.router)  # playbooks list/render/assign (issue #3488)
+
+from routers import staff_presentation_prefs as _staff_presentation_prefs_router  # noqa: E402
+
+app.include_router(_staff_presentation_prefs_router.router)  # personal presentation preferences (issue #3495)
+
+from routers import overload as _fleet_overload_router  # noqa: E402
+
+app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
 
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
@@ -935,6 +963,19 @@ app.add_middleware(StaffV1Middleware)
 # Starlette's GZipMiddleware passes text/event-stream through unbuffered.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
+# Validate Host before auth and routing. Public hostnames come from the same
+# registry and explicit origin allowlist used by browser sign-in. The
+# registry is loaded once (disk I/O); env-derived origins are re-read on
+# every request so config set after this module's first import (tests
+# monkeypatching origin env vars) still takes effect.
+from trusted_hosts import IPv6AwareTrustedHostMiddleware, trusted_hosts_from_env  # noqa: E402
+
+_trusted_hosts_registry = load_machine_registry()
+app.add_middleware(
+    IPv6AwareTrustedHostMiddleware,
+    hosts_provider=lambda: trusted_hosts_from_env(registry=_trusted_hosts_registry),
+)
+
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────
 BOOT_TIME = time.time()
@@ -979,7 +1020,7 @@ def _deployment_info() -> dict:
 # entries for every *other* machine in the fleet.  The hub always includes
 # itself automatically — do not list it in FLEET_NODES.
 #
-# Example (in /etc/systemd/system/runner-dashboard.service on ControlTower):
+# Example (in /etc/systemd/system/runner-dashboard.service on node-a):
 #   Environment=MACHINE_ROLE=hub
 #   Environment=FLEET_NODES=envy:http://100.x.x.x:8321,thinkpad:http://100.x.x.x:8321
 MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
@@ -1063,6 +1104,19 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
 try:
     _topology_registry = load_machine_registry()
     from fleet_autoconfig import assert_fleet_identity_no_self_loop
+    from fleet_hub_env_guard import assert_hub_url_env_matches_registry
+
+    _hub_override_ok = os.environ.get("HUB_URL_REGISTRY_OVERRIDE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    assert_hub_url_env_matches_registry(
+        _topology_registry,
+        hub_url_env=os.environ.get("HUB_URL"),
+        allow_registry_override=_hub_override_ok,
+    )
 
     _fleet_identity = apply_fleet_identity_from_registry(
         _topology_registry,
@@ -1137,7 +1191,10 @@ async def run_cmd(
             stderr.decode("utf-8", errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         return -1, "", "Command timed out"
 
 
@@ -2200,6 +2257,11 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# Issue #331 / #3034 — request_id correlation middleware added last so
+# Starlette inserts it at index 0 (outermost) of app.user_middleware.
+app.add_middleware(RequestIdMiddleware)
+
+
 # ─── Operator diagnostics ────────────────────────────────────────────────────
 #
 # /api/diagnostics surfaces the config-load and fleet-federation state that
@@ -2218,12 +2280,13 @@ async def log_requests(request: Request, call_next):
 
 def _diagnostics_payload() -> dict:
     """Build the /api/diagnostics body. Pure-ish — only safe local I/O."""
-    from machine_registry import load_machine_registry  # local import to avoid cycle
+    from machine_registry import load_machine_registry, resolve_registry_source  # local import to avoid cycle
 
     # Registry load status
     registry_status: dict[str, object]
     registry_err: str | None = None
     machines_count = 0
+    _registry_path, _registry_source = resolve_registry_source(None)
     try:
         _registry = load_machine_registry()
         machines_count = len(_registry.get("machines", []))
@@ -2232,14 +2295,16 @@ def _diagnostics_payload() -> dict:
             "machines": machines_count,
             "empty": machines_count == 0,
             "version": _registry.get("version"),
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
     except Exception as exc:  # noqa: BLE001
         registry_err = str(exc)
         registry_status = {
             "loaded": False,
             "error": registry_err,
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
 
     # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
@@ -2331,6 +2396,15 @@ def _diagnostics_payload() -> dict:
 
     wsl_vhdx_status = _diagnostics_router.get_cached_wsl_vhdx_status() if _diagnostics_router else []
 
+    # Optional-integration availability for the standalone/no-fleet profile (#3180)
+    integrations_status: dict[str, Any]
+    try:
+        from integration_health import check_all_integration_availability
+
+        integrations_status = check_all_integration_availability()
+    except Exception as exc:  # noqa: BLE001
+        integrations_status = {"error": str(exc)}
+
     # Overall health summary so deploy-check.sh can grep one field
     fleet_node_count_raw = fleet_status.get("node_count", 0)
     fleet_node_count = fleet_node_count_raw if isinstance(fleet_node_count_raw, int) else 0
@@ -2351,6 +2425,7 @@ def _diagnostics_payload() -> dict:
         "cache": cache_status,
         "wsl_vhdx_status": wsl_vhdx_status,
         "storage_handle_incident": storage_handle_incident,
+        "integrations": integrations_status,
     }
 
 
@@ -2721,12 +2796,97 @@ _assessments_router.set_run_cmd(run_cmd)
 
 _leader_lock_fd = None
 
+
+def _leader_lock_candidate_paths() -> list[str]:
+    """Ordered lock-file paths for single-leader election (#666, #3172)."""
+    raw = [
+        os.environ.get("DASHBOARD_LEADER_LOCK_PATH"),
+        "/var/run/runner-dashboard-leader.lock",
+        f"/run/user/{os.getuid()}/runner-dashboard-leader.lock",  # type: ignore[attr-defined]
+        os.path.expanduser("~/.cache/runner-dashboard-leader.lock"),
+        "/tmp/runner-dashboard-leader.lock",
+    ]
+    return [p for p in raw if p]
+
+
+def _acquire_leader_lock() -> bool:
+    """Try to acquire the dashboard leader file lock.
+
+    Returns True when this process holds the lock (leader). False when another
+    process holds a reachable lock path — do not try alternate paths (#3172).
+    """
+    import fcntl
+
+    global _leader_lock_fd
+    acquired = False
+    last_err: OSError | None = None
+    for candidate in _leader_lock_candidate_paths():
+        try:
+            os.makedirs(os.path.dirname(candidate), exist_ok=True)
+            _leader_lock_fd = open(candidate, "w")
+        except OSError as exc:
+            last_err = exc
+            log.info(
+                "Leader lock path %s unusable (%s); trying next candidate",
+                candidate,
+                exc,
+            )
+            if _leader_lock_fd is not None:
+                try:
+                    _leader_lock_fd.close()
+                except OSError:
+                    pass
+                _leader_lock_fd = None
+            continue
+
+        try:
+            fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
+        except BlockingIOError:
+            try:
+                _leader_lock_fd.close()
+            except OSError:
+                pass
+            _leader_lock_fd = None
+            log.info(
+                "Leader lock %s is held by another instance; running as follower (not trying alternate lock paths)",
+                candidate,
+            )
+            return False
+        except OSError as exc:
+            last_err = exc
+            log.info(
+                "Leader lock path %s unusable during flock (%s); trying next candidate",
+                candidate,
+                exc,
+            )
+            try:
+                _leader_lock_fd.close()
+            except OSError:
+                pass
+            _leader_lock_fd = None
+            continue
+
+        log.info("Acquired leader lock at %s", candidate)
+        acquired = True
+        break
+
+    if not acquired:
+        log.info(
+            "Could not acquire leader lock on any candidate path; running as follower: %s",
+            last_err,
+        )
+    return acquired
+
+
 # Runner routing audit refresh route extracted to routers/diagnostics.py (issue #360).
 
 
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
+    if os.environ.get("RUNNER_DASHBOARD_DEMO") == "1":
+        log.info("Demo mode enabled; skipping external clients and background workers")
+        return
     from oauth_config import OAuthConfig, validate_oauth_startup
 
     validate_oauth_startup(OAuthConfig.from_env())
@@ -2797,9 +2957,6 @@ async def _startup() -> None:
     else:
         log.debug("systemd.daemon not available; omitting sd_notify")
 
-    # Start systemd watchdog heartbeat task (issue #707)
-    asyncio.create_task(_watchdog_heartbeat())
-
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())
 
@@ -2865,6 +3022,13 @@ async def _startup() -> None:
 
     start_schedule_loop()
 
+    if dashboard_config.LIGHTWEIGHT_STARTUP:
+        log.info(
+            "DASHBOARD_LIGHTWEIGHT_STARTUP=1: skipping leader election and background hub tasks",
+        )
+        _runner_audit_router.set_org(ORG)
+        return
+
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236
@@ -2872,50 +3036,11 @@ async def _startup() -> None:
         return
 
     try:
-        import fcntl
-
-        global _leader_lock_fd
-        # Walk a candidate list and use the first writable path. Same
-        # regression #664's follow-up fixed in the autoscaler: hard-coded
-        # /var/run/ with a dir-existence check that always passed (because
-        # /run exists via symlink) — non-root deploys hit PermissionError
-        # and got demoted to follower forever. See #666.
-        candidates = [
-            os.environ.get("DASHBOARD_LEADER_LOCK_PATH"),
-            "/var/run/runner-dashboard-leader.lock",
-            f"/run/user/{os.getuid()}/runner-dashboard-leader.lock",  # type: ignore[attr-defined]
-            os.path.expanduser("~/.cache/runner-dashboard-leader.lock"),
-            "/tmp/runner-dashboard-leader.lock",
-        ]
-        acquired = False
-        last_err: OSError | None = None
-        for candidate in candidates:
-            if not candidate:
-                continue
-            try:
-                os.makedirs(os.path.dirname(candidate), exist_ok=True)
-                _leader_lock_fd = open(candidate, "w")
-                fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
-                log.info("Acquired leader lock at %s, starting background tasks", candidate)
-                _runner_audit_router.start_audit_loop()
-                _linear_sync_router.start_sync_loop()  # issue #236
-                _staff_schedule_router.start_scheduler()  # issue #1196
-                acquired = True
-                break
-            except OSError as exc:
-                last_err = exc
-                if _leader_lock_fd is not None:
-                    try:
-                        _leader_lock_fd.close()
-                    except OSError:
-                        pass
-                    _leader_lock_fd = None
-                continue
-        if not acquired:
-            log.info(
-                "Could not acquire leader lock on any candidate path; running as follower: %s",
-                last_err,
-            )
+        if _acquire_leader_lock():
+            log.info("Starting leader background tasks")
+            _runner_audit_router.start_audit_loop()
+            _linear_sync_router.start_sync_loop()  # issue #236
+            _staff_schedule_router.start_scheduler()  # issue #1196, #1293
     except ImportError:
         log.warning("fcntl not available on this platform, running without file lock")
         _runner_audit_router.start_audit_loop()
