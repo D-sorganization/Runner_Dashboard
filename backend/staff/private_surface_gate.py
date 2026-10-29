@@ -72,8 +72,8 @@ def gate_text(text: str) -> str:
     never contains the raw content of a span unless that span's level was
     exactly ``PUBLIC``. Any malformed or ambiguous marker (unknown level,
     non-alpha characters in the header, case/whitespace variants, missing or
-    orphan closing delimiter, or nested marker) fails closed as PRIVATE: it
-    and everything after it in *text* is replaced by ``MALFORMED_PLACEHOLDER``.
+    orphan closing delimiter, or nested marker) fails closed as PRIVATE by
+    withholding the payload with ``MALFORMED_PLACEHOLDER``.
     """
     if _ANY_MARKER_RE.search(text) is None:
         return text
@@ -87,12 +87,10 @@ def gate_text(text: str) -> str:
         out.append(text[pos : marker.start()])
         match = _STRICT_OPEN_RE.match(text, marker.start())
         if match is None or match.group(1) not in Level.__members__:
-            out.append(MALFORMED_PLACEHOLDER)
-            break
+            return MALFORMED_PLACEHOLDER
         next_marker = _ANY_MARKER_RE.search(text, match.end())
         if next_marker is None or not text.startswith(_CLOSE_TAG, next_marker.start()):
-            out.append(MALFORMED_PLACEHOLDER)
-            break
+            return MALFORMED_PLACEHOLDER
         level = Level[match.group(1)]
         inner = text[match.end() : next_marker.start()]
         out.append(inner if level is Level.PUBLIC else PLACEHOLDER)

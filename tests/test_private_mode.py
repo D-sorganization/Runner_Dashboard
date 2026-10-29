@@ -477,3 +477,8 @@ def test_f02_marker_property_and_fuzz() -> None:
         wrapped = f"<<PRIVATE:SENSITIVE>>LEAK_CANARY_99<<END_PRIVATE>> {raw}"
         out_wrapped = gate_text(wrapped)
         assert "LEAK_CANARY_99" not in out_wrapped or MALFORMED_PLACEHOLDER in out_wrapped or PLACEHOLDER in out_wrapped
+        injected = "pre <<PRIVATE:PUBLIC>>ok <<END_PRIVATE>> LEAK_CANARY_99<<END_PRIVATE>> post"
+        out_injected = gate_text(injected)
+        assert "LEAK_CANARY_99" not in out_injected
+        assert out_injected == MALFORMED_PLACEHOLDER
+
