@@ -375,9 +375,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-<<<<<<< HEAD
-          EXEMPT="server.py|agent_remediation.py|dispatch_contract.py|agent_dispatch_router.py|credentials.py|security.py|App.tsx|queue.py|remediation.py|Queue/index.tsx|total|quick_dispatch.py|diagnostics.py|gh_client.py|system_utils.py|runner_autoscaler.py|queue_cleanup.py|Mobile.test.tsx|Principals.tsx|Analysis.tsx|RemediationPRs.tsx|Machines.tsx|FleetTab.tsx|FleetOrchestration.tsx|FeatureRequests.tsx|RemediationTab.tsx|Workflows.tsx|RemediationIssues.tsx|navRegistry.ts|api-types.ts|identity.py|machine_registry.py"
-=======
           # RD-33: exact repo-relative paths, matched whole-line (grep -vxF).
           # The old unanchored regex let look-alikes slip through uncapped
           # (e.g. "queue.py" also matched backend/staff/board_queue.py;
@@ -392,7 +389,6 @@ jobs:
           backend/agent_dispatch_router.py
           backend/routers/credentials.py
           backend/security.py
-          backend/routers/maxwell.py
           backend/routers/queue.py
           backend/routers/remediation.py
           backend/routers/diagnostics.py
@@ -423,7 +419,6 @@ jobs:
           frontend/src/pages/Reports/__tests__/Mobile.test.tsx
           PATHS
           )
->>>>>>> origin/main
           if [ "$EVENT_NAME" = "pull_request" ]; then
             # Fail CLOSED (RD#2730): a shallow checkout has no merge base, so
             # fetch the exact base commit and diff it against HEAD directly
