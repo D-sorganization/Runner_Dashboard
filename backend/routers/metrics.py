@@ -92,6 +92,13 @@ def collect_metrics_snapshot() -> dict[str, Any]:
     # #2766: PRs red for more than 24h with zero CI-fix attempts, refreshed by the sweep
     # (``ci_fix_service.run_ci_fix_sweep``); 0 until the first sweep has run.
     ci_fix_red = cache_get("ci_fix_red_24h_zero_fix_total", 86400.0) or {}
+    activity: dict[str, Any] = {}
+    try:
+        from activity_transcript import activity_metrics_snapshot  # noqa: PLC0415
+
+        activity = activity_metrics_snapshot()
+    except Exception:
+        activity = {}
     return {
         "nodes": nodes,
         "in_flight": len(board.get("running", [])) + len(board.get("queued", [])),
@@ -101,6 +108,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "liveness_alerts": len(liveness_alerts),
         "holds_active": len(staff_fleet.holds_snapshot()),
         "ci_slo": ci_slo if isinstance(ci_slo, dict) else {},
+        "activity": activity,
         "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
     }
 
@@ -176,6 +184,23 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
         ]
     )
     ci_slo = snapshot.get("ci_slo") or {}
+    activity = snapshot.get("activity") or {}
+    if isinstance(activity, dict) and activity:
+        lines += [
+            "# HELP rd_activity_ingest_events_total Activity transcript chunks accepted.",
+            "# TYPE rd_activity_ingest_events_total counter",
+            f"rd_activity_ingest_events_total {int(activity.get('ingest_events', 0))}",
+            "# TYPE rd_activity_spool_bytes gauge",
+            f"rd_activity_spool_bytes {int(activity.get('store_bytes', 0))}",
+            "# TYPE rd_activity_spool_depth gauge",
+            f"rd_activity_spool_depth {int(activity.get('spool_depth', 0))}",
+            "# TYPE rd_activity_gaps_total counter",
+            f"rd_activity_gaps_total {int(activity.get('gaps_total', 0))}",
+        ]
+        lines += [
+            f'rd_activity_ingest_rejects_total{{code="{code}"}} {int(activity.get(f"reject_{code}", 0))}'
+            for code in ("413", "429", "409")
+        ]
     if isinstance(ci_slo, dict) and ci_slo.get("metrics"):
         lines.extend(
             [
