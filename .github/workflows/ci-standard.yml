@@ -44,12 +44,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
-permissions:
-  actions: write
-  contents: read
-  pull-requests: read
-  security-events: write
-
 jobs:
   pick-runner:
     name: Select reversible CI runner
