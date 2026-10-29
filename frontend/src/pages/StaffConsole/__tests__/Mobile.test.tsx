@@ -53,6 +53,16 @@ const MOCK_ROLES: StaffRoleItem[] = [
     last_message_at: "2026-09-25T12:00:00Z",
   },
   {
+    name: "rd-barb",
+    title: "RD Barb",
+    summary: "Persistent Runner Dashboard Barb seat",
+    group: "leadership",
+    valid: true,
+    dispatchable: false,
+    active_runs: 0,
+    caller_unread_count: 0,
+  },
+  {
     name: "architect",
     title: "Chief Architect",
     summary: "System design, ADR review, technical debt oversight",
@@ -81,6 +91,14 @@ const MOCK_BARB_THREAD: ThreadInfo = {
   title: "Conversation with Barb",
   kind: "auto",
   participants: ["user", "barb"],
+  status: "active",
+};
+
+const MOCK_RD_BARB_THREAD: ThreadInfo = {
+  id: "thread-rd-barb-direct",
+  title: "Conversation with RD Barb",
+  kind: "direct",
+  participants: ["user", "rd-barb"],
   status: "active",
 };
 
@@ -136,7 +154,7 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     } as Location;
 
     vi.spyOn(window.history, "pushState").mockImplementation(() => {});
-    threadApi.fetchThreads.mockResolvedValue({ threads: [MOCK_BARB_THREAD] });
+    threadApi.fetchThreads.mockResolvedValue({ threads: [MOCK_BARB_THREAD, MOCK_RD_BARB_THREAD] });
     threadApi.fetchThreadMessages.mockResolvedValue({ messages: [] });
     threadApi.fetchRoster.mockResolvedValue({ roles: MOCK_ROLES });
     threadApi.fetchRuns.mockResolvedValue({
@@ -199,11 +217,13 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(screen.getByTestId("staff-mobile-roster")).toBeInTheDocument();
   });
 
-  it("opens Barb's conversation after a successful send from the chat-first home", async () => {
+  it("opens rd-barb's direct conversation (not the auto-route barb thread) after a successful send from the chat-first home (#3493)", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
     threadApi.postThreadMessage.mockResolvedValue({ id: "sent-mobile-home" });
     render(<StaffConsoleMobile initialView="home" roles={MOCK_ROLES} />);
+
+    expect(screen.getByPlaceholderText("Message RD Barb...")).toBeInTheDocument();
 
     await user.type(screen.getByRole("textbox", { name: /staff conversation input/i }), "Check the queue");
     await user.click(screen.getByRole("button", { name: "Send message" }));
@@ -211,15 +231,30 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     await waitFor(() => expect(screen.getByTestId("staff-mobile-thread")).toBeInTheDocument());
     expect(screen.queryByTestId("staff-mobile-home")).not.toBeInTheDocument();
     expect(threadApi.postThreadMessage).toHaveBeenCalledWith(
-      MOCK_BARB_THREAD.id,
+      MOCK_RD_BARB_THREAD.id,
       expect.objectContaining({ body: "Check the queue" }),
       expect.any(String),
+    );
+    expect(threadApi.postThreadMessage).not.toHaveBeenCalledWith(
+      MOCK_BARB_THREAD.id,
+      expect.anything(),
+      expect.anything(),
     );
     expect(window.history.pushState).toHaveBeenCalledWith(
       null,
       "",
-      expect.stringMatching(/thread=thread-barb-auto/),
+      "?role=rd-barb&thread=thread-rd-barb-direct",
     );
+  });
+
+  it("locks the chat-first home and shows an explicit status instead of falling back to barb when rd-barb is missing from the roster (#3493)", async () => {
+    const rolesWithoutRdBarb = MOCK_ROLES.filter((role) => role.name !== "rd-barb");
+    const callsBefore = threadApi.postThreadMessage.mock.calls.length;
+    render(<StaffConsoleMobile initialView="home" roles={rolesWithoutRdBarb} />);
+
+    expect(screen.getByTestId("staff-mobile-rd-barb-unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /staff conversation input/i })).toBeDisabled();
+    expect(threadApi.postThreadMessage.mock.calls.length).toBe(callsBefore);
   });
 
   it("does not reopen the thread when the user leaves home before a send completes", async () => {
