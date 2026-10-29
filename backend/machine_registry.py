@@ -30,7 +30,7 @@ EXAMPLE_REGISTRY_PATH = Path(__file__).with_name("machine_registry.example.yml")
 DEPLOYED_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
 # Back-compat for callers that referenced the old shipped default path constant.
-DEFAULT_REGISTRY_PATH = LOCAL_REGISTRY_PATH
+DEFAULT_REGISTRY_PATH = EXAMPLE_REGISTRY_PATH
 
 
 def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
@@ -44,6 +44,8 @@ def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
         return LOCAL_REGISTRY_PATH, "local"
     if DEPLOYED_REGISTRY_PATH.is_file():
         return DEPLOYED_REGISTRY_PATH, "deployed"
+    if EXAMPLE_REGISTRY_PATH.is_file():
+        return EXAMPLE_REGISTRY_PATH, "shipped"
     return LOCAL_REGISTRY_PATH, "local"
 
 
@@ -716,12 +718,13 @@ def build_machine_registry_index(
     return index
 
 
+
+
 def is_portable_machine(name: str, registry: dict[str, Any] | None = None) -> bool:
     """True when ``name`` resolves to a registry machine flagged ``portable: true`` (#3323)."""
     reg = registry if registry is not None else load_machine_registry()
     entry = build_machine_registry_index(reg).get(_normalize_token(name))
     return bool(entry.get("portable")) if entry else False
-
 
 def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
