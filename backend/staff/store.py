@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from activity_producers import record_staff_run_activity
+from staff.dispatcher_metrics import dispatcher_origin
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
@@ -101,6 +102,8 @@ class RunRecord:
     lessons_tokens: int = 0
     execution_mode: str = "local"
     remote_session_url: str = ""
+    dispatched_by: str = ""
+    dispatch_origin: str = ""
 
     def __post_init__(self) -> None:
         self.retryable, self.attempt, self.max_attempts = (
@@ -108,6 +111,8 @@ class RunRecord:
             int(self.attempt),
             int(self.max_attempts),
         )
+        self.dispatched_by = self.dispatched_by or self.requested_by
+        self.dispatch_origin = self.dispatch_origin or dispatcher_origin(self.dispatched_by)
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
