@@ -26,7 +26,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from staff.redaction import redact_sensitive_content  # noqa: E402
+from private_mode import Level, PrivateModeConfig  # noqa: E402
+from private_mode_emit import emit_shared as _pm_emit_shared  # noqa: E402
 
 from scripts import rd_barb_notify as _notify  # noqa: E402
 
@@ -34,6 +35,7 @@ MAX_CAPSULE_BYTES = 8 * 1024
 VALID_CLASSIFICATIONS = frozenset({"PUBLIC", "INTERNAL", "SENSITIVE"})
 VALID_SOURCES = frozenset({"rd", "grok-fallback"})
 _CONFIDENTIAL_RE = re.compile(r"security[-_ ]confidential", re.IGNORECASE)
+_PM_ENABLED = PrivateModeConfig(enabled=True, default_level=Level.INTERNAL)
 
 MirrorWriter = Callable[[str, dict[str, Any]], None]
 
@@ -88,7 +90,8 @@ def _lint_serialized(raw_json: str) -> None:
     encoded = raw_json.encode("utf-8")
     if len(encoded) > MAX_CAPSULE_BYTES:
         raise CapsuleError(f"capsule size {len(encoded)} bytes exceeds 8 KB ({MAX_CAPSULE_BYTES} bytes) cap")
-    if _CONFIDENTIAL_RE.search(raw_json) or redact_sensitive_content(raw_json) != raw_json:
+    redacted = _pm_emit_shared("capsule", raw_json, level=Level.PUBLIC).content
+    if _CONFIDENTIAL_RE.search(raw_json) or redacted != raw_json:
         raise CapsuleError("capsule refused: payload contains a secret, private token, or confidential marker")
 
 
@@ -104,6 +107,12 @@ def emit_shared(capsule: Mapping[str, Any]) -> dict[str, Any]:
     open_items = list(capsule.get("open_items") or [])
     cursors = dict(capsule.get("cursors") or {})
     next_slots = _validate_slots(capsule.get("next_slots"))
+    pm_proj = _pm_emit_shared(
+        "capsule",
+        {"id": role, "role_id": role, "epoch": epoch, "count": len(open_items), "status": "ok"},
+        level=Level[classification],
+        config=_PM_ENABLED,
+    )
     base: dict[str, Any] = {
         "role": role,
         "classification": classification,
@@ -112,8 +121,10 @@ def emit_shared(capsule: Mapping[str, Any]) -> dict[str, Any]:
         "last_scorecard_date": capsule.get("last_scorecard_date"),
         "next_slots": next_slots,
         "updated_at": float(capsule.get("updated_at") or 0.0),
+        "opaque_id": pm_proj.opaque_id,
+        "withheld": pm_proj.withheld,
     }
-    if classification == "SENSITIVE":
+    if pm_proj.withheld:
         return {
             **base,
             "open_item_count": len(open_items),
