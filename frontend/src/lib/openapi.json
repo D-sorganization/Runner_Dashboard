@@ -4092,6 +4092,85 @@
         "title": "PresenceBody",
         "type": "object"
       },
+      "PresentationPrefsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_overrides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Avatar Overrides",
+            "type": "object"
+          },
+          "display_label": {
+            "title": "Display Label",
+            "type": "string"
+          },
+          "operator_id": {
+            "title": "Operator Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "role_order": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Order",
+            "type": "array"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operator_id",
+          "display_label",
+          "role_order",
+          "avatar_overrides",
+          "revision",
+          "updated_at"
+        ],
+        "title": "PresentationPrefsResponse",
+        "type": "object"
+      },
+      "PresentationPrefsSaveBody": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_overrides": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Avatar Overrides",
+            "type": "object"
+          },
+          "display_label": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Display Label",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "role_order": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "title": "Role Order",
+            "type": "array"
+          }
+        },
+        "required": ["expected_revision"],
+        "title": "PresentationPrefsSaveBody",
+        "type": "object"
+      },
       "ProjectCreateBody": {
         "additionalProperties": false,
         "properties": {
@@ -26884,6 +26963,105 @@
         ],
         "summary": "Pr Hygiene Rearm",
         "tags": ["staff-v1", "staff-pr-hygiene"]
+      }
+    },
+    "/api/v1/staff/presentation-prefs": {
+      "get": {
+        "operationId": "get_presentation_prefs_v1_api_v1_staff_presentation_prefs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresentationPrefsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Presentation Prefs V1",
+        "tags": ["staff-presentation-prefs"]
+      },
+      "put": {
+        "operationId": "save_presentation_prefs_v1_api_v1_staff_presentation_prefs_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresentationPrefsSaveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresentationPrefsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Save Presentation Prefs V1",
+        "tags": ["staff-presentation-prefs"]
+      }
+    },
+    "/api/v1/staff/presentation-prefs/reset": {
+      "post": {
+        "operationId": "reset_presentation_prefs_v1_api_v1_staff_presentation_prefs_reset_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresentationPrefsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reset Presentation Prefs V1",
+        "tags": ["staff-presentation-prefs"]
       }
     },
     "/api/v1/staff/projects": {
