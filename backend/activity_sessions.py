@@ -155,6 +155,4 @@ def compute_sessions(
     empty_reason: EmptyReason | None = None
     if not page:
         empty_reason = "complete_empty" if not store.has_any_events() else "local_empty"
-    return SessionsPage(
-        items=page, scan_limit=scan_limit, truncated=len(raw) >= scan_limit, empty_reason=empty_reason
-    )
+    return SessionsPage(items=page, scan_limit=scan_limit, truncated=len(raw) >= scan_limit, empty_reason=empty_reason)
