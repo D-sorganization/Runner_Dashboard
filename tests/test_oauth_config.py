@@ -23,6 +23,7 @@ def _valid_env() -> dict[str, str]:
         "GITHUB_ORG": "D-sorganization",
         "DASHBOARD_PUBLIC_ORIGIN": _DESK_ORIGIN,
         "GITHUB_OAUTH_CALLBACK_URL": _DESK_CALLBACK,
+        "DASHBOARD_OAUTH_ALLOWED_ORIGINS": _DESK_ORIGIN,
         "SESSION_SECRET": "b" * 32,
         "DASHBOARD_TLS": "1",
     }
