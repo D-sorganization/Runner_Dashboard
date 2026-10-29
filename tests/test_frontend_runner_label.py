@@ -51,7 +51,11 @@ _SWITCH_SUFFIX = "|| vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}"
 
 def _load_jobs() -> dict[str, dict[str, Any]]:
     data = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
-    return data["jobs"]
+    return {
+        job_id: job
+        for job_id, job in data["jobs"].items()
+        if "uses" not in job
+    }
 
 
 def test_every_frontend_job_uses_browser_label_switch() -> None:

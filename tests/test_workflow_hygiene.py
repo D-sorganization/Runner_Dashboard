@@ -904,7 +904,9 @@ def test_heavy_security_scanners_run_on_pull_request_or_schedule_not_merge_group
     assert "needs.changes.outputs.run_python_tests == 'true'" in gate
     for step_name in _HEAVY_SCANNER_STEPS:
         step_if = str(_ci_step("lint", name=step_name).get("if", ""))
-        assert step_if == gate, f"{step_name} must share the security-scan job gate"
+        assert step_if == gate.removeprefix("always() && !cancelled() && "), (
+            f"{step_name} must share the security-scan job gate"
+        )
 
 
 def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
@@ -921,7 +923,9 @@ def test_required_aggregates_report_on_every_event(job_id: str) -> None:
     from scripts.check_required_checks_drift import check_job_fails_closed
 
     job = _ci_jobs()[job_id]
-    assert job.get("if") == "always()", f"{job_id} must run on every event"
+    condition = str(job.get("if", ""))
+    assert "always()" in condition, f"{job_id} must run on every event"
+    assert "!cancelled()" in condition, f"{job_id} must not run when the workflow is cancelled"
     assert "changes" in job["needs"], f"{job_id} must read the tier decision"
     assert check_job_fails_closed(_CI_STANDARD.read_text(encoding="utf-8"), job_id) == []
 
