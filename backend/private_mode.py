@@ -489,4 +489,8 @@ def __getattr__(name: str) -> Any:
 
     if name in _pmc.EXPORTS:
         return getattr(_pmc, name)
+    import private_mode_dry_run as _pmd  # noqa: PLC0415
+
+    if name in _pmd.EXPORTS:
+        return getattr(_pmd, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
