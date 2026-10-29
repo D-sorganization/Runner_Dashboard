@@ -49,9 +49,12 @@ async def get_memory_entries(
 
 @router.get("/context-pack")
 async def get_context_pack(
-    _reader: Principal = Depends(require_scope("memory.read")),
+    repo: str | None = Query(None, include_in_schema=False),
+    scope: str | None = Query(None, include_in_schema=False),
+    data_class: str | None = Query(None, include_in_schema=False),
+    reader: Principal = Depends(require_scope("memory.read")),
 ) -> dict:
-    return build_context_pack().model_dump()
+    return build_context_pack(reader, repo=repo, scope=scope, data_class=data_class).model_dump()
 
 
 @router.post("", response_model=MemoryAppendResponse, status_code=201)

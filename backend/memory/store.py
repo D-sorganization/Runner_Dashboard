@@ -300,8 +300,10 @@ class AssistantMemoryStore:
             params.append(author)
         if not include_superseded:
             clauses.append("superseded_by IS NULL")
-        if not include_barb_only:
-            clauses.append("(visibility IS NULL OR visibility != 'barb-only')")
+        if include_barb_only:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility IN ('fleet', 'barb-only'))")
+        else:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility = 'fleet')")
         if active_only:
             clauses.append("memory_expiry_is_future(expires_at, ?)")
             params.append(_now())
@@ -345,8 +347,10 @@ class AssistantMemoryStore:
                 params.append(v)
         if not include_superseded:
             clauses.append("superseded_by IS NULL")
-        if not include_barb_only:
-            clauses.append("(visibility IS NULL OR visibility != 'barb-only')")
+        if include_barb_only:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility IN ('fleet', 'barb-only'))")
+        else:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility = 'fleet')")
         if active_only:
             clauses.append("memory_expiry_is_future(expires_at, ?)")
             params.append(_now())
