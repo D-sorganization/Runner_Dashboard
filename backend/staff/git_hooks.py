@@ -2,18 +2,40 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
+import os
 import re
 import shlex
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from types import ModuleType
 
 log = logging.getLogger(__name__)
 
 _ISSUE_BRANCH = re.compile(r"^(?:issue[-_]?)?#?(\d+)(?=$|[-_])")
 _ZERO_SHA = re.compile(r"^0+$")
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def _load_push_hygiene() -> ModuleType | None:
+    try:
+        from shared_scripts import push_hygiene
+
+        return push_hygiene
+    except ImportError:
+        candidate = Path(__file__).resolve().parents[2] / "shared_scripts" / "push_hygiene.py"
+        if not candidate.is_file():
+            return None
+        spec = importlib.util.spec_from_file_location("_rd_push_hygiene", candidate)
+        if spec is None or spec.loader is None:
+            return None
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+        return mod
 
 
 def _git(root: Path, *args: str, input_text: str | None = None) -> str:
@@ -90,6 +112,27 @@ def _run_tool(command: Sequence[str]) -> None:
     subprocess.run(command, check=True, timeout=120)
 
 
+def _check_push_hygiene(root: Path, head: str, issue: str | None) -> bool:
+    auto_merge = os.environ.get("STAFF_PR_AUTO_MERGE", "").strip().lower() in _TRUTHY
+    in_queue = os.environ.get("STAFF_PR_IN_MERGE_QUEUE", "").strip().lower() in _TRUTHY
+    if not auto_merge and not in_queue:
+        return True
+    hygiene = _load_push_hygiene()
+    if hygiene is None:
+        return True
+    commit = hygiene.inspect_git_commit(root, head, main_ref="origin/main")
+    pr_state = hygiene.PullRequestQueueState(
+        pr_number=int(issue) if issue and issue.isdigit() else None,
+        auto_merge_enabled=auto_merge,
+        in_merge_queue=in_queue,
+    )
+    decision = hygiene.evaluate_push_hygiene(commit, pr_state)
+    if not decision.allowed:
+        log.error("pre-push: push-hygiene: %s", decision.reason)
+        return False
+    return True
+
+
 def run_pre_push_checks(root: Path, ref_lines: str) -> int:
     """Check the refs in Git's pre-push protocol, returning a process status."""
     root = root.resolve(strict=True)
@@ -109,6 +152,8 @@ def run_pre_push_checks(root: Path, ref_lines: str) -> int:
         if re.fullmatch(r"0+", head):
             continue
         try:
+            if not _check_push_hygiene(root, head, issue):
+                return 1
             diff_size, has_additions = _diff_size(root, "origin/main", head)
             if has_additions and diff_size >= 500:
                 log.error(
