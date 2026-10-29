@@ -35,6 +35,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
     from staff import fleet as staff_fleet  # noqa: PLC0415
     from staff.classifier import format_attention_items  # noqa: PLC0415
     from staff.exclusions import active_exclusions  # noqa: PLC0415
+    from staff.holds import holds_metrics_snapshot  # noqa: PLC0415
     from staff.runner import get_runner  # noqa: PLC0415
 
     runner = get_runner()
@@ -107,6 +108,8 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "attention_items": len(format_attention_items(recent)),
         "liveness_alerts": len(liveness_alerts),
         "holds_active": len(staff_fleet.holds_snapshot()),
+        "holds_load_errors_total": holds_metrics_snapshot()["load_errors_total"],
+        "holds_corrupt": holds_metrics_snapshot()["corrupt"],
         "ci_slo": ci_slo if isinstance(ci_slo, dict) else {},
         "activity": activity,
         "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
@@ -178,6 +181,12 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
             "# HELP rd_holds_active_total Active fleet/staff holds.",
             "# TYPE rd_holds_active_total gauge",
             f"rd_holds_active_total {int(snapshot.get('holds_active', 0))}",
+            "# HELP rd_holds_load_errors_total Total times staff_holds.json failed closed on load.",
+            "# TYPE rd_holds_load_errors_total counter",
+            f"rd_holds_load_errors_total {int(snapshot.get('holds_load_errors_total', 0))}",
+            "# HELP rd_holds_corrupt Whether staff_holds.json is currently failing closed (1=corrupt, 0=ok).",
+            "# TYPE rd_holds_corrupt gauge",
+            f"rd_holds_corrupt {int(snapshot.get('holds_corrupt', 0))}",
             "# HELP rd_ci_fix_red_24h_zero_fix_total Open PRs red >24h with zero CI-fix attempts.",
             "# TYPE rd_ci_fix_red_24h_zero_fix_total gauge",
             f"rd_ci_fix_red_24h_zero_fix_total {int(snapshot.get('ci_fix_red_24h_zero_fix_total', 0))}",
