@@ -165,32 +165,6 @@ def derive_pool_topology(
     return None, []
 
 
-def assert_no_maxwell_port_collision(
-    registry: Mapping[str, Any],
-    *,
-    maxwell_port: int,
-    local_port: int,
-) -> None:
-    """Fail fast when Maxwell's port collides with a registry dashboard port.
-
-    Issue #942: the registry's second pool reserved :8322, which historically
-    matched Maxwell's default port — so a default deploy probed a second
-    dashboard and misreported it as Maxwell. We refuse to start when
-    ``MAXWELL_PORT`` equals a *peer* dashboard port (any registry
-    ``dashboard_url`` port other than this dashboard's own ``local_port``),
-    surfacing the misconfiguration loudly instead of silently mis-probing.
-
-    Raises ``RuntimeError`` on collision; returns ``None`` otherwise.
-    """
-    peer_ports = registry_dashboard_url_ports(registry) - {local_port}
-    if maxwell_port in peer_ports:
-        raise RuntimeError(
-            f"MAXWELL_PORT={maxwell_port} collides with a fleet dashboard port in "
-            f"machine_registry.yml (ports {sorted(peer_ports)}). Set MAXWELL_PORT / "
-            f"MAXWELL_URL to a distinct port, or fix the registry dashboard_url."
-        )
-
-
 def registry_dashboard_url_ports(registry: Mapping[str, Any]) -> set[int]:
     """Return every explicit port used by an active machine or pool ``dashboard_url``."""
     ports: set[int] = set()

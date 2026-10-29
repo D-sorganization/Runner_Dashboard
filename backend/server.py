@@ -204,7 +204,6 @@ from routers import library as _library_router  # noqa: E402  # issue #2165
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_sync as _linear_sync_router  # noqa: E402  # issue #236
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
-from routers import maxwell as _maxwell_router  # noqa: E402
 from routers import orchestration as _orchestration_router  # noqa: E402
 from routers import providers as _providers_router  # noqa: E402  # issue #810
 from routers import queue as _queue_router  # noqa: E402
@@ -759,7 +758,6 @@ app.include_router(_code_requests_board_router.router)
 app.include_router(_code_requests_executor_router.router)
 app.include_router(_code_request_plans_router.router)
 app.include_router(_agent_profiles_router.router)
-app.include_router(_maxwell_router.router)
 app.include_router(_deployment_router.router)
 app.include_router(_reports_router.router)
 app.include_router(_heavy_tests_router.router)
@@ -2587,7 +2585,6 @@ DASHBOARD_FAQ: dict[str, str] = {
         "The Feature Requests tab (now Code Requests) dispatches AI agents to plan and execute code requests"
         " with standards injection (TDD, DbC, DRY, LoD)."
     ),
-    "maxwell": ("The Maxwell tab shows Maxwell-Daemon status and lets you start/stop the service with confirmation."),
     "queue": "The Queue tab shows live queued and in-progress workflows with auto-refresh every 15 seconds.",
     "history": "The History tab shows recent workflow runs across all repos, filterable by status.",
     "machines": "The Machines tab shows hardware telemetry for each fleet node.",
@@ -2891,14 +2888,7 @@ async def _startup() -> None:
 
     validate_oauth_startup(OAuthConfig.from_env())
 
-    # Issue #942: refuse to start when Maxwell's port collides with a peer
-    # dashboard port declared in machine_registry.yml — a silent mis-probe
-    # otherwise misreports a sibling dashboard as the Maxwell daemon.
-    from dashboard_config import MAXWELL_PORT
-    from fleet_autoconfig import (
-        assert_no_maxwell_port_collision,
-        assert_valid_active_registry,
-    )
+    from fleet_autoconfig import assert_valid_active_registry
     from overlay_contract import assert_overlay_ready
 
     # Issue #3079: refuse to start when a configured private overlay is
@@ -2906,11 +2896,6 @@ async def _startup() -> None:
     assert_overlay_ready()
 
     _startup_reg = load_machine_registry()
-    assert_no_maxwell_port_collision(
-        _startup_reg,
-        maxwell_port=MAXWELL_PORT,
-        local_port=PORT,
-    )
     # Issue #1169: Fail fast if an active machine or pool has invalid configuration
     assert_valid_active_registry(_startup_reg)
 

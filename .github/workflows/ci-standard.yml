@@ -389,7 +389,6 @@ jobs:
           backend/agent_dispatch_router.py
           backend/routers/credentials.py
           backend/security.py
-          backend/routers/maxwell.py
           backend/routers/queue.py
           backend/routers/remediation.py
           backend/routers/diagnostics.py
