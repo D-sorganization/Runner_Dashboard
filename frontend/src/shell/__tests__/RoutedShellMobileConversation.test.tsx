@@ -104,7 +104,11 @@ describe("mobile Staff new-conversation route integration", () => {
     mocks.fetchThreadMessages.mockClear();
     renderStaffRoute();
 
-    expect(await screen.findByRole("heading", { name: "Conversation with barb" })).toBeInTheDocument();
+    // #2663: the reload no longer synthesizes a "Conversation with barb"
+    // placeholder from the URL — it fetches and authorizes th-created
+    // against the backend, so the real thread title renders.
+    expect(await screen.findByRole("heading", { name: "New conversation" })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.fetchThread).toHaveBeenCalledWith("th-created", expect.any(AbortSignal)));
     await waitFor(() => expect(mocks.fetchThreadMessages).toHaveBeenCalledWith("th-created", expect.any(AbortSignal)));
   });
 });

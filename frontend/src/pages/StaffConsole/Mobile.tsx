@@ -11,7 +11,6 @@ import { GroupCostConfirm } from "./GroupCostConfirm";
 import { MobileContextDrawer } from "./MobileContextDrawer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { InboxPanel } from "../Staff/InboxPanel";
-import { threadKindForRole } from "./consoleThreads";
 import { isPanelThread } from "./panelTurn";
 import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
@@ -62,16 +61,33 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   onDenyProposal,
   className = "",
 }) => {
+  // A thread id the shell asked for (sidebar tap or deep link) that this
+  // console has not yet locally confirmed. The backend is the only authority
+  // on a thread's content: while this is unresolved against activeThread, or
+  // if resolving it fails, the composer stays locked on the thread that is
+  // actually loaded (#2663 fail-closed contract from #2652). Never
+  // synthesize a thread object for this id — only ever hand it to
+  // useStaffConsole's initialThreadId fetch-and-authorize path. A console's
+  // own local selection (openRole/newConversation) is already authorized by
+  // the backend, so it clears this instead of setting it.
+  const [pendingThreadId, setPendingThreadId] = useState<string | null>(
+    () => parseUrlParams().threadId,
+  );
+  // initialThread only seeds useStaffConsole's very first render; once a
+  // pending id names a different thread, stop offering it so the fetch path
+  // takes over instead of being short-circuited by a stale seed.
   const sc = useStaffConsole({
     roles: initialRoles,
     initialRole,
-    initialThread,
+    initialThread: pendingThreadId && initialThread?.id !== pendingThreadId ? undefined : initialThread,
+    initialThreadId: pendingThreadId,
     initialMessages,
     onSendMessage,
     onApproveProposal,
     onDenyProposal,
   });
   const { roles, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
+  const composerLocked = Boolean(pendingThreadId) && activeThread?.id !== pendingThreadId;
   const [view, setView] = useState<MobileView>(initialView);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -106,17 +122,13 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   const syncWithUrl = () => {
     const { threadId, roleName, tab } = parseUrlParams();
     if (threadId) {
-      const known = initialThread?.id === threadId ? initialThread : null;
-      sc.openThread(
-        known ?? {
-          id: threadId,
-          title: roleName ? `Conversation with ${roleName}` : "Conversation",
-          kind: roleName ? threadKindForRole(roleName) : "direct",
-          participants: roleName ? [roleName] : [],
-          status: "active",
-        },
-        roleName ?? undefined,
-      );
+      // Never build a thread object from the URL: hand the id to
+      // useStaffConsole's initialThreadId fetch, which loads and authorizes
+      // it against the backend. The composer stays locked to whatever is
+      // already loaded until that resolves (see composerLocked above). A
+      // thread we already have loaded (e.g. our own selection echoed back
+      // through the shell's URL) needs no fetch and no lock.
+      if (threadId !== activeThread?.id) setPendingThreadId(threadId);
       setView("thread");
       return;
     }
@@ -142,6 +154,20 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  // A sibling surface (the Barb sidebar) can select a thread through the same
+  // onThreadSelected callback and navigate the shell's URL without firing a
+  // native "popstate" (SPA history.pushState doesn't). Re-read the URL after
+  // every render so that external selection reaches this mounted console too.
+  const lastSyncedSearchRef = useRef(
+    typeof window !== "undefined" ? window.location.search : "",
+  );
+  useEffect(() => {
+    const currentSearch = typeof window !== "undefined" ? window.location.search : "";
+    if (currentSearch === lastSyncedSearchRef.current) return;
+    lastSyncedSearchRef.current = currentSearch;
+    syncWithUrlRef.current();
+  });
+
   const displayMessages = sc.messages;
 
   // Open a specific role conversation on its backend thread.
@@ -149,6 +175,11 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     async (roleName: string, prefill = "") => {
       const thread = await sc.openRole(roleName);
       if (!thread) return;
+      // openRole already authorized this against the backend: clear any
+      // unrelated pending id instead of waiting on a URL round-trip back
+      // from the shell, so a local specialist pick is never locked out by a
+      // stale sidebar selection.
+      setPendingThreadId(null);
       applyComposerPrefill(prefill);
       setView("thread");
       selectMobileThread(thread.id, roleName, onThreadSelected, onOpenThread);
@@ -233,7 +264,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 className="staff-mobile__details-btn"
                 data-testid="staff-mobile-new-conversation-btn"
                 aria-label="New conversation"
-                onClick={() => void startNewMobileConversation(sc.newConversation, currentRoleObj.name, onThreadSelected, onOpenThread)}
+                onClick={() => {
+                  void startNewMobileConversation(sc.newConversation, currentRoleObj.name, onThreadSelected, onOpenThread)
+                    .then((thread) => thread && setPendingThreadId(null));
+                }}
               >
                 New conversation
               </button>
@@ -288,6 +322,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               selectedRole={selectedRole || undefined}
               onSendMessage={handleSendMessage}
               placeholder={`Message ${currentRoleObj.title || "staff"}…`} isPanel={isPanelThread(activeThread)} prefilledText={composerPrefill} prefillSeq={prefillSeq}
+              conversationOpening={composerLocked}
             />
           </div>
 
