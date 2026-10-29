@@ -9,12 +9,35 @@ accompanying source/owner/scope matrix and go/no-go checklist.
 
 from __future__ import annotations
 
+import datetime as _dt_mod
+import enum as _enum_mod
 import os
+import sys
+import typing as _typing_mod
 from pathlib import Path
 
 import pytest
-from memory.models import MemoryEntry
-from memory.store import AssistantMemoryStore, new_entry_id, reset_memory_store
+
+if not hasattr(_dt_mod, "UTC"):
+    _dt_mod.UTC = _dt_mod.timezone.utc  # type: ignore[attr-defined]  # noqa: UP017
+if not hasattr(_typing_mod, "Self"):
+    from typing import Self as _SelfFallback
+
+    _typing_mod.Self = _SelfFallback  # type: ignore[attr-defined]
+if not hasattr(_enum_mod, "StrEnum"):
+
+    class _StrEnum(str, _enum_mod.Enum):  # noqa: UP042
+        pass
+
+    _enum_mod.StrEnum = _StrEnum  # type: ignore[attr-defined,misc]
+
+_ROOT = Path(__file__).resolve().parents[2]
+for _p in (str(_ROOT), str(_ROOT / "backend")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from memory.models import MemoryEntry  # noqa: E402
+from memory.store import AssistantMemoryStore, new_entry_id, reset_memory_store  # noqa: E402
 
 pytestmark = pytest.mark.unit
 
@@ -40,38 +63,72 @@ def _entry(**kwargs: object) -> MemoryEntry:
     return MemoryEntry(**base)  # type: ignore[arg-type]
 
 
-def test_append_has_no_cas_on_concurrent_supersession(store: AssistantMemoryStore) -> None:
-    """``append()``'s supersession link is a best-effort UPDATE, not a CAS.
+def test_append_enforces_cas_on_concurrent_supersession(store: AssistantMemoryStore, tmp_path: Path) -> None:
+    """``append()``'s supersession link is an atomic CAS (#3546).
 
-    Two entries racing to supersede the same original both insert as active
-    rows; only the original's own ``superseded_by`` column is exclusive
-    (first writer wins there), but the second superseder is never told it
-    lost — it is left indistinguishable from a successful, exclusive
-    supersession. This is the generic-store gap the issue body calls out:
-    "repeated/concurrent stale supersession ... where generic CAS/tombstones
-    do NOT exist." Contrast with ``update_review()`` below, which IS a real
-    CAS and raises ``stale_review_conflict`` on the losing writer.
+    When multiple writers race to supersede the same original entry, exactly
+    one writer wins and becomes the sole current successor; losing writers
+    raise ``stale_supersession_conflict`` and their rows are rolled back.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     original = _entry()
     store.append(original)
 
     racer_a = _entry(supersedes_id=original.id)
     racer_b = _entry(supersedes_id=original.id)
     store.append(racer_a)
-    store.append(racer_b)
+    with pytest.raises(ValueError, match="stale_supersession_conflict"):
+        store.append(racer_b)
 
     refreshed_original = store.get(original.id)
     assert refreshed_original is not None
-    assert refreshed_original.superseded_by == racer_a.id, "first writer wins the exclusive link"
+    assert refreshed_original.superseded_by == racer_a.id
+    assert store.get(racer_b.id) is None
 
-    # Both racers believe they superseded `original`, and neither is marked
-    # superseded itself: the store has no way to tell racer_b it lost.
-    rows = store.list_entries(entry_type="decision", limit=10)
+    # Concurrent multi-connection race: 8 writers against the same target -> 1 wins, 7 conflict.
+    concurrent_target = _entry()
+    store.append(concurrent_target)
+    stores = [AssistantMemoryStore(tmp_path / "mem.sqlite3") for _ in range(8)]
+
+    def _race(idx: int) -> str:
+        try:
+            won = stores[idx].append(_entry(supersedes_id=concurrent_target.id))
+            return won.id
+        except ValueError as exc:
+            assert str(exc) == "stale_supersession_conflict"
+            return "conflict"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(_race, range(8)))
+
+    winners = [o for o in outcomes if o != "conflict"]
+    assert len(winners) == 1 and outcomes.count("conflict") == 7
+    refreshed_target = store.get(concurrent_target.id)
+    assert refreshed_target is not None and refreshed_target.superseded_by == winners[0]
+    rows = store.list_entries(entry_type="decision", limit=20)
     active_ids = {r.id for r in rows if not r.superseded_by}
-    assert active_ids == {racer_a.id, racer_b.id}, (
-        "no CAS/tombstone on supersession: a losing racer silently remains active "
-        "instead of being rejected or marked superseded"
-    )
+    assert active_ids == {racer_a.id, winners[0]}
+
+    # Also verify service-layer append_entry translates stale_supersession_conflict to HTTP 409.
+    from fastapi import HTTPException
+    from identity import Principal
+    from memory.models import MemoryAppendRequest
+    from memory.service import append_entry
+
+    writer = Principal(id="agent-a", type="bot", name="A", scopes=["memory.write"])
+    with pytest.raises(HTTPException) as exc:
+        append_entry(
+            writer,
+            MemoryAppendRequest(
+                entry_type="decision",
+                source_product="dashboard",
+                body={"summary": "stale successor via service"},
+                supersedes_id=original.id,
+            ),
+        )
+    assert exc.value.status_code == 409
+    assert "already superseded" in str(exc.value.detail)
 
 
 def test_update_review_is_a_real_cas_unlike_append(store: AssistantMemoryStore) -> None:
