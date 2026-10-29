@@ -164,13 +164,24 @@ def test_activity_envelope_sink_adapter_preserves_2858_contract_and_withholds_at
 
 @pytest.mark.parametrize("sink_name", sorted(pms.PM6_SINKS))
 def test_flag_off_behaviour_unchanged_and_redacts_secrets(sink_name: str) -> None:
-    """Acceptance criterion 3: Flag-off behaviour unchanged across all PM-6 sinks."""
+    """Acceptance criterion 3 & #3545 F03: SENSITIVE stays SENSITIVE when flag off; PUBLIC redacts secrets."""
     fake_token = "ghp_" + ("D" * 36)
+    sens_delivered: list[dict[str, Any]] = []
+    sens_em = _invoke_sink_adapter(
+        sink_name,
+        f"Example Corp secret {CANARY} {fake_token}",
+        level=pm.Level.SENSITIVE,
+        config=pm.DISABLED,
+        delivered=sens_delivered,
+    )
+    assert sens_em.projection.level is pm.Level.SENSITIVE and sens_em.projection.withheld is True
+    pm.assert_no_canary_leak(sens_em.formatted, CANARY, sink_name=sink_name)
+
     delivered: list[dict[str, Any]] = []
     em = _invoke_sink_adapter(
         sink_name,
         f"Example Corp public note {fake_token}",
-        level=pm.Level.SENSITIVE,
+        level=pm.Level.PUBLIC,
         config=pm.DISABLED,
         delivered=delivered,
     )

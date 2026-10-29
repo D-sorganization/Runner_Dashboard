@@ -104,18 +104,27 @@ def test_redaction_runs_on_public_and_internal_payloads(level: pm.Level) -> None
 
 
 def test_flag_off_behaviour_unchanged() -> None:
-    """When private_mode is DISABLED, even SENSITIVE-marked emissions behave as PUBLIC with standard redaction."""
+    """F03 (#3545): when private_mode is DISABLED, SENSITIVE stays SENSITIVE while PUBLIC gets standard redaction."""
     fake_token = "ghp_" + ("B" * 36)
     delivered: list[Any] = []
-    payload = {"id": "example-corp/widgets#9", "summary": f"Hello Example Corp {fake_token}"}
+    payload = {"id": "example-corp/widgets#9", "summary": f"Hello Example Corp {fake_token} {SENTINEL}"}
 
-    projection = pm.emit_shared("board", payload, level=pm.Level.SENSITIVE, config=pm.DISABLED, sink=delivered.append)
+    sens_proj = pm.emit_shared("board", payload, level=pm.Level.SENSITIVE, config=pm.DISABLED, sink=delivered.append)
+    assert sens_proj.level is pm.Level.SENSITIVE and sens_proj.withheld is True
+    assert sens_proj.content is None and SENTINEL not in str(sens_proj.to_dict())
+    assert delivered == [sens_proj.to_dict()]
+
+    pub_delivered: list[Any] = []
+    pub_payload = {"id": "example-corp/widgets#9", "summary": f"Hello Example Corp {fake_token}"}
+    projection = pm.emit_shared(
+        "board", pub_payload, level=pm.Level.PUBLIC, config=pm.DISABLED, sink=pub_delivered.append
+    )
     assert projection.level is pm.Level.PUBLIC and projection.withheld is False
     assert projection.content == {
         "id": "example-corp/widgets#9",
         "summary": "Hello Example Corp [REDACTED_GITHUB_TOKEN]",
     }
-    assert delivered == [projection.content]
+    assert pub_delivered == [projection.content]
 
 
 def test_writer_context_taint_elevates_shared_emission_to_sensitive() -> None:
@@ -226,10 +235,19 @@ def test_pm5_canary_dbc_and_flag_off_contract() -> None:
         variants.for_form("rot13")
 
     for surface in sorted(pm.SHARED_SURFACES):
+        sens_proj = pm.emit_shared(
+            surface,
+            {"id": "example-corp/widgets#1", "status": "ok", "summary": f"Example Corp {CANARY_PM5}"},
+            level=pm.Level.SENSITIVE,
+            config=pm.DISABLED,
+        )
+        assert sens_proj.level is pm.Level.SENSITIVE and sens_proj.withheld is True
+        pm.assert_no_canary_leak(sens_proj.to_dict(), CANARY_PM5, sink_name=surface)
+
         proj = pm.emit_shared(
             surface,
             {"id": "example-corp/widgets#1", "status": "ok", "summary": "Example Corp public note"},
-            level=pm.Level.SENSITIVE,
+            level=pm.Level.PUBLIC,
             config=pm.DISABLED,
         )
         assert proj.level is pm.Level.PUBLIC and proj.withheld is False

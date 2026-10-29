@@ -116,7 +116,7 @@ def test_max_join_lattice_properties() -> None:
     assert pm.max_join() is pm.Level.PUBLIC
 
 
-def test_flag_off_resolve_is_always_public() -> None:
+def test_flag_off_resolve_never_lowers_sensitivity() -> None:
     policy = _sample_policy()
     inp = pm.ClassificationInput(
         repo="example-corp/widgets-sensitive",
@@ -126,8 +126,31 @@ def test_flag_off_resolve_is_always_public() -> None:
         prior_level=pm.Level.SENSITIVE,
         is_legacy_thread=True,
     )
-    assert pm.resolve(inp, config=pm.DISABLED, policy=policy) is pm.Level.PUBLIC
-    assert pm.resolve(inp, config=pm.DISABLED, policy=None) is pm.Level.PUBLIC
+    assert pm.resolve(inp, config=pm.DISABLED, policy=policy) is pm.Level.SENSITIVE
+    assert pm.resolve(inp, config=pm.DISABLED, policy=None) is pm.Level.SENSITIVE
+    assert (
+        pm.resolve(pm.ClassificationInput(prior_level=pm.Level.SENSITIVE), config=pm.DISABLED, policy=None)
+        is pm.Level.SENSITIVE
+    )
+    assert (
+        pm.resolve(pm.ClassificationInput(operator_mark=pm.Level.SENSITIVE), config=pm.DISABLED, policy=None)
+        is pm.Level.SENSITIVE
+    )
+    assert pm.resolve(pm.ClassificationInput(), config=pm.DISABLED, policy=None) is pm.Level.PUBLIC
+    assert (
+        pm.resolve(
+            pm.ClassificationInput(repo="example-corp/widgets-public"),
+            config=pm.DISABLED,
+            policy=policy,
+        )
+        is pm.Level.PUBLIC
+    )
+    with pytest.raises(pm.ClassificationError, match="downgrade"):
+        pm.resolve(
+            pm.ClassificationInput(operator_mark=pm.Level.PUBLIC, prior_level=pm.Level.SENSITIVE),
+            config=pm.DISABLED,
+            policy=None,
+        )
 
 
 def test_unknown_repo_defaults_to_internal() -> None:
@@ -365,8 +388,13 @@ def test_mid_run_upgrade_triggers_checkpoint_requeue() -> None:
 def test_flag_off_envelope_and_level_distribution_metric() -> None:
     pm.reset_level_distribution_counts()
     off_env = pm.stamp_envelope(pm.Level.SENSITIVE, hop="run", config=pm.DISABLED)
-    assert off_env.level is pm.Level.PUBLIC
-    assert pm.taint_target_level(pm.Level.INTERNAL, config=pm.DISABLED) is pm.Level.PUBLIC
+    assert off_env.level is pm.Level.SENSITIVE
+    assert pm.taint_target_level(pm.Level.SENSITIVE, config=pm.DISABLED) is pm.Level.SENSITIVE
+    assert pm.taint_target_level(pm.Level.INTERNAL, config=pm.DISABLED) is pm.Level.INTERNAL
+    assert pm.taint_target_level(pm.Level.PUBLIC, config=pm.DISABLED) is pm.Level.PUBLIC
+    pub_env = pm.stamp_envelope(pm.Level.PUBLIC, hop="run", config=pm.DISABLED)
+    assert pub_env.level is pm.Level.PUBLIC
+    assert pm.taint_target_envelope(pub_env, writer_envelope=off_env, config=pm.DISABLED).level is pm.Level.SENSITIVE
 
     enabled = pm.PrivateModeConfig(enabled=True, default_level=pm.Level.INTERNAL)
     pm.stamp_envelope(pm.Level.INTERNAL, hop="run", config=enabled)
@@ -374,4 +402,83 @@ def test_flag_off_envelope_and_level_distribution_metric() -> None:
     counts = pm.get_level_distribution_counts()
     assert counts[pm.Level.PUBLIC] >= 1
     assert counts[pm.Level.INTERNAL] == 1
-    assert counts[pm.Level.SENSITIVE] == 1
+    assert counts[pm.Level.SENSITIVE] >= 2
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "prefix <<PRIVATE:SENSITIVE>> secret",
+        "prefix <<PRIVATE:PUBLIC>> secret",
+        "prefix <<PRIVATE:TOP_SECRET>> secret <<END_PRIVATE>> suffix",
+        "prefix <<PRIVATE:SENSITIVE!>> secret <<END_PRIVATE>> suffix",
+        "prefix <<PRIVATE:SENSITIVE >> secret <<END_PRIVATE>> suffix",
+        "prefix << PRIVATE:SENSITIVE>> secret <<END_PRIVATE>> suffix",
+        "prefix <<private:sensitive>> secret <<end_private>> suffix",
+        "prefix <<PRIVATE>> secret <<END_PRIVATE>> suffix",
+        "prefix <<PRIVATE:>> secret <<END_PRIVATE>> suffix",
+        "prefix <<END_PRIVATE>> secret",
+        "prefix << END_PRIVATE >> secret",
+        "<<PRIVATE:SENSITIVE>> outer <<PRIVATE:INTERNAL>> inner <<END_PRIVATE>>",
+        "<<PRIVATE:PUBLIC>> outer <<PRIVATE:SENSITIVE!>> inner <<END_PRIVATE>>",
+    ],
+)
+def test_f02_malformed_or_ambiguous_markers_fail_closed(raw: str) -> None:
+    from staff.private_surface_gate import MALFORMED_PLACEHOLDER, gate_text
+
+    out = gate_text(raw)
+    assert MALFORMED_PLACEHOLDER in out
+    assert "secret" not in out
+    assert "inner" not in out
+    assert "<<PRIVATE" not in out.upper()
+    assert "<<END_PRIVATE" not in out.upper()
+
+
+def test_f02_marker_property_and_fuzz() -> None:
+    import random
+
+    from staff.private_surface_gate import MALFORMED_PLACEHOLDER, PLACEHOLDER, gate_text
+
+    rng = random.Random(3545)
+    tokens = [
+        "<<PRIVATE:PUBLIC>>",
+        "<<PRIVATE:INTERNAL>>",
+        "<<PRIVATE:SENSITIVE>>",
+        "<<PRIVATE:SENSITIVE!>>",
+        "<<PRIVATE:UNKNOWN>>",
+        "<<PRIVATE:",
+        "<<PRIVATE>>",
+        "<< PRIVATE:SENSITIVE >>",
+        "<<private:sensitive>>",
+        "<<END_PRIVATE>>",
+        "<<END_PRIVATE",
+        "<< END_PRIVATE >>",
+        "<<end_private>>",
+        "SAFE_TOKEN",
+        "LEAK_CANARY_99",
+    ]
+    for _ in range(250):
+        sample_len = rng.randint(1, 6)
+        raw = " ".join(rng.choice(tokens) for _ in range(sample_len))
+        out = gate_text(raw)
+        assert "<<PRIVATE" not in out.upper()
+        assert "<<END_PRIVATE" not in out.upper()
+        for bad in (
+            "<<PRIVATE:SENSITIVE!>>",
+            "<<PRIVATE:UNKNOWN>>",
+            "<<PRIVATE>>",
+            "<< PRIVATE:SENSITIVE >>",
+            "<<private:sensitive>>",
+            "<< END_PRIVATE >>",
+            "<<end_private>>",
+        ):
+            if bad in raw:
+                assert MALFORMED_PLACEHOLDER in out
+        wrapped = f"<<PRIVATE:SENSITIVE>>LEAK_CANARY_99<<END_PRIVATE>> {raw}"
+        out_wrapped = gate_text(wrapped)
+        assert "LEAK_CANARY_99" not in out_wrapped or MALFORMED_PLACEHOLDER in out_wrapped or PLACEHOLDER in out_wrapped
+        injected = "pre <<PRIVATE:PUBLIC>>ok <<END_PRIVATE>> LEAK_CANARY_99<<END_PRIVATE>> post"
+        out_injected = gate_text(injected)
+        assert "LEAK_CANARY_99" not in out_injected
+        assert out_injected == MALFORMED_PLACEHOLDER
+
