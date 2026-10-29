@@ -37,8 +37,15 @@ CATEGORY_1_RUNBOOKS = (
 _REAL_LITERALS = tuple(old for old, _new in spt.LITERAL_REPLACEMENTS)
 
 
-def test_shipped_machine_registry_has_no_live_machines() -> None:
-    registry = load_machine_registry(DEFAULT_REGISTRY_PATH)
+def test_shipped_machine_registry_has_no_live_machines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import machine_registry as mr
+
+    local = tmp_path / "machine_registry.yml"
+    monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", local)
+    monkeypatch.setattr(mr, "DEFAULT_REGISTRY_PATH", local)
+    registry = mr.load_machine_registry(None)
     assert registry["machines"] == []
 
 

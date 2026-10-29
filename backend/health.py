@@ -190,6 +190,8 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
     except Exception:  # noqa: BLE001
         staff_avail = {}
 
+    from machine_registry import machine_registry_is_empty  # noqa: PLC0415
+
     return {
         "status": status,
         "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
@@ -206,6 +208,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         "deployment": _deployment_info(),
         "oauth": _oauth_health_payload(),
         "staff_availability": staff_avail,
+        "machine_registry_empty": machine_registry_is_empty(),
     }
 
 
