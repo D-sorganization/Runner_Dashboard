@@ -28,6 +28,7 @@ from typing import Any
 
 from fleet_barb_claim import BarbClaimMixin
 from fleet_barb_seat import BarbSeatMixin
+from fleet_checkin import CheckinClientMixin
 from fleet_exclusion_tools import ExclusionClientMixin
 from fleet_friction_tools import FrictionClientMixin
 from fleet_memory_brief import MemoryBriefMixin
@@ -94,7 +95,9 @@ DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
-class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin):
+class FleetClient(
+    BarbClaimMixin, BarbSeatMixin, CheckinClientMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin
+):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""
 
@@ -146,7 +149,7 @@ class FleetClient(BarbClaimMixin, BarbSeatMixin, FrictionClientMixin, ExclusionC
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
-    def request(
+    def request(  # type: ignore[override]
         self,
         method: str,
         path: str,

@@ -60,6 +60,7 @@ def test_diagnostics_schema_top_level_keys(diag_payload) -> None:
         "leader",
         "deployment",
         "cache",
+        "integrations",
     }
     assert expected.issubset(diag_payload.keys()), f"missing keys: {expected - diag_payload.keys()}"
 
@@ -70,6 +71,84 @@ def test_diagnostics_machine_registry_block(diag_payload) -> None:
     assert "path" in reg
     # Either machines count is present (loaded) or error is present (failed)
     assert ("machines" in reg) or ("error" in reg)
+
+
+def test_diagnostics_registry_path_matches_the_actual_loader_resolver(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#3380: diagnostics must report the same file load_machine_registry()
+    actually reads, not a re-derived guess that can disagree with it.
+
+    load_machine_registry() only accepts paths under its own module dir or
+    ``~/.config/runner-dashboard`` (issue #355 path-escape guard), so this
+    points HOME at a fake home directory rather than using tmp_path directly.
+    """
+    import machine_registry
+    import server
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_dir = tmp_path / ".config" / "runner-dashboard"
+    config_dir.mkdir(parents=True)
+    local = config_dir / "machine_registry.yml"
+    local.write_text("version: 1\nmachines: []\n", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(machine_registry, "LOCAL_REGISTRY_PATH", local)
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["path"] == str(local)
+    assert reg["source"] == "local"
+    assert reg["machines"] == 0
+
+
+def test_diagnostics_registry_path_reflects_env_override(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import server
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_dir = tmp_path / ".config" / "runner-dashboard"
+    config_dir.mkdir(parents=True)
+    custom = config_dir / "custom.yml"
+    custom.write_text("version: 1\nmachines: [{name: m1}]\n", encoding="utf-8")
+    monkeypatch.setenv("MACHINE_REGISTRY_PATH", str(custom))
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["path"] == str(custom)
+    assert reg["source"] == "env"
+    assert reg["machines"] == 1
+
+
+def test_diagnostics_registry_path_falls_back_to_shipped(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import machine_registry
+    import server
+
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(machine_registry, "LOCAL_REGISTRY_PATH", tmp_path / "missing.yml")
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["path"] == str(machine_registry.DEFAULT_REGISTRY_PATH)
+    assert reg["source"] == "shipped"
+
+
+def test_diagnostics_registry_path_reported_on_load_error(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The loaded:false branch must report the same resolved path too."""
+    import machine_registry
+    import server
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_dir = tmp_path / ".config" / "runner-dashboard"
+    config_dir.mkdir(parents=True)
+    local = config_dir / "machine_registry.yml"
+    local.write_text("not: [valid, yaml, {{{", encoding="utf-8")
+    monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
+    monkeypatch.setattr(machine_registry, "LOCAL_REGISTRY_PATH", local)
+
+    payload = server._diagnostics_payload()
+    reg = payload["machine_registry"]
+    assert reg["loaded"] is False
+    assert reg["path"] == str(local)
+    assert reg["source"] == "local"
 
 
 def test_diagnostics_fleet_federation_block(diag_payload) -> None:
@@ -103,3 +182,15 @@ def test_diagnostics_deployment_block_has_server_py(diag_payload) -> None:
     entry = deploy["server_py"]
     assert "path" in entry
     assert ("mtime" in entry and "size" in entry) or entry.get("missing") is True
+
+
+def test_diagnostics_integrations_block_reports_repository_management(diag_payload) -> None:
+    """The standalone/no-fleet profile (#3180) needs to see which optional
+    integrations are missing without the endpoint ever erroring for it."""
+    integrations = diag_payload["integrations"]
+    assert "error" not in integrations, f"integration_health raised: {integrations}"
+    rm_status = integrations["repository_management"]
+    assert "available" in rm_status
+    assert "reason" in rm_status
+    if not rm_status["available"]:
+        assert rm_status["reason"]

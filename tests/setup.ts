@@ -1,4 +1,10 @@
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
+
+// Loaded self-hosted runners routinely exceed the 1000ms default for findBy*/waitFor
+// (#3056). Failing assertions still fail; they just get environmental headroom.
+export const ASYNC_UTIL_TIMEOUT_MS = 10000;
+configure({ asyncUtilTimeout: ASYNC_UTIL_TIMEOUT_MS });
 
 function createMemoryStorage(): Storage {
   const data = new Map<string, string>();

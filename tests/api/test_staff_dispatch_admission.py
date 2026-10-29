@@ -157,8 +157,8 @@ async def test_forwarded_dispatch_carries_the_operation_id(
         return 200, {"dry_run": False, "run": {"id": "run-0123456789ab", "role": "ad-hoc", "status": "queued"}}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
-    await dispatch_staff_run(_cmd(machine="oglaptop", operation_id="op-0123456789ab"), CALLER)
-    await dispatch_staff_run(_cmd(machine="oglaptop"), CALLER)
+    await dispatch_staff_run(_cmd(machine="node-b", operation_id="op-0123456789ab"), CALLER)
+    await dispatch_staff_run(_cmd(machine="node-b"), CALLER)
 
     assert bodies[0]["operation_id"] == "op-0123456789ab"
     assert "operation_id" not in bodies[1]  # peers on older builds never see an empty field

@@ -294,6 +294,13 @@ def _reset_main_cache_between_tests():
     cache_clear()
 
 
+_HOST_DEVELOPMENT_AUTH_FLAGS = (
+    "DASHBOARD_DEV_LOGIN",
+    "DASHBOARD_LOOPBACK_AUTH",
+    "DASHBOARD_LOOPBACK_OPERATOR_WRITES",
+)
+
+
 @pytest.fixture(autouse=True)
 def _no_hub_proxy(monkeypatch):
     """Never forward a test's request to a live hub.
@@ -303,13 +310,28 @@ def _no_hub_proxy(monkeypatch):
     endpoints proxied to the real hub and returned live data. Every proxy path
     requires ``HUB_URL``, so clearing it is enough. Tests of the proxy itself
     set ``HUB_URL`` with ``patch.object``, which overrides this default.
+
+    Self-hosted runners also export ``HUB_FLEET_TOKEN`` and loopback OAuth
+    flags; those must not leak into the default test lane (#3000).
     """
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+    monkeypatch.delenv("HUB_URL", raising=False)
+    for name in _HOST_DEVELOPMENT_AUTH_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+
     try:
         import dashboard_config  # noqa: PLC0415
     except ImportError:
         return
 
     monkeypatch.setattr(dashboard_config, "HUB_URL", None)
+    try:
+        import staff.github_run_env as github_run_env  # noqa: PLC0415
+    except ImportError:
+        github_run_env = None
+    else:
+        monkeypatch.setattr(github_run_env, "HUB_URL", None)
+
     server = sys.modules.get("server")  # heavy: patch only when a test loaded it
     if server is not None and hasattr(server, "HUB_URL"):
         monkeypatch.setattr(server, "HUB_URL", None)
@@ -606,3 +628,25 @@ def staff_launches(monkeypatch):
     yield launched
     leaked = _live_staff_run_threads() - already_running
     assert not leaked, f"test started a real staff-run worker: {sorted(t.name for t in leaked)}"
+
+
+@pytest.fixture
+def mock_registry_hub_as_example(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve OAuth's registry-derived hub origin against the public example
+    registry instead of the (now-empty) shipped ``machine_registry.yml``.
+
+    #3082 category 1 stopped shipping real fleet topology in git. Tests that
+    exercise "the registry's hub is the production OAuth origin" must supply
+    their own registry data rather than depend on real values that no longer
+    ship; ``backend/machine_registry.example.yml`` already documents a stable
+    placeholder hub (``hub-a.fleet-example.ts.net``) for exactly this purpose.
+    """
+    import oauth_config  # noqa: PLC0415
+    from machine_registry import load_machine_registry  # noqa: PLC0415
+
+    example_path = REPO_ROOT / "backend" / "machine_registry.example.yml"
+    monkeypatch.setattr(
+        oauth_config,
+        "load_machine_registry",
+        lambda *_a, **_k: load_machine_registry(example_path),
+    )

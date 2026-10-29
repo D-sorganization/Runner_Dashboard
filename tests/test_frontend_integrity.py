@@ -648,7 +648,8 @@ def test_runner_schedule_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "runner-schedule":' in routed_shell
-    assert "return <RunnerSchedulePage />;" in routed_shell
+    assert "const LazyRunnerSchedulePage = React.lazy(" in routed_shell
+    assert "return <LazyRunnerSchedulePage />;" in routed_shell
     assert 'legacyFetch("/api/fleet/schedule"' in schedule_page
     assert 'method: "POST"' in schedule_page
     assert "export function RunnerSchedulePage" in schedule_page
@@ -664,7 +665,8 @@ def test_workflows_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "workflows":' in routed_shell
-    assert "return <WorkflowsPage />;" in routed_shell
+    assert "const LazyWorkflowsPage = React.lazy(" in routed_shell
+    assert "return <LazyWorkflowsPage />;" in routed_shell
     assert 'legacyFetch("/api/workflows/list"' in workflows_page
     assert 'legacyFetch("/api/workflows/dispatch"' in workflows_page
     assert "export function WorkflowsPage" in workflows_page
@@ -697,7 +699,8 @@ def test_credentials_settings_section_bypasses_legacy_app() -> None:
     credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
 
     assert 'case "settings":' in routed_shell
-    assert "return <SettingsPage />;" in routed_shell
+    assert "const LazySettingsPage = React.lazy(" in routed_shell
+    assert "return <LazySettingsPage />;" in routed_shell
     assert "<CredentialsPage />" in settings_page
     assert "<CredentialsMobile />" in settings_page
     assert 'legacyFetch("/api/credentials"' in credentials_page
@@ -714,7 +717,8 @@ def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
 
     assert 'case "code-requests":' in routed_shell
     assert 'case "feature-requests":' in routed_shell
-    assert "return <CodeRequestsPage />;" in routed_shell
+    assert "const LazyCodeRequestsPage = React.lazy(" in routed_shell
+    assert "return <LazyCodeRequestsPage />;" in routed_shell
     assert 'legacyFetch("/api/repos"' in code_requests_page
     assert 'legacyFetch("/api/code-requests"' in code_requests_page
     assert 'legacyFetch("/api/code-requests/templates"' in code_requests_page
@@ -802,7 +806,7 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
         "reports: (",
         "<LazyReportsMobile />",
         "const mobileFallback = mobileTabContent[mobileTab] ? null :",
-        "nativeDesktopTabContent(mobileTab)",
+        "nativeDesktopTabContent(mobileTab, onThreadSelected)",
     ]:
         assert marker in routed_shell
 

@@ -115,7 +115,12 @@ async def test_owner_asks_barb_to_convene_the_board_and_it_just_runs() -> None:
     board_threads = [t for t in store.list_threads() if t.meta.get("group") == "board"]
     assert len(board_threads) == 1
     # The card shows the outcome, not a pending Approve button.
-    card = store.get_message(prop.message_id)
+    card = None
+    for _ in range(60):
+        card = store.get_message(prop.message_id)
+        if card is not None and card.meta.get("proposal", {}).get("status") != "pending":
+            break
+        await asyncio.sleep(0.05)
     assert card is not None and card.meta["proposal"]["status"] != "pending"
 
 

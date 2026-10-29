@@ -59,7 +59,7 @@ def remote_client(loopback_bus_env: None) -> TestClient:
 
 @pytest.mark.unit
 def test_loopback_register_mints_session_token(loopback_client: TestClient) -> None:
-    sess = "codex-DeskComputer-20261027-a1b2c3"
+    sess = "codex-hub-a-20261027-a1b2c3"
     reg = loopback_client.post(
         "/api/v1/agent/register",
         headers=_XHR,
@@ -67,7 +67,7 @@ def test_loopback_register_mints_session_token(loopback_client: TestClient) -> N
             "session": sess,
             "role": "codex",
             "provider": "codex",
-            "node": "DeskComputer",
+            "node": "hub-a",
             "lease_seconds": 120,
         },
     )
@@ -115,7 +115,7 @@ def test_loopback_register_disabled_without_flag(loopback_bus_env: None, monkeyp
             "session": "claude-local-20261027-abc",
             "role": "claude",
             "provider": "claude",
-            "node": "Brick",
+            "node": "node-c",
             "lease_seconds": 120,
         },
     )

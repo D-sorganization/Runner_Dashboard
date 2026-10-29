@@ -22,6 +22,7 @@ log = logging.getLogger("dashboard.staff.rd_barb_notify_health")
 DEGRADED_AFTER_S = 300.0
 MAX_ERROR_CHARS = 200
 _FIELDS = ("channel", "consecutive_failures", "failing_since", "last_success_at", "last_attempt_at", "last_error")
+_CHANNEL_FIELDS = _FIELDS[1:]
 
 
 def default_health_path() -> Path:
@@ -45,20 +46,44 @@ class NotifyHealth:
         Pre: ``channel`` is non-empty; a failure carries a non-empty ``error`` code.
         Post: a success clears ``failing_since`` and the failure count; a failure keeps the first ``failing_since``.
         """
+        self._check(channel, ok, error)
+        with self._lock:
+            state = self._read() or {}
+            state["channel"] = channel
+            self._apply(state, ok=ok, error=error, now=now)
+            self._write(state)
+
+    def record_channel(self, name: str, *, ok: bool, now: float, error: str = "") -> None:
+        """Record one attempt for a single channel of a fan-out, apart from the aggregate ``record``.
+
+        Pre: ``name`` is non-empty; a failure carries a non-empty ``error`` code.
+        Post: ``status()["channels"][name]`` follows the same failing/degraded/ok rules as the aggregate.
+        """
+        self._check(name, ok, error)
+        with self._lock:
+            state: dict[str, Any] = self._read() or {}
+            channels: dict[str, Any] = state.get("channels") or {}
+            entry: dict[str, Any] = dict(channels.get(name) or {})
+            self._apply(entry, ok=ok, error=error, now=now)
+            state["channels"] = {**channels, name: entry}
+            self._write(state)
+
+    @staticmethod
+    def _check(channel: str, ok: bool, error: str) -> None:
         if not channel.strip():
             raise ValueError("channel must be non-empty")
         if not ok and not error.strip():
             raise ValueError("a failed attempt needs an error code")
-        with self._lock:
-            state = self._read() or {}
-            state.update(channel=channel, last_attempt_at=now)
-            if ok:
-                state.update(consecutive_failures=0, failing_since=None, last_success_at=now, last_error="")
-            else:
-                state["consecutive_failures"] = int(state.get("consecutive_failures") or 0) + 1
-                state["failing_since"] = state.get("failing_since") or now
-                state["last_error"] = _one_line(error)
-            self._write(state)
+
+    @staticmethod
+    def _apply(state: dict[str, Any], *, ok: bool, error: str, now: float) -> None:
+        state["last_attempt_at"] = now
+        if ok:
+            state.update(consecutive_failures=0, failing_since=None, last_success_at=now, last_error="")
+        else:
+            state["consecutive_failures"] = int(state.get("consecutive_failures") or 0) + 1
+            state["failing_since"] = state.get("failing_since") or now
+            state["last_error"] = _one_line(error)
 
     def status(self, *, now: float) -> dict[str, Any]:
         """``state`` is never_attempted, ok, failing, degraded or unknown, plus the recorded fields."""
@@ -69,8 +94,19 @@ class NotifyHealth:
         try:
             out["consecutive_failures"] = int(out["consecutive_failures"] or 0)
             out["state"] = "unknown" if state is None else self._classify(out, now)
+            out["channels"] = self._channel_states((state or {}).get("channels"), now)
         except (TypeError, ValueError):  # a hand-edited file is unknown, never ok
             out["state"] = "unknown"
+        return out
+
+    @classmethod
+    def _channel_states(cls, channels: Any, now: float) -> dict[str, dict[str, Any]]:
+        """Per-channel ``state`` and recorded fields for a fan-out; empty when only one channel ever sent."""
+        out: dict[str, dict[str, Any]] = {}
+        for name, entry in (channels if isinstance(channels, dict) else {}).items():
+            fields = {key: entry.get(key) for key in _CHANNEL_FIELDS}
+            fields["consecutive_failures"] = int(fields["consecutive_failures"] or 0)
+            out[str(name)] = {**fields, "state": cls._classify(fields, now)}
         return out
 
     @staticmethod
@@ -96,5 +132,7 @@ class NotifyHealth:
     def _write(self, state: dict[str, Any]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(f".{os.getpid()}.tmp")  # one temp file per writer process
-        tmp.write_text(json.dumps({key: state.get(key) for key in _FIELDS}), encoding="utf-8")
+        kept = {key: state.get(key) for key in _FIELDS}
+        kept["channels"] = state.get("channels") or {}
+        tmp.write_text(json.dumps(kept), encoding="utf-8")
         tmp.replace(self._path)

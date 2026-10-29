@@ -144,6 +144,71 @@ def test_no_op_pr_remediator_run_with_unpushed_branch_is_not_applicable() -> Non
     assert v.deliverable_failure_updates(rec, verdict, opens_pr=True) == {}
 
 
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "rerun: restarted the failing Vitest job",
+        "update-branch: merged origin/main, no conflicts",
+        "re-arm: re-armed auto-merge after a green recheck",
+    ],
+)
+def test_no_commit_remediation_action_on_open_target_pr_is_not_applicable(summary: str) -> None:
+    """#3312: pr-remediator confirms a rerun/update-branch/re-arm action; the target PR is still open."""
+    rec = _rec(
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_kind="pr",
+        target_ref="5201",
+        branch="staff/pr-remediator-5201-abc123",
+    )
+    open_pr = v.PullRequest(5201, "open", "pending")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=open_pr)
+
+    verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW, result_text=f"STAFF_RESULT: {summary}")
+
+    assert verdict.verification == "not_applicable"
+    assert "5201" in verdict.detail
+    assert v.deliverable_failure_updates(rec, verdict, opens_pr=True) == {}
+
+
+def test_no_commit_action_claim_without_matching_result_text_still_fails() -> None:
+    """An unconfirmed claim (no recognized action marker) keeps the existing no_change/failed behavior."""
+    rec = _rec(
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_kind="pr",
+        target_ref="5201",
+        branch="staff/pr-remediator-5201-abc123",
+    )
+    open_pr = v.PullRequest(5201, "open", "pending")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=open_pr)
+
+    verdict = v.evaluate(
+        rec, opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: investigated, found nothing actionable"
+    )
+
+    assert verdict.verification == "no_change"
+
+
+def test_closed_unmerged_target_pr_with_action_claim_still_fails() -> None:
+    """A closed-unmerged target PR is never treated as a confirmed no-commit action, even with a matching summary."""
+    rec = _rec(
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_kind="pr",
+        target_ref="5201",
+        branch="staff/pr-remediator-5201-abc123",
+    )
+    closed_pr = v.PullRequest(5201, "closed", "red")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=closed_pr)
+
+    verdict = v.evaluate(
+        rec, opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: re-arm: re-armed auto-merge"
+    )
+
+    assert verdict.verification == "no_change"
+
+
 def test_pr_remediator_verifies_via_target_pr_when_branch_lookup_misses() -> None:
     """Commits on an existing PR head branch may not match ``find``'s head filter (#2478)."""
     pr = v.PullRequest(5117, "open", "green")

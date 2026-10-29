@@ -31,6 +31,7 @@ from dataclasses import asdict, dataclass
 from datetime import timedelta
 from enum import StrEnum
 from typing import Any
+from urllib.parse import quote
 
 from dashboard_config.timeouts import Concurrency
 
@@ -304,10 +305,19 @@ async def list_all_repos(org: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-async def branch_exists(org: str, repo: str, branch: str) -> bool:
-    """Check if a branch exists on remote using gh api."""
-    code, _, _ = await _gh("api", f"/repos/{org}/{repo}/branches/{branch}", timeout=10)
-    return code == 0
+async def branch_exists(org: str, repo: str, branch: str) -> bool | None:
+    """Return exists/missing/unknown; only an explicit HTTP 404 means missing."""
+    try:
+        code, _, stderr = await _gh("api", f"/repos/{org}/{repo}/branches/{quote(branch, safe='')}", timeout=10)
+    except (OSError, TimeoutError):
+        log.warning("Branch lookup unavailable; leaving queued runs protected")
+        return None
+    if code == 0:
+        return True
+    if "(HTTP 404)" in stderr:
+        return False
+    log.warning("Branch lookup failed; leaving queued runs protected")
+    return None
 
 
 async def fetch_pr_details(org: str, repo: str, pr_number: int) -> dict | None:
@@ -524,13 +534,19 @@ async def _queued_stale_for_repo(
 
         is_closed = pr_details.get("state") == "closed" or pr_details.get("merged") is True
 
-        ref_exists = True
+        ref_exists: bool | None = True
         if not is_closed:
-            head_branch = pr_details.get("head", {}).get("ref") or group_runs[0].get("head_branch")
-            if head_branch:
-                ref_exists = await branch_exists(org, repo, head_branch)
+            head = pr_details.get("head", {})
+            head_branch = head.get("ref") or group_runs[0].get("head_branch")
+            head_repo = head.get("repo", {"full_name": f"{org}/{repo}"})
+            full_name = (head_repo or {}).get("full_name", "")
+            if head_branch and full_name.count("/") == 1:
+                head_org, head_name = full_name.split("/")
+                ref_exists = await branch_exists(head_org, head_name, head_branch)
+            else:
+                ref_exists = None
 
-        if is_closed or not ref_exists:
+        if is_closed or ref_exists is False:
             for run in group_runs:
                 raw_ts = run.get("created_at", "")
                 created = _dt.datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
@@ -572,9 +588,9 @@ async def _queued_stale_for_repo(
                 continue
 
             if status == "queued":
-                safe_to_cancel = True
+                safe_to_cancel = ref_exists is not None
             else:
-                safe_to_cancel = age_minutes > IN_PROGRESS_STRICT_THRESHOLD_MINUTES
+                safe_to_cancel = ref_exists is not None and age_minutes > IN_PROGRESS_STRICT_THRESHOLD_MINUTES
 
             stale.append(
                 StaleRun(

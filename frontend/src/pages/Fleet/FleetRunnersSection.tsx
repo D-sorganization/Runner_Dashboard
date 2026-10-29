@@ -364,6 +364,12 @@ export const FleetRunnersSection: React.FC<FleetRunnersSectionProps> = ({
                         {onRunner && (
                           <button
                             type="button"
+                            aria-label={
+                              isOnline ? `Stop runner ${r.name}` : `Start runner ${r.name}`
+                            }
+                            title={
+                              isOnline ? `Stop runner ${r.name}` : `Start runner ${r.name}`
+                            }
                             onClick={() => onRunner(r.id, isOnline ? "stop" : "start")}
                             className="btn"
                             style={{

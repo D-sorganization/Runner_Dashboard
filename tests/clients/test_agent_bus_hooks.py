@@ -6,11 +6,24 @@ import json
 from pathlib import Path
 from unittest import mock
 
+import activity_producers
 import pytest
+from activity import ActivityStore
+from agent_bus import session_hooks as hooks
 from fleet_client import FleetAPIError, FleetClient
 from fleet_validators import default_session
 
-from agent_bus import session_hooks as hooks
+
+@pytest.fixture(autouse=True)
+def _reset_activity_seq() -> None:
+    activity_producers._next_seq.clear()
+
+
+@pytest.fixture
+def activity_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ActivityStore:
+    real_store = ActivityStore(tmp_path / "activity.sqlite3")
+    monkeypatch.setattr(activity_producers, "get_activity_store", lambda: real_store)
+    return real_store
 
 
 @pytest.fixture
@@ -53,7 +66,7 @@ def test_session_start_registers_and_persists_token(state_file: Path) -> None:
         raise AssertionError(path)
 
     with mock.patch.object(client, "request", side_effect=fake_request):
-        summary = hooks.session_start(client, role="local", provider="cursor", node="Brick")
+        summary = hooks.session_start(client, role="local", provider="cursor", node="node-c")
 
     assert summary["registered"] is True
     assert summary["inbox_count"] == 1
@@ -100,3 +113,91 @@ def test_pre_push_heartbeats_with_saved_token(state_file: Path) -> None:
         out = hooks.pre_push(client)
     assert out["heartbeat"] is True
     assert "/api/v1/agent/heartbeat" in seen
+
+
+# ── activity log producer adapter (#2859) ──────────────────────────────────
+@pytest.mark.unit
+def test_session_start_feeds_the_activity_log(state_file: Path, activity_store: ActivityStore) -> None:
+    client = FleetClient(base_url="http://127.0.0.1:9", agent="local", session="local-testhost-20261022-abcd")
+
+    def fake_request(method: str, path: str, **kwargs):  # noqa: ANN003
+        if path == "/api/v1/agent/register":
+            return {"session": client.session, "token": "tok_activity_01", "principal_id": "fleet-session:x"}
+        if path.startswith("/api/v1/agent/inbox"):
+            return {"session": client.session, "messages": [], "next_cursor": 0}
+        raise AssertionError(path)
+
+    with mock.patch.object(client, "request", side_effect=fake_request):
+        hooks.session_start(client, role="local", provider="cursor", node="node-c")
+
+    page = activity_store.read(session_id=client.session)
+    assert [item.kind for item in page.items] == ["session_start"]
+    assert page.items[0].source == "agent_bus"
+    assert page.items[0].node == "node-c"
+
+
+@pytest.mark.unit
+def test_session_start_offline_does_not_feed_the_activity_log(state_file: Path, activity_store: ActivityStore) -> None:
+    client = FleetClient(base_url="http://127.0.0.1:9", agent="codex", session=default_session("codex"))
+
+    def boom(*_a, **_k):  # noqa: ANN002
+        raise FleetAPIError(0, {"error": "unreachable"})
+
+    with mock.patch.object(client, "request", side_effect=boom):
+        hooks.session_start(client, role="codex", provider="codex", node="Hub")
+    assert activity_store.read(session_id=client.session).items == []
+
+
+@pytest.mark.unit
+def test_pre_push_feeds_the_activity_log(state_file: Path, activity_store: ActivityStore) -> None:
+    sess = "issue-remediator-host-20261022-xyz"
+    state_file.write_text(
+        json.dumps({"session": sess, "token": "tok_test_saved_state_01", "role": "issue-remediator"}),
+        encoding="utf-8",
+    )
+    client = FleetClient(
+        base_url="http://127.0.0.1:9", token="tok_test_saved_state_01", session=sess, agent="issue-remediator"
+    )
+
+    def fake_request(method: str, path: str, **kwargs):  # noqa: ANN003
+        if path == "/api/v1/agent/heartbeat":
+            return {"session": sess, "lease_expires_at": "2026-10-22T05:00:00Z"}
+        if path.startswith("/api/v1/agent/inbox"):
+            return {"session": sess, "messages": [{"id": "m1"}], "next_cursor": 1}
+        raise AssertionError(path)
+
+    with mock.patch.object(client, "request", side_effect=fake_request):
+        hooks.pre_push(client)
+
+    page = activity_store.read(session_id=sess)
+    assert [item.kind for item in page.items] == ["pre_push_heartbeat"]
+    assert page.items[0].payload == {"inbox_count": 1}
+    assert page.items[0].node
+
+
+@pytest.mark.unit
+def test_pre_push_survives_a_broken_activity_store(state_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sess = "issue-remediator-host-20261022-xyz"
+    state_file.write_text(
+        json.dumps({"session": sess, "token": "tok_test_saved_state_01", "role": "issue-remediator"}),
+        encoding="utf-8",
+    )
+    client = FleetClient(
+        base_url="http://127.0.0.1:9", token="tok_test_saved_state_01", session=sess, agent="issue-remediator"
+    )
+
+    def broken_store():  # noqa: ANN202
+        raise RuntimeError("activity store unavailable")
+
+    monkeypatch.setattr(activity_producers, "get_activity_store", broken_store)
+
+    def fake_request(method: str, path: str, **kwargs):  # noqa: ANN003
+        if path == "/api/v1/agent/heartbeat":
+            return {"session": sess, "lease_expires_at": "2026-10-22T05:00:00Z"}
+        if path.startswith("/api/v1/agent/inbox"):
+            return {"session": sess, "messages": [], "next_cursor": 0}
+        raise AssertionError(path)
+
+    with mock.patch.object(client, "request", side_effect=fake_request):
+        out = hooks.pre_push(client)
+    assert out["heartbeat"] is True

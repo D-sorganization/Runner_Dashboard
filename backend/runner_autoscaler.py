@@ -129,6 +129,7 @@ from autoscaler_systemd import (
     _unit_state,
 )
 from disk_full_cordon_runtime import process_disk_full_cordon_tick
+from system_utils import get_io_pressure_snapshot
 
 log = logging.getLogger("runner-autoscaler")
 logging.basicConfig(
@@ -213,6 +214,11 @@ def _should_restore_recovery_floor(*, overloaded: bool, active_count: int, sched
     )
 
 
+def _io_pressure_overloaded(io_full: float, was_overloaded: bool) -> bool:
+    """Keep the I/O admission latch set until pressure is strictly below LOW."""
+    return io_full >= (IO_PRESSURE_FULL_LOW if was_overloaded else IO_PRESSURE_FULL_HIGH)
+
+
 def _default_pool_overloaded(
     *,
     avg_cpu: float,
@@ -220,6 +226,8 @@ def _default_pool_overloaded(
     avg_load: float,
     avg_disk: float,
     min_disk_free: float,
+    io_full: float = 0.0,
+    io_was_overloaded: bool = False,
     cpu_high: float | None = None,
     mem_high: float | None = None,
     load_per_core: float | None = None,
@@ -255,6 +263,7 @@ def _default_pool_overloaded(
         or avg_load >= load_per_core
         or avg_disk >= disk_high
         or min_disk_free <= disk_min_free_gb
+        or _io_pressure_overloaded(io_full, io_was_overloaded)
     )
 
 
@@ -265,6 +274,7 @@ def _default_pool_recovered(
     avg_load: float,
     avg_disk: float,
     min_disk_free: float,
+    io_full: float = 0.0,
     cpu_low: float | None = None,
     mem_high: float | None = None,
     load_per_core: float | None = None,
@@ -288,6 +298,7 @@ def _default_pool_recovered(
         and avg_load < load_per_core * 0.7
         and avg_disk < disk_high - 5
         and min_disk_free > disk_min_free_gb
+        and io_full < IO_PRESSURE_FULL_LOW
     )
 
 
@@ -547,6 +558,10 @@ def _sample_all_pools() -> dict[str, dict[str, float]]:
         A dict mapping pool name to a dict of metric names to values.
     """
     cpu, mem, load, disk, disk_free = _sample()
+    io_pressure = get_io_pressure_snapshot()
+    if io_pressure is None:
+        log.warning("PSI I/O pressure unavailable; treating I/O as not overloaded")
+    io_full = float((io_pressure or {}).get("full", {}).get("avg10", 0.0))
 
     nvme_cfg = _get_pool_config("nvme")
     nvme_disk, nvme_free = _sample_pool_disk(nvme_cfg["path"])
@@ -557,6 +572,7 @@ def _sample_all_pools() -> dict[str, dict[str, float]]:
 
     return {
         "default": {
+            "io_full": io_full,
             "cpu": cpu,
             "mem": mem,
             "load": load,
@@ -624,6 +640,7 @@ def _cordon_stop_unit(unit: str, reason: str) -> None:
 def _run_poll_loop() -> None:
     """Infinite poll loop: sample resources, classify runners, scale up/down."""
     history_len = max(3, SUSTAIN_SECS // max(POLL_SECONDS, 1))
+    io_pressure_overloaded = False
 
     # Store history deques per pool
     pool_samples: dict[str, deque[dict[str, float]]] = {
@@ -640,6 +657,8 @@ def _run_poll_loop() -> None:
         _send_watchdog()
         try:
             current_samples = _sample_all_pools()
+            io_full = current_samples["default"].get("io_full", 0.0)
+            io_pressure_overloaded = _io_pressure_overloaded(io_full, io_pressure_overloaded)
             for p_name, sample_val in current_samples.items():
                 pool_samples[p_name].append(sample_val)
 
@@ -714,6 +733,8 @@ def _run_poll_loop() -> None:
                     min_disk_free = min(s["disk_free"] for s in hist)
 
                     overloaded = _default_pool_overloaded(
+                        io_full=io_full,
+                        io_was_overloaded=io_pressure_overloaded,
                         avg_cpu=avg_cpu,
                         avg_mem=avg_mem,
                         avg_load=avg_load,
@@ -721,6 +742,7 @@ def _run_poll_loop() -> None:
                         min_disk_free=min_disk_free,
                     )
                     recovered = _default_pool_recovered(
+                        io_full=io_full,
                         avg_cpu=avg_cpu,
                         avg_mem=avg_mem,
                         avg_load=avg_load,
@@ -728,8 +750,9 @@ def _run_poll_loop() -> None:
                         min_disk_free=min_disk_free,
                     )
                     log.info(
-                        "pool=default cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
+                        "pool=default io_full=%.1f%% cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
                         " active=%d busy=%d idle=%d inactive=%d",
+                        io_full,
                         avg_cpu,
                         avg_mem,
                         avg_load,

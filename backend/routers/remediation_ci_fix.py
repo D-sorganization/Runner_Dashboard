@@ -38,9 +38,11 @@ from ci_fix_service import (
     CIFixLaunchUnavailableError,
     dispatch_ci_fix,
     handle_ci_fix_event,
+    run_ci_fix_sweep,
 )
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from identity import Principal, require_scope
+from pydantic import BaseModel, ConfigDict, Field
 from replay_store import ReplayStore
 
 logger = logging.getLogger("dashboard.remediation.ci_fix")
@@ -150,6 +152,33 @@ async def dispatch_ci_fix_endpoint(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CIFixLaunchUnavailableError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+
+
+class CIFixSweepRequest(BaseModel):
+    """30-minute sweep input (#2766 item 2): a cron-style caller supplies the open PR facts.
+
+    This node has no GitHub Checks-API poller wired in yet, so the facts (``red_since``,
+    ``labels``, ``auto_merge_armed``, ...) come from the scheduled caller rather than a live
+    fetch here; the sweep's eligibility rule and dispatch loop are the real, tested logic.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    repo: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._-]+$")
+    prs: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/api/remediation/ci-fix/sweep")
+async def sweep_ci_fix_endpoint(
+    body: CIFixSweepRequest,
+    principal: Principal = Depends(require_scope("remediation.dispatch")),  # noqa: B008
+) -> dict[str, Any]:
+    """Cron-style sweep entry point: dispatch a fix for every red, armed PR with no active lock."""
+
+    async def _provider() -> list[dict[str, Any]]:
+        return body.prs
+
+    return await run_ci_fix_sweep(body.repo, pr_provider=_provider)
 
 
 @router.get("/api/remediation/ci-fix/locks")

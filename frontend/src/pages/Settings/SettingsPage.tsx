@@ -14,6 +14,7 @@ import { SkeletonCard } from "../../primitives/Skeleton";
 import { CredentialsMobile } from "../Credentials";
 import { CredentialsPage } from "../CredentialsPage";
 import { LinearSetup } from "../LinearSetup";
+import { LocalAppsPage } from "../LocalApps";
 import { PrincipalsTab } from "../Principals";
 import PushSettings from "../PushSettings";
 
@@ -39,6 +40,7 @@ const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   { id: "notifications", title: "Notifications", render: () => <PushSettings /> },
   { id: "principals", title: "Principals", render: () => <PrincipalsTab /> },
   { id: "theme", title: "Theme", render: () => <ThemeSettings /> },
+  { id: "local-tools", title: "Local Tools", render: () => <LocalAppsPage /> },
   { id: "vault", title: "Secure Vault", render: () => <VaultPanel /> },
   { id: "host-settings", title: "Host settings", render: () => (
     <Suspense fallback={<SkeletonCard />}>
@@ -59,10 +61,6 @@ export function SettingsPage(): React.ReactElement {
   const isMobile = breakpoint !== "lg" && breakpoint !== "xl";
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash.replace(/^#/, "") === "local-tools") {
-      window.location.replace("/fleet/operations#local-tools");
-      return;
-    }
     scrollToHash();
     window.addEventListener("hashchange", scrollToHash);
     return () => window.removeEventListener("hashchange", scrollToHash);
@@ -79,6 +77,8 @@ export function SettingsPage(): React.ReactElement {
             key={section.id}
             href={`#${section.id}`}
             style={{ color: "var(--text-link, #58a6ff)", fontSize: "0.875rem" }}
+            title={`Jump to ${section.title} settings`}
+            aria-label={`Jump to ${section.title} settings`}
           >
             {section.title}
           </a>

@@ -32,18 +32,16 @@ from scripts import rd_threads_envelope as envelope
 def _config() -> NodeLeaderConfig:
     return NodeLeaderConfig(
         nodes=(
-            NodeRoleEntry(name="DeskComputer", role="leader", priority=1),
-            NodeRoleEntry(name="ControlTower", role="standby", priority=2),
-            NodeRoleEntry(name="Brick", role="forwarder"),
+            NodeRoleEntry(name="hub-a", role="leader", priority=1),
+            NodeRoleEntry(name="node-a", role="standby", priority=2),
+            NodeRoleEntry(name="node-c", role="forwarder"),
         )
     )
 
 
 # ── confirm_forwarding_node: every role forwards, unknown nodes fail closed ──
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ("node", "role"), [("DeskComputer", "leader"), ("ControlTower", "standby"), ("Brick", "forwarder")]
-)
+@pytest.mark.parametrize(("node", "role"), [("hub-a", "leader"), ("node-a", "standby"), ("node-c", "forwarder")])
 def test_confirm_forwarding_node_accepts_every_configured_role(node: str, role: str) -> None:
     assert confirm_forwarding_node(node, _config()) == role
 
@@ -58,20 +56,20 @@ def test_confirm_forwarding_node_rejects_unknown_node() -> None:
 @pytest.mark.unit
 def test_build_alert_produces_a_valid_rd_threads_alert() -> None:
     signal = ForwarderSignal(kind="host_health", detail="disk at 97%", recommended_action="Free disk space.")
-    alert = build_alert("Brick", signal)
+    alert = build_alert("node-c", signal)
     sealed = envelope.seal(alert, now=1_000.0)
     assert envelope.validate(sealed) == []
     assert sealed["kind"] == "alert"
-    assert sealed["from"] == "forwarder:Brick"
+    assert sealed["from"] == "forwarder:node-c"
     assert sealed["to"] == "rd-barb"
-    assert "Brick" in sealed["summary"]
+    assert "node-c" in sealed["summary"]
 
 
 @pytest.mark.unit
 def test_build_alert_rejects_unknown_signal_kind() -> None:
     bad = ForwarderSignal(kind="mystery", detail="x", recommended_action="y")
     with pytest.raises(ValueError, match="unknown forwarder signal kind"):
-        build_alert("Brick", bad)
+        build_alert("node-c", bad)
 
 
 # ── forward(): confirm role, seal, hand to an injectable Sender ─────────────
@@ -79,18 +77,18 @@ def test_build_alert_rejects_unknown_signal_kind() -> None:
 def test_forward_seals_the_envelope_and_hands_it_to_the_sender() -> None:
     sent: list[dict] = []
     signal = ForwarderSignal(kind="auth_problem", detail="gh token missing", recommended_action="Reissue the token.")
-    result = forward("Brick", signal, sent.append, config=_config(), now=1_000.0)
+    result = forward("node-c", signal, sent.append, config=_config(), now=1_000.0)
     assert sent == [result]
     assert envelope.validate(result) == []
-    assert result["from"] == "forwarder:Brick"
+    assert result["from"] == "forwarder:node-c"
 
 
 @pytest.mark.unit
 def test_forward_is_idempotent_within_the_same_dedupe_bucket() -> None:
     sent: list[dict] = []
     signal = ForwarderSignal(kind="stuck_lane", detail="lane wedged", recommended_action="Check the claim.")
-    first = forward("Brick", signal, sent.append, config=_config(), now=1_000.0)
-    second = forward("Brick", signal, sent.append, config=_config(), now=1_010.0)
+    first = forward("node-c", signal, sent.append, config=_config(), now=1_000.0)
+    second = forward("node-c", signal, sent.append, config=_config(), now=1_010.0)
     assert first["id"] == second["id"]
 
 
@@ -107,7 +105,7 @@ def test_forward_fails_closed_before_sending_for_an_unknown_node() -> None:
 @pytest.mark.unit
 def test_signals_from_readyz_skips_ok_checks() -> None:
     checks = {"github_token": "ok", "gh_cli": "ok", "lease_db": "ok"}
-    assert signals_from_readyz("Brick", checks) == []
+    assert signals_from_readyz("node-c", checks) == []
 
 
 @pytest.mark.unit
@@ -117,7 +115,7 @@ def test_signals_from_readyz_classifies_auth_vs_host_health() -> None:
         "lease_db": {"status": "down", "detail": "sqlite read failed"},
         "gh_cli": "ok",
     }
-    signals = signals_from_readyz("Brick", checks)
+    signals = signals_from_readyz("node-c", checks)
     by_kind = {s.kind: s for s in signals}
     assert set(by_kind) == {"auth_problem", "host_health"}
     assert "GH_TOKEN" in by_kind["auth_problem"].detail
@@ -126,7 +124,7 @@ def test_signals_from_readyz_classifies_auth_vs_host_health() -> None:
 
 @pytest.mark.unit
 def test_signals_from_readyz_handles_bare_string_status_without_detail() -> None:
-    signals = signals_from_readyz("Brick", {"lease_db": "down"})
+    signals = signals_from_readyz("node-c", {"lease_db": "down"})
     assert len(signals) == 1 and signals[0].kind == "host_health" and "lease_db" in signals[0].detail
 
 
@@ -161,8 +159,8 @@ def test_detect_stuck_lane_rejects_non_positive_threshold() -> None:
 def test_build_outbox_sender_enqueues_the_sealed_envelope_through_the_existing_outbox(tmp_path: Path) -> None:
     cs = ConversationStore(tmp_path / "node.sqlite3")
     outbox = cs.barb_outbox(max_entries=50, max_bytes=1_000_000, max_entry_bytes=10_000, rng=random.Random(1))
-    send = build_outbox_sender(outbox, node="Brick")
+    send = build_outbox_sender(outbox, node="node-c")
     signal = ForwarderSignal(kind="host_health", detail="disk low", recommended_action="Free space.")
-    sealed = forward("Brick", signal, send, config=_config(), now=1_000.0)
-    pending = outbox.pending_for("forwarder:Brick", sealed["id"])
+    sealed = forward("node-c", signal, send, config=_config(), now=1_000.0)
+    pending = outbox.pending_for("forwarder:node-c", sealed["id"])
     assert len(pending) == 1 and pending[0].payload == sealed

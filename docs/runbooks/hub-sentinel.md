@@ -1,6 +1,6 @@
-# Hub liveness sentinel (out-of-band, runs on Brick)
+# Hub liveness sentinel (out-of-band, runs on node-c)
 
-The hub (today DeskComputer:8321) cannot report its own outage: the scheduler,
+The hub (today hub-a:8321) cannot report its own outage: the scheduler,
 Postman and push workers all live in its own process. `deploy/hub_sentinel_cli.py`
 runs on a **second machine** and probes `$HUB_URL/api/health` (falling back to
 `/readyz`) every 5 minutes via `deploy/systemd/hub-sentinel.{service,timer}`.
@@ -37,7 +37,7 @@ sudo sed -i \
   -e "s#@DASHBOARD_HOME@#$HOME#" \
   -e "s#@ENV_FILE@#$HOME/.config/runner-dashboard/env#" \
   -e "s#@PYTHON_BIN@#$(command -v python3)#" \
-  -e "s#@HUB_URL@#http://deskcomputer:8321#" \
+  -e "s#@HUB_URL@#http://hub-a:8321#" \
   /etc/systemd/system/hub-sentinel.{service,timer}
 sudo systemctl daemon-reload
 sudo systemctl enable --now hub-sentinel.timer
@@ -46,7 +46,7 @@ sudo systemctl enable --now hub-sentinel.timer
 ## Manual check
 
 ```bash
-python3 deploy/hub_sentinel_cli.py --dry-run --hub-url http://deskcomputer:8321
+python3 deploy/hub_sentinel_cli.py --dry-run --hub-url http://hub-a:8321
 ```
 
 `--dry-run` probes and prints what it would send, but never writes state or

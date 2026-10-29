@@ -86,3 +86,17 @@ the schema field they will all read.
 - The three-levels-with-INTERNAL decision is still open per #3249's board
   review; if Dieter rules for two levels instead, this ADR is superseded and
   `Level.INTERNAL` and every call site that branches on it move with it.
+
+## Encrypted Transcript Crypto-Shred Residue (PM-8, Board D14)
+
+`backend/encrypted_transcripts.py` (#3259) encrypts `SENSITIVE` transcripts with a
+per-thread DEK wrapped via `KeyWrappingProvider` (#3257). `crypto_shred(thread_id)`
+zeroes and unlinks `<thread_id>.meta.json` and `<thread_id>.chunks.jsonl` and
+appends a tombstone to `shred_tombstones.jsonl`. Per Board D14, residue boundaries:
+- **Backups:** Pre-shred filesystem backups may retain ciphertext/wrapped DEKs until
+  expiry or KEK rotation, but `shred_tombstones.jsonl` is checked before every read,
+  append, or create so restoring backups **cannot resurrect a shredded thread**.
+- **SQLite WAL, indexes, and caches:** `SENSITIVE` chunks live in append-only
+  `.chunks.jsonl` files (never SQLite tables/WAL, FTS indexes, or plaintext caches).
+
+

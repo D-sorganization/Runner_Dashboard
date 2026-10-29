@@ -33,4 +33,5 @@ Repo defaults: `config/agent_principals.yml` (`assistant_profile` + per-agent `k
 - [Codex CLI (MCP)](codex.md)
 - [Claude](claude.md)
 - [Barb exchange repo](barb-exchange.md)
+- [Role seats for Barb's Grok Bot roles (proposed)](role-seats.md)
 - [Connect index](connect.md)

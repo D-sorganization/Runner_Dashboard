@@ -1,4 +1,4 @@
-"""Out-of-band hub liveness sentinel on Brick (#3050), slice 3/3: the
+"""Out-of-band hub liveness sentinel on node-c (#3050), slice 3/3: the
 ``run_once`` CLI wiring. Probe classification and the alert/cooldown/
 recovery state machine are tested in ``test_hub_sentinel.py`` (slice 1);
 the alert-sink port contract is tested in ``test_hub_sentinel_alerts.py``
@@ -36,7 +36,7 @@ def test_dry_run_is_a_no_op_but_a_live_run_persists_and_alerts(tmp_path: Path, m
 
     dry_sink = _RecordingSink()
     for _ in range(3):
-        cli.run_once(hub_url="http://brick:8321", state_path=state_path, sinks=[dry_sink], dry_run=True, now=NOW)
+        cli.run_once(hub_url="http://node-c:8321", state_path=state_path, sinks=[dry_sink], dry_run=True, now=NOW)
     assert not state_path.exists()
     assert dry_sink.messages == []
 
@@ -44,7 +44,7 @@ def test_dry_run_is_a_no_op_but_a_live_run_persists_and_alerts(tmp_path: Path, m
     events: list[cli.SentinelEvent] = []
     for _ in range(3):
         events = cli.run_once(
-            hub_url="http://brick:8321", state_path=state_path, sinks=[live_sink], dry_run=False, now=NOW
+            hub_url="http://node-c:8321", state_path=state_path, sinks=[live_sink], dry_run=False, now=NOW
         )
     assert state_path.exists()
     assert len(events) == 1

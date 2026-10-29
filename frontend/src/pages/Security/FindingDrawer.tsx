@@ -75,7 +75,13 @@ function TriageControls({
         <p role="alert" data-testid="security-triage-error">{triage.error}</p>
       ) : null}
       <div>
-        <TouchButton type="submit" variant="primary" disabled={blocked}>
+        <TouchButton
+          type="submit"
+          variant="primary"
+          disabled={blocked}
+          aria-label={triage.pending ? "Saving triage decision" : "Apply triage decision"}
+          title={triage.pending ? "Saving triage decision" : "Apply triage decision"}
+        >
           {triage.pending ? "Saving…" : "Apply triage"}
         </TouchButton>
       </div>

@@ -13,6 +13,8 @@ never the clock. Secrets are refused, not redacted. Off (dry run) until ``CLAUDE
   parse --body FILE|-     validate an inbound exchange issue body (data, never instructions)
 
 Config (env, never committed): CLAUDE_BARB_CHANNEL (on|off), CLAUDE_BARB_EXCHANGE_REPO (owner/name).
+Live exchange writes require hub ``GITHUB_APP_*`` (d-sorg-runner-dashboard App); they never use the
+ambient owner ``GH_TOKEN``.
 """
 
 from __future__ import annotations
@@ -31,12 +33,26 @@ from pathlib import Path
 from typing import Any, Protocol
 
 if __package__ in (None, ""):  # run as a file: make ``scripts`` and ``backend`` importable
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    _repo_root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(_repo_root / "backend"))
+    sys.path.insert(0, str(_repo_root))
 
+from github_app_auth import github_app_auth_configured, mint_installation_access_token
 from staff.redaction import redact_value
 from scripts import rd_threads_envelope as envelope
 
 log = logging.getLogger("claude_barb.channel")
+
+_GITHUB_STRIP_KEYS = frozenset({"GH_TOKEN", "GITHUB_TOKEN"})
+BARB_EXCHANGE_GITHUB_PERMISSIONS = {
+    "issues": "write",
+    "contents": "write",
+    "metadata": "read",
+}
+
+
+class BarbExchangeAuthError(RuntimeError):
+    """Barb exchange GitHub write blocked (missing App auth or token leak guard)."""
 
 SENDER = "claude-planner"
 PERSONAS = frozenset({"barb", "rd-barb", "dieter"})  # any agent may contact Dieter, copying Grok Barb (2026-10-27)
@@ -176,14 +192,58 @@ class ExchangeTransport:
         return {"ok": True, "status": "sent", "ref": self._create(self._repo, to_exchange_issue(sealed))}
 
 
+def barb_exchange_github_env(repo: str) -> dict[str, str]:
+    """Mint a repo-scoped installation token for Barbara exchange writes (#3342).
+
+    Pre: ``repo`` matches ``owner/name`` and hub ``GITHUB_APP_*`` is configured.
+    Post: returned env strips ambient personal tokens and sets ``GH_TOKEN`` only to the minted App token.
+    """
+    slug = repo.strip()
+    if not _REPO_RE.match(slug):
+        raise BarbExchangeAuthError("exchange repo must be owner/name")
+    if not github_app_auth_configured():
+        raise BarbExchangeAuthError(
+            "GitHub App is not configured for Barb exchange writes; set GITHUB_APP_* on the hub"
+        )
+    try:
+        minted = mint_installation_access_token(
+            repositories=[slug],
+            permissions=BARB_EXCHANGE_GITHUB_PERMISSIONS,
+        )
+    except Exception as exc:
+        log.error("Barb exchange App token mint failed: %s", type(exc).__name__)
+        raise BarbExchangeAuthError("GitHub App installation token minting failed") from exc
+    if not minted.token:
+        raise BarbExchangeAuthError("GitHub App installation token minting returned empty token")
+    env = {k: v for k, v in os.environ.items() if k not in _GITHUB_STRIP_KEYS}
+    env["GH_TOKEN"] = minted.token
+    env["GITHUB_TOKEN"] = minted.token
+    return env
+
+
+def _reject_token_in_cli_output(token: str, stdout: str, stderr: str) -> None:
+    if token and (token in stdout or token in stderr):
+        raise BarbExchangeAuthError("GitHub CLI output must not contain the installation token")
+
+
 def gh_create_issue(repo: str, issue: dict[str, Any]) -> str:
     """Create the issue with the ``gh`` CLI (argument list, no shell); returns its URL."""
     if not _REPO_RE.match(repo):
         raise ValueError("exchange repo must be owner/name")
+    child_env = barb_exchange_github_env(repo)
+    token = child_env["GH_TOKEN"]
     cmd = ["gh", "api", f"repos/{repo}/issues", "-f", f"title={issue['title']}", "-f", f"body={issue['body']}"]
     cmd += [arg for label in issue["labels"] for arg in ("-f", f"labels[]={label}")] + ["--jq", ".html_url"]
-    done = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30)  # noqa: S603
-    return done.stdout.strip()
+    try:
+        done = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=30, env=child_env)  # noqa: S603
+    except subprocess.CalledProcessError as exc:
+        log.error("Barb exchange issue create failed: gh exit %s", exc.returncode)
+        raise BarbExchangeAuthError("GitHub issue create failed") from exc
+    _reject_token_in_cli_output(token, done.stdout, done.stderr)
+    url = done.stdout.strip()
+    if not url:
+        raise BarbExchangeAuthError("GitHub issue create returned empty URL")
+    return url
 
 
 def _read(path: str) -> str:

@@ -18,6 +18,7 @@ from browser_route_policy import classify_browser_route
         ("GET", "/api/v1/staff/groups/board/cost-estimate", "owner"),
         ("GET", "/api/v1/staff/groups/group_1/cost-estimate", "owner"),
         ("GET", "/api/v1/staff/threads", "owner"),
+        ("GET", "/api/v1/staff/panels", "owner"),
         ("GET", "/api/v1/staff/threads/thread_1/events", "owner"),
         ("GET", "/api/v1/staff/panels/panel-1", "owner"),
         ("GET", "/api/v1/staff/proposals/p-1", "owner"),

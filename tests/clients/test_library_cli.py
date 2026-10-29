@@ -8,7 +8,7 @@ import pytest
 from fleet_client import FleetClient
 
 pytestmark = pytest.mark.unit
-CITE = "[ref:DeskComputer:shared:w1:p3#sha256=1234abcd:p.3-3]"
+CITE = "[ref:hub-a:shared:w1:p3#sha256=1234abcd:p.3-3]"
 
 
 @pytest.mark.parametrize(
