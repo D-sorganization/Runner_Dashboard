@@ -1,7 +1,6 @@
 name: Recurring Public-Repo Scan
 
-# Epic #3077 slice 8 (#3086); see docs/runbooks/public-repo-recurring-scan.md.
-# Private rd-barb alert only, never a public comment. Hosted per #3084.
+# Epic #3077 slice 8 (#3086): docs/runbooks/public-repo-recurring-scan.md.
 
 on:
   schedule:
@@ -17,8 +16,7 @@ concurrency:
 
 jobs:
   scan:
-    # Hosted once public (#3084 ruling); self-hosted until then (same pattern as
-    # architecture-map-contract.yml).
+    # Hosted once public (#3084); self-hosted until then, as architecture-map-contract.yml does.
     runs-on: >-
       ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' ||
       github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' ||
@@ -28,7 +26,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-
       - name: Run recurring scan
         env:
           GH_TOKEN: ${{ github.token }}
