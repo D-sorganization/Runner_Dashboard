@@ -21,12 +21,8 @@ from scripts.recurring_scan import (
 
 FAKE_TOKEN = "ghp_" + "A" * 36  # shape only; never a real credential
 REPO_NAME = "D-sorganization/Runner_Dashboard"
-GIT_ENV = {
-    "GIT_AUTHOR_NAME": "t",
-    "GIT_AUTHOR_EMAIL": "t@x.com",
-    "GIT_COMMITTER_NAME": "t",
-    "GIT_COMMITTER_EMAIL": "t@x.com",
-}
+_EMAIL = "t@x.com"
+GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": _EMAIL, "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": _EMAIL}
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:

@@ -1,7 +1,5 @@
 name: Recurring Public-Repo Scan
 
-# Epic #3077 slice 8 (#3086): docs/runbooks/public-repo-recurring-scan.md.
-
 on:
   schedule:
     - cron: "40 5 * * *"
