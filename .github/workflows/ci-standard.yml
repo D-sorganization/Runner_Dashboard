@@ -44,6 +44,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || github.event_name == 'push' && github.ref == 'refs/heads/main' && 'main' || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+  security-events: write
+
 jobs:
   pick-runner:
     name: Select reversible CI runner
@@ -905,10 +911,6 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     uses: ./.github/workflows/frontend-tests.yml
-    permissions:
-      actions: write
-      contents: read
-      pull-requests: read
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -918,9 +920,6 @@ jobs:
   secrets-audit:
     name: CI Secrets
     uses: ./.github/workflows/ci-secrets.yml
-    permissions:
-      actions: write
-      contents: read
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -930,8 +929,6 @@ jobs:
   api-contract-regeneration:
     name: API Contract Regeneration
     uses: ./.github/workflows/api-contract-regeneration.yml
-    permissions:
-      contents: read
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
@@ -941,9 +938,6 @@ jobs:
   docker-build:
     name: Docker Build & Trivy Scan
     uses: ./.github/workflows/docker-build.yml
-    permissions:
-      contents: read
-      security-events: write
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
