@@ -16,6 +16,7 @@ from activity import (
     ActivitySource,
     ActivityStore,
     get_activity_store,
+    redact_sensitive_content,
 )
 from activity_sessions import DEFAULT_SESSIONS_LIMIT, MAX_SESSIONS_LIMIT, SessionsPage, SessionStatus, compute_sessions
 from activity_transcript import (
@@ -33,7 +34,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, require_scope
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 from staff.rate_limit import check_rate_limit
-from staff.redaction import redact_sensitive_content
 from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/api/v1/activity", tags=["activity"])

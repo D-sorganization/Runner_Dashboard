@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from activity import REDACTION_VERSION, ActivityEnvelope, ActivityStore
+from activity import REDACTION_VERSION, ActivityEnvelope, ActivityStore, redact_sensitive_content
 
 DEFAULT_METADATA_ARCHIVE_DAYS = 180
 DEFAULT_MAX_CHUNK_BYTES = 65_536
@@ -37,8 +37,6 @@ def strip_ansi(text: str) -> str:
 
 
 def redact_terminal_stream(text: str) -> str:
-    from staff.redaction import redact_sensitive_content
-
     parts = _ANSI_RE.split(text)
     redacted = "".join(part if idx % 2 else redact_sensitive_content(part) for idx, part in enumerate(parts))
     plain = strip_ansi(redacted)
