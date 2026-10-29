@@ -13,8 +13,10 @@ import logging
 import os
 import platform
 import re
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 try:
     import yaml
@@ -24,20 +26,15 @@ except ImportError:  # pragma: no cover - deployment installs PyYAML
 from security import safe_yaml_load, validate_config_path
 
 log = logging.getLogger("dashboard.machine_registry")
-DEFAULT_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
+EXAMPLE_REGISTRY_PATH = Path(__file__).with_name("machine_registry.example.yml")
+DEPLOYED_REGISTRY_PATH = Path(__file__).with_name("machine_registry.yml")
 LOCAL_REGISTRY_PATH = Path("~/.config/runner-dashboard/machine_registry.yml").expanduser()
+# Back-compat for callers that referenced the old shipped default path constant.
+DEFAULT_REGISTRY_PATH = LOCAL_REGISTRY_PATH
 
 
 def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
-    """Pick the registry file and report which source supplied it.
-
-    Order: explicit ``path`` argument, then ``$MACHINE_REGISTRY_PATH``, then the
-    local operator config, then the shipped default. Callers that only need the
-    path (loading, diagnostics) should go through this one resolver rather than
-    reimplementing the lookup, so they can never disagree about which file is
-    actually in effect.
-    """
-
+    """Pick the registry file and report which source supplied it."""
     if path is not None:
         return Path(path), "explicit"
     env_path = os.environ.get("MACHINE_REGISTRY_PATH", "").strip()
@@ -45,11 +42,127 @@ def resolve_registry_source(path: str | Path | None) -> tuple[Path, str]:
         return Path(env_path), "env"
     if LOCAL_REGISTRY_PATH.is_file():
         return LOCAL_REGISTRY_PATH, "local"
-    return DEFAULT_REGISTRY_PATH, "shipped"
+    if DEPLOYED_REGISTRY_PATH.is_file():
+        return DEPLOYED_REGISTRY_PATH, "deployed"
+    return LOCAL_REGISTRY_PATH, "local"
+
+
+_registry_empty = False
+
+MigrationOutcome = Literal["migrated", "skipped_local_exists", "skipped_env_override", "skipped_no_legacy"]
+
+
+@dataclass(frozen=True)
+class MachineRegistryLoadMeta:
+    empty: bool
+    resolved_path: Path
+    path_existed: bool
+
+
+def machine_registry_is_empty() -> bool:
+    """True when the most recent load returned zero machines."""
+
+    return _registry_empty
+
+
+def last_registry_load_meta() -> MachineRegistryLoadMeta | None:
+    return getattr(load_machine_registry, "_last_meta", None)
+
+
+def migrate_legacy_registry_to_local_config(
+    *,
+    deploy_backend_dir: Path | str | None = None,
+) -> MigrationOutcome:
+    """Copy ``backend/machine_registry.yml`` into the canonical local config path.
+
+    Used during go-public rollout so release tarballs without a tracked registry
+    still pick up topology from the prior live install. Never overwrites an
+    existing local file or runs when ``MACHINE_REGISTRY_PATH`` is set.
+    """
+
+    if os.environ.get("MACHINE_REGISTRY_PATH", "").strip():
+        return "skipped_env_override"
+    local_path = LOCAL_REGISTRY_PATH.expanduser()
+    if local_path.is_file():
+        return "skipped_local_exists"
+
+    legacy_candidates: list[Path] = []
+    if deploy_backend_dir is not None:
+        legacy_candidates.append(Path(deploy_backend_dir) / "machine_registry.yml")
+    module_legacy = DEPLOYED_REGISTRY_PATH.expanduser()
+    if module_legacy not in legacy_candidates:
+        legacy_candidates.append(module_legacy)
+
+    legacy_path: Path | None = None
+    for candidate in legacy_candidates:
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            legacy_path = candidate
+            break
+    if legacy_path is None:
+        return "skipped_no_legacy"
+
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.parent.chmod(0o700)
+    staging = local_path.with_suffix(local_path.suffix + ".migrate.tmp")
+    shutil.copy2(legacy_path, staging)
+    staging.chmod(0o600)
+    os.replace(staging, local_path)
+    log.warning(
+        "Migrated fleet machine registry from %s to %s (mode 600). "
+        "Future loads use the local config path; keep this file out of git.",
+        legacy_path,
+        local_path,
+    )
+    return "migrated"
+
+
+def _mark_registry_empty(*, path: Path, path_existed: bool) -> None:
+    global _registry_empty
+    _registry_empty = True
+    meta = MachineRegistryLoadMeta(empty=True, resolved_path=path, path_existed=path_existed)
+    load_machine_registry._last_meta = meta  # type: ignore[attr-defined]
+    log.warning(
+        "MACHINE REGISTRY EMPTY: no fleet machines loaded (path=%s, existed=%s). "
+        "Install live topology at %s or migrate from backend/machine_registry.yml "
+        "before hub federation and role detection silently degrade.",
+        path,
+        path_existed,
+        LOCAL_REGISTRY_PATH,
+    )
+    try:
+        from prometheus_metrics import set_machine_registry_empty  # noqa: PLC0415
+
+        set_machine_registry_empty(True)
+    except Exception:  # pragma: no cover - metrics optional in minimal envs
+        pass
+
+
+def _mark_registry_loaded(*, path: Path, path_existed: bool, machine_count: int) -> None:
+    global _registry_empty
+    _registry_empty = machine_count == 0
+    load_machine_registry._last_meta = MachineRegistryLoadMeta(  # type: ignore[attr-defined]
+        empty=_registry_empty,
+        resolved_path=path,
+        path_existed=path_existed,
+    )
+    if _registry_empty:
+        log.warning(
+            "MACHINE REGISTRY EMPTY: registry file present but lists zero machines "
+            "(path=%s). Fleet topology and hub role detection may be wrong until "
+            "operator topology is installed at %s.",
+            path,
+            LOCAL_REGISTRY_PATH,
+        )
+    try:
+        from prometheus_metrics import set_machine_registry_empty  # noqa: PLC0415
+
+        set_machine_registry_empty(_registry_empty)
+    except Exception:  # pragma: no cover
+        pass
 
 
 def _resolve_registry_path(path: str | Path | None) -> Path:
-    """Pick the registry file: env override, local config, then shipped default."""
+    """Pick the registry file: env override, local config, then on-disk deploy copy."""
 
     return resolve_registry_source(path)[0]
 
@@ -92,8 +205,9 @@ def assert_safe_registry_source(registry_path: Path, registry: dict[str, Any]) -
     """
 
     resolved = registry_path.expanduser().resolve()
-    default_resolved = DEFAULT_REGISTRY_PATH.resolve()
     local_resolved = LOCAL_REGISTRY_PATH.expanduser().resolve()
+    example_resolved = EXAMPLE_REGISTRY_PATH.resolve()
+    deployed_resolved = DEPLOYED_REGISTRY_PATH.resolve()
 
     if _require_local_registry_env() and not local_resolved.is_file():
         raise RuntimeError(
@@ -102,9 +216,16 @@ def assert_safe_registry_source(registry_path: Path, registry: dict[str, Any]) -
             "before starting the dashboard (see docs/runbooks/local-fleet-topology.md)."
         )
 
-    if resolved == default_resolved and _registry_contains_documentation_machines(registry):
+    if resolved == example_resolved and _registry_contains_documentation_machines(registry):
         raise RuntimeError(
-            "The shipped machine_registry.yml contains documentation-only fleet nodes. "
+            "machine_registry.example.yml is documentation-only; do not point "
+            "MACHINE_REGISTRY_PATH at the example file. Install live topology at "
+            f"{LOCAL_REGISTRY_PATH} or set MACHINE_REGISTRY_PATH to your operator copy."
+        )
+
+    if resolved == deployed_resolved and _registry_contains_documentation_machines(registry):
+        raise RuntimeError(
+            "The deployed machine_registry.yml contains documentation-only fleet nodes. "
             f"Install live topology at {LOCAL_REGISTRY_PATH} or set MACHINE_REGISTRY_PATH."
         )
 
@@ -403,7 +524,6 @@ def _normalize_machine_entry(entry: dict[str, Any]) -> dict[str, Any]:
     normalized["workload_capacity"] = _workload_capacity_from_hardware(normalized["hardware"])
     normalized["storage"] = _normalize_storage(normalized.get("storage"), field_prefix="storage")
     normalized["runner_pools"] = _normalize_runner_pools(normalized, parent_machine=name)
-    normalized["portable"] = bool(_coerce_bool(normalized.get("portable"), field="portable"))
 
     return normalized
 
@@ -421,7 +541,9 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
 
     registry_path = _resolve_registry_path(path)
     if not registry_path.exists():
-        return {"version": 1, "machines": []}
+        empty = {"version": 1, "machines": []}
+        _mark_registry_empty(path=registry_path, path_existed=False)
+        return empty
 
     # Validate the path before loading (security check for issue #355).
     #
@@ -461,6 +583,11 @@ def load_machine_registry(path: str | Path | None = None) -> dict[str, Any]:
             raise ValueError("Each machine registry entry must be a mapping")
         normalized["machines"].append(_normalize_machine_entry(entry))
     assert_safe_registry_source(registry_path, normalized)
+    _mark_registry_loaded(
+        path=registry_path,
+        path_existed=True,
+        machine_count=len(normalized.get("machines", [])),
+    )
     return normalized
 
 
@@ -587,17 +714,6 @@ def build_machine_registry_index(
                 if token:
                     index[token] = pool_dict
     return index
-
-
-def is_portable_machine(name: str, registry: dict[str, Any] | None = None) -> bool:
-    """True when ``name`` resolves to a registry machine flagged ``portable: true`` (#3323).
-
-    A portable machine (for example a laptop that travels and is often offline) carries
-    no required or scheduled staff roles; unknown/unregistered names are not portable.
-    """
-    reg = registry if registry is not None else load_machine_registry()
-    entry = build_machine_registry_index(reg).get(_normalize_token(name))
-    return bool(entry.get("portable")) if entry else False
 
 
 def _iter_registry_entries(registry: dict[str, Any]) -> list[dict[str, Any]]:
