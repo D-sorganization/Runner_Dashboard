@@ -214,6 +214,7 @@ jobs:
   typecheck:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
+    if: always() && !cancelled() && needs.frontend-scope.result == 'success'
     # Required on main: never skip the job — gate heavy steps so the context
     # always reports (docs-only PRs and merge_group included).
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
@@ -270,6 +271,8 @@ jobs:
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      always() &&
+      !cancelled() &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 15
@@ -306,6 +309,8 @@ jobs:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
       github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 10
@@ -348,6 +353,9 @@ jobs:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
       github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
+      needs.vitest.result == 'success' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -434,6 +442,8 @@ jobs:
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
       github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
       (needs.frontend-scope.outputs.run_staff_e2e == 'true')
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

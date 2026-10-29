@@ -3,9 +3,10 @@
  *
  * Implements Workstream C (Issue #1721, Epic #1718).
  */
-import React, { useState } from "react";
+import React from "react";
 import type { RosterRowProps, RosterStatus } from "./types";
-import { computeRoleStatus, formatRelativeTime, getRoleHue, getRoleTooltipText } from "./rosterUtils";
+import { computeRoleStatus, formatRelativeTime, getRoleTooltipText } from "./rosterUtils";
+import { PersonaAvatar } from "./PersonaAvatar";
 import { Tooltip } from "../../primitives/Tooltip";
 import "./roster.css";
 
@@ -73,21 +74,7 @@ export const RosterRow: React.FC<RosterRowProps> = ({
     }
   };
 
-  const [avatarImageFailed, setAvatarImageFailed] = useState(false);
-
-  const avatarInitial = isAutoRoute
-    ? "★"
-    : (role.title.charAt(0) || role.name.charAt(0)).toUpperCase();
-  const showAvatarImage = !isAutoRoute && !!role.avatar && !avatarImageFailed;
-
-  const hue = getRoleHue(role.name);
-  const avatarStyle: React.CSSProperties = isAutoRoute
-    ? {}
-    : {
-        backgroundColor: `hsl(${hue}, 42%, 30%)`,
-        color: "var(--text-on-accent)",
-        borderColor: `hsl(${hue}, 48%, 42%)`,
-      };
+  const avatarInitial = (role.title.charAt(0) || role.name.charAt(0)).toUpperCase();
 
   return (
     <div
@@ -111,18 +98,13 @@ export const RosterRow: React.FC<RosterRowProps> = ({
       >
         {/* Avatar with status indicator */}
         <div className="roster-avatar-wrap">
-          {showAvatarImage ? (
-            <img
-              src={role.avatar}
-              alt=""
-              className="roster-avatar roster-avatar--image"
-              onError={() => setAvatarImageFailed(true)}
-            />
-          ) : (
-            <div className="roster-avatar" style={avatarStyle}>
-              {avatarInitial}
-            </div>
-          )}
+          <PersonaAvatar
+            roleName={role.name}
+            initial={avatarInitial}
+            avatarUrl={role.avatar}
+            isAutoRoute={isAutoRoute}
+            variant="roster"
+          />
 
           {/* Status dot with tooltip. The anchor pins it to the avatar corner;
               Tooltip's own relative wrapper would otherwise flow below. */}
