@@ -1,24 +1,23 @@
-"""Immutable content-hashed role versions, rollback, pinned task versions (RD #3104).
-
-Each publish creates an immutable ``RoleVersion``. Rollback appends a new
-version with content equal to a chosen prior one; history is never
-rewritten. ``dispatch_task`` is a self-contained stand-in for the real
-task/lease boundary (#3098, not built yet): it pins the version current at
-dispatch so a later publish never changes an in-flight task.
-"""
+"""Immutable content-hashed role versions, rollback, pinned task versions (RD #3104, #3105)."""
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import itertools
 import json
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
+from staff.bot_builder.activation import ActivationError
 from staff.bot_builder.schema import BuilderRoleDefinition
+
+if TYPE_CHECKING:
+    from staff.bot_builder.activation import ApprovalRecord, DryRunRecord
 
 
 def _canonical_role_payload(role: BuilderRoleDefinition) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "schema_version": role.schema_version,
         "name": role.name,
         "persona": role.persona,
@@ -34,6 +33,9 @@ def _canonical_role_payload(role: BuilderRoleDefinition) -> dict[str, object]:
         "private_context_ref": role.private_context_ref,
         "household_data_opt_in": role.household_data_opt_in,
     }
+    if role.description:
+        payload["description"] = role.description
+    return payload
 
 
 def compute_content_hash(role: BuilderRoleDefinition) -> str:
@@ -58,6 +60,10 @@ class RoleVersionLedger:
         self.role_id = role_id
         self._history: list[RoleVersion] = []
         self._seq = itertools.count(start=1)
+        self.activation_gated: bool = False
+        self._active: bool = False
+        self._dry_runs: dict[str, DryRunRecord] = {}
+        self.approval_record: ApprovalRecord | None = None
 
     @property
     def history(self) -> tuple[RoleVersion, ...]:
@@ -70,6 +76,31 @@ class RoleVersionLedger:
     @property
     def original_role(self) -> BuilderRoleDefinition | None:
         return self._history[0].role if self._history else None
+
+    @property
+    def is_active(self) -> bool:
+        return self._active and self.current is not None and self.current.role.enabled
+
+    def enable_activation_gate(self) -> None:
+        self.activation_gated = True
+
+    def record_dry_run(self, record: DryRunRecord) -> None:
+        self.activation_gated = True
+        self._dry_runs[record.version_id] = record
+
+    def activate_current(self, approval: ApprovalRecord) -> None:
+        current = self.current
+        if current is None:
+            raise ActivationError("cannot activate a role with no published version")
+        self.activation_gated = True
+        self._active = True
+        self.approval_record = approval
+        self._history[-1] = dataclasses.replace(current, role=dataclasses.replace(current.role, enabled=True))
+
+    def revoke_activation(self) -> None:
+        self.activation_gated = True
+        self._active = False
+        self.approval_record = None
 
     def _append(self, role: BuilderRoleDefinition, content_hash: str, rolled_back_from: str | None) -> RoleVersion:
         seq = next(self._seq)
@@ -110,10 +141,12 @@ class TaskHandle:
 
 
 def dispatch_task(ledger: RoleVersionLedger) -> TaskHandle:
-    """DbC: ledger must have at least one published version."""
+    """DbC: ledger must have a published version and pass the activation gate when gated."""
     current = ledger.current
     if current is None:
         raise ValueError("cannot dispatch a task against a role with no published version")
+    if ledger.activation_gated and not ledger.is_active:
+        raise ActivationError("hub dispatch refused: bot version is not approved and active")
     return TaskHandle(
         role_id=ledger.role_id,
         pinned_version_id=current.version_id,

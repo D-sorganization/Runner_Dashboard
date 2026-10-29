@@ -7253,6 +7253,13 @@
             "title": "Active Runs",
             "type": "integer"
           },
+          "allowed_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Models",
+            "type": "array"
+          },
           "avatar": {
             "anyOf": [
               {
