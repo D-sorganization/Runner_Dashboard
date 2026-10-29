@@ -33,13 +33,6 @@ KNOWN_RECORD_TYPES: frozenset[str] = frozenset(
 )
 _TRUTHY_ENV: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 _SAFE_SESSION_RE = re.compile(r"[^A-Za-z0-9._:-]+")
-_HEALTH_LOCK = threading.Lock()
-_HEALTH_COUNTERS: dict[str, int] = {
-    "warnings_total": 0,
-    "unsupported_version_total": 0,
-    "malformed_record_total": 0,
-    "unrecognized_record_total": 0,
-}
 
 
 @dataclass(frozen=True)
@@ -60,26 +53,42 @@ class TailPassResult:
     warnings: tuple[AdapterHealthWarning, ...] = ()
 
 
-def reset_adapter_health() -> None:
-    with _HEALTH_LOCK:
-        for key in _HEALTH_COUNTERS:
-            _HEALTH_COUNTERS[key] = 0
+class AdapterHealthTracker:
+    """Thread-safe per-adapter health warning counter store."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._counters: dict[str, int] = {
+            "warnings_total": 0,
+            "unsupported_version_total": 0,
+            "malformed_record_total": 0,
+            "unrecognized_record_total": 0,
+        }
+
+    def reset(self) -> None:
+        with self._lock:
+            for key in self._counters:
+                self._counters[key] = 0
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._counters)
+
+    def record(self, reason: str) -> None:
+        with self._lock:
+            self._counters["warnings_total"] += 1
+            if reason == "unsupported_format_version":
+                self._counters["unsupported_version_total"] += 1
+            elif reason == "malformed_record":
+                self._counters["malformed_record_total"] += 1
+            elif reason == "unrecognized_record_format":
+                self._counters["unrecognized_record_total"] += 1
 
 
-def adapter_health_snapshot() -> dict[str, int]:
-    with _HEALTH_LOCK:
-        return dict(_HEALTH_COUNTERS)
-
-
-def _record_warning(reason: str) -> None:
-    with _HEALTH_LOCK:
-        _HEALTH_COUNTERS["warnings_total"] += 1
-        if reason == "unsupported_format_version":
-            _HEALTH_COUNTERS["unsupported_version_total"] += 1
-        elif reason == "malformed_record":
-            _HEALTH_COUNTERS["malformed_record_total"] += 1
-        elif reason == "unrecognized_record_format":
-            _HEALTH_COUNTERS["unrecognized_record_total"] += 1
+_CLAUDE_HEALTH = AdapterHealthTracker()
+reset_adapter_health = _CLAUDE_HEALTH.reset
+adapter_health_snapshot = _CLAUDE_HEALTH.snapshot
+_record_warning = _CLAUDE_HEALTH.record
 
 
 def is_claude_tailer_enabled(env: Mapping[str, str] | None = None) -> bool:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -14,6 +13,7 @@ from activity_claude_tailer import (
     CHECKPOINT_SCHEMA_VERSION,
     PARSER_VERSION,
     SUPPORTED_FORMAT_VERSIONS,
+    AdapterHealthTracker,
     AdapterHealthWarning,
     ClaudeSessionTailer,
     TailPassResult,
@@ -55,35 +55,10 @@ CODEX_KNOWN_RECORD_TYPES: frozenset[str] = frozenset(
         "turn_context",
     }
 )
-_HEALTH_LOCK = threading.Lock()
-_HEALTH_COUNTERS: dict[str, int] = {
-    "warnings_total": 0,
-    "unsupported_version_total": 0,
-    "malformed_record_total": 0,
-    "unrecognized_record_total": 0,
-}
-
-
-def reset_adapter_health() -> None:
-    with _HEALTH_LOCK:
-        for key in _HEALTH_COUNTERS:
-            _HEALTH_COUNTERS[key] = 0
-
-
-def adapter_health_snapshot() -> dict[str, int]:
-    with _HEALTH_LOCK:
-        return dict(_HEALTH_COUNTERS)
-
-
-def _record_warning(reason: str) -> None:
-    with _HEALTH_LOCK:
-        _HEALTH_COUNTERS["warnings_total"] += 1
-        if reason == "unsupported_format_version":
-            _HEALTH_COUNTERS["unsupported_version_total"] += 1
-        elif reason == "malformed_record":
-            _HEALTH_COUNTERS["malformed_record_total"] += 1
-        elif reason == "unrecognized_record_format":
-            _HEALTH_COUNTERS["unrecognized_record_total"] += 1
+_CODEX_HEALTH = AdapterHealthTracker()
+reset_adapter_health = _CODEX_HEALTH.reset
+adapter_health_snapshot = _CODEX_HEALTH.snapshot
+_record_warning = _CODEX_HEALTH.record
 
 
 def is_codex_tailer_enabled(env: Mapping[str, str] | None = None) -> bool:
