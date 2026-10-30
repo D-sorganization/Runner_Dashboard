@@ -93,13 +93,18 @@ def pump_nudge_output(
     transcript: Path,
     store: RunStore,
     watchdog: StaffWatchdog | None = None,
+    *,
+    expected_session_id: str | None = None,
 ) -> PumpResult:
     """Stream stdout lines from retry nudge into transcript and event store (#1709).
 
-    Accepts the result line ONLY on an exact prefix match (``text.startswith('STAFF_RESULT:')``).
+    Codex results also require the requested thread when an expected session is supplied.
     """
+    from staff.chat_history import extract_session_id
+
     usage: dict[str, Any] = {}
     result_line = ""
+    session_id: str | None = None
     assert proc.stdout is not None  # noqa: S101
     with transcript.open("a", encoding="utf-8") as tf:
         tf.write("\n--- [nudge retry for STAFF_RESULT] ---\n")
@@ -108,6 +113,8 @@ def pump_nudge_output(
                 watchdog.record_output()
             tf.write(redact_sensitive_content(line))
             event = adapter.parse_line(line)
+            if not session_id:
+                session_id = extract_session_id(adapter.provider_id, event, raw_line=line)
             if event.get("usage"):
                 usage.update(event["usage"])
             text = (event.get("text") or "").strip()
@@ -115,7 +122,15 @@ def pump_nudge_output(
                 store.append_event(rec.id, "nudge_reply", text)
                 if text.startswith("STAFF_RESULT:"):
                     result_line = text
-    return PumpResult(usage, result_line)
+    if adapter.provider_id == "codex" and expected_session_id and session_id != expected_session_id:
+        store.append_event(
+            rec.id,
+            "nudge",
+            f"Codex nudge thread mismatch: expected {expected_session_id}, observed {session_id or 'missing'}; "
+            "refusing STAFF_RESULT",
+        )
+        result_line = ""
+    return PumpResult(usage, result_line, session_id)
 
 
 def execute_retry_nudge(
@@ -202,7 +217,9 @@ def execute_retry_nudge(
     )
     watchdog.start()
     try:
-        nudge_pump = pump_nudge_output(rec, adapter, nudge_proc, transcript, store, watchdog)
+        nudge_pump = pump_nudge_output(
+            rec, adapter, nudge_proc, transcript, store, watchdog, expected_session_id=session_id
+        )
         try:
             rc = nudge_proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
