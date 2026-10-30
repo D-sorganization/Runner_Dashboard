@@ -219,7 +219,7 @@ class ProviderAdapter:
         allowed = claude_allowed_tools(read_only_tools)
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
-        if self.provider_id in ("claude", "claude-ollama"):
+        if self.provider_id in ("claude", "claude-ollama", "anthropic-api"):
             cmd = [
                 self.executable,
                 "-p",
