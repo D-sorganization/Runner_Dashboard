@@ -205,6 +205,40 @@ COMMANDS: tuple[Command, ...] = (
         tool="fleet_briefing",
     ),
     Command(
+        "activity-context",
+        "activity_context",
+        "Read token-capped shared running activity context (needs scope activity.read).",
+        {
+            "repo": REPO,
+            "budget_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000,
+                "description": "Token cap (1..4000, default 1500).",
+            },
+        },
+        tool="activity_context",
+    ),
+    Command(
+        "tail-session",
+        "tail_session",
+        "Tail bounded session transcript chunks after a sequence cursor (needs scope activity.read).",
+        {
+            "session_id": {"type": "string", "description": "Target session id to tail."},
+            "after_seq": {"type": "integer", "minimum": -1, "description": "Return chunks after seq (default -1)."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500, "description": "Max chunks (1..500)."},
+            "budget_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000,
+                "description": "Token cap (1..4000, default 1500).",
+            },
+        },
+        required=("session_id",),
+        tool="tail_session",
+        positional=("session_id",),
+    ),
+    Command(
         "sessions",
         "sessions",
         "Active agent sessions (all vendors, from the coordination board) plus in-flight staff runs.",

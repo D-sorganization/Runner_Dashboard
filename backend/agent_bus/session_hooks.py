@@ -88,7 +88,22 @@ def _node(short_host: Any) -> str:
 
 def _offline_summary(exc: Any) -> dict[str, Any]:
     log.debug("agent bus offline: status=%s", exc.status)
-    return {"offline": True, "registered": False, "inbox_count": 0}
+    return {
+        "offline": True,
+        "registered": False,
+        "inbox_count": 0,
+        "activity_context": {"status": "unavailable", "available": False, "reason": "offline"},
+    }
+
+
+def _fetch_activity_context(client: Any, *, repo: str | None = None) -> dict[str, Any]:
+    try:
+        ctx = client.activity_context(repo=repo)
+        if isinstance(ctx, dict):
+            return ctx
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": "unavailable", "available": False}
 
 
 def session_start(
@@ -97,6 +112,7 @@ def session_start(
     role: str | None = None,
     provider: str | None = None,
     node: str | None = None,
+    repo: str | None = None,
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
 ) -> dict[str, Any]:
     """Register this session and fetch inbox; no-op when the dashboard is down."""
@@ -147,7 +163,13 @@ def session_start(
         messages = inbox.get("messages", []) if isinstance(inbox, dict) else []
         count = len(messages) if isinstance(messages, list) else 0
         log.info("agent bus session start: session=%s inbox=%d", session, count)
-        summary: dict[str, Any] = {"offline": False, "registered": True, "inbox_count": count, "session": session}
+        summary: dict[str, Any] = {
+            "offline": False,
+            "registered": True,
+            "inbox_count": count,
+            "session": session,
+            "activity_context": _fetch_activity_context(client, repo=repo),
+        }
         try:
             from agent_bus.skills_delivery import export_skills_at_session_start
 
