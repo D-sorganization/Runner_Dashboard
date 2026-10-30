@@ -12,6 +12,7 @@ def test_staff_ids_resolve_to_canonical_registry_entries() -> None:
 
     assert {provider_id: canonical_provider_id(provider_id) for provider_id in ADAPTERS} == {
         "claude": "claude_code_cli",
+        "anthropic-api": "anthropic_api",
         "codex": "codex_cli",
         "antigravity": "antigravity",
         "gemini": "gemini_cli",
@@ -42,3 +43,21 @@ def test_canonical_ids_and_historical_spellings_share_one_identity() -> None:
 def test_unknown_provider_ids_fail_closed(provider_id: str) -> None:
     with pytest.raises(KeyError, match="provider id|unknown provider"):
         canonical_provider_id(provider_id)
+
+
+def test_anthropic_api_adapter_ships_inert_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#3534: the failover step must report not-installed until Dieter configures a key."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY_ENV_VAR", raising=False)
+    adapter = ADAPTERS["anthropic-api"]
+    assert adapter.installed() is False
+
+
+def test_anthropic_api_adapter_reports_installed_once_a_key_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret")  # pragma: allowlist secret
+    adapter = ADAPTERS["anthropic-api"]
+    assert adapter.installed() is True
+    assert adapter.executable == "claude"
+    assert adapter.build_command("do it", "/tmp/wt", model=None)[0] == "claude"

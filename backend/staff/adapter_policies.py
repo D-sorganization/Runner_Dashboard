@@ -28,6 +28,7 @@ CLAUDE_WRITE_TOOLS: tuple[str, ...] = ("Edit", "Write", "MultiEdit", "NotebookEd
 _CHAT_READ_ONLY_FLAGS: dict[str, tuple[str, ...]] = {
     "claude": ("--permission-mode", "default"),
     "claude-ollama": ("--permission-mode", "default"),
+    "anthropic-api": ("--permission-mode", "default"),
     "codex": ("--sandbox", "read-only"),
     "ollama": ("--sandbox", "read-only"),
     "antigravity": ("--mode", "plan"),

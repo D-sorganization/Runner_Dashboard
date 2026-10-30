@@ -12,10 +12,13 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from staff.anthropic_api_budget import AnthropicApiBudgetGate
 from vault_store import resolve_vault_handle
+
+if TYPE_CHECKING:
+    from staff.adapters import ProviderAdapter
 
 DEFAULT_KEY_ENV_VAR = "ANTHROPIC_API_KEY"
 _KEY_ENV_VAR_OVERRIDE = "ANTHROPIC_API_KEY_ENV_VAR"
@@ -87,3 +90,26 @@ def provider_state(
         if not ok:
             return AnthropicApiProviderState(status="budget_exhausted", detail=reason)
     return AnthropicApiProviderState(status="ready", detail="Key configured; budget available.")
+
+
+def build_adapter(provider_adapter_cls: type[ProviderAdapter], unattended_argv: tuple[str, ...]) -> ProviderAdapter:
+    """Build the ``anthropic-api`` ``ProviderAdapter`` entry for ``staff.adapters.ADAPTERS`` (#3534).
+
+    Takes the adapter class and argv template as params (instead of importing
+    them) so this module never imports from ``staff.adapters``, which already
+    imports from here -- that would be circular.
+    """
+    return provider_adapter_cls(
+        provider_id="anthropic-api",
+        label="Anthropic API (failover)",
+        executable="claude",
+        argv=unattended_argv,
+        default_model="sonnet",
+        json_lines=True,
+        installed_override=lambda: load_api_key() is not None,
+        notes=(
+            "Issue #3123/#3534: claude CLI against the $200/month subscription-included API credit. "
+            "Ships inert -- reports not-installed (so the failover chain skips it) until Dieter configures "
+            "ANTHROPIC_API_KEY; never selectable by a role that has not opted into 'anthropic-api'."
+        ),
+    )

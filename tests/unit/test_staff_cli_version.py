@@ -314,7 +314,9 @@ def test_cli_outdated_outranks_generic_chat_failures() -> None:
 def test_provider_versions_reports_floored_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     _pin(monkeypatch, "2.1.79")
     versions = cli_version.provider_versions(ADAPTERS)
-    assert set(versions) == {"claude", "claude-ollama"}
+    assert set(versions) == {"claude", "claude-ollama", "anthropic-api"}
+    # anthropic-api (#3534) shares the ``claude`` executable, so it floors identically.
+    assert versions["anthropic-api"] == versions["claude"]
     assert versions["claude"] == {
         "executable": "claude",
         "installed": True,

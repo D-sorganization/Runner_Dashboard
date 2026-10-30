@@ -34,6 +34,7 @@ from staff.adapter_policies import (
     claude_unattended_tools,
     gemini_policy_toml,
 )
+from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
@@ -79,8 +80,7 @@ class ProviderAdapter:
     provider_id: ProviderId
     label: str
     executable: str
-    # argv template; ``{prompt}``, ``{model}``, ``{workdir}``, ``{gitdir}`` and
-    # ``{policy}`` are substituted.
+    # argv template; ``{prompt}``, ``{model}``, ``{workdir}``, ``{gitdir}`` and ``{policy}`` are substituted.
     argv: tuple[str, ...]
     default_model: str | None = None
     models: tuple[str, ...] = ()
@@ -92,7 +92,6 @@ class ProviderAdapter:
     extra_env: dict[str, str] = field(default_factory=dict)
     # Env computed at launch (e.g. the Ollama URL, which depends on the host network).
     env_builder: Callable[[], dict[str, str]] | None = None
-
     # RM agent id used for issue leases; ``None`` means the provider id itself.
     lease_as: str | None = None
     # False when the CLI cannot run unattended without a permission bypass (#1586).
@@ -101,6 +100,7 @@ class ProviderAdapter:
     policy_text: Callable[[], str] | None = None
     # Whether chat turns print JSON lines; ``None`` means the same as unattended runs.
     chat_json_lines: bool | None = None
+    installed_override: Callable[[], bool] | None = None
 
     @property
     def chat_json(self) -> bool:
@@ -219,8 +219,7 @@ class ProviderAdapter:
         allowed = claude_allowed_tools(read_only_tools)
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
-
-        if self.provider_id in ("claude", "claude-ollama"):
+        if self.provider_id in ("claude", "claude-ollama", "anthropic-api"):
             cmd = [
                 self.executable,
                 "-p",
@@ -308,7 +307,7 @@ class ProviderAdapter:
         return event
 
     def installed(self) -> bool:
-        return shutil.which(self.executable) is not None
+        return self.installed_override() if self.installed_override else shutil.which(self.executable) is not None
 
 
 _CLAUDE_ALLOWED, _CLAUDE_DENIED = claude_unattended_tools()
@@ -356,6 +355,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "listed tools and shell prefixes run, anything else is refused instead of prompted (#1586)."
         ),
     ),
+    "anthropic-api": _build_anthropic_api_adapter(ProviderAdapter, _UNATTENDED_CLAUDE),
     "codex": ProviderAdapter(
         provider_id="codex",
         label="Codex CLI",

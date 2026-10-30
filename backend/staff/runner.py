@@ -241,7 +241,7 @@ class StaffRunner:
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
             antigravity_permissions(read_only=role.code_read_only, workdir=workdir, gitdir=gitdir)
-        from staff.cloud_dispatch import record_cloud_session_from_transcript, resolve_execute_launch, scrub_api_key_env
+        from staff.cloud_dispatch import record_cloud_session_from_transcript, resolve_execute_launch
 
         launch_argv, launch_label, stdin_payload = resolve_execute_launch(
             plan, adapter, prompt, workdir, ops.read_only_kwargs(role), launch_paths
@@ -263,8 +263,7 @@ class StaffRunner:
         )
         if env is None:
             return
-        if plan.execution_mode == "cloud":
-            env = scrub_api_key_env(env)
+        env = ops.sanitize_launch_env(env, execution_mode=plan.execution_mode, provider=plan.provider)
         env = ops.apply_staff_run_fleet_token(
             store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
         )

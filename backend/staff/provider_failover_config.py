@@ -56,6 +56,7 @@ def _builtin_chain() -> tuple[FailoverStep, ...]:
     return (
         FailoverStep("codex", "gpt-6-luna"),
         FailoverStep("claude", None),
+        FailoverStep("anthropic-api", None),
         FailoverStep("antigravity", "gemini-3.8-flash-high"),
         FailoverStep("cursor-agent", None),
     )
