@@ -30,7 +30,7 @@ Grok handles conversation, decisions, holds and owner questions itself. Route ot
 work through RD, subject to the existing proposal-confirmation and cost gates
 below. A dispatch refusal never grants permission to bypass a hold.
 
-1. Read the coordination briefing and claim the issue on RM #2376 before starting
+1. Read the coordination briefing and claim the issue on RM #2539 before starting
    work. Check for an existing run and live RD lease for the same request key.
 2. Probe the hub, then dispatch through `fleetctl dispatch` with a stable
    `Idempotency-Key`. Reuse the key on retries: it identifies the role, repository,
