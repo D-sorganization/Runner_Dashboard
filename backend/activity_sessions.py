@@ -44,6 +44,7 @@ EmptyReason = Literal["complete_empty", "local_empty"]
 _TERMINAL_KINDS: dict[str, frozenset[str]] = {
     "staff_run": frozenset({"exit", "cancel", "failed"}),
     "coordination": frozenset({"presence_release"}),
+    "job_board": frozenset({"release", "expiry"}),
     "checkin": frozenset({"done"}),
     "recorder": frozenset({"session_end", "exit"}),
 }

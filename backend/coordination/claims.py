@@ -25,6 +25,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination.board import BOARD_COMMENT_LIMIT, BOARD_ISSUE, RMScriptError
 from coordination.rm_scripts import ScriptResult, run_module
@@ -231,7 +232,16 @@ def _post(repo: str, issue: int, agent: str, session: str, intent: str) -> dict[
     return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
 
 
-def claim(repo: str, issue: int, *, agent: str, session: str, intent: str) -> dict[str, Any]:
+def claim(
+    repo: str,
+    issue: int,
+    *,
+    agent: str,
+    session: str,
+    intent: str,
+    holder_principal: str | None = None,
+    fencing_token: str | None = None,
+) -> dict[str, Any]:
     """Check, then lease, serialized per ``repo#issue`` in this process.
 
     Raises ``ClaimHeldError`` (held by anyone but this agent+session) or ``RMScriptError``.
@@ -241,12 +251,48 @@ def claim(repo: str, issue: int, *, agent: str, session: str, intent: str) -> di
         if not status["available"]:
             raise RMScriptError(f"check_agent_claim unavailable: {status['reason']}")
         if status["held"] and not _is_own(status, agent, session):
+            held_agent = str(status.get("agent") or "")
+            held_principal = f"agent-{held_agent}" if held_agent else (holder_principal or f"agent-{agent}")
+            record_job_claim_activity(
+                kind="conflict",
+                repo=repo,
+                issue=issue,
+                agent=agent,
+                session=session,
+                holder_principal=held_principal,
+                fencing_token=fencing_token,
+                extra={
+                    "challenger_principal": holder_principal or f"agent-{agent}",
+                    "reason": str(status.get("reason") or ""),
+                },
+            )
             raise ClaimHeldError(status)
         posted = _post(repo, issue, agent, session, intent)
+        receipt = str(posted["result"].get("receipt") or "")
+        record_job_claim_activity(
+            kind="claim",
+            repo=repo,
+            issue=issue,
+            agent=agent,
+            session=session,
+            holder_principal=holder_principal,
+            receipt=receipt,
+            fencing_token=fencing_token,
+            extra={"intent": intent},
+        )
     return {"claimed": True, "previous": status, "lease": posted["result"], "warnings": posted["warnings"]}
 
 
-def release(repo: str, issue: int, *, agent: str, session: str, reason: str) -> dict[str, Any]:
+def release(
+    repo: str,
+    issue: int,
+    *,
+    agent: str,
+    session: str,
+    reason: str,
+    holder_principal: str | None = None,
+    fencing_token: str | None = None,
+) -> dict[str, Any]:
     outcome_reason = classify_release_reason(repo, issue, agent_reason=reason)
     args = (
         "--repo",
@@ -262,4 +308,17 @@ def release(repo: str, issue: int, *, agent: str, session: str, reason: str) -> 
     )
     with _issue_lock(repo, issue):
         done = _write_result("release_agent_lease", run_module("release_agent_lease", *args))
+        receipt = str(done["result"].get("receipt") or "")
+        kind: str = "expiry" if "expired" in reason.lower() else "release"
+        record_job_claim_activity(
+            kind=kind,  # type: ignore[arg-type]
+            repo=repo,
+            issue=issue,
+            agent=agent,
+            session=session,
+            holder_principal=holder_principal,
+            receipt=receipt,
+            fencing_token=fencing_token,
+            extra={"reason": outcome_reason},
+        )
     return {"released": True, "result": done["result"], "warnings": done["warnings"]}
