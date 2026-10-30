@@ -13,3 +13,7 @@ and usage remain available even when the result is rejected.
 Validation: new fake-stream and execution-path regressions failed before the
 repair; focused continuity, initial-session and extraction tests pass afterward.
 Live worker acceptance requires a qualified deployment and remains pending.
+
+Also fixes #3592, the required Windows push-hook portability prerequisite:
+unavailable Unix sockets raise OSError at the existing fail-closed WhoIs
+boundary; no alternate transport or trust policy is introduced.
