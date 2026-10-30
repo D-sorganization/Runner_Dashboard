@@ -10,6 +10,7 @@ Routes (all under ``/api/coordination``):
   GET  /claims              Is ``?repo=&issue=`` leased (RM ``check_agent_claim``)?
   POST /claims              Check then lease; 409 when another agent holds it.
   POST /claims/release      Release the lease (RM ``release_agent_lease``).
+  GET  /jobs                Claimable work (``?repo=&limit=&include_excluded=``); read-only (epic #2781 S1).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
 
 Auth: reads ``require_fleet_peer``; writes ``require_coordination_writer``
@@ -26,6 +27,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from coordination import jobs as jobs_mod
 from coordination import service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
@@ -134,6 +136,16 @@ async def post_claim(body: ClaimBody, caller: Caller = WRITER) -> dict[str, Any]
 @router.post("/claims/release")
 async def post_claim_release(body: ClaimReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
     return await _write(lambda: service.release_claim(body, caller), caller, f"release {body.repo}#{body.issue}")
+
+
+@router.get("/jobs")
+async def get_jobs(
+    repo: str | None = Query(default=None, pattern=REPO_PATTERN),
+    limit: int = Query(default=50, ge=1, le=200),
+    include_excluded: bool = Query(default=False),
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    return await run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
 
 
 @router.get("/briefing")
