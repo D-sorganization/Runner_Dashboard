@@ -98,7 +98,7 @@ def pump_nudge_output(
 ) -> PumpResult:
     """Stream stdout lines from retry nudge into transcript and event store (#1709).
 
-    Codex results also require the requested thread when an expected session is supplied.
+    Codex-backed results require the requested thread when an expected session is supplied.
     """
     from staff.chat_history import extract_session_id
 
@@ -122,7 +122,7 @@ def pump_nudge_output(
                 store.append_event(rec.id, "nudge_reply", text)
                 if text.startswith("STAFF_RESULT:"):
                     result_line = text
-    if adapter.provider_id == "codex" and expected_session_id and session_id != expected_session_id:
+    if adapter.provider_id in ("codex", "ollama") and expected_session_id and session_id != expected_session_id:
         store.append_event(
             rec.id,
             "nudge",

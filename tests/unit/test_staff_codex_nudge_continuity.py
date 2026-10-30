@@ -50,13 +50,14 @@ def nudge_process(thread: str | None) -> SimpleNamespace:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("provider", ["codex", "ollama"])
 @pytest.mark.parametrize("observed", ["original-thread", "different-thread", None])
-def test_nudge_requires_original_codex_thread(tmp_path, observed: str | None) -> None:
+def test_nudge_requires_original_codex_thread(tmp_path, observed: str | None, provider: str) -> None:
     store = EventStore()
     transcript = tmp_path / "nudge.log"
     result = runner_stream.pump_nudge_output(
-        SimpleNamespace(id="run-test", provider="codex"),
-        ADAPTERS["codex"],
+        SimpleNamespace(id="run-test", provider=provider),
+        ADAPTERS[provider],
         nudge_process(observed),
         transcript,
         store,
@@ -71,8 +72,9 @@ def test_nudge_requires_original_codex_thread(tmp_path, observed: str | None) ->
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize("provider", ["codex", "ollama"])
 @pytest.mark.parametrize("observed", ["original-thread", "different-thread"])
-def test_execute_nudge_checks_the_requested_session(tmp_path, monkeypatch, observed: str) -> None:
+def test_execute_nudge_checks_the_requested_session(tmp_path, monkeypatch, observed: str, provider: str) -> None:
     monkeypatch.setattr(runner_ops, "resolve_launch_paths", lambda *args: {"gitdir": str(tmp_path)})
     monkeypatch.setattr(runner_stream.shutil, "which", lambda executable: executable)
     monkeypatch.setattr(runner_stream.subprocess, "Popen", lambda *args, **kwargs: nudge_process(observed))
@@ -82,8 +84,8 @@ def test_execute_nudge_checks_the_requested_session(tmp_path, monkeypatch, obser
         lambda **kwargs: SimpleNamespace(start=lambda: None, stop=lambda: None, record_output=lambda: None),
     )
     result, usage, rc = runner_stream.execute_retry_nudge(
-        rec=SimpleNamespace(id="run-test", provider="codex"),
-        adapter=ADAPTERS["codex"],
+        rec=SimpleNamespace(id="run-test", provider=provider),
+        adapter=ADAPTERS[provider],
         plan=SimpleNamespace(model="gpt-6-luna"),
         role=None,
         workdir=tmp_path,
