@@ -2,7 +2,7 @@
 """Alert sinks and dispatch fan-out for the hub liveness sentinel (#3050).
 
 A pluggable ``AlertSink`` port with three implementations (a local Barb
-inbox file, SMTP, and an RM #2376 comment via the fleet ``gh`` wrapper)
+inbox file, SMTP, and an RM #2539 comment via the fleet ``gh`` wrapper)
 plus ``dispatch()``, which fans a single alert message out to every
 configured sink and never lets one failing sink block the others.
 
@@ -77,7 +77,7 @@ class SmtpAlertSink(AlertSink):
 
 
 class RmCommentSink(AlertSink):
-    """Posts to RM #2376 via the fleet ``gh`` wrapper (``deploy/fleet-gh/gh``),
+    """Posts to RM #2539 via the fleet ``gh`` wrapper (``deploy/fleet-gh/gh``),
     which mints its own App token internally; the token never appears in our
     command line, environment overrides or logs."""
 
@@ -131,7 +131,7 @@ def build_sinks_from_env(environ: dict[str, str]) -> list[AlertSink]:
             RmCommentSink(
                 gh_path=environ.get("HUB_SENTINEL_GH_PATH", "gh"),
                 repo=rm_repo,
-                issue=int(environ.get("HUB_SENTINEL_RM_ISSUE", "2376")),
+                issue=int(environ.get("HUB_SENTINEL_RM_ISSUE", "2539")),
             )
         )
     return sinks
