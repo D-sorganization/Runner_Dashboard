@@ -147,3 +147,28 @@ def test_claude_import_loads_agents_md() -> None:
     assert "Runner_Dashboard" in imported_text
     assert "Quick Reference" in imported_text
     assert "BEGIN FLEET-MANAGED: reasoning-engagement" in imported_text
+
+
+def test_agents_md_aligned_with_fleet_standards_v1_2_0() -> None:
+    """AGENTS.md fleet-managed blocks and quick reference must align with fleet-standards v1.2.0 (#3556)."""
+    text = AGENTS_MD.read_text(encoding="utf-8")
+
+    # 1. Agent identity: Fleet App bot identity only (retires personal-token approval)
+    assert "Fleet App bot identity only (owner ruling 2026-10-28, retires the prior personal-token clause)." in text
+    assert "The owner's personal token (`ghp_`, `github_pat_`, `gho_`) is not an approved agent identity." in text
+    assert "The owner's personal token is an approved identity." not in text
+
+    # 2. PR queue consolidation: disabled by owner
+    assert "Disabled by owner (Dieter, 2026-10-26); never consolidate PRs." in text
+    assert "consolidate eligible PRs into one branch and PR" not in text
+
+    # 3. Merge queue & automerge_guard: no --strategy squash flag
+    assert "--strategy squash" not in text
+    assert "python scripts/automerge_guard.py D-sorganization/Runner_Dashboard <pr> --arm\n" in text
+    assert "python scripts/automerge_guard.py <owner>/<repo> <pr> --arm`; never pass a merge-method flag" in text
+
+    # 4. PR lifecycle & lane PRs updates
+    assert "6. **PR size and stacking.** Every PR must stay under 500 changed lines." in text
+    assert "7. **Issue closure evidence.** Include `Closes #<issue>` on a real newline in PR descriptions" in text
+    assert "Cap: three non-draft open PRs per agent per repo." in text
+
