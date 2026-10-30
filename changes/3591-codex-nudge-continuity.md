@@ -32,3 +32,7 @@ network and git-directory options instead of rebuilding a reduced command.
 Four failing Codex/Ollama regressions cover default and explicit models;
 installed 0.164.0 help-only probes accept the preserved parent options before
 the resume subcommand. This retains the initial run's permissions and routing.
+
+Native-thread validation covers Ollama's Codex-backed nudge too. Three cases
+failed before applying the same existing rejection to missing/mismatched thread
+IDs; matching-thread results, usage and transcript evidence remain intact.
