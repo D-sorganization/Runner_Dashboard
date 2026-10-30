@@ -181,11 +181,8 @@ class ProviderAdapter:
                 out[out.index("--mode") + 1] = "plan"
         if session_id:
             if self.provider_id in ("codex", "ollama"):
-                resumed: list[str] = [self.executable, "exec", "resume", "--skip-git-repo-check", "--json"]
-                if model:
-                    resumed.extend(["-m", model])
-                resumed.extend([session_id, prompt])
-                out = resumed
+                # Resume applies this invocation's config; retain explicit launch options.
+                out[-1:] = ["resume", session_id, prompt]
             elif self.provider_id == "antigravity":
                 out.extend(["--conversation", session_id])
             else:
