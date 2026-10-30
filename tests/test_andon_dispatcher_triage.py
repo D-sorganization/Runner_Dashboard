@@ -62,7 +62,7 @@ def test_rank_andons_red_main_first() -> None:
 def test_build_triage_card_links_single_fingerprint() -> None:
     """build_triage_card creates an issue-shaped card with claim:<agent> and 1 fingerprint."""
     record = AndonRecord(
-        fingerprint="a1b2c3d4e5f60718",
+        fingerprint="fp-single-card",
         issue_number=2902,
         opened_at="2026-10-29T11:30:00Z",
         red_main=False,
@@ -75,7 +75,7 @@ def test_build_triage_card_links_single_fingerprint() -> None:
     card = build_triage_card(record, claim_agent="antigravity")
 
     assert card["scope"] == BARB_TRIAGE_SCOPE
-    assert card["linked_fingerprints"] == ["a1b2c3d4e5f60718"]
+    assert card["linked_fingerprints"] == ["fp-single-card"]
     assert len(card["linked_fingerprints"]) == 1
     assert "claim:antigravity" in card["labels"]
     claim_labels = [lbl for lbl in card["labels"] if lbl.startswith("claim:")]
@@ -83,7 +83,7 @@ def test_build_triage_card_links_single_fingerprint() -> None:
     assert card["source_issue_number"] == 2902
     assert isinstance(card["acceptance_criteria"], list)
     assert len(card["acceptance_criteria"]) >= 1
-    assert "a1b2c3d4e5f60718" in card["body"]
+    assert "fp-single-card" in card["body"]
 
 
 def test_dispatch_red_main_p0_dedupes_duplicate_fingerprints() -> None:

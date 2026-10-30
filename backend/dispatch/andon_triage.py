@@ -8,24 +8,41 @@ red-main P0 failures at most once per fingerprint.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Final
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_PR_CAP_ROOT = _REPO_ROOT / ".github" / "fleet-pr-cap"
-for _candidate in (_PR_CAP_ROOT, _REPO_ROOT):
-    if _candidate.is_dir() and str(_candidate) not in sys.path:
-        sys.path.insert(0, str(_candidate))
+_FLEET_CAP = _REPO_ROOT / ".github" / "fleet-pr-cap"
 
-from shared_scripts.agent_identity import (  # noqa: E402
-    CLAIM_LABEL_PREFIX,
-    PROFILES,
-    claim_label,
-)
+
+def _load_module_from_path(qualified_name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(qualified_name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load module from {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[qualified_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_fleet_agent_identity() -> ModuleType:
+    """Load fleet agent identity even when repo-root ``shared_scripts`` is already imported."""
+    pr_key = "shared_scripts.pr_agent_identity"
+    if pr_key not in sys.modules:
+        _load_module_from_path(pr_key, _FLEET_CAP / "shared_scripts" / "pr_agent_identity.py")
+    return _load_module_from_path("fleet_agent_identity", _FLEET_CAP / "shared_scripts" / "agent_identity.py")
+
+
+_agent_identity = _load_fleet_agent_identity()
+CLAIM_LABEL_PREFIX: Final[str] = str(_agent_identity.CLAIM_LABEL_PREFIX)
+PROFILES: Final[dict[str, Any]] = dict(_agent_identity.PROFILES)
+claim_label: Callable[[str], str] = _agent_identity.claim_label
 
 BARB_TRIAGE_SCOPE: Final[str] = "barb:issue-triage"
 
