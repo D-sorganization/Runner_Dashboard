@@ -12596,6 +12596,86 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/jobs": {
+      "get": {
+        "operationId": "get_jobs_api_coordination_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_excluded",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Excluded",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Jobs Api Coordination Jobs Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Jobs",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/messages": {
       "post": {
         "operationId": "post_message_api_coordination_messages_post",

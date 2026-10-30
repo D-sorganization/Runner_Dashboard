@@ -181,3 +181,36 @@ def release_result(*, label: bool = True, comment: bool = True, errors: list[str
     """``release_agent_lease`` stdout (rc 1 when not ok): ``LeaseWriteResult`` + ``ok``."""
     out = lease_result(label=label, comment=comment, errors=errors)
     return {k: out[k] for k in ("label_updated", "comment_posted", "receipt", "errors", "ok")}
+
+
+def issue(
+    number: int,
+    *,
+    repo: str = "Tools",
+    labels: list[str] | None = None,
+    title: str = "do the thing",
+    created_at: str = "2026-10-01T00:00:00Z",
+) -> dict[str, Any]:
+    """A GitHub ``GET /repos/.../issues`` entry, for ``coordination.claims.evidence_fetch`` fakes (#2782)."""
+    return {
+        "number": number,
+        "title": title,
+        "html_url": f"https://github.com/D-sorganization/{repo}/issues/{number}",
+        "labels": [{"name": name} for name in (labels or [])],
+        "updated_at": created_at,
+        "created_at": created_at,
+    }
+
+
+def pr(
+    number: int, *, closes: int, repo: str = "Tools", state: str = "open", merged_at: str | None = None
+) -> dict[str, Any]:
+    """A GitHub ``GET /repos/.../pulls`` entry whose body closes ``closes`` (#2782)."""
+    return {
+        "number": number,
+        "title": "fix: thing",
+        "body": f"Closes #{closes}",
+        "state": state,
+        "merged_at": merged_at,
+        "html_url": f"https://github.com/D-sorganization/{repo}/pull/{number}",
+    }

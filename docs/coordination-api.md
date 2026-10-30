@@ -181,6 +181,14 @@ Body `{repo, issue, agent?, session, reason}` → RM `release_agent_lease` →
 → 200 with `warnings`; nothing posted (e.g. RM "Release requires the current lease's exact agent and session")
 → 502 with RM's errors.
 
+### `GET /api/coordination/jobs?repo=&limit=&include_excluded=`
+
+Fleet Job Board S1 (epic #2781, issue #2782), read-only: open issues (`repo` optional, `limit` 1–200,
+default 50) with no `claim:*`/hold label, no PR already closing them (#2765), and an available,
+unheld `claims.check` (unknown is never free). Returns `{available, complete, jobs, excluded?,
+warnings, generated_at}`; `excluded` needs `include_excluded=true`. Sort: priority label, then
+`priorities.service.top_priorities` position, then oldest. S2 (gates) and S3 (claim/release) are later.
+
 ### Status codes for writes
 
 | Code | When                                                                                                         |
