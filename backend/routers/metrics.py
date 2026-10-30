@@ -90,6 +90,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
     liveness = board.get("liveness") or []
     liveness_alerts = [item for item in liveness if isinstance(item, dict) and item.get("state") in ("late", "dead")]
     ci_slo = cache_get("ci_slo_metrics", 86400.0) or {}
+    andon = cache_get("andon_metrics", 86400.0) or {}
     # #2766: PRs red for more than 24h with zero CI-fix attempts, refreshed by the sweep
     # (``ci_fix_service.run_ci_fix_sweep``); 0 until the first sweep has run.
     ci_fix_red = cache_get("ci_fix_red_24h_zero_fix_total", 86400.0) or {}
@@ -111,6 +112,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "holds_load_errors_total": holds_metrics_snapshot()["load_errors_total"],
         "holds_corrupt": holds_metrics_snapshot()["corrupt"],
         "ci_slo": ci_slo if isinstance(ci_slo, dict) else {},
+        "andon": andon if isinstance(andon, dict) else {},
         "activity": activity,
         "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
     }
@@ -215,11 +217,30 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
             [
                 "# TYPE rd_ci_slo_ok gauge",
                 f"rd_ci_slo_ok {1 if ci_slo.get('ok') else 0}",
-                "",
             ]
         )
-    else:
-        lines.append("")
+    andon = snapshot.get("andon") or {}
+    if isinstance(andon, dict) and isinstance(andon.get("metrics"), dict):
+        am = andon["metrics"]
+        dup_prs = int(am.get("duplicate_fix_prs_total", am.get("duplicate_fix_prs", 0)))
+        max_issue_prs = int(am.get("open_prs_per_issue_max", am.get("max_open_prs_per_issue", 0)))
+        lines.extend(
+            [
+                "# TYPE rd_andon_backlog_total gauge",
+                f"rd_andon_backlog_total {int(am.get('andon_backlog', 0))}",
+                "# TYPE rd_andon_to_card_p90_minutes gauge",
+                f"rd_andon_to_card_p90_minutes {float(am.get('andon_to_card_p90_minutes', 0.0)):.2f}",
+                "# TYPE rd_andon_duplicate_fix_prs_total gauge",
+                f"rd_andon_duplicate_fix_prs_total {dup_prs}",
+                "# TYPE rd_andon_max_open_prs_per_issue gauge",
+                f"rd_andon_max_open_prs_per_issue {max_issue_prs}",
+                "# TYPE rd_andon_unlinked_pr_share gauge",
+                f"rd_andon_unlinked_pr_share {float(am.get('unlinked_pr_share', 0.0)):.4f}",
+                "# TYPE rd_andon_red_main_ttff_p90_minutes gauge",
+                f"rd_andon_red_main_ttff_p90_minutes {float(am.get('red_main_ttff_p90_minutes', 0.0)):.2f}",
+            ]
+        )
+    lines.append("")
     return "\n".join(lines)
 
 
