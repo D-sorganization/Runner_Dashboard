@@ -20,6 +20,8 @@ import provider_switch
 from staff import cli_version, workspace
 from staff import quota as quota_mod
 from staff.adapters import ProviderAdapter
+from staff.anthropic_api_budget import PROVIDER_ID as ANTHROPIC_API_PROVIDER_ID
+from staff.cloud_dispatch import scrub_api_key_env
 from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
@@ -271,6 +273,19 @@ def apply_staff_run_github_child_env(
         store.append_event(rec.id, "error", err)
         return None
     return env
+
+
+def sanitize_launch_env(env: Mapping[str, str], *, execution_mode: str, provider: str) -> dict[str, str]:
+    """Strip provider API keys from a launch env unless this is the anthropic-api launch itself (#3534).
+
+    Pre: ``env`` is the env about to be handed to a staff CLI subprocess.
+    Post: every launch other than the ``anthropic-api`` provider's own local run
+    (cloud dispatch already scrubs unconditionally) never carries a provider API
+    key, even once Dieter configures one for anthropic-api's exclusive use.
+    """
+    if execution_mode == "cloud" or provider != ANTHROPIC_API_PROVIDER_ID:
+        return scrub_api_key_env(env)
+    return dict(env)
 
 
 def apply_staff_run_fleet_token(

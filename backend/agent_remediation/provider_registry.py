@@ -393,6 +393,7 @@ PROVIDER_ID_COMPATIBILITY: dict[str, str] = {
     "gemini": "gemini_cli",
     "gemini-cli": "gemini_cli",
     "agy": "antigravity",
+    "anthropic-api": "anthropic_api",
     "cursor-agent": "cursor_agent",
     "ollama-local": "ollama",
     "claude-ollama": "ollama",

@@ -10,6 +10,7 @@ import pytest
 from staff.runner_ops import (
     pump_output,
     resolve_launch_paths,
+    sanitize_launch_env,
     select_first_available_provider,
 )
 from staff.store import RunRecord, RunStore
@@ -96,3 +97,30 @@ def test_pump_output_streams_and_extracts_result(tmp_path: Path) -> None:
     assert "hello agent" in content
     assert "STAFF_RESULT: done successfully" in content
     assert store.append_event.call_count == 2
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex", "antigravity", "cursor-agent"])
+def test_sanitize_launch_env_strips_provider_keys_for_every_other_provider(provider: str) -> None:
+    """#3534: only the anthropic-api launch itself may ever see a provider API key."""
+    env = {
+        "PATH": "/usr/bin",
+        "ANTHROPIC_API_KEY": "sk-secret",  # pragma: allowlist secret
+        "OPENAI_API_KEY": "sk-openai",  # pragma: allowlist secret
+    }
+    cleaned = sanitize_launch_env(env, execution_mode="local", provider=provider)
+    assert "ANTHROPIC_API_KEY" not in cleaned
+    assert "OPENAI_API_KEY" not in cleaned
+    assert cleaned["PATH"] == "/usr/bin"
+
+
+def test_sanitize_launch_env_keeps_key_for_anthropic_api_local_launch() -> None:
+    env = {"PATH": "/usr/bin", "ANTHROPIC_API_KEY": "sk-secret"}  # pragma: allowlist secret
+    cleaned = sanitize_launch_env(env, execution_mode="local", provider="anthropic-api")
+    assert cleaned["ANTHROPIC_API_KEY"] == "sk-secret"  # pragma: allowlist secret
+
+
+def test_sanitize_launch_env_strips_key_for_anthropic_api_cloud_launch() -> None:
+    """Cloud dispatch never gets a key, even for the anthropic-api provider itself (#2627 invariant)."""
+    env = {"PATH": "/usr/bin", "ANTHROPIC_API_KEY": "sk-secret"}  # pragma: allowlist secret
+    cleaned = sanitize_launch_env(env, execution_mode="cloud", provider="anthropic-api")
+    assert "ANTHROPIC_API_KEY" not in cleaned

@@ -3,6 +3,7 @@
   "default_chain": [
     {"provider": "codex", "model": "gpt-6-luna"},
     {"provider": "claude"},
+    {"provider": "anthropic-api"},
     {"provider": "antigravity", "model": "gemini-3.8-flash-high"},
     {"provider": "cursor-agent"}
   ],

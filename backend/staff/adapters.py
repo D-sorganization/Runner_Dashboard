@@ -34,6 +34,7 @@ from staff.adapter_policies import (
     claude_unattended_tools,
     gemini_policy_toml,
 )
+from staff.anthropic_api_provider import load_api_key as _anthropic_api_load_key
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
@@ -101,6 +102,10 @@ class ProviderAdapter:
     policy_text: Callable[[], str] | None = None
     # Whether chat turns print JSON lines; ``None`` means the same as unattended runs.
     chat_json_lines: bool | None = None
+    # Overrides the default ``shutil.which`` check (#3534: the anthropic-api
+    # adapter shares the ``claude`` executable but is only "installed" once a
+    # key is configured, keeping it inert until Dieter adds one).
+    installed_override: Callable[[], bool] | None = None
 
     @property
     def chat_json(self) -> bool:
@@ -308,6 +313,8 @@ class ProviderAdapter:
         return event
 
     def installed(self) -> bool:
+        if self.installed_override is not None:
+            return self.installed_override()
         return shutil.which(self.executable) is not None
 
 
@@ -354,6 +361,20 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         notes=(
             "Emits usage + total_cost_usd in the final result event. dontAsk with a declared tool allow-list: "
             "listed tools and shell prefixes run, anything else is refused instead of prompted (#1586)."
+        ),
+    ),
+    "anthropic-api": ProviderAdapter(
+        provider_id="anthropic-api",
+        label="Anthropic API (failover)",
+        executable="claude",
+        argv=_UNATTENDED_CLAUDE,
+        default_model="sonnet",
+        json_lines=True,
+        installed_override=lambda: _anthropic_api_load_key() is not None,
+        notes=(
+            "Issue #3123/#3534: claude CLI against the $200/month subscription-included API credit. "
+            "Ships inert -- reports not-installed (so the failover chain skips it) until Dieter configures "
+            "ANTHROPIC_API_KEY; never selectable by a role that has not opted into 'anthropic-api'."
         ),
     ),
     "codex": ProviderAdapter(
