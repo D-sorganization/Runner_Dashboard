@@ -16,7 +16,7 @@ import fs from "fs";
 import path from "path";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 // Thread resolution hits the backend (#1446); keep it hermetic.
 const threadApi = vi.hoisted(() => ({
@@ -689,14 +689,20 @@ describe("StaffConsoleMobile (SC-D8)", () => {
       expect(screen.getByText("Conversation with Barb")).toBeInTheDocument();
       expect(screen.getByTestId("composer-attach-btn")).not.toBeDisabled();
 
+      let resolveThreads!: (value: { threads: ThreadInfo[] }) => void;
+      threadApi.fetchThreads.mockReturnValue(new Promise((resolve) => { resolveThreads = resolve; }));
       fireEvent.click(screen.getByTestId("staff-mobile-back-btn"));
       fireEvent.click(screen.getByTestId("staff-mobile-role-maintenance"));
 
-      await waitFor(() => expect(screen.getByText("Fleet Maintenance")).toBeInTheDocument());
+      expect(screen.getByTestId("staff-mobile-roster")).toBeInTheDocument();
+      expect(screen.queryByTestId("staff-mobile-thread")).not.toBeInTheDocument();
+      await act(async () => { resolveThreads({ threads: [MOCK_BARB_THREAD, THREAD_MAINT] }); });
+      const thread = await screen.findByTestId("staff-mobile-thread");
+      expect(within(thread).getByRole("heading", { name: "Fleet Maintenance" })).toBeInTheDocument();
       // A stale Barb route id from the first thread must not lock the
       // composer once the console has locally, and successfully, switched
       // to a specialist's own authorized thread.
-      expect(screen.getByTestId("composer-attach-btn")).not.toBeDisabled();
+      expect(within(thread).getByTestId("composer-attach-btn")).not.toBeDisabled();
     });
   });
 });
