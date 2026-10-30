@@ -352,3 +352,67 @@ def test_presence_register_survives_a_broken_activity_store(
     resp = client.post("/api/coordination/presence", json=body, headers=_BOT)
     assert resp.status_code == 200, resp.text
     assert resp.json()["ok"] is True
+
+
+@pytest.mark.unit
+def test_claim_release_expiry_and_conflict_feed_the_activity_log_only_on_authoritative_transitions(
+    rm: FakeRM, client: TestClient, activity_store: Any
+) -> None:
+    from coordination import claims
+    from coordination_fake_rm import lease_result, release_result
+
+    # 1. Failed claim check (RM unavailable) -> 502, NO event emitted.
+    rm.respond("check_agent_claim", claim_status(False, "", "error:CalledProcessError"))
+    claim_body = {"session": "codex-12", "repo": "Tools", "issue": 12, "agent": "codex", "intent": "implement"}
+    assert client.post("/api/coordination/claims", json=claim_body, headers=_BOT).status_code == 502
+    assert activity_store.read(session_id="codex-12").items == []
+
+    # 2. Failed lease write (comment_posted=False) -> 502, NO event emitted.
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result(label=False, comment=False, errors=["HTTP 502"]))
+    assert client.post("/api/coordination/claims", json=claim_body, headers=_BOT).status_code == 502
+    assert activity_store.read(session_id="codex-12").items == []
+
+    # 3. Authoritative claim succeeds -> emits 'claim' envelope with required fields.
+    rm.respond("post_agent_lease", lease_result())
+    resp = client.post("/api/coordination/claims", json=claim_body, headers=_BOT)
+    assert resp.status_code == 200, resp.text
+
+    # 4. Conflicting claim by another session when held -> 409, emits 'conflict' envelope.
+    rm.respond("check_agent_claim", {**claim_status(True, "claude", "active lease"), "session": "claude-99"})
+    conflict_body = {"session": "codex-99", "repo": "Tools", "issue": 12, "agent": "codex", "intent": "takeover"}
+    assert client.post("/api/coordination/claims", json=conflict_body, headers=_BOT).status_code == 409
+
+    # 5. Failed release write -> 502, NO release event emitted.
+    rm.respond("release_agent_lease", release_result(label=False, comment=False, errors=["mismatch"]), rc=1)
+    rel_body = {"session": "codex-12", "repo": "Tools", "issue": 12, "agent": "codex", "reason": "done"}
+    assert client.post("/api/coordination/claims/release", json=rel_body, headers=_BOT).status_code == 502
+
+    # 6. Authoritative manual release -> emits 'release' envelope.
+    rm.respond("release_agent_lease", release_result())
+    assert client.post("/api/coordination/claims/release", json=rel_body, headers=_BOT).status_code == 200
+
+    # 7. Authoritative expiry sweep release (reaper path) -> emits 'expiry' envelope.
+    claims.release("Tools", 12, agent="codex", session="codex-12", reason="agent_bus lease expired")
+
+    claim_events = activity_store.read(session_id="codex-12").items
+    assert [e.kind for e in claim_events] == ["claim", "release", "expiry"]
+    for ev in claim_events:
+        assert ev.source == "job_board"
+        assert ev.repo == "Tools" and ev.issue == 12
+        assert ev.payload["repo"] == "Tools"
+        assert ev.payload["issue"] == 12
+        assert ev.payload["holder_principal"] == "agent-codex"
+        assert ev.payload["session"] == "codex-12"
+        assert ev.payload["fencing_token_id"] == "lease-1"
+
+    conflict_events = activity_store.read(session_id="codex-99").items
+    assert [e.kind for e in conflict_events] == ["conflict"]
+    cev = conflict_events[0]
+    assert cev.source == "job_board"
+    assert cev.payload["repo"] == "Tools"
+    assert cev.payload["issue"] == 12
+    assert cev.payload["holder_principal"] == "agent-claude"
+    assert cev.payload["challenger_principal"] == "agent-codex"
+    assert cev.payload["session"] == "codex-99"
+    assert cev.payload["fencing_token_id"].startswith("ftk_")

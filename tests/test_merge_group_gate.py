@@ -248,3 +248,23 @@ def test_quality_gate_verifies_companion_checks_on_merge_group() -> None:
         "docker-build-scan",
     ):
         assert check in script_text, f"verify_merge_group_companion_checks must verify {check}"
+
+
+@pytest.mark.parametrize(
+    "filename",
+    sorted(fn for fn, jobs in MERGE_GROUP_JOB_ALLOWLIST.items() if jobs),
+)
+def test_every_merge_group_workflow_has_cancel_in_progress_or_ref_guard(filename: str) -> None:
+    """Allowlisted merge_group workflows must have cancel-in-progress or ref-guard precheck (#2764)."""
+    path = _WORKFLOWS / filename
+    data = _load(path)
+    raw = path.read_text(encoding="utf-8")
+    concurrency = data.get("concurrency") or {}
+    cancel_expr = str(concurrency.get("cancel-in-progress", ""))
+    has_mg_cancel = cancel_expr.lower() == "true" or "merge_group" in cancel_expr
+    has_ref_guard = "merge-queue-ref-guard" in raw
+    assert has_mg_cancel or has_ref_guard, (
+        f"{filename}: merge_group workflow with active jobs must use cancel-in-progress or merge-queue-ref-guard"
+    )
+
+

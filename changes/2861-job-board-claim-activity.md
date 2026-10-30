@@ -1,0 +1,1 @@
+- **feat(jobs)**: emit `claim`, `release`, `expiry`, and `conflict` activity envelopes from authoritative claim transitions in `backend/coordination/claims.py` (#2861).

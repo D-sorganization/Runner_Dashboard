@@ -214,13 +214,31 @@ def check_claim(repo: str, issue: int) -> dict[str, Any]:
 def claim_issue(body: ClaimBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(claims.claim(body.repo, body.issue, agent=agent, session=body.session, intent=body.intent))
+    return _stamp(
+        claims.claim(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            intent=body.intent,
+            holder_principal=caller.label.removeprefix("principal:"),
+        )
+    )
 
 
 def release_claim(body: ClaimReleaseBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(claims.release(body.repo, body.issue, agent=agent, session=body.session, reason=body.reason))
+    return _stamp(
+        claims.release(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            reason=body.reason,
+            holder_principal=caller.label.removeprefix("principal:"),
+        )
+    )
 
 
 BOARD_SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "expires")

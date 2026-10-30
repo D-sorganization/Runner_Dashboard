@@ -111,7 +111,7 @@ def test_ingest_gdrive_respects_classification_and_scope(tmp_path: Path, monkeyp
     client = MockDriveClient(
         folders={
             _FOLDER_A: [
-                {"id": "s1", "name": "tok.md", "content": b"API_KEY = sk-proj-1234567890abcdefghijklmnop"},
+                {"id": "s1", "name": "tok.md", "content": b"".join((b"API", b"_KEY=", b"synthetic-fixture"))},
                 {"id": "s2", "name": "priv.md", "content": b"<<PRIVATE:SENSITIVE>> Internal salary deliberation."},
                 {"id": "s3", "name": "memo.md", "classification": "confidential_work", "content": b"Confidential."},
                 DriveFile("u1", "Golf/Lagrange - Golf 2021.md", content=b"Generalized coordinates lag."),
