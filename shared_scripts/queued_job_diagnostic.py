@@ -111,9 +111,9 @@ def classify_job(
         return ClassifiedJob(*base, WaitReason.NEEDS_BLOCKED, "needs: graph")
     if job.get("blocked_by_concurrency"):
         return ClassifiedJob(*base, WaitReason.CONCURRENCY_BLOCKED, "concurrency group")
-    if "self-hosted" not in {x.lower() for x in labels}:
-        return ClassifiedJob(*base, WaitReason.GITHUB_HOSTED, "github-hosted queue")
     group = _fleet_group(labels)
+    if "self-hosted" not in {x.lower() for x in labels} and group is None:
+        return ClassifiedJob(*base, WaitReason.GITHUB_HOSTED, "github-hosted queue")
     if group and not _repo_allowed(base[0], group, access):
         return ClassifiedJob(*base, WaitReason.RUNNER_GROUP_ACCESS, f"repo blocked for {group}")
     if labels and online and not is_routable(labels, online):

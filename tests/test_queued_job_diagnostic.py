@@ -101,3 +101,43 @@ def test_cli_json_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     (tmp_path / "runners.json").write_text(json.dumps(_OCT25["runners"]), encoding="utf-8")
     assert diag.main(["--queued-jobs", str(tmp_path / "jobs.json"), "--runners", str(tmp_path / "runners.json")]) == 0
     assert "classification_counts" in json.loads(capsys.readouterr().out)
+
+
+def test_bare_fleet_label_classified_as_self_hosted_not_github_hosted() -> None:
+    runners = [
+        {
+            "id": 217,
+            "status": "online",
+            "busy": False,
+            "labels": [{"name": "self-hosted"}, {"name": "Linux"}, {"name": "X64"}, {"name": "d-sorg-fleet"}],
+        }
+    ]
+    jobs = [
+        {
+            "repo": "Runner_Dashboard",
+            "run_id": 40979623189,
+            "workflow": "Frontend Tests",
+            "job": "Playwright E2E smoke tests",
+            "labels": ["d-sorg-fleet-public-heavy"],
+        },
+        {
+            "repo": "Runner_Dashboard",
+            "run_id": 40979623190,
+            "workflow": "Frontend Tests",
+            "job": "frontend-required",
+            "labels": ["d-sorg-fleet"],
+        },
+        {
+            "repo": "Runner_Dashboard",
+            "run_id": 40979623191,
+            "workflow": "Frontend Tests",
+            "job": "Vitest + Coverage",
+            "labels": ["ubuntu-latest"],
+        },
+    ]
+    report = diag.analyze_snapshot(queued_jobs=jobs, runners=runners)
+    by_job = {j["job"]: j for j in report["jobs"]}
+    assert by_job["Playwright E2E smoke tests"]["reason"] == "label_mismatch"
+    assert by_job["frontend-required"]["reason"] == "waiting_for_runner"
+    assert by_job["Vitest + Coverage"]["reason"] == "github_hosted"
+
