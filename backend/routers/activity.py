@@ -22,6 +22,7 @@ from activity import (
     get_activity_store,
     redact_sensitive_content,
 )
+from activity_context import DEFAULT_BUDGET_TOKENS, ActivityContext, build_activity_context
 from activity_sessions import DEFAULT_SESSIONS_LIMIT, MAX_SESSIONS_LIMIT, SessionsPage, SessionStatus, compute_sessions
 from activity_transcript import (
     DEFAULT_MAX_CHUNK_BYTES,
@@ -235,6 +236,19 @@ def read_activity_sessions(
     ``activity_sessions.compute_sessions`` for the late-event and stale/ended rules.
     """
     return compute_sessions(get_activity_store(), node=node, status=status, repo=repo, limit=limit)
+
+
+@router.get("/context", response_model=ActivityContext, include_in_schema=False)
+def read_activity_context(
+    repo: str | None = Query(default=None, max_length=128),
+    budget_tokens: int = Query(default=DEFAULT_BUDGET_TOKENS),
+    _caller: Principal = Depends(require_scope("activity.read")),  # noqa: B008
+) -> ActivityContext:
+    """Deterministic token-capped shared running context (#2862)."""
+    try:
+        return build_activity_context(get_activity_store(), repo=repo, budget_tokens=budget_tokens)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _ingest_chunk_sync(
