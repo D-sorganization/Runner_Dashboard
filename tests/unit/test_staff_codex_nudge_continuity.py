@@ -11,6 +11,23 @@ from staff import runner_ops, runner_stream
 from staff.adapters import ADAPTERS
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize("provider", ["codex", "ollama"])
+@pytest.mark.parametrize("model", [None, "test-model"])
+def test_nudge_preserves_explicit_launch_configuration(provider: str, model: str | None) -> None:
+    adapter = ADAPTERS[provider]
+    kwargs = {"gitdir": "/repo/.git"}
+    fresh = adapter.build_command("task", "/worktree", model=model, **kwargs)
+    resumed = adapter.build_command("result please", "/worktree", model=model, session_id="original", **kwargs)
+
+    assert resumed == [*fresh[:-1], "resume", "original", "result please"]
+    assert resumed[resumed.index("--sandbox") + 1] == "workspace-write"
+    assert resumed[resumed.index("--add-dir") + 1] == "/repo/.git"
+    if provider == "ollama":
+        assert "--oss" in resumed
+        assert resumed[resumed.index("--local-provider") + 1] == "ollama"
+
+
 class EventStore:
     def __init__(self) -> None:
         self.events: list[tuple[str, str, str]] = []

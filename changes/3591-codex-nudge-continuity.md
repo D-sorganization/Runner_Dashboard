@@ -26,3 +26,9 @@ prose preserve line breaks and summary capsule handling.
 Startup, continuation and output regressions failed first; installed Codex
 0.164.0 accepted all four generated Codex/Ollama commands in help-only parser
 checks. No live role, credential, permission policy or deployment was changed.
+
+Worker resume also retains the initial explicit provider, model, sandbox,
+network and git-directory options instead of rebuilding a reduced command.
+Four failing Codex/Ollama regressions cover default and explicit models;
+installed 0.164.0 help-only probes accept the preserved parent options before
+the resume subcommand. This retains the initial run's permissions and routing.
