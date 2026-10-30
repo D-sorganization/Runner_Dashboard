@@ -669,7 +669,87 @@ class FleetClient(
 
     def briefing(self, repo: str | None = None, agent: str | None = None) -> Any:
         params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "agent": self._agent(agent)}
-        return self.request("GET", "/api/coordination/briefing", params=params)
+        try:
+            return self.request("GET", "/api/coordination/briefing", params=params)
+        except FleetAPIError as exc:
+            if exc.status not in (0, 502, 503, 504):
+                raise
+            reason = exc.body.get("reason", "unreachable") if isinstance(exc.body, dict) else str(exc.body)
+            return {
+                "status": "unavailable",
+                "available": False,
+                "repo": params["repo"],
+                "agent": params["agent"],
+                "reason": str(reason),
+                "activity_context": {"status": "unavailable", "available": False, "reason": str(reason)},
+                "warnings": [f"hub unreachable: {reason}"],
+            }
+
+    def _activity_read_request(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        raw_scopes = os.environ.get("FLEET_SCOPES", "").strip()
+        if raw_scopes:
+            granted = {s.strip() for s in raw_scopes.split(",") if s.strip()}
+            if "activity.read" not in granted and "*" not in granted:
+                detail = f"missing scope activity.read: caller scopes {sorted(granted)} cannot GET {path}"
+                raise FleetAPIError(403, {"detail": detail})
+        try:
+            return self.request("GET", path, params=params)
+        except FleetAPIError as exc:
+            if exc.status != 403:
+                raise
+            hub = exc.body.get("detail") if isinstance(exc.body, dict) else None
+            detail = f"missing scope activity.read: this token cannot GET {path}" + (f" (hub: {hub})" if hub else "")
+            body = {**exc.body, "detail": detail} if isinstance(exc.body, dict) else {"detail": detail}
+            raise FleetAPIError(403, body) from None
+
+    def activity_context(self, repo: str | None = None, budget_tokens: int = 1500) -> Any:
+        _check(
+            isinstance(budget_tokens, int) and not isinstance(budget_tokens, bool) and 1 <= budget_tokens <= 4000,
+            "budget_tokens must be between 1 and 4000",
+        )
+        params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "budget_tokens": budget_tokens}
+        return self._activity_read_request("/api/v1/activity/context", params=params)
+
+    def tail_session(self, session_id: str, after_seq: int = -1, limit: int = 100, budget_tokens: int = 1500) -> Any:
+        checked_session = _match(PATTERNS.session, session_id, "session_id")
+        _check(
+            isinstance(after_seq, int) and not isinstance(after_seq, bool) and after_seq >= -1,
+            "after_seq must be an integer >= -1",
+        )
+        _check(
+            isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 500,
+            "limit must be between 1 and 500",
+        )
+        _check(
+            isinstance(budget_tokens, int) and not isinstance(budget_tokens, bool) and 1 <= budget_tokens <= 4000,
+            "budget_tokens must be between 1 and 4000",
+        )
+        path = f"/api/v1/activity/sessions/{urllib.parse.quote(checked_session, safe='')}/chunks"
+        res = self._activity_read_request(path, params={"after_seq": after_seq, "limit": limit})
+        if not isinstance(res, dict) or not isinstance(res.get("items"), list):
+            return res
+        kept: list[dict[str, Any]] = []
+        used = 0
+        truncated = False
+        for item in res["items"]:
+            if not isinstance(item, dict):
+                continue
+            txt = str(item.get("text") or item.get("data") or item.get("raw") or "")
+            tok = max(1, (len(txt) + 3) // 4) if txt else 1
+            if used + tok > budget_tokens:
+                truncated = True
+                break
+            kept.append(item)
+            used += tok
+        next_seq = kept[-1].get("seq") if truncated and kept else res.get("next_seq")
+        return {
+            **res,
+            "items": kept,
+            "budget_tokens": budget_tokens,
+            "estimated_tokens": used,
+            "truncated": truncated,
+            "next_seq": next_seq,
+        }
 
     # ------------------------------------------------------------------ agent bus (#2155)
 

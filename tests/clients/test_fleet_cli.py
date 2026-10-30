@@ -124,6 +124,8 @@ def test_every_command_maps_to_a_client_method() -> None:
 def test_mcp_tool_set_is_the_contracted_list() -> None:
     assert set(BY_TOOL) == {
         "fleet_briefing",
+        "activity_context",
+        "tail_session",
         "fleet_priorities",
         "fleet_sessions",
         "fleet_inbox",
