@@ -222,6 +222,8 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
     andon = snapshot.get("andon") or {}
     if isinstance(andon, dict) and isinstance(andon.get("metrics"), dict):
         am = andon["metrics"]
+        dup_prs = int(am.get("duplicate_fix_prs_total", am.get("duplicate_fix_prs", 0)))
+        max_issue_prs = int(am.get("open_prs_per_issue_max", am.get("max_open_prs_per_issue", 0)))
         lines.extend(
             [
                 "# TYPE rd_andon_backlog_total gauge",
@@ -229,9 +231,9 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
                 "# TYPE rd_andon_to_card_p90_minutes gauge",
                 f"rd_andon_to_card_p90_minutes {float(am.get('andon_to_card_p90_minutes', 0.0)):.2f}",
                 "# TYPE rd_andon_duplicate_fix_prs_total gauge",
-                f"rd_andon_duplicate_fix_prs_total {int(am.get('duplicate_fix_prs', 0))}",
+                f"rd_andon_duplicate_fix_prs_total {dup_prs}",
                 "# TYPE rd_andon_max_open_prs_per_issue gauge",
-                f"rd_andon_max_open_prs_per_issue {int(am.get('max_open_prs_per_issue', 0))}",
+                f"rd_andon_max_open_prs_per_issue {max_issue_prs}",
                 "# TYPE rd_andon_unlinked_pr_share gauge",
                 f"rd_andon_unlinked_pr_share {float(am.get('unlinked_pr_share', 0.0)):.4f}",
                 "# TYPE rd_andon_red_main_ttff_p90_minutes gauge",
