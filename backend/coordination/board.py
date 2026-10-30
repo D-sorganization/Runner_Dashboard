@@ -36,7 +36,7 @@ from staff.roles import load_roles
 
 CACHE_SECONDS = 60.0
 BOARD_REPO = "Repository_Management"
-BOARD_ISSUE = 2376
+BOARD_ISSUE = 2539
 BOARD_COMMENT_LIMIT = 1000
 BOARD_PAGE_SIZE = 100
 BOARD_MAX_PAGES = 100

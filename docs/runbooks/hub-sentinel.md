@@ -25,7 +25,7 @@ Probe classification and the alert/cooldown/recovery state machine live in
   - `HUB_SENTINEL_SMTP_TO=<addr>` (+ `HUB_SENTINEL_SMTP_HOST`/`_PORT`/`_FROM`) —
     plain SMTP, off unless set. No sink ever receives or logs a token.
   - `HUB_SENTINEL_RM_REPO=<owner/repo>` (+ `HUB_SENTINEL_RM_ISSUE`, default
-    `2376`) — posts a comment via the fleet `gh` wrapper, which mints its own
+    `2539`) — posts a comment via the fleet `gh` wrapper, which mints its own
     App token internally (never passed on our command line).
 
 ## Install (manual, one-time per node)

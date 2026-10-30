@@ -28,7 +28,7 @@ def protocol() -> str:
         "Gasification_Model",
         "staff_thread_wait",
         "Idempotency-Key",
-        "RM #2376",
+        "RM #2539",
         "subscription CLI",
         "ledger/check-in",
         "verified outcome",
