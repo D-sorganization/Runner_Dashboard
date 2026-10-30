@@ -232,7 +232,7 @@ def test_quality_gate_verifies_companion_checks_on_merge_group() -> None:
     )
     assert checkout_step is not None, "quality-gate must checkout verify_merge_group_companion_checks.py on merge_group"
     assert "merge_group" in str(checkout_step.get("if", ""))
-    assert "scripts/ci/verify_merge_group_companion_checks.py" in str(checkout_step.get("with", {}).get("sparse-checkout", ""))
+    assert checkout_step.get("with", {}).get("sparse-checkout") == "scripts/ci"
     step = next(s for s in steps if s.get("name") == "Require every gated job to succeed")
     run = step["run"]
     assert "verify_merge_group_companion_checks.py" in run, (

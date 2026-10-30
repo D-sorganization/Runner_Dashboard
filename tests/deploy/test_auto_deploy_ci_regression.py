@@ -28,6 +28,18 @@ TIMER = DEPLOY / "systemd" / "runner-dashboard-auto-deploy.timer"
 _ECB3F6B_SHA = "ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2"  # pragma: allowlist secret
 _FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "ecb3f6b_check_runs.json"
 
+
+def test_auto_deploy_queue_guard_does_not_leave_non_cone_sparse_state() -> None:
+    """The guard must not poison the next job's full checkout on a reused runner."""
+    import yaml
+
+    workflow = yaml.safe_load((REPO / ".github/workflows/ci-auto-deploy-regression.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["queue-entry-alive"]["steps"]
+    checkout = next(step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@"))
+    options = checkout.get("with", {})
+    assert options.get("sparse-checkout-cone-mode") is not False
+    assert options.get("sparse-checkout") == ".github/scripts"
+
 sys.path.insert(0, str(DEPLOY))
 from node_auto_deploy.ci_gate import ci_gate_for_commit, parse_check_runs_payload  # noqa: E402
 from node_auto_deploy.hub_gate import fetch_fleet_status  # noqa: E402

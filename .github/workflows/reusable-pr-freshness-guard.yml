@@ -39,6 +39,5 @@ jobs:
           sparse-checkout: |
             .github/actions/pr-early-exit
             shared_scripts
-          sparse-checkout-cone-mode: false
       - id: guard
         uses: ./.github/actions/pr-early-exit
