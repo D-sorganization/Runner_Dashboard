@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Andon and claim-gate metrics exporter (#2904 / epic #2900).
-
-Computes epic #2900 acceptance metrics over recorded fixtures or live GitHub
-datasets and publishes snapshots to the hub cache using the same DRY pattern as
-``scripts.ci_slo_check`` under ``HUB_CACHE_KEY = "andon_metrics"``.
-"""
+"""Andon and claim-gate metrics exporter (#2904 / epic #2900)."""
 
 from __future__ import annotations
 
@@ -80,6 +75,18 @@ class AndonMetrics:
         return asdict(self)
 
 
+def _expand_synthetic_prs(specs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    expanded: list[dict[str, Any]] = []
+    for spec in specs:
+        count = int(spec.get("count", 0))
+        start = int(spec.get("start_number", 1))
+        for idx in range(count):
+            row = {k: v for k, v in spec.items() if k not in ("count", "start_number")}
+            row["number"] = start + idx
+            expanded.append(row)
+    return expanded
+
+
 @dataclass
 class AndonDataset:
     """Input dataset for computing andon and claim-gate metrics."""
@@ -104,9 +111,7 @@ class AndonDataset:
             raise ValueError("open_andons must be a list of mappings")
         open_andons: list[dict[str, Any]] = []
         for idx, item in enumerate(raw_andons):
-            if not isinstance(item, Mapping):
-                raise ValueError(f"open_andons[{idx}] must be a mapping")
-            if "number" not in item and "id" not in item:
+            if not isinstance(item, Mapping) or ("number" not in item and "id" not in item):
                 raise ValueError(f"open_andons[{idx}] missing required 'number' or 'id'")
             if not item.get("created_at"):
                 raise ValueError(f"open_andons[{idx}] missing required 'created_at'")
@@ -123,6 +128,9 @@ class AndonDataset:
             if not isinstance(pr, Mapping) or "number" not in pr:
                 raise ValueError(f"open_prs[{idx}] must be a mapping with 'number'")
             open_prs.append(dict(pr))
+        synthetic_prs = raw.get("synthetic_open_prs") or []
+        if isinstance(synthetic_prs, Sequence) and not isinstance(synthetic_prs, (str, bytes)):
+            open_prs.extend(_expand_synthetic_prs([s for s in synthetic_prs if isinstance(s, Mapping)]))
 
         raw_incidents = raw.get("red_main_incidents") or []
         if not isinstance(raw_incidents, Sequence) or isinstance(raw_incidents, (str, bytes)):
@@ -139,31 +147,18 @@ class AndonDataset:
             _parse_ts(str(first_fix))
             incidents.append(dict(inc))
 
-        return cls(
-            as_of=as_of,
-            open_andons=open_andons,
-            open_prs=open_prs,
-            red_main_incidents=incidents,
-        )
+        return cls(as_of=as_of, open_andons=open_andons, open_prs=open_prs, red_main_incidents=incidents)
 
 
 def _is_pr_linked_to_claimed_card(pr: Mapping[str, Any]) -> bool:
-    linked_issue = extract_linked_issue(pr)
-    if linked_issue is None:
+    if extract_linked_issue(pr) is None:
         return False
-    if bool(pr.get("claimed")):
-        return True
-    if pr.get("claim_agent") or extract_claim_agent(pr):
-        return True
-    return False
+    return bool(pr.get("claimed") or pr.get("claim_agent") or extract_claim_agent(pr))
 
 
 def _is_cursor_pr(pr: Mapping[str, Any]) -> bool:
     author = pr.get("author")
-    if isinstance(author, Mapping):
-        login = str(author.get("login") or "").lower()
-    else:
-        login = str(author or "").lower()
+    login = str(author.get("login") if isinstance(author, Mapping) else author or "").lower()
     head_ref = str(pr.get("headRefName") or pr.get("head_ref_name") or "").lower()
     return "cursor" in login or head_ref.startswith("cursor/")
 
@@ -177,11 +172,9 @@ def compute_andon_metrics(dataset: AndonDataset | Mapping[str, Any]) -> AndonMet
     ages_hours: list[float] = []
     card_latencies_hours: list[float] = []
     andon_fp_counts: Counter[str] = Counter()
-
     for andon in ds.open_andons:
         created = _parse_ts(str(andon["created_at"]))
-        age_h = max(0.0, (ds.as_of - created).total_seconds() / 3600.0)
-        ages_hours.append(age_h)
+        ages_hours.append(max(0.0, (ds.as_of - created).total_seconds() / 3600.0))
         if andon.get("card_created_at"):
             card_ts = _parse_ts(str(andon["card_created_at"]))
             card_latencies_hours.append(max(0.0, (card_ts - created).total_seconds() / 3600.0))
@@ -191,9 +184,8 @@ def compute_andon_metrics(dataset: AndonDataset | Mapping[str, Any]) -> AndonMet
 
     issue_pr_counts: Counter[int] = Counter()
     pr_fp_counts: Counter[str] = Counter()
-    claimed_count = 0
-    cursor_count = 0
-
+    claimed_count = sum(1 for pr in ds.open_prs if _is_pr_linked_to_claimed_card(pr))
+    cursor_count = sum(1 for pr in ds.open_prs if _is_cursor_pr(pr))
     for pr in ds.open_prs:
         issue_no = extract_linked_issue(pr)
         if issue_no is not None:
@@ -201,28 +193,21 @@ def compute_andon_metrics(dataset: AndonDataset | Mapping[str, Any]) -> AndonMet
         fp = extract_fingerprint(pr)
         if fp:
             pr_fp_counts[fp] += 1
-        if _is_pr_linked_to_claimed_card(pr):
-            claimed_count += 1
-        if _is_cursor_pr(pr):
-            cursor_count += 1
 
     total_prs = len(ds.open_prs)
-    unlinked_count = max(0, total_prs - claimed_count)
-    unlinked_share = (unlinked_count / total_prs) if total_prs > 0 else 0.0
-
+    unlinked_share = (max(0, total_prs - claimed_count) / total_prs) if total_prs > 0 else 0.0
     dup_per_fp = [max(0, count - 1) for count in pr_fp_counts.values()]
-    dup_max = max(dup_per_fp, default=0)
-    dup_total = sum(dup_per_fp)
-
-    ttff_minutes: list[float] = []
-    for inc in ds.red_main_incidents:
-        detected = _parse_ts(str(inc.get("detected_at") or inc.get("red_at")))
-        first_fix = _parse_ts(str(inc["first_fix_pr_at"]))
-        ttff_minutes.append(max(0.0, (first_fix - detected).total_seconds() / 60.0))
-
+    ttff_minutes = [
+        max(
+            0.0,
+            (
+                _parse_ts(str(inc["first_fix_pr_at"])) - _parse_ts(str(inc.get("detected_at") or inc.get("red_at")))
+            ).total_seconds()
+            / 60.0,
+        )
+        for inc in ds.red_main_incidents
+    ]
     card_p90_hours = percentile(card_latencies_hours, 90.0)
-    ttff_mean = (sum(ttff_minutes) / len(ttff_minutes)) if ttff_minutes else 0.0
-
     result = AndonMetrics(
         andon_backlog=len(ds.open_andons),
         andon_max_age_hours=max(ages_hours, default=0.0),
@@ -230,8 +215,8 @@ def compute_andon_metrics(dataset: AndonDataset | Mapping[str, Any]) -> AndonMet
         andon_to_card_p90_hours=card_p90_hours,
         andon_to_card_p90_minutes=card_p90_hours * 60.0,
         open_andons_per_fingerprint_max=max(andon_fp_counts.values(), default=0),
-        duplicate_fix_prs_per_fingerprint_max=dup_max,
-        duplicate_fix_prs_total=dup_total,
+        duplicate_fix_prs_per_fingerprint_max=max(dup_per_fp, default=0),
+        duplicate_fix_prs_total=sum(dup_per_fp),
         open_prs_per_issue_max=max(issue_pr_counts.values(), default=0),
         open_prs_total=total_prs,
         cursor_open_prs=cursor_count,
@@ -239,18 +224,13 @@ def compute_andon_metrics(dataset: AndonDataset | Mapping[str, Any]) -> AndonMet
         unlinked_pr_share=unlinked_share,
         unlinked_pr_pct=unlinked_share * 100.0,
         red_main_ttff_p90_minutes=percentile(ttff_minutes, 90.0),
-        red_main_ttff_mean_minutes=ttff_mean,
+        red_main_ttff_mean_minutes=(sum(ttff_minutes) / len(ttff_minutes)) if ttff_minutes else 0.0,
     )
     assert 0.0 <= result.unlinked_pr_share <= 1.0, "postcondition: unlinked_pr_share in [0, 1]"
-    assert result.andon_backlog >= 0, "postcondition: non-negative backlog"
     return result
 
 
-def evaluate_breaches(
-    metrics: AndonMetrics,
-    *,
-    targets: AndonTargets | None = None,
-) -> list[str]:
+def evaluate_breaches(metrics: AndonMetrics, *, targets: AndonTargets | None = None) -> list[str]:
     """Compare computed metrics against epic #2900 targets and return breach descriptions."""
     t = targets or DEFAULT_TARGETS
     breaches: list[str] = []
@@ -283,15 +263,13 @@ def build_hub_snapshot(
     recorded_at: str | None = None,
 ) -> dict[str, Any]:
     """Build the hub cache snapshot payload mirroring scripts.ci_slo_check (DbC)."""
-    ts = recorded_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
     payload: dict[str, Any] = {
         "ok": bool(ok),
         "metrics": asdict(metrics),
         "detail": dict(detail or {}),
-        "recorded_at": ts,
+        "recorded_at": recorded_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
-    assert payload.get("recorded_at"), "postcondition: recorded_at required"
-    assert isinstance(payload.get("metrics"), dict), "postcondition: metrics dict required"
+    assert payload.get("recorded_at") and isinstance(payload.get("metrics"), dict)
     return payload
 
 
@@ -313,11 +291,7 @@ def publish_hub_snapshot(
     return payload
 
 
-def fetch_live_dataset(
-    repo: str,
-    *,
-    runner: CommandRunner = _default_runner,
-) -> AndonDataset:
+def fetch_live_dataset(repo: str, *, runner: CommandRunner = _default_runner) -> AndonDataset:
     """Fetch open andon issues and open PRs from GitHub via read-only gh_api."""
     now = datetime.now(UTC)
     owner, name = repo.split("/", 1)
@@ -326,37 +300,28 @@ def fetch_live_dataset(
         runner=runner,
         params={"state": "open", "labels": "andon", "per_page": "100"},
     )
-    open_andons: list[dict[str, Any]] = []
-    for item in raw_issues if isinstance(raw_issues, list) else []:
-        if not isinstance(item, Mapping) or "pull_request" in item:
-            continue
-        open_andons.append(
-            {
-                "number": int(item.get("number") or 0),
-                "created_at": str(item.get("created_at") or now.isoformat().replace("+00:00", "Z")),
-                "fingerprint": extract_fingerprint(item),
-            }
-        )
-
-    raw_prs = gh_api(
-        f"repos/{owner}/{name}/pulls",
-        runner=runner,
-        params={"state": "open", "per_page": "100"},
-    )
-    open_prs: list[dict[str, Any]] = []
-    for pr in raw_prs if isinstance(raw_prs, list) else []:
-        if not isinstance(pr, Mapping):
-            continue
-        open_prs.append(
-            {
-                "number": int(pr.get("number") or 0),
-                "title": str(pr.get("title") or ""),
-                "body": str(pr.get("body") or ""),
-                "headRefName": str((pr.get("head") or {}).get("ref") or pr.get("headRefName") or ""),
-                "author": (pr.get("user") or {}).get("login") or pr.get("author"),
-                "labels": pr.get("labels") or [],
-            }
-        )
+    open_andons = [
+        {
+            "number": int(item.get("number") or 0),
+            "created_at": str(item.get("created_at") or now.isoformat().replace("+00:00", "Z")),
+            "fingerprint": extract_fingerprint(item),
+        }
+        for item in (raw_issues if isinstance(raw_issues, list) else [])
+        if isinstance(item, Mapping) and "pull_request" not in item
+    ]
+    raw_prs = gh_api(f"repos/{owner}/{name}/pulls", runner=runner, params={"state": "open", "per_page": "100"})
+    open_prs = [
+        {
+            "number": int(pr.get("number") or 0),
+            "title": str(pr.get("title") or ""),
+            "body": str(pr.get("body") or ""),
+            "headRefName": str((pr.get("head") or {}).get("ref") or pr.get("headRefName") or ""),
+            "author": (pr.get("user") or {}).get("login") or pr.get("author"),
+            "labels": pr.get("labels") or [],
+        }
+        for pr in (raw_prs if isinstance(raw_prs, list) else [])
+        if isinstance(pr, Mapping)
+    ]
     return AndonDataset(as_of=now, open_andons=open_andons, open_prs=open_prs)
 
 
@@ -370,10 +335,7 @@ def run_check(
     """Compute metrics, print report JSON, optionally publish to hub, and return exit code."""
     metrics = compute_andon_metrics(dataset)
     breaches = evaluate_breaches(metrics, targets=targets)
-    report: dict[str, Any] = {
-        "metrics": asdict(metrics),
-        "breaches": breaches,
-    }
+    report: dict[str, Any] = {"metrics": asdict(metrics), "breaches": breaches}
     print(json.dumps(report, indent=2, sort_keys=True))
     if publish:
         publish_hub_snapshot(metrics, ok=not breaches, detail=report)
@@ -392,11 +354,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--publish-hub", action="store_true")
     parser.add_argument("--enforce", action="store_true")
     args = parser.parse_args(list(argv) if argv is not None else None)
-    if args.fixture is not None:
-        raw = json.loads(args.fixture.read_text(encoding="utf-8"))
-        dataset = AndonDataset.from_mapping(raw)
-    else:
-        dataset = fetch_live_dataset(args.repo)
+    dataset = (
+        AndonDataset.from_mapping(json.loads(args.fixture.read_text(encoding="utf-8")))
+        if args.fixture is not None
+        else fetch_live_dataset(args.repo)
+    )
     return run_check(dataset, publish=args.publish_hub, enforce=args.enforce)
 
 
