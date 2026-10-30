@@ -358,6 +358,14 @@ jobs:
       needs.vitest.result == 'success' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     steps:
+      # A prior merge-queue speculative-merge checkout on this self-hosted
+      # runner can leave the persistent workspace mid sparse-checkout
+      # transition, which actions/checkout's own clean/reset sequence can't
+      # always reconcile (#3612). Wipe it so every run starts from a
+      # guaranteed-empty directory; a no-op on ephemeral ubuntu-latest.
+      - name: Reset workspace (stale self-hosted checkout guard)
+        run: rm -rf "${GITHUB_WORKSPACE:?}" && mkdir -p "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -446,6 +454,14 @@ jobs:
       !cancelled() &&
       (needs.frontend-scope.outputs.run_staff_e2e == 'true')
     steps:
+      # A prior merge-queue speculative-merge checkout on this self-hosted
+      # runner can leave the persistent workspace mid sparse-checkout
+      # transition, which actions/checkout's own clean/reset sequence can't
+      # always reconcile (#3612). Wipe it so every run starts from a
+      # guaranteed-empty directory; a no-op on ephemeral ubuntu-latest.
+      - name: Reset workspace (stale self-hosted checkout guard)
+        run: rm -rf "${GITHUB_WORKSPACE:?}" && mkdir -p "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
