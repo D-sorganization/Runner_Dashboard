@@ -252,10 +252,11 @@ def test_launch_paths_point_at_git_common_dir_and_generated_policy(tmp_path, mon
 
 
 @pytest.mark.unit
-def test_codex_chat_stays_plain_text_while_runs_are_json() -> None:
+def test_codex_chat_and_runs_use_structured_output() -> None:
     for pid in ("codex", "ollama"):
-        assert ADAPTERS[pid].json_lines is True and ADAPTERS[pid].chat_json is False
-        assert "--json" not in ADAPTERS[pid].chat_argv("hi", "/w")
+        assert ADAPTERS[pid].json_lines is True and ADAPTERS[pid].chat_json is True
+        for session in (None, "native-thread"):
+            assert "--json" in ADAPTERS[pid].chat_argv("hi", "/w", session_id=session)
     assert ADAPTERS["claude"].chat_json is True
 
 

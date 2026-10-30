@@ -89,7 +89,7 @@ def test_plain_text_providers_keep_every_line() -> None:
     out, bus = _run("codex", ["first line\n", "second line\n"])
 
     assert out.reply_text == "first line\nsecond line\n"
-    assert bus.tokens == ["first line", "second line"]
+    assert bus.tokens == ["first line\n", "second line\n"]
 
 
 @pytest.mark.unit

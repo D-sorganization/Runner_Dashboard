@@ -1,6 +1,6 @@
 ---
 issue: 3591
-summary: "Reject Codex result nudges from a different or missing thread while preserving transcript and usage evidence"
+summary: "Repair Codex worker and chat session contracts with native thread validation and structured read-only continuation"
 dl_state: "in_review"
 next_step: "Review the repair, qualify its release, then verify one bounded real Codex worker task."
 branch: "codex/cli-worker-contracts"
@@ -17,3 +17,12 @@ Live worker acceptance requires a qualified deployment and remains pending.
 Also fixes #3592, the required Windows push-hook portability prerequisite:
 unavailable Unix sockets raise OSError at the existing fail-closed WhoIs
 boundary; no alternate transport or trust policy is introduced.
+
+Also fixes #3595: Codex-backed chat requests JSON events, uses the supported
+resume subcommand with explicit read-only sandboxing, and retains the native
+thread ID over legacy Session text in assistant prose. Fallback text and JSON
+prose preserve line breaks and summary capsule handling.
+
+Startup, continuation and output regressions failed first; installed Codex
+0.164.0 accepted all four generated Codex/Ollama commands in help-only parser
+checks. No live role, credential, permission policy or deployment was changed.
