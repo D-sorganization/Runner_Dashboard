@@ -183,11 +183,15 @@ Body `{repo, issue, agent?, session, reason}` → RM `release_agent_lease` →
 
 ### `GET /api/coordination/jobs?repo=&limit=&include_excluded=`
 
-Fleet Job Board S1 (epic #2781, issue #2782), read-only: open issues (`repo` optional, `limit` 1–200,
-default 50) with no `claim:*`/hold label, no PR already closing them (#2765), and an available,
-unheld `claims.check` (unknown is never free). Returns `{available, complete, jobs, excluded?,
-warnings, generated_at}`; `excluded` needs `include_excluded=true`. Sort: priority label, then
-`priorities.service.top_priorities` position, then oldest. S2 (gates) and S3 (claim/release) are later.
+Fleet Job Board S1+S2 (epic #2781, issues #2782/#2783), read-only: open issues (`repo` optional,
+`limit` 1–200, default 50) with no `claim:*`/hold label, no PR already closing them (#2765), an
+available, unheld `claims.check` (unknown is never free), no active schedule-kind hold
+(`staff.holds.HoldsList`/`matches`, #1726) matching the repo via a `hold:<id>` label, and no
+`code-request:board_review` label (Assessment Board gate, CR-6). Returns `{available, complete,
+jobs, excluded?, warnings, generated_at}`; `excluded` needs `include_excluded=true`. `available`
+is `false`, with `jobs: []`, when a repo's holds list cannot be read (fails closed — never an
+unfiltered list). Sort: priority label, then `priorities.service.top_priorities` position, then
+oldest. S3 (claim/release) is later.
 
 ### Status codes for writes
 

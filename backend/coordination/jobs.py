@@ -14,6 +14,7 @@ from typing import Any
 
 from coordination import board as board_mod
 from coordination import claims as claims_mod
+from coordination.job_filters import gate_reason, repo_schedule_holds
 from staff.claim_guard import closing_pr_for, full_repo
 
 log = logging.getLogger("dashboard.coordination.jobs")
@@ -108,18 +109,26 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
     excluded: list[dict[str, Any]] = []
     pulls_by_repo: dict[str, list[Any]] = {}
     complete = True
+    holds_available = True
     priorities, priority_warnings = _safe_top_priorities(50)
     warnings.extend(priority_warnings)
     for one_repo in repos:
         issues, repo_complete = _candidates(one_repo, warnings)
         complete = complete and repo_complete
         repo_full = full_repo(one_repo)
+        scoped_holds, holds_readable = repo_schedule_holds(one_repo)
+        if not holds_readable:
+            holds_available = False
+            warnings.append(f"{one_repo}: holds list unreadable, excluding repo for safety")
         for issue in issues:
             number = issue.get("number")
             if not isinstance(number, int):
                 continue
             labels = _label_names(issue)
             lowered = {name.strip().lower() for name in labels}
+            if not holds_readable:
+                excluded.append(_excluded(one_repo, issue, "holds list unreadable"))
+                continue
             claim_label = next((name for name in labels if name.lower().startswith("claim:")), None)
             if claim_label:
                 excluded.append(_excluded(one_repo, issue, f"carries {claim_label}"))
@@ -127,6 +136,10 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
             hold_label = next((name for name in lowered if name in HOLD_LABELS), None)
             if hold_label:
                 excluded.append(_excluded(one_repo, issue, f"carries hold label '{hold_label}'"))
+                continue
+            gate_or_hold_reason = gate_reason(lowered, scoped_holds)
+            if gate_or_hold_reason:
+                excluded.append(_excluded(one_repo, issue, gate_or_hold_reason))
                 continue
             try:
                 hit = _closing_pr(repo_full, number, pulls_by_repo)
@@ -162,7 +175,7 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
     for job in jobs:
         del job["_sort"]
     result: dict[str, Any] = {
-        "available": True,
+        "available": holds_available,
         "complete": complete,
         "jobs": jobs[:limit],
         "warnings": warnings,
