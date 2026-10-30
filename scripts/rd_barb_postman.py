@@ -37,7 +37,7 @@ from scripts import postman_provider_caps as _caps  # noqa: E402
 log = logging.getLogger("rd_barb.postman")
 UTC = _dt_mod.UTC
 STREAM_LATENCY_BUDGET_S, BOARD_POLL_BUDGET_S, HEARTBEAT_INTERVAL_S = 5.0, 30.0, 600.0
-BOARD_PROBE_KEY, DEFAULT_BOARD_ISSUE = "board:coordination", 2376
+BOARD_PROBE_KEY, DEFAULT_BOARD_ISSUE = "board:coordination", 2539
 CLAUDE_SOCKET_ENV = "CLAUDE_CODE_MESSAGING_SOCKET"
 CURSOR_HOOK_EVENTS = ("beforeSubmitPrompt", "UserPromptSubmit", "Stop")
 WakeDecision = Literal["wake", "next_turn"]
