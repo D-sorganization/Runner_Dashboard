@@ -2887,6 +2887,9 @@ async def _startup() -> None:
     from oauth_config import OAuthConfig, validate_oauth_startup
 
     validate_oauth_startup(OAuthConfig.from_env())
+    from dashboard_config import validate_loopback_auth_bind
+
+    validate_loopback_auth_bind()
 
     from fleet_autoconfig import assert_valid_active_registry
     from overlay_contract import assert_overlay_ready

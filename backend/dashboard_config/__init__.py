@@ -14,6 +14,7 @@ Newer constant groups live in dedicated submodules:
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import platform
@@ -122,6 +123,31 @@ def _resolve_bind_host() -> str:
 
 
 HOST = _resolve_bind_host()
+
+
+def validate_loopback_auth_bind(*, force: bool = False) -> None:
+    """Refuse startup when loopback auth bypass is enabled on a non-loopback bind (#3617)."""
+    if not force and os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    if os.environ.get("DASHBOARD_LOOPBACK_AUTH") != "1":
+        return
+    host = os.environ.get("DASHBOARD_HOST", "").strip() or "0.0.0.0"
+    if host in ("0.0.0.0", "::"):
+        raise RuntimeError(
+            "DASHBOARD_LOOPBACK_AUTH=1 cannot start with DASHBOARD_HOST binding all interfaces; "
+            "bind loopback-only (127.0.0.1) or disable loopback auth."
+        )
+    try:
+        if not ipaddress.ip_address(host).is_loopback:
+            raise RuntimeError(
+                f"DASHBOARD_LOOPBACK_AUTH=1 cannot start with DASHBOARD_HOST={host!r}; "
+                "bind loopback-only or disable loopback auth."
+            )
+    except ValueError as exc:
+        raise RuntimeError(
+            f"DASHBOARD_LOOPBACK_AUTH=1 with invalid DASHBOARD_HOST={host!r}; "
+            "set a loopback bind target or disable loopback auth."
+        ) from exc
 
 
 def runner_limit() -> int:

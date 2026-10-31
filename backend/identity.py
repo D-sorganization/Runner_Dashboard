@@ -198,23 +198,34 @@ class IdentityManager:
         self.save_tokens()
 
     def verify_token(self, raw_token: str) -> Principal | None:
+        principal, _reason = self.resolve_bearer_token(raw_token)
+        return principal
+
+    def resolve_bearer_token(self, raw_token: str) -> tuple[Principal | None, str | None]:
+        """Resolve a bearer token or return ``(None, reason_code)`` without logging secrets."""
         import hashlib
 
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
-        # Ephemeral run tokens (issue #1310, SC-E2)
         e_rec = self._ephemeral_tokens.get(token_hash)
         if e_rec is not None:
             if e_rec.expires_at and time.time() > e_rec.expires_at:
-                return None
-            return self._ephemeral_principals.get(e_rec.principal_id)
+                return None, "ephemeral_token_expired"
+            principal = self._ephemeral_principals.get(e_rec.principal_id)
+            if principal is None:
+                return None, "ephemeral_principal_missing"
+            return principal, None
 
-        for t in self.tokens:
-            if t.token_hash == token_hash:
-                if t.expires_at and time.time() > t.expires_at:
-                    return None
-                return self.principals.get(t.principal_id)
-        return None
+        for record in self.tokens:
+            if record.token_hash != token_hash:
+                continue
+            if record.expires_at and time.time() > record.expires_at:
+                return None, "token_expired"
+            principal = self.principals.get(record.principal_id)
+            if principal is None:
+                return None, "principal_missing"
+            return principal, None
+        return None, "token_hash_not_registered"
 
     def add_ephemeral_token(
         self,
@@ -266,6 +277,24 @@ _IDENTITY_DIR = resolve_identity_dir()
 log.info("Identity store directory: %s", _IDENTITY_DIR)
 identity_manager = IdentityManager(config_dir=_IDENTITY_DIR)
 
+
+def token_store_health_snapshot() -> dict[str, int | bool]:
+    """Compare in-memory tokens to ``tokens.yml`` for operator diagnostics (#3617)."""
+    path = identity_manager.tokens_path
+    on_disk = 0
+    if path.exists():
+        data = safe_yaml_load(path, allowed_roots=[identity_manager.config_dir.resolve()])
+        tokens = data.get("tokens") if isinstance(data, dict) else None
+        if isinstance(tokens, list):
+            on_disk = len(tokens)
+    loaded = len(identity_manager.tokens)
+    return {
+        "loaded_token_count": loaded,
+        "on_disk_token_count": on_disk,
+        "in_sync": loaded == on_disk,
+    }
+
+
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
@@ -297,11 +326,13 @@ def _reject_unauthenticated_bearer(header_token: str | None) -> None:
     if not header_token or not header_token.startswith("Bearer "):
         return
     raw = header_token[len("Bearer ") :]
-    if identity_manager.verify_token(raw):
+    principal, failure_reason = identity_manager.resolve_bearer_token(raw)
+    if principal:
         return
     hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
     if hub_token and hmac.compare_digest(raw, hub_token):
         return
+    log.warning("bearer_token_rejected reason=%s", failure_reason or "unknown")
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
@@ -398,6 +429,8 @@ def require_principal(
     # access to the transport peer address, never forwarded headers.
     if not prin and _loopback_auth_enabled() and _is_loopback_request(request):
         prin = _loopback_principal()
+        peer = request.client.host if request.client else "unknown"
+        log.info("loopback_auth_grant peer=%s principal_id=%s", peer, prin.id)
 
     if not prin:
         # Fail closed — all callers must present valid credentials (issue #315)

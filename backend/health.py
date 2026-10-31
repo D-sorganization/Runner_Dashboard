@@ -59,9 +59,11 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 def _oauth_health_payload() -> dict:
     """OAuth readiness plus redacted operator token expiry (#2075)."""
     from github_app_user_oauth import aggregate_operator_auth_health  # noqa: PLC0415
+    from identity import token_store_health_snapshot  # noqa: PLC0415
 
     payload: dict = dict(OAuthConfig.from_env().diagnostic())
     payload["operator_sessions"] = aggregate_operator_auth_health()
+    payload["identity_tokens"] = token_store_health_snapshot()
     return payload
 
 
