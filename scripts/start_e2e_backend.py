@@ -50,6 +50,7 @@ def build_backend_env(base: Mapping[str, str], root: Path, *, port: int) -> dict
             "GH_TOKEN": "dummy",
             "DASHBOARD_PORT": str(port),
             "DASHBOARD_LOOPBACK_AUTH": "1",
+            "DASHBOARD_HOST": "127.0.0.1",  # loopback auth refuses a non-loopback bind (#3617, #3625)
         }
     )
     return env
