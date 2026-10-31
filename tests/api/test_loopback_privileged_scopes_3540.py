@@ -56,6 +56,7 @@ def loopback_auth_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterat
     monkeypatch.setenv("DASHBOARD_IDENTITY_DIR", str(id_dir))
     monkeypatch.setenv("HUB_FLEET_TOKEN", "fleet-peer-secret-3540")
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_HOST", "127.0.0.1")
     monkeypatch.delenv("DASHBOARD_LOOPBACK_OPERATOR_WRITES", raising=False)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
     monkeypatch.setenv("STAFF_ROLES_DIR", str(tmp_path / "roles"))

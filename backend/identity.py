@@ -294,6 +294,7 @@ def token_store_health_snapshot() -> dict[str, int | bool]:
         "in_sync": loaded == on_disk,
     }
 
+
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 

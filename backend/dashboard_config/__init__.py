@@ -129,7 +129,7 @@ def validate_loopback_auth_bind() -> None:
     """Refuse startup when loopback auth bypass is enabled on a non-loopback bind (#3617)."""
     if os.environ.get("DASHBOARD_LOOPBACK_AUTH") != "1":
         return
-    host = HOST
+    host = os.environ.get("DASHBOARD_HOST", "").strip() or "0.0.0.0"
     if host in ("0.0.0.0", "::"):
         raise RuntimeError(
             "DASHBOARD_LOOPBACK_AUTH=1 cannot start with DASHBOARD_HOST binding all interfaces; "
