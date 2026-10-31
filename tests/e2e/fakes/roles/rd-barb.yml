@@ -1,0 +1,32 @@
+# Canonical mobile chat fixture (#3493, #3604). Not a live staff role.
+name: rd-barb
+title: RD Barb
+summary: E2E direct mobile conversation, distinct from auto-route barb.
+playbook: docs/fleet-e2e.md
+prompt_template: null
+instructions: |
+  Fixture role. The fake provider CLI in tests/e2e/fakes/bin decides every reply.
+providers:
+  - claude
+model: default
+schedule: null
+window: null
+repos:
+  - e2e-fixture
+scope: {}
+budget:
+  usd_per_run: 0.5
+  usd_per_day: 2.0
+permissions:
+  lease: false
+  push_branch: false
+  open_pr: false
+  merge: false
+  host_shell: false
+  notify_user: false
+reports_to: user
+holds: []
+surface: dashboard
+chat:
+  providers:
+    - claude
