@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from bash_host import BASH
 
 from scripts.recurring_scan import (
     Cursor,
@@ -193,17 +193,17 @@ def _workflow_parent_line() -> str:
 def _workflow_parent(repo: Path) -> str:
     snippet = f'STATE_BRANCH=bot/recurring-scan-state\n{_workflow_parent_line()}\nprintf %s "$PARENT"'
     return subprocess.run(
-        ["bash", "-c", snippet], cwd=repo, capture_output=True, text=True, check=True
+        [BASH or "bash", "-c", snippet], cwd=repo, capture_output=True, text=True, check=True
     ).stdout
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.skipif(BASH is None, reason="needs bash")
 def test_first_run_without_state_branch_commits_with_no_parent(tmp_path: Path) -> None:
     # A missing ref must yield an empty PARENT, not its own name echoed back (#3638).
     assert _workflow_parent(_init_repo(tmp_path)) == ""
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
+@pytest.mark.skipif(BASH is None, reason="needs bash")
 def test_existing_state_branch_becomes_the_parent(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     _git(repo, "update-ref", "refs/remotes/origin/bot/recurring-scan-state", "HEAD")
