@@ -387,8 +387,9 @@ def verify_and_record(
             verdict = Verdict("unverified", f"verification error: {exc}")
         if verdict.verification == "not_applicable" and verdict.detail == "role does not open pull requests":
             _record_role_open_pr_diagnostic(store, rec, resolver_path)
-        store.update_run(run_id, **updates_for(rec, verdict, mode))
+        # The verify event lands before the verdict, so a reader that sees the verdict sees it (#1489).
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
+        store.update_run(run_id, **updates_for(rec, verdict, mode))
         if verdict.verification == "verified":
             try:
                 from staff.review import auto_review_if_eligible
