@@ -82,6 +82,11 @@ jobs:
     runs-on: ${{ github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet-public-heavy' }}
     timeout-minutes: 10
     steps:
+      # Prior non-cone sparse checkouts on reused self-hosted runners can hide
+      # tracked paths from a later full checkout (#3608, #3612).
+      - name: Reset workspace (stale self-hosted checkout guard)
+        run: rm -rf "${GITHUB_WORKSPACE:?}" && mkdir -p "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7

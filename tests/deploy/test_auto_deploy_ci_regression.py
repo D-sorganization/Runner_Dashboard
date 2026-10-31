@@ -40,6 +40,18 @@ def test_auto_deploy_queue_guard_does_not_leave_non_cone_sparse_state() -> None:
     assert options.get("sparse-checkout-cone-mode") is not False
     assert options.get("sparse-checkout") == ".github/scripts"
 
+
+def test_auto_deploy_regression_resets_workspace_before_checkout() -> None:
+    """Heavy job must not inherit a poisoned sparse workspace from earlier jobs (#3608)."""
+    import yaml
+
+    workflow = yaml.safe_load((REPO / ".github/workflows/ci-auto-deploy-regression.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["auto-deploy-regression"]["steps"]
+    names = [step.get("name") for step in steps]
+    checkout_idx = next(i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/checkout@"))
+    assert "Reset workspace (stale self-hosted checkout guard)" in names
+    assert names.index("Reset workspace (stale self-hosted checkout guard)") < checkout_idx
+
 sys.path.insert(0, str(DEPLOY))
 from node_auto_deploy.ci_gate import ci_gate_for_commit, parse_check_runs_payload  # noqa: E402
 from node_auto_deploy.hub_gate import fetch_fleet_status  # noqa: E402
