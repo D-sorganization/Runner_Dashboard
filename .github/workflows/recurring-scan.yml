@@ -42,7 +42,8 @@ jobs:
           python3 scripts/recurring_scan.py --repo . --cursor "$CURSOR_FILE"
           BLOB=$(git hash-object -w "$CURSOR_FILE")
           TREE=$(printf '100644 blob %s\tcursor.json\n' "$BLOB" | git mktree)
-          PARENT=$(git rev-parse "origin/$STATE_BRANCH" 2>/dev/null || true)
+          # --verify --quiet prints nothing for a missing ref; plain rev-parse echoes the name back (#3638).
+          PARENT=$(git rev-parse --verify --quiet "refs/remotes/origin/$STATE_BRANCH^{commit}" || true)
           PARENT_FLAG=(); [ -n "$PARENT" ] && PARENT_FLAG=(-p "$PARENT")
           COMMIT=$(git commit-tree "$TREE" "${PARENT_FLAG[@]}" -m "chore(scan-state): update recurring-scan cursor")
           git push origin "$COMMIT:refs/heads/$STATE_BRANCH"
