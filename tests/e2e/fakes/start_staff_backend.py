@@ -110,6 +110,13 @@ def backend_env(state: Path, port: int) -> dict[str, str]:
         "STAFF_INBOX_GITHUB_SOURCES": "0",
         # Staff runs need a GitHub-shaped credential without reaching api.github.com (#2038).
         "STAFF_E2E_HERMETIC": "1",
+        # The dispatch I/O-pressure gate samples real host load; a shared CI
+        # runner can legitimately sit above the threshold, which made
+        # staff.dispatch proposals refuse with a 503 under this suite's own
+        # load rather than any bug in the proposal flow (#3631). The gate has
+        # dedicated unit coverage (tests/api/test_staff_dispatch_admission.py)
+        # and is irrelevant to this fake-provider UI suite.
+        "STAFF_DISPATCH_RESOURCE_GATE": "0",
     }
 
 

@@ -55,6 +55,8 @@ export interface ActionProposalData {
   can_approve?: boolean;
   denial_reason?: string | null;
   params_hash?: string | null;
+  /** The refusal that failed this proposal (a dispatch admission 503, say), so a failed card is self-explaining (#3631). */
+  fail_reason?: string | null;
 }
 
 export type RunStatus =
