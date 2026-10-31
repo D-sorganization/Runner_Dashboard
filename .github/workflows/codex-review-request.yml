@@ -22,7 +22,8 @@ jobs:
     if: >-
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
-      !github.event.pull_request.draft
+      !github.event.pull_request.draft &&
+      secrets.CODEX_REVIEW_REQUEST_TOKEN != ''
     uses: D-sorganization/fleet-workflows/.github/workflows/reusable-codex-review-request.yml@9ec883c13db26501d54c7eeeaa7bf1cbd1cfde8e # main 2026-10-23
     with:
       timeout-minutes: 5

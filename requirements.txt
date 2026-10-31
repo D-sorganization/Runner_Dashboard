@@ -72,7 +72,7 @@ pydantic-core==2.46.3
     # via pydantic
 pyjwt==2.15.0
     # via runner-dashboard
-pypdf==6.21.2
+pypdf==6.21.4
     # via runner-dashboard
 python-dotenv==1.2.2
     # via uvicorn
