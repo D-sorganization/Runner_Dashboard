@@ -195,6 +195,30 @@ def test_reconcile_backlog_updates_inventory(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_count_healthy_armed_excludes_rows_stale_past_reconcile_interval(tmp_path: Path) -> None:
+    store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")
+    verdict = arm_cap.HealthVerdict(True, "queued", ())
+    store.upsert_inventory("o/r", 1, verdict, updated_at="2000-01-01T00:00:00Z")
+    store.upsert_inventory("o/r", 2, verdict)
+    assert store.count_healthy_armed() == 2
+    assert store.count_healthy_armed(stale_after_seconds=60) == 1
+
+
+@pytest.mark.unit
+def test_stale_inventory_row_does_not_block_arm(tmp_path: Path) -> None:
+    policy = _policy(tmp_path, max_healthy_armed=1, shadow_mode=False, reconcile_interval_seconds=60)
+    store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")
+    verdict = arm_cap.HealthVerdict(True, "queued", ())
+    # Simulates a host-local store that nothing has reconciled since the PR
+    # it tracks closed or merged (#3627): the row is far older than the
+    # policy's reconcile_interval_seconds and must not count as healthy.
+    store.upsert_inventory("o/r", 1, verdict, updated_at="2000-01-01T00:00:00Z")
+    decision = arm_cap.admit_for_arm("o/r", 2, arm_cap.AdmitContext(), store=store, policy=policy)
+    assert decision.allowed
+    assert not decision.shadow_would_block
+
+
+@pytest.mark.unit
 def test_disarm_requires_streak_and_cooldown(tmp_path: Path) -> None:
     policy = _policy(tmp_path, max_healthy_armed=1, shadow_mode=False, disarm_transient_streak_limit=2)
     store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")

@@ -145,7 +145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     store.expire_stale_reservations()
 
     counts = reconcile_repo(args.repo, store=store, policy=policy)
-    healthy = store.count_healthy_armed()
+    healthy = store.count_healthy_armed(stale_after_seconds=policy.reconcile_interval_seconds)
     logger.info(
         "Reconcile %s: inventory healthy=%s snapshot=%s pending_reservations=%s",
         args.repo,

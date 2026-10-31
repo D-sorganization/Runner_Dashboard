@@ -87,10 +87,24 @@ class ArmCapStore:
             )
             return int(cur.rowcount)
 
-    def count_healthy_armed(self) -> int:
+    def count_healthy_armed(self, *, stale_after_seconds: int | None = None, now_iso: str | None = None) -> int:
         with self._lock, self._connect() as conn:
-            row = conn.execute("SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1").fetchone()
+            if stale_after_seconds is None:
+                row = conn.execute("SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1").fetchone()
+            else:
+                cutoff = self._stale_cutoff(stale_after_seconds, now_iso)
+                row = conn.execute(
+                    "SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1 AND updated_at > ?",
+                    (cutoff,),
+                ).fetchone()
             return int(row["c"] if row else 0)
+
+    @staticmethod
+    def _stale_cutoff(stale_after_seconds: int, now_iso: str | None) -> str:
+        """Timestamp before which an uninventoried row is treated as unreconciled, not healthy (#3627)."""
+        now = parse_iso_timestamp(now_iso or utc_now_iso())
+        cutoff = now - timedelta(seconds=stale_after_seconds)
+        return cutoff.isoformat().replace("+00:00", "Z")
 
     def count_pending_reservations(self, exclude_token: str | None = None) -> int:
         with self._lock, self._connect() as conn:
@@ -103,8 +117,16 @@ class ArmCapStore:
                 row = conn.execute("SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'").fetchone()
             return int(row["c"] if row else 0)
 
-    def effective_healthy_load(self, exclude_token: str | None = None) -> int:
-        return self.count_healthy_armed() + self.count_pending_reservations(exclude_token)
+    def effective_healthy_load(
+        self,
+        exclude_token: str | None = None,
+        *,
+        stale_after_seconds: int | None = None,
+        now_iso: str | None = None,
+    ) -> int:
+        return self.count_healthy_armed(
+            stale_after_seconds=stale_after_seconds, now_iso=now_iso
+        ) + self.count_pending_reservations(exclude_token)
 
     def upsert_inventory(
         self,
@@ -144,6 +166,7 @@ class ArmCapStore:
         cap: int,
         ttl_seconds: int,
         now_iso: str | None = None,
+        stale_after_seconds: int | None = None,
     ) -> AdmitDecision:
         """Atomically reserve a cap slot if load < cap (single-flight per repo#pr)."""
         now = now_iso or utc_now_iso()
@@ -162,7 +185,7 @@ class ArmCapStore:
                     reservation_token=str(pending_same["token"]),
                     reason="existing pending reservation",
                 )
-            load = self._effective_load_in_conn(conn)
+            load = self._effective_load_in_conn(conn, stale_after_seconds=stale_after_seconds, now_iso=now)
             if load >= cap:
                 return AdmitDecision(
                     allowed=False,
@@ -226,7 +249,19 @@ class ArmCapStore:
         )
 
     @staticmethod
-    def _effective_load_in_conn(conn: sqlite3.Connection) -> int:
-        inv = conn.execute("SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1").fetchone()
+    def _effective_load_in_conn(
+        conn: sqlite3.Connection,
+        *,
+        stale_after_seconds: int | None = None,
+        now_iso: str | None = None,
+    ) -> int:
+        if stale_after_seconds is None:
+            inv = conn.execute("SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1").fetchone()
+        else:
+            cutoff = ArmCapStore._stale_cutoff(stale_after_seconds, now_iso)
+            inv = conn.execute(
+                "SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1 AND updated_at > ?",
+                (cutoff,),
+            ).fetchone()
         pending = conn.execute("SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'").fetchone()
         return int(inv["c"] if inv else 0) + int(pending["c"] if pending else 0)
