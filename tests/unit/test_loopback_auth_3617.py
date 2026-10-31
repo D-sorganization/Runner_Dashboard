@@ -11,8 +11,8 @@ _BACKEND = Path(__file__).resolve().parents[2] / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-import dashboard_config
-import identity as id_mod
+import dashboard_config  # noqa: E402
+import identity as id_mod  # noqa: E402
 
 
 def test_resolve_bearer_token_reports_hash_not_registered(tmp_path: Path) -> None:
