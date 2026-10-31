@@ -429,6 +429,24 @@ def test_verify_and_record_persists_the_verdict_and_an_event(store: RunStore) ->
     assert any(e["kind"] == "verify" for e in store.events_after("run_1"))
 
 
+def test_verify_event_lands_before_the_verdict(store: RunStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reader that sees ``verification`` set also sees the ``verify`` event (#1489, #3628)."""
+    store.create_run(_rec())
+    kinds_when_verdict_written: list[list[str]] = []
+    real_update_run = store.update_run
+
+    def spying_update_run(run_id: str, **fields: Any) -> None:
+        if "verification" in fields:
+            kinds_when_verdict_written.append([e["kind"] for e in store.events_after(run_id)])
+        real_update_run(run_id, **fields)
+
+    monkeypatch.setattr(store, "update_run", spying_update_run)
+
+    v.verify_and_record(store, "run_1", opens_pr=True, probe=FakeProbe(), mode="enforce", now=NOW)
+
+    assert kinds_when_verdict_written and kinds_when_verdict_written[0][-1] == "verify"
+
+
 def test_off_mode_records_nothing_and_calls_nothing(store: RunStore) -> None:
     store.create_run(_rec())
     probe = FakeProbe(v.PullRequest(12, "open", "green"))
