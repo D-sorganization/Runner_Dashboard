@@ -106,8 +106,9 @@ curl -s -X POST "$FLEET_API_URL/api/v1/staff/panels" -H "Authorization: Bearer $
   when every expert in a round says `agree`; `consensus: true` means that happened. `synthesis` is the Moderator's
   closing text and the thing to act on. A seat that timed out shows as a missed turn, not a stance. Treat the output
   as advice: it is generated text, so verify claims against the code before acting.
-- **fleet-decision preset:** the Argon/Astra/Fable preset with disposable repo snapshots and a Barb turnover note is PR
-  #2520, **not merged** at the time of writing. Until it lands it is not in `presets`; build the experts by hand as above.
+- **fleet-decision preset:** `GET /api/v1/staff/panels/presets` lists `fleet-decision` (Argon on antigravity, Astra on
+  codex, Fable on claude), with each seat's `available` flag for this hub. An unavailable seat is shown, never swapped.
+  Repo grounding and the Barb turnover note apply to every panel; see `docs/staff-hub.md` § Panel presets (#2511).
 
 ## 4. Taking the Barb seat
 
