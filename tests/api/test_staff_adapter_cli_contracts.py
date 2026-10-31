@@ -65,3 +65,38 @@ def test_agy_init_event_is_not_mistaken_for_text() -> None:
     agy = adapters_mod.ADAPTERS["antigravity"]
     ev = agy.parse_line(json.dumps({"event": "init", "init": {"cwd": "/w", "tools": ["ask_question"]}}))
     assert ev["kind"] == "init" and ev["text"] == ""
+
+
+@pytest.mark.unit
+def test_claude_build_command_passes_schema_inline(tmp_path) -> None:
+    # Claude's ``--json-schema`` takes the schema itself, not a file path (#3619).
+    schema = {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}
+    argv = adapters_mod.ADAPTERS["claude"].build_command("do it", str(tmp_path), output_schema=schema)
+    assert argv[argv.index("--json-schema") + 1] == json.dumps(schema)
+
+
+@pytest.mark.unit
+def test_codex_build_command_passes_schema_as_file(tmp_path) -> None:
+    # Codex's ``--output-schema`` takes a file path (#3619).
+    schema = {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}
+    argv = adapters_mod.ADAPTERS["codex"].build_command("do it", str(tmp_path), output_schema=schema)
+    schema_path = argv[argv.index("--output-schema") + 1]
+    assert json.loads(open(schema_path).read()) == schema
+
+
+@pytest.mark.unit
+def test_build_command_omits_schema_flags_by_default() -> None:
+    # Additive: no caller opts in, so existing free-text STAFF_RESULT: behavior is unchanged.
+    assert "--json-schema" not in adapters_mod.ADAPTERS["claude"].build_command("do it", "/tmp/wt")
+    assert "--output-schema" not in adapters_mod.ADAPTERS["codex"].build_command("do it", "/tmp/wt")
+
+
+@pytest.mark.unit
+def test_antigravity_build_command_ignores_output_schema() -> None:
+    # Only claude- and codex-style adapters know a native schema flag; others no-op (#3619).
+    schema = {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}
+    argv = adapters_mod.ADAPTERS["antigravity"].build_command(
+        "do it", "/tmp/wt", model="gemini-3.8-flash-high", output_schema=schema
+    )
+    assert "--json-schema" not in argv
+    assert "--output-schema" not in argv
