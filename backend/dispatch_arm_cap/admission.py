@@ -39,8 +39,14 @@ def admit_for_arm(
     *,
     store: ArmCapStore,
     policy: ArmCapPolicy,
+    now_iso: str | None = None,
 ) -> AdmitDecision:
-    """Gate ``--arm`` with cap policy; shadow mode never refuses."""
+    """Gate ``--arm`` with cap policy; shadow mode never refuses.
+
+    Inventory rows older than the reconcile interval are unreconciled, not proven gone, so
+    only shadow mode leaves them out; an enforced cap still counts them and fails closed
+    (#3627, #3635).
+    """
     if not policy.enabled:
         return AdmitDecision(allowed=True, reason="dispatch_limits.enabled=false")
     if policy.scope_repositories and repo not in policy.scope_repositories:
@@ -55,7 +61,8 @@ def admit_for_arm(
         ctx,
         cap=policy.max_healthy_armed,
         ttl_seconds=policy.reservation_ttl_seconds,
-        stale_after_seconds=policy.reconcile_interval_seconds,
+        now_iso=now_iso,
+        stale_after_seconds=policy.reconcile_interval_seconds if policy.shadow_mode else None,
     )
     if decision.allowed:
         return decision

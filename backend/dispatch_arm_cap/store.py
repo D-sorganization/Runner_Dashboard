@@ -49,6 +49,12 @@ CREATE TABLE IF NOT EXISTS cap_disarm_state (
 """
 
 
+# Compared as times, not ISO strings: ".900000Z" sorts before "Z" (#3635).
+_COUNT_FRESH_HEALTHY_SQL = (
+    "SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1 AND julianday(updated_at) > julianday(?)"
+)
+
+
 class ArmCapStore:
     """SQLite-backed reservations and reconciled armed inventory."""
 
@@ -94,7 +100,7 @@ class ArmCapStore:
             else:
                 cutoff = self._stale_cutoff(stale_after_seconds, now_iso)
                 row = conn.execute(
-                    "SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1 AND updated_at > ?",
+                    _COUNT_FRESH_HEALTHY_SQL,
                     (cutoff,),
                 ).fetchone()
             return int(row["c"] if row else 0)
@@ -260,7 +266,7 @@ class ArmCapStore:
         else:
             cutoff = ArmCapStore._stale_cutoff(stale_after_seconds, now_iso)
             inv = conn.execute(
-                "SELECT COUNT(*) AS c FROM armed_inventory WHERE healthy = 1 AND updated_at > ?",
+                _COUNT_FRESH_HEALTHY_SQL,
                 (cutoff,),
             ).fetchone()
         pending = conn.execute("SELECT COUNT(*) AS c FROM arm_reservations WHERE status = 'pending'").fetchone()
