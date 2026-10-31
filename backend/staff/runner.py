@@ -79,6 +79,14 @@ class StaffRunner:
         spec = self.roles().get(role)
         return spec is not None and spec.opens_pr
 
+    def _opens_pr_or_false(self, role: str) -> bool:
+        """:meth:`opens_pr`, but a failing roles resolver never crashes a finished run (#1542, #3622)."""
+        try:
+            return self.opens_pr(role)
+        except Exception:  # noqa: BLE001
+            log.exception("staff opens_pr resolver failed for role %s; classifying as no-PR", role)
+            return False
+
     def roles(self) -> dict[str, RoleSpec]:
         return self._roles_loader()
 
@@ -359,7 +367,7 @@ class StaffRunner:
                 machine=self.machine,
                 has_thread=bool(rec.thread_id),
                 run=rec,
-                opens_pr=self.opens_pr(rec.role),
+                opens_pr=self._opens_pr_or_false(rec.role),
                 probe=verification.GhCliPrProbe(),
             )
 

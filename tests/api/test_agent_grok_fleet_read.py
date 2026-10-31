@@ -14,6 +14,7 @@ from identity import Principal, TokenRecord, identity_manager
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _REMOTE = ("100.64.0.15", 52000)
 _HUB = "hub-fleet-secret"  # pragma: allowlist secret
+_BARB_SCOPE = "barb:pr-queue"
 
 
 @pytest.fixture
@@ -80,6 +81,17 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def grok_barb_claim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """Live Barb lease headers for agent-grok: Barb-seat writes must declare a claim (#3318, #3622)."""
+    from staff import barb_continuity  # noqa: PLC0415
+
+    store = barb_continuity.BarbContinuityStore(tmp_path / "barb-continuity.sqlite3")
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", store)
+    lease = store.checkout_lease(scope=_BARB_SCOPE, holder="agent-grok")["lease"]
+    return {"X-Barb-Scope": _BARB_SCOPE, "X-Barb-Lease-Epoch": str(lease["epoch"])}
+
+
 @pytest.mark.integration
 def test_grok_ingested_with_fleet_read_and_reads_priorities(
     remote_client: TestClient, grok_env: dict[str, str]
@@ -130,7 +142,7 @@ def test_grok_cannot_write_directives_or_holds(remote_client: TestClient, grok_e
 
 @pytest.mark.integration
 def test_grok_staff_summary_and_dispatch_dry_run(
-    remote_client: TestClient, grok_env: dict[str, str], staff_cli_installed
+    remote_client: TestClient, grok_env: dict[str, str], grok_barb_claim: dict[str, str], staff_cli_installed
 ) -> None:
     staff_cli_installed("claude")
     summary = remote_client.get("/api/staff/summary", headers=_auth(grok_env["grok"]))
@@ -139,7 +151,7 @@ def test_grok_staff_summary_and_dispatch_dry_run(
     dispatch = remote_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "dry", "provider": "claude", "dry_run": True},
-        headers={**_XHR, **_auth(grok_env["grok"])},
+        headers={**_XHR, **_auth(grok_env["grok"]), **grok_barb_claim},
     )
     assert dispatch.status_code == 200
     assert dispatch.json()["dry_run"] is True
