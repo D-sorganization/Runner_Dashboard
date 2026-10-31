@@ -421,12 +421,23 @@ _scheduler_lock = threading.Lock()
 
 
 def get_scheduler() -> StaffScheduler:
-    """Process-wide scheduler bound to the process-wide runner."""
+    """Process-wide scheduler bound to the process-wide runner.
+
+    Postcondition: ``result.runner is get_runner()``. A replaced runner (and its store)
+    rebuilds the scheduler instead of keeping a budget guard on a closed store (#3622).
+    """
     global _scheduler  # noqa: PLW0603
     with _scheduler_lock:
+        runner = get_runner()
+        was_running = False
+        if _scheduler is not None and _scheduler.runner is not runner:
+            was_running = _scheduler.running
+            _scheduler.stop()
+            _scheduler = None
         if _scheduler is None:
-            runner = get_runner()
             _scheduler = StaffScheduler(runner, HoldsList(roles_loader=runner.roles), BudgetGuard(runner.store))
+            if was_running:
+                _scheduler.start()
         return _scheduler
 
 
