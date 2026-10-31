@@ -8,6 +8,7 @@ Runner Dashboard is the **shared context hub** for personal-assistant agents (Ba
 | ----------------- | -------------------------------- | ------------------------------------------------------------------------------ |
 | Front door        | `agent-grok` (Barb)              | Intake, routing, owner-facing proposals; notifies Dieter when needed           |
 | Hands             | `agent-codex-hands`              | Execute work (computer control, dispatch); reports back via memory and threads |
+| VM workers        | `agent-grok-vm`, `agent-duet`    | barb-worker VM identities (read + shared memory only); no dispatch or holds    |
 | CLI orchestrators | `agent-codex`, `agent-claude`, … | Existing MCP/CLI paths; see per-product guides                                 |
 
 Barb is the **single front door** for Dieter-facing notifications. Other assistants are **hands**: they take assigned work, follow holds and directives from the dashboard, and **do not** ping Dieter directly—post updates to shared memory or staff threads instead.

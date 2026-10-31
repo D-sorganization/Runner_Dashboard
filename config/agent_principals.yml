@@ -30,6 +30,20 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+  - id: agent-grok-vm
+    kind: grokbot
+    name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+  - id: agent-duet
+    kind: claude
+    name: Duet Barb (barb-worker VM)
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
   - id: agent-smithers
     kind: grokbot
     name: Smithers (Grok work-task intake)
