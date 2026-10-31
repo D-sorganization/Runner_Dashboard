@@ -1,4 +1,4 @@
-"""agent-grok-vm and agent-duet principals: read + shared memory only (#3647)."""
+"""Barb principals share one operator scope set, never admin (#3647)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,25 @@ from agent_principal_defaults import merge_agent_principal_defaults
 from identity import IdentityManager, principal_has_scope
 
 
-@pytest.mark.parametrize(("pid", "kind"), [("agent-grok-vm", "grokbot"), ("agent-duet", "claude")])
+BARB_SCOPES = (
+    "fleet.read",
+    "memory.read",
+    "memory.write",
+    "staff.read",
+    "staff.dispatch",
+    "priorities.write",
+    "staff.holds.write",
+)
+
+
+@pytest.mark.parametrize(
+    ("pid", "kind"),
+    [
+        ("agent-grok", "grokbot"),
+        ("agent-grok-vm", "grokbot"),
+        ("agent-duet", "claude"),
+        ("agent-codex-hands", "codex"),
+    ],)
 def test_worker_vm_principals_least_privilege(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pid: str, kind: str
 ) -> None:
@@ -24,7 +42,7 @@ def test_worker_vm_principals_least_privilege(
 
     prin = mgr.principals[pid]
     assert prin.assistant_kind == kind
-    for scope in ("fleet.read", "memory.read", "memory.write"):
+    for scope in BARB_SCOPES:
         assert principal_has_scope(prin, scope)
-    for scope in ("staff.dispatch", "staff.holds.write", "priorities.write", "admin"):
+    for scope in ("admin", "staff.admin", "operator"):
         assert not principal_has_scope(prin, scope)

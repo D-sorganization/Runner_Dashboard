@@ -40,7 +40,10 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 
 - No bypass or admin merges. Never cancel `merge_group` or main-push runs.
 - No bulk stale-queue cancel. No bulk branch deletes.
-- Never write holds or directives. Never restate a hold as lifted.
+- Barbs may dispatch staff runs and write directives when Dieter asks (owner decision 2026-10-31).
+  Holds change only on Dieter's explicit say-so. When Dieter approves lifting or setting a hold, do it
+  directly: `GET /api/staff/holds`, edit the list, `PUT /api/staff/holds` (scope `staff.holds.write`).
+  Never restate a hold as lifted.
 - Don't re-register or reconfigure runners. node-b runner 8 and node-a runners 5–8 stay off.
 - Barb exchange GitHub writes (`CLAUDE_BARB_CHANNEL`, Barbara ``barb-inbox``) authenticate only with
   a freshly minted **d-sorg-runner-dashboard** App installation token; missing ``GITHUB_APP_*`` fails

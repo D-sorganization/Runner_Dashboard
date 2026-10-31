@@ -15,7 +15,6 @@
     { "id": "no-bypass-merge", "aliases": ["bypass merge", "admin merge"] },
     { "id": "no-run-cancel", "aliases": ["merge_group run", "main-push run"] },
     { "id": "no-verify-push", "aliases": ["--no-verify"] },
-    { "id": "no-dispatch", "aliases": ["hub dispatch", "/api/staff/*/run"] },
     { "id": "arming-cap", "aliases": ["arming cap"] },
     { "id": "no-pay-per-use", "aliases": ["pay-per-use"] },
     { "id": "runner-reg", "aliases": ["runner registration", "re-register"] }

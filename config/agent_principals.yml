@@ -30,6 +30,10 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
   - id: agent-grok-vm
     kind: grokbot
     name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
@@ -37,6 +41,10 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
   - id: agent-duet
     kind: claude
     name: Duet Barb (barb-worker VM)
@@ -44,6 +52,10 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
   - id: agent-smithers
     kind: grokbot
     name: Smithers (Grok work-task intake)
@@ -56,6 +68,10 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
   - id: agent-codex
     kind: codex
     name: Codex CLI agent
