@@ -7,6 +7,7 @@ Unattended runs never bypass CLI permissions (#1586).
 from __future__ import annotations
 
 import json
+import pathlib
 import shutil
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -123,6 +124,7 @@ class ProviderAdapter:
         policy: str | None = None,
         read_only: bool = False,
         session_id: str | None = None,
+        output_schema: dict | None = None,
     ) -> list[str]:
         """Return argv for one unattended run.
 
@@ -133,6 +135,10 @@ class ProviderAdapter:
         :data:`PERMISSION_BYPASS_FLAGS` entry. When ``read_only`` is True, no allowed
         tool is in :data:`CLAUDE_WRITE_TOOLS`. A provider that cannot run without
         a bypass or has no code-read-only unattended mode raises :class:`UnattendedUnsupportedError`.
+        When ``output_schema`` is given (#3619), a provider with a native structured-output
+        flag gets it — inline (``--json-schema``) for claude-style providers, written to a
+        file under ``workdir`` and passed by path (``--output-schema``) for codex-style
+        providers; a provider with neither flag ignores it.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
         if not self.unattended:
@@ -190,6 +196,13 @@ class ProviderAdapter:
                 out.extend(["--conversation", session_id])
             else:
                 out.extend(["--resume", session_id])
+        if output_schema is not None:
+            if self.provider_id in ("claude", "claude-ollama", "anthropic-api"):
+                out.extend(["--json-schema", json.dumps(output_schema)])
+            elif self.provider_id in ("codex", "ollama"):
+                schema_path = str(pathlib.Path(workdir) / ".staff_result_schema.json")
+                pathlib.Path(schema_path).write_text(json.dumps(output_schema))
+                out.extend(["--output-schema", schema_path])
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
         assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
         return out
