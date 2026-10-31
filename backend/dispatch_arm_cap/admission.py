@@ -55,6 +55,7 @@ def admit_for_arm(
         ctx,
         cap=policy.max_healthy_armed,
         ttl_seconds=policy.reservation_ttl_seconds,
+        stale_after_seconds=policy.reconcile_interval_seconds,
     )
     if decision.allowed:
         return decision
