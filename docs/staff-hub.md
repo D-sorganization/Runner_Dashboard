@@ -709,6 +709,22 @@ When a panel request includes `repos`, each expert seat runs with its working di
 curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Bearer $DASHBOARD_TOKEN" -H "Content-Type: application/json" -H "X-Requested-With: XMLHttpRequest" -d '{"topic": "Does the heater model match the data?", "rounds": 2, "mode": "debate", "confirm_cost": true, "repos": ["Runner_Dashboard"], "experts": [{"name": "Ada", "perspective": "numerical methods"}, {"name": "Brook", "perspective": "experiments"}, {"name": "Cy", "perspective": "operations"}]}'
 ```
 
+## Panel presets (#2511)
+
+`GET /api/v1/staff/panels/presets` (scope `staff.read`) returns ready-made expert line-ups and the panel providers enabled on this hub. Every seat carries `provider` (default `claude`), `model` and `available`, which is `false` when that provider is switched off on this node or has no read-only chat mode. An unavailable seat is shown as unavailable, never silently swapped for another provider. `fleet-decision` is the fleet decision panel:
+
+| Seat | Perspective | Provider | Model |
+| --- | --- | --- | --- |
+| Argon | Systems efficiency, cost and latency, algorithmic rigor | antigravity | `gemini-4-argon-high` |
+| Astra | Architecture, contracts, security boundaries and testability | codex | `gpt-6-astra` |
+| Fable | Skeptic: failure modes, edge cases and long-term maintainability | claude | `claude-fable-5-1` |
+
+`backend/staff/panel_models.py` (`PANEL_PRESETS`) is the source of truth for the seats; the Staff Console's new-panel form prefills them when the preset is picked. A finished panel appends a Barb turnover note (scope `panel`); a turnover failure is logged and never fails the panel. Add `repos` for read-only grounding (above).
+
+```bash
+curl -sS http://localhost:8321/api/v1/staff/panels/presets -H "Authorization: Bearer $DASHBOARD_TOKEN" | jq '.presets[] | select(.id == "fleet-decision")'
+```
+
 ## Not yet here (tracked in the epic)
 
 The fleet deploy (#1201).
