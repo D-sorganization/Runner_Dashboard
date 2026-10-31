@@ -13,8 +13,7 @@ runs:
     - name: Checkout path extractor
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        sparse-checkout: scripts/phantom_guard_issue_paths.py
-        sparse-checkout-cone-mode: false
+        sparse-checkout: scripts
 
     - name: Verify diff substantively matches issue claims
       shell: bash

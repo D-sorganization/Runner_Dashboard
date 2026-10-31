@@ -13,6 +13,23 @@ import yaml
 
 _WORKFLOWS_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 _WORKFLOW_FILES = sorted(_WORKFLOWS_DIR.glob("*.yml")) + sorted(_WORKFLOWS_DIR.glob("*.yaml"))
+_ACTION_FILES = sorted((_WORKFLOWS_DIR.parent / "actions").glob("*/action.y*ml"))
+
+
+@pytest.mark.parametrize(
+    "path", _WORKFLOW_FILES + _ACTION_FILES, ids=lambda path: str(path.relative_to(_WORKFLOWS_DIR.parent))
+)
+def test_checkouts_do_not_persist_non_cone_sparse_state(path: Path) -> None:
+    """Non-cone checkout leaves local config that can corrupt a later job (#3608)."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    jobs = data.get("jobs") or {"composite": data.get("runs", {})}
+    for job in jobs.values():
+        for step in (job or {}).get("steps", []):
+            if _is_checkout_step(step):
+                cone_mode = (step.get("with") or {}).get("sparse-checkout-cone-mode", True)
+                assert str(cone_mode).lower() != "false", (
+                    f"{path}: non-cone checkout persists local sparse state across jobs"
+                )
 
 
 def _is_checkout_step(step: dict) -> bool:

@@ -124,8 +124,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'merge_group'
         with:
-          sparse-checkout: .github/scripts/merge-queue-ref-guard.sh
-          sparse-checkout-cone-mode: false
+          sparse-checkout: .github/scripts
       - name: Stop obsolete merge queue entries
         if: github.event_name == 'merge_group'
         shell: bash
