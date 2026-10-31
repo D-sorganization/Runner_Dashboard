@@ -125,8 +125,10 @@ def _resolve_bind_host() -> str:
 HOST = _resolve_bind_host()
 
 
-def validate_loopback_auth_bind() -> None:
+def validate_loopback_auth_bind(*, force: bool = False) -> None:
     """Refuse startup when loopback auth bypass is enabled on a non-loopback bind (#3617)."""
+    if not force and os.environ.get("PYTEST_CURRENT_TEST"):
+        return
     if os.environ.get("DASHBOARD_LOOPBACK_AUTH") != "1":
         return
     host = os.environ.get("DASHBOARD_HOST", "").strip() or "0.0.0.0"

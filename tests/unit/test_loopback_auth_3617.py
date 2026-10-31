@@ -63,12 +63,12 @@ def test_token_store_health_snapshot_detects_drift(tmp_path: Path, monkeypatch: 
 
 def test_validate_loopback_auth_bind_rejects_all_interfaces(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
-    monkeypatch.setattr(dashboard_config, "HOST", "0.0.0.0")
+    monkeypatch.setenv("DASHBOARD_HOST", "0.0.0.0")
     with pytest.raises(RuntimeError, match="loopback-only"):
-        dashboard_config.validate_loopback_auth_bind()
+        dashboard_config.validate_loopback_auth_bind(force=True)
 
 
 def test_validate_loopback_auth_bind_allows_loopback_bind(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
-    monkeypatch.setattr(dashboard_config, "HOST", "127.0.0.1")
-    dashboard_config.validate_loopback_auth_bind()
+    monkeypatch.setenv("DASHBOARD_HOST", "127.0.0.1")
+    dashboard_config.validate_loopback_auth_bind(force=True)
