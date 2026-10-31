@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
+from bash_host import BASH
 
 from scripts.recurring_scan import (
     Cursor,
@@ -175,3 +177,34 @@ def test_heartbeat_alert_fires_only_once_the_gap_is_exceeded(tmp_path: Path, gap
     assert len(alerts) == want_alerts
     if want_alerts:
         assert notifier.sent[0]["dedupe_key"] == "scan-heartbeat-missed"
+
+
+def _workflow_parent_line() -> str:
+    """The cursor-save step's PARENT= line from recurring-scan.yml, run verbatim below (#3638)."""
+    workflow = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "recurring-scan.yml"
+    script = next(
+        step["run"]
+        for step in yaml.safe_load(workflow.read_text(encoding="utf-8"))["jobs"]["scan"]["steps"]
+        if "STATE_BRANCH" in step.get("run", "")
+    )
+    return next(line.strip() for line in script.splitlines() if line.strip().startswith("PARENT="))
+
+
+def _workflow_parent(repo: Path) -> str:
+    snippet = f'STATE_BRANCH=bot/recurring-scan-state\n{_workflow_parent_line()}\nprintf %s "$PARENT"'
+    return subprocess.run(
+        [BASH or "bash", "-c", snippet], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout
+
+
+@pytest.mark.skipif(BASH is None, reason="needs bash")
+def test_first_run_without_state_branch_commits_with_no_parent(tmp_path: Path) -> None:
+    # A missing ref must yield an empty PARENT, not its own name echoed back (#3638).
+    assert _workflow_parent(_init_repo(tmp_path)) == ""
+
+
+@pytest.mark.skipif(BASH is None, reason="needs bash")
+def test_existing_state_branch_becomes_the_parent(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _git(repo, "update-ref", "refs/remotes/origin/bot/recurring-scan-state", "HEAD")
+    assert _workflow_parent(repo) == _head(repo)
