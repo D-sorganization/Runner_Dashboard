@@ -544,7 +544,7 @@ test.describe("approved dashboard navigation", () => {
     await invalidCard.getByRole("button", { name: /^Approve$/ }).click();
     await expect(page).toHaveURL(routeBeforeInvalidAction);
     await expect(reopenedDrawer).toContainText("Action Failed", { timeout: 30_000 });
-    await expect(invalidCard).toContainText("Action failed. You can review the failure below and retry approval.");
+    await expect(invalidCard).toContainText("Action failed: tab_id must be a registered dashboard section. You can retry approval.");
     await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await expect(reopenedDrawer).toContainText("registered dashboard section");
     const retryResponse = page.waitForResponse(
