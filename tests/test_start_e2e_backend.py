@@ -48,6 +48,22 @@ def test_env_keeps_test_settings_and_path(tmp_path: Path) -> None:
     assert env["PATH"] == REAL_ENV["PATH"]
 
 
+@pytest.mark.parametrize("inherited_host", [None, "0.0.0.0"])
+def test_env_passes_the_loopback_auth_bind_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, inherited_host: str | None
+) -> None:
+    """Loopback auth needs a loopback bind; the backend refuses to start otherwise (#3617, #3625)."""
+    from dashboard_config import validate_loopback_auth_bind  # noqa: PLC0415
+
+    base = dict(REAL_ENV) if inherited_host is None else {**REAL_ENV, "DASHBOARD_HOST": inherited_host}
+    env = e2e.build_backend_env(base, tmp_path, port=4321)
+    assert env["DASHBOARD_HOST"] == "127.0.0.1"
+    for key in ("DASHBOARD_LOOPBACK_AUTH", "DASHBOARD_HOST"):
+        monkeypatch.setenv(key, env[key])
+
+    validate_loopback_auth_bind(force=True)
+
+
 def test_env_rejects_bad_port(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         e2e.build_backend_env(REAL_ENV, tmp_path, port=0)
