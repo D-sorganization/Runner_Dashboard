@@ -34,6 +34,11 @@ agents:
       - staff.dispatch
       - priorities.write
       - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
   - id: agent-grok-vm
     kind: grokbot
     name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
@@ -45,6 +50,11 @@ agents:
       - staff.dispatch
       - priorities.write
       - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
   - id: agent-duet
     kind: claude
     name: Duet Barb (barb-worker VM)
@@ -56,6 +66,11 @@ agents:
       - staff.dispatch
       - priorities.write
       - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
   - id: agent-smithers
     kind: grokbot
     name: Smithers (Grok work-task intake)
@@ -72,6 +87,11 @@ agents:
       - staff.dispatch
       - priorities.write
       - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
   - id: agent-codex
     kind: codex
     name: Codex CLI agent

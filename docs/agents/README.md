@@ -11,7 +11,7 @@ Runner Dashboard is the **shared context hub** for personal-assistant agents (Ba
 | VM workers        | `agent-grok-vm`, `agent-duet`    | barb-worker VM Barbs; same Barb scope set as `agent-grok`                      |
 | CLI orchestrators | `agent-codex`, `agent-claude`, … | Existing MCP/CLI paths; see per-product guides                                 |
 
-All Barb principals (`agent-grok`, `agent-grok-vm`, `agent-duet`, `agent-codex-hands`) share one scope set: `fleet.read`, `memory.read`, `memory.write`, `staff.read`, `staff.dispatch`, `priorities.write`, `staff.holds.write`. No admin or token-issuing scope. Holds change only on Dieter's say-so; when Dieter approves lifting or setting a hold, the Barb does it directly via `GET` then `PUT /api/staff/holds` (owner decision 2026-10-31).
+All Barb principals (`agent-grok`, `agent-grok-vm`, `agent-duet`, `agent-codex-hands`) share one scope set: `fleet.read`, `memory.read`, `memory.write`, `staff.read`, `staff.dispatch`, `priorities.write`, `staff.holds.write`, `staff.chat` (panels, threads), `staff.cancel`, `coordination.write` (claims), `proposals.write`, `assessments.dispatch` (board). No admin or token-issuing scope. Holds change only on Dieter's say-so; when Dieter approves lifting or setting a hold, the Barb does it directly via `GET` then `PUT /api/staff/holds` (owner decision 2026-10-31).
 
 Barb is the **single front door** for Dieter-facing notifications. Other assistants are **hands**: they take assigned work, follow holds and directives from the dashboard, and **do not** ping Dieter directly—post updates to shared memory or staff threads instead.
 

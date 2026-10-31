@@ -17,6 +17,11 @@ BARB_SCOPES = (
     "staff.dispatch",
     "priorities.write",
     "staff.holds.write",
+    "staff.chat",
+    "staff.cancel",
+    "coordination.write",
+    "proposals.write",
+    "assessments.dispatch",
 )
 
 
