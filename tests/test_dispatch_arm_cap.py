@@ -205,8 +205,8 @@ def test_count_healthy_armed_excludes_rows_stale_past_reconcile_interval(tmp_pat
 
 
 @pytest.mark.unit
-def test_stale_inventory_row_does_not_block_arm(tmp_path: Path) -> None:
-    policy = _policy(tmp_path, max_healthy_armed=1, shadow_mode=False, reconcile_interval_seconds=60)
+def test_stale_inventory_row_does_not_block_arm_in_shadow_mode(tmp_path: Path) -> None:
+    policy = _policy(tmp_path, max_healthy_armed=1, shadow_mode=True, reconcile_interval_seconds=60)
     store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")
     verdict = arm_cap.HealthVerdict(True, "queued", ())
     # Simulates a host-local store that nothing has reconciled since the PR
@@ -216,6 +216,29 @@ def test_stale_inventory_row_does_not_block_arm(tmp_path: Path) -> None:
     decision = arm_cap.admit_for_arm("o/r", 2, arm_cap.AdmitContext(), store=store, policy=policy)
     assert decision.allowed
     assert not decision.shadow_would_block
+
+
+@pytest.mark.unit
+def test_enforced_cap_still_counts_a_stale_row_for_a_live_pr(tmp_path: Path) -> None:
+    """Unreconciled is unknown, not healthy-free: an enforced cap fails closed (#3627, #3635)."""
+    policy = _policy(tmp_path, max_healthy_armed=1, shadow_mode=False, reconcile_interval_seconds=900)
+    store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")
+    verdict = arm_cap.HealthVerdict(True, "queued", ())
+    # Still armed, but nothing has reconciled this host store for 16 minutes.
+    store.upsert_inventory("o/r", 1, verdict, updated_at="2026-01-01T00:00:00Z")
+    decision = arm_cap.admit_for_arm(
+        "o/r", 2, arm_cap.AdmitContext(), store=store, policy=policy, now_iso="2026-01-01T00:16:00Z"
+    )
+    assert not decision.allowed
+
+
+@pytest.mark.unit
+def test_stale_cutoff_compares_times_not_strings(tmp_path: Path) -> None:
+    store = arm_cap.ArmCapStore(tmp_path / "cap.sqlite3")
+    verdict = arm_cap.HealthVerdict(True, "queued", ())
+    # 0.9s after the cutoff: newer in time, but "...00.900000Z" < "...00Z" as strings.
+    store.upsert_inventory("o/r", 1, verdict, updated_at="2026-01-01T00:00:00.900000Z")
+    assert store.count_healthy_armed(stale_after_seconds=60, now_iso="2026-01-01T00:01:00Z") == 1
 
 
 @pytest.mark.unit
