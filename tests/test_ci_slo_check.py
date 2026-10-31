@@ -171,3 +171,28 @@ def test_gh_api_decodes_a_single_page_unchanged(monkeypatch: pytest.MonkeyPatch)
 
     result = slo.gh_api("repos/o/r/actions/runs", runner=runner)
     assert result == page
+
+
+def test_gh_api_handles_pretty_printed_and_empty_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    pretty = '[\n  {"number": 1}\n]\n[\n  {"number": 2}\n]\n'
+
+    def runner(cmd: list[str]) -> _PagedProc:
+        return _PagedProc(pretty)
+
+    assert slo.gh_api("repos/o/r/pulls", runner=runner) == [{"number": 1}, {"number": 2}]
+
+    def empty_runner(cmd: list[str]) -> _PagedProc:
+        return _PagedProc("  \n")
+
+    assert slo.gh_api("repos/o/r/pulls", runner=empty_runner) == []
+
+
+def test_gh_api_still_raises_on_malformed_trailing_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+
+    def runner(cmd: list[str]) -> _PagedProc:
+        return _PagedProc('[{"number":1}][{"numb')
+
+    with pytest.raises(json.JSONDecodeError):
+        slo.gh_api("repos/o/r/pulls", runner=runner)
