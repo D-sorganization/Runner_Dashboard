@@ -57,6 +57,86 @@ agents:
     name: Gemini agent
     scopes:
       - fleet.read
+  - id: rd-barb
+    kind: other
+    name: RD Barb lane (rd-barb watchdog)
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+      - staff.read
+      - staff.dispatch
+      - staff.chat
+      - staff.cancel
+      - staff.holds.write
+      - priorities.write
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
+  - id: agent-claude-barb
+    kind: claude
+    name: Claude Barb lane
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+      - staff.read
+      - staff.dispatch
+      - staff.chat
+      - staff.cancel
+      - staff.holds.write
+      - priorities.write
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
+  - id: agent-codex-barb
+    kind: codex
+    name: Codex Barb lane
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+      - staff.read
+      - staff.dispatch
+      - staff.chat
+      - staff.cancel
+      - staff.holds.write
+      - priorities.write
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
+  - id: agent-cursor-barb
+    kind: other
+    name: Cursor Barb lane
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+      - staff.read
+      - staff.dispatch
+      - staff.chat
+      - staff.cancel
+      - staff.holds.write
+      - priorities.write
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
+  - id: agent-agy-barb
+    kind: other
+    name: Antigravity Barb lane
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+      - staff.read
+      - staff.dispatch
+      - staff.chat
+      - staff.cancel
+      - staff.holds.write
+      - priorities.write
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
   - id: email-intake
     name: Verified email intake
     roles:

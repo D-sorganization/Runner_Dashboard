@@ -467,7 +467,9 @@ class ChatTurnRunner:
             except Exception as exc:  # noqa: BLE001
                 log.warning("Failed to persist action proposal %s: %s", action.action, exc)
                 continue
-            if requester is not None and prop.state == "proposed" and request_approves(requester, action.action):
+            if requester is not None and prop.state == "proposed" and request_approves(
+                requester, action.action, role.name if role else None
+            ):
                 await run_for_requester(self.conv_store, bus, prop.id, requester)
 
         # Persist provider session id on thread metadata

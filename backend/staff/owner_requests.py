@@ -25,12 +25,26 @@ log = logging.getLogger("dashboard.staff.owner_requests")
 
 #: Risks the requester's own message approves; anything higher waits for a tap.
 REQUEST_APPROVES_RISKS = frozenset({ActionRiskClass.READ, ActionRiskClass.LOW, ActionRiskClass.MEDIUM})
+#: Barb lanes are full peers (owner decision 2026-10-31, #3647): when the owner asks a Barb
+#: in chat, HIGH actions such as ``staff.hold``/``staff.unhold`` run on that request too.
+#: CRITICAL and owner-only actions still need an explicit tap.
+BARB_REQUEST_APPROVES_RISKS = REQUEST_APPROVES_RISKS | {ActionRiskClass.HIGH}
 
 
-def request_approves(requester: Principal | None, action_name: str) -> bool:
-    """True when *requester*'s message is itself the approval for *action_name*."""
+def is_barb_role(role_name: str | None) -> bool:
+    """True for the Barb front door (``barb``) and every Barb lane (``rd-barb``, ``*-barb``)."""
+    name = (role_name or "").strip().lower()
+    return name == "barb" or name.endswith("-barb")
+
+
+def request_approves(requester: Principal | None, action_name: str, role_name: str | None = None) -> bool:
+    """True when *requester*'s message is itself the approval for *action_name*.
+
+    *role_name* is the answering role; Barb roles also take HIGH actions on request.
+    """
     action = ACTION_REGISTRY.get(action_name)
-    if requester is None or action is None or action.risk_class not in REQUEST_APPROVES_RISKS:
+    risks = BARB_REQUEST_APPROVES_RISKS if is_barb_role(role_name) else REQUEST_APPROVES_RISKS
+    if requester is None or action is None or action.risk_class not in risks:
         return False
     return principal_has_scope(requester, "staff.approve")
 
