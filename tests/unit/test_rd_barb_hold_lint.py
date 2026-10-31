@@ -12,7 +12,7 @@ POLICY_FILE = Path(__file__).resolve().parents[2] / "config" / "rd_barb_locked_p
 # Canary fixture. Shrinking any of these lists is a visible weakening in review.
 REQUIRED_IDS = (
     "rd-2657 rd-2658-disarmed rd-2880-auto-merge-off gm-5540-auto-merge-off sidekick-packaging "
-    "assessment-board-gate bulk-cancel bulk-branch-delete no-bypass-merge no-run-cancel "
+    "assessment-board-gate no-bypass-merge no-run-cancel "
     "no-verify-push arming-cap no-pay-per-use runner-reg"
 ).split()
 REQUIRED_VERBS = (

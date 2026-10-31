@@ -143,11 +143,9 @@ The first live contract is the `/api/v1/staff` threads API with the `agent-grok`
   (`GET /api/v1/memory/context-pack`).
 - **Memory writes:** `POST /api/v1/memory` session digests (`memory.write`).
 - **Directives and holds (owner decision 2026-10-31):** `priorities.write` and `staff.holds.write`. Write directives when Dieter asks. Holds change only when Dieter approves; then lift or set the hold directly via `PUT /api/staff/holds`.
-- **Dispatch: open, with owner confirmation** (2026-09-27, "Allow with confirm"). Every dispatch goes through Barb:
-  she proposes an action card in the thread, which must be approved by the owner in the Staff Console (or via
-  `/api/v1/staff/proposals/{id}/decide`). Chat turns (including Barb) operate in read-only mode and cannot
-  dispatch runs directly or accept chat confirmations. Saying "yes" in chat does not dispatch; the owner must
-  accept the proposal card in the Staff Console. The cost guard still applies; a cost-guard overrun needs its own approval.
+- **Dispatch: direct** (owner decision 2026-10-31, superseding 2026-09-27 "Allow with confirm"). Barb dispatches
+  any staff role with `staff.dispatch`, in parallel and without a proposal card. The cost guard still applies.
+  History: the 2026-09-27 confirm gate and its dry runs are below.
   - The supervised dry run gate is met. The first dry run (2026-09-27, hub-a) showed that Barb's run plan
     carried write tools and push/PR rules. That was fixed by the opt-in `permissions.code_read_only` (#1659,
     Repository_Management#1822) and by removing Barb's directive-write recipe (Repository_Management#1818).
