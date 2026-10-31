@@ -7,7 +7,6 @@ Unattended runs never bypass CLI permissions (#1586).
 from __future__ import annotations
 
 import json
-import pathlib
 import shutil
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -39,6 +38,7 @@ from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_a
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
+from staff.staff_result import apply_output_schema
 
 # Provider ids used by staff roles (mapped to provider_registry.py via canonical_provider_id).
 ProviderId = str
@@ -128,17 +128,11 @@ class ProviderAdapter:
     ) -> list[str]:
         """Return argv for one unattended run.
 
-        Pre: ``prompt`` is non-empty; ``workdir`` is an existing directory path;
-        ``gitdir`` is the worktree's git common dir (defaults to ``workdir``);
-        ``policy`` is the path the runner wrote ``policy_text()`` to.
-        Post: the returned list never contains an unexpanded ``{...}`` slot nor a
-        :data:`PERMISSION_BYPASS_FLAGS` entry. When ``read_only`` is True, no allowed
-        tool is in :data:`CLAUDE_WRITE_TOOLS`. A provider that cannot run without
-        a bypass or has no code-read-only unattended mode raises :class:`UnattendedUnsupportedError`.
-        When ``output_schema`` is given (#3619), a provider with a native structured-output
-        flag gets it — inline (``--json-schema``) for claude-style providers, written to a
-        file under ``workdir`` and passed by path (``--output-schema``) for codex-style
-        providers; a provider with neither flag ignores it.
+        Pre: ``prompt`` non-empty; ``gitdir`` defaults to ``workdir``; ``policy`` is the
+        rendered ``policy_text()`` path. Post: no unexpanded ``{...}`` slot or
+        :data:`PERMISSION_BYPASS_FLAGS` entry; ``read_only`` implies no :data:`CLAUDE_WRITE_TOOLS`
+        tool is allowed. Raises :class:`UnattendedUnsupportedError` when unsupported.
+        ``output_schema`` (#3619) goes to :func:`staff.staff_result.apply_output_schema`.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
         if not self.unattended:
@@ -197,12 +191,7 @@ class ProviderAdapter:
             else:
                 out.extend(["--resume", session_id])
         if output_schema is not None:
-            if self.provider_id in ("claude", "claude-ollama", "anthropic-api"):
-                out.extend(["--json-schema", json.dumps(output_schema)])
-            elif self.provider_id in ("codex", "ollama"):
-                schema_path = str(pathlib.Path(workdir) / ".staff_result_schema.json")
-                pathlib.Path(schema_path).write_text(json.dumps(output_schema))
-                out.extend(["--output-schema", schema_path])
+            apply_output_schema(self.provider_id, out, workdir, output_schema)
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
         assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
         return out
@@ -217,12 +206,10 @@ class ProviderAdapter:
     ) -> list[str]:
         """Return argv for a read-only chat turn (SC-B4 #1307, hardened by #1484).
 
-        Pre: ``prompt`` is non-empty; every ``read_only_tools`` name is in
-        :data:`CHAT_READ_ONLY_TOOLS`.
-        Post: the argv carries this provider's explicit read-only flag on fresh
-        *and* resumed turns, never a bypass flag, and resumes ``session_id`` when
-        given. A provider with no known read-only mode raises
-        :class:`ChatReadOnlyUnsupportedError` instead of running writable.
+        Pre: ``prompt`` non-empty; every ``read_only_tools`` name is in :data:`CHAT_READ_ONLY_TOOLS`.
+        Post: carries the provider's read-only flag on fresh *and* resumed turns, never a
+        bypass flag; resumes ``session_id`` when given. Raises :class:`ChatReadOnlyUnsupportedError`
+        instead of running writable when the provider has no known read-only mode.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
         if self.provider_id not in _CHAT_READ_ONLY_FLAGS:

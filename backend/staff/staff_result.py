@@ -15,6 +15,9 @@ in by passing ``output_schema`` to :meth:`ProviderAdapter.build_command`.
 
 from __future__ import annotations
 
+import json
+import pathlib
+
 STAFF_RESULT_SCHEMA: dict = {
     "type": "object",
     "properties": {
@@ -26,3 +29,19 @@ STAFF_RESULT_SCHEMA: dict = {
     "required": ["summary"],
     "additionalProperties": False,
 }
+
+
+def apply_output_schema(provider_id: str, out: list[str], workdir: str, output_schema: dict) -> None:
+    """Append the native structured-output flag for ``provider_id``, if it has one.
+
+    Claude-style providers get the schema inline (``--json-schema``); codex-style
+    providers get it written to a file under ``workdir`` and passed by path
+    (``--output-schema``), since their CLI has no inline-JSON flag. A provider
+    with neither flag is left untouched.
+    """
+    if provider_id in ("claude", "claude-ollama", "anthropic-api"):
+        out.extend(["--json-schema", json.dumps(output_schema)])
+    elif provider_id in ("codex", "ollama"):
+        schema_path = str(pathlib.Path(workdir) / ".staff_result_schema.json")
+        pathlib.Path(schema_path).write_text(json.dumps(output_schema))
+        out.extend(["--output-schema", schema_path])
