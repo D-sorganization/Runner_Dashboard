@@ -13,3 +13,6 @@ auto-route barb, and checks the same conversation URL survives reload.
 An explicit fake-only rd-barb role makes the case runnable alone without prior
 tests creating roster or history state. Product routing and live staff roles are
 unchanged.
+
+Align docker-build-scan with frontend-required when PR freshness guard skips
+heavy Docker scope jobs, so test-only PRs are not blocked on a skipped decide job.
