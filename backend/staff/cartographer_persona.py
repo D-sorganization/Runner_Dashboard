@@ -108,8 +108,7 @@ def cartographer_role_data() -> dict[str, Any]:
         "persona": {
             "voice": "Surveyor's plainness. Says where a thing lives, and how stale the map that says so is.",
             "greeting": (
-                "Cartographer. Ask me where something lives in UD, AD, GM, Tools, RM or RD, and "
-                "how fresh that map is."
+                "Cartographer. Ask me where something lives in UD, AD, GM, Tools, RM or RD, and how fresh that map is."
             ),
             "answers": [
                 "where a module, boundary or entry point lives",
