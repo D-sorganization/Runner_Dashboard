@@ -84,3 +84,32 @@ def test_barb_cli_gh_token(monkeypatch: pytest.MonkeyPatch, capsys: pytest.Captu
     ):
         assert barb_cli.main(["gh-token"]) == 0
     assert capsys.readouterr().out.strip() == _FAKE_GHS
+
+
+def test_github_app_token_accepts_missing_body(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Older barb-worker helpers POST without a body; the hub must not 422."""
+    _hub(monkeypatch)
+    with patch("routers.github_app_token.mint_barb_github_app_token", return_value=StaffGithubToken(token=_FAKE_GHS, expires_at=time.time() + 600, source="github_app")):
+        resp = client.post("/api/github/app-token", headers=_headers())
+    assert resp.status_code == 200
+
+
+def test_hub_token_helper_always_sends_json_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import barb_github_hub_token as mod
+
+    sent: dict[str, Any] = {}
+
+    class _Client:
+        def __init__(self, token: str) -> None:
+            pass
+
+        def request(self, method: str, path: str, body: Any = None) -> dict[str, Any]:
+            sent["body"] = body
+            return {"token": "ghs_x", "expires_at": 1.0}
+
+    import fleet_client
+
+    monkeypatch.setenv("FLEET_API_TOKEN", "svc_test")
+    monkeypatch.setattr(fleet_client, "FleetClient", _Client)
+    assert mod.fetch_hub_github_app_token()[0] == "ghs_x"
+    assert sent["body"] == {}
