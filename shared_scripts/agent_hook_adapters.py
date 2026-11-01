@@ -15,6 +15,8 @@ BRIDGE_REL = "scripts/agent-check-hook-bridge.py"
 AGENT_BUS_BRIDGE_REL = "scripts/agent-bus-hook-bridge.py"
 CURSOR_HOOK_VERSION = 1
 ANTIGRAVITY_HOOK_GROUP = "fleet-agent-check"
+AGY_BARB_HOOK_GROUP = "fleet-agent-barb"
+AGY_BARB_HOOK_REL = "scripts/wrappers/agy_barb_hook.py"
 SUPPORTED_TARGETS = frozenset({"cursor", "claude", "codex", "antigravity", "gemini", "pre-push"})
 
 
@@ -59,6 +61,17 @@ def agent_bus_bridge_command(mode: str) -> str:
         '"$HOME/actions-runners/dashboard/current" "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do '
         f'[ -n "$root" ] && [ -f "$root/{AGENT_BUS_BRIDGE_REL}" ] && '
         f'exec python3 "$root/{AGENT_BUS_BRIDGE_REL}" {mode}; done; exit 0\''
+    )
+
+
+def barb_hook_command(script_rel: str) -> str:
+    """Run a Barb mention-wake wrapper from any repo checkout (#3663)."""
+    return (
+        "bash -lc '"
+        'for root in "${RUNNER_DASHBOARD_REPO_ROOT}" "${RUNNER_DASHBOARD_DEPLOY_DIR}" '
+        '"$HOME/actions-runners/dashboard/current" "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do '
+        f'[ -n "$root" ] && [ -f "$root/{script_rel}" ] && '
+        f'exec python3 "$root/{script_rel}"; done; exit 0\''
     )
 
 
@@ -198,6 +211,10 @@ def generate_antigravity_hooks(root: Path, *, timeout_seconds: int) -> dict[str,
     starts = bus_group.setdefault("SessionStart", [])
     bus = _agent_bus_hook("session-start", timeout_seconds)
     _append_bus_hook(starts, bus, bus["command"])
+    barb_command = barb_hook_command(AGY_BARB_HOOK_REL)
+    barb_hook = {"type": "command", "command": barb_command, "timeout": timeout_seconds}
+    barb_stops = doc.setdefault(AGY_BARB_HOOK_GROUP, {}).setdefault("Stop", [])
+    _append_bus_hook(barb_stops, barb_hook, barb_command)
     return doc
 
 
