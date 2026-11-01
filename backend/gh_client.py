@@ -35,6 +35,7 @@ from hashlib import sha256
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+import gh_etag_cache
 import httpx
 
 log = logging.getLogger("dashboard.gh_client")
@@ -309,6 +310,14 @@ async def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {await _get_token_async()}"}
 
 
+def _conditional_lookup(method: str, path: str) -> tuple[str | None, gh_etag_cache.CachedResponse | None]:
+    """Return the ETag cache key and stored response for a GET (#3671); (None, None) otherwise."""
+    if method != "GET":
+        return None, None
+    key = gh_etag_cache.cache_key(get_auth_fingerprint(), path)
+    return key, gh_etag_cache.lookup(key)
+
+
 def _parse_retry_after(resp: httpx.Response) -> int:
     ra = resp.headers.get("Retry-After", "")
     if ra.isdigit():
@@ -349,6 +358,9 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
     """
     client = _get_client()
     headers = await _auth_headers()
+    etag_key, cached = _conditional_lookup(method, path)
+    if cached is not None:
+        headers["If-None-Match"] = cached.etag
     last_exc: Exception | None = None
 
     for attempt in range(_MAX_RETRIES):
@@ -371,8 +383,14 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
         # Issue #938(a): accept any 2xx as success. GitHub returns 202 Accepted
         # for async-processed actions (e.g. cancel_run); treating it as an error
         # reported a successful cancel as a GhServerError.
+        if resp.status_code == 304 and cached is not None:
+            # Unchanged since our last GET; GitHub did not charge the rate limit.
+            _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
+            return gh_etag_cache.replay(cached, resp)
         if 200 <= resp.status_code < 300:
             _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
+            if etag_key is not None:
+                gh_etag_cache.remember(etag_key, resp)
             return resp
         if resp.status_code in (401, 403) and not _is_rate_limited_response(resp):
             _set_status("auth_error", f"GitHub API returned {resp.status_code}", endpoint=path)
