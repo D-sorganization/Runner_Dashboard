@@ -18,6 +18,7 @@ log = logging.getLogger("dashboard.agent_principals")
 
 _REPO_DEFAULTS = Path(__file__).resolve().parent.parent / "config" / "agent_principals.yml"
 _PROFILE_KEYS = frozenset({"roles", "scopes", "name", "kind"})
+_AGENT_KEYS = frozenset({"inbox_webhook_url", "inbox_roles"})
 
 
 def _defaults_path() -> Path:
@@ -47,7 +48,7 @@ def _load_config() -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
             continue
         agent_id = str(row["id"])
         combined: dict[str, Any] = {k: v for k, v in profile_dict.items() if k in _PROFILE_KEYS}
-        combined.update({k: v for k, v in row.items() if k in _PROFILE_KEYS or k == "id"})
+        combined.update({k: v for k, v in row.items() if k in _PROFILE_KEYS or k in _AGENT_KEYS or k == "id"})
         merged[agent_id] = combined
     return profile_dict, merged
 
@@ -66,6 +67,9 @@ def _principal_fields(row: dict[str, Any], agent_id: str) -> dict[str, Any]:
     roles = [str(r) for r in row.get("roles") or []]
     scopes = [str(s) for s in row.get("scopes") or []]
     kind = row.get("kind")
+    inbox_roles = [str(r) for r in row.get("inbox_roles") or [] if str(r).strip()]
+    webhook = row.get("inbox_webhook_url")
+    webhook_url = str(webhook).strip() if isinstance(webhook, str) and webhook.strip() else None
     return {
         "id": agent_id,
         "type": "bot",
@@ -73,6 +77,8 @@ def _principal_fields(row: dict[str, Any], agent_id: str) -> dict[str, Any]:
         "roles": roles or ["bot"],
         "scopes": scopes,
         "assistant_kind": str(kind) if kind else None,
+        "inbox_webhook_url": webhook_url,
+        "inbox_roles": inbox_roles,
     }
 
 
@@ -126,14 +132,17 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
         merged_roles = (
             ["checkin-only"] if "checkin-only" in fields["roles"] else _union_list(existing.roles, fields["roles"])
         )
-        manager.principals[agent_id] = existing.model_copy(
-            update={
-                "name": fields["name"] if fields["name"] else existing.name,
-                "roles": merged_roles,
-                "scopes": _union_list(existing.scopes, fields["scopes"]),
-                "assistant_kind": fields["assistant_kind"] or existing.assistant_kind,
-            }
-        )
+        update: dict[str, Any] = {
+            "name": fields["name"] if fields["name"] else existing.name,
+            "roles": merged_roles,
+            "scopes": _union_list(existing.scopes, fields["scopes"]),
+            "assistant_kind": fields["assistant_kind"] or existing.assistant_kind,
+        }
+        if fields["inbox_webhook_url"]:
+            update["inbox_webhook_url"] = fields["inbox_webhook_url"]
+        if fields["inbox_roles"]:
+            update["inbox_roles"] = _union_list(existing.inbox_roles, fields["inbox_roles"])
+        manager.principals[agent_id] = existing.model_copy(update=update)
 
     for agent_id, path in token_files.items():
         if agent_id not in manager.principals:

@@ -74,6 +74,9 @@ class HttpTimeout:
     # 30 s matches GitHub's documented dispatch worst case.
     GH_DISPATCH_S: int = 30
 
+    # Agent-bus inbox webhook fan-out (#3682 slice 4): one POST attempt, fail fast.
+    AGENT_BUS_INBOX_WEBHOOK_S: float = 3.0
+
 
 class Concurrency:
     """Concurrency caps for fan-out scans and bulk operations.
