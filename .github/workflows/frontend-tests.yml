@@ -345,7 +345,8 @@ jobs:
     environment:
       name: ci-self-hosted-heavy-public
     runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet-public-heavy' }}
-    timeout-minutes: 20
+    # +5 min for the mobile viewport run added in #3717.
+    timeout-minutes: 25
     needs:
       - frontend-scope
       - vitest
@@ -418,6 +419,16 @@ jobs:
           DASHBOARD_URL="http://localhost:5173" \
           VITE_BACKEND_URL="http://127.0.0.1:${DASHBOARD_PORT}" \
           npm run test:e2e -- --project=chromium-desktop
+
+      # tests/e2e/mobile.spec.ts skips every test unless the `isMobile`
+      # fixture is set, so it only runs under these mobile projects (#3717).
+      # Scoped to that one spec file (not the full suite) to keep this
+      # self-hosted job's runtime bounded.
+      - name: Run Playwright mobile viewport smoke tests
+        run: |
+          DASHBOARD_URL="http://localhost:5173" \
+          VITE_BACKEND_URL="http://127.0.0.1:${DASHBOARD_PORT}" \
+          npm run test:e2e -- --project=chromium-iphone-12 --project=chromium-pixel-5 tests/e2e/mobile.spec.ts
 
       - name: Stop dashboard backend
         if: always()
