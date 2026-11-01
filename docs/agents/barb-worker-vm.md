@@ -24,11 +24,13 @@ That value is written into each lane’s shell and systemd env as `FLEET_API_URL
 
 ## Bootstrap (vmadmin)
 
-From a `Runner_Dashboard` checkout on the VM:
+Bootstrap clones **`Runner_Dashboard` once** to **`/opt/Runner_Dashboard`** (world-readable) so every lane user and the hub-minted `gh` wrapper can use the same tree. Override with `BARB_RUNNER_DASHBOARD_ROOT` when testing.
+
+Run install from any checkout of this repo on the VM (the script does not rely on lane users having their own `Runner_Dashboard` under `~/src`):
 
 ```bash
 export BARB_WORKER_HUB_URL='https://<desk-hub>.ts.net'
-cd ~/src/Runner_Dashboard
+cd ~/src/Runner_Dashboard   # or another admin checkout
 sudo -E bash scripts/barb-worker/bootstrap.sh
 ```
 
@@ -36,7 +38,7 @@ Idempotent: safe to re-run after hub token installs or repo updates.
 
 Optional:
 
-- `BARB_CLONE_ALL_FLEET_REPOS=1` — clone every repo listed in `config/projects.json` (default is the core sibling set).
+- `BARB_CLONE_ALL_FLEET_REPOS=1` — clone every repo listed in `config/projects.json` under each lane user’s `~/src/` (default is the core sibling set except `Runner_Dashboard`, which stays under `/opt`).
 
 ### Install hub tokens (owner; never log or paste)
 
@@ -48,12 +50,12 @@ install -m 600 /dev/stdin ~barb-grok/.config/runner-dashboard/token <<<"$TOKEN"
 # repeat for barb-dots and barb-duet
 ```
 
-Restart lane services after tokens are in place:
+Restart lane services after tokens are in place (`loginctl enable-linger` is applied during bootstrap so user systemd works without an interactive login):
 
 ```bash
-sudo -u barb-grok  systemctl --user restart barb-lane.service
-sudo -u barb-dots  systemctl --user restart barb-lane.service
-sudo -u barb-duet  systemctl --user restart barb-lane.service
+for u in barb-grok barb-dots barb-duet; do
+  sudo -u "$u" env XDG_RUNTIME_DIR="/run/user/$(id -u "$u")" systemctl --user restart barb-lane.service
+done
 ```
 
 ### Verify
@@ -70,18 +72,21 @@ Per user:
 
 - `HTTP_PROXY` / `HTTPS_PROXY` → that user's localhost proxy port (shell + `~/.config/systemd/user/barb-fleet.env`)
 - `~/.config/runner-dashboard/` (mode **700**) and `token` file (**600**)
-- Fleet git checkouts under `~/src/` (at minimum `Runner_Dashboard` and `Repository_Management`)
-- User systemd unit **`barb-lane.service`** running `scripts/barb-worker/lane-loop.sh` (rd-threads inbox poll via `barb_cli`)
+- `RUNNER_DASHBOARD_ROOT=/opt/Runner_Dashboard` in shell and systemd env
+- Other fleet git checkouts under `~/src/` (for example `Repository_Management`; not a second `Runner_Dashboard`)
+- **`loginctl enable-linger`** so user systemd units run without a graphical session
+- User systemd unit **`barb-lane.service`** running `/opt/Runner_Dashboard/scripts/barb-worker/lane-loop.sh` (rd-threads inbox poll via `barb_cli`)
 
 Shared on the VM (once):
 
-- `nodejs`, `npm`, `git`, `gh`, `python3`, `uv`
-- Global `@anthropic-ai/claude-code` and `@openai/codex` CLIs
+- **`/opt/Runner_Dashboard`** — shared hub checkout for lane loops and hub-minted GitHub CLI
+- `git`, `gh`, `python3`, `uv`
+- **Node.js ≥ 22** (NodeSource when Ubuntu’s default Node is older) and global `@anthropic-ai/claude-code` and `@openai/codex` CLIs
 
 ## GitHub CLI on spokes
 
 Hub-minted App tokens for spoke `gh`/`git` (#2051) are wired through a hook:
-`scripts/barb-worker/install-hub-fleet-gh.sh`. When that helper is absent on `main`, bootstrap
+`scripts/barb-worker/install-hub-fleet-gh.sh`. Bootstrap runs it **after** `/opt/Runner_Dashboard` exists (the helper needs `scripts/barb_github_hub_token.py` from that tree). When the helper is absent on `main`, bootstrap
 leaves the system `gh` on `PATH` and documents manual setup; do not fall back to personal
 `ghp_` tokens on lane users.
 

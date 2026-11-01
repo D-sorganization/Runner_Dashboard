@@ -44,6 +44,33 @@ def test_hub_gh_hook_marked() -> None:
     assert "HOOK" in text or "hub-minted" in text
 
 
+def test_bootstrap_shared_runner_dashboard_and_order() -> None:
+    text = BOOTSTRAP.read_text(encoding="utf-8")
+    assert "/opt/Runner_Dashboard" in text or "BARB_RUNNER_DASHBOARD_ROOT" in text
+    assert "clone_shared_runner_dashboard" in text
+    provision = text.split("provision_user()", 1)[1].split("cmd_install()", 1)[0]
+    gh_pos = provision.index("install_user_github_wrappers")
+    clone_pos = provision.index("clone_fleet_repos_for_user")
+    assert gh_pos > clone_pos, "gh wrapper must run after per-user fleet clone in provision_user"
+    install = text.split("cmd_install()", 1)[1].split("verify_lane()", 1)[0]
+    assert install.index("clone_shared_runner_dashboard") < install.index("provision_user")
+
+
+def test_bootstrap_user_systemd_linger_and_runtime_dir() -> None:
+    text = BOOTSTRAP.read_text(encoding="utf-8")
+    assert "loginctl enable-linger" in text
+    assert "XDG_RUNTIME_DIR" in text
+    assert "run_as_user_systemd" in text
+    assert '2>/dev/null || true' not in text.split("enable-linger")[1].split("\n", 1)[0]
+
+
+def test_bootstrap_installs_node22_when_needed() -> None:
+    text = BOOTSTRAP.read_text(encoding="utf-8")
+    assert "install_nodejs_for_claude_code" in text
+    assert "setup_22.x" in text
+    assert "nodejs_major_version" in text
+
+
 def test_lane_loop_uses_barb_cli() -> None:
     text = LANE.read_text(encoding="utf-8")
     assert "barb_cli.py inbox" in text

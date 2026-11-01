@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 HUB_URL="${BARB_WORKER_HUB_URL:-https://hub-a.fleet-example.ts.net}"
 GITHUB_ORG="${FLEET_GITHUB_ORG:-D-sorganization}"
+# Shared checkout readable by all lane users (override for tests).
+BARB_RD_ROOT="${BARB_RUNNER_DASHBOARD_ROOT:-/opt/Runner_Dashboard}"
 # user -> proxy_port principal_id (tailscaled@ instance: grok / dots / duet)
 BARB_USERS=(barb-grok barb-dots barb-duet)
 BARB_PROXY_PORTS=(1046 1056 1066)
@@ -31,6 +33,20 @@ run_as() {
     sudo -u "${user}" -H env "HOME=/home/${user}" "$@"
 }
 
+run_as_user_systemd() {
+    local user=$1
+    shift
+    local uid
+    uid="$(id -u "${user}")"
+    run_as "${user}" env XDG_RUNTIME_DIR="/run/user/${uid}" "$@"
+}
+
+enable_user_linger() {
+    local user=$1
+    log "enabling systemd linger for ${user}"
+    loginctl enable-linger "${user}"
+}
+
 user_index() {
     local want=$1 i
     for i in "${!BARB_USERS[@]}"; do
@@ -40,14 +56,37 @@ user_index() {
 }
 
 install_apt_packages() {
-    log "installing apt packages (nodejs, git, gh, python3, uv prerequisites)"
+    log "installing apt packages (git, gh, python3, uv prerequisites)"
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
     apt-get install -y -qq ca-certificates curl git python3 python3-venv python3-pip \
-        nodejs npm gh shellcheck jq
+        gh shellcheck jq
     if ! command -v uv >/dev/null 2>&1; then
         curl -fsSL https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
     fi
+}
+
+nodejs_major_version() {
+    if ! command -v node >/dev/null 2>&1; then
+        echo 0
+        return 0
+    fi
+    node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0
+}
+
+install_nodejs_for_claude_code() {
+    local major
+    major="$(nodejs_major_version)"
+    if [[ "${major}" -ge 22 ]]; then
+        log "nodejs $(node --version 2>/dev/null || echo unknown) satisfies Claude Code (>=22)"
+        return 0
+    fi
+    log "installing Node.js 22 via NodeSource (Ubuntu node ${major:-missing} is too old for Claude Code)"
+    export DEBIAN_FRONTEND=noninteractive
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    apt-get install -y -qq nodejs
+    major="$(nodejs_major_version)"
+    [[ "${major}" -ge 22 ]] || die "Node.js >=22 required after NodeSource install (got major=${major})"
 }
 
 install_global_clis() {
@@ -62,7 +101,7 @@ install_user_github_wrappers() {
     local helper="${SCRIPT_DIR}/install-hub-fleet-gh.sh"
     if [[ -x "${helper}" ]]; then
         log "installing hub-minted gh wrapper for ${user}"
-        run_as "${user}" bash "${helper}"
+        run_as "${user}" env RUNNER_DASHBOARD_ROOT="${BARB_RD_ROOT}" bash "${helper}"
         return 0
     fi
     log "hub-minted gh helper not present (${helper}); real gh remains on PATH (install token flows manually)"
@@ -101,7 +140,7 @@ export http_proxy="${proxy}"
 export https_proxy="${proxy}"
 export NO_PROXY="localhost,127.0.0.1,::1"
 export no_proxy="\${NO_PROXY}"
-export RUNNER_DASHBOARD_ROOT="\${HOME}/src/Runner_Dashboard"
+export RUNNER_DASHBOARD_ROOT="${BARB_RD_ROOT}"
 _rd_token="\${HOME}/.config/runner-dashboard/token"
 if [[ -r "\${_rd_token}" ]]; then
   IFS= read -r FLEET_API_TOKEN <"\${_rd_token}" || FLEET_API_TOKEN=""
@@ -119,10 +158,23 @@ BARB_LANE_PROXY_PORT=${port}
 HTTP_PROXY=${proxy}
 HTTPS_PROXY=${proxy}
 NO_PROXY=localhost,127.0.0.1,::1
-RUNNER_DASHBOARD_ROOT=${home}/src/Runner_Dashboard
+RUNNER_DASHBOARD_ROOT=${BARB_RD_ROOT}
 EOF
     chown "${user}:${user}" "${home}/.config/systemd/user/barb-fleet.env"
     chmod 600 "${home}/.config/systemd/user/barb-fleet.env"
+}
+
+clone_shared_runner_dashboard() {
+    if [[ -d "${BARB_RD_ROOT}/.git" ]]; then
+        git -C "${BARB_RD_ROOT}" fetch --quiet origin 2>/dev/null || true
+        log "Runner_Dashboard already present at ${BARB_RD_ROOT}"
+        return 0
+    fi
+    log "cloning ${GITHUB_ORG}/Runner_Dashboard to ${BARB_RD_ROOT} (shared, world-readable)"
+    install -d -m 755 "$(dirname "${BARB_RD_ROOT}")"
+    git clone --quiet "https://github.com/${GITHUB_ORG}/Runner_Dashboard.git" "${BARB_RD_ROOT}" || \
+        die "failed to clone Runner_Dashboard to ${BARB_RD_ROOT}"
+    chmod -R a+rX "${BARB_RD_ROOT}"
 }
 
 clone_fleet_repos_for_user() {
@@ -131,7 +183,11 @@ clone_fleet_repos_for_user() {
     local src="${home}/src"
     run_as "${user}" mkdir -p "${src}"
 
-    local repos=("${BARB_CORE_REPOS[@]}")
+    local repos=()
+    for repo in "${BARB_CORE_REPOS[@]}"; do
+        [[ "${repo}" == Runner_Dashboard ]] && continue
+        repos+=("${repo}")
+    done
     if [[ "${BARB_CLONE_ALL_FLEET_REPOS:-0}" == "1" ]]; then
         local projects="${REPO_ROOT}/config/projects.json"
         if [[ -f "${projects}" ]]; then
@@ -147,6 +203,7 @@ PY
 
     local repo
     for repo in "${repos[@]}"; do
+        [[ "${repo}" == Runner_Dashboard ]] && continue
         local dest="${src}/${repo}"
         if [[ -d "${dest}/.git" ]]; then
             run_as "${user}" git -C "${dest}" fetch --quiet origin || true
@@ -162,7 +219,7 @@ install_lane_systemd_service() {
     local user=$1
     local home="/home/${user}"
     local unit="${home}/.config/systemd/user/barb-lane.service"
-    local loop="${home}/src/Runner_Dashboard/scripts/barb-worker/lane-loop.sh"
+    local loop="${BARB_RD_ROOT}/scripts/barb-worker/lane-loop.sh"
 
     cat >"${unit}" <<EOF
 [Unit]
@@ -183,10 +240,10 @@ EOF
     chown "${user}:${user}" "${unit}"
     chmod 644 "${unit}"
 
-    loginctl enable-linger "${user}" 2>/dev/null || true
-    run_as "${user}" systemctl --user daemon-reload
-    run_as "${user}" systemctl --user enable --now barb-lane.service 2>/dev/null || \
-        log "${user}: barb-lane.service not started (clone Runner_Dashboard first)"
+    enable_user_linger "${user}"
+    run_as_user_systemd "${user}" systemctl --user daemon-reload
+    run_as_user_systemd "${user}" systemctl --user enable --now barb-lane.service 2>/dev/null || \
+        log "${user}: barb-lane.service not started (ensure ${BARB_RD_ROOT} is cloned)"
 }
 
 provision_user() {
@@ -195,15 +252,17 @@ provision_user() {
     local idx
     idx="$(user_index "${user}")" || die "unknown barb user ${user}"
     configure_user_proxy_and_env "${user}" "${BARB_PROXY_PORTS[$idx]}" "${BARB_PRINCIPAL[$idx]}"
-    install_user_github_wrappers "${user}"
     clone_fleet_repos_for_user "${user}"
+    install_user_github_wrappers "${user}"
     install_lane_systemd_service "${user}"
 }
 
 cmd_install() {
     require_vmadmin
     install_apt_packages
+    install_nodejs_for_claude_code
     install_global_clis
+    clone_shared_runner_dashboard
     local u
     for u in "${BARB_USERS[@]}"; do
         provision_user "${u}"
