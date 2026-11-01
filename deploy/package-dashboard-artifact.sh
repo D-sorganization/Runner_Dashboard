@@ -163,9 +163,19 @@ if [[ -d "${SCRIPT_DIR}/config" ]]; then
     cp -r "${SCRIPT_DIR}/config/." "${STAGE_DIR}/config/"
 fi
 
-# 5b. Operator scripts shipped with the artifact (#1608)
+# 5b. Runtime scripts package (#1608 operator quota, #3660 backend imports).
+# backend/ imports repo-root scripts/ at module scope (for example
+# routers/staff_pr_hygiene -> scripts.automerge_guard). Match the Docker image:
+# ship the full scripts/ tree, not a hand-picked subset.
 mkdir -p "${STAGE_DIR}/scripts"
-cp "${SCRIPT_DIR}/scripts/claude_statusline_quota.py" "${STAGE_DIR}/scripts/claude_statusline_quota.py"
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
+        "${SCRIPT_DIR}/scripts/" "${STAGE_DIR}/scripts/"
+else
+    cp -r "${SCRIPT_DIR}/scripts/." "${STAGE_DIR}/scripts/"
+    find "${STAGE_DIR}/scripts" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+    find "${STAGE_DIR}/scripts" -type f -name '*.pyc' -delete 2>/dev/null || true
+fi
 
 # 6. Generate deployment.json from a second identity check after the build.
 METADATA_ARGS=(
@@ -193,7 +203,11 @@ echo "==> Building tarball ${ARTIFACT_PATH}..."
 
 echo "==> Verifying generated artifact against installer layout validator..."
 bash "${SCRIPT_DIR}/deploy/install-dashboard-artifact.sh" --artifact "${ARTIFACT_PATH}" --deploy-dir "${TMP_DIR}/test-install" >/dev/null
-"${TMP_DIR}/test-install/.venv/bin/python" -c 'import fastapi, httpx, psutil, uvicorn, yaml'
+ARTIFACT_ROOT="${TMP_DIR}/test-install"
+export ARTIFACT_ROOT
+"${ARTIFACT_ROOT}/.venv/bin/python" -c 'import fastapi, httpx, psutil, uvicorn, yaml'
+echo "==> Verifying backend can import repo-root scripts/ from the staged artifact layout..."
+"${ARTIFACT_ROOT}/.venv/bin/python" "${SCRIPT_DIR}/deploy/artifact_backend_import_smoke.py"
 
 echo "✓ Successfully built immutable artifact: ${ARTIFACT_PATH}"
 echo "✓ SHA-256: $(cat "${CHECKSUM_PATH}")"

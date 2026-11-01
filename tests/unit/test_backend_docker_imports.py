@@ -36,6 +36,14 @@ def test_dockerfile_copies_scripts_package() -> None:
 
 
 @pytest.mark.unit
+def test_release_packager_stages_scripts_package() -> None:
+    """Release tarballs must mirror the Docker image: ship scripts/, not a subset."""
+    content = (_REPO / "deploy" / "package-dashboard-artifact.sh").read_text(encoding="utf-8")
+    section = content.split("# 5b.")[1].split("# 6.")[0]
+    assert '"${SCRIPT_DIR}/scripts/" "${STAGE_DIR}/scripts/"' in section
+
+
+@pytest.mark.unit
 def test_server_module_imports_under_docker_cmd_invocation() -> None:
     """Pre: cwd=repo root, PYTHONPATH=repo root, backend/ not pre-added. Post: import succeeds."""
     env = dict(os.environ)
