@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
+import json
 import logging
 import os
+import time
 from typing import Annotated, Any
 
 from agent_bus.models import AckBody, ClaimTrackBody, HandoffBody, HeartbeatBody, RegisterBody, SendBody
 from agent_bus.store import AgentBusStore, get_store
 from coordination.auth import WRITE_SCOPE, _is_loopback_request, _reject_unauthenticated_bearer
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from identity import (
     Principal,
     _loopback_auth_enabled,
@@ -204,3 +208,65 @@ async def post_ack(body: AckBody, principal: Writer) -> dict[str, Any]:
         return _store().ack(body.session, body.message_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail="message not found for this recipient") from exc
+
+
+STREAM_KEEPALIVE_SECONDS = 15.0
+STREAM_FALLBACK_SECONDS = 5.0
+
+
+@router.get("/inbox/stream", include_in_schema=False)
+async def stream_inbox(
+    request: Request,
+    principal: Writer,
+    session: str = Query(min_length=1),
+    since_cursor: int = Query(default=0, ge=0),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    follow: bool = Query(default=True),
+    max_seconds: float = Query(default=3600.0, gt=0, le=86400.0),
+) -> StreamingResponse:
+    """SSE push of inbox messages for ``session`` (and its role address).
+
+    Each message is an ``event: message`` with ``id:`` = inbox cursor, so a
+    reconnect with ``Last-Event-ID`` resumes without loss. Lanes use this to
+    cancel their backoff sleep the moment a message lands.
+    """
+    from agent_bus import doorbell  # noqa: PLC0415
+
+    row = _store().get_principal(session)
+    if row is None:
+        raise HTTPException(status_code=404, detail="session not registered")
+    _assert_session_owner(session, principal, row.principal_id)
+    cursor = since_cursor
+    if last_event_id and last_event_id.isdigit():
+        cursor = max(cursor, int(last_event_id))
+
+    async def _gen():  # type: ignore[no-untyped-def]
+        nonlocal cursor
+        deadline = time.monotonic() + max_seconds
+        last_beat = time.monotonic()
+        yield "retry: 2000\n\n"
+        while True:
+            gen = doorbell.generation()
+            try:
+                page = _store().list_inbox(session, cursor, 200)
+            except KeyError:
+                yield "event: gone\ndata: {}\n\n"
+                return
+            for m in page["messages"]:
+                yield f"id: {m['cursor']}\nevent: message\ndata: {json.dumps(m)}\n\n"
+            cursor = page["next_cursor"]
+            if not follow or time.monotonic() >= deadline:
+                return
+            if await request.is_disconnected():
+                return
+            await doorbell.wait(gen, STREAM_FALLBACK_SECONDS)
+            if time.monotonic() - last_beat >= STREAM_KEEPALIVE_SECONDS:
+                last_beat = time.monotonic()
+                yield ": keep-alive\n\n"
+            await asyncio.sleep(0)
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
