@@ -51,6 +51,29 @@ DEFAULT_STATE = _HOME / "rd-barb-notify-state.json"
 _ROLE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
+# Agent-to-agent relay to a named Grok Bot counterpart via Barb (#3705, epic #3695).
+# Dieter's 2026-11-01 role-port epic keeps these personas in Grok Bot only (never an
+# RD seat); Feynman and Karl are the sole exception, carrying relay access only.
+RELAY_KIND = "relay"
+PERSONAL_PERSONAS = frozenset(
+    {
+        "marge",
+        "smithers",
+        "ben",
+        "rainier-wolfcastle",
+        "bart",
+        "kent",
+        "mr-burns",
+        "maxwell",
+        "newton",
+        "shannon",
+        "feynman",
+        "karl",
+        "disco-stu",
+    }
+)
+RELAY_PERSONAL_EXCEPTIONS = frozenset({"feynman", "karl"})
+
 Sender = Callable[[str, Mapping[str, str], dict[str, Any]], None]
 ThreadPoster = Callable[[str, str, str], None]
 
@@ -110,6 +133,42 @@ def validate(msg: Any) -> list[str]:
         errors.extend(_envelope.validate(_as_shared_envelope(msg)))
     if not _one_line(msg.get("dedupe_key")):
         errors.append("dedupe_key must be one non-empty line")
+    return errors
+
+
+def _grok_bot_slug(value: Any) -> str:
+    return str(value).strip().lower()
+
+
+def validate_relay(msg: Any, allowed_pairs: Mapping[str, str]) -> list[str]:
+    """Return every contract problem with a ``relay{from_role,to_grok_bot,request,thread_id}`` envelope (#3705).
+
+    Distinct from :func:`validate`: a relay is pass-through agent-to-agent traffic forwarded
+    verbatim to a named Grok bot, not a question/alert/update bound for Dieter, so it skips the
+    shared ``rd_threads_envelope`` contract (no summary/urgency/importance fields apply). Hard
+    exclusions: no personal-persona target (except the Feynman/Karl relay-only exception), and
+    only an allow-listed ``(from_role, to_grok_bot)`` pair may relay.
+    """
+    if not isinstance(msg, dict):
+        return ["relay envelope must be a JSON object"]
+    errors = [
+        f"{field} must be one non-empty line"
+        for field in ("from_role", "to_grok_bot", "thread_id")
+        if not _one_line(msg.get(field))
+    ]
+    if not isinstance(msg.get("request"), str) or not msg["request"].strip():
+        errors.append("request must be a non-empty string")
+    if errors:
+        return errors
+    try:
+        from_role = normalize_role(msg["from_role"])
+    except ValueError as exc:
+        return [str(exc)]
+    to_bot = _grok_bot_slug(msg["to_grok_bot"])
+    if to_bot in PERSONAL_PERSONAS and to_bot not in RELAY_PERSONAL_EXCEPTIONS:
+        errors.append(f"relay target {to_bot!r} is a personal persona; relay is excluded")
+    elif allowed_pairs.get(from_role) != to_bot:
+        errors.append(f"relay pair ({from_role!r} -> {to_bot!r}) is not on the allowlist")
     return errors
 
 
@@ -206,6 +265,65 @@ class Notifier:
             state["digest"] = []
             self._save_state(state)
         return result
+
+    def relay(
+        self,
+        from_role: str,
+        to_grok_bot: str,
+        request: str,
+        thread_id: str,
+        *,
+        allowed_pairs: Mapping[str, str],
+        audit: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        """Forward one agent-to-agent request verbatim to a named Grok bot via Barb (#3705).
+
+        No Dieter approval gate: this is fleet-internal traffic between an RD role and its Grok
+        Bot counterpart, denied only by the allowlist/personal-persona exclusion in
+        :func:`validate_relay`. Never queued to the fyi digest (relay is live, not a report), and
+        idempotent per ``thread_id`` via the same dedupe state as :meth:`notify`.
+        """
+        msg = {"from_role": from_role, "to_grok_bot": to_grok_bot, "request": request, "thread_id": thread_id}
+        if problems := validate_relay(msg, allowed_pairs):
+            result: dict[str, Any] = {
+                "ok": False,
+                "status": "denied",
+                "error": "relay_not_allowed",
+                "problems": problems,
+            }
+            self._audit_relay(audit, msg, result)
+            return result
+        dedupe_key = f"relay-{thread_id}"
+        state = self._load_state()
+        if self._is_duplicate(state, dedupe_key):
+            result = {"ok": True, "status": "deduped"}
+            self._audit_relay(audit, msg, result)
+            return result
+        envelope = {
+            "kind": RELAY_KIND,
+            "sender_role": self._role,
+            "from_role": normalize_role(from_role),
+            "to_grok_bot": _grok_bot_slug(to_grok_bot),
+            "request": request,
+            "thread_id": thread_id,
+            "dedupe_key": dedupe_key,
+        }
+        result = self._deliver(envelope)
+        if result["ok"]:
+            self._mark(state, dedupe_key)
+        self._audit_relay(audit, msg, result)
+        return result
+
+    @staticmethod
+    def _audit_relay(
+        audit: Callable[[dict[str, Any]], None] | None, msg: dict[str, Any], result: dict[str, Any]
+    ) -> None:
+        if audit is None:
+            return
+        try:
+            audit({**msg, "kind": RELAY_KIND, "result": result})
+        except Exception:  # noqa: BLE001 - audit logging must never break relay delivery
+            log.warning("relay audit callback failed")
 
     def _deliver(self, msg: dict[str, Any]) -> dict[str, Any]:
         if (self._cfg.get(f"{self._prefix}SHADOW") or "").strip().lower() in _TRUTHY:
@@ -311,6 +429,36 @@ def persona_notify(
     st = default_state_path(norm) if state_path is None else state_path
     poster = _resolve_poster(norm) if thread_poster is None and config is None else thread_poster
     return Notifier(cfg, st, sender, poster, clock=clock, role=norm).notify({**msg, "sender_role": norm})
+
+
+def persona_relay(
+    from_role: str,
+    to_grok_bot: str,
+    request: str,
+    thread_id: str,
+    *,
+    allowed_pairs: Mapping[str, str],
+    config: Mapping[str, str] | None = None,
+    state_path: Path | None = None,
+    sender: Sender = http_send,
+    thread_poster: ThreadPoster | None = None,
+    clock: Callable[[], float] = time.time,
+    audit: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Forward ``request`` from ``from_role`` to its Grok Bot counterpart ``to_grok_bot`` via Barb (#3705).
+
+    Agent-to-agent traffic needs no Dieter approval; the allowlist and personal-persona
+    exclusion in :func:`validate_relay` are the only gate. Delivery reuses the same webhook and
+    thread-mirror path as :func:`persona_notify` so a relay reads identically to other persona
+    traffic in the Staff thread.
+    """
+    norm_role = normalize_role(from_role)
+    cfg = load_config(role=norm_role) if config is None else config
+    st = default_state_path(norm_role) if state_path is None else state_path
+    poster = _resolve_poster(norm_role) if thread_poster is None and config is None else thread_poster
+    return Notifier(cfg, st, sender, poster, clock=clock, role=norm_role).relay(
+        from_role, to_grok_bot, request, thread_id, allowed_pairs=allowed_pairs, audit=audit
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:

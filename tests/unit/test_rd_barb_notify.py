@@ -120,6 +120,114 @@ def test_duplicate_within_window_is_deduped_then_resends_after(tmp_path: Path, r
     assert len(rec.sent) == 2
 
 
+# ── relay to a named Grok bot counterpart (#3705, epic #3695) ───────────────
+
+ALLOWED_PAIRS = {"pm-gasification": "pm-gasification", "karl": "karl"}
+
+
+def _relay(**over: Any) -> dict[str, Any]:
+    msg = {
+        "from_role": "pm-gasification",
+        "to_grok_bot": "pm-gasification",
+        "request": "status of #5586?",
+        "thread_id": "th_relay",
+    }
+    msg.update(over)
+    return msg
+
+
+def test_relay_pair_on_the_allowlist_is_valid() -> None:
+    assert rn.validate_relay(_relay(), ALLOWED_PAIRS) == []
+
+
+def test_relay_pair_not_on_the_allowlist_is_denied() -> None:
+    problems = rn.validate_relay(_relay(to_grok_bot="night-watch"), ALLOWED_PAIRS)
+    assert any("allowlist" in p for p in problems)
+
+
+def test_relay_to_a_personal_persona_is_a_hard_exclusion() -> None:
+    problems = rn.validate_relay(_relay(from_role="pm-gasification", to_grok_bot="marge"), ALLOWED_PAIRS)
+    assert any("personal persona" in p for p in problems)
+
+
+def test_relay_to_feynman_or_karl_is_the_documented_exception() -> None:
+    assert rn.validate_relay(_relay(from_role="karl", to_grok_bot="karl"), ALLOWED_PAIRS) == []
+
+
+@pytest.mark.parametrize(
+    ("over", "needle"),
+    [
+        ({"from_role": ""}, "from_role"),
+        ({"to_grok_bot": "two\nlines"}, "to_grok_bot"),
+        ({"thread_id": ""}, "thread_id"),
+        ({"request": ""}, "request"),
+        ({"request": None}, "request"),
+    ],
+)
+def test_relay_contract_violations_are_named(over: dict[str, Any], needle: str) -> None:
+    assert any(needle in p for p in rn.validate_relay(_relay(**over), ALLOWED_PAIRS))
+
+
+def test_relay_delivers_to_the_same_webhook_and_mirrors_to_the_thread(tmp_path: Path, rec: Rec) -> None:
+    cfg = {**CFG, "RD_PM_GASIFICATION_THREAD_ID": "th_relay"}
+    notifier = rn.Notifier(
+        cfg, tmp_path / "state.json", rec.send, rec.post, clock=lambda: 1000.0, role="pm-gasification"
+    )
+    audits: list[dict[str, Any]] = []
+    result = notifier.relay(
+        "pm-gasification",
+        "pm-gasification",
+        "status of #5586?",
+        "th_relay",
+        allowed_pairs=ALLOWED_PAIRS,
+        audit=audits.append,
+    )
+    assert result == {"ok": True, "status": "sent"}
+    url, headers, payload = rec.sent[0]
+    assert url == CFG["RD_BARB_WEBHOOK_URL"] and headers["Authorization"] == "Bearer k"
+    assert payload["kind"] == "relay" and payload["to_grok_bot"] == "pm-gasification" and payload["request"]
+    assert rec.posts[0][0] == "th_relay"
+    assert audits[0]["result"]["status"] == "sent" and audits[0]["kind"] == "relay"
+
+
+def test_relay_denied_by_allowlist_is_never_sent_and_is_audited() -> None:
+    notifier = rn.Notifier(CFG, Path("/tmp/unused-state.json"), lambda *a: None, role="pm-gasification")
+    audits: list[dict[str, Any]] = []
+    result = notifier.relay(
+        "pm-gasification", "mr-burns", "hi", "th_x", allowed_pairs=ALLOWED_PAIRS, audit=audits.append
+    )
+    assert result["ok"] is False and result["error"] == "relay_not_allowed"
+    assert audits[0]["result"] == result
+
+
+def test_relay_is_idempotent_per_thread_id(tmp_path: Path, rec: Rec) -> None:
+    notifier = rn.Notifier(
+        CFG, tmp_path / "state.json", rec.send, rec.post, clock=lambda: 1000.0, role="pm-gasification"
+    )
+    first = notifier.relay("pm-gasification", "pm-gasification", "a", "th_dupe", allowed_pairs=ALLOWED_PAIRS)
+    second = notifier.relay(
+        "pm-gasification", "pm-gasification", "a different request", "th_dupe", allowed_pairs=ALLOWED_PAIRS
+    )
+    assert first["status"] == "sent" and second["status"] == "deduped"
+    assert len(rec.sent) == 1
+
+
+def test_persona_relay_wires_notifier_relay(tmp_path: Path, rec: Rec) -> None:
+    result = rn.persona_relay(
+        "pm-gasification",
+        "pm-gasification",
+        "status?",
+        "th_pr",
+        allowed_pairs=ALLOWED_PAIRS,
+        config=CFG,
+        state_path=tmp_path / "state.json",
+        sender=rec.send,
+        thread_poster=rec.post,
+        clock=lambda: 1000.0,
+    )
+    assert result == {"ok": True, "status": "sent"}
+
+
 def test_fyi_is_batched_into_one_digest(tmp_path: Path, rec: Rec) -> None:
     n = _notifier(tmp_path, rec)
     assert n.notify(_fyi("f1"))["status"] == "queued_for_digest"
