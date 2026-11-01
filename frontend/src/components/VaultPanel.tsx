@@ -54,28 +54,30 @@ export function VaultPanel() {
         <p className="muted" style={{ marginTop: 0 }}>
           AES-256-GCM encrypted-at-rest secret store keyed by strict <code>0600</code> master key. Plaintext values are write-only; reference handles via <code>$vault:&lt;KEY&gt;</code>.
         </p>
-        <form onSubmit={handleSave} style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr 140px auto', marginBottom: 12 }}>
-          <input aria-label="Vault key" placeholder="KEY_NAME (e.g. PROD_API_TOKEN)" value={keyName} onChange={(e) => setKeyName(e.target.value)} />
-          <input aria-label="Secret value" type="password" placeholder="Write-only secret value" value={secretValue} onChange={(e) => setSecretValue(e.target.value)} />
-          <input aria-label="Vault scope" placeholder="global or repo:Name" value={scope} onChange={(e) => setScope(e.target.value)} />
-          <button type="submit" className="btn btn-primary">Store Secret</button>
+        <form onSubmit={handleSave} style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginBottom: 12 }}>
+          <input style={{ width: '100%', minWidth: 0 }} aria-label="Vault key" placeholder="KEY_NAME (e.g. PROD_API_TOKEN)" value={keyName} onChange={(e) => setKeyName(e.target.value)} />
+          <input style={{ width: '100%', minWidth: 0 }} aria-label="Secret value" type="password" placeholder="Write-only secret value" value={secretValue} onChange={(e) => setSecretValue(e.target.value)} />
+          <input style={{ width: '100%', minWidth: 0 }} aria-label="Vault scope" placeholder="global or repo:Name" value={scope} onChange={(e) => setScope(e.target.value)} />
+          <button type="submit" className="btn btn-primary" style={{ minWidth: 0 }}>Store Secret</button>
         </form>
         {status && (
           <div className="muted" role="status" title={status} style={{ marginBottom: 8 }}>
             {status}
           </div>
         )}
-        <table className="table" style={{ width: '100%' }}>
-          <thead><tr><th>Key</th><th>Handle</th><th>Scope</th><th>Masked</th><th>Fingerprint</th><th /></tr></thead>
-          <tbody>
-            {secrets.map((s) => (
-              <tr key={s.key}>
-                <td><code>{s.key}</code></td><td><code>{s.handle}</code></td><td>{s.scope}</td><td>{s.masked_value}</td><td><code>{s.fingerprint}</code></td>
-                <td><button type="button" className="btn btn-sm" onClick={() => void apiFetch(`/api/v1/vault/secrets/${encodeURIComponent(s.key)}`, { method: 'DELETE' }).then(load)}>Delete</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="staff-table-wrap">
+          <table className="table" style={{ width: '100%' }}>
+            <thead><tr><th>Key</th><th>Handle</th><th>Scope</th><th>Masked</th><th>Fingerprint</th><th /></tr></thead>
+            <tbody>
+              {secrets.map((s) => (
+                <tr key={s.key}>
+                  <td><code>{s.key}</code></td><td><code>{s.handle}</code></td><td>{s.scope}</td><td>{s.masked_value}</td><td><code>{s.fingerprint}</code></td>
+                  <td><button type="button" className="btn btn-sm" onClick={() => void apiFetch(`/api/v1/vault/secrets/${encodeURIComponent(s.key)}`, { method: 'DELETE' }).then(load)}>Delete</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
