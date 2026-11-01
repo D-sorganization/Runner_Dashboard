@@ -63,6 +63,17 @@ function networkOnly(request) {
   return fetch(new Request(request, { cache: 'no-store' }));
 }
 
+// A static-looking path can still carry per-user or stale operational data
+// (e.g. a generated avatar); honor the origin's own no-store/private signal
+// instead of caching every 200 response unconditionally (issue #3720).
+function shouldCache(response) {
+  if (!response || response.status !== 200) {
+    return false;
+  }
+  const cacheControl = response.headers.get('Cache-Control') || '';
+  return !/no-store|private/i.test(cacheControl);
+}
+
 function cacheFirst(request) {
   return caches.match(request).then((cached) => {
     if (cached) {
@@ -70,7 +81,7 @@ function cacheFirst(request) {
     }
 
     return fetch(request).then((networkResponse) => {
-      if (networkResponse && networkResponse.status === 200) {
+      if (shouldCache(networkResponse)) {
         const clone = networkResponse.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
       }
