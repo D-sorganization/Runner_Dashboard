@@ -14153,11 +14153,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/GithubAppTokenRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GithubAppTokenRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
