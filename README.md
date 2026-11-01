@@ -33,13 +33,13 @@ The core repo runs **standalone** by default; a private **overlay** (see
 supplies operator-specific config without the core ever naming private hosts,
 people, or paths.
 
-| Capability                                      | Standalone (no overlay) | With overlay (`RD_OVERLAY_PATH` set) |
-| ------------------------------------------------ | ------------------------ | ------------------------------------- |
-| Dashboard UI, API, auth, sessions                | ✅ full                  | ✅ full                               |
-| Runner monitoring and lifecycle control          | ✅ full                  | ✅ full                               |
-| Named self-hosted hosts / tailnet addresses      | — (operator supplies via env/config directly) | ✅ sourced from the overlay |
-| Agent token file paths, per-agent config          | — (operator supplies directly)                | ✅ sourced from the overlay |
-| Private roles, policy, and internal docs          | — (not present)                                | ✅ sourced from the overlay |
+| Capability                                  | Standalone (no overlay)                       | With overlay (`RD_OVERLAY_PATH` set) |
+| ------------------------------------------- | --------------------------------------------- | ------------------------------------ |
+| Dashboard UI, API, auth, sessions           | ✅ full                                       | ✅ full                              |
+| Runner monitoring and lifecycle control     | ✅ full                                       | ✅ full                              |
+| Named self-hosted hosts / tailnet addresses | — (operator supplies via env/config directly) | ✅ sourced from the overlay          |
+| Agent token file paths, per-agent config    | — (operator supplies directly)                | ✅ sourced from the overlay          |
+| Private roles, policy, and internal docs    | — (not present)                               | ✅ sourced from the overlay          |
 
 The dashboard itself is also usable without a sibling `Repository_Management`
 checkout; see [`docs/standalone-profile.md`](docs/standalone-profile.md) for
@@ -208,7 +208,9 @@ bash deploy/update-deployed.sh
 
 A containerized Docker Compose install is also supported (`docker/docker-compose.yml`).
 See [`docs/install-paths.md`](docs/install-paths.md) for both supported install
-paths and the config/secret separation contract each one follows.
+paths and the config/secret separation contract each one follows, and
+[`docs/releases.md`](docs/releases.md) for what the signed release artifact
+verifies versus the container image (no published multi-arch image yet).
 
 Runner Dashboard single-worker is the only supported mode. Keep `WORKERS=1`
 and `uvicorn --workers 1` (including `WEB_CONCURRENCY=1` when set). Startup
