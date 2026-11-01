@@ -13860,8 +13860,26 @@
     },
     "/api/fleet/nodes": {
       "get": {
-        "description": "Aggregate system metrics + health from all fleet nodes.",
+        "description": "Aggregate system metrics + health from all fleet nodes.\n\n`?fields=compact` trims each node to the handful of scalars the mobile\nFleet view polls for, cutting payload size for metered connections.",
         "operationId": "get_fleet_nodes_api_fleet_nodes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fields"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -13874,6 +13892,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

@@ -225,7 +225,7 @@ describe("FleetMobile", () => {
     globalThis.fetch = fetchMock;
     render(<FleetMobile />);
     await screen.findByText(/host-a\.local/i);
-    expect(fetchMock).toHaveBeenCalledWith("/api/fleet/nodes");
+    expect(fetchMock).toHaveBeenCalledWith("/api/fleet/nodes?fields=compact");
     // runner-a is online at 12% CPU / 45% RAM; only runner-c is offline.
     expect(screen.getByLabelText("CPU: 12%")).toBeInTheDocument();
     expect(screen.getByLabelText("RAM: 45%")).toBeInTheDocument();

@@ -2239,6 +2239,9 @@ export interface paths {
         /**
          * Get Fleet Nodes
          * @description Aggregate system metrics + health from all fleet nodes.
+         *
+         *     `?fields=compact` trims each node to the handful of scalars the mobile
+         *     Fleet view polls for, cutting payload size for metered connections.
          */
         get: operations["get_fleet_nodes_api_fleet_nodes_get"];
         put?: never;
@@ -16407,7 +16410,9 @@ export interface operations {
     };
     get_fleet_nodes_api_fleet_nodes_get: {
         parameters: {
-            query?: never;
+            query?: {
+                fields?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -16423,6 +16428,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
