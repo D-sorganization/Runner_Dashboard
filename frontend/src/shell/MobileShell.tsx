@@ -55,6 +55,16 @@ function MoreIcon({ className }: { className?: string }) {
   )
 }
 
+// Compact chat-bubble glyph for the header's icon-only Ask Barb trigger
+// (issue #3749 — a labeled text pill reserved a full header row).
+function AskBarbIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  )
+}
+
 // Tab bar entries: the registry's mobilePrimary items plus the trailing "More"
 // trigger. Derived once from the single source of truth (DRY).
 interface BottomTab {
@@ -257,7 +267,7 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
             setBarbOpen((open) => !open)
           }}
         >
-          Ask Barb
+          <AskBarbIcon className="mobile-shell__ask-barb-icon" />
         </button>
       </header>
       {/* Main content area — native mobile component takes precedence when provided.
