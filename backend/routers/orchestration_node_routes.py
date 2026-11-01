@@ -59,12 +59,44 @@ async def get_fleet_identity() -> dict[str, Any]:
     return resolve_local_identity(None, None, registry)
 
 
+def _compact_fleet_node(node: dict[str, Any]) -> dict[str, Any]:
+    """Keep only the scalar fields the mobile Fleet view reads; drop the
+    embedded `/api/system` and `/api/health` blocks (hardware_specs,
+    workload_capacity, disk, network, gpu, deployment, registry, ...)."""
+    system = node.get("system") or {}
+    return {
+        "name": node.get("name"),
+        "online": node.get("online"),
+        "last_seen": node.get("last_seen"),
+        "system": {
+            "hostname": system.get("hostname"),
+            "uptime_seconds": system.get("uptime_seconds"),
+            "cpu": system.get("cpu") or {},
+            "memory": system.get("memory") or {},
+        },
+    }
+
+
+def _compact_fleet_nodes_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    compacted = dict(payload)
+    compacted["nodes"] = [_compact_fleet_node(node) for node in payload.get("nodes", [])]
+    return compacted
+
+
 @router.get("/api/fleet/nodes", dependencies=[Depends(require_fleet_peer)])
 async def get_fleet_nodes(
+    fields: str | None = None,
     deps: OrchestrationNodeDeps = Depends(orchestration_node_deps),  # noqa: B008
 ) -> dict:
-    """Aggregate system metrics + health from all fleet nodes."""
-    return await deps.get_fleet_nodes_impl()
+    """Aggregate system metrics + health from all fleet nodes.
+
+    `?fields=compact` trims each node to the handful of scalars the mobile
+    Fleet view polls for, cutting payload size for metered connections.
+    """
+    payload = await deps.get_fleet_nodes_impl()
+    if fields == "compact":
+        return _compact_fleet_nodes_payload(payload)
+    return payload
 
 
 @router.get("/api/fleet/hardware", dependencies=[Depends(require_fleet_peer)])

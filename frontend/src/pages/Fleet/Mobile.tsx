@@ -57,7 +57,9 @@ export function FleetMobile() {
     try {
       // /api/fleet/nodes is the per-machine contract (online flag plus
       // system telemetry); /api/fleet/status is raw telemetry with no status.
-      const resp = await fetch("/api/fleet/nodes");
+      // ?fields=compact drops the embedded /api/system + /api/health blocks
+      // this view never reads, cutting payload size for mobile polling (#3719).
+      const resp = await fetch("/api/fleet/nodes?fields=compact");
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
       const byName: Record<string, FleetNode> = {};
