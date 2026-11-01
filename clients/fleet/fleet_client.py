@@ -32,6 +32,7 @@ from fleet_checkin import CheckinClientMixin
 from fleet_exclusion_tools import ExclusionClientMixin
 from fleet_friction_tools import FrictionClientMixin
 from fleet_memory_brief import MemoryBriefMixin
+from fleet_panel_tools import PanelClientMixin
 from fleet_validators import (
     BROADCAST,
     LESSON_MAX_CHARS,
@@ -96,7 +97,13 @@ USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
 class FleetClient(
-    BarbClaimMixin, BarbSeatMixin, CheckinClientMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin
+    BarbClaimMixin,
+    BarbSeatMixin,
+    CheckinClientMixin,
+    FrictionClientMixin,
+    ExclusionClientMixin,
+    MemoryBriefMixin,
+    PanelClientMixin,
 ):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""

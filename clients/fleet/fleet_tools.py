@@ -16,6 +16,7 @@ from fleet_checkin import checkin_commands
 from fleet_client import LIMITS, MAX_VERIFICATION_CHARACTERS, FleetArgumentError, FleetClient
 from fleet_exclusion_tools import exclusion_commands
 from fleet_friction_tools import friction_commands
+from fleet_panel_tools import panel_commands
 from fleet_validators import MEMORY_ENTRY_TYPES, MEMORY_VISIBILITIES
 
 REPO = {"type": "string", "description": "Repository name, e.g. Runner_Dashboard (owner/ prefix optional)."}
@@ -882,7 +883,13 @@ COMMANDS: tuple[Command, ...] = (
         positional=("scope",),
     ),
 )
-COMMANDS = (*COMMANDS, *friction_commands(Command), *exclusion_commands(Command), *checkin_commands(Command))
+COMMANDS = (
+    *COMMANDS,
+    *friction_commands(Command),
+    *exclusion_commands(Command),
+    *checkin_commands(Command),
+    *panel_commands(Command),
+)
 
 BY_CLI: dict[str, Command] = {c.cli: c for c in COMMANDS}
 BY_TOOL: dict[str, Command] = {c.tool: c for c in COMMANDS if c.tool}
