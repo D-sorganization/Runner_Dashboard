@@ -8,6 +8,7 @@ panel behind them.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 import cache_utils as cu
@@ -105,3 +106,20 @@ def test_contract_rejects_inverted_ttls() -> None:
 
     with pytest.raises(AssertionError):
         asyncio.run(cu.cache_get_swr("k", compute, fresh_ttl=10, stale_ttl=5, wait_timeout=1, on_timeout=lambda: None))
+
+
+@pytest.mark.unit
+def test_expired_entry_survives_the_fresh_lookup_so_stale_is_served(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The fresh-TTL lookup must not evict the entry the stale lookup needs (#3673)."""
+    cu.cache_set("k", "old")
+    value, _ = cu._main_cache._store["k"]  # noqa: SLF001
+    cu._main_cache._store["k"] = (value, time.monotonic() - 120)  # noqa: SLF001 — older than fresh_ttl=60
+    calls, compute = _counting("new", delay=0.05)
+
+    async def run() -> tuple[Any, Any]:
+        served = await _get(compute, wait=0.01)
+        await cu._swr_refreshes["k"]
+        return served, cu.cache_get("k", 60)
+
+    assert asyncio.run(run()) == ("old", "new")
+    assert len(calls) == 1
