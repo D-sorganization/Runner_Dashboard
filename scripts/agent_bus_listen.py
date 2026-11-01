@@ -55,8 +55,35 @@ def parse_sse(lines):  # type: ignore[no-untyped-def]
             data.append(value)
 
 
+def register(args: argparse.Namespace, token: str) -> None:
+    """(Re)register ``--session`` on the agent bus so the stream's ownership check passes."""
+    body = json.dumps(
+        {
+            "session": args.session,
+            "role": args.register_role,
+            "provider": args.provider,
+            "node": args.node,
+            "lease_seconds": 86400,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{args.hub.rstrip('/')}/api/v1/agent/register",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - hub URL is operator config
+        resp.read()
+
+
 def run_once(args: argparse.Namespace, cursor: int) -> int:
     token = Path(args.token_file).expanduser().read_text().strip()
+    if args.register_role:
+        register(args, token)
     q = urllib.parse.urlencode({"session": args.session, "since_cursor": cursor})
     req = urllib.request.Request(
         f"{args.hub.rstrip('/')}/api/v1/agent/inbox/stream?{q}",
@@ -92,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--session", required=True)
     p.add_argument("--wake-file", required=True)
     p.add_argument("--pid-file")
+    p.add_argument("--register-role", help="register --session under this role before streaming")
+    p.add_argument("--provider", default="cli")
+    p.add_argument("--node", default=os.uname().nodename if hasattr(os, "uname") else "lane")
     p.add_argument("--once", action="store_true", help="exit after the first stream ends (tests)")
     args = p.parse_args(argv)
     cursor_file = Path(args.wake_file).with_suffix(".cursor")
