@@ -5054,9 +5054,14 @@ th.sortable.active .sort-indicator {
   overflow: auto;
   /* #3749: zero top/side padding let page content start flush against the
      header and screen edges (e.g. Staff's "rd-barb unavailable" notice).
-     Pages that need more add their own wrapper padding on top of this. */
-  padding: var(--space-6) var(--space-6)
-    calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+     Pages that need more add their own wrapper padding on top of this.
+     Kept as separate longhands (not a `padding` shorthand) so this doesn't
+     clobber the padding-bottom contract asserted by
+     mobileNavigationLayout.test.tsx (#1805 / BR-12). */
+  padding-top: var(--space-6);
+  padding-left: var(--space-6);
+  padding-right: var(--space-6);
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .mobile-shell__nav {
