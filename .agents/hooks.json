@@ -11,5 +11,14 @@
         "timeout": 120
       }
     ]
+  },
+  "fleet-agent-barb": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "bash -lc 'for root in \"${RUNNER_DASHBOARD_REPO_ROOT}\" \"${RUNNER_DASHBOARD_DEPLOY_DIR}\" \"$HOME/actions-runners/dashboard/current\" \"$(git rev-parse --show-toplevel 2>/dev/null || true)\"; do [ -n \"$root\" ] && [ -f \"$root/scripts/wrappers/agy_barb_hook.py\" ] && exec python3 \"$root/scripts/wrappers/agy_barb_hook.py\"; done; exit 0'",
+        "timeout": 120
+      }
+    ]
   }
 }

@@ -145,10 +145,10 @@ thread.
   (written by `scripts/wrappers/sync_agy_barb_workflow.py`). `@barb`
   mention-wake is meant to run `scripts/wrappers/agy_barb_hook.py` as a `Stop`
   hook (agy has no prompt-submit hook event, so `Stop` is the closest fit per
-  `scripts/postman_provider_caps.py`'s `AGY_HOOK_EVENTS`), but it is **not
-  loaded today**: agy reads workspace hooks only from the RM-generated
-  `.agents/hooks.json`, and the old `.agent/hooks.json` registration was never
-  read. Routing it through the generator is tracked in #3663.
+  `scripts/postman_provider_caps.py`'s `AGY_HOOK_EVENTS`). The hook is
+  registered under `fleet-agent-barb.Stop` in the generated
+  `.agents/hooks.json` (owned by `shared_scripts/agent_hook_adapters.py`, so it
+  survives the drift check; never hand-edit that file).
 - For Tools Sidekick: Sidekick packaging/dispatch is on HOLD (docs/triage
   only), so this repo ships no Sidekick-side command surface -- only the
   RD-side contract Tools implements against. `scripts/wrappers/sidekick_barb_hook.py`
