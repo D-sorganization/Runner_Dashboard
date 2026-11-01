@@ -5,6 +5,10 @@ single answer to two questions an operator asks before installing the
 Runner Dashboard: **which install method is supported**, and **what is
 config versus what is a secret**.
 
+For a manual checklist that exercises install, upgrade, and rollback
+end-to-end on a disposable host, see
+[`clean-host-smoke-test.md`](clean-host-smoke-test.md).
+
 ## Supported install paths
 
 Two install paths are supported. Both run the same backend/frontend code;
