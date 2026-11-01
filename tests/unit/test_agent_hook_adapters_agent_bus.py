@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from shared_scripts.agent_hook_adapters import (
+    AGY_BARB_HOOK_GROUP,
+    AGY_BARB_HOOK_REL,
     agent_bus_bridge_command,
+    barb_hook_command,
+    check_adapters,
     generate_antigravity_hooks,
     generate_codex_hooks,
     generate_cursor_hooks,
     generate_pre_push_sample,
     merge_claude_settings,
+    validate_antigravity_hooks,
 )
 
 
@@ -36,6 +42,34 @@ def test_claude_codex_and_agy_install_session_start_bus() -> None:
     agy = generate_antigravity_hooks(Path("/tmp"), timeout_seconds=timeout)
     agy_cmd = agy["fleet-agent-bus"]["SessionStart"][0]["command"]
     assert agy_cmd == agent_bus_bridge_command("session-start")
+
+
+@pytest.mark.unit
+def test_agy_stop_hook_runs_barb_wrapper_from_generated_hooks() -> None:
+    agy = generate_antigravity_hooks(Path("/tmp"), timeout_seconds=90)
+    stops = agy[AGY_BARB_HOOK_GROUP]["Stop"]
+    assert stops == [{"type": "command", "command": barb_hook_command(AGY_BARB_HOOK_REL), "timeout": 90}]
+    assert "scripts/wrappers/agy_barb_hook.py" in stops[0]["command"]
+    validate_antigravity_hooks(agy)
+
+
+@pytest.mark.unit
+def test_agy_barb_stop_hook_is_idempotent_and_preserves_user_hooks(tmp_path: Path) -> None:
+    (tmp_path / ".agents").mkdir()
+    custom = {"type": "command", "command": "echo mine"}
+    (tmp_path / ".agents/hooks.json").write_text(json.dumps({AGY_BARB_HOOK_GROUP: {"Stop": [custom]}}))
+    first = generate_antigravity_hooks(tmp_path, timeout_seconds=90)
+    (tmp_path / ".agents/hooks.json").write_text(json.dumps(first))
+    second = generate_antigravity_hooks(tmp_path, timeout_seconds=90)
+    assert second == first
+    commands = [h["command"] for h in second[AGY_BARB_HOOK_GROUP]["Stop"]]
+    assert commands == ["echo mine", barb_hook_command(AGY_BARB_HOOK_REL)]
+
+
+@pytest.mark.unit
+def test_committed_agents_hooks_json_has_no_drift() -> None:
+    root = Path(__file__).resolve().parents[2]
+    assert check_adapters(root, targets=frozenset({"antigravity"})) == []
 
 
 @pytest.mark.unit

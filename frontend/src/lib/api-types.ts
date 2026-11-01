@@ -2397,6 +2397,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/github/app-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Github App Token */
+        post: operations["post_github_app_token_api_github_app_token_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/github/status": {
         parameters: {
             query?: never;
@@ -5668,6 +5685,23 @@ export interface paths {
         put?: never;
         /** Withdraw Owner Question */
         post: operations["withdraw_owner_question_api_v1_fleet_owner_questions__question_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/productivity-pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Productivity Pull */
+        get: operations["get_productivity_pull_api_v1_fleet_productivity_pull_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9916,6 +9950,18 @@ export interface components {
             status?: ("open" | "in_progress" | "waiting" | "closed") | null;
             /** Title */
             title?: string | null;
+        };
+        /** GithubAppTokenRequest */
+        GithubAppTokenRequest: {
+            /** Repository */
+            repository?: string | null;
+        };
+        /** GithubAppTokenResponse */
+        GithubAppTokenResponse: {
+            /** Expires At */
+            expires_at: number;
+            /** Token */
+            token: string;
         };
         /** GithubCredentialResponse */
         GithubCredentialResponse: {
@@ -16549,6 +16595,39 @@ export interface operations {
             };
         };
     };
+    post_github_app_token_api_github_app_token_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GithubAppTokenRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GithubAppTokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_github_status_api_github_status_get: {
         parameters: {
             query?: never;
@@ -21346,6 +21425,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_productivity_pull_api_v1_fleet_productivity_pull_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

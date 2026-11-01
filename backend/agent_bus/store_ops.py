@@ -200,4 +200,12 @@ def mirror_blocked_to_barb(store: AgentBusStore, body: SendBody, sender: Princip
                 now,
             ),
         )
+        row = conn.execute("SELECT * FROM agent_bus_inbox WHERE message_id = ?", (message_id,)).fetchone()
         conn.close()
+    from agent_bus import doorbell  # noqa: PLC0415
+    from agent_bus.inbox_webhook import schedule_inbox_webhooks  # noqa: PLC0415
+    from agent_bus.store_rows import message_dict  # noqa: PLC0415
+
+    if row is not None:
+        doorbell.ring()
+        schedule_inbox_webhooks(BARB_ROLE, message_dict(row), store=store)

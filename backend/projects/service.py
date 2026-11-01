@@ -30,7 +30,7 @@ from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from cache_utils import cache_get, cache_set
+from cache_utils import cache_get, cache_get_swr, cache_set
 from dashboard_config import ORG
 from fastapi import HTTPException
 from gh_utils import gh_api
@@ -50,6 +50,11 @@ from staff.store import RunStore, get_store
 log = logging.getLogger("dashboard.projects")
 
 CACHE_TTL_SECONDS = 600.0
+# An expired overview is still served for this long while one background refresh
+# runs, so the 30 s Staff inbox poll never pays the cold rebuild inline (#3673).
+STALE_TTL_SECONDS = 6 * CACHE_TTL_SECONDS
+# A cold miss waits this long for the first build before answering "loading".
+PROJECT_COLD_WAIT_SECONDS = 30.0
 CHARTER_PATH = "docs/project/CHARTER.md"
 STATUS_PATH = "docs/project/STATUS.md"
 STEWARD_ROLE = "project-steward"
@@ -267,15 +272,27 @@ async def build_project(repo: str, fetch: Fetcher | None = None, store: RunStore
 
 
 async def project_overview(repo: str, fetch: Fetcher | None = None, store: RunStore | None = None) -> dict[str, Any]:
-    """Cached ``build_project``; the steward run is re-read on every call (it is local and cheap)."""
-    key = f"projects:{repo}"
-    cached = cache_get(key, CACHE_TTL_SECONDS)
-    if cached is None:
-        cached = await build_project(repo, fetch, store)
-        cache_set(key, cached)
-    else:
-        cached = {**cached, "last_steward_run": last_steward_run(repo, store)}
-    return cached
+    """Cached ``build_project``, served stale-while-revalidate (#3673).
+
+    Fresh for ``CACHE_TTL_SECONDS``; after that the expired overview is returned at
+    once for up to ``STALE_TTL_SECONDS`` while a single background rebuild runs. A
+    cold miss waits up to ``PROJECT_COLD_WAIT_SECONDS`` and then answers with an
+    empty overview whose ``error`` says it is still loading. The steward run is
+    re-read on every call (it is local and cheap).
+    """
+
+    def still_loading() -> dict[str, Any]:
+        return {**_empty(repo), "error": "overview still loading; retry shortly"}
+
+    cached = await cache_get_swr(
+        f"projects:{repo}",
+        lambda: build_project(repo, fetch, store),
+        fresh_ttl=CACHE_TTL_SECONDS,
+        stale_ttl=STALE_TTL_SECONDS,
+        wait_timeout=PROJECT_COLD_WAIT_SECONDS,
+        on_timeout=still_loading,
+    )
+    return {**cached, "last_steward_run": last_steward_run(repo, store)}
 
 
 async def fleet_overview(repos: list[str], fetch: Fetcher | None = None) -> dict[str, Any]:

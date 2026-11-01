@@ -88,6 +88,10 @@ def test_copy_mutable_state_migrates_registry_before_switch(tmp_path: Path, monk
     monkeypatch.setattr(mr, "LOCAL_REGISTRY_PATH", local)
     monkeypatch.delenv("MACHINE_REGISTRY_PATH", raising=False)
 
+    import node_auto_deploy.registry_migration as deploy_registry  # noqa: PLC0415
+
+    monkeypatch.setattr(deploy_registry, "_local_registry_path", lambda: local)
+
     from node_auto_deploy.transaction import copy_mutable_state  # noqa: PLC0415
 
     copy_mutable_state(live, candidate)

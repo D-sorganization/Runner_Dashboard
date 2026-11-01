@@ -9,7 +9,8 @@ Principal: **`agent-codex-hands`**
 - `fleet.read` — priorities, coordination reads, fleet status
 - `staff.dispatch` — `POST /api/staff/{role}/run` (including `dry_run`)
 - `memory.read` / `memory.write` — shared context bank
-- **Not granted:** `staff.holds.write`, `priorities.write` (directive writes)
+- `staff.read`, `priorities.write` (directives), `staff.holds.write` (holds; change only when Dieter approves, then apply directly via `PUT /api/staff/holds`)
+- **Not granted:** admin or token-issuing scopes
 
 ## Token install
 

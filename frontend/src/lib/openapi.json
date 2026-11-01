@@ -2746,6 +2746,39 @@
         "title": "FrictionUpdate",
         "type": "object"
       },
+      "GithubAppTokenRequest": {
+        "properties": {
+          "repository": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository"
+          }
+        },
+        "title": "GithubAppTokenRequest",
+        "type": "object"
+      },
+      "GithubAppTokenResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": ["token", "expires_at"],
+        "title": "GithubAppTokenResponse",
+        "type": "object"
+      },
       "GithubCredentialResponse": {
         "properties": {
           "expires_at": {
@@ -14113,6 +14146,60 @@
         "tags": ["fleet"]
       }
     },
+    "/api/github/app-token": {
+      "post": {
+        "operationId": "post_github_app_token_api_github_app_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GithubAppTokenRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubAppTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Github App Token",
+        "tags": ["github"]
+      }
+    },
     "/api/github/status": {
       "get": {
         "description": "Return the last observed GitHub API health state for dashboard banners.",
@@ -21843,6 +21930,33 @@
         ],
         "summary": "Withdraw Owner Question",
         "tags": ["fleet-friction"]
+      }
+    },
+    "/api/v1/fleet/productivity-pull": {
+      "get": {
+        "operationId": "get_productivity_pull_api_v1_fleet_productivity_pull_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Productivity Pull Api V1 Fleet Productivity Pull Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Productivity Pull",
+        "tags": ["fleet-productivity"]
       }
     },
     "/api/v1/library/browse": {

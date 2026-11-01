@@ -198,6 +198,7 @@ from routers import escalation as _escalation_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
+from routers import github_app_token as _github_app_token_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import label_guidance as _label_guidance_router  # noqa: E402  # issue #757
 from routers import library as _library_router  # noqa: E402  # issue #2165
@@ -745,6 +746,7 @@ app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics an
 app.include_router(_escalation_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_fleet_run_token_router.router)
+app.include_router(_github_app_token_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
 app.include_router(_runners_router.router)
@@ -845,6 +847,10 @@ app.include_router(_fleet_friction_router.router)  # friction ledger + owner que
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
+from routers import fleet_productivity_pull as _fleet_productivity_pull_router  # noqa: E402
+
+app.include_router(_fleet_productivity_pull_router.router)  # 5 PM productivity pull (issue #3641)
 
 from routers import staff_playbooks as _staff_playbooks_router  # noqa: E402
 

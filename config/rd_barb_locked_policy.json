@@ -7,15 +7,12 @@
     { "id": "rd-2880-auto-merge-off", "aliases": ["#2880"] },
     { "id": "gm-5540-auto-merge-off", "aliases": ["GM#5540", "#5540"] },
     { "id": "sidekick-packaging", "aliases": ["sidekick packaging"] },
-    { "id": "assessment-board-gate", "aliases": ["assessment board gate"] },
-    { "id": "bulk-cancel", "aliases": ["stale-queue cancel", "bulk cancel"] },
-    { "id": "bulk-branch-delete", "aliases": ["bulk branch delete"] }
+    { "id": "assessment-board-gate", "aliases": ["assessment board gate"] }
   ],
   "safety_limits": [
     { "id": "no-bypass-merge", "aliases": ["bypass merge", "admin merge"] },
     { "id": "no-run-cancel", "aliases": ["merge_group run", "main-push run"] },
     { "id": "no-verify-push", "aliases": ["--no-verify"] },
-    { "id": "no-dispatch", "aliases": ["hub dispatch", "/api/staff/*/run"] },
     { "id": "arming-cap", "aliases": ["arming cap"] },
     { "id": "no-pay-per-use", "aliases": ["pay-per-use"] },
     { "id": "runner-reg", "aliases": ["runner registration", "re-register"] }

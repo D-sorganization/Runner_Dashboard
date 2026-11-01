@@ -34,6 +34,8 @@ class Principal(BaseModel):
     roles: list[str] = []
     scopes: list[str] = []
     assistant_kind: str | None = None  # grokbot | codex | claude | other (config/agent_principals.yml)
+    inbox_webhook_url: str | None = None  # optional off-tailnet push target (#3682 slice 4)
+    inbox_roles: list[str] = Field(default_factory=list)  # agent-bus role addresses; defaults from id
     github_username: str | None = None
     email: str | None = None
     quotas: Quota = Field(default_factory=Quota)

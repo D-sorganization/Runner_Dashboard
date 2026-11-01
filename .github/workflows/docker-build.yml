@@ -227,6 +227,7 @@ jobs:
   docker-build-scan:
     name: docker-build-scan
     needs:
+      - pr-guard
       - decide-docker-scope
       - docker-image
     # Fork PRs never run on the self-hosted fleet (RM#1989).
@@ -240,12 +241,21 @@ jobs:
       - name: Confirm Docker image gate
         shell: bash
         env:
+          GUARD_SKIP: ${{ github.event_name == 'pull_request' && needs.pr-guard.outputs.skip_heavy || '' }}
           DECIDE: ${{ needs.decide-docker-scope.result }}
           RUN_DOCKER: ${{ needs.decide-docker-scope.outputs.run_docker }}
           IMAGE: ${{ needs.docker-image.result }}
         run: |
           echo "decide-docker-scope: $DECIDE (run_docker=$RUN_DOCKER)"
           echo "docker-image: $IMAGE"
+          if [ "${GUARD_SKIP:-}" = "true" ]; then
+            echo "PR early-exit; docker-build-scan neutral"
+            exit 0
+          fi
+          if [ "$DECIDE" = "skipped" ] && [ "$RUN_DOCKER" != "true" ]; then
+            echo "Docker scope job skipped; no image build required for this PR."
+            exit 0
+          fi
           if [ "$DECIDE" != "success" ]; then
             echo "::error::decide-docker-scope reported '$DECIDE'; cannot trust the scope decision."
             exit 1

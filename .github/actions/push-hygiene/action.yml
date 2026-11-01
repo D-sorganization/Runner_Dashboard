@@ -1,0 +1,27 @@
+name: Push hygiene guard
+description: >-
+  On pull_request synchronize, refuse empty-tree and main-sync merge commits when
+  the PR is armed for auto-merge or sits in the merge queue (issue #2892).
+runs:
+  using: composite
+  steps:
+    - name: Fetch default branch for main-sync detection
+      shell: bash
+      run: |
+        set -euo pipefail
+        git fetch --no-tags origin main:refs/remotes/origin/main
+    - name: Evaluate push hygiene
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        python3 shared_scripts/push_hygiene.py \
+          --repo-root "$GITHUB_WORKSPACE" \
+          --rev "$EVENT_HEAD_SHA" \
+          --main-ref origin/main \
+          --pr-number "$PR_NUMBER" \
+          --github-workflow

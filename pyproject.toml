@@ -97,6 +97,8 @@ select = ["E", "F", "W", "I", "B", "UP", "T20"]
 "scripts/*.py" = ["T201", "T203"]
 # Tests may use print() for diagnostic output during development.
 "tests/*.py" = ["T201", "T203"]
+# Benchmarks print their result tables to stdout.
+"benchmarks/*.py" = ["T201"]
 # Client tests import shared pytest fixtures explicitly (a second conftest.py shadows tests/conftest.py).
 "tests/clients/*.py" = ["F401", "F811"]
 # Scratch scripts use print() for output

@@ -232,3 +232,43 @@ def test_antigravity_jetski_state_overrides_stale_oauth_creds(tmp_path: Path, mo
     assert alive is True
     refreshed = oauth_last_refresh_epoch_for_provider("antigravity")
     assert refreshed is not None and (time.time() - refreshed) < 60
+
+
+async def test_claude_near_expiry_refresh_runs_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 25 s ``claude -p`` refresh must not freeze every request on the loop."""
+    import threading
+
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    seat = tmp_path / ".config" / "runner-dashboard" / "claude"
+    seat.mkdir(parents=True)
+    near_expiry_ms = int((time.time() + 600) * 1000)  # inside the 30 min refresh skew, not yet expired
+    (seat / ".credentials.json").write_text(
+        json.dumps({"claudeAiOauth": {"expiresAt": near_expiry_ms, "refreshToken": "rt-valid"}}),
+        encoding="utf-8",
+    )
+    refresh_threads: list[str] = []
+    refreshed = threading.Event()
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        if cmd[1:] == ["-p", "ok", "--max-turns", "1"]:
+            refresh_threads.append(threading.current_thread().name)
+            time.sleep(0.5)
+            refreshed.set()
+            return CompletedProcess(cmd, 0, "ok", "")
+        return CompletedProcess(cmd, 0, "authenticated", "")
+
+    invalidate_oauth_probe_cache()
+    with (
+        patch("staff.cli_oauth_session.Path.home", return_value=tmp_path),
+        patch("staff.cli_oauth_session.subprocess.run", fake_run),
+    ):
+        started = time.perf_counter()
+        alive, _detail = claude_oauth_session_alive("/usr/bin/claude")
+        elapsed = time.perf_counter() - started
+        assert refreshed.wait(2.0)
+    assert alive is True
+    assert elapsed < 0.25, f"refresh blocked the event loop for {elapsed:.3f}s"
+    assert refresh_threads and refresh_threads[0] != threading.current_thread().name

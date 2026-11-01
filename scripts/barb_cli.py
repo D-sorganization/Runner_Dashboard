@@ -130,10 +130,21 @@ def _one_line_reason(value: Any) -> bool:
 def main(argv: Sequence[str] | None = None) -> int:
     """``barb_cli.py {send|ask-barb|inbox|peers} ['{"to": ..., "kind": ..., "summary": ...}'] [--reason LINE]``."""
     parser = argparse.ArgumentParser(description="rd-threads client (args are one JSON object)")
-    parser.add_argument("verb", choices=("send", "ask-barb", "inbox", "peers"))
+    parser.add_argument("verb", choices=("send", "ask-barb", "inbox", "peers", "gh-token"))
     parser.add_argument("args", nargs="?", default="{}", help="JSON object of verb arguments")
     parser.add_argument("--reason", default="", help="one-line recommendation_reason (required for ask-barb)")
     ns = parser.parse_args(argv)
+    if ns.verb == "gh-token":
+        from scripts import barb_github_hub_token as hubtok  # noqa: PLC0415
+
+        try:
+            repo = os.environ.get("BARB_GITHUB_REPO", "").strip() or None
+            token, _expires = hubtok.fetch_hub_github_app_token(repository=repo)
+        except Exception as exc:  # noqa: BLE001
+            print(json.dumps({"ok": False, "error": "mint_failed", "message": str(exc)}))
+            return 1
+        print(token)
+        return 0
     payload = json.loads(ns.args)
     if ns.verb == "ask-barb":
         reason = (ns.reason or "").strip() or str(payload.get("recommendation_reason") or "").strip()

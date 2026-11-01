@@ -52,6 +52,35 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository)
     uses: ./.github/workflows/reusable-pr-freshness-guard.yml
 
+  push-hygiene:
+    name: Push hygiene guard
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action == 'synchronize' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    needs: [pick-runner]
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    timeout-minutes: 5
+    steps:
+      # Base branch, not the PR head: the local action loads from the
+      # workspace, and branches cut before it existed lack it (#3691). The
+      # action inspects the head commit by sha, reachable via fetch-depth 0.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: |
+            shared_scripts
+            .github/actions/push-hygiene
+      - uses: ./.github/actions/push-hygiene
+
   pick-runner:
     name: Select reversible CI runner
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
@@ -296,10 +325,13 @@ jobs:
 
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
-    needs: [pick-runner, changes, pr-guard]
+    needs: [pick-runner, changes, pr-guard, push-hygiene]
     if: >-
       always() &&
       !cancelled() &&
+      (github.event_name != 'pull_request' ||
+      needs.push-hygiene.result == 'skipped' ||
+      needs.push-hygiene.result == 'success') &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
@@ -485,11 +517,14 @@ jobs:
           fi
 
   lint:
-    needs: [pick-runner, changes, ci-health-check, pr-guard]
+    needs: [pick-runner, changes, ci-health-check, pr-guard, push-hygiene]
     if: >-
       always() &&
       !cancelled() &&
       needs.changes.outputs.run_python_tests == 'true' &&
+      (github.event_name != 'pull_request' ||
+      needs.push-hygiene.result == 'skipped' ||
+      needs.push-hygiene.result == 'success') &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
@@ -594,6 +629,9 @@ jobs:
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
           needs.changes.outputs.full_suite == 'true') &&
           (github.event_name != 'pull_request' ||
+          needs.push-hygiene.result == 'skipped' ||
+          needs.push-hygiene.result == 'success') &&
+          (github.event_name != 'pull_request' ||
           needs.pr-guard.result == 'skipped' ||
           needs.pr-guard.outputs.skip_heavy != 'true')
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
@@ -646,6 +684,9 @@ jobs:
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
           needs.changes.outputs.full_suite == 'true') &&
           (github.event_name != 'pull_request' ||
+          needs.push-hygiene.result == 'skipped' ||
+          needs.push-hygiene.result == 'success') &&
+          (github.event_name != 'pull_request' ||
           needs.pr-guard.result == 'skipped' ||
           needs.pr-guard.outputs.skip_heavy != 'true')
         # Blocking for CRITICAL/HIGH CVEs.
@@ -674,7 +715,7 @@ jobs:
           fi
 
   security-scan:
-    needs: [pick-runner, changes, ci-health-check, pr-guard]
+    needs: [pick-runner, changes, ci-health-check, pr-guard, push-hygiene]
     # pull_request (in scope), schedule, or workflow_dispatch — not merge_group (#2891).
     if: >-
       always() &&
@@ -683,6 +724,9 @@ jobs:
       needs.changes.outputs.run_python_tests == 'true' &&
       (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
       needs.changes.outputs.full_suite == 'true') &&
+      (github.event_name != 'pull_request' ||
+      needs.push-hygiene.result == 'skipped' ||
+      needs.push-hygiene.result == 'success') &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
@@ -734,10 +778,14 @@ jobs:
       - ci-health-check
       - pick-runner
       - pr-guard
+      - push-hygiene
     if: >-
       always() &&
       !cancelled() &&
       needs.changes.outputs.run_python_tests == 'true' &&
+      (github.event_name != 'pull_request' ||
+      needs.push-hygiene.result == 'skipped' ||
+      needs.push-hygiene.result == 'success') &&
       (github.event_name != 'pull_request' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
@@ -859,9 +907,13 @@ jobs:
       - tests
       - pick-runner
       - pr-guard
+      - push-hygiene
     if: >-
       always() &&
       !cancelled() &&
+      (needs.push-hygiene.result == 'success' ||
+      needs.push-hygiene.result == 'skipped' ||
+      needs.push-hygiene.result == 'failure') &&
       (needs.pr-guard.result == 'success' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.result == 'failure')
@@ -878,6 +930,7 @@ jobs:
           PR_GUARD_RESULT: ${{ needs.pr-guard.result }}
           GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
           GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
+          PUSH_HYGIENE: ${{ needs.push-hygiene.result }}
           CHANGES: ${{ needs.changes.result }}
           TIER: ${{ needs.changes.outputs.tier }}
           HEALTH: ${{ needs.ci-health-check.result }}
@@ -887,6 +940,10 @@ jobs:
           RUN_HEAD_SHA: ${{ github.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          if [ "$PUSH_HYGIENE" = "failure" ]; then
+            echo "::error::push-hygiene refused this synchronize push; see the Push hygiene guard job."
+            exit 1
+          fi
           if [ "$PR_GUARD_RESULT" = "skipped" ]; then
             echo "::notice::tests-required: pr-guard skipped on $GITHUB_EVENT_NAME"
           elif [ "$PR_GUARD_RESULT" = "success" ] && [ "$GUARD_SKIP" = "true" ]; then
@@ -966,6 +1023,7 @@ jobs:
       [
         pick-runner,
         pr-guard,
+        push-hygiene,
         changes,
         ci-health-check,
         lint,
@@ -975,6 +1033,9 @@ jobs:
     if: >-
       always() &&
       !cancelled() &&
+      (needs.push-hygiene.result == 'success' ||
+      needs.push-hygiene.result == 'skipped' ||
+      needs.push-hygiene.result == 'failure') &&
       (needs.pr-guard.result == 'success' ||
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.result == 'failure')
@@ -998,6 +1059,7 @@ jobs:
           PR_GUARD_RESULT: ${{ needs.pr-guard.result }}
           GUARD_SKIP: ${{ needs.pr-guard.outputs.skip_heavy }}
           GUARD_REASON: ${{ needs.pr-guard.outputs.reason }}
+          PUSH_HYGIENE: ${{ needs.push-hygiene.result }}
           CHANGES: ${{ needs.changes.result }}
           TIER: ${{ needs.changes.outputs.tier }}
           FULL_SUITE: ${{ needs.changes.outputs.full_suite }}
@@ -1024,6 +1086,10 @@ jobs:
             [ "$(echo "$RUN_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" != "$(echo "$PR_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" ]
           }
           failed=0
+          if [ "$PUSH_HYGIENE" = "failure" ]; then
+            echo "::error::push-hygiene refused this synchronize push; see the Push hygiene guard job."
+            failed=1
+          fi
           if [ "$PR_GUARD_RESULT" = "skipped" ]; then
             echo "::notice::quality-gate: pr-guard skipped on $GITHUB_EVENT_NAME"
           elif [ "$PR_GUARD_RESULT" = "success" ] && [ "$GUARD_SKIP" = "true" ]; then

@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -13,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from node_auto_deploy.registry_migration import migrate_legacy_registry_to_local_config
 from node_auto_deploy.releases import release_root
 
 TransactionResult = Literal["success", "skipped", "failed", "rollback", "rollback_failed"]
@@ -171,12 +171,6 @@ def _migrate_machine_registry_to_local_config(live_dashboard_root: Path) -> None
     backend_dir = live_dashboard_root / "backend"
     if not backend_dir.is_dir():
         return
-    repo_root = Path(__file__).resolve().parents[2]
-    backend_path = str(repo_root / "backend")
-    if backend_path not in sys.path:
-        sys.path.insert(0, backend_path)
-    from machine_registry import migrate_legacy_registry_to_local_config  # noqa: PLC0415
-
     migrate_legacy_registry_to_local_config(deploy_backend_dir=backend_dir)
 
 
