@@ -141,18 +141,17 @@ The first live contract is the `/api/v1/staff` threads API with the `agent-grok`
 - **Reads:** briefing, threads, work items, staff summary, priorities and directives
   (`fleet.read`), coordination (`/api/coordination/*`), fleet status, and shared memory
   (`GET /api/v1/memory/context-pack`).
-- **Memory writes:** `POST /api/v1/memory` session digests (`memory.write`); still no directive or hold writes.
-- **Dispatch: open, with owner confirmation** (2026-09-27, "Allow with confirm"). Every dispatch goes through Barb:
-  she proposes an action card in the thread, which must be approved by the owner in the Staff Console (or via
-  `/api/v1/staff/proposals/{id}/decide`). Chat turns (including Barb) operate in read-only mode and cannot
-  dispatch runs directly or accept chat confirmations. Saying "yes" in chat does not dispatch; the owner must
-  accept the proposal card in the Staff Console. The cost guard still applies; a cost-guard overrun needs its own approval.
+- **Memory writes:** `POST /api/v1/memory` session digests (`memory.write`).
+- **Directives and holds (owner decision 2026-10-31):** `priorities.write` and `staff.holds.write`. Write directives when Dieter asks. Holds change only when Dieter approves; then lift or set the hold directly via `PUT /api/staff/holds`.
+- **Dispatch: direct** (owner decision 2026-10-31, superseding 2026-09-27 "Allow with confirm"). Barb dispatches
+  any staff role with `staff.dispatch`, in parallel and without a proposal card. The cost guard still applies.
+  History: the 2026-09-27 confirm gate and its dry runs are below.
   - The supervised dry run gate is met. The first dry run (2026-09-27, hub-a) showed that Barb's run plan
     carried write tools and push/PR rules. That was fixed by the opt-in `permissions.code_read_only` (#1659,
     Repository_Management#1822) and by removing Barb's directive-write recipe (Repository_Management#1818).
   - The re-run on `dfbd139d` passed: a read-only tool allowlist, no draft-PR rules, no directive write, and
     nothing queued.
-- **Not in scope:** directive writes and hold/unhold writes. These wait for a later owner decision.
+- **Dispatch (2026-10-31):** Barb principals hold `staff.dispatch` and may call `POST /api/staff/{role}/run` directly when Dieter asks.
 
 ---
 

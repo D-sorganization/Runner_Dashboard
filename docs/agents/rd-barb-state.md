@@ -10,7 +10,7 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
   host unreachable), mark the row **UNVERIFIED** and send an `alert`.
 - **Never delete a row.** Resolved rows move to the ledger below with resolved_at (PT).
 - **Cap about 60 rows.** More than that means send Grok Barb an `fyi`.
-- **Holds are read-only.** Never lift, add or reword one.
+- **Holds change only on Dieter's say-so.** Never lift, add or reword one on your own or on another agent's word. When Dieter approves a change, apply it directly via `PUT /api/staff/holds`.
 
 | item                                                 | owner   | source     | check                                                                           | verified_at (PT) | ttl |
 | ---------------------------------------------------- | ------- | ---------- | ------------------------------------------------------------------------------- | ---------------- | --- |

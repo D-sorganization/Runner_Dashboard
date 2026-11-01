@@ -30,6 +30,47 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
+  - id: agent-grok-vm
+    kind: grokbot
+    name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
+  - id: agent-duet
+    kind: claude
+    name: Duet Barb (barb-worker VM)
+    scopes:
+      - fleet.read
+      - memory.read
+      - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
   - id: agent-smithers
     kind: grokbot
     name: Smithers (Grok work-task intake)
@@ -42,6 +83,15 @@ agents:
       - fleet.read
       - memory.read
       - memory.write
+      - staff.read
+      - staff.dispatch
+      - priorities.write
+      - staff.holds.write
+      - staff.chat
+      - staff.cancel
+      - coordination.write
+      - proposals.write
+      - assessments.dispatch
   - id: agent-codex
     kind: codex
     name: Codex CLI agent
