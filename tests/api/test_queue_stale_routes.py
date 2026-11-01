@@ -226,3 +226,70 @@ def test_purge_stale_route_accepts_queue_ui_json_payload(queue_route_context, mo
         "safe_only": True,
         "max_count": 10,
     }
+
+
+def _counting_find_stale_runs(StaleRun, calls: list[dict]):  # noqa: N803 — fixture class
+    async def fake_find_stale_runs(*_args, **kwargs) -> list:
+        calls.append(kwargs)
+        return [
+            StaleRun(
+                repo="repo",
+                run_id=len(calls),
+                workflow="CI",
+                branch="main",
+                created_at="2026-04-01T10:00:00Z",
+                age_minutes=120,
+                event="push",
+            )
+        ]
+
+    return fake_find_stale_runs
+
+
+def test_get_stale_queue_route_reuses_one_scan_across_polls(queue_route_context, monkeypatch) -> None:
+    """The mobile Queue view polls every 15 s; each scan costs ~2 GitHub calls per repo."""
+    _app, queue_router, StaleRun, make_client = queue_route_context
+    calls: list[dict] = []
+    monkeypatch.setattr(queue_router, "find_stale_runs", _counting_find_stale_runs(StaleRun, calls))
+    client = make_client()
+
+    first = client.get("/api/queue/stale")
+    second = client.get("/api/queue/stale?safe_only=true")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert len(calls) == 1
+    assert first.json()["runs"][0]["run_id"] == 1
+
+
+def test_get_stale_queue_route_scans_again_for_different_scan_inputs(queue_route_context, monkeypatch) -> None:
+    _app, queue_router, StaleRun, make_client = queue_route_context
+    calls: list[dict] = []
+    monkeypatch.setattr(queue_router, "find_stale_runs", _counting_find_stale_runs(StaleRun, calls))
+    client = make_client()
+
+    client.get("/api/queue/stale?min_age_minutes=30")
+    client.get("/api/queue/stale?min_age_minutes=90")
+    client.get("/api/queue/stale?min_age_minutes=90&repo=other")
+
+    assert [c["min_age_minutes"] for c in calls] == [30, 90, 90]
+    assert calls[-1]["repo"] == "other"
+
+
+def test_purge_that_cancels_runs_forces_a_fresh_stale_scan(queue_route_context, monkeypatch) -> None:
+    _app, queue_router, StaleRun, make_client = queue_route_context
+    calls: list[dict] = []
+    monkeypatch.setattr(queue_router, "find_stale_runs", _counting_find_stale_runs(StaleRun, calls))
+
+    async def fake_purge_stale_runs(_org: str, **_kwargs) -> dict:
+        return {"stale_count": 1, "cancelled_count": 1, "errors": [], "runs": []}
+
+    monkeypatch.setattr(queue_router, "purge_stale_runs", fake_purge_stale_runs)
+    client = make_client("operator")
+
+    client.get("/api/queue/stale")
+    assert client.post("/api/queue/purge-stale?dry_run=false").status_code == 200
+    after = client.get("/api/queue/stale")
+
+    assert len(calls) == 2
+    assert after.json()["runs"][0]["run_id"] == 2
