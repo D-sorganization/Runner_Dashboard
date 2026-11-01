@@ -21845,6 +21845,33 @@
         "tags": ["fleet-friction"]
       }
     },
+    "/api/v1/fleet/productivity-pull": {
+      "get": {
+        "operationId": "get_productivity_pull_api_v1_fleet_productivity_pull_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Productivity Pull Api V1 Fleet Productivity Pull Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Productivity Pull",
+        "tags": ["fleet-productivity"]
+      }
+    },
     "/api/v1/library/browse": {
       "get": {
         "operationId": "library_browse_route_api_v1_library_browse_get",

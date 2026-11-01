@@ -843,6 +843,10 @@ from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
 
+from routers import fleet_productivity_pull as _fleet_productivity_pull_router  # noqa: E402
+
+app.include_router(_fleet_productivity_pull_router.router)  # 5 PM productivity pull (issue #3641)
+
 from routers import staff_playbooks as _staff_playbooks_router  # noqa: E402
 
 app.include_router(_staff_playbooks_router.router)  # playbooks list/render/assign (issue #3488)
