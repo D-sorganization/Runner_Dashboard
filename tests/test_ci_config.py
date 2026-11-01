@@ -754,7 +754,10 @@ def test_docker_scope_detector_skips_docs_only_pr() -> None:
 def test_docker_build_scan_gate_is_fail_closed() -> None:
     gate = _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["docker-build-scan"]
     assert "always()" in str(gate.get("if", ""))
-    assert set(gate.get("needs", [])) == {"decide-docker-scope", "docker-image"}
+    assert set(gate.get("needs", [])) == {"decide-docker-scope", "docker-image", "pr-guard"}
+    run = next(step for step in gate["steps"] if step.get("name") == "Confirm Docker image gate")["run"]
+    assert "GUARD_SKIP" in run
+    assert 'if [ "$DECIDE" = "skipped" ]' in run
 
 
 def test_docker_skip_message_and_detector_agree() -> None:
