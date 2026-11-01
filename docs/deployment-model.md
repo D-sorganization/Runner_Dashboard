@@ -5,6 +5,11 @@ setup, routine updates, dry-run preview, rollback, secrets management, token
 refresh, health verification, artifact-based deployment, and multi-machine fleet
 operation.
 
+This page covers the systemd bare-metal path in depth. For a side-by-side
+comparison with the containerized Docker Compose path, and the
+configuration/secret separation contract both paths follow, see
+[`docs/install-paths.md`](install-paths.md).
+
 ---
 
 ## Overview
