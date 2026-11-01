@@ -124,7 +124,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--node", default=os.uname().nodename if hasattr(os, "uname") else "lane")
     p.add_argument("--once", action="store_true", help="exit after the first stream ends (tests)")
     args = p.parse_args(argv)
-    cursor_file = Path(args.wake_file).with_suffix(".cursor")
+    wake = Path(args.wake_file)
+    wake.parent.mkdir(parents=True, exist_ok=True)
+    if not wake.exists():
+        wake.touch()  # lane keepers key "push enabled" off the wake file existing
+    cursor_file = wake.with_suffix(".cursor")
     cursor = int(cursor_file.read_text()) if cursor_file.exists() and cursor_file.read_text().isdigit() else 0
     delay = 1.0
     while True:
@@ -132,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
             cursor = run_once(args, cursor)
             delay = 1.0
         except Exception as exc:  # noqa: BLE001 - keep listening through hub restarts
-            print(f"stream error: {type(exc).__name__}; retry in {delay:.0f}s", file=sys.stderr, flush=True)
+            code = getattr(exc, "code", "")
+            print(f"stream error: {type(exc).__name__} {code}; retry in {delay:.0f}s", file=sys.stderr, flush=True)
             if args.once:
                 return 1
             time.sleep(delay)
