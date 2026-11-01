@@ -8,6 +8,8 @@
 #
 # assistant_profile: merged into every agents[] row (per-agent keys override).
 # kind: grokbot | codex | claude | other — stored on the principal as assistant_kind.
+# inbox_webhook_url: optional POST target when a message lands in this principal's agent-bus inbox (#3682).
+# inbox_roles: agent-bus role addresses (defaults: agent-<id suffix>, or rd-barb -> rd-barb).
 #
 # Mint a bearer without printing it in logs (run on the hub or a machine with admin session):
 #   TOKEN=$(curl -s -X POST "$FLEET_API_URL/api/admin/principals/<id>/token" \
