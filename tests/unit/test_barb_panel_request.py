@@ -85,7 +85,8 @@ def test_explicit_experts_pass_through() -> None:
 
 def test_authors_default_includes_claude_and_codex_bots_and_env_overrides() -> None:
     default = req.parse_authors(None)
-    assert {"dieterolson", "d-sorgclaudeagent[bot]", "d-sorgcodexagent[bot]", "codex-scheduled-tasks[bot]"} <= default
+    assert default == {"d-sorgclaudeagent[bot]", "d-sorgcodexagent[bot]", "codex-scheduled-tasks[bot]"}
+    assert "dieterolson" not in default and req.parse_authors("  , ") == default
     assert req.parse_authors(" Alice , bob[bot] ") == {"alice", "bob[bot]"}
 
 

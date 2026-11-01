@@ -103,7 +103,8 @@ To enable it, as `barb-duet` add the settings to `~/.config/systemd/user/barb-fl
 
 ```bash
 PANEL_RELAY_ENABLED=1
-# optional: PANEL_RELAY_REPO, PANEL_RELAY_AUTHORS (comma list), PANEL_RELAY_DAILY_CAP (default 3)
+# optional: PANEL_RELAY_REPO, PANEL_RELAY_DAILY_CAP (default 3, resets 00:00 UTC),
+# PANEL_RELAY_AUTHORS (comma list; replaces the fleet-bot defaults, blank keeps them)
 ```
 
 Then add a user timer that runs one pass every five minutes:
@@ -124,7 +125,7 @@ OnUnitActiveSec=5min
 WantedBy=timers.target
 ```
 
-Before enabling it, check one pass with `python3 scripts/barb_panel_relay.py --dry-run`. That reads barbara and the hub's presets and writes nothing. State, meaning per-issue outcomes and daily starts, lives in `~/.local/state/barb-panel-relay.json`. To switch it off, unset `PANEL_RELAY_ENABLED` or stop the timer.
+Before enabling it, check one pass with `python3 scripts/barb_panel_relay.py --dry-run`. That reads barbara and the hub's presets and writes nothing. State, meaning per-issue outcomes and daily starts, lives in `~/.local/state/barb-panel-relay.json`. If that file is unreadable the relay exits with status 2 and starts nothing; fix it or move it aside. To switch it off, unset `PANEL_RELAY_ENABLED` or stop the timer.
 
 ## Related
 
