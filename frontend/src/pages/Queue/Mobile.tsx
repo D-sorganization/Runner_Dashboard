@@ -5,6 +5,7 @@ import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { EmptyState } from "../../primitives/EmptyState";
 import { useHaptic } from "../../hooks/useHaptic";
+import { useVisibilityInterval } from "../../hooks/useVisibilityInterval";
 import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
 
 import { MobileRunCard } from "./MobileRunCard";
@@ -118,15 +119,13 @@ export function QueueMobile() {
 
   useEffect(() => {
     fetchQueue();
-    const interval = setInterval(fetchQueue, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
   }, [fetchQueue]);
+  useVisibilityInterval(fetchQueue, POLL_INTERVAL_MS);
 
   useEffect(() => {
     fetchStale();
-    const interval = setInterval(fetchStale, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
   }, [fetchStale]);
+  useVisibilityInterval(fetchStale, POLL_INTERVAL_MS);
 
   const handleRefresh = useCallback(async () => {
     haptic.medium();
