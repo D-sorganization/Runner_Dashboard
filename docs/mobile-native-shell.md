@@ -58,6 +58,35 @@ No-go when:
 - Push or auth behavior requires privileged native code that cannot be audited
   and rolled back with the dashboard deployment.
 
+## Future Native Client Token Contract
+
+Capacitor remains deferred. This section records requirements for a future
+design; it does not add a native client, issue credentials, or change the
+current PWA authentication flow.
+
+- The dashboard backend remains the authorization boundary. A native client
+  must use a documented user sign-in flow and server-validated principal; it
+  must not trust client-supplied roles or add a parallel authorization path.
+- Any future access credential must be short-lived, scoped to the signed-in
+  principal and intended API, and limited to the permissions the client needs.
+  Request additional OAuth scopes only with an explicit reviewed feature need.
+- Never embed a client secret, GitHub App installation key, fleet/hub bearer,
+  agent credential, or long-lived personal access token in the app, its bundle,
+  configuration, or logs. A client-side secret cannot be kept confidential.
+- If an approved native flow issues refresh credentials, it must rotate them,
+  support server-side revocation on logout and account/session removal, and
+  store them only in the platform's protected credential store. Do not place
+  credentials in web storage, ordinary preferences, exported backups, analytics,
+  crash reports, or diagnostic output. Access credentials should remain in
+  memory where practical and never be written to logs.
+- Require TLS with normal certificate validation for every API request. Expired,
+  revoked, malformed, or out-of-scope credentials must fail closed; a client
+  must not fall back to a broader machine credential.
+- Before implementation, specify the token issuer and audience, exact scopes,
+  access and refresh lifetimes, rotation/revocation behavior, protected storage,
+  logout semantics, and tests for expiry, revocation, scope denial, and secret
+  redaction. Do not infer these details from the existing browser cookie flow.
+
 ## Follow-Up Issues
 
 - M02: keep design tokens, type scale, motion, and breakpoints aligned between
