@@ -7,7 +7,10 @@ the ``agent-duet`` principal. It starts each allowlisted request on the hub and 
 back as the fleet bot through the hub-minted ``gh``.
 
 Off unless ``PANEL_RELAY_ENABLED=1``. It never confirms cost: an over-threshold request is labelled
-``panel-needs-owner`` for the owner. A daily start cap and per-issue state stop repeats.
+``panel-needs-owner`` for the owner. A daily start cap (UTC days) and per-issue state stop repeats;
+each start is saved before anything is written to GitHub, so a failed write can't cause a second
+start. The issue's author and its last editor must both be allowlisted. A corrupt state file stops
+the relay with a clear error instead of guessing.
 
     python3 scripts/barb_panel_relay.py            # one pass (systemd timer or loop)
     python3 scripts/barb_panel_relay.py --dry-run  # log the plan, write nothing anywhere
@@ -41,6 +44,12 @@ REQUEST_LABEL = "panel-request"
 STARTED, DONE, REJECTED, NEEDS_OWNER = "panel-started", "panel-done", "panel-rejected", "panel-needs-owner"
 OUTCOME_LABELS = frozenset({STARTED, DONE, REJECTED, NEEDS_OWNER})
 RETRY_LATER = frozenset({0, 429, 502, 503, 504})
+AUTH_FAILURES = frozenset({401, 403})
+TERMINAL_STATUSES = frozenset({"complete", "failed"})  # backend/staff/panel.py run_panel
+ISSUE_QUERY = (
+    "query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){"
+    "issue(number:$number){body author{__typename login} lastEditedBy{__typename login}}}}"
+)
 DEFAULT_REPO = "D-sorganization/barbara"
 DEFAULT_DAILY_CAP = 3
 MAX_HUB_ERROR_CHARS = 1500
@@ -72,8 +81,22 @@ def config_from_env(env: Mapping[str, str], dry_run: bool) -> RelayConfig | None
     )
 
 
+class StateFileError(RuntimeError):
+    """The state file exists but can't be trusted; the relay stops rather than risk repeat starts."""
+
+
+@dataclass(frozen=True)
+class IssueSnapshot:
+    """One consistent read of an issue: who wrote it, who last edited it, and the body as of then."""
+
+    author: str
+    last_editor: str | None
+    body: str
+
+
 class GitHub(Protocol):
     def open_requests(self, repo: str) -> list[dict[str, Any]]: ...
+    def issue_snapshot(self, repo: str, number: int) -> IssueSnapshot: ...
     def comment(self, repo: str, number: int, body: str) -> None: ...
     def label(self, repo: str, number: int, name: str) -> None: ...
     def close(self, repo: str, number: int) -> None: ...
@@ -94,6 +117,13 @@ class GhCli:
         issues = self._api("-X", "GET", f"repos/{repo}/issues", "-f", f"labels={REQUEST_LABEL}", "-f", "state=open")
         return [i for i in issues or [] if "pull_request" not in i]
 
+    def issue_snapshot(self, repo: str, number: int) -> IssueSnapshot:
+        owner, name = repo.split("/", 1)
+        args = ["graphql", "-f", f"query={ISSUE_QUERY}", "-f", f"owner={owner}", "-f", f"name={name}"]
+        issue = self._api(*args, "-F", f"number={number}")["data"]["repository"]["issue"]
+        editor = issue.get("lastEditedBy")
+        return IssueSnapshot(_login(issue.get("author")), _login(editor) if editor else None, issue.get("body") or "")
+
     def comment(self, repo: str, number: int, body: str) -> None:
         self._api(f"repos/{repo}/issues/{number}/comments", "-f", f"body={body}")
 
@@ -104,14 +134,27 @@ class GhCli:
         self._api("-X", "PATCH", f"repos/{repo}/issues/{number}", "-f", "state=closed")
 
 
+def _login(actor: Mapping[str, Any] | None) -> str:
+    """GraphQL drops the ``[bot]`` suffix that REST and the allowlist use; put it back for bots."""
+    login = str((actor or {}).get("login") or "").lower()
+    return f"{login}[bot]" if (actor or {}).get("__typename") == "Bot" and login else login
+
+
 class RelayState:
-    """Per-issue outcomes and per-day start counts, kept in one JSON file (atomic replace)."""
+    """Per-issue outcomes and per-day (UTC) start counts, kept in one JSON file (atomic replace)."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        data = json.loads(path.read_text()) if path.exists() else {}
+        try:
+            data = json.loads(path.read_text()) if path.exists() else {}
+        except (OSError, ValueError) as exc:
+            raise StateFileError(f"can't read relay state {path}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise StateFileError(f"relay state {path} is not a JSON object")
         self.issues: dict[str, dict[str, Any]] = data.get("issues", {})
         self.starts: dict[str, int] = data.get("starts", {})
+        if not isinstance(self.issues, dict) or not isinstance(self.starts, dict):
+            raise StateFileError(f"relay state {path} has malformed 'issues' or 'starts'")
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,33 +168,55 @@ class PanelRelay:
 
     def __init__(self, config: RelayConfig, github: GitHub, hub: Hub, state: RelayState, today: str) -> None:
         self.config, self.github, self.hub, self.state, self.today = config, github, hub, state, today
-        self.counts = {"started": 0, "done": 0, "rejected": 0, "needs_owner": 0, "skipped": 0}
+        self.counts = {"started": 0, "done": 0, "rejected": 0, "needs_owner": 0, "skipped": 0, "errors": 0}
 
     def run(self) -> dict[str, int]:
-        self._poll_started()
-        for issue in self.github.open_requests(self.config.repo):
-            self._consider(issue)
+        try:
+            for key, entry in list(self.state.issues.items()):
+                if entry.get("status") == "started":
+                    self._isolated(int(key), self._report_if_done, int(key), entry)
+            for issue in self.github.open_requests(self.config.repo):
+                self._isolated(int(issue["number"]), self._consider, issue)
+        finally:
+            self._save()
+        return self.counts
+
+    def _isolated(self, number: int, step: Any, *args: Any) -> None:
+        """Run one issue's step; a failure is logged and skipped so it can't drop the rest of the pass."""
+        try:
+            step(*args)
+        except FleetAPIError as exc:
+            if exc.status in AUTH_FAILURES:
+                raise  # the relay's own token or scope is wrong: stop the pass, don't blame the request
+            logger.warning("#%s: hub error HTTP %s; retrying next pass", number, exc.status)
+            self.counts["errors"] += 1
+        except (subprocess.SubprocessError, OSError, KeyError, TypeError, ValueError):
+            logger.exception("#%s: step failed; retrying next pass", number)
+            self.counts["errors"] += 1
+
+    def _save(self) -> None:
         if not self.config.dry_run:
             self.state.save()
-        return self.counts
+
+    def _record(self, number: int, entry: dict[str, Any]) -> None:
+        """Persist an outcome before any GitHub write, so a write failure can't repeat the action."""
+        self.state.issues[str(number)] = entry
+        self._save()
 
     # ------------------------------------------------------------------ finished panels
 
-    def _poll_started(self) -> None:
-        for key, entry in self.state.issues.items():
-            if entry.get("status") == "started":
-                self._report_if_done(int(key), entry)
-
     def _report_if_done(self, number: int, entry: dict[str, Any]) -> None:
-        try:
-            digest = self.hub.request("GET", f"{PANELS}/{entry['thread_id']}/digest")
-        except FleetAPIError as exc:
-            logger.warning("digest for #%s unavailable (HTTP %s); retrying next pass", number, exc.status)
+        digest = self.hub.request("GET", f"{PANELS}/{entry['thread_id']}/digest")
+        status = digest.get("status")
+        if status not in TERMINAL_STATUSES:
+            if status != "running":
+                logger.warning("#%s: panel status %r is not a known final status; still waiting", number, status)
             return
-        if digest.get("status") == "running":
+        if self.config.dry_run:
+            logger.info("[dry-run] #%s: panel finished (%s); would post the digest and close", number, status)
             return
+        self._record(number, {**entry, "status": "done"})
         self._write(number, render_digest(digest), DONE, close=True)
-        entry["status"] = "done"
         self.counts["done"] += 1
 
     # ------------------------------------------------------------------ new requests
@@ -159,18 +224,24 @@ class PanelRelay:
     def _consider(self, issue: dict[str, Any]) -> None:
         number = int(issue["number"])
         labels = {str(lbl.get("name")) for lbl in issue.get("labels", [])}
-        author = str((issue.get("user") or {}).get("login", "")).lower()
         if str(number) in self.state.issues or labels & OUTCOME_LABELS:
             return
-        if author not in self.config.authors:
-            logger.info("skip #%s: author %r is not allowlisted", number, author)
-            self.counts["skipped"] += 1
+        if str((issue.get("user") or {}).get("login", "")).lower() not in self.config.authors:
+            self._skip(number, "author is not allowlisted")
             return
-        if self.state.starts.get(self.today, 0) >= self.config.daily_cap:
-            logger.info("skip #%s: daily cap of %s reached; retrying tomorrow", number, self.config.daily_cap)
-            self.counts["skipped"] += 1
-            return
-        self._start(number, issue.get("body"))
+        snapshot = self.github.issue_snapshot(self.config.repo, number)
+        if snapshot.author not in self.config.authors:
+            self._skip(number, f"author {snapshot.author!r} is not allowlisted")
+        elif snapshot.last_editor is not None and snapshot.last_editor not in self.config.authors:
+            self._skip(number, f"last editor {snapshot.last_editor!r} is not allowlisted")
+        elif self.state.starts.get(self.today, 0) >= self.config.daily_cap:
+            self._skip(number, f"daily cap of {self.config.daily_cap} reached (resets at 00:00 UTC)")
+        else:
+            self._start(number, snapshot.body)
+
+    def _skip(self, number: int, why: str) -> None:
+        logger.info("skip #%s: %s", number, why)
+        self.counts["skipped"] += 1
 
     def _start(self, number: int, body: str | None) -> None:
         try:
@@ -189,25 +260,25 @@ class PanelRelay:
             self._hub_refused(number, exc)
             return
         thread_id = str(started["thread"]["id"])
-        self._write(number, f"Started panel `{thread_id}`. I'll post the verdict here when it finishes.", STARTED)
-        self.state.issues[str(number)] = {"status": "started", "thread_id": thread_id, "at": self.today}
         self.state.starts[self.today] = self.state.starts.get(self.today, 0) + 1
+        self._record(number, {"status": "started", "thread_id": thread_id, "at": self.today})
         self.counts["started"] += 1
+        self._write(number, f"Started panel `{thread_id}`. I'll post the verdict here when it finishes.", STARTED)
 
     def _hub_refused(self, number: int, exc: FleetAPIError) -> None:
         if exc.status in RETRY_LATER:
             logger.warning("hub busy for #%s (HTTP %s); retrying next pass", number, exc.status)
             return
-        if exc.status in (401, 403):
+        if exc.status in AUTH_FAILURES:
             raise exc  # the relay's own token or scope is wrong: stop the pass, don't blame the request
         detail = exc.body.get("detail") if isinstance(exc.body, dict) else None
         if isinstance(detail, dict) and (detail.get("estimate") or {}).get("exceeds_threshold"):
             note = "The estimate is over the cost threshold, so this needs the owner's go-ahead. I never confirm cost."
+            self._record(number, {"status": "needs_owner", "at": self.today})
+            self.counts["needs_owner"] += 1
             self._write(
                 number, f"{note}\n\n{req.fenced(json.dumps(detail['estimate'], indent=2), 'json')}", NEEDS_OWNER
             )
-            self.state.issues[str(number)] = {"status": "needs_owner", "at": self.today}
-            self.counts["needs_owner"] += 1
             return
         self._reject(number, f"The hub refused the request (HTTP {exc.status}).", hub_detail=detail)
 
@@ -215,9 +286,10 @@ class PanelRelay:
         body = f"Can't start this panel: {reason}\n\nFormat: docs/agents/panel-requests.md in Runner_Dashboard."
         if hub_detail is not None:
             body += "\n\n" + req.fenced(json.dumps(hub_detail, default=str)[:MAX_HUB_ERROR_CHARS], "json")
-        self._write(number, body, REJECTED)
-        self.state.issues[str(number)] = {"status": "rejected", "at": self.today}
+        if not self.config.dry_run:
+            self._record(number, {"status": "rejected", "at": self.today})
         self.counts["rejected"] += 1
+        self._write(number, body, REJECTED)
 
     def _write(self, number: int, body: str, label: str, close: bool = False) -> None:
         if self.config.dry_run:
@@ -256,9 +328,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     from fleet_client import FleetClient  # deferred: keeps --help and the off path import-light
 
-    relay = PanelRelay(
-        config, GhCli(), FleetClient(), RelayState(config.state_path), datetime.now(UTC).date().isoformat()
-    )
+    try:
+        state = RelayState(config.state_path)
+    except StateFileError as exc:
+        logger.error("panel relay stopped: %s. Fix or move the file aside; nothing was started.", exc)
+        return 2
+    relay = PanelRelay(config, GhCli(), FleetClient(), state, datetime.now(UTC).date().isoformat())
     logger.info("panel relay pass: %s", relay.run())
     return 0
 

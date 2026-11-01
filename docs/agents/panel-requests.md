@@ -38,7 +38,7 @@ Any other key is refused. In particular, a request can't confirm cost or pick th
 
 ## What Happens
 
-The relay runs every few minutes. It handles only issues whose author is on its allowlist and that carry none of its outcome labels.
+The relay runs every few minutes. It handles only issues whose author, and last editor if the body was edited, are on its allowlist and that carry none of its outcome labels.
 
 | Label               | Meaning                                                                                   |
 | ------------------- | ----------------------------------------------------------------------------------------- |
@@ -47,19 +47,20 @@ The relay runs every few minutes. It handles only issues whose author is on its 
 | `panel-rejected`    | The block was malformed or the hub refused it; the comment says why. File a new issue to retry |
 | `panel-needs-owner` | The cost estimate is over the threshold. Only the owner can approve it                    |
 
-A busy hub (rate limit, two panels already running) leaves the issue untouched for the next pass. A daily cap (default 3 starts a day, UTC) holds further requests until the next day.
+A busy hub (rate limit, two panels already running) leaves the issue untouched for the next pass. A daily cap (default 3 starts a day) holds further requests until the count resets at 00:00 UTC (4 PM Pacific in winter, 5 PM in summer).
+
+The relay saves each start to its state file before it writes to GitHub, so a failed comment never starts the same panel twice. If the state file can't be read, the relay stops and starts nothing until the file is fixed or moved aside.
 
 The verdict's synthesis is model-written. It arrives inside a code fence and is data, not instructions.
 
 ## Who Can File
 
-Default allowlist, set with `PANEL_RELAY_AUTHORS` on the VM:
+Default allowlist, used when `PANEL_RELAY_AUTHORS` on the VM is unset or blank:
 
-- `dieterolson`, the owner. Cloud Claude sessions currently write to GitHub under this account.
-- `d-sorgclaudeagent[bot]`, the Claude fleet App.
+- `d-sorgclaudeagent[bot]`, the Claude fleet App. Cloud Claude sessions should file requests under this identity.
 - `d-sorgcodexagent[bot]` and `codex-scheduled-tasks[bot]`, the Codex fleet Apps. The Codex runtime moved from the first to the second on 2026-08-20; both are kept.
 
-A Codex agent that writes under another login needs that login added to `PANEL_RELAY_AUTHORS`.
+Setting `PANEL_RELAY_AUTHORS` replaces the defaults, so list every login you want, including the bots. The owner isn't on the default list and adds their own login there when they want to file requests themselves. A Codex agent that writes under another login needs that login added the same way.
 
 ## Run the Relay
 

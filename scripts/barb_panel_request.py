@@ -28,7 +28,6 @@ PRESET_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 # Who may file a request. Owner, plus the fleet App bots that Claude and Codex agents write as
 # (Repository_Management shared_scripts/agent_identity.py; codex-scheduled-tasks since 2026-08-20).
 DEFAULT_AUTHORS = (
-    "dieterolson",
     "d-sorgclaudeagent[bot]",
     "d-sorgcodexagent[bot]",
     "codex-scheduled-tasks[bot]",
@@ -49,7 +48,11 @@ class PanelRequest:
 
 
 def parse_authors(raw: str | None) -> frozenset[str]:
-    """Comma-separated logins from the environment, or the defaults; compared case-insensitively."""
+    """Comma-separated logins from the environment; compared case-insensitively.
+
+    A missing or blank value falls back to ``DEFAULT_AUTHORS`` (the fleet bots only; the owner adds
+    themselves through the setting).
+    """
     names = [n.strip() for n in (raw or "").split(",") if n.strip()] or list(DEFAULT_AUTHORS)
     return frozenset(n.lower() for n in names)
 
