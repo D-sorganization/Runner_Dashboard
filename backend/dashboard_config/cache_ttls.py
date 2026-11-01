@@ -29,6 +29,13 @@ class CacheTtl:
     # Queue, local-app health, workflow stats, CI test results: 2 minutes is
     # the operator perception threshold for "stale" data on these dashboards.
     QUEUE_S: int = 120
+
+    # Stale-run scan (``/api/queue/stale``) lists runs at least 30 minutes old
+    # and costs about two GitHub calls per org repo. The mobile Queue view
+    # polls it every 15 s, so without a cache one open tab spent roughly 4x the
+    # hourly REST quota. A minute of freshness is invisible for runs that old.
+    STALE_RUNS_S: int = 60
+    STALE_RUNS_MAX_AGE_S: int = 300
     LOCAL_APPS_S: int = 120
     STATS_S: int = 120
     CI_TEST_RESULTS_S: int = 120
