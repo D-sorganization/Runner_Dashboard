@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-HUB_URL="${BARB_WORKER_HUB_URL:-https://deskcomputer.tail2bbcc7.ts.net:8321}"
+HUB_URL="${BARB_WORKER_HUB_URL:-https://hub-a.fleet-example.ts.net}"
 GITHUB_ORG="${FLEET_GITHUB_ORG:-D-sorganization}"
 # user -> proxy_port principal_id (tailscaled@ instance: grok / dots / duet)
 BARB_USERS=(barb-grok barb-dots barb-duet)
@@ -76,7 +76,7 @@ configure_user_proxy_and_env() {
 
     install -d -m 700 -o "${user}" -g "${user}" "${cfg}"
     if [[ ! -f "${cfg}/token" ]]; then
-        run_as "${user}" bash -c ': > "$1"' _ "${cfg}/token"
+        run_as "${user}" touch "${cfg}/token"
         chmod 600 "${cfg}/token"
         chown "${user}:${user}" "${cfg}/token"
         log "${user}: created empty ${cfg}/token (install hub bearer with mode 600 before verify)"
@@ -223,16 +223,29 @@ verify_lane() {
     fi
 
     if [[ -s "${token_file}" ]]; then
-        if run_as "${user}" env HTTP_PROXY="${proxy}" HTTPS_PROXY="${proxy}" \
-            FLEET_API_URL="${HUB_URL}" bash -c '
-                set -euo pipefail
-                IFS= read -r tok < "$1"
-                test -n "$tok"
-                curl -fsS --max-time 20 \
-                    -H "Authorization: Bearer ${tok}" \
-                    -H "X-Requested-With: XMLHttpRequest" \
-                    "${FLEET_API_URL%/}/api/staff/summary" >/dev/null
-            ' _ "${token_file}" 2>/dev/null; then
+        if run_as "${user}" env HTTP_PROXY="${proxy}" HTTPS_PROXY="${proxy}" FLEET_API_URL="${HUB_URL}" \
+            python3 - "${token_file}" <<'PY' 2>/dev/null
+import os
+import sys
+import urllib.request
+from pathlib import Path
+
+token = Path(sys.argv[1]).read_text(encoding="utf-8").strip()
+if not token:
+    raise SystemExit(1)
+base = os.environ["FLEET_API_URL"].rstrip("/")
+proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or ""
+handlers = []
+if proxy:
+    handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+opener = urllib.request.build_opener(*handlers)
+req = urllib.request.Request(
+    f"{base}/api/staff/summary",
+    headers={"Authorization": f"Bearer {token}", "X-Requested-With": "XMLHttpRequest"},
+)
+opener.open(req, timeout=20)
+PY
+        then
             summary_ok=pass
         fi
     fi

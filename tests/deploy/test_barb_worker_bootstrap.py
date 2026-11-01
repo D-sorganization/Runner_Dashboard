@@ -27,7 +27,7 @@ def test_bootstrap_documents_subcommands() -> None:
     assert "verify" in text
     assert "barb-grok" in text and "barb-dots" in text and "barb-duet" in text
     assert "1046" in text and "1056" in text and "1066" in text
-    assert "deskcomputer.tail2bbcc7.ts.net" in text
+    assert "hub-a.fleet-example.ts.net" in text
 
 
 def test_bootstrap_never_echoes_token() -> None:

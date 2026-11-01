@@ -1,6 +1,6 @@
 # barb-worker VM (#3658)
 
-Ubuntu 24.04 worker with `barb-grok`, `barb-dots`, and `barb-duet`. Each userspace Tailscale proxy listens on localhost **1046**, **1056**, or **1066** and reaches the Desk hub at `https://deskcomputer.tail2bbcc7.ts.net:8321` (ports **443** / **8321** only).
+Ubuntu 24.04 worker with `barb-grok`, `barb-dots`, and `barb-duet`. Each userspace Tailscale proxy listens on localhost **1046**, **1056**, or **1066** and reaches the fleet hub over HTTPS through that proxy (Tailscale Serve on the hub; no direct `:8321` URL).
 
 ## Principals
 
@@ -10,17 +10,26 @@ Ubuntu 24.04 worker with `barb-grok`, `barb-dots`, and `barb-duet`. Each userspa
 | `barb-dots` | `agent-codex-hands`  | 1056       |
 | `barb-duet` | `agent-duet`         | 1066       |
 
-Bearer tokens live in `~/.config/runner-dashboard/token` (mode **600**). Shell profile and
-systemd user units export `FLEET_API_TOKEN` from that file without printing it. See
-[barb-lane-principals.md](barb-lane-principals.md) for minting on the hub.
+Bearer tokens live in `~/.config/runner-dashboard/token` (mode **600**). Shell profile and systemd user units export `FLEET_API_TOKEN` from that file without printing it. See [barb-lane-principals.md](barb-lane-principals.md) for minting on the hub.
+
+## Hub URL (operator)
+
+Tracked defaults use the documented example origin `https://hub-a.fleet-example.ts.net` (no port). On the live barb-worker VM, set the Desk hub HTTPS origin before bootstrap:
+
+```bash
+export BARB_WORKER_HUB_URL='https://<desk-hub>.ts.net'   # owner: Tailscale Serve HTTPS only
+```
+
+That value is written into each lane’s shell and systemd env as `FLEET_API_URL`.
 
 ## Bootstrap (vmadmin)
 
-From a `Runner_Dashboard` checkout on the VM (or copy `scripts/barb-worker/` onto the host):
+From a `Runner_Dashboard` checkout on the VM:
 
 ```bash
-cd ~/Runner_Dashboard   # or your checkout path
-sudo bash scripts/barb-worker/bootstrap.sh
+export BARB_WORKER_HUB_URL='https://<desk-hub>.ts.net'
+cd ~/src/Runner_Dashboard
+sudo -E bash scripts/barb-worker/bootstrap.sh
 ```
 
 Idempotent: safe to re-run after hub token installs or repo updates.
@@ -28,7 +37,6 @@ Idempotent: safe to re-run after hub token installs or repo updates.
 Optional:
 
 - `BARB_CLONE_ALL_FLEET_REPOS=1` — clone every repo listed in `config/projects.json` (default is the core sibling set).
-- `BARB_WORKER_HUB_URL` — override hub base URL (default Desk URL above).
 
 ### Install hub tokens (owner; never log or paste)
 
@@ -51,7 +59,7 @@ sudo -u barb-duet  systemctl --user restart barb-lane.service
 ### Verify
 
 ```bash
-sudo bash scripts/barb-worker/bootstrap.sh verify
+sudo -E bash scripts/barb-worker/bootstrap.sh verify
 ```
 
 Prints one line per user with `livez=pass|fail` and `staff_summary=pass|fail` only (no tokens).
@@ -80,12 +88,11 @@ leaves the system `gh` on `PATH` and documents manual setup; do not fall back to
 ## Lane loop
 
 `lane-loop.sh` sources `with-fleet-env.sh`, then polls `python3 scripts/barb_cli.py inbox` on an
-interval (`BARB_LANE_INTERVAL_S`, default 30). This reuses the rd-threads client in
-`scripts/barb_cli.py` (#3072). Hub-side postman keeper logic (`scripts/rd_barb_postman.py`) stays
-on the hub; VM lanes only maintain inbox presence.
+interval (`BARB_LANE_INTERVAL_S`, default 30). Hub-side postman keeper logic (`scripts/rd_barb_postman.py`) stays on the hub; VM lanes only maintain inbox presence.
 
 ## Related
 
 - [Barb lane principals](barb-lane-principals.md)
 - [Codex hands (Dots)](codex-hands.md)
 - [Assistant bridge README](README.md)
+- [Fleet Python client](../../clients/fleet/README.md#barb-worker-vm)

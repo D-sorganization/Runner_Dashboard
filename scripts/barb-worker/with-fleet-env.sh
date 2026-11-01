@@ -3,7 +3,7 @@
 # Shared fleet env for barb-worker lane processes (never echo tokens).
 set -euo pipefail
 
-BARB_WORKER_HUB_URL="${BARB_WORKER_HUB_URL:-https://deskcomputer.tail2bbcc7.ts.net:8321}"
+BARB_WORKER_HUB_URL="${BARB_WORKER_HUB_URL:-https://hub-a.fleet-example.ts.net}"
 RD_CFG="${HOME}/.config/runner-dashboard"
 TOKEN_FILE="${RD_CFG}/token"
 

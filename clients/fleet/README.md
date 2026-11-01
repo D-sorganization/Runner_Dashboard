@@ -68,3 +68,9 @@ the recommended agent loop, see [`docs/agents/connect.md`](../../docs/agents/con
 To add an endpoint, add a method to `FleetClient` and one `Command` row to `fleet_tools.py`.
 The CLI gets the new subcommand automatically. The endpoint also becomes an MCP tool if
 the row sets `tool=`. Tests are in `tests/clients/`.
+
+## barb-worker VM
+
+Barb lane users on the barb-worker VM call the hub through per-user HTTP proxies; bootstrap and
+lane systemd units live under `scripts/barb-worker/` (see [`docs/agents/barb-worker-vm.md`](../../docs/agents/barb-worker-vm.md)).
+Set `FLEET_API_URL` / `BARB_WORKER_HUB_URL` to the hub’s HTTPS Tailscale origin (not `:8321`).
