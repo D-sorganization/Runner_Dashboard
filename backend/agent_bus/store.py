@@ -259,6 +259,9 @@ class AgentBusStore:
             body.work_number,
         )
         out = {"message": message_dict(row), "replayed": False}
+        from agent_bus import doorbell  # noqa: PLC0415
+
+        doorbell.ring()
         from agent_bus.store_rows import BARB_ROLE  # noqa: PLC0415
 
         if body.type == "blocked" and to_address != BARB_ROLE:
