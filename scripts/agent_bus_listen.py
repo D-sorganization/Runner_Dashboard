@@ -63,7 +63,7 @@ def register(args: argparse.Namespace, token: str) -> None:
             "role": args.register_role,
             "provider": args.provider,
             "node": args.node,
-            "lease_seconds": 86400,
+            "lease_seconds": 28800,  # hub max; re-registered on every reconnect
         }
     ).encode()
     req = urllib.request.Request(
