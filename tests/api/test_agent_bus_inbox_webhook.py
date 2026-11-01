@@ -11,9 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from identity import identity_manager
 
-from tests.api.test_agent_bus_slice1 import _auth, _register
-
-_REMOTE = ("100.64.0.9", 51000)
+from tests.api.test_agent_bus_slice1 import _auth, _register, bus_env, client  # noqa: F401
 
 
 class _HookHandler(BaseHTTPRequestHandler):
@@ -37,18 +35,6 @@ class _HookHandler(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def bus_env(_bus_env_fixture: dict[str, str]) -> dict[str, str]:
-    return _bus_env_fixture
-
-
-@pytest.fixture
-def client(bus_env: dict[str, str]) -> TestClient:
-    from server import app  # noqa: PLC0415
-
-    return TestClient(app, raise_server_exceptions=False, client=_REMOTE)
-
-
-@pytest.fixture
 def hook_server() -> HTTPServer:
     _HookHandler.hits = []
     _HookHandler.fail_next = False
@@ -67,7 +53,7 @@ def _configure_webhook(*, role: str, url: str) -> None:
 
 @pytest.mark.unit
 def test_send_posts_inbox_webhook_for_role_recipient(
-    client: TestClient, bus_env: dict[str, str], hook_server: HTTPServer
+    client: TestClient, bus_env: dict[str, str], hook_server: HTTPServer  # noqa: F811
 ) -> None:
     port = hook_server.server_port
     secret = "super-secret-query-token"  # pragma: allowlist secret
@@ -100,7 +86,7 @@ def test_send_posts_inbox_webhook_for_role_recipient(
 
 @pytest.mark.unit
 def test_replayed_send_does_not_repost_webhook(
-    client: TestClient, bus_env: dict[str, str], hook_server: HTTPServer
+    client: TestClient, bus_env: dict[str, str], hook_server: HTTPServer  # noqa: F811
 ) -> None:
     port = hook_server.server_port
     _configure_webhook(role="issue-remediator", url=f"http://127.0.0.1:{port}/hook")
@@ -134,7 +120,7 @@ def test_replayed_send_does_not_repost_webhook(
 
 @pytest.mark.unit
 def test_webhook_failure_does_not_block_send(
-    client: TestClient, bus_env: dict[str, str], hook_server: HTTPServer
+    client: TestClient, bus_env: dict[str, str], hook_server: HTTPServer  # noqa: F811
 ) -> None:
     port = hook_server.server_port
     _HookHandler.fail_next = True
@@ -165,7 +151,7 @@ def test_webhook_failure_does_not_block_send(
 def test_webhook_logs_redact_url_secrets(
     client: TestClient,
     bus_env: dict[str, str],
-    hook_server: HTTPServer,
+    hook_server: HTTPServer,  # noqa: F811
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     import logging
