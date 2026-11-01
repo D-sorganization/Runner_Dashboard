@@ -95,9 +95,42 @@ leaves the system `gh` on `PATH` and documents manual setup; do not fall back to
 `lane-loop.sh` sources `with-fleet-env.sh`, then polls `python3 scripts/barb_cli.py inbox` on an
 interval (`BARB_LANE_INTERVAL_S`, default 30). Hub-side postman keeper logic (`scripts/rd_barb_postman.py`) stays on the hub; VM lanes only maintain inbox presence.
 
+## Panel Relay
+
+`scripts/barb_panel_relay.py` starts hub expert panels for agents that file `panel-request` issues in barbara ([format](panel-requests.md)). It is **off by default** and runs only on the `barb-duet` lane. Bootstrap does not install it.
+
+To enable it, as `barb-duet` add the settings to `~/.config/systemd/user/barb-fleet.env`:
+
+```bash
+PANEL_RELAY_ENABLED=1
+# optional: PANEL_RELAY_REPO, PANEL_RELAY_DAILY_CAP (default 3, resets 00:00 UTC),
+# PANEL_RELAY_AUTHORS (comma list; replaces the fleet-bot defaults, blank keeps them)
+```
+
+Then add a user timer that runs one pass every five minutes:
+
+```ini
+# ~/.config/systemd/user/barb-panel-relay.service
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/systemd/user/barb-fleet.env
+ExecStart=/bin/bash -c 'source /opt/Runner_Dashboard/scripts/barb-worker/with-fleet-env.sh && exec python3 /opt/Runner_Dashboard/scripts/barb_panel_relay.py'
+
+# ~/.config/systemd/user/barb-panel-relay.timer
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+```
+
+Before enabling it, check one pass with `python3 scripts/barb_panel_relay.py --dry-run`. That reads barbara and the hub's presets and writes nothing. State, meaning per-issue outcomes and daily starts, lives in `~/.local/state/barb-panel-relay.json`. If that file is unreadable the relay exits with status 2 and starts nothing; fix it or move it aside. To switch it off, unset `PANEL_RELAY_ENABLED` or stop the timer.
+
 ## Related
 
 - [Barb lane principals](barb-lane-principals.md)
 - [Codex hands (Dots)](codex-hands.md)
+- [Panel requests through barbara](panel-requests.md)
 - [Assistant bridge README](README.md)
 - [Fleet Python client](../../clients/fleet/README.md#barb-worker-vm)
