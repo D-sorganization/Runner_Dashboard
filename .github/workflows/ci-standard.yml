@@ -75,6 +75,7 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             shared_scripts
+            .github/actions/push-hygiene
       - uses: ./.github/actions/push-hygiene
 
   pick-runner:
