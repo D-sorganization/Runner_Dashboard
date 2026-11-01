@@ -172,6 +172,26 @@ def validate_relay(msg: Any, allowed_pairs: Mapping[str, str]) -> list[str]:
     return errors
 
 
+def relay_allowlist_from_config(cfg: Mapping[str, str], *, role: str = "rd-barb") -> dict[str, str]:
+    """Parse the ``from_role:to_grok_bot`` relay allowlist for ``role`` from its config (#3705 follow-up).
+
+    No real per-role pairs ship yet; each persona-port issue (#3696-#3704) adds its own entry to
+    its role's ``RD_<ROLE>_RELAY_ALLOWLIST`` (comma-separated ``from_role:to_grok_bot`` pairs) as it
+    lands, rather than guessing one now. Unlike the shared webhook config, this never falls back to
+    ``RD_BARB_RELAY_ALLOWLIST``: one role's allowlist must never leak into another's. Absent or
+    malformed config fails closed to an empty mapping (deny-all), never a default allow.
+    """
+    prefix = role_env_prefix(normalize_role(role))
+    raw = cfg.get(f"{prefix}RELAY_ALLOWLIST") or ""
+    pairs: dict[str, str] = {}
+    for item in raw.split(","):
+        from_role, _, to_bot = item.strip().partition(":")
+        from_role, to_bot = from_role.strip(), to_bot.strip()
+        if from_role and to_bot:
+            pairs[from_role] = to_bot
+    return pairs
+
+
 def load_config(env: Mapping[str, str] | None = None, *, role: str = "rd-barb") -> dict[str, str]:
     """Env wins over the git-ignored config file; missing keys stay absent."""
     env = os.environ if env is None else env

@@ -5047,6 +5047,29 @@
         "title": "RegisterCompleteRequest",
         "type": "object"
       },
+      "RelayAgentRequest": {
+        "description": "POST body for forwarding an agent-to-agent request to a Grok Bot counterpart (#3705).",
+        "properties": {
+          "from_role": {
+            "maxLength": 80,
+            "title": "From Role",
+            "type": "string"
+          },
+          "request": {
+            "maxLength": 4000,
+            "title": "Request",
+            "type": "string"
+          },
+          "to_grok_bot": {
+            "maxLength": 80,
+            "title": "To Grok Bot",
+            "type": "string"
+          }
+        },
+        "required": ["from_role", "to_grok_bot", "request"],
+        "title": "RelayAgentRequest",
+        "type": "object"
+      },
       "RelayRunCardRequest": {
         "description": "POST body for relaying a run card from an executing node back to origin (issue #1488).",
         "properties": {
@@ -29814,6 +29837,66 @@
           }
         ],
         "summary": "Mark Thread Read",
+        "tags": ["staff-threads"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/relay": {
+      "post": {
+        "description": "Forward one agent-to-agent request from an RD role to its Grok Bot counterpart (#3705).\n\nNo Dieter approval gate: fleet-internal traffic, denied only by the operator-configured\nper-role allowlist (``RD_<ROLE>_RELAY_ALLOWLIST``) and the personal-persona exclusion in\n``rd_barb_notify.validate_relay``. Every attempt is audited via ``staff.audit.record_audit``,\nwhether sent, deduped or denied.",
+        "operationId": "relay_to_grok_bot_api_v1_staff_threads__thread_id__relay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelayAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "relay_not_allowed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Relay To Grok Bot",
         "tags": ["staff-threads"]
       }
     },

@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sys
+from pathlib import Path
 from typing import Any
 
 from fastapi import (
@@ -30,6 +32,7 @@ from staff.conversation_models import (
     AnswerNeedsInputRequest,
     CreateThreadRequest,
     PostMessageRequest,
+    RelayAgentRequest,
     RelayRunCardRequest,
     UpdateThreadRequest,
 )
@@ -49,6 +52,15 @@ from staff.thread_helpers import (
 log = logging.getLogger("dashboard.staff.threads")
 
 router = APIRouter(tags=["staff-threads"])
+
+# Production (start-dashboard.sh) and the E2E harness both launch server.py with only
+# backend/ on sys.path; the repo-root scripts package needs this explicit shim (#3311
+# follow-up, reused here for the #3705 relay-to-Grok-Bot endpoint).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.rd_barb_notify import load_config, persona_relay, relay_allowlist_from_config  # noqa: E402
 
 STREAM_HEARTBEAT_SECONDS = 15.0
 
@@ -410,6 +422,52 @@ async def relay_thread_run_card(
             },
         )
     return ingest_relayed_card(store, get_thread_bus(), thread_id, body)
+
+
+@router.post(
+    "/threads/{thread_id}/relay",
+    response_model=None,
+    responses={403: {"description": "relay_not_allowed"}},
+)
+async def relay_to_grok_bot(
+    thread_id: str,
+    body: RelayAgentRequest,
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Forward one agent-to-agent request from an RD role to its Grok Bot counterpart (#3705).
+
+    No Dieter approval gate: fleet-internal traffic, denied only by the operator-configured
+    per-role allowlist (``RD_<ROLE>_RELAY_ALLOWLIST``) and the personal-persona exclusion in
+    ``rd_barb_notify.validate_relay``. Every attempt is audited via ``staff.audit.record_audit``,
+    whether sent, deduped or denied.
+    """
+    cfg = load_config(role=body.from_role)
+    allowed_pairs = relay_allowlist_from_config(cfg, role=body.from_role)
+
+    def _audit(payload: dict[str, Any]) -> None:
+        outcome = "sent" if (payload.get("result") or {}).get("ok") else "denied"
+        record_audit(
+            action="relay_to_grok_bot",
+            target=f"grok:{payload.get('to_grok_bot', '')}",
+            principal=f"role:{payload.get('from_role', '')}",
+            surface="api",
+            thread_id=thread_id,
+            outcome=outcome,
+            detail=payload,
+            fail_closed=False,
+        )
+
+    result = persona_relay(
+        body.from_role,
+        body.to_grok_bot,
+        body.request,
+        thread_id,
+        allowed_pairs=allowed_pairs,
+        audit=_audit,
+    )
+    if not result.get("ok") and result.get("error") == "relay_not_allowed":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result)
+    return result
 
 
 @router.get(
