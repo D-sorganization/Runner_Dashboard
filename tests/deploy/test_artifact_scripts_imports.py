@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tarfile
-import tempfile
 from pathlib import Path
 
 import pytest
