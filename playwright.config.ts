@@ -11,6 +11,8 @@
 
 import { defineConfig, devices } from "@playwright/test";
 import fs from "fs";
+import os from "os";
+import path from "path";
 import { createServer } from "net";
 const viewportProfilesRaw = JSON.parse(
   fs.readFileSync(new URL("./tests/frontend/mobile/viewport_profiles.json", import.meta.url), "utf-8")
@@ -37,7 +39,39 @@ function getFreePort(): Promise<number> {
   });
 }
 
-const VITE_PORT = process.env.CI ? await getFreePort() : 5173;
+/**
+ * Playwright Test re-imports this config module fresh in every worker
+ * process it spawns over the life of one job (new worker processes per test
+ * file, retries, etc. — even with `workers: 1`). A bare `getFreePort()` call
+ * probed a brand-new ephemeral port on every import, so each worker's
+ * `BASE_URL` pointed at a different port than the one the single
+ * `webServer` process (resolved once, by the master process) actually bound
+ * to — every navigation failed with `net::ERR_CONNECTION_REFUSED` (#3763).
+ *
+ * Cache the first probed port to a job-scoped lock file so every re-import
+ * within the same CI job reads back the same port. The job-scoped key keeps
+ * concurrent jobs on a shared self-hosted runner from colliding on the same
+ * port, which is the original #3738 problem this must not reopen.
+ */
+async function getStableCiPort(): Promise<number> {
+  const jobKey = [
+    process.env.GITHUB_RUN_ID ?? "local",
+    process.env.GITHUB_RUN_ATTEMPT ?? "1",
+    process.env.GITHUB_JOB ?? "job",
+  ].join("-");
+  const lockPath = path.join(os.tmpdir(), `rd-playwright-vite-port-${jobKey}.txt`);
+  if (fs.existsSync(lockPath)) {
+    const cached = parseInt(fs.readFileSync(lockPath, "utf-8"), 10);
+    if (Number.isInteger(cached) && cached > 0) {
+      return cached;
+    }
+  }
+  const port = await getFreePort();
+  fs.writeFileSync(lockPath, String(port));
+  return port;
+}
+
+const VITE_PORT = process.env.CI ? await getStableCiPort() : 5173;
 
 // In CI, the dev-server port is only known after getFreePort() runs above,
 // so the test baseURL must follow it rather than a passed-in DASHBOARD_URL.
