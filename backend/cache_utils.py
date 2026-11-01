@@ -126,8 +126,9 @@ class Cache:
             if time.monotonic() - ts < ttl:
                 self._store.move_to_end(key)  # mark as recently used
                 return data
-            # Expired — remove proactively
-            self._store.pop(key, None)
+        # An entry past this ``ttl`` is kept: a caller with a longer ``ttl`` (the
+        # stale window of ``cache_get_swr``) may still want it. Size eviction
+        # bounds memory (#3673).
         return None
 
     def set(self, key: str, data: Any, ttl: float | None = None) -> None:  # noqa: A003
