@@ -266,6 +266,11 @@ def prepare_review_params(
         f"Advisory only: post a comment review ending in 'STAFF_RESULT: review approve|changes|escalate #{pr}'. "
         "Never request changes or block."
     )
+    if role == REVIEWER_ROLE:
+        # fleet-review's own `roles:` list covers the PR author's pre-push self-review,
+        # not the Code Reviewer's post-hoc pass, so role-based skill matching in
+        # resolve_dispatch_bundle() would miss it; request it by name instead (#3618).
+        clean_params["skill"] = "fleet-review"
 
     if not clean_params.get("provider"):
         author = (
