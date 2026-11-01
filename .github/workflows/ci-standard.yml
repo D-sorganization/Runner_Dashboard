@@ -68,9 +68,12 @@ jobs:
       'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     steps:
+      # Base branch, not the PR head: the local action loads from the
+      # workspace, and branches cut before it existed lack it (#3691). The
+      # action inspects the head commit by sha, reachable via fetch-depth 0.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
           persist-credentials: false
           sparse-checkout: |

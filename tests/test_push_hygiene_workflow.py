@@ -42,6 +42,21 @@ def test_ci_heavy_jobs_tolerate_skipped_push_hygiene() -> None:
         assert "needs.push-hygiene.result == 'skipped'" in job_if, job_name
 
 
+
+def test_push_hygiene_job_loads_its_local_action_from_the_base_branch() -> None:
+    # A local action loads from the workspace. Checking out the PR head made
+    # every branch cut before the action existed fail with "Can't find
+    # action.yml" (#3691); the action inspects the head by sha via --rev.
+    data = yaml.safe_load(_CI_STANDARD.read_text(encoding="utf-8"))
+    steps = data["jobs"]["push-hygiene"]["steps"]
+    local = next(i for i, s in enumerate(steps) if str(s.get("uses", "")).startswith("./"))
+    checkouts = [s for s in steps[:local] if str(s.get("uses", "")).startswith("actions/checkout@")]
+    assert checkouts, "push-hygiene must check out before its local action"
+    ref = str(checkouts[-1].get("with", {}).get("ref", ""))
+    assert "pull_request.head" not in ref
+    assert ref == "${{ github.event.pull_request.base.ref }}"
+    assert checkouts[-1]["with"].get("fetch-depth") == 0
+
 @pytest.mark.parametrize(
     ("payload", "expected_auto", "expected_queue"),
     [
