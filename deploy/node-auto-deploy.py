@@ -30,6 +30,7 @@ from node_auto_deploy.activity import (  # noqa: E402
     fetch_staff_activity,
     local_activity_count,
     staff_database_path,
+    verify_staff_activity_probe,
 )
 from node_auto_deploy.github_api import github_get, load_token_from_env_file  # noqa: E402
 from node_auto_deploy.health import wait_for_health  # noqa: E402
@@ -271,7 +272,11 @@ def main(argv: list[str] | None = None) -> int:
                     return False
                 # A newly active item is valid after service recovery; this call
                 # only verifies the authenticated local API and full DB are readable.
-                staff_in_flight()
+                verify_staff_activity_probe(
+                    f"http://127.0.0.1:{args.port}",
+                    fleet_token,
+                    staff_database_path(),
+                )
                 return True
 
             outcome = install_and_run_transaction(

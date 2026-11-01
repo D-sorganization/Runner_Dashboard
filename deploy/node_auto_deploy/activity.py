@@ -74,6 +74,11 @@ def fetch_staff_activity(base_url: str, token: str | None, database: Path) -> in
     return max(active, local_activity_count(database))
 
 
+def verify_staff_activity_probe(base_url: str, token: str | None, database: Path) -> int:
+    """Post-restart probe: loopback activity summary + local DB (stdlib-only, no backend imports)."""
+    return fetch_staff_activity(base_url, token, database)
+
+
 def staff_database_path(environ: dict[str, str] | None = None) -> Path:
     env = environ if environ is not None else os.environ
     configured = env.get("STAFF_RUNS_DB", "").strip()
