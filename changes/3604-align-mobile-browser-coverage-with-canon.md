@@ -3,7 +3,7 @@ issue: 3604
 summary: "Align mobile browser coverage with canonical direct rd-barb role"
 dl_state: "in_review"
 next_step: "Verify isolated browser suite and CI"
-branch: "cursor/mobile-rd-barb-e2e-5bd8"
+branch: "cursor/issue-3604-rd-barb-e2e-5bd8"
 ---
 
 The mobile chat-home browser test asserts the exact rd-barb route required by
