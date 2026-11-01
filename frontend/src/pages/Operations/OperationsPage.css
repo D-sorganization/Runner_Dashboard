@@ -1,0 +1,14 @@
+/* Mobile touch-target contract (#3748): OperationsStatusBanner's section-tab
+ * buttons (25px tall) and the per-section action buttons across
+ * OperationsAdmissionSection/OperationsDeploySection/
+ * OperationsDiagnosticsSection/OperationsRunnerHoursSection/
+ * OperationsScheduledWorkflowsSection/OperationsWslDiskCard are plain
+ * `<button>` elements with inline styles sized for a dense desktop console.
+ * Scope a 44px minimum to this page so Fleet/Queue/Staff (out of scope for
+ * #3748) are unaffected. */
+@media (max-width: 720px) {
+  .operations-page button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

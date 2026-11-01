@@ -14,6 +14,7 @@ import { OperationsScheduledWorkflowsSection, type ScheduledWorkflowsData } from
 import { OperationsDiagnosticsSection, type DiagnosticsSummary } from "./OperationsDiagnosticsSection";
 import { OperationsCiMetricsSection } from "./OperationsCiMetricsSection";
 import { OperationsLocalToolsSubsection } from "./OperationsLocalToolsSubsection";
+import "./OperationsPage.css";
 
 const CI_METRICS_PANEL_ENABLED =
   (import.meta.env as Record<string, string | undefined>).VITE_CI_METRICS_PANEL_ENABLED !== "false";
@@ -96,6 +97,7 @@ export function OperationsPage(): React.ReactElement {
 
   return (
     <div
+      className="operations-page"
       style={{
         maxWidth: "1400px",
         margin: "0 auto",

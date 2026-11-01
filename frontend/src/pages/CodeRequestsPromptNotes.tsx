@@ -57,7 +57,7 @@ export function PromptNotesEditor({
             Auto-inject Prompt Notes
           </label>
         </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
           These notes will be automatically prepended to every prompt dispatch
         </div>
       </div>
@@ -89,10 +89,10 @@ export function PromptNotesEditor({
           Save Notes
         </button>
         {saveStatus === "ok" ? (
-          <div style={{ color: "var(--accent-green)", fontSize: 11 }}>✓ Saved</div>
+          <div style={{ color: "var(--accent-green)", fontSize: 12 }}>✓ Saved</div>
         ) : null}
         {saveStatus === "error" ? (
-          <div style={{ color: "var(--accent-red)", fontSize: 11 }}>✗ Failed</div>
+          <div style={{ color: "var(--accent-red)", fontSize: 12 }}>✗ Failed</div>
         ) : null}
       </div>
     </div>
