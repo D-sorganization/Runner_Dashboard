@@ -11,11 +11,39 @@
 
 import { defineConfig, devices } from "@playwright/test";
 import fs from "fs";
+import { createServer } from "net";
 const viewportProfilesRaw = JSON.parse(
   fs.readFileSync(new URL("./tests/frontend/mobile/viewport_profiles.json", import.meta.url), "utf-8")
 );
 
-const BASE_URL = process.env.DASHBOARD_URL ?? "http://localhost:8321";
+/**
+ * Self-hosted CI runners can run multiple Playwright jobs on a shared host
+ * network, so a fixed Vite dev-server port collides across jobs (#3738).
+ * Ask the OS for a genuinely free ephemeral port instead.
+ */
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address && typeof address === "object") {
+        server.close(() => resolve(address.port));
+      } else {
+        server.close(() => reject(new Error("failed to allocate a free port")));
+      }
+    });
+  });
+}
+
+const VITE_PORT = process.env.CI ? await getFreePort() : 5173;
+
+// In CI, the dev-server port is only known after getFreePort() runs above,
+// so the test baseURL must follow it rather than a passed-in DASHBOARD_URL.
+const BASE_URL = process.env.CI
+  ? `http://localhost:${VITE_PORT}`
+  : (process.env.DASHBOARD_URL ?? "http://localhost:8321");
 const WEB_SERVER_ENV = Object.fromEntries(
   Object.entries(process.env).filter(
     (entry): entry is [string, string] => typeof entry[1] === "string",
@@ -72,9 +100,9 @@ export default defineConfig({
   ...(process.env.CI
     ? {
         webServer: {
-          command: "npm run dev -- --port 5173",
+          command: `npm run dev -- --port ${VITE_PORT}`,
           env: WEB_SERVER_ENV,
-          url: "http://localhost:5173",
+          url: `http://localhost:${VITE_PORT}`,
           reuseExistingServer: !process.env.CI,
           timeout: 60_000,
         },
