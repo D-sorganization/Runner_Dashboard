@@ -45,7 +45,7 @@ def fetch_hub_github_app_token(*, repository: str | None = None) -> tuple[str, f
         body["repository"] = repository.strip()
     client = FleetClient(token=token)
     try:
-        resp = client.request("POST", _APP_TOKEN_PATH, body=body or None)
+        resp = client.request("POST", _APP_TOKEN_PATH, body=body)  # hub requires a JSON body, even empty (#3668)
     except FleetAPIError as exc:
         message = str(exc).replace(token, "[redacted]")
         raise RuntimeError(f"hub app-token request failed: {message}") from exc

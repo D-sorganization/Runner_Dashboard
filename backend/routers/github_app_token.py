@@ -55,12 +55,12 @@ def mint_barb_github_app_token(*, repository: str | None = None) -> StaffGithubT
 
 @router.post("/api/github/app-token", response_model=GithubAppTokenResponse, response_model_exclude_none=True)
 async def post_github_app_token(
-    body: GithubAppTokenRequest,
     request: Request,
+    body: GithubAppTokenRequest | None = None,
     caller: Principal = Depends(require_scope("github.app_token")),  # noqa: B008
 ) -> GithubAppTokenResponse:
     check_rate_limit("github_app_token", caller, limiter=get_rate_limiter())
-    repo = (body.repository or "").strip() or None
+    repo = ((body.repository if body else None) or "").strip() or None
     cred = mint_barb_github_app_token(repository=repo)
     record_audit(
         action="github_app_token",

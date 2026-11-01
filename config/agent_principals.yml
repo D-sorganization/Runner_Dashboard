@@ -95,6 +95,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-codex
     kind: codex
     name: Codex CLI agent
