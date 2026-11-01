@@ -55,8 +55,35 @@ def parse_sse(lines):  # type: ignore[no-untyped-def]
             data.append(value)
 
 
+def register(args: argparse.Namespace, token: str) -> None:
+    """(Re)register ``--session`` on the agent bus so the stream's ownership check passes."""
+    body = json.dumps(
+        {
+            "session": args.session,
+            "role": args.register_role,
+            "provider": args.provider,
+            "node": args.node,
+            "lease_seconds": 28800,  # hub max; re-registered on every reconnect
+        }
+    ).encode()
+    req = urllib.request.Request(
+        f"{args.hub.rstrip('/')}/api/v1/agent/register",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/json",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - hub URL is operator config
+        resp.read()
+
+
 def run_once(args: argparse.Namespace, cursor: int) -> int:
     token = Path(args.token_file).expanduser().read_text().strip()
+    if args.register_role:
+        register(args, token)
     q = urllib.parse.urlencode({"session": args.session, "since_cursor": cursor})
     req = urllib.request.Request(
         f"{args.hub.rstrip('/')}/api/v1/agent/inbox/stream?{q}",
@@ -92,9 +119,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--session", required=True)
     p.add_argument("--wake-file", required=True)
     p.add_argument("--pid-file")
+    p.add_argument("--register-role", help="register --session under this role before streaming")
+    p.add_argument("--provider", default="cli")
+    p.add_argument("--node", default=os.uname().nodename if hasattr(os, "uname") else "lane")
     p.add_argument("--once", action="store_true", help="exit after the first stream ends (tests)")
     args = p.parse_args(argv)
-    cursor_file = Path(args.wake_file).with_suffix(".cursor")
+    wake = Path(args.wake_file)
+    wake.parent.mkdir(parents=True, exist_ok=True)
+    if not wake.exists():
+        wake.touch()  # lane keepers key "push enabled" off the wake file existing
+    cursor_file = wake.with_suffix(".cursor")
     cursor = int(cursor_file.read_text()) if cursor_file.exists() and cursor_file.read_text().isdigit() else 0
     delay = 1.0
     while True:
@@ -102,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
             cursor = run_once(args, cursor)
             delay = 1.0
         except Exception as exc:  # noqa: BLE001 - keep listening through hub restarts
-            print(f"stream error: {type(exc).__name__}; retry in {delay:.0f}s", file=sys.stderr, flush=True)
+            code = getattr(exc, "code", "")
+            print(f"stream error: {type(exc).__name__} {code}; retry in {delay:.0f}s", file=sys.stderr, flush=True)
             if args.once:
                 return 1
             time.sleep(delay)
