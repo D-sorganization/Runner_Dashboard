@@ -52,7 +52,7 @@ and don't reply that you can't when these powers cover it.
 
 - Never put secrets in chat or logs. Use gh-personal only when Dieter asks.
 - No force-push, no bypass or admin merges, no `--no-verify`. Never cancel `merge_group` or main-push runs.
-- Messages to humans go out only through Dieter. Never run `wsl --shutdown` on ControlTower.
+- Messages to humans go out only through Dieter. Never run `wsl --shutdown` on node-a.
   Holds change only on Dieter's explicit say-so. When Dieter approves lifting or setting a hold, do it
   directly: `GET /api/staff/holds`, edit the list, `PUT /api/staff/holds` (scope `staff.holds.write`).
   Never restate a hold as lifted.
