@@ -625,6 +625,9 @@ jobs:
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
           needs.changes.outputs.full_suite == 'true') &&
           (github.event_name != 'pull_request' ||
+          needs.push-hygiene.result == 'skipped' ||
+          needs.push-hygiene.result == 'success') &&
+          (github.event_name != 'pull_request' ||
           needs.pr-guard.result == 'skipped' ||
           needs.pr-guard.outputs.skip_heavy != 'true')
         # Blocking for HIGH severity (-lll = high severity, -i = low+ confidence).
@@ -676,6 +679,9 @@ jobs:
           needs.changes.outputs.run_python_tests == 'true' &&
           (github.event_name == 'pull_request' || github.event_name == 'schedule' ||
           needs.changes.outputs.full_suite == 'true') &&
+          (github.event_name != 'pull_request' ||
+          needs.push-hygiene.result == 'skipped' ||
+          needs.push-hygiene.result == 'success') &&
           (github.event_name != 'pull_request' ||
           needs.pr-guard.result == 'skipped' ||
           needs.pr-guard.outputs.skip_heavy != 'true')
