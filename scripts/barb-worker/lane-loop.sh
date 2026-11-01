@@ -24,7 +24,7 @@ fi
 while true; do
     python3 scripts/barb_cli.py inbox '{}' >/dev/null 2>&1 || true
     if [[ -f "${WAKE}" ]]; then
-        bash scripts/agent_bus_wait.sh "${WAKE}" "${INTERVAL}" && echo "$(date -Is) push wake" || true
+        if bash scripts/agent_bus_wait.sh "${WAKE}" "${INTERVAL}"; then echo "$(date -Is) push wake"; fi
     else
         sleep "${INTERVAL}"
     fi
