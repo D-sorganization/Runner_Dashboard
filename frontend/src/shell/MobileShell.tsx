@@ -139,7 +139,8 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
 
   // Determine whether to show the FAB.
   // Visible on Fleet, Workflows, Remediation, Queue. Hidden on Staff itself.
-  const showAskFab = !askOpen && FAB_TABS.has(currentTab)
+  const isFabTab = FAB_TABS.has(currentTab)
+  const showAskFab = !askOpen && isFabTab
 
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({})
 
@@ -269,8 +270,14 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
           <AskBarbIcon className="mobile-shell__ask-barb-icon" />
         </button>
       </header>
-      {/* Main content area — native mobile component takes precedence when provided */}
-      <main id="main-content" className="mobile-shell__content" role="main" tabIndex={-1}>
+      {/* Main content area — native mobile component takes precedence when provided.
+          On FAB tabs, reserve room so the last card isn't hidden under the FAB (#3751). */}
+      <main
+        id="main-content"
+        className={`mobile-shell__content${isFabTab ? ' mobile-shell__content--fab-clearance' : ''}`}
+        role="main"
+        tabIndex={-1}
+      >
         {nativeContent ?? children}
       </main>
       <div className="visually-hidden" aria-live="polite" aria-atomic="true">

@@ -5064,6 +5064,15 @@ th.sortable.active .sort-indicator {
   padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
+/* The Ask FAB floats 56px above this padding plus its own gap (#3751); add
+   that back in on the tabs where the FAB is visible so the last list item
+   stays fully tappable instead of sitting underneath it. */
+.mobile-shell__content.mobile-shell__content--fab-clearance {
+  padding-bottom: calc(
+    var(--bottom-nav-height) + env(safe-area-inset-bottom) + 56px + var(--space-8) + var(--space-8)
+  );
+}
+
 .mobile-shell__nav {
   display: flex;
   justify-content: space-around;

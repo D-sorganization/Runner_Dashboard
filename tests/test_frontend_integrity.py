@@ -379,9 +379,19 @@ def test_mobile_viewport_meta_allows_user_zoom() -> None:
     content = _read_html_shell()
 
     assert 'name="viewport"' in content
-    assert 'content="width=device-width, initial-scale=1.0"' in content
+    assert 'content="width=device-width, initial-scale=1.0, viewport-fit=cover"' in content
     assert "maximum-scale" not in content
     assert "user-scalable=no" not in content
+
+
+def test_mobile_viewport_meta_covers_safe_areas() -> None:
+    """viewport-fit=cover is required for env(safe-area-inset-*) to resolve to
+    the real notch/home-indicator insets in standalone PWA mode (#3751) —
+    without it, those env() values are always 0 even though the bottom tab
+    bar and FAB already rely on them."""
+    content = _read_html_shell()
+
+    assert "viewport-fit=cover" in content
 
 
 def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:
