@@ -1,0 +1,38 @@
+/* Mobile touch-target contract (#3748): `.action-btn` (Dispatch/Save
+ * Template) and the standards-toggle buttons in CodeRequests.tsx had no CSS
+ * at all, relying on the browser default <button> size. Scope a 44px
+ * minimum to this page so Fleet/Queue/Staff (out of scope for #3748) are
+ * unaffected. */
+@media (max-width: 720px) {
+  .code-requests-page button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+.action-btn {
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-blue);
+  background: var(--bg-secondary);
+  color: var(--accent-blue);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.action-btn:hover {
+  background: rgba(88, 166, 255, 0.15);
+}
+.action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.action-btn.secondary {
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+.action-btn.secondary:hover {
+  background: var(--bg-hover);
+}

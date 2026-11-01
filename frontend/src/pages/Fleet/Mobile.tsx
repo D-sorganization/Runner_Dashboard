@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { useHaptic } from "../../hooks/useHaptic";
+import { useVisibilityInterval } from "../../hooks/useVisibilityInterval";
 import { machineTelemetry } from "../../lib/fleetTelemetry";
 import { KpiHeader } from "./KpiHeader";
 import { RunnerCard } from "./RunnerCard";
@@ -78,9 +79,8 @@ export function FleetMobile() {
 
   useEffect(() => {
     fetchFleet();
-    const interval = setInterval(fetchFleet, 30000);
-    return () => clearInterval(interval);
   }, [fetchFleet]);
+  useVisibilityInterval(fetchFleet, 30000);
 
   const nodes = useMemo(() => Object.entries(data), [data]);
 

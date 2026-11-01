@@ -104,6 +104,16 @@ PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
         FailoverStep("antigravity", None),
         FailoverStep("cursor-agent", None),
     ),
+    "mad-scientist": (
+        FailoverStep("claude", None),
+        FailoverStep("codex", None),
+        FailoverStep("antigravity", None),
+    ),
+    "oss-scout": (
+        FailoverStep("claude", None),
+        FailoverStep("antigravity", None),
+        FailoverStep("cursor-agent", None),
+    ),
 }
 SWITCH_ON = frozenset({"auth_expired", "rate_limited", "quota_exhausted", "provider_capacity", "crash"})
 

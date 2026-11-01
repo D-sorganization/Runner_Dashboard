@@ -111,47 +111,49 @@ function ContractsSection({ data }: { data: ContractsOverview }): React.ReactEle
       {data.contracts.length === 0 ? (
         <EmptyState title="No tracked repositories" description="No repository is configured for this dashboard." />
       ) : (
-        <table className="staff-table" data-testid="security-contracts-table">
-          <thead>
-            <tr>
-              <th scope="col">Repository</th>
-              <th scope="col">Enrolled</th>
-              <th scope="col">Valid</th>
-              <th scope="col">Problems</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.contracts.map((row) => (
-              <tr key={row.repo}>
-                <th scope="row">{row.repo}</th>
-                <td>{row.present ? "Yes" : "No"}</td>
-                <td>
-                  {row.error ? (
-                    <Badge tone="warning" size="sm">read error</Badge>
-                  ) : !row.present ? (
-                    <Badge tone="neutral" size="sm">not enrolled</Badge>
-                  ) : row.valid ? (
-                    <Badge tone="success" size="sm">valid</Badge>
-                  ) : (
-                    <Badge tone="danger" size="sm">invalid</Badge>
-                  )}
-                </td>
-                <td>
-                  {row.error ? <span>{row.error}</span> : null}
-                  {row.problems.length > 0 ? (
-                    <ul style={{ margin: 0, paddingLeft: 16 }}>
-                      {row.problems.map((problem, i) => (
-                        <li key={i}>{problem}</li>
-                      ))}
-                    </ul>
-                  ) : row.error ? null : (
-                    "—"
-                  )}
-                </td>
+        <div className="staff-table-wrap">
+          <table className="staff-table" data-testid="security-contracts-table">
+            <thead>
+              <tr>
+                <th scope="col">Repository</th>
+                <th scope="col">Enrolled</th>
+                <th scope="col">Valid</th>
+                <th scope="col">Problems</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.contracts.map((row) => (
+                <tr key={row.repo}>
+                  <th scope="row">{row.repo}</th>
+                  <td>{row.present ? "Yes" : "No"}</td>
+                  <td>
+                    {row.error ? (
+                      <Badge tone="warning" size="sm">read error</Badge>
+                    ) : !row.present ? (
+                      <Badge tone="neutral" size="sm">not enrolled</Badge>
+                    ) : row.valid ? (
+                      <Badge tone="success" size="sm">valid</Badge>
+                    ) : (
+                      <Badge tone="danger" size="sm">invalid</Badge>
+                    )}
+                  </td>
+                  <td>
+                    {row.error ? <span>{row.error}</span> : null}
+                    {row.problems.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: 16 }}>
+                        {row.problems.map((problem, i) => (
+                          <li key={i}>{problem}</li>
+                        ))}
+                      </ul>
+                    ) : row.error ? null : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );
@@ -176,42 +178,44 @@ function PostureSection({ data }: { data: PostureOverview }): React.ReactElement
       {data.repos.length === 0 ? (
         <EmptyState title="No posture yet" description="No tracked repositories." />
       ) : (
-        <table className="staff-table" data-testid="security-posture-table">
-          <thead>
-            <tr>
-              <th scope="col">Repository</th>
-              <th scope="col">Scanning</th>
-              <th scope="col">Open findings</th>
-              {ALERT_KINDS.map((kind) => (
-                <th scope="col" key={kind}>{ALERT_LABELS[kind]}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.repos.map((row) => (
-              <tr key={row.repo}>
-                <th scope="row">{row.repo}</th>
-                <td>{row.operator?.enabled === false ? "off" : "on"}</td>
-                <td>{formatSeverityCounts(row.open_findings)}</td>
-                {ALERT_KINDS.map((kind) => {
-                  const alert = row.github_alerts?.[kind];
-                  const breakdown =
-                    alert?.status === "ok"
-                      ? formatSeverityCounts(alert.by_severity)
-                      : alert?.reason ?? undefined;
-                  return (
-                    <td key={kind} title={breakdown}>
-                      {formatAlert(alert)}
-                      {alert?.status === "ok" && alert.open > 0 ? (
-                        <span className="staff-muted"> ({breakdown})</span>
-                      ) : null}
-                    </td>
-                  );
-                })}
+        <div className="staff-table-wrap">
+          <table className="staff-table" data-testid="security-posture-table">
+            <thead>
+              <tr>
+                <th scope="col">Repository</th>
+                <th scope="col">Scanning</th>
+                <th scope="col">Open findings</th>
+                {ALERT_KINDS.map((kind) => (
+                  <th scope="col" key={kind}>{ALERT_LABELS[kind]}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {data.repos.map((row) => (
+                <tr key={row.repo}>
+                  <th scope="row">{row.repo}</th>
+                  <td>{row.operator?.enabled === false ? "off" : "on"}</td>
+                  <td>{formatSeverityCounts(row.open_findings)}</td>
+                  {ALERT_KINDS.map((kind) => {
+                    const alert = row.github_alerts?.[kind];
+                    const breakdown =
+                      alert?.status === "ok"
+                        ? formatSeverityCounts(alert.by_severity)
+                        : alert?.reason ?? undefined;
+                    return (
+                      <td key={kind} title={breakdown}>
+                        {formatAlert(alert)}
+                        {alert?.status === "ok" && alert.open > 0 ? (
+                          <span className="staff-muted"> ({breakdown})</span>
+                        ) : null}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );
@@ -228,40 +232,42 @@ function FindingsTable({
     return <EmptyState title="No findings" description="Nothing matches these filters." />;
   }
   return (
-    <table className="staff-table" data-testid="security-findings-table">
-      <thead>
-        <tr>
-          <th scope="col">Severity</th>
-          <th scope="col">Finding</th>
-          <th scope="col">Repository</th>
-          <th scope="col">Location</th>
-          <th scope="col">State</th>
-          <th scope="col">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.id}>
-            <td>
-              <Badge tone={severityTone(row.severity)} size="sm">{row.severity}</Badge>
-            </td>
-            <th scope="row">
-              {row.title} <span className="staff-muted">{row.cwe}</span>
-            </th>
-            <td>{row.repo}</td>
-            <td>
-              <code>{row.path}</code>
-            </td>
-            <td>{stateLabel(row.state)}</td>
-            <td>
-              <TouchButton onClick={() => onSelect(row.id)} aria-label={`Open finding ${row.title}`}>
-                Details
-              </TouchButton>
-            </td>
+    <div className="staff-table-wrap">
+      <table className="staff-table" data-testid="security-findings-table">
+        <thead>
+          <tr>
+            <th scope="col">Severity</th>
+            <th scope="col">Finding</th>
+            <th scope="col">Repository</th>
+            <th scope="col">Location</th>
+            <th scope="col">State</th>
+            <th scope="col">Actions</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>
+                <Badge tone={severityTone(row.severity)} size="sm">{row.severity}</Badge>
+              </td>
+              <th scope="row">
+                {row.title} <span className="staff-muted">{row.cwe}</span>
+              </th>
+              <td>{row.repo}</td>
+              <td>
+                <code>{row.path}</code>
+              </td>
+              <td>{stateLabel(row.state)}</td>
+              <td>
+                <TouchButton onClick={() => onSelect(row.id)} aria-label={`Open finding ${row.title}`}>
+                  Details
+                </TouchButton>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

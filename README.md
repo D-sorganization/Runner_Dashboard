@@ -137,6 +137,8 @@ bash start-dashboard.sh --demo
 ```
 
 Open http://localhost:8321. The page is marked **DEMO DATA · READ ONLY**.
+Demo mode builds the sample-data frontend and binds to `127.0.0.1`, even if
+`DASHBOARD_HOST` or `--host` requests a wider interface.
 Python 3.11+, Node.js 18+, and npm are required for a clean checkout.
 
 ### Connect a Real Dashboard

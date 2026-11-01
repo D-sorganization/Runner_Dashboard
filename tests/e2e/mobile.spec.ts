@@ -149,6 +149,33 @@ test.describe("Mobile accessibility", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mobile horizontal overflow (#3747) — no page scrolls sideways at phone
+// width. The scroller is `main.mobile-shell__content`, not `document`.
+// ---------------------------------------------------------------------------
+
+test.describe("Mobile horizontal overflow", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
+  for (const path of ["/fleet/security", "/settings"]) {
+    test(`${path} has no horizontal overflow in main`, async ({ page }) => {
+      await page.goto(path);
+      const main = page.locator("main.mobile-shell__content");
+      await expect(main).toBeVisible();
+      // Sections load async (security contracts/posture/coverage/findings,
+      // settings' local-apps/vault); wait for data requests to settle before
+      // measuring, or the table/form that causes the overflow may not have
+      // rendered yet.
+      await page.waitForLoadState("networkidle", { timeout: 30_000 });
+      const { scrollWidth, clientWidth } = await main.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }));
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Mobile Staff Console (SC-D8)
 // ---------------------------------------------------------------------------
 
