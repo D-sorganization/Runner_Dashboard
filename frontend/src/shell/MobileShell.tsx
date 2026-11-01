@@ -91,6 +91,9 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
   const [barbOpen, setBarbOpen] = useState(false)
   const barbToggleRef = useRef<HTMLButtonElement>(null)
   const [drawerAnnouncement, setDrawerAnnouncement] = useState('')
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const drawerCloseRef = useRef<HTMLButtonElement>(null)
+  const drawerWasOpenRef = useRef(false)
 
   const openAsk = useCallback(() => setAskOpen(true), [])
   const closeAsk = useCallback(() => setAskOpen(false), [])
@@ -129,6 +132,50 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
   const showAskFab = !askOpen && FAB_TABS.has(currentTab)
 
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({})
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      if (drawerWasOpenRef.current) tabRefs.current[MORE_TAB_ID]?.focus()
+      drawerWasOpenRef.current = false
+      return
+    }
+
+    drawerWasOpenRef.current = true
+    drawerCloseRef.current?.focus()
+
+    const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        setDrawerOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = drawerRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (!focusable?.length) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (!drawerRef.current?.contains(active)) {
+        event.preventDefault()
+        const target = event.shiftKey ? last : first
+        target.focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleDrawerKeyDown)
+    return () => document.removeEventListener('keydown', handleDrawerKeyDown)
+  }, [drawerOpen])
 
   const handleTabClick = useCallback((tab: BottomTab) => {
     if (tab.isMore) {
@@ -282,9 +329,10 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
       {/* Drawer for additional tabs */}
       {drawerOpen && (
         <div className="mobile-shell__drawer-overlay" onClick={() => setDrawerOpen(false)} role="presentation">
-          <div className="mobile-shell__drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="More options">
+          <div ref={drawerRef} className="mobile-shell__drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="More options">
             <div className="mobile-shell__drawer-header">
               <button
+                ref={drawerCloseRef}
                 className="mobile-shell__drawer-close"
                 onClick={() => setDrawerOpen(false)}
                 type="button"
