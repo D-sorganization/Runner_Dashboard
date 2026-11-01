@@ -206,6 +206,10 @@ bash deploy/setup.sh
 bash deploy/update-deployed.sh
 ```
 
+A containerized Docker Compose install is also supported (`docker/docker-compose.yml`).
+See [`docs/install-paths.md`](docs/install-paths.md) for both supported install
+paths and the config/secret separation contract each one follows.
+
 Runner Dashboard single-worker is the only supported mode. Keep `WORKERS=1`
 and `uvicorn --workers 1` (including `WEB_CONCURRENCY=1` when set). Startup
 refuses worker counts greater than one because leases, locks, rate limiters,
