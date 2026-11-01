@@ -56,6 +56,7 @@ ALLOWED_ACTIONS = frozenset(
         "intake_proposal_create",
         "intake_proposal_decide",
         "host_flip",
+        "github_app_token",
     }
 )
 

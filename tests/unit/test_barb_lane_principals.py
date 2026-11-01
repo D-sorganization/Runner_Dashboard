@@ -22,6 +22,7 @@ PEER_SCOPES = (
     "coordination.write",
     "proposals.write",
     "assessments.dispatch",
+    "github.app_token",
 )
 
 
