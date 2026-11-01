@@ -228,6 +228,33 @@ def test_persona_relay_wires_notifier_relay(tmp_path: Path, rec: Rec) -> None:
     assert result == {"ok": True, "status": "sent"}
 
 
+# ── relay allowlist config (#3705 follow-up: staff-threads-API endpoint) ────
+
+
+def test_relay_allowlist_from_config_is_empty_when_unset() -> None:
+    """No real per-role pairs ship yet; absent config fails closed to deny-all."""
+    assert rn.relay_allowlist_from_config({}, role="pm-gasification") == {}
+
+
+def test_relay_allowlist_from_config_parses_role_prefixed_pairs() -> None:
+    cfg = {"RD_PM_GASIFICATION_RELAY_ALLOWLIST": "pm-gasification:pm-gasification, karl:karl"}
+    assert rn.relay_allowlist_from_config(cfg, role="pm-gasification") == {
+        "pm-gasification": "pm-gasification",
+        "karl": "karl",
+    }
+
+
+def test_relay_allowlist_from_config_ignores_malformed_entries() -> None:
+    cfg = {"RD_PM_GASIFICATION_RELAY_ALLOWLIST": "no-colon-here, :empty-from, to-empty:, good:pair"}
+    assert rn.relay_allowlist_from_config(cfg, role="pm-gasification") == {"good": "pair"}
+
+
+def test_relay_allowlist_from_config_does_not_fall_back_to_rd_barb() -> None:
+    """Unlike the shared webhook config, one role's allowlist never leaks into another's."""
+    cfg = {"RD_BARB_RELAY_ALLOWLIST": "rd-barb:night-watch"}
+    assert rn.relay_allowlist_from_config(cfg, role="pm-gasification") == {}
+
+
 def test_fyi_is_batched_into_one_digest(tmp_path: Path, rec: Rec) -> None:
     n = _notifier(tmp_path, rec)
     assert n.notify(_fyi("f1"))["status"] == "queued_for_digest"

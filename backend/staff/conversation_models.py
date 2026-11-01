@@ -276,6 +276,14 @@ class AnswerNeedsInputRequest(BaseModel):
     answer: str
 
 
+class RelayAgentRequest(BaseModel):
+    """POST body for forwarding an agent-to-agent request to a Grok Bot counterpart (#3705)."""
+
+    from_role: str = Field(..., max_length=80)
+    to_grok_bot: str = Field(..., max_length=80)
+    request: str = Field(..., max_length=4000)
+
+
 class RelayRunCardRequest(BaseModel):
     """POST body for relaying a run card from an executing node back to origin (issue #1488)."""
 

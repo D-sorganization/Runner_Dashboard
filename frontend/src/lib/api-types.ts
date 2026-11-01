@@ -8079,6 +8079,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/threads/{thread_id}/relay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relay To Grok Bot
+         * @description Forward one agent-to-agent request from an RD role to its Grok Bot counterpart (#3705).
+         *
+         *     No Dieter approval gate: fleet-internal traffic, denied only by the operator-configured
+         *     per-role allowlist (``RD_<ROLE>_RELAY_ALLOWLIST``) and the personal-persona exclusion in
+         *     ``rd_barb_notify.validate_relay``. Every attempt is audited via ``staff.audit.record_audit``,
+         *     whether sent, deduped or denied.
+         */
+        post: operations["relay_to_grok_bot_api_v1_staff_threads__thread_id__relay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/threads/{thread_id}/relay-card": {
         parameters: {
             query?: never;
@@ -10962,6 +10987,18 @@ export interface components {
             credential: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * RelayAgentRequest
+         * @description POST body for forwarding an agent-to-agent request to a Grok Bot counterpart (#3705).
+         */
+        RelayAgentRequest: {
+            /** From Role */
+            from_role: string;
+            /** Request */
+            request: string;
+            /** To Grok Bot */
+            to_grok_bot: string;
         };
         /**
          * RelayRunCardRequest
@@ -25966,6 +26003,48 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relay_to_grok_bot_api_v1_staff_threads__thread_id__relay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelayAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description relay_not_allowed */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
