@@ -2,7 +2,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useSession, type DashboardPrincipal } from "../useSession";
+import { SESSION_POLL_MS, useSession, type DashboardPrincipal } from "../useSession";
 
 const github: DashboardPrincipal = {
   id: "owner",
@@ -71,5 +71,77 @@ describe("useSession", () => {
     principal = null;
     await act(async () => result.current.refresh());
     await waitFor(() => expect(result.current.loggedIn).toBe(false));
+  });
+});
+
+describe("useSession polling while hidden (#3672)", () => {
+  let visibility: DocumentVisibilityState;
+  const setVisibility = (next: DocumentVisibilityState) => {
+    visibility = next;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  const probe = vi.fn(async () => ({ loggedIn: false as const }));
+
+  beforeEach(() => {
+    visibility = "visible";
+    probe.mockClear();
+    vi.useFakeTimers();
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("polls no faster than the 30 s default", () => {
+    expect(SESSION_POLL_MS).toBeGreaterThanOrEqual(30_000);
+  });
+
+  it("probes on the interval while visible", async () => {
+    renderHook(() => useSession({ probe, pollMs: 1000 }));
+    expect(probe).toHaveBeenCalledTimes(1);
+    await act(async () => void vi.advanceTimersByTime(3000));
+    expect(probe).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops the interval while hidden and re-probes when visible again", async () => {
+    renderHook(() => useSession({ probe, pollMs: 1000 }));
+    await act(async () => void setVisibility("hidden"));
+    probe.mockClear();
+    await act(async () => void vi.advanceTimersByTime(10_000));
+    expect(probe).not.toHaveBeenCalled();
+
+    await act(async () => void setVisibility("visible"));
+    expect(probe).toHaveBeenCalledTimes(1);
+    await act(async () => void vi.advanceTimersByTime(2000));
+    expect(probe).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not start an interval when mounted in a hidden tab", async () => {
+    visibility = "hidden";
+    renderHook(() => useSession({ probe, pollMs: 1000 }));
+    probe.mockClear();
+    await act(async () => void vi.advanceTimersByTime(5000));
+    expect(probe).not.toHaveBeenCalled();
+    await act(async () => void setVisibility("visible"));
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not stack intervals across repeated visibility changes", async () => {
+    renderHook(() => useSession({ probe, pollMs: 1000 }));
+    await act(async () => void setVisibility("visible"));
+    await act(async () => void setVisibility("visible"));
+    probe.mockClear();
+    await act(async () => void vi.advanceTimersByTime(3000));
+    expect(probe).toHaveBeenCalledTimes(3);
+  });
+
+  it("clears the interval on unmount", async () => {
+    const { unmount } = renderHook(() => useSession({ probe, pollMs: 1000 }));
+    unmount();
+    probe.mockClear();
+    await act(async () => void vi.advanceTimersByTime(5000));
+    expect(probe).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

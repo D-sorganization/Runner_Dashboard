@@ -68,7 +68,12 @@ export async function probeDashboardSession(
   return { loggedIn: true, principal, presentation: presentSession(principal) };
 }
 
-export const SESSION_POLL_MS = 5000;
+/**
+ * Background re-probe cadence (#3672). Focus, pageshow and visibilitychange
+ * re-probe immediately, so an expired session is caught the moment the user
+ * returns; this interval only covers a tab that stays in view.
+ */
+export const SESSION_POLL_MS = 30_000;
 
 export type SessionProbe = (
   fetchFn?: typeof fetch,
@@ -129,13 +134,26 @@ export function useSession(options: UseSessionOptions = {}): SessionState {
   }, [runProbe]);
 
   useEffect(() => {
-    void runProbe();
+    const isHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const stopPolling = () => {
+      if (timer !== undefined) clearInterval(timer);
+      timer = undefined;
+    };
+    // No interval runs while the tab is hidden; it restarts when the tab is shown.
+    const startPolling = () => {
+      if (pollMs <= 0 || timer !== undefined || isHidden()) return;
+      timer = setInterval(() => void runProbe(), pollMs);
+    };
     const onFocus = () => void runProbe();
     const onVisibility = () => {
-      if (typeof document === "undefined" || document.visibilityState === "visible") {
-        void runProbe();
-      }
+      stopPolling();
+      if (isHidden()) return;
+      void runProbe();
+      startPolling();
     };
+    void runProbe();
+    startPolling();
     if (typeof window !== "undefined") {
       window.addEventListener("focus", onFocus);
       window.addEventListener("pageshow", onFocus);
@@ -143,8 +161,8 @@ export function useSession(options: UseSessionOptions = {}): SessionState {
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", onVisibility);
     }
-    const timer = pollMs > 0 ? setInterval(() => void runProbe(), pollMs) : undefined;
     return () => {
+      stopPolling();
       if (typeof window !== "undefined") {
         window.removeEventListener("focus", onFocus);
         window.removeEventListener("pageshow", onFocus);
@@ -152,7 +170,6 @@ export function useSession(options: UseSessionOptions = {}): SessionState {
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", onVisibility);
       }
-      if (timer) clearInterval(timer);
     };
   }, [runProbe, pollMs]);
 
