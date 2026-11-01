@@ -2746,6 +2746,39 @@
         "title": "FrictionUpdate",
         "type": "object"
       },
+      "GithubAppTokenRequest": {
+        "properties": {
+          "repository": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository"
+          }
+        },
+        "title": "GithubAppTokenRequest",
+        "type": "object"
+      },
+      "GithubAppTokenResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": ["token", "expires_at"],
+        "title": "GithubAppTokenResponse",
+        "type": "object"
+      },
       "GithubCredentialResponse": {
         "properties": {
           "expires_at": {
@@ -14111,6 +14144,53 @@
         ],
         "summary": "Get Fleet Status",
         "tags": ["fleet"]
+      }
+    },
+    "/api/github/app-token": {
+      "post": {
+        "operationId": "post_github_app_token_api_github_app_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GithubAppTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubAppTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Github App Token",
+        "tags": ["github"]
       }
     },
     "/api/github/status": {

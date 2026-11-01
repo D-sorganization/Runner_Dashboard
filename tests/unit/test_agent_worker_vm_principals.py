@@ -24,6 +24,8 @@ BARB_SCOPES = (
     "assessments.dispatch",
 )
 
+BARB_GITHUB_APP_TOKEN = "github.app_token"
+
 
 @pytest.mark.parametrize(
     ("pid", "kind"),
@@ -49,5 +51,9 @@ def test_worker_vm_principals_least_privilege(
     assert prin.assistant_kind == kind
     for scope in BARB_SCOPES:
         assert principal_has_scope(prin, scope)
+    if pid in ("agent-grok", "agent-grok-vm", "agent-duet"):
+        assert principal_has_scope(prin, BARB_GITHUB_APP_TOKEN)
+    else:
+        assert not principal_has_scope(prin, BARB_GITHUB_APP_TOKEN)
     for scope in ("admin", "staff.admin", "operator"):
         assert not principal_has_scope(prin, scope)

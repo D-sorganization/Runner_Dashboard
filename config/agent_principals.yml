@@ -39,6 +39,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-grok-vm
     kind: grokbot
     name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
@@ -55,6 +56,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-duet
     kind: claude
     name: Duet Barb (barb-worker VM)
@@ -71,6 +73,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-smithers
     kind: grokbot
     name: Smithers (Grok work-task intake)
@@ -123,6 +126,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-claude-barb
     kind: claude
     name: Claude Barb lane
@@ -139,6 +143,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-codex-barb
     kind: codex
     name: Codex Barb lane
@@ -155,6 +160,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-cursor-barb
     kind: other
     name: Cursor Barb lane
@@ -171,6 +177,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: agent-agy-barb
     kind: other
     name: Antigravity Barb lane
@@ -187,6 +194,7 @@ agents:
       - coordination.write
       - proposals.write
       - assessments.dispatch
+      - github.app_token
   - id: email-intake
     name: Verified email intake
     roles:
