@@ -70,6 +70,12 @@ PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
         FailoverStep("cursor-agent", None),
         FailoverStep("codex", "gpt-6.1-sol"),
     ),
+    "pm-affinedrift": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("antigravity", "gemini-3.8-flash-high"),
+        FailoverStep("cursor-agent", None),
+        FailoverStep("codex", "gpt-6.1-sol"),
+    ),
 }
 SWITCH_ON = frozenset({"auth_expired", "rate_limited", "quota_exhausted", "provider_capacity", "crash"})
 
