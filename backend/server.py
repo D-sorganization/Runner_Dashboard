@@ -792,6 +792,7 @@ from routers import staff_requests as _staff_requests_router  # noqa: E402
 from routers import staff_routing as _staff_routing_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
 from routers import staff_threads as _staff_threads_router  # noqa: E402
+from routers import staff_threads_stream as _staff_threads_stream_router  # noqa: E402
 from routers import staff_usage as _staff_usage_router  # noqa: E402
 from routers import staff_v1 as _staff_v1_router  # noqa: E402
 from routers import staff_work_items as _staff_work_items_router  # noqa: E402
@@ -799,6 +800,7 @@ from routers import staff_work_items as _staff_work_items_router  # noqa: E402
 app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
 app.include_router(_staff_dispatcher_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
+app.include_router(_staff_threads_stream_router.router, prefix="/api/v1/staff")  # SSE thread stream (#3705 follow-up)
 app.include_router(_staff_export_router.router, prefix="/api/v1/staff")  # Thread export & retention (issue #1490)
 app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
 app.include_router(_staff_barb_router.router, prefix="/api/v1/staff")  # Barb authority status (issue #1800)

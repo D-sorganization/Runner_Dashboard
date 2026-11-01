@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
@@ -16,11 +15,10 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
-    Request,
     Response,
     status,
 )
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from identity import Principal, format_caller, require_fleet_peer, require_scope
 from staff.audit import record_audit
 from staff.availability import record_fast_acknowledgment
@@ -61,8 +59,6 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from scripts.rd_barb_notify import load_config, persona_relay, relay_allowlist_from_config  # noqa: E402
-
-STREAM_HEARTBEAT_SECONDS = 15.0
 
 
 def _get_store_or_503() -> Any:
@@ -468,69 +464,6 @@ async def relay_to_grok_bot(
     if not result.get("ok") and result.get("error") == "relay_not_allowed":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result)
     return result
-
-
-@router.get(
-    "/threads/{thread_id}/stream",
-)
-@router.get("/threads/{thread_id}/events", include_in_schema=False)
-async def stream_thread(
-    thread_id: str,
-    request: Request,
-    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
-    since_seq: int | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-    follow: bool = Query(default=True, description="Keep stream open for live updates"),
-    caller: Principal = Depends(require_scope("staff.read")),
-) -> StreamingResponse:
-    """SSE feed for thread updates (token deltas, message completions, proposals)."""
-    store = _get_store_or_503()
-    thread = store.get_thread(thread_id)
-    if not thread or not thread_readable_by(thread, caller):
-        raise HTTPException(status_code=404, detail="thread not found")
-
-    bus = get_thread_bus()
-    queue = await bus.subscribe(thread_id)
-
-    # Determine replay point
-    replay_after = 0
-    if since_seq is not None:
-        replay_after = since_seq
-    elif last_event_id is not None:
-        try:
-            replay_after = int(last_event_id)
-        except ValueError:
-            replay_after = 0
-
-    async def _event_generator():  # type: ignore[no-untyped-def]
-        try:
-            # 1. Replay missed messages from SQLite
-            missed = store.list_messages(thread_id, limit=limit, since_seq=replay_after)
-            for m in missed:
-                yield f"id: {m.seq}\nevent: message\ndata: {json.dumps(m.to_dict())}\n\n"
-
-            if not follow:
-                return
-
-            # 2. Live event loop
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    ev = await asyncio.wait_for(queue.get(), timeout=STREAM_HEARTBEAT_SECONDS)
-                    eid = ev.get("id")
-                    eid_str = f"id: {eid}\n" if eid is not None else ""
-                    yield f"{eid_str}event: {ev['event']}\ndata: {json.dumps(ev['data'])}\n\n"
-                except TimeoutError:
-                    yield ": keep-alive\n\n"
-        finally:
-            await bus.unsubscribe(thread_id, queue)
-
-    return StreamingResponse(
-        _event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
 
 
 # ── READ STATUS & INBOX ──────────────────────────────────────────────────────
