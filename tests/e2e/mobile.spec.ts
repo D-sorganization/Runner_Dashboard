@@ -54,6 +54,61 @@ test.describe("Mobile shell bottom navigation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mobile header chrome (#3749)
+// ---------------------------------------------------------------------------
+
+test.describe("Mobile header chrome (#3749)", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
+  test("Ask Barb header button is a compact icon with its label only in aria-label", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const askBarb = page.getByTestId("mobile-ask-barb");
+    await expect(askBarb).toHaveAccessibleName("Ask Barb");
+    expect((await askBarb.innerText()).trim()).toBe("");
+    const box = await askBarb.boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test("header no longer floats above the open More drawer", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const askBarb = page.getByTestId("mobile-ask-barb");
+    const box = await askBarb.boundingBox();
+    if (!box) throw new Error("Ask Barb button has no layout box");
+
+    await page.getByRole("tab", { name: /more/i }).click();
+    await expect(page.getByRole("dialog", { name: /more options/i })).toBeVisible();
+
+    const topElementTestId = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid") ?? null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    // The drawer's full-screen overlay must intercept this point, not the
+    // header button — otherwise Ask Barb stays clickable through the modal.
+    expect(topElementTestId).not.toBe("mobile-ask-barb");
+  });
+
+  test("page content starts within 64px of the top on every primary route", async ({
+    page,
+  }) => {
+    for (const route of ["/", "/work", "/fleet", "/settings"]) {
+      await page.goto(route);
+      const content = page.locator(".mobile-shell__content");
+      await expect(content).toBeVisible();
+      const top = await content.evaluate(
+        (el) => el.firstElementChild?.getBoundingClientRect().top ?? null,
+      );
+      expect(top, `first content top offset on ${route}`).not.toBeNull();
+      expect(top as number, `first content top offset on ${route}`).toBeLessThanOrEqual(64);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Mobile 3-tap dispatch flow
 // ---------------------------------------------------------------------------
 

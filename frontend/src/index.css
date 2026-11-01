@@ -4986,8 +4986,11 @@ th.sortable.active .sort-indicator {
 }
 
 .mobile-shell__header {
+  /* #3749: z-index was 300, above the "More" drawer (201) and its overlay
+     (200), so this row floated on top of and stayed clickable through those
+     modals. Keep it above ordinary content/nav but below any modal layer. */
   position: relative;
-  z-index: 300;
+  z-index: 150;
   display: flex;
   min-height: 48px;
   align-items: center;
@@ -4995,20 +4998,28 @@ th.sortable.active .sort-indicator {
   padding: 0 12px;
 }
 
+/* #3749: icon-only so the header reads as compact chrome, not a full-width
+   labeled pill — same 44x44 hit target, named only via aria-label. */
 .mobile-shell__ask-barb {
   min-height: 44px;
   min-width: 44px;
-  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm, 6px);
   background: var(--bg-secondary);
   color: var(--text-primary);
-  font: inherit;
-  font-size: 13px;
 }
 .mobile-shell__ask-barb:focus-visible {
   outline: 2px solid var(--accent-blue);
   outline-offset: 2px;
+}
+
+.mobile-shell__ask-barb-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .skip-link {
@@ -5032,7 +5043,11 @@ th.sortable.active .sort-indicator {
 .mobile-shell__content {
   flex: 1;
   overflow: auto;
-  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
+  /* #3749: zero top/side padding let page content start flush against the
+     header and screen edges (e.g. Staff's "rd-barb unavailable" notice).
+     Pages that need more add their own wrapper padding on top of this. */
+  padding: var(--space-6) var(--space-6)
+    calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
 }
 
 .mobile-shell__nav {
