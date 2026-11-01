@@ -141,7 +141,7 @@ test.describe("chat", () => {
     expect(messagePosts).toBe(0);
   });
 
-  test("sending from the mobile chat-first home reveals Barb's conversation", async ({ page }) => {
+  test("sending from the mobile chat-first home opens rd-barb's direct conversation", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/staff");
     await expect(page.getByTestId("staff-mobile-home")).toBeVisible();
@@ -153,8 +153,17 @@ test.describe("chat", () => {
     await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
     await expect(page).toHaveURL(/\/staff[?]role=rd-barb&thread=[^&]+/);
+    const conversationUrl = page.url();
+    const threadId = new URL(conversationUrl).searchParams.get("thread");
+    const detail = await page.request.get(`/api/v1/staff/threads/${threadId}`, { headers: operatorHeaders });
+    expect(detail.ok()).toBeTruthy();
+    const { thread } = await detail.json();
+    expect(thread.kind).toBe("direct");
+    expect(thread.participants).toContain("rd-barb");
+    expect(thread.participants).not.toContain("barb");
 
     await page.reload();
+    await expect(page).toHaveURL(conversationUrl);
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
     await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
   });
