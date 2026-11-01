@@ -214,7 +214,7 @@ STREAM_KEEPALIVE_SECONDS = 15.0
 STREAM_FALLBACK_SECONDS = 5.0
 
 
-@router.get("/inbox/stream")
+@router.get("/inbox/stream", include_in_schema=False)
 async def stream_inbox(
     request: Request,
     principal: Writer,
