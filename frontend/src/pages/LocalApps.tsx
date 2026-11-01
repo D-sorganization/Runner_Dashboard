@@ -368,6 +368,7 @@ function LocalAppsBody({
             : "No local_apps.json manifest found. Add one to runner-dashboard/ to start monitoring."}
         </div>
       ) : (
+        <div className="staff-table-wrap">
         <table className="data-table" style={{ width: "100%" }}>
           <thead>
             <tr>
@@ -459,6 +460,7 @@ function LocalAppsBody({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
