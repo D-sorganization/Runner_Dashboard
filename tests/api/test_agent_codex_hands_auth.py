@@ -66,24 +66,31 @@ def _auth(token: str) -> dict[str, str]:
 
 
 @pytest.mark.integration
-def test_codex_hands_reads_priorities_and_denies_writes(remote_client: TestClient, hands_env: dict[str, str]) -> None:
+def test_codex_hands_reads_priorities_and_writes_as_barb_peer(
+    remote_client: TestClient, hands_env: dict[str, str]
+) -> None:
+    """Dots is a Barb peer (#3648, owner decision #3647): writes allowed, never admin (#3687)."""
+    from identity import principal_has_scope  # noqa: PLC0415
+
     prin = identity_manager.verify_token(hands_env["token"])
     assert prin is not None and prin.id == "agent-codex-hands"
+    assert principal_has_scope(prin, "priorities.write")
+    assert principal_has_scope(prin, "staff.holds.write")
+    assert not principal_has_scope(prin, "staff.admin")
+    assert "admin" not in prin.roles
 
     assert remote_client.get("/api/priorities", headers=_auth(hands_env["token"])).status_code == 200
 
     headers = {**_XHR, **_auth(hands_env["token"])}
     directives = remote_client.put(
         "/api/priorities/directives",
-        json={"directives": [{"text": "nope", "priority": 1}]},
+        json={"directives": [{"text": "peer directive", "priority": 1}]},
         headers=headers,
     )
-    assert directives.status_code == 403
-    assert directives.json()["detail"]["required_scope"] == "priorities.write"
+    assert directives.status_code == 200, directives.text
 
     holds = remote_client.put("/api/staff/holds", json={"holds": []}, headers=headers)
-    assert holds.status_code == 403
-    assert holds.json()["detail"]["required_scope"] == "staff.holds.write"
+    assert holds.status_code == 200, holds.text
 
 
 @pytest.mark.integration
