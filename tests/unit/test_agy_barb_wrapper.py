@@ -22,6 +22,14 @@ def test_sync_writes_the_rendered_template_to_every_registered_provider_path(tmp
     assert "scripts/barb_cli.py" in fake_path.read_text(encoding="utf-8")
 
 
+def test_sync_targets_the_agents_workflow_path_agy_reads() -> None:
+    # agy reads .agents/ (RM #2567); the legacy .agent/ tree is gone (#3664).
+    root = sync._ROOT
+    assert sync.PATHS == {"agy": root / ".agents" / "workflows" / "barb.md"}
+    assert sync.PATHS["agy"].is_file()
+    assert not (root / ".agent").exists()
+
+
 def test_fetch_unread_calls_the_shared_entrypoint_with_the_inbox_verb_and_no_args() -> None:
     cli = MagicMock()
     with patch.object(hook.barb_cli, "dispatch") as dispatch:

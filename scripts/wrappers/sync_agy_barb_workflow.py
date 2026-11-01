@@ -10,7 +10,7 @@ sys.path[:0] = [str(_ROOT)]
 
 from scripts.wrappers.agy_barb_template import render  # noqa: E402
 
-PATHS = {"agy": _ROOT / ".agent" / "workflows" / "barb.md"}
+PATHS = {"agy": _ROOT / ".agents" / "workflows" / "barb.md"}
 
 
 def sync() -> list[Path]:

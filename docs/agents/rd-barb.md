@@ -141,11 +141,14 @@ thread.
 - On Cursor: `.cursor/commands/barb.md` / `.cursor/rules/barb.mdc` handle
   `@barb` mentions the same way via `scripts/wrappers/cursor_barb_hook.py`, a
   `beforeSubmitPrompt` hook (registered in `.cursor/hooks.json`).
-- On Antigravity (agy): `.agent/workflows/barb.md` handles `/barb`;
-  `@barb` mention-wake works the same way via
-  `scripts/wrappers/agy_barb_hook.py`, registered as a `Stop` hook in
-  `.agent/hooks.json` (agy has no prompt-submit hook event, so `Stop` is the
-  closest fit per `scripts/postman_provider_caps.py`'s `AGY_HOOK_EVENTS`).
+- On Antigravity (agy): `.agents/workflows/barb.md` handles `/barb`
+  (written by `scripts/wrappers/sync_agy_barb_workflow.py`). `@barb`
+  mention-wake is meant to run `scripts/wrappers/agy_barb_hook.py` as a `Stop`
+  hook (agy has no prompt-submit hook event, so `Stop` is the closest fit per
+  `scripts/postman_provider_caps.py`'s `AGY_HOOK_EVENTS`), but it is **not
+  loaded today**: agy reads workspace hooks only from the RM-generated
+  `.agents/hooks.json`, and the old `.agent/hooks.json` registration was never
+  read. Routing it through the generator is tracked in #3663.
 - For Tools Sidekick: Sidekick packaging/dispatch is on HOLD (docs/triage
   only), so this repo ships no Sidekick-side command surface -- only the
   RD-side contract Tools implements against. `scripts/wrappers/sidekick_barb_hook.py`
