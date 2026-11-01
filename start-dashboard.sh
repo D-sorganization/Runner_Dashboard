@@ -61,6 +61,10 @@ export NUM_RUNNERS="${NUM_RUNNERS:-12}"
 export MAX_RUNNERS="${MAX_RUNNERS:-16}"
 
 if [[ "$DEMO" == "true" ]]; then
+    # Demo mode is tokenless and intended for local preview only. Ignore a
+    # wildcard DASHBOARD_HOST or --host override so it cannot expose the demo.
+    HOST="127.0.0.1"
+    export DASHBOARD_HOST="${HOST}"
     export RUNNER_DASHBOARD_DEMO=1
     export VITE_RUNNER_DASHBOARD_DEMO=1
 fi
