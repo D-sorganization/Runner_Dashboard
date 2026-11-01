@@ -7,7 +7,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-
 from staff import fleet_state_audit as fsa
 
 LA = ZoneInfo("America/Los_Angeles")

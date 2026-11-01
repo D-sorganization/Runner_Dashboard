@@ -27,7 +27,13 @@ _AUTO_NULL = re.compile(r"auto\s*merge\s*(?:request)?\s*(?:is\s*)?null", re.IGNO
 _RED_MAIN = re.compile(r"\bred\s*main\b|push\s+ci\s+on\s+main|default\s+branch", re.IGNORECASE)
 _QUEUE = re.compile(r"\bmerge[_\s-]?group\b|\bmerge\s+queue\b", re.IGNORECASE)
 
-REPO_ALIASES = {"RD": "Runner_Dashboard", "RM": "Repository_Management", "GM": "Gasification_Model", "UD": "UpstreamDrift", "AD": "AffineDrift"}
+REPO_ALIASES = {
+    "RD": "Runner_Dashboard",
+    "RM": "Repository_Management",
+    "GM": "Gasification_Model",
+    "UD": "UpstreamDrift",
+    "AD": "AffineDrift",
+}
 
 DEFAULT_REPO = "Runner_Dashboard"
 CACHE_SUFFIX = ".fleet-state-audit.json"
@@ -258,9 +264,9 @@ async def live_check_all(rows: Sequence[StateRow], **overrides: Any) -> list[dic
 
     async def fetch_queue_meta(full: str) -> dict[str, Any]:
         runs = await gh_client.get(f"/repos/{full}/actions/runs?event=merge_group&per_page=30")
-        workflow_runs = runs.get("workflow_runs") if isinstance(runs, dict) else []
+        workflow_runs = (runs.get("workflow_runs") if isinstance(runs, dict) else None) or []
         active = frozenset({"queued", "in_progress"})
-        return {"depth": sum(1 for r in workflow_runs if r.get("status") in active)}
+        return {"depth": sum(1 for r in workflow_runs if isinstance(r, dict) and r.get("status") in active)}
 
     fp, fr = overrides.get("fetch_pr") or fetch_pr, overrides.get("fetch_red_main") or fetch_red_main
     fq = overrides.get("fetch_queue_meta") or fetch_queue_meta
@@ -292,8 +298,11 @@ def build_report(
         "live_checked": len(live_results),
     }
     flag_keys = {f"{f['kind']}:{f['item']}" for f in static_flags}
-    prev_keys = {f"{f.get('kind')}:{f.get('item')}" for f in (previous or {}).get("flags", []) if isinstance(f, Mapping)}
-    before = (previous or {}).get("tally") if isinstance((previous or {}).get("tally"), dict) else {}
+    prev_keys = {
+        f"{f.get('kind')}:{f.get('item')}" for f in (previous or {}).get("flags", []) if isinstance(f, Mapping)
+    }
+    prev_tally = (previous or {}).get("tally")
+    before: dict[str, Any] = prev_tally if isinstance(prev_tally, dict) else {}
     diff_tally = {
         k: {"before": int(before.get(k, 0)), "after": int(tally[k])}
         for k in tally
@@ -313,7 +322,9 @@ def build_report(
     }
 
 
-async def run_audit_async(path: Path, *, live: bool = True, previous_path: Path | None = None, write_cache: bool = False) -> dict[str, Any]:
+async def run_audit_async(
+    path: Path, *, live: bool = True, previous_path: Path | None = None, write_cache: bool = False
+) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     rows = parse_state_table(text)
     static = evaluate_static_flags(rows)
@@ -335,7 +346,9 @@ async def run_audit_async(path: Path, *, live: bool = True, previous_path: Path 
     return report
 
 
-def run_audit(path: Path, *, live: bool = True, previous_path: Path | None = None, write_cache: bool = False) -> dict[str, Any]:
+def run_audit(
+    path: Path, *, live: bool = True, previous_path: Path | None = None, write_cache: bool = False
+) -> dict[str, Any]:
     import anyio  # noqa: PLC0415
 
     async def _main() -> dict[str, Any]:

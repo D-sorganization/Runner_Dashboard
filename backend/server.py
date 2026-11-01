@@ -823,11 +823,8 @@ app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # out
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
 from routers import staff_rd_barb as _staff_rd_barb_router  # noqa: E402
-from routers import staff_fleet_routines as _staff_fleet_routines_router  # noqa: E402
 
 app.include_router(_staff_rd_barb_router.router)  # rd-barb guidelines doc (#3065)
-app.include_router(_staff_fleet_routines_router.router)
-app.include_router(_staff_fleet_routines_router.v1_router)
 app.include_router(_library_router.router)  # Alexandria library (#2165)
 from routers import vault as _vault_router  # noqa: E402
 
