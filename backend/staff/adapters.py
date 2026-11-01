@@ -181,11 +181,8 @@ class ProviderAdapter:
                 out[out.index("--mode") + 1] = "plan"
         if session_id:
             if self.provider_id in ("codex", "ollama"):
-                resumed: list[str] = [self.executable, "exec", "resume", "--skip-git-repo-check", "--json"]
-                if model:
-                    resumed.extend(["-m", model])
-                resumed.extend([session_id, prompt])
-                out = resumed
+                # Resume applies this invocation's config; retain explicit launch options.
+                out[-1:] = ["resume", session_id, prompt]
             elif self.provider_id == "antigravity":
                 out.extend(["--conversation", session_id])
             else:
@@ -237,9 +234,9 @@ class ProviderAdapter:
             cmd = [self.executable, "exec"]
             if self.provider_id == "ollama":
                 cmd += ["--oss", "--local-provider", "ollama"]
-            cmd += read_only + ["--skip-git-repo-check"]
+            cmd += read_only + (["resume"] if session_id else []) + ["--json", "--skip-git-repo-check"]
             if session_id:
-                cmd += ["--session", session_id]
+                cmd.append(session_id)
         elif self.provider_id == "antigravity":
             cmd = [self.executable, *(["--print", prompt] if self.chat_stdin(prompt) is None else [])]
             cmd += ["--output-format", "stream-json", "--add-dir", workdir, *read_only]
@@ -362,7 +359,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         executable="codex",
         argv=(*_UNATTENDED_CODEX, "--model", "{model}", "{prompt}"),
         json_lines=True,
-        chat_json_lines=False,
+        chat_json_lines=True,
         notes=(
             "--json events carry the answer (item.completed agent_message) and tokens (turn.completed). The "
             "workspace-write sandbox replaces the old approvals bypass (#1586)."
@@ -457,7 +454,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "{prompt}",
         ),
         json_lines=True,
-        chat_json_lines=False,
+        chat_json_lines=True,
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
         env_builder=ollama_env.codex_ollama_env,
         lease_as="local",  # RM has no per-harness id for local models

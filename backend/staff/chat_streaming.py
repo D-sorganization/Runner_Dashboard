@@ -297,7 +297,7 @@ async def stream_turn_output(
     t_first_token: float | None = None
     captured_session_id: str | None = None
     result_text = ""
-    chat_json = getattr(adapter, "chat_json", adapter.json_lines)  # codex chats are plain text (#1586)
+    chat_json = getattr(adapter, "chat_json", adapter.json_lines)
     summary_filter = _SummaryCapsuleStreamFilter() if hide_memory_summary else None
 
     async for line in reader.stream_lines():
@@ -305,12 +305,13 @@ async def stream_turn_output(
         event = adapter.parse_line(line)
 
         detected_sid = extract_session_id(adapter.provider_id, event, raw_line=line)
-        if detected_sid:
+        if detected_sid and (not captured_session_id or adapter.provider_id not in ("codex", "ollama")):
             captured_session_id = detected_sid
 
         # Plain-text parse_line strips newlines (and can interpret JSON prose as
         # events). The capsule filter needs the same exact text as final capture.
-        delta = line if hide_memory_summary and not chat_json else event.get("text", "")
+        preserve_line = adapter.provider_id in ("codex", "ollama") and event.get("kind") in ("text", "json")
+        delta = line if preserve_line or (hide_memory_summary and not chat_json) else event.get("text", "")
         if chat_json and event.get("kind") == "result":
             # The result event repeats the whole reply; stream it only when nothing was streamed before.
             result_text = delta

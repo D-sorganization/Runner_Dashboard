@@ -80,7 +80,10 @@ class _UnixSocketHTTPConnection(http.client.HTTPConnection):
         self._socket_path = socket_path
 
     def connect(self) -> None:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        family = getattr(socket, "AF_UNIX", None)
+        if family is None:
+            raise OSError("Unix sockets are unavailable; tailscaled identity cannot be verified")
+        sock = socket.socket(family, socket.SOCK_STREAM)
         sock.settimeout(self.timeout)
         sock.connect(self._socket_path)
         self.sock = sock

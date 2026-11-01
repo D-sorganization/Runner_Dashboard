@@ -11,7 +11,7 @@ import json
 import threading
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from staff.chat import ChatTurnRunner
@@ -28,6 +28,14 @@ pytestmark = pytest.mark.unit
 @pytest.fixture
 def conv_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConversationStore:
     monkeypatch.setattr("staff.chat_turn_runner.version_gate", lambda *_: None)
+    # Exercise streaming deadlines independently of external fleet context lookups.
+    monkeypatch.setattr("staff.chat_turn_runner.build_knowledge_turn_block", lambda *_: "")
+    for builder in (
+        "build_fleet_context_block",
+        "build_issue_context_block",
+        "build_shared_memory_context_block",
+    ):
+        monkeypatch.setattr(f"staff.chat_turn_runner.{builder}", AsyncMock(return_value=""))
     reset_conversation_store()
     reset_thread_bus()
     db_file = tmp_path / "test_chat_streaming_conv.sqlite3"
