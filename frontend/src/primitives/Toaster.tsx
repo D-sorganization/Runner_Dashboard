@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { useBreakpoint } from "../hooks/useBreakpoint";
 
 /**
  * Toaster — global accessible toast notification primitive (issue #421).
@@ -106,6 +107,12 @@ interface ToasterProps {
  * `useToast()` walks up via React context regardless of subtree position.
  */
 export function Toaster({ children }: ToasterProps = {}) {
+  // On mobile, a bottom-anchored toast sits over the sticky Staff composer
+  // hint and the Fleet/Queue FAB (#3751); it floats as a top banner instead,
+  // clear of any bottom chrome, using the same mobile-shell breakpoint cutoff
+  // RoutedShell/MobileShell already use.
+  const breakpoint = useBreakpoint();
+  const isMobileViewport = breakpoint !== "lg" && breakpoint !== "xl";
   const [toasts, setToasts] = useState<ToastRecord[]>([]);
   const idRef = useRef(0);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
@@ -219,7 +226,7 @@ export function Toaster({ children }: ToasterProps = {}) {
       <div
         className="toaster-region toaster-region-polite"
         data-touch-primitive="Toaster"
-        style={toasterRegionStyle}
+        style={isMobileViewport ? mobileToasterRegionStyle : toasterRegionStyle}
       >
         <div
           aria-live="polite"
@@ -317,6 +324,15 @@ const toasterRegionStyle: CSSProperties = {
   gap: 8,
   pointerEvents: "none",
   zIndex: 10000,
+};
+
+// Mobile has no room at the bottom that isn't already claimed by the tab bar,
+// the Ask FAB, or a page's own sticky composer (#3751) — anchor to the top,
+// below the safe area, instead of layering on top of any of those.
+const mobileToasterRegionStyle: CSSProperties = {
+  ...toasterRegionStyle,
+  top: "calc(env(safe-area-inset-top, 0px) + 12px)",
+  bottom: "auto",
 };
 
 const toasterStackStyle: CSSProperties = {
