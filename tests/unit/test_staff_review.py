@@ -185,6 +185,25 @@ class TestReviewExecutor:
         assert prepared["role"] == "fleet-critic"
         assert any("falling back to fleet-critic" in msg for msg in caplog.messages)
 
+    def test_code_reviewer_requests_fleet_review_skill(self) -> None:
+        """Code Reviewer dispatch names the fleet-review skill (#3618) instead of
+        relying on role-based skill matching, which fleet-review's own roles list
+        does not include."""
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42},
+            default_role="code-reviewer",
+            roster={"code-reviewer": MagicMock()},
+        )
+        assert prepared.get("skill") == "fleet-review"
+
+    def test_non_code_reviewer_role_does_not_request_fleet_review_skill(self) -> None:
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42},
+            default_role="fleet-critic",
+            roster={"fleet-critic": MagicMock()},
+        )
+        assert "skill" not in prepared
+
     def test_review_executor_never_passes_request_changes(self) -> None:
         """The review executor must never pass request_changes, blocking, or enforce parameters."""
         raw_params = {
