@@ -254,6 +254,11 @@ else
     sed -i 's/\r$//' "${PORT_HELPER}"
     chmod +x "${PORT_HELPER}"
 
+    mkdir -p "${DEPLOY_DIR}/deploy"
+    cp "${SCRIPT_DIR}/deploy/loopback_bind_guard.py" "${DEPLOY_DIR}/deploy/loopback_bind_guard.py"
+    cp "${SCRIPT_DIR}/deploy/hub_tailnet_serve.py" "${DEPLOY_DIR}/deploy/hub_tailnet_serve.py"
+    chmod 0755 "${DEPLOY_DIR}/deploy/loopback_bind_guard.py" "${DEPLOY_DIR}/deploy/hub_tailnet_serve.py"
+
     CRASH_DIAG="${DEPLOY_DIR}/collect-crash-diagnostics.sh"
     cp "${SCRIPT_DIR}/deploy/collect-crash-diagnostics.sh" "${CRASH_DIAG}"
     sed -i 's/\r$//' "${CRASH_DIAG}"
@@ -326,6 +331,10 @@ run_fleet_env_preflight "${SECRETS_FILE}" "HUB_URL disagrees with machine_regist
 LOOPBACK_GUARD="${SCRIPT_DIR}/deploy/loopback_bind_guard.py"
 if [[ -f "${LOOPBACK_GUARD}" ]]; then
     "${PYTHON_BIN}" "${LOOPBACK_GUARD}" ensure-env --env-file "${SECRETS_FILE}" --quiet || true
+fi
+HUB_SERVE="${SCRIPT_DIR}/deploy/hub_tailnet_serve.py"
+if [[ -f "${HUB_SERVE}" && -x "${DEPLOY_DIR}/.venv/bin/python" ]]; then
+    "${DEPLOY_DIR}/.venv/bin/python" "${HUB_SERVE}" ensure --env-file "${SECRETS_FILE}" --port "${PORT}" || true
 fi
 
 mkdir -p "$(dirname "${SCHEDULE_CONFIG_VAL}")"

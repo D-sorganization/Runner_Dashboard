@@ -130,6 +130,14 @@ else
         ok  "wsl-mirrored-port-helper.sh deployed"
     fi
 
+    if ! dry_run "cp hub_tailnet_serve.py -> $DEPLOY_DIR/deploy/"; then
+        mkdir -p "$DEPLOY_DIR/deploy"
+        cp "$REPO/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/loopback_bind_guard.py"
+        cp "$REPO/deploy/hub_tailnet_serve.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
+        chmod 0755 "$DEPLOY_DIR/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
+        ok  "hub_tailnet_serve.py deployed"
+    fi
+
     info "Copying frontend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/frontend $DEPLOY_DIR/frontend"; then
         if [[ ! -d "$REPO/node_modules" ]]; then
@@ -307,6 +315,11 @@ if [[ "$DRY_RUN" != "true" ]]; then
     fi
     if deployment_service_command "$DEPLOY_SCOPE" manage is-active --quiet "$SERVICE"; then
         ok "Service is running"
+        HUB_SERVE="${DEPLOY_DIR}/deploy/hub_tailnet_serve.py"
+        ENV_FILE="${HOME}/.config/runner-dashboard/env"
+        if [[ -f "${HUB_SERVE}" && -x "${DEPLOY_DIR}/.venv/bin/python" ]]; then
+            "${DEPLOY_DIR}/.venv/bin/python" "${HUB_SERVE}" ensure --env-file "${ENV_FILE}" --port "${DASHBOARD_PORT}" >/dev/null 2>&1 || true
+        fi
         echo ""
         echo "  Dashboard: http://localhost:${DASHBOARD_PORT}"
         echo "  Health:    http://localhost:${DASHBOARD_PORT}/api/health"

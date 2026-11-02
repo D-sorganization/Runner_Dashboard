@@ -33,6 +33,7 @@ install -d -m 0755 "${SELF_HEAL_DIR}"
 install -m 0755 "${SCRIPT_DIR}/node-self-heal.sh" "${SELF_HEAL_DIR}/node-self-heal.sh"
 install -m 0755 "${SCRIPT_DIR}/sync_provider_credentials.py" "${SELF_HEAL_DIR}/sync_provider_credentials.py"
 install -m 0755 "${SCRIPT_DIR}/loopback_bind_guard.py" "${SELF_HEAL_DIR}/loopback_bind_guard.py"
+install -m 0755 "${SCRIPT_DIR}/hub_tailnet_serve.py" "${SELF_HEAL_DIR}/hub_tailnet_serve.py"
 
 render_unit() {
   sed -e "s|@DEPLOY_DIR@|${DEPLOY_DIR}|g" \

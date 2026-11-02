@@ -388,6 +388,7 @@ def test_dashboard_service_type_is_simple() -> None:
 def test_dashboard_service_ignores_tailscale_restore_failures() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
     assert "ExecStartPost=-/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh restore" in content
+    assert "hub_tailnet_serve.py ensure" in content
 
 
 def test_dashboard_service_collects_crash_diagnostics() -> None:
