@@ -284,6 +284,24 @@ def test_rd_32_leased_runners_no_leases_key_asserts_empty_set(tmp_path: Path) ->
     assert "pass" not in src
 
 
+def test_rd_5_leased_runners_active_lease_asserts_active_set(tmp_path: Path) -> None:
+    """RD-5: test_leased_runners_active_lease executes real assertions against _leased_runners()."""
+    import importlib.util
+    import inspect
+
+    mod_path = Path(__file__).resolve().parents[1] / "test_runner_autoscaler.py"
+    spec = importlib.util.spec_from_file_location("tra", mod_path)
+    assert spec and spec.loader
+    tra = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tra)
+
+    tra.test_leased_runners_active_lease(tmp_path)
+    src = inspect.getsource(tra.test_leased_runners_active_lease)
+    assert "assert ra._leased_runners() == {\"runner-7\"}" in src
+    assert "pass" not in src
+
+
+
 def test_rd_39_contract_and_capacity_modules_import_and_validate(tmp_path: Path) -> None:
     """RD-39: capacity_reservation and remote_execution_contract are active contract modules."""
     import remote_execution_contract as rec
