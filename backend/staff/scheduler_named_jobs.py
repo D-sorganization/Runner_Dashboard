@@ -16,13 +16,7 @@ from typing import Any
 
 from staff.exclusions import ExclusionsList
 from staff.roles import RoleSpec
-from staff.scheduler_issue_pick import (
-    ISSUE_REMEDIATOR_ROLE,
-    fetch_issue_claim_status,
-    fetch_open_issues,
-    pick_issue_target,
-    scheduled_repo,
-)
+from staff.scheduler_issue_pick import ISSUE_REMEDIATOR_ROLE, pick_issue_target
 from staff.scheduler_startup import skip_due_slot_during_startup
 
 log = logging.getLogger("dashboard.staff.scheduler")
@@ -47,6 +41,8 @@ def queue_due_slot(
     holds_blocking: Callable[[str, str], Any],
 ) -> None:
     """Evaluate one role (or one named job of it); append a skip decision or queue a fire."""
+    from staff import scheduler as scheduler_mod  # deferred: scheduler imports this module
+
     name = role.name
 
     def _skip(due: str, reason: str) -> None:
@@ -71,11 +67,11 @@ def queue_due_slot(
         log.info("staff scheduler: %s slot %s skipped — %s", name, due, blocker_reason)
         _skip(due, blocker_reason)
         return
-    repo = scheduled_repo(role.repos, now)
+    repo = scheduler_mod.scheduled_repo(role.repos, now)
     issue_number: int | None = None
     if job is None and role.name == ISSUE_REMEDIATOR_ROLE:
         selected_repo, selected_issue = pick_issue_target(
-            role, now, fetch_open=fetch_open_issues, fetch_claim=fetch_issue_claim_status
+            role, now, fetch_open=scheduler_mod.fetch_open_issues, fetch_claim=scheduler_mod.fetch_issue_claim_status
         )
         if not selected_repo or not selected_issue:
             _skip(due, "no eligible issues in scheduled repositories")

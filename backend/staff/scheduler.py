@@ -40,6 +40,7 @@ from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
+from staff.scheduler_issue_pick import fetch_issue_claim_status, fetch_open_issues, scheduled_repo  # noqa: F401
 from staff.scheduler_leader_lease import (
     acquire_leader_lease as _lease_acquire_leader_lease,
 )
