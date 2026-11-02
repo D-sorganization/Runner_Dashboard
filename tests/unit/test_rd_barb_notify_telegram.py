@@ -26,7 +26,7 @@ ALERT = {
     "summary": "Runner pool exhausted",
     "importance": "urgent",
     "dedupe_key": "a-1",
-    "recommended_action": "Scale ControlTower +2",
+    "recommended_action": "Scale node-b +2",
 }
 CFG = {"RD_BARB_TELEGRAM": "on", "RD_BARB_TELEGRAM_CHAT_ID": "999"}
 ENV = {"TELEGRAM_BOT_TOKEN": "s3cret-bot-token"}  # pragma: allowlist secret
