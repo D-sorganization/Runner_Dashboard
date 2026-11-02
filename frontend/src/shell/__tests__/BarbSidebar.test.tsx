@@ -44,6 +44,27 @@ function staffConsoleState(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const hiddenCandidateKinds = ["css-visibility", "ancestor-aria-hidden", "inert"] as const;
+
+function makeHiddenFocusCandidate(kind: (typeof hiddenCandidateKinds)[number]): HTMLElement {
+  const wrapper = document.createElement("div");
+  if (kind === "css-visibility") wrapper.style.visibility = "hidden";
+  if (kind === "ancestor-aria-hidden") wrapper.setAttribute("aria-hidden", "true");
+  if (kind === "inert") wrapper.setAttribute("inert", "");
+  const candidate = document.createElement("button");
+  candidate.type = "button";
+  candidate.textContent = `Synthetic ${kind} candidate`;
+  wrapper.append(candidate);
+  return wrapper;
+}
+
+function makeFocusBoundary(name: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = name;
+  return button;
+}
+
 beforeEach(() => {
   sendMessage.mockResolvedValue({ ok: true });
   mockUseStaffConsole.mockReturnValue(staffConsoleState());
@@ -55,6 +76,51 @@ afterEach(() => {
 });
 
 describe("BarbSidebar", () => {
+  it.each(hiddenCandidateKinds)("wraps Shift+Tab past a %s candidate at the visible start", (kind) => {
+    render(<BarbSidebar open mobile onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const sidebar = screen.getByTestId("barb-sidebar");
+    const hidden = makeHiddenFocusCandidate(kind);
+    const firstVisible = makeFocusBoundary("Visible start boundary");
+    const lastVisible = makeFocusBoundary("Visible end boundary");
+    sidebar.prepend(hidden);
+    sidebar.insertBefore(firstVisible, hidden.nextSibling);
+    sidebar.append(lastVisible);
+
+    firstVisible.focus();
+    expect(document.activeElement).toBe(firstVisible);
+    const event = new KeyboardEvent("keydown", {
+      key: "Tab",
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    sidebar.dispatchEvent(event);
+
+    expect.soft(event.defaultPrevented).toBe(true);
+    expect.soft(document.activeElement).toBe(lastVisible);
+  });
+
+  it.each(hiddenCandidateKinds)("wraps Tab past a %s candidate at the visible end", (kind) => {
+    render(<BarbSidebar open mobile onClose={vi.fn()} onNavigate={vi.fn()} />);
+    const sidebar = screen.getByTestId("barb-sidebar");
+    const firstVisible = makeFocusBoundary("Visible start boundary");
+    const lastVisible = makeFocusBoundary("Visible end boundary");
+    sidebar.prepend(firstVisible);
+    sidebar.append(lastVisible, makeHiddenFocusCandidate(kind));
+
+    lastVisible.focus();
+    expect(document.activeElement).toBe(lastVisible);
+    const event = new KeyboardEvent("keydown", {
+      key: "Tab",
+      bubbles: true,
+      cancelable: true,
+    });
+    sidebar.dispatchEvent(event);
+
+    expect.soft(event.defaultPrevented).toBe(true);
+    expect.soft(document.activeElement).toBe(firstVisible);
+  });
+
   it("continues the selected Barb conversation instead of restoring another recent thread", () => {
     window.history.replaceState({}, "", "/?thread=th-selected");
     render(<BarbSidebar open onClose={vi.fn()} onNavigate={vi.fn()} />);
