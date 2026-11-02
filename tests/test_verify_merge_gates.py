@@ -268,32 +268,32 @@ def test_parse_api_response_success() -> None:
 
 
 def test_parse_api_response_status_error_includes_status_and_content_type_no_body() -> None:
-    secret_body = "SUPER_SECRET_TOKEN=xyz"
-    resp = FakeResponse(500, {"content-type": "text/html"}, text=secret_body)
+    sensitive_body = "internal_marker_unauthorized_payload"
+    resp = FakeResponse(500, {"content-type": "text/html"}, text=sensitive_body)
     with pytest.raises(ValueError) as exc_info:
         gates.parse_api_response(resp)
     msg = str(exc_info.value)
     assert "status 500" in msg
     assert "content-type: 'text/html'" in msg
-    assert secret_body not in msg
+    assert sensitive_body not in msg
 
 
 def test_parse_api_response_non_json_content_type_no_body() -> None:
-    secret_body = "token=abc12345"
-    resp = FakeResponse(200, {"content-type": "text/plain"}, text=secret_body)
+    sensitive_body = "plain_non_json_payload"
+    resp = FakeResponse(200, {"content-type": "text/plain"}, text=sensitive_body)
     with pytest.raises(ValueError) as exc_info:
         gates.parse_api_response(resp)
     msg = str(exc_info.value)
     assert "non-JSON content-type: 'text/plain'" in msg
-    assert secret_body not in msg
+    assert sensitive_body not in msg
 
 
 def test_parse_api_response_decode_error_no_body() -> None:
-    secret_body = "INVALID_JSON_CONTENT_SECRET"
-    resp = FakeResponse(200, {"content-type": "application/json"}, text=secret_body)
+    sensitive_body = "malformed_json_payload"
+    resp = FakeResponse(200, {"content-type": "application/json"}, text=sensitive_body)
     with pytest.raises(ValueError) as exc_info:
         gates.parse_api_response(resp)
     msg = str(exc_info.value)
     assert "Failed to decode API JSON response" in msg
     assert "JSONDecodeError" in msg
-    assert secret_body not in msg
+    assert sensitive_body not in msg
