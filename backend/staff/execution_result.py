@@ -16,6 +16,7 @@ _PHANTOM_NUDGE_SUMMARIES = frozenset(
     {
         "no repository task was specified",
         "no task was specified",
+        "no task details were provided",
     }
 )
 
