@@ -121,8 +121,8 @@ def evaluate_pause(scheduler_enabled: bool, now: datetime | None = None) -> Paus
     else:
         state = _load_pause_state()
         raw_until = state.get("pause_until")
-        pause_until = _parse_iso(str(raw_until or "")) if raw_until else None
-        if pause_until is None:
+        parsed_until = _parse_iso(str(raw_until or "")) if raw_until else None
+        if parsed_until is None:
             pause_until = cur + timedelta(seconds=_default_ttl_seconds())
             _save_pause_state(
                 {
@@ -133,6 +133,7 @@ def evaluate_pause(scheduler_enabled: bool, now: datetime | None = None) -> Paus
             )
             source = "state_ttl"
         else:
+            pause_until = parsed_until
             source = "state"
 
     until_iso = pause_until.isoformat().replace("+00:00", "Z")
