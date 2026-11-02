@@ -18,9 +18,10 @@ import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
 import { selectMobileThread, startNewMobileConversation, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
 import { usePendingThreadId, useMobileThreadUrlSync } from "./useMobileThreadUrlSync";
+import { PersonaGallery } from "./PersonaGallery";
 import "./mobile.css";
 
-export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
+export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs" | "personas";
 
 // Primary phone flow: direct conversation with the persistent RD Barb seat,
 // resolved from the roster, never a silent fallback to auto-route "barb" (#3493).
@@ -319,6 +320,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </div>
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Choose staff</button>
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-personas" onClick={() => setView("personas")}>Personas</button>
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-inbox" onClick={() => setView("inbox")}>Inbox</button>
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-runs" onClick={() => setView("runs")}>Runs</button>
           </nav>
@@ -346,6 +348,15 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               </div>
             ) : view === "runs" ? (
               <MobileRunsView roles={roles} onOpenRun={onOpenRun} />
+            ) : view === "personas" ? (
+              <div className="staff-mobile__content" data-testid="staff-mobile-personas-view">
+                <PersonaGallery
+                  roles={roles}
+                  selectedRoleId={selectedRole ?? undefined}
+                  onSelectRole={(roleName) => handleSelectRole(roleName)}
+                  isLoading={rosterLoading}
+                />
+              </div>
             ) : (
               <div className="staff-mobile__content">
                 <div className="staff-mobile__search-container">
@@ -446,36 +457,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </div>
 
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "roster"}
-              className={`staff-mobile__tab ${view === "roster" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-roster"
-              onClick={() => setView("roster")}
-            >
-              Console
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "inbox"}
-              className={`staff-mobile__tab ${view === "inbox" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-inbox"
-              onClick={() => setView("inbox")}
-            >
-              Inbox
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "runs"}
-              className={`staff-mobile__tab ${view === "runs" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-runs"
-              onClick={() => setView("runs")}
-            >
-              Runs
-            </button>
+            <button type="button" role="tab" aria-selected={view === "roster"} className={`staff-mobile__tab ${view === "roster" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Console</button>
+            <button type="button" role="tab" aria-selected={view === "personas"} className={`staff-mobile__tab ${view === "personas" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-personas" onClick={() => setView("personas")}>Personas</button>
+            <button type="button" role="tab" aria-selected={view === "inbox"} className={`staff-mobile__tab ${view === "inbox" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-inbox" onClick={() => setView("inbox")}>Inbox</button>
+            <button type="button" role="tab" aria-selected={view === "runs"} className={`staff-mobile__tab ${view === "runs" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-runs" onClick={() => setView("runs")}>Runs</button>
           </nav>
         </div>
       )}
