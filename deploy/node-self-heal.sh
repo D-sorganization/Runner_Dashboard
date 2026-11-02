@@ -72,6 +72,45 @@ for _ in 1 2; do
 done
 
 if [[ "${health_ok}" -eq 0 && "${auto_deploy_busy}" -eq 0 ]]; then
+  LOOPBACK_GUARD="${SCRIPT_DIR}/loopback_bind_guard.py"
+  if [[ ! -f "${LOOPBACK_GUARD}" && -f "${DASHBOARD_HOME}/actions-runners/dashboard/deploy/loopback_bind_guard.py" ]]; then
+    LOOPBACK_GUARD="${DASHBOARD_HOME}/actions-runners/dashboard/deploy/loopback_bind_guard.py"
+  fi
+  ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${DASHBOARD_HOME}/.config/runner-dashboard/env}"
+  bind_scope=system
+  if systemctl --user is-enabled runner-dashboard.service &>/dev/null 2>&1 || \
+     systemctl --user is-active runner-dashboard.service &>/dev/null 2>&1; then
+    bind_scope=user
+  fi
+  needs_loopback_repair=0
+  journal_bind_failure=0
+  if [[ -f "${LOOPBACK_GUARD}" ]]; then
+    if "${PYTHON_BIN}" "${LOOPBACK_GUARD}" detect-journal --service runner-dashboard.service 2>/dev/null; then
+      needs_loopback_repair=1
+      journal_bind_failure=1
+      healed_actions+=("alert:loopback_bind_guard:journal_startup_failure")
+    fi
+    issue_json="$("${PYTHON_BIN}" "${LOOPBACK_GUARD}" diagnose --env-file "${ENV_FILE}" 2>/dev/null || echo "null")"
+    if [[ "${issue_json}" != "null" ]]; then
+      needs_loopback_repair=1
+      healed_actions+=("alert:loopback_bind_guard:env_misconfigured")
+    fi
+    if [[ "${needs_loopback_repair}" -eq 1 ]]; then
+      force_dropin_flag=()
+      if [[ "${journal_bind_failure}" -eq 1 ]]; then
+        force_dropin_flag=(--force-dropin)
+      fi
+      repair_json="$("${PYTHON_BIN}" "${LOOPBACK_GUARD}" repair \
+        --env-file "${ENV_FILE}" --scope "${bind_scope}" --home "${DASHBOARD_HOME}" \
+        "${force_dropin_flag[@]}" 2>/dev/null || true)"
+      if echo "${repair_json}" | grep -q 'env_set_dashboard_host_loopback'; then
+        healed_actions+=("loopback_bind_env_repair")
+      fi
+      if echo "${repair_json}" | grep -q 'installed_systemd_dropin'; then
+        healed_actions+=("loopback_bind_dropin_installed")
+      fi
+    fi
+  fi
   if systemctl --user is-enabled runner-dashboard.service &>/dev/null 2>&1 || \
      systemctl --user is-active runner-dashboard.service &>/dev/null 2>&1; then
     systemctl --user restart runner-dashboard.service || true

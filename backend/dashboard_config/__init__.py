@@ -107,19 +107,17 @@ TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
 LIGHTWEIGHT_STARTUP = _env_flag("DASHBOARD_LIGHTWEIGHT_STARTUP", default=False)
 
 
+def _default_bind_host() -> str:
+    """Default bind when ``DASHBOARD_HOST`` is unset or whitespace-only."""
+    if os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1":
+        return "127.0.0.1"
+    return "0.0.0.0"
+
+
 def _resolve_bind_host() -> str:
-    """Return the interface uvicorn should bind for incoming HTTP.
-
-    Default is ``0.0.0.0`` (historical, binds all interfaces).
-    Operators on WSL-mirrored hosts should set ``DASHBOARD_HOST=127.0.0.1``
-    to avoid colliding with a Windows-side Tailscale-serve listener that
-    has already claimed the Tailscale IP on the same port.
-
-    Postcondition: returns a non-empty string; whitespace-only values fall
-    back to the default so uvicorn never receives an invalid bind target.
-    """
+    """Return the interface uvicorn should bind for incoming HTTP."""
     raw = os.environ.get("DASHBOARD_HOST", "").strip()
-    return raw or "0.0.0.0"
+    return raw or _default_bind_host()
 
 
 HOST = _resolve_bind_host()
@@ -131,7 +129,7 @@ def validate_loopback_auth_bind(*, force: bool = False) -> None:
         return
     if os.environ.get("DASHBOARD_LOOPBACK_AUTH") != "1":
         return
-    host = os.environ.get("DASHBOARD_HOST", "").strip() or "0.0.0.0"
+    host = _resolve_bind_host()
     if host in ("0.0.0.0", "::"):
         raise RuntimeError(
             "DASHBOARD_LOOPBACK_AUTH=1 cannot start with DASHBOARD_HOST binding all interfaces; "
