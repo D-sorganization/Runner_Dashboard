@@ -65,7 +65,7 @@ def _parse_cleared_checks(value: Any, problems: list[str]) -> set[str]:
 
 def uncleared_indirection_checks(cleared: set[str]) -> set[str]:
     """Mandatory checks not present in ``cleared``."""
-    return INDIRECTION_CHECK_IDS - cleared
+    return set(INDIRECTION_CHECK_IDS - cleared)
 
 
 def coerce_verdict_for_indirection(finding: Mapping[str, Any]) -> dict[str, Any]:
