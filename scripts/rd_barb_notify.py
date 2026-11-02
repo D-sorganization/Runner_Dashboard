@@ -256,9 +256,10 @@ class Notifier:
             return {"ok": True, "status": "deduped"}
         if out["kind"] in ("fyi", "update"):
             if (self._cfg.get(f"{self._prefix}SHADOW") or "").strip().lower() in _TRUTHY:
-                self._mirror(out)
-                self._mark(state, out["dedupe_key"])
-                return {"ok": True, "status": "shadow"}
+                result = self._deliver(out)
+                if result["ok"]:
+                    self._mark(state, out["dedupe_key"])
+                return result
             state["digest"].append(out)
             self._mark(state, out["dedupe_key"])
             return {"ok": True, "status": "queued_for_digest"}
@@ -347,8 +348,8 @@ class Notifier:
 
     def _deliver(self, msg: dict[str, Any]) -> dict[str, Any]:
         if (self._cfg.get(f"{self._prefix}SHADOW") or "").strip().lower() in _TRUTHY:
-            self._mirror(msg)
-            return {"ok": True, "status": "shadow"}
+            result = self._mirror(msg)
+            return {"ok": True, "status": "shadow"} if result["ok"] else result
         url = self._cfg.get(f"{self._prefix}WEBHOOK_URL") or self._cfg.get("RD_BARB_WEBHOOK_URL")
         key = self._cfg.get(f"{self._prefix}WEBHOOK_KEY") or self._cfg.get("RD_BARB_WEBHOOK_KEY")
         if not url or not key:
@@ -368,16 +369,19 @@ class Notifier:
         self._mirror(msg)
         return {"ok": True, "status": "sent"}
 
-    def _mirror(self, msg: dict[str, Any]) -> None:
+    def _mirror(self, msg: dict[str, Any]) -> dict[str, Any]:
+        """Report thread acceptance; live webhook callers keep their independent result."""
         thread_id = (
             msg.get("thread_id") or self._cfg.get(f"{self._prefix}THREAD_ID") or self._cfg.get("RD_BARB_THREAD_ID")
         )
         if not (thread_id and self._post):
-            return
+            return {"ok": False, "status": "not_sent", "error": "thread_config_missing"}
         try:
             self._post(thread_id, json.dumps(msg, sort_keys=True), f"{self._role}-{msg['dedupe_key']}")
-        except Exception as exc:  # noqa: BLE001 - the webhook already delivered
+        except Exception as exc:  # noqa: BLE001 - transport errors become retryable results
             log.warning("rd-barb thread mirror failed: %s", type(exc).__name__)
+            return {"ok": False, "status": "not_sent", "error": "thread_send_failed"}
+        return {"ok": True, "status": "thread_accepted"}
 
     def _is_duplicate(self, state: dict[str, Any], key: str) -> bool:
         seen = state["seen"].get(key)
