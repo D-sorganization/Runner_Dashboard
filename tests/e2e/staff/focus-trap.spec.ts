@@ -273,10 +273,7 @@ test("captures sanitized drawer screenshots at desktop and phone sizes", async (
   const threadId = createdThread.id as string;
 
   const masks = [
-    page.locator(".mobile-shell__header"),
-    page.locator(".mobile-shell__nav"),
-    page.locator(".desktop-shell__topbar"),
-    page.locator('nav[aria-label="Dashboard sections"]'),
+    page.locator('[data-testid="sidebar-footer"]'),
     page.locator("#barb-sidebar nav.project-starter-actions button"),
   ];
   for (const viewport of [
@@ -311,6 +308,17 @@ test("captures sanitized drawer screenshots at desktop and phone sizes", async (
 
     const drawer = page.getByTestId("barb-sidebar");
     await expect(drawer).toBeVisible();
+    if (viewport.width === 1280) {
+      const actions = page.locator(".desktop-shell__actions");
+      const sidebarFooter = page.locator('[data-testid="sidebar-footer"]');
+      await expect(actions).toHaveCount(1);
+      await expect(sidebarFooter).toHaveCount(1);
+      await expect(sidebarFooter).toBeVisible();
+      expect(await actions.evaluate((element) =>
+        !element.contains(document.querySelector("#barb-sidebar")),
+      )).toBe(true);
+      expect(await drawer.evaluate((element) => !element.closest(".desktop-shell__actions"))).toBe(true);
+    }
     await expect(drawer.getByRole("region", { name: `Conversation thread with ${title}` })).toBeVisible();
     await expect(drawer.getByText("Reconnecting to thread events…", { exact: true })).toHaveCount(0);
     const mainSelector = viewport.width === 390
@@ -333,6 +341,11 @@ test("captures sanitized drawer screenshots at desktop and phone sizes", async (
             text-shadow: none !important;
             background-image: none !important;
             box-shadow: none !important;
+          }
+          .desktop-shell__actions, .desktop-shell__actions *,
+          .desktop-shell__actions::before, .desktop-shell__actions::after,
+          .desktop-shell__actions *::before, .desktop-shell__actions *::after {
+            visibility: hidden !important;
           }
           .desktop-shell__main *, .mobile-shell__content *,
           .desktop-shell__main::before, .desktop-shell__main::after,
