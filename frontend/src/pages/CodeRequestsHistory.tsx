@@ -74,7 +74,7 @@ export function CodeRequestsHistory({
                 </span>
                 <span style={{ color: "var(--text-muted)" }}>{r.provider || ""}</span>
                 {(r.standards || []).map((s) => (
-                  <span key={s} style={{ color: "var(--accent-purple)", fontSize: 11 }}>
+                  <span key={s} style={{ color: "var(--accent-purple)", fontSize: 12 }}>
                     {s.toUpperCase()}
                   </span>
                 ))}
@@ -83,7 +83,7 @@ export function CodeRequestsHistory({
                   className="feature-request-propose-link"
                   style={{
                     marginLeft: "auto",
-                    fontSize: 11,
+                    fontSize: 12,
                     color: "var(--accent-blue, #3b82f6)",
                     textDecoration: "none",
                     fontWeight: 500,

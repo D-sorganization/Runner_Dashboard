@@ -23,6 +23,13 @@ def get_runner() -> StaffRunner:
 
 
 def reset_runner() -> None:
+    """Drop the singleton, waiting for its outstanding worker threads first (#3778).
+
+    Nulling the reference without joining leaves any in-flight daemon thread
+    racing the next test's store/global-state reset.
+    """
     global _runner  # noqa: PLW0603
     with _runner_lock:
-        _runner = None
+        runner, _runner = _runner, None
+    if runner is not None:
+        runner.join_all()

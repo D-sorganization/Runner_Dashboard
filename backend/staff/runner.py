@@ -8,6 +8,7 @@ import platform
 import sqlite3
 import subprocess
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -62,6 +63,7 @@ class StaffRunner:
         self._lock = threading.Lock()
         self._sema = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
         self._provider_semas: dict[str, threading.BoundedSemaphore] = {}
+        self._threads: list[threading.Thread] = []
 
     def _get_provider_sema(self, provider: str) -> threading.BoundedSemaphore:
         with self._lock:
@@ -133,7 +135,24 @@ class StaffRunner:
 
     def launch(self, rec: RunRecord, plan: RunPlan) -> None:
         """Start the worker thread for a run :meth:`admit` created."""
-        threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True).start()
+        thread = threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True)
+        with self._lock:
+            self._threads = [t for t in self._threads if t.is_alive()]
+            self._threads.append(thread)
+        thread.start()
+
+    def join_all(self, timeout: float = 10.0) -> list[str]:
+        """Wait for launch()'s daemon threads to finish; return names still alive after timeout (#3778)."""
+        with self._lock:
+            threads = list(self._threads)
+            self._threads = []
+        deadline = time.monotonic() + timeout
+        still_alive = []
+        for thread in threads:
+            thread.join(max(0.0, deadline - time.monotonic()))
+            if thread.is_alive():
+                still_alive.append(thread.name)
+        return still_alive
 
     def cancel(self, run_id: str) -> bool:
         with self._lock:

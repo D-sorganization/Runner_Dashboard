@@ -46,6 +46,7 @@
         "lint-workflow-files.yml",
         "priority-expedite-guard.yml",
         "pr-cap.yml",
+        "pr-body-lint.yml",
         "publish-guard.yml",
         "rd-barb-hold-integrity.yml",
         "recurring-scan.yml",

@@ -27,10 +27,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repository-root", type=Path, default=Path.cwd())
     parser.add_argument("--base", default="origin/main", help="Ref the PR will merge into")
+    parser.add_argument("--bash", help="Bash executable for API contract check")
+    parser.add_argument("--python", help="Python interpreter for API contract check")
     args = parser.parse_args(argv)
 
     root_argv = ["--repository-root", str(args.repository_root)]
-    gates_status = verify_merge_gates.main([*root_argv, "--base", args.base])
+    gates_argv = [*root_argv, "--base", args.base]
+    if args.bash:
+        gates_argv += ["--bash", args.bash]
+    if args.python:
+        gates_argv += ["--python", args.python]
+    gates_status = verify_merge_gates.main(gates_argv)
     markers_status = check_conflict_markers.main(root_argv)
 
     if gates_status or markers_status:

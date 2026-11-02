@@ -143,9 +143,15 @@ In dry-run mode:
 
 ## Rollback
 
+For a full end-to-end dry run of install, upgrade, and rollback on a
+disposable host, see
+[`clean-host-smoke-test.md`](clean-host-smoke-test.md).
+
 Each run of `update-deployed.sh` automatically creates a timestamped backup
 of the deploy directory before any files are changed. Use `rollback.sh` to
-restore a previous state.
+restore a previous state. For exactly what is and is not integrity-verified
+and fail-closed across the manual and automatic rollback paths, see
+[`docs/upgrade-rollback.md`](upgrade-rollback.md).
 
 ### List Available Backups
 

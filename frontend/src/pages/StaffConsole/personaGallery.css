@@ -1,0 +1,43 @@
+/** personaGallery.css — Persona gallery and presentation editor styles (#3502, #3499) */
+.persona-gallery { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 12px; gap: 12px; box-sizing: border-box; }
+.persona-gallery__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.persona-gallery__search-wrapper { flex: 1; min-width: 140px; }
+.persona-gallery__search { width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border, #30363d); background: var(--bg-secondary, #161b22); color: var(--text-primary, #c9d1d9); font-size: 14px; }
+.persona-gallery__actions { display: flex; align-items: center; gap: 6px; }
+.persona-gallery__btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border, #30363d); background: var(--bg-secondary, #161b22); color: var(--text-primary, #c9d1d9); touch-action: manipulation; }
+.persona-gallery__btn--primary { background: var(--accent-blue, #1f6feb); color: #fff; border-color: rgba(240, 246, 252, 0.1); }
+.persona-gallery__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.persona-gallery__error { padding: 10px 12px; border-radius: 6px; background: var(--badge-danger-bg, rgba(248, 81, 73, 0.15)); color: var(--badge-danger-fg, #f85149); font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.persona-gallery__list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; min-height: 0; }
+.persona-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border, #30363d); background: var(--bg-secondary, #161b22); color: var(--text-primary, #c9d1d9); cursor: pointer; transition: background-color 120ms ease; user-select: none; }
+.persona-card:not(.persona-card--editing):hover, .persona-card:not(.persona-card--editing):focus-visible { background: var(--bg-tertiary, #21262d); outline: none; }
+.persona-card--editing { cursor: default; border-style: dashed; }
+.persona-card--dragging { opacity: 0.6; background: var(--bg-tertiary, #21262d); }
+.persona-card__content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.persona-card__header-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.persona-card__title { font-size: 14px; font-weight: 600; color: var(--text-primary, #f0f6fc); }
+.persona-card__canonical-id { font-size: 11px; color: var(--text-muted, #8b949e); font-family: monospace; }
+.persona-card__summary { font-size: 12px; color: var(--text-secondary, #8b949e); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.persona-card__edit-btn { margin-left: auto; padding: 6px 12px; min-height: 36px; border-radius: 6px; background: var(--bg-tertiary, #21262d); border: 1px solid var(--border, #30363d); color: var(--text-secondary, #8b949e); font-size: 12px; cursor: pointer; touch-action: manipulation; }
+.persona-card__edit-btn:hover { color: var(--text-primary, #f0f6fc); border-color: var(--accent-blue, #1f6feb); }
+.persona-card__reorder-controls { display: flex; align-items: center; gap: 4px; }
+.persona-gallery__drag-handle { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; font-size: 18px; color: var(--text-secondary, #8b949e); cursor: grab; touch-action: none; user-select: none; }
+.persona-gallery__move-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 1px solid var(--border, #30363d); border-radius: 4px; background: var(--bg-tertiary, #21262d); color: var(--text-primary, #c9d1d9); cursor: pointer; font-size: 14px; }
+.persona-gallery__move-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.persona-editor { display: flex; flex-direction: column; gap: 14px; padding: 12px; background: var(--bg-secondary, #161b22); border-radius: 8px; border: 1px solid var(--border, #30363d); }
+.persona-editor__header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border, #30363d); padding-bottom: 8px; }
+.persona-editor__title { font-size: 15px; font-weight: 600; margin: 0; color: var(--text-primary, #f0f6fc); }
+.persona-editor__role-selector, .persona-editor__section { display: flex; flex-direction: column; gap: 8px; }
+.persona-editor__section-title { font-size: 12px; font-weight: 600; color: var(--text-secondary, #8b949e); text-transform: uppercase; margin: 0; }
+.persona-editor__select, .persona-editor__input { padding: 8px 12px; min-height: 44px; background: var(--bg-primary, #0d1117); border: 1px solid var(--border, #30363d); border-radius: 6px; color: var(--text-primary, #f0f6fc); font-size: 14px; box-sizing: border-box; }
+.persona-editor__canonical-info { font-size: 12px; color: var(--text-muted, #8b949e); }
+.persona-editor__canonical-info code { color: var(--accent-blue, #58a6ff); font-family: monospace; }
+.persona-editor__avatar-row { display: flex; align-items: center; gap: 12px; }
+.persona-editor__avatar-preview-box { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center; background: var(--bg-primary, #0d1117); border: 1px solid var(--border, #30363d); flex-shrink: 0; }
+.persona-editor__btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.persona-editor__btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border, #30363d); background: var(--bg-tertiary, #21262d); color: var(--text-primary, #f0f6fc); touch-action: manipulation; }
+.persona-editor__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.persona-editor__btn--primary { background: var(--accent-blue, #1f6feb); border-color: rgba(240, 246, 252, 0.1); color: #fff; }
+.persona-editor__btn--danger { color: var(--badge-danger-fg, #f85149); border-color: rgba(248, 81, 73, 0.3); }
+.persona-editor__error { padding: 8px 12px; border-radius: 6px; background: var(--badge-danger-bg, rgba(248, 81, 73, 0.15)); border: 1px solid var(--border, #30363d); color: var(--badge-danger-fg, #f85149); font-size: 12px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }

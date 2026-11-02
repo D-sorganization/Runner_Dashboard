@@ -512,6 +512,24 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch, _session_staff_workspace):
     monkeypatch.setattr(workspace_mod, "add_worktree", _guarded_add_worktree)
 
 
+@pytest.fixture(autouse=True)
+def _join_staff_runner_threads_after_test():
+    """Join any outstanding ``StaffRunner`` worker threads after every test (#3778).
+
+    Only ~a third of the call sites that dispatch through the ``get_runner()``
+    singleton remember to call ``reset_runner()`` themselves. Doing it here,
+    autouse and function-scoped, guarantees every test's daemon worker threads
+    finish before the next test's fixtures touch shared/global state (store
+    singleton, config dir), closing the race that produced nondeterministic
+    nightly failures (``sqlite3.ProgrammingError: Cannot operate on a closed
+    database``, stale active-run conflicts, stale status transitions).
+    """
+    yield
+    from staff.runner_registry import reset_runner  # noqa: PLC0415
+
+    reset_runner()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _cleanup_stores_session_teardown():
     yield

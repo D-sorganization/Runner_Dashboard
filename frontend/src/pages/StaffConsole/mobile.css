@@ -156,6 +156,15 @@
   padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   flex-shrink: 0;
   z-index: 10;
+  /* Four 44px tabs plus gap/padding need ~212px; below that, scroll the strip
+     horizontally instead of shrinking targets under 44px (#3772, #3809). */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.staff-mobile__tabs::-webkit-scrollbar {
+  display: none;
 }
 
 /* Inside the mobile shell the console already ends above the fixed bottom nav
@@ -165,7 +174,7 @@
 }
 
 .staff-mobile__tab {
-  flex: 1;
+  flex: 1 0 44px;
   min-height: 44px;
   min-width: 44px;
   display: inline-flex;

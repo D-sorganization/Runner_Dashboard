@@ -43,43 +43,45 @@ export function CoverageSection({ data }: { data: CoverageOverview }): React.Rea
       {data.coverage.length === 0 ? (
         <EmptyState title="No tracked repositories" description="No repository is configured for this dashboard." />
       ) : (
-        <table className="staff-table" data-testid="security-coverage-table">
-          <thead>
-            <tr>
-              <th scope="col">Repository</th>
-              <th scope="col">Status</th>
-              <th scope="col">Priority</th>
-              <th scope="col">Full scan every</th>
-              <th scope="col">Last scan</th>
-              <th scope="col">Last success</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.coverage.map((row) => {
-              const status = coverageStatus(row);
-              return (
-                <tr key={row.repo}>
-                  <th scope="row">{row.repo}</th>
-                  <td>
-                    <Badge tone={status.tone} size="sm">{status.label}</Badge>
-                  </td>
-                  <td>{row.priority}</td>
-                  <td>{`${row.full_scan_days} d`}</td>
-                  <td>
-                    {row.last_scan_at ? (
-                      <>
-                        {row.last_scan_at} <span>{row.last_state}</span>
-                      </>
-                    ) : (
-                      "never"
-                    )}
-                  </td>
-                  <td>{row.last_success_at || "never"}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="staff-table-wrap">
+          <table className="staff-table" data-testid="security-coverage-table">
+            <thead>
+              <tr>
+                <th scope="col">Repository</th>
+                <th scope="col">Status</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Full scan every</th>
+                <th scope="col">Last scan</th>
+                <th scope="col">Last success</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.coverage.map((row) => {
+                const status = coverageStatus(row);
+                return (
+                  <tr key={row.repo}>
+                    <th scope="row">{row.repo}</th>
+                    <td>
+                      <Badge tone={status.tone} size="sm">{status.label}</Badge>
+                    </td>
+                    <td>{row.priority}</td>
+                    <td>{`${row.full_scan_days} d`}</td>
+                    <td>
+                      {row.last_scan_at ? (
+                        <>
+                          {row.last_scan_at} <span>{row.last_state}</span>
+                        </>
+                      ) : (
+                        "never"
+                      )}
+                    </td>
+                    <td>{row.last_success_at || "never"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </>
   );
