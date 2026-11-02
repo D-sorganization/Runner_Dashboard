@@ -457,46 +457,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </div>
 
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "roster"}
-              className={`staff-mobile__tab ${view === "roster" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-roster"
-              onClick={() => setView("roster")}
-            >
-              Console
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "personas"}
-              className={`staff-mobile__tab ${view === "personas" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-personas"
-              onClick={() => setView("personas")}
-            >
-              Personas
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "inbox"}
-              className={`staff-mobile__tab ${view === "inbox" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-inbox"
-              onClick={() => setView("inbox")}
-            >
-              Inbox
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "runs"}
-              className={`staff-mobile__tab ${view === "runs" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-runs"
-              onClick={() => setView("runs")}
-            >
-              Runs
-            </button>
+            <button type="button" role="tab" aria-selected={view === "roster"} className={`staff-mobile__tab ${view === "roster" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Console</button>
+            <button type="button" role="tab" aria-selected={view === "personas"} className={`staff-mobile__tab ${view === "personas" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-personas" onClick={() => setView("personas")}>Personas</button>
+            <button type="button" role="tab" aria-selected={view === "inbox"} className={`staff-mobile__tab ${view === "inbox" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-inbox" onClick={() => setView("inbox")}>Inbox</button>
+            <button type="button" role="tab" aria-selected={view === "runs"} className={`staff-mobile__tab ${view === "runs" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-runs" onClick={() => setView("runs")}>Runs</button>
           </nav>
         </div>
       )}
