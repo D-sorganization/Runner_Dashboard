@@ -52,6 +52,7 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
+from staff.scheduler_missed_runs import note_scheduled_miss, record_success
 from staff.scheduler_named_jobs import named_jobs, queue_due_slot
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
@@ -407,6 +408,7 @@ class StaffScheduler:
                 with self._lock:
                     entry = self._load_state().setdefault(key, {})
                     entry["last_reason"] = f"skipped {due}: {reason}"
+                    note_scheduled_miss(entry, role=name, job=job, slot=due, machine=self.runner.machine)
                 log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
                 return {"role": name, "slot": due, "fired": False, "reason": reason}
         decision = self._decider(role, repo or "")
@@ -437,16 +439,19 @@ class StaffScheduler:
             entry = self._load_state().setdefault(key, {})
             if claimed:
                 entry["last_reason"] = f"skipped {due}: {claimed}"
+                note_scheduled_miss(entry, role=name, job=job, slot=due, machine=self.runner.machine)
                 log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
                 return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
             try:
                 rec = self.runner.submit(req)
             except ValueError as exc:
                 entry["last_reason"] = f"skipped {due}: {exc}"
+                note_scheduled_miss(entry, role=name, job=job, slot=due, machine=self.runner.machine)
                 log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
                 return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
             entry["last_fired"] = now.isoformat()
             entry["last_reason"] = f"fired {due} as {rec.id}"
+            record_success(entry)
             if cartographer_job:
                 self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}
         log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
