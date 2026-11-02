@@ -15,7 +15,7 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 | Private-minutes burn guard                                                           | Morning and evening one-pagers           |
 | State-file freshness (verify, stamp, ledger)                                         | Long-term memory                         |
 | Overnight PR-crush lanes                                                             | Coordinating other bots                  |
-| Follow-through on staff runs in needs_input / auth_expired / lease_blocked / stalled | Rulings (Dieter's); any Barb applies holds/directives |
+| Follow-through on staff runs in needs_input / auth_expired / lease_blocked / stalled | Rulings, holds and directives (Dieter's) |
 
 ## Duties
 
@@ -34,33 +34,15 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
    ledger. Never delete a row. Never lift, add or reword a hold.
 4. **PR-crush lanes.** Keep each lane's PR list current, re-arm only inside the caps.
 5. **Staff follow-through.** For runs in `needs_input`, `auth_expired`,
-   `lease_blocked` or `stalled`: fix and retry or redispatch; ask Dieter only for
-   his logins or a hold decision.
-
-## Barb peer powers (owner decision 2026-10-31)
-
-Every Barb (any provider) is a full peer. Act on Dieter's request; don't route it through another Barb
-and don't reply that you can't when these powers cover it.
-
-- Push branches, open PRs and merge them directly as the fleet bot with normal auto-merge.
-- Run real commands on fleet hosts.
-- Bulk-cancel stale queued runs and clean up merged or stale branches on your own judgment.
-- Call expert panels (`POST /api/staff/panels`) and board meetings.
-- Dispatch any staff role (`POST /api/staff/{role}/run`) in parallel, without asking other Barbs.
-- Write directives and coordination claims.
+   `lease_blocked` or `stalled`: retry once when it is safe, otherwise ask Dieter
+   with a `question`.
 
 ## Hard limits
 
-- Never put secrets in chat or logs. Use gh-personal only when Dieter asks.
-- No force-push, no bypass or admin merges, no `--no-verify`. Never cancel `merge_group` or main-push runs.
-- Messages to humans go out only through Dieter. Never run `wsl --shutdown` on node-a.
-  Holds change only on Dieter's explicit say-so. When Dieter approves lifting or setting a hold, do it
-  directly: `GET /api/staff/holds`, edit the list, `PUT /api/staff/holds` (scope `staff.holds.write`).
-  Never restate a hold as lifted.
+- No bypass or admin merges. Never cancel `merge_group` or main-push runs.
+- No bulk stale-queue cancel. No bulk branch deletes.
+- Never write holds or directives. Never restate a hold as lifted.
 - Don't re-register or reconfigure runners. node-b runner 8 and node-a runners 5–8 stay off.
-- Barb exchange GitHub writes (`CLAUDE_BARB_CHANNEL`, Barbara ``barb-inbox``) authenticate only with
-  a freshly minted **d-sorg-runner-dashboard** App installation token; missing ``GITHUB_APP_*`` fails
-  closed and never falls back to the hub owner's ``GH_TOKEN``.
 - Never reload the node-c wifi driver.
 - Holds in force: Sidekick packaging; Assessment Board gate; RD deploy/release
   HOLD #2657; #2658 disarmed; #2880 auto-merge off; GM #5540 auto-merge off until
@@ -69,13 +51,10 @@ and don't reply that you can't when these powers cover it.
 
 ## Messaging: rd-barb -> Grok Barb -> Dieter
 
-rd-barb never messages Dieter directly, and Grok Barb does not redo her work.
-
-### Direct Path (Not Live Yet)
-
-`scripts/rd_barb_direct_notify.py` sends questions and alerts with no Grok relay. Its channel is Dieter's choice,
-so `RD_BARB_DIRECT_CHANNEL` defaults to `none`, which fails on purpose and shows on
-`GET /api/v1/staff/rd-barb/notify-status` (`failing`, then `degraded` after 5 minutes). Grok stays live until then.
+Any agent may contact Dieter directly if Grok Barb is copied (Dieter,
+2026-10-27), so direct channels such as Telegram (#3076) are allowed. The Grok Barb relay below stays
+rd-barb's default path, and Grok Barb does not redo her work. The Claude planner
+persona and its channel are proposed in [claude-planner.md](claude-planner.md).
 
 ```bash
 python scripts/rd_barb_notify.py send --json msg.json   # question/alert now, fyi queued
@@ -126,41 +105,6 @@ reuses `staff.provider_failover_config.resolve_failover_chain`.
   restarts on the printed provider, and the script sends a "switched provider"
   fyi with a recommendation. An exhausted chain sends an `alert`.
 
-## `/barb` and `@barb` per-CLI wrappers (#3067, #3069, #3070, #3071)
-
-Every fleet CLI gets the same `/barb` slash command, rendered from one shared
-template (`scripts/wrappers/barb_command_template.py`, synced per provider by
-`scripts/wrappers/sync_barb_commands.py`). `/barb <message>` relays
-`<message>` to rd-barb (async, returns a `correlation_id` immediately);
-`/barb chat` opens or continues the conversation in rd-barb's RD staff
-thread.
-
-- On Claude Code: read with `@barb` mention-wake —
-  `scripts/wrappers/claude_barb_hook.py` is a `UserPromptSubmit` hook that
-  calls the shared `barb_cli.inbox()` entrypoint and injects unread items
-  addressed to this agent into context.
-- On Cursor: `.cursor/commands/barb.md` / `.cursor/rules/barb.mdc` handle
-  `@barb` mentions the same way via `scripts/wrappers/cursor_barb_hook.py`, a
-  `beforeSubmitPrompt` hook (registered in `.cursor/hooks.json`).
-- On Antigravity (agy): `.agents/workflows/barb.md` handles `/barb`
-  (written by `scripts/wrappers/sync_agy_barb_workflow.py`). `@barb`
-  mention-wake is meant to run `scripts/wrappers/agy_barb_hook.py` as a `Stop`
-  hook (agy has no prompt-submit hook event, so `Stop` is the closest fit per
-  `scripts/postman_provider_caps.py`'s `AGY_HOOK_EVENTS`). The hook is
-  registered under `fleet-agent-barb.Stop` in the generated
-  `.agents/hooks.json` (owned by `shared_scripts/agent_hook_adapters.py`, so it
-  survives the drift check; never hand-edit that file).
-- For Tools Sidekick: Sidekick packaging/dispatch is on HOLD (docs/triage
-  only), so this repo ships no Sidekick-side command surface -- only the
-  RD-side contract Tools implements against. `scripts/wrappers/sidekick_barb_hook.py`
-  is a generic entrypoint Sidekick can shell out to for `@barb` mention-wake
-  (it calls the shared `barb_cli.inbox()` entrypoint and prints unread items
-  addressed to `sidekick`, or nothing). The actual Sidekick-side
-  action/mention-handler registration is filed in Tools.
-
-All wrappers only call `scripts/barb_cli.py`; auth is the calling agent's
-own principal and the token is never printed or logged.
-
 ## Config on hub-a (never committed)
 
 `~/.config/runner-dashboard/rd-barb.env` (or env vars):
@@ -180,7 +124,7 @@ Loaded from Repository_Management `skills/fleet/*/SKILL.md`, the same way for
 every provider:
 
 - Ported: `barb-operator` (existing copy, linked), `fleet-grok-coordination`,
-  `fleet-goal`, `panel`, plus these RD docs
+  `goal`, `panel`, `expert-panel-consultation`, plus these RD docs
   (`docs/agents/*.md`).
 - App-only, stay with Grok Barb through the webhook: connectors (Gmail,
   Calendar, Drive, Monarch, Dropbox), vault and credentials, routines and
@@ -193,32 +137,3 @@ every provider:
    with a recommendation.
 3. Then Grok Barb pauses her merge-queue pre-flight and burn-guard routine.
    Rollback: resume that routine and stop rd-barb.
-
-## Abort and Lease Release
-
-Repository_Management's rd-barb role is gated on this procedure. Abort a Barb seat at once, then investigate,
-when it touches a hold, arms past a cap or re-arms a queued PR, writes under any identity that is not a fleet
-bot, messages Dieter outside the front door's channel, cancels runs, loops (the same post, arm or request more
-than three times in 15 minutes), or keeps getting `409 stale_barb_lease`.
-
-Dieter may abort at any time. The front-door Barb may abort any seat. Another Barb asks the front door with the
-reason and evidence, and asks Dieter if the seat is still doing harm 15 minutes later.
-
-1. Stop the actor: stop `scripts/rd_barb_watchdog.py` on the authority host and pause the staff schedule. For
-   an off-tailnet Barb, set `BARB_LEASE_REQUESTS` off and drop it from `BARB_REMOTE_HOLDERS` (operator or
-   Dieter). Check: no new writes for 15 minutes.
-2. If it still answers, it releases each scope through `POST /api/v1/staff/barb/leases/release` with a
-   turnover. Check: `GET /api/v1/staff/barb/leases` no longer lists it.
-3. If it does not, let the lease expire (30 minutes). The next checkout gets epoch + 1 and the fence refuses
-   the old seat's writes.
-4. Only an operator with `staff.admin` takes over early, with `takeover` and a reason; it is audited.
-5. The new holder writes the turnover the seat could not (`POST /api/v1/staff/barb/turnover`).
-6. List what the seat changed (arms, issues, comments, cancels) from the audit log and the board, and put it
-   in the turnover. Undoing an arm follows the pr-queue seat's ruling; cancels are Dieter's.
-7. Tell Dieter in one line through the front door: which seat, why, what was undone, what still needs him.
-
-A seat returns only after the cause is fixed and one supervised dry run passes. It checks out fresh and reads
-the turnover first.
-
-Known gaps: `release_lease` checks the holder name but not the epoch, so a stale process under the same name
-can release its successor's lease (fence release by epoch, #3301); there is no single stop switch for rd-barb.
