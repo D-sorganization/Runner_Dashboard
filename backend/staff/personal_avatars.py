@@ -59,20 +59,21 @@ def _inspect_webp(data: bytes) -> tuple[int, int, str, bytes]:
     elif chunk == b"VP8X":
         if len(data) < 20 + sz or sz < 10:
             raise AvatarValidationError("truncated VP8X chunk")
-        w, h = (
-            int.from_bytes(data[24:27], "little") + 1,
-            int.from_bytes(data[27:30], "little") + 1,
-        )
+        w = int.from_bytes(data[24:27], "little") + 1
+        h = int.from_bytes(data[27:30], "little") + 1
     else:
         raise AvatarValidationError(f"unsupported WebP chunk {chunk!r}")
     return w, h, "image/webp", data
 
 
 def _inspect_png(data: bytes) -> tuple[int, int, str, bytes]:
-    if len(data) < 33 or data[0:8] != b"\x89PNG\r\n\x1a\n":
-        raise AvatarValidationError("invalid PNG signature")
-    if struct.unpack(">I", data[8:12])[0] != 13 or data[12:16] != b"IHDR":
-        raise AvatarValidationError("invalid PNG IHDR chunk")
+    if (
+        len(data) < 33
+        or data[0:8] != b"\x89PNG\r\n\x1a\n"
+        or struct.unpack(">I", data[8:12])[0] != 13
+        or data[12:16] != b"IHDR"
+    ):
+        raise AvatarValidationError("invalid PNG signature or IHDR chunk")
     w, h = struct.unpack(">II", data[16:24])
     clean, pos, has_iend = [data[0:8]], 8, False
     while pos + 8 <= len(data):

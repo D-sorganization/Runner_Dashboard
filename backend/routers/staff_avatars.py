@@ -27,19 +27,15 @@ router = APIRouter(tags=["staff-avatars"])
 
 
 async def _read_bounded_body(request: Request) -> bytes:
+    limit_err = HTTPException(413, f"payload exceeds limit of {MAX_AVATAR_BYTES} bytes")
     cl = request.headers.get("content-length")
     if cl and int(cl) > MAX_AVATAR_BYTES:
-        raise HTTPException(
-            status_code=413, detail=f"payload exceeds limit of {MAX_AVATAR_BYTES} bytes"
-        )
+        raise limit_err
     chunks, total = [], 0
     async for chunk in request.stream():
         total += len(chunk)
         if total > MAX_AVATAR_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"payload exceeds limit of {MAX_AVATAR_BYTES} bytes",
-            )
+            raise limit_err
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -53,12 +49,11 @@ def _check_role_and_rev(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     known = frozenset(load_roles().keys())
     if role_id not in known:
-        raise HTTPException(status_code=422, detail=f"unknown role id: {role_id!r}")
+        raise HTTPException(422, f"unknown role id: {role_id!r}")
     prefs = get_presentation_prefs_store().get(op_id)
     if exp_rev is not None and exp_rev != prefs.revision:
         raise HTTPException(
-            status_code=409,
-            detail=f"stale revision; current revision is {prefs.revision}",
+            409, f"stale revision; current revision is {prefs.revision}"
         )
     return known, prefs
 
@@ -70,11 +65,11 @@ def _save_override(
     url: str | None,
     known: frozenset[str],
 ) -> None:
-    overrides = dict(prefs.avatar_overrides)
-    if url is not None:
-        overrides[role_id] = url
-    else:
-        overrides.pop(role_id, None)
+    overrides = (
+        {**prefs.avatar_overrides, role_id: url}
+        if url
+        else {k: v for k, v in prefs.avatar_overrides.items() if k != role_id}
+    )
     try:
         get_presentation_prefs_store().save(
             op_id,
@@ -90,7 +85,6 @@ def _save_override(
 
 
 @router.put("/avatars/custom/{role_id}", include_in_schema=False)
-@router.post("/avatars/custom/{role_id}", include_in_schema=False)
 async def upload_custom_avatar_v1(
     role_id: str,
     request: Request,
@@ -109,7 +103,6 @@ async def upload_custom_avatar_v1(
 
 
 @router.post("/avatars/custom/{role_id}/reset", include_in_schema=False)
-@router.delete("/avatars/custom/{role_id}", include_in_schema=False)
 async def reset_custom_avatar_v1(
     role_id: str,
     expected_revision: int | None = Query(default=None),
@@ -121,10 +114,7 @@ async def reset_custom_avatar_v1(
     return {"ok": True, "role_id": role_id, "reset": True}
 
 
-@router.get(
-    "/avatars/personal/{operator_id}/{role_id}",
-    include_in_schema=False,
-)
+@router.get("/avatars/personal/{operator_id}/{role_id}", include_in_schema=False)
 async def get_personal_avatar_v1(
     operator_id: str,
     role_id: str,
