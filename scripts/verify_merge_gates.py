@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -116,10 +117,113 @@ def changed_paths(root: Path, base: str, run: Runner = subprocess.run) -> list[s
     return sorted({name for name in names if name})
 
 
-def check_contract(root: Path, paths: Sequence[str], run: Runner = subprocess.run) -> list[str]:
+def resolve_bash(
+    bash_path: str | None = None,
+    *,
+    platform: str = sys.platform,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    """Resolve a deterministic bash executable for running contract scripts."""
+    if bash_path:
+        p = Path(bash_path)
+        if p.is_file():
+            return str(p.resolve())
+        which = shutil.which(bash_path)
+        if which:
+            return which
+        raise FileNotFoundError(f"Specified bash executable not found: {bash_path}")
+
+    env = os.environ if environ is None else environ
+    for var in ("RD_BASH", "BASH"):
+        val = env.get(var)
+        if val:
+            p = Path(val)
+            if p.is_file():
+                return str(p.resolve())
+            which = shutil.which(val)
+            if which:
+                return which
+            return val
+
+    if platform == "win32":
+        git_which = shutil.which("git")
+        if git_which:
+            try:
+                git_root = Path(git_which).resolve().parents[1]
+                for candidate in (git_root / "bin" / "bash.exe", git_root / "usr" / "bin" / "bash.exe"):
+                    if candidate.is_file():
+                        return str(candidate)
+            except Exception:
+                pass
+
+        for pf_var in ("ProgramFiles", "ProgramFiles(x86)"):
+            pf = env.get(pf_var)
+            if pf:
+                for candidate in (
+                    Path(pf) / "Git" / "bin" / "bash.exe",
+                    Path(pf) / "Git" / "usr" / "bin" / "bash.exe",
+                ):
+                    if candidate.is_file():
+                        return str(candidate)
+
+        local_app_data = env.get("LOCALAPPDATA")
+        if local_app_data:
+            candidate = Path(local_app_data) / "Programs" / "Git" / "bin" / "bash.exe"
+            if candidate.is_file():
+                return str(candidate)
+
+        which_bash = shutil.which("bash")
+        if which_bash and "system32" not in which_bash.lower():
+            return which_bash
+
+        return "bash"
+
+    return "bash"
+
+
+def parse_api_response(response: Any) -> dict[str, Any]:
+    """Parse JSON from an API / TestClient response with actionable diagnostics.
+
+    Surfaces status code and content type before parsing JSON, without
+    printing credentials or response contents.
+    """
+    status = getattr(response, "status_code", None)
+    headers = getattr(response, "headers", {}) or {}
+    content_type = headers.get("content-type", "") if hasattr(headers, "get") else ""
+
+    if status is not None and status != 200:
+        raise ValueError(f"API response failed with status {status} (content-type: {content_type!r})")
+    if content_type and not ("application/json" in content_type or "+json" in content_type):
+        raise ValueError(f"API response has non-JSON content-type: {content_type!r} (status: {status})")
+
+    try:
+        if callable(getattr(response, "json", None)):
+            return response.json()
+        raw = getattr(response, "text", "")
+        return json.loads(raw)
+    except Exception as exc:
+        err_type = type(exc).__name__
+        msg = f"Failed to decode API JSON response (status: {status}, content-type: {content_type!r}): {err_type}"
+        raise ValueError(msg) from None
+
+
+def check_contract(
+    root: Path,
+    paths: Sequence[str],
+    run: Runner = subprocess.run,
+    *,
+    bash_path: str | None = None,
+    python_path: str | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> list[str]:
     if not touches_api_contract(paths):
         return []
-    proc = run(list(CONTRACT_COMMAND), cwd=root, capture_output=True, text=True, check=False)
+    resolved_bash = resolve_bash(bash_path, environ=environ)
+    command = [resolved_bash, "scripts/gen-api-client.sh", "--check"]
+    env = dict(os.environ if environ is None else environ)
+    py = python_path or env.get("PYTHON") or sys.executable
+    env["PYTHON"] = py
+    proc = run(command, cwd=root, capture_output=True, text=True, check=False, env=env)
     if proc.returncode == 0:
         return []
     tail = " | ".join((proc.stdout or proc.stderr or "").strip().splitlines()[-3:])
@@ -135,11 +239,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--base", default="origin/main", help="Ref the PR will merge into")
     parser.add_argument("--only", choices=("contract", "baseline"), help="Run one gate (CI Secrets uses baseline)")
     parser.add_argument("--scanner-python", help="Interpreter that has detect-secrets installed")
+    parser.add_argument("--bash", help="Bash executable for API contract check")
+    parser.add_argument("--python", help="Python interpreter for API contract check")
     args = parser.parse_args(argv)
     root = args.repository_root.resolve()
     problems: list[str] = []
     if args.only != "baseline":
-        problems += check_contract(root, changed_paths(root, args.base))
+        problems += check_contract(
+            root,
+            changed_paths(root, args.base),
+            bash_path=args.bash,
+            python_path=args.python,
+        )
     if args.only != "contract":
         problems += [
             f"secrets baseline drift: {item}" for item in audit_baseline(root, scanner_python=args.scanner_python)
