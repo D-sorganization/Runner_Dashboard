@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from agent_bus.store import get_store
+from agent_bus.reaper_health import node_ready_for_claim_reap
 
 log = logging.getLogger("dashboard.agent_bus.reaper")
 REAP_INTERVAL_SECONDS = 60
@@ -15,6 +16,13 @@ def reap_once() -> dict[str, int]:
     stale = store.list_stale_principals()
     released = 0
     for row in stale:
+        if not node_ready_for_claim_reap(row.node):
+            log.info(
+                "agent_bus reaper: deferring stale session %s on node %s until readyz passes",
+                row.session_id,
+                row.node,
+            )
+            continue
         try:
             released += store.release_tracked_claims(row.session_id, row.role, reason=RELEASE_REASON)
         except Exception as exc:  # noqa: BLE001 — reaper must not stall the loop
