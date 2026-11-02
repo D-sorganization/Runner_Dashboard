@@ -1480,6 +1480,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/jobs/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job Releases */
+        get: operations["get_job_releases_api_coordination_jobs_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/messages": {
         parameters: {
             query?: never;
@@ -15467,6 +15484,40 @@ export interface operations {
                 repo?: string | null;
                 limit?: number;
                 include_excluded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_releases_api_coordination_jobs_releases_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                limit?: number;
             };
             header?: never;
             path?: never;

@@ -11,6 +11,7 @@ Routes (all under ``/api/coordination``):
   POST /claims              Check then lease; 409 when another agent holds it.
   POST /claims/release      Release the lease (RM ``release_agent_lease``).
   GET  /jobs                Claimable work (``?repo=&limit=&include_excluded=``); read-only (epic #2781 S1).
+  GET  /jobs/releases       Recent job-board claim releases (activity projection; slice toward #2785).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
 
 Auth: reads ``require_fleet_peer``; writes ``require_coordination_writer``
@@ -28,6 +29,7 @@ from collections.abc import Callable
 from typing import Any
 
 from coordination import jobs as jobs_mod
+from coordination import job_releases as job_releases_mod
 from coordination import service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
@@ -146,6 +148,15 @@ async def get_jobs(
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     return await run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
+
+
+@router.get("/jobs/releases")
+async def get_job_releases(
+    since: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=100, ge=1, le=500),
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    return await run_in_threadpool(job_releases_mod.list_job_releases, since=since, limit=limit)
 
 
 @router.get("/briefing")
