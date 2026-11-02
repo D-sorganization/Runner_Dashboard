@@ -36,7 +36,7 @@ from staff.budget import BudgetGuard
 from staff.holds import HoldsList
 from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
-from staff.runner import RunRequest, StaffRunner, get_runner
+from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
