@@ -14,7 +14,7 @@ from __future__ import annotations
 import ast
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -120,8 +120,10 @@ def build_finding_from_candidate(
     path = str(candidate["path"])
     symbol = str(candidate["symbol"])
     cart_hit = path in tier2.cartographer_hits or any(path.endswith(h) for h in tier2.cartographer_hits)
-    cleared = list(INDIRECTION_CHECK_IDS) if clear_all_indirection else _default_cleared_checks(
-        cartographer_hit=cart_hit, import_refs=import_refs, docstring=tier2.docstring
+    cleared = (
+        list(INDIRECTION_CHECK_IDS)
+        if clear_all_indirection
+        else _default_cleared_checks(cartographer_hit=cart_hit, import_refs=import_refs, docstring=tier2.docstring)
     )
     evidence_parts = [str(candidate.get("evidence") or "tier1 unused symbol")]
     if tier2.log_s_snippet:
