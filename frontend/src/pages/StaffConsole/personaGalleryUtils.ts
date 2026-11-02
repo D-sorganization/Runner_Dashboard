@@ -44,8 +44,8 @@ export async function uploadCustomAvatar(
   expectedRevision?: number,
   signal?: AbortSignal,
 ): Promise<{ ok: boolean; operator_id: string; role_id: string; avatar_url: string }> {
-  const query = expectedRevision !== undefined ? `?expected_revision=${expectedRevision}` : "";
-  const url = `/api/v1/staff/avatars/custom/${encodeURIComponent(roleId)}${query}`;
+  const base = `/api/v1/staff/avatars/custom/${encodeURIComponent(roleId)}`;
+  const url = expectedRevision !== undefined ? `${base}?expected_revision=${expectedRevision}` : base;
   const contentType = data instanceof Blob && data.type ? data.type : "image/webp";
   const resp = await fetchWithBrowserCsrf(url, {
     method: "PUT",
@@ -71,8 +71,9 @@ export async function resetCustomAvatar(
   expectedRevision?: number,
   signal?: AbortSignal,
 ): Promise<{ ok: boolean; role_id: string; reset: boolean }> {
-  const query = expectedRevision !== undefined ? `?expected_revision=${expectedRevision}` : "";
-  return apiRequest(`/api/v1/staff/avatars/custom/${encodeURIComponent(roleId)}/reset${query}`, { method: "POST", signal });
+  const base = `/api/v1/staff/avatars/custom/${encodeURIComponent(roleId)}/reset`;
+  const url = expectedRevision !== undefined ? `${base}?expected_revision=${expectedRevision}` : base;
+  return apiRequest(url, { method: "POST", signal });
 }
 
 export function orderRoles(roles: StaffRoleItem[], orderNames: string[]): StaffRoleItem[] {
