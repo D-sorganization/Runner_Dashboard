@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-
 from agent_bus import reaper
 from agent_bus import reaper_health as rh
 

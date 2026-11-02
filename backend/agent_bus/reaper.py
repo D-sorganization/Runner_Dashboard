@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from agent_bus.store import get_store
 from agent_bus.reaper_health import node_ready_for_claim_reap
+from agent_bus.store import get_store
 
 log = logging.getLogger("dashboard.agent_bus.reaper")
 REAP_INTERVAL_SECONDS = 60

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
 
 from dashboard_config import HOSTNAME
 
@@ -33,6 +32,7 @@ def local_readyz_ok() -> bool:
         return _local_ready_check()
     try:
         import asyncio
+
         from readiness import aggregate, get_default_probes
 
         status, _body = asyncio.run(aggregate(get_default_probes()))
@@ -47,7 +47,6 @@ def peer_readyz_ok(node: str, peer_url: str) -> bool:
         return _peer_ready_check(node, peer_url)
     try:
         import httpx
-
         from staff.fleet import PEER_TIMEOUT_SECONDS, fleet_headers
 
         resp = httpx.get(f"{peer_url.rstrip('/')}/readyz", headers=fleet_headers(), timeout=PEER_TIMEOUT_SECONDS)
