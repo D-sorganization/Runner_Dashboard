@@ -323,6 +323,11 @@ fi
 
 run_fleet_env_preflight "${SECRETS_FILE}" "HUB_URL disagrees with machine_registry.yml (clear it, fix registry, or use --allow-hub-url-override)"
 
+LOOPBACK_GUARD="${SCRIPT_DIR}/deploy/loopback_bind_guard.py"
+if [[ -f "${LOOPBACK_GUARD}" ]]; then
+    "${PYTHON_BIN}" "${LOOPBACK_GUARD}" ensure-env --env-file "${SECRETS_FILE}" --quiet || true
+fi
+
 mkdir -p "$(dirname "${SCHEDULE_CONFIG_VAL}")"
 if [[ ! -f "${SCHEDULE_CONFIG_VAL}" ]]; then
     cp "${SCRIPT_DIR}/config/runner-schedule.json" "${SCHEDULE_CONFIG_VAL}"

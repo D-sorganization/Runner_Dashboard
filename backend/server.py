@@ -3180,7 +3180,8 @@ if __name__ == "__main__":
     uvicorn.run(
         asgi_app,
         # Issue #921: honor the operator-resolved bind host (DASHBOARD_HOST) instead
-        # of a hardcoded 0.0.0.0. Defaults to 0.0.0.0 when DASHBOARD_HOST is unset,
+        # of a hardcoded 0.0.0.0. Defaults via dashboard_config.HOST (loopback when
+        # DASHBOARD_LOOPBACK_AUTH=1, else 0.0.0.0 when DASHBOARD_HOST is unset),
         # preserving historical behavior while letting operators bind loopback-only.
         host=dashboard_config.HOST,  # noqa: S104 — default resolves to 0.0.0.0; see dashboard_config._resolve_bind_host
         port=PORT,

@@ -196,6 +196,33 @@ if [[ "$DEPLOY_SCOPE" == "system" ]]; then
     install_cursor_sandbox_dropin
 fi
 
+install_loopback_host_dropin() {
+    local src guard env_file issue dst
+    src="$(dirname "$0")/systemd-dropins/99-loopback-host.conf"
+    guard="$(dirname "$0")/loopback_bind_guard.py"
+    env_file="${HOME}/.config/runner-dashboard/env"
+    [[ -f "$src" && -f "$guard" ]] || return 0
+    issue="$(python3 "$guard" diagnose --env-file "$env_file" 2>/dev/null || echo "null")"
+    if [[ "$issue" == "null" ]]; then
+        return 0
+    fi
+    dst="/etc/systemd/system/${SERVICE}.service.d/99-loopback-host.conf"
+    cmp -s "$src" "$dst" 2>/dev/null && return 0
+    if dry_run "sudo install $src $dst && sudo systemctl daemon-reload"; then
+        return 0
+    fi
+    if sudo -n true 2>/dev/null; then
+        sudo install -D -m 0644 "$src" "$dst" && sudo systemctl daemon-reload \
+            && ok "Installed loopback bind drop-in ($dst)" \
+            || warn "Could not install $dst; loopback-auth nodes may crash-loop"
+    else
+        warn "loopback bind drop-in missing — run: sudo install -D -m 0644 $src $dst && sudo systemctl daemon-reload"
+    fi
+}
+if [[ "$DEPLOY_SCOPE" == "system" ]]; then
+    install_loopback_host_dropin
+fi
+
 info "Restarting $SERVICE..."
 if ! dry_run "$DEPLOY_SCOPE service restart $SERVICE"; then
     deployment_service_command "$DEPLOY_SCOPE" manage restart "$SERVICE"

@@ -72,3 +72,11 @@ def test_validate_loopback_auth_bind_allows_loopback_bind(monkeypatch: pytest.Mo
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
     monkeypatch.setenv("DASHBOARD_HOST", "127.0.0.1")
     dashboard_config.validate_loopback_auth_bind(force=True)
+
+
+def test_validate_loopback_auth_bind_allows_implicit_loopback_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
+    monkeypatch.delenv("DASHBOARD_HOST", raising=False)
+    dashboard_config.validate_loopback_auth_bind(force=True)

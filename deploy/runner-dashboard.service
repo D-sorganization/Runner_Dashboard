@@ -37,14 +37,10 @@ Environment=NUM_RUNNERS=12
 Environment=MAX_RUNNERS=16
 Environment=DASHBOARD_PORT=8321
 Environment=RUNNER_BASE_DIR=/home/YOUR_USER/actions-runners
-# DASHBOARD_HOST controls the uvicorn bind interface. Leave unset to keep the
-# documented default (0.0.0.0, all interfaces). WSL2 hosts with
-# ``networkingMode=mirrored`` and a Windows-side ``tailscale serve --tcp 8321``
-# bridge MUST set this to ``127.0.0.1`` — otherwise uvicorn fails with
-# ``[Errno 98] address already in use`` because the wildcard bind collides
-# with Tailscale's specific-IP listener on the shared network namespace.
-# Tailscale-serve still proxies external Tailnet traffic to 127.0.0.1:8321.
-#Environment=DASHBOARD_HOST=127.0.0.1
+# DASHBOARD_HOST controls the uvicorn bind interface. Fleet WSL/Tailscale hosts
+# bind loopback-only; Windows ``wsl-mirrored-port-helper.sh`` and tailscale serve
+# expose :8321 externally. Required when ``DASHBOARD_LOOPBACK_AUTH=1`` (#3617).
+Environment=DASHBOARD_HOST=127.0.0.1
 Environment=DISPLAY_NAME=ControlTower
 Environment=RUNNER_ALIASES=controltower,control-tower-runner-monitoring
 Environment=RUNNER_SCHEDULE_CONFIG=/home/YOUR_USER/.config/runner-dashboard/runner-schedule.json

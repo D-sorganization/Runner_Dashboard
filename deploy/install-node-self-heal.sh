@@ -32,6 +32,7 @@ PYTHON_BIN="$(resolve_auto_deploy_python "${DEPLOY_DIR}" "${SCOPE}" 2>/dev/null 
 install -d -m 0755 "${SELF_HEAL_DIR}"
 install -m 0755 "${SCRIPT_DIR}/node-self-heal.sh" "${SELF_HEAL_DIR}/node-self-heal.sh"
 install -m 0755 "${SCRIPT_DIR}/sync_provider_credentials.py" "${SELF_HEAL_DIR}/sync_provider_credentials.py"
+install -m 0755 "${SCRIPT_DIR}/loopback_bind_guard.py" "${SELF_HEAL_DIR}/loopback_bind_guard.py"
 
 render_unit() {
   sed -e "s|@DEPLOY_DIR@|${DEPLOY_DIR}|g" \
@@ -62,4 +63,9 @@ else
   sudo systemctl enable --now runner-dashboard-self-heal.timer
   sudo systemctl start runner-dashboard-self-heal.service
   echo "Installed system timer: runner-dashboard-self-heal.timer"
+fi
+
+GUARD="${SCRIPT_DIR}/loopback_bind_guard.py"
+if [[ -f "${GUARD}" ]]; then
+  "${PYTHON_BIN}" "${GUARD}" ensure-env --env-file "${ENV_FILE}" --quiet || true
 fi

@@ -72,6 +72,7 @@ install_node_auto_deploy() {
     install -m 0644 "${SCRIPT_DIR}/resolve-auto-deploy-python.sh" "${DEPLOY_DIR}/deploy/resolve-auto-deploy-python.sh"
     install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.sh" "${DEPLOY_DIR}/deploy/node-auto-deploy.sh"
     install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.py" "${DEPLOY_DIR}/deploy/node-auto-deploy.py"
+    install -m 0755 "${SCRIPT_DIR}/loopback_bind_guard.py" "${DEPLOY_DIR}/deploy/loopback_bind_guard.py"
     rsync -a --delete "${SCRIPT_DIR}/node_auto_deploy/" "${DEPLOY_DIR}/deploy/node_auto_deploy/"
   fi
 
@@ -90,6 +91,10 @@ install_node_auto_deploy() {
     sudo systemctl daemon-reload
     sudo systemctl enable --now runner-dashboard-auto-deploy.timer
     echo "Installed system timer: sudo systemctl status runner-dashboard-auto-deploy.timer"
+  fi
+  GUARD="${SCRIPT_DIR}/loopback_bind_guard.py"
+  if [[ -f "${GUARD}" ]]; then
+    "${PYTHON_BIN}" "${GUARD}" ensure-env --env-file "${ENV_FILE}" --quiet || true
   fi
 }
 
