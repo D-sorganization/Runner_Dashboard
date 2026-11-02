@@ -202,4 +202,80 @@ describe("selected role thread restoration", () => {
     expect(deps.listThreads).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps focus provenance attached to passive and explicit thread commits", async () => {
+    const restoredThread: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_passive_restore",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const explicitThread: ThreadInfo = {
+      ...restoredThread,
+      id: "thr_explicit_switch",
+      title: "Explicit Barb conversation",
+    };
+    const deps = threadApi({
+      listThreads: vi.fn().mockResolvedValue([restoredThread]),
+    });
+    const { result } = renderHook(() =>
+      useStaffConsole({
+        roles: ROLES,
+        initialRole: "barb",
+        restoreInitialRoleThread: true,
+        threadApi: deps,
+        streamEnabled: false,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(restoredThread.id));
+    expect(result.current.activeThreadFocus).toEqual({
+      threadId: restoredThread.id,
+      origin: "restore",
+    });
+
+    await act(async () => result.current.openThread(explicitThread, "barb"));
+    expect(result.current.activeThread?.id).toBe(explicitThread.id);
+    expect(result.current.activeThreadFocus).toEqual({
+      threadId: explicitThread.id,
+      origin: "explicit",
+    });
+  });
+
+  it("does not replace an explicit selection when a held restore resolves", async () => {
+    const restoredThread: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_held_restore",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const explicitThread: ThreadInfo = {
+      ...restoredThread,
+      id: "thr_selected_during_restore",
+      title: "Explicit selection during restore",
+    };
+    let resolveThreads!: (threads: ThreadInfo[]) => void;
+    const deps = threadApi({
+      listThreads: vi.fn(() => new Promise<ThreadInfo[]>((resolve) => { resolveThreads = resolve; })),
+    });
+    const { result } = renderHook(() =>
+      useStaffConsole({
+        roles: ROLES,
+        initialRole: "barb",
+        restoreInitialRoleThread: true,
+        threadApi: deps,
+        streamEnabled: false,
+      }),
+    );
+
+    await waitFor(() => expect(deps.listThreads).toHaveBeenCalledWith("barb"));
+    await act(async () => result.current.openThread(explicitThread, "barb"));
+    await act(async () => resolveThreads([restoredThread]));
+
+    expect(result.current.activeThread?.id).toBe(explicitThread.id);
+    expect(result.current.activeThreadFocus).toEqual({
+      threadId: explicitThread.id,
+      origin: "explicit",
+    });
+  });
+
 });
