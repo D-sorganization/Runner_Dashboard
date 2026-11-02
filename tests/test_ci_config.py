@@ -771,11 +771,12 @@ def test_docker_skip_message_and_detector_agree() -> None:
             assert noun in message
 
 
-def test_ci_nightly_suppresses_empty_marker_exit_code() -> None:
-    """CI Nightly must handle pytest exit code 5 gracefully when no tests match marker."""
+def test_ci_nightly_fails_on_empty_selection_and_verifies_executed_cases() -> None:
+    """CI Nightly must not go green when nothing is selected or everything skips (#3776)."""
     nightly_workflow = ROOT / ".github" / "workflows" / "ci-nightly.yml"
     assert nightly_workflow.exists()
     content = nightly_workflow.read_text(encoding="utf-8")
-    assert "status=$?" in content
-    assert "if [ $status -eq 5 ]; then" in content
-    assert "exit 0" in content
+    assert "if [ $status -eq 5 ]; then" not in content
+    assert "continuing successfully" not in content
+    assert "--junitxml=nightly-junit.xml" in content
+    assert "python scripts/ci/check_junit_executed.py nightly-junit.xml" in content

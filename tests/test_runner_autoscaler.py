@@ -240,18 +240,18 @@ def test_leased_runners_active_lease(tmp_path: Path) -> None:
     future = time.time() + 3600
     lease_file = tmp_path / "leases.yml"
     lease_file.write_text(
-        yaml.dump({"leases": [{"runner_id": "runner-7", "expires_at": future}]}),
+        yaml.dump(
+            {
+                "leases": [
+                    {"runner_id": "runner-7", "expires_at": future},
+                    {"runner_id": "runner-8", "expires_at": time.time() - 3600},
+                ]
+            }
+        ),
         encoding="utf-8",
     )
-    # Patch the internal path construction
-    with patch.object(ra, "Path", side_effect=lambda *a: Path(*a)):
-        pass
-    # Direct test: read leases via a patched resolved path
-    with patch(
-        "runner_autoscaler.Path.__new__",
-        return_value=lease_file,
-    ):
-        pass  # Path patching is complex; rely on integration test of _leased_runners separately
+    with patch("autoscaler_sampling._leases_path", return_value=lease_file):
+        assert ra._leased_runners() == {"runner-7"}
 
 
 # ---------------------------------------------------------------------------

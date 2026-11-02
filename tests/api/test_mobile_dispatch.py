@@ -8,6 +8,7 @@ Test patterns follow tests/conftest.py and remediation dispatch tests.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -32,6 +33,29 @@ def _make_run_cmd(returncode: int = 0, stdout: str = "", stderr: str = "") -> As
         return returncode, stdout, stderr
 
     return AsyncMock(side_effect=_run)
+
+
+def _make_capturing_run_cmd(returncode: int = 0) -> tuple[AsyncMock, list[dict]]:
+    """Build a mock run_cmd that records each call's command and dispatched payload.
+
+    The dispatch route writes the gh-api request body to a ``--input`` temp
+    file and deletes it in a ``finally`` block right after ``run_cmd``
+    returns, so the payload must be read from disk while the mocked call is
+    still running, not inspected afterwards.
+    """
+    calls: list[dict] = []
+
+    async def _run(
+        cmd: list[str],
+        timeout: int = 30,
+        cwd: Path | None = None,
+    ) -> tuple[int, str, str]:
+        payload_path = cmd[cmd.index("--input") + 1]
+        payload = json.loads(Path(payload_path).read_text(encoding="utf-8"))
+        calls.append({"cmd": cmd, "payload": payload})
+        return returncode, "", ""
+
+    return AsyncMock(side_effect=_run), calls
 
 
 def _make_avail_patch(available: bool = True):
@@ -84,8 +108,10 @@ VALID_MOBILE_DISPATCH_BODY = {
 
 
 @pytest.mark.asyncio
-async def test_well_formed_mobile_dispatch_accepted() -> None:
-    """A well-formed mobile dispatch request does not get rejected with a 422."""
+async def test_well_formed_mobile_dispatch_returns_200_and_dispatches_expected_payload() -> None:
+    """A well-formed mobile dispatch request returns 200 and makes exactly one
+    executor call whose dispatched payload carries the request's repository,
+    provider, workflow, branch and run ID."""
     import os
 
     os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
@@ -97,11 +123,13 @@ async def test_well_formed_mobile_dispatch_accepted() -> None:
     def _mock_principal():
         return Principal(id="test-admin", type="bot", name="Test", roles=["admin"])
 
+    run_cmd_mock, calls = _make_capturing_run_cmd(0)
+
     original_overrides = dict(app.dependency_overrides)
     app.dependency_overrides[require_principal] = _mock_principal
     try:
         with _make_policy_patch(), _make_avail_patch(True):
-            with patch("routers.remediation.run_cmd", new=_make_run_cmd(0)):
+            with patch("routers.remediation.run_cmd", new=run_cmd_mock):
                 with patch("quota_enforcement.quota_enforcement.check_dispatch_quota", return_value=(True, "")):
                     with patch("quota_enforcement.quota_enforcement.add_spend"):
                         with patch("routers.remediation._append_remediation_history"):
@@ -115,7 +143,14 @@ async def test_well_formed_mobile_dispatch_accepted() -> None:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
-    assert resp.status_code not in (422, 500), f"Unexpected error {resp.status_code}: {resp.text}"
+    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    assert len(calls) == 1, f"Expected exactly one executor call, got {len(calls)}"
+    inputs = calls[0]["payload"]["inputs"]
+    assert inputs["target_repository"] == "D-sorganization/runner-dashboard"
+    assert inputs["provider"] == VALID_MOBILE_DISPATCH_BODY["provider"]
+    assert inputs["workflow_name"] == VALID_MOBILE_DISPATCH_BODY["workflow_name"]
+    assert inputs["branch"] == VALID_MOBILE_DISPATCH_BODY["branch"]
+    assert inputs["run_id"] == str(VALID_MOBILE_DISPATCH_BODY["run_id"])
 
 
 @pytest.mark.asyncio
@@ -189,8 +224,16 @@ async def test_rate_limit_enforced() -> None:
 
 
 @pytest.mark.asyncio
-async def test_missing_required_fields_rejected() -> None:
-    """A request body missing repository/workflow_name/branch is rejected."""
+async def test_missing_repository_rejected_422_no_executor_call() -> None:
+    """A request body omitting ``repository`` is rejected 422 before dispatch.
+
+    The dispatch route has no explicit required-field check of its own; a
+    blank repository is caught only because ``_normalize_repository_input``
+    runs ``validate_repo_slug`` against it, which rejects the empty string
+    under the documented ``^[A-Za-z0-9._-]{1,100}$`` contract. That is the
+    one field this endpoint actually enforces as required (see the sibling
+    test below for the fields it does not).
+    """
     import os
 
     os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
@@ -200,6 +243,8 @@ async def test_missing_required_fields_rejected() -> None:
     from server import app
 
     incomplete_body = {
+        "workflow_name": "ci.yml",
+        "branch": "main",
         "failure_reason": "some failure",
         "provider": "claude_code_cli",
     }
@@ -207,21 +252,80 @@ async def test_missing_required_fields_rejected() -> None:
     def _mock_principal():
         return Principal(id="test-admin", type="bot", name="Test", roles=["admin"])
 
+    run_cmd_mock = _make_run_cmd(0)
+
     original_overrides = dict(app.dependency_overrides)
     app.dependency_overrides[require_principal] = _mock_principal
     try:
         with _make_policy_patch(), _make_avail_patch(True):
             with patch("quota_enforcement.quota_enforcement.check_dispatch_quota", return_value=(True, "")):
-                client = TestClient(app, raise_server_exceptions=False)
-                resp = client.post(
-                    "/api/agent-remediation/dispatch",
-                    json=incomplete_body,
-                )
+                with patch("routers.remediation.run_cmd", new=run_cmd_mock):
+                    client = TestClient(app, raise_server_exceptions=False)
+                    resp = client.post(
+                        "/api/agent-remediation/dispatch",
+                        json=incomplete_body,
+                        headers={"X-Requested-With": "XMLHttpRequest"},
+                    )
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
-    assert resp.status_code != 200, f"Expected non-200 for incomplete body, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == 422, f"Expected 422 for missing repository, got {resp.status_code}: {resp.text}"
+    assert "repository" in resp.json()["detail"]
+    run_cmd_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_missing_workflow_name_and_branch_are_not_rejected() -> None:
+    """Document established (not assumed) behaviour: omitting workflow_name
+    and branch does not get the request rejected the way omitting
+    repository does. ``/dispatch`` has no required-field check for these
+    two (unlike ``/plan``, which does), so the request proceeds to 200 and
+    dispatches with empty strings for both. This is a test-oracle honesty
+    case, not an assertion that the gap is desirable; if that changes, this
+    test's expected 200 should flip to a 422/400 along with the fix.
+    """
+    import os
+
+    os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
+
+    from fastapi.testclient import TestClient
+    from identity import Principal, require_principal
+    from server import app
+
+    body = {
+        "repository": "runner-dashboard",
+        "failure_reason": "some failure",
+        "provider": "claude_code_cli",
+    }
+
+    def _mock_principal():
+        return Principal(id="test-admin", type="bot", name="Test", roles=["admin"])
+
+    run_cmd_mock, calls = _make_capturing_run_cmd(0)
+
+    original_overrides = dict(app.dependency_overrides)
+    app.dependency_overrides[require_principal] = _mock_principal
+    try:
+        with _make_policy_patch(), _make_avail_patch(True):
+            with patch("quota_enforcement.quota_enforcement.check_dispatch_quota", return_value=(True, "")):
+                with patch("quota_enforcement.quota_enforcement.add_spend"):
+                    with patch("routers.remediation._append_remediation_history"):
+                        with patch("routers.remediation.run_cmd", new=run_cmd_mock):
+                            client = TestClient(app, raise_server_exceptions=False)
+                            resp = client.post(
+                                "/api/agent-remediation/dispatch",
+                                json=body,
+                                headers={"X-Requested-With": "XMLHttpRequest"},
+                            )
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(original_overrides)
+
+    assert resp.status_code == 200, f"Expected 200 (no required-field check today), got {resp.status_code}: {resp.text}"
+    assert len(calls) == 1
+    assert calls[0]["payload"]["inputs"]["workflow_name"] == ""
+    assert calls[0]["payload"]["inputs"]["branch"] == ""
 
 
 @pytest.mark.asyncio
@@ -270,7 +374,13 @@ async def test_plan_dispatch_accepts_mobile_context() -> None:
 
 @pytest.mark.asyncio
 async def test_quota_exceeded_returns_403() -> None:
-    """When quota is exceeded, dispatch returns 403."""
+    """When quota is exceeded, dispatch returns 403.
+
+    Regression guard: without the ``X-Requested-With`` header, the CSRF
+    middleware rejects the request with its own 403 before the quota check
+    ever runs, so a bare ``status_code == 403`` assertion would pass for the
+    wrong reason. Assert on the quota-specific detail text too.
+    """
     import os
 
     os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
@@ -295,12 +405,14 @@ async def test_quota_exceeded_returns_403() -> None:
                     resp = client.post(
                         "/api/agent-remediation/dispatch",
                         json=VALID_MOBILE_DISPATCH_BODY,
+                        headers={"X-Requested-With": "XMLHttpRequest"},
                     )
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(original_overrides)
 
     assert resp.status_code == 403, f"Expected 403 for quota exceeded, got {resp.status_code}: {resp.text}"
+    assert "hourly cap reached" in resp.text, f"Expected quota detail in body, got: {resp.text}"
 
 
 @pytest.mark.asyncio

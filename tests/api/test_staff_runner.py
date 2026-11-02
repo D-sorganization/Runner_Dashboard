@@ -395,6 +395,34 @@ def test_cancel_terminates_running_process(staff: runner_mod.StaffRunner) -> Non
 
 
 @pytest.mark.integration
+def test_join_all_waits_for_outstanding_worker_before_returning(staff: runner_mod.StaffRunner) -> None:
+    """launch() starts a daemon thread with no caller holding a reference (#3778).
+
+    Without join_all(), a test can return right after submit() while the
+    worker thread is still mid-flight, leaving it to race the next test's
+    store/global-state reset.
+    """
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake", prompt="quick"))
+    leaked = staff.join_all(timeout=10.0)
+    assert leaked == []
+    done = staff.store.get_run(rec.id)
+    assert done is not None
+    assert done.status in ("succeeded", "failed")
+
+
+@pytest.mark.integration
+def test_join_all_reports_a_thread_still_running_within_timeout(staff: runner_mod.StaffRunner) -> None:
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-slow", prompt="sleep"))
+    _wait(staff.store, rec.id, ("running",))
+    leaked = staff.join_all(timeout=0.05)
+    assert leaked == [f"staff-{rec.id}"]
+    # Clean up: don't leak the 30s sleeping subprocess into later tests.
+    assert staff.cancel(rec.id) is True
+    _wait(staff.store, rec.id, ("cancelled", "failed", "succeeded"))
+    assert staff.join_all(timeout=10.0) == []
+
+
+@pytest.mark.integration
 def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises(
     staff: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
