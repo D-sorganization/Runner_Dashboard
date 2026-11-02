@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from staff.execution_result import classify_execution_result
+from staff.execution_result import classify_execution_result, is_phantom_staff_result
 from staff.store import RunRecord
 from staff.verification import PullRequest
 
@@ -77,6 +77,69 @@ def test_classify_ignores_phantom_nudge_staff_result_when_pr_exists(tmp_path: Pa
         cancelled=False,
         rc=0,
         result_line="STAFF_RESULT: No repository task was specified.",
+        provider="codex",
+        transcript_path=transcript,
+        run=rec,
+        opens_pr=True,
+        probe=probe,
+    )
+    assert status == "succeeded"
+    assert failure_class == ""
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "result_line",
+    [
+        "STAFF_RESULT: No task details were provided.",
+        "STAFF_RESULT: No task details were provided",
+        "STAFF_RESULT: no task details were provided.",
+        "STAFF_RESULT:   No task details were provided.  ",
+    ],
+)
+def test_is_phantom_staff_result_rejects_no_task_details(result_line: str) -> None:
+    """#3796: the resume/nudge summary must be caught alongside the #2773 variants."""
+    assert is_phantom_staff_result(result_line)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "result_line",
+    [
+        "STAFF_RESULT: No task details were provided for the retry queue.",
+        "STAFF_RESULT: Fixed the no task details were provided bug in #3796.",
+        "STAFF_RESULT: Pushed branch and opened PR #42.",
+        "",
+    ],
+)
+def test_is_phantom_staff_result_keeps_task_specific_reports(result_line: str) -> None:
+    """A real report must not be rejected just because it contains similar words."""
+    assert not is_phantom_staff_result(result_line)
+
+
+@pytest.mark.unit
+def test_classify_ignores_phantom_no_task_details_staff_result_when_pr_exists(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / "t.log"
+    transcript.write_text("nudge path\n", encoding="utf-8")
+    rec = RunRecord(
+        id="run-phantom-details",
+        role="night-watch",
+        provider="codex",
+        model="m",
+        machine="n",
+        repo="UpstreamDrift",
+        target_kind="issue",
+        target_ref="100",
+        prompt="go",
+        branch="staff/night-watch-100",
+    )
+    probe = _Probe(pr=PullRequest(number=100, state="open", ci="green"), ahead=0)
+    status, failure_class, _, _, _ = classify_execution_result(
+        cancelled=False,
+        rc=0,
+        result_line="STAFF_RESULT: No task details were provided.",
         provider="codex",
         transcript_path=transcript,
         run=rec,
