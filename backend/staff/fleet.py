@@ -163,6 +163,18 @@ def scheduler_watchdog_alerts(machines: dict[str, dict[str, Any]], now: datetime
             }
         )
     for name, board in online.items():
+        pause = (board.get("scheduler") or {}).get("pause") or {}
+        if pause.get("expired"):
+            alerts.append(
+                {
+                    "key": f"scheduler-pause-expired:{name}",
+                    "severity": "warning",
+                    "title": "Staff scheduler pause TTL expired",
+                    "detail": f"Node {name} scheduler pause_until {pause.get('pause_until')} has elapsed.",
+                    "node": name,
+                }
+            )
+    for name, board in online.items():
         scheduler = board.get("scheduler") or {}
         if not bool(scheduler.get("enabled")):
             continue
