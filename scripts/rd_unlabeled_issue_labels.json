@@ -14,5 +14,13 @@
   "3711": ["type:task", "complexity:complex", "effort:l", "judgement:design", "medium", "tier:strong"],
   "3722": ["type:epic", "complexity:deep", "effort:xl", "judgement:design", "medium", "tier:strong"],
   "3727": ["type:epic", "complexity:deep", "effort:xl", "judgement:objective", "medium", "tier:strong"],
-  "3792": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"]
+  "3792": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"],
+  "3822": ["type:task", "complexity:complex", "effort:m", "judgement:objective", "medium", "tier:cli"],
+  "3823": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"],
+  "3852": ["type:task", "complexity:complex", "effort:m", "judgement:objective", "medium", "tier:cli"],
+  "3856": ["type:task", "complexity:routine", "effort:s", "judgement:objective", "medium", "tier:cli"],
+  "3883": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"],
+  "3867": ["type:task", "complexity:complex", "effort:m", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3868": ["type:task", "complexity:deep", "effort:l", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3869": ["type:chore", "complexity:complex", "effort:m", "judgement:objective", "medium", "tier:cli"]
 }

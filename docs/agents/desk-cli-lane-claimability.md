@@ -21,15 +21,23 @@ Lanes also typically filter on **taxonomy** (complexity, tier, repo). Issues **w
 
 | Issue | Blocker |
 | ----- | ------- |
-| #3700 George | No confirmed Grok duty/schedule in RM/RD docs—see `docs/agents/issue-specs/3700-george-persona-port.md` |
-| #3702 Linus | Dieter scope decision per `role-seats.md`—see `3702-linus-persona-port.md` |
-| #3704 | Closed tracker; code on main—pick fix/tasks, not the epic checkbox |
+| #3700 George | `judgement:design` + `blocked` until Barb/Dieter confirm schedule/duty—spec on issue body + `docs/agents/issue-specs/3700-george-persona-port.md` |
+| #3702 Linus | `judgement:design` + `blocked` until Dieter scope ruling—`3702-linus-persona-port.md` |
+| #3704 | **Closed** checklist epic—not pickable (`state != open`); pick #3792 or newly labeled CLI tasks |
+
+## Why agy / rd-barb can still show “nothing claimable” (2026-11-02)
+
+1. **`pickable` false:** `judgement:design` / `judgement:contested` (inventory rule in `issue_inventory.is_pickable`).
+2. **Hold labels:** `blocked`, `do-not-automate`, `do-not-merge` exclude `/api/coordination/jobs` even when inventory pickable is true.
+3. **Missing taxonomy:** open issues with **zero labels** fail lane filters that require `tier:cli`, `complexity:*`, etc.
+4. **Thin CLI queue:** on 2026-11-02 only **#3792** matched `tier:cli` + `judgement:objective` + open + unclaimed on RD; label more fix/tasks via `scripts/rd_unlabeled_issue_labels.json` + `scripts/apply_rd_issue_labels.sh`.
+5. **Lane-specific filters:** remediation-style lanes often enable pickable-only plus repo/tier/complexity filters in the UI or local wrapper—match labels to the lane profile.
 
 ## Unlabeled open issues (23 on 2026-11-02)
 
 Missing `type:*`, `complexity:*`, `effort:*`, `judgement:*` per `docs/issue-taxonomy.md`. Until labeled, orchestrators cannot route “three routine objective CLI tasks” reliably.
 
-Apply labels with `scripts/apply_rd_issue_labels.sh` (requires `gh` issue write on a fleet bot host).
+Apply labels with `scripts/apply_rd_issue_labels.sh` (requires `gh` issue write on a fleet bot host). If the cloud/bot token lacks `issues:write`, run `scripts/sync_issue_specs_to_github.sh` on the Desk hub with **`gh-personal`** (owner login).
 
 ## Holds respected by job board
 
