@@ -28,9 +28,7 @@ def default_personal_avatars_dir() -> Path:
 
 def validate_safe_id(val: str, kind: str = "identifier") -> None:
     if not isinstance(val, str) or not val or not SAFE_ID_RE.match(val):
-        raise AvatarValidationError(
-            f"invalid {kind} {val!r}: must match [a-zA-Z0-9_-]+"
-        )
+        raise AvatarValidationError(f"invalid {kind} {val!r}: must match [a-zA-Z0-9_-]+")
 
 
 def _inspect_webp(data: bytes) -> tuple[int, int, str, bytes]:
@@ -40,12 +38,7 @@ def _inspect_webp(data: bytes) -> tuple[int, int, str, bytes]:
         raise AvatarValidationError("truncated WebP container")
     chunk, sz = data[12:16], struct.unpack("<I", data[16:20])[0]
     if chunk == b"VP8 ":
-        if (
-            len(data) < 20 + sz
-            or sz < 10
-            or (data[20] & 1) != 0
-            or data[23:26] != b"\x9d\x01\x2a"
-        ):
+        if len(data) < 20 + sz or sz < 10 or (data[20] & 1) != 0 or data[23:26] != b"\x9d\x01\x2a":
             raise AvatarValidationError("invalid VP8 chunk")
         w, h = (
             struct.unpack("<H", data[26:28])[0] & 0x3FFF,
@@ -102,17 +95,9 @@ def inspect_and_normalize_image(data: bytes) -> tuple[int, int, str, bytes]:
     elif data.startswith(b"\x89PNG\r\n\x1a\n"):
         w, h, media, norm = _inspect_png(data)
     else:
-        raise AvatarValidationError(
-            "unsupported image format: must be valid WebP or PNG"
-        )
-    if not (
-        MIN_DIMENSION <= w <= MAX_DIMENSION
-        and MIN_DIMENSION <= h <= MAX_DIMENSION
-        and w * h <= MAX_PIXELS
-    ):
-        raise AvatarValidationError(
-            f"invalid image dimensions {w}x{h} or pixel count {w * h}"
-        )
+        raise AvatarValidationError("unsupported image format: must be valid WebP or PNG")
+    if not (MIN_DIMENSION <= w <= MAX_DIMENSION and MIN_DIMENSION <= h <= MAX_DIMENSION and w * h <= MAX_PIXELS):
+        raise AvatarValidationError(f"invalid image dimensions {w}x{h} or pixel count {w * h}")
     return w, h, media, norm
 
 
@@ -128,17 +113,13 @@ class PersonalAvatarStore:
         target.relative_to(self.root)
         return target
 
-    def save_avatar(
-        self, operator_id: str, role_id: str, image_bytes: bytes
-    ) -> tuple[Path, str, str]:
+    def save_avatar(self, operator_id: str, role_id: str, image_bytes: bytes) -> tuple[Path, str, str]:
         _w, _h, media_type, norm = inspect_and_normalize_image(image_bytes)
         target = self._target_path(operator_id, role_id)
         target.parent.mkdir(parents=True, exist_ok=True)
         content_hash = hashlib.sha256(norm).hexdigest()[:12]
         with self._lock:
-            with tempfile.NamedTemporaryFile(
-                dir=target.parent, prefix=f"{role_id}.tmp.", delete=False
-            ) as tmp:
+            with tempfile.NamedTemporaryFile(dir=target.parent, prefix=f"{role_id}.tmp.", delete=False) as tmp:
                 tmp_path = Path(tmp.name)
                 tmp.write(norm)
                 tmp.flush()
@@ -156,9 +137,7 @@ class PersonalAvatarStore:
         if not target.is_file():
             return None
         meta = target.with_suffix(".meta")
-        media = (
-            meta.read_text(encoding="utf-8").strip() if meta.is_file() else "image/webp"
-        )
+        media = meta.read_text(encoding="utf-8").strip() if meta.is_file() else "image/webp"
         return target, media or "image/webp"
 
     def reset_avatar(self, operator_id: str, role_id: str) -> bool:

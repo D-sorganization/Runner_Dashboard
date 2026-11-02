@@ -52,9 +52,7 @@ def _check_role_and_rev(
         raise HTTPException(422, f"unknown role id: {role_id!r}")
     prefs = get_presentation_prefs_store().get(op_id)
     if exp_rev is not None and exp_rev != prefs.revision:
-        raise HTTPException(
-            409, f"stale revision; current revision is {prefs.revision}"
-        )
+        raise HTTPException(409, f"stale revision; current revision is {prefs.revision}")
     return known, prefs
 
 
@@ -120,14 +118,8 @@ async def get_personal_avatar_v1(
     role_id: str,
     peer: Principal = Depends(require_scope("staff.read")),
 ) -> FileResponse:
-    if (
-        peer.id != operator_id
-        and "staff.admin" not in peer.scopes
-        and "*" not in peer.scopes
-    ):
-        raise HTTPException(
-            status_code=403, detail="cross-operator avatar access forbidden"
-        )
+    if peer.id != operator_id and "staff.admin" not in peer.scopes and "*" not in peer.scopes:
+        raise HTTPException(status_code=403, detail="cross-operator avatar access forbidden")
     try:
         validate_safe_id(operator_id, "operator_id")
         validate_safe_id(role_id, "role_id")
@@ -154,8 +146,6 @@ async def avatar_v1(
 ) -> FileResponse:
     """Serve a role's persona image from RM ``staff/avatars/`` (#2680)."""
     avatars_dir = staff_avatars_dir()
-    if avatars_dir is None or validate_avatar_yaml_path(
-        avatar_rel, avatars_dir=avatars_dir
-    ):
+    if avatars_dir is None or validate_avatar_yaml_path(avatar_rel, avatars_dir=avatars_dir):
         raise HTTPException(status_code=404, detail="avatar not found")
     return FileResponse(avatars_dir / avatar_rel, media_type="image/webp")
