@@ -293,14 +293,16 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             <button type="button" className="staff-mobile__details-btn" onClick={() => setView("roster")}>Choose staff</button>
           </header>
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
-          {primaryRoleUnavailable && (
-            <div className="staff-mobile__primary-role-unavailable" role="alert" data-testid="staff-mobile-rd-barb-unavailable">
-              rd-barb is unavailable right now — the primary chat can&apos;t open.
-            </div>
-          )}
           {/* A <div>, not <main>: the page already has one <main> landmark
               (MobileShell's #main-content); a second here would duplicate it. */}
           <div className="staff-mobile__main-content staff-mobile__home-content">
+            {/* Inside the scroll area, not fixed chrome: at narrow widths it
+                wraps tall enough to push the staff tabs under the shell nav (#3772). */}
+            {primaryRoleUnavailable && (
+              <div className="staff-mobile__primary-role-unavailable" role="alert" data-testid="staff-mobile-rd-barb-unavailable">
+                rd-barb is unavailable right now — the primary chat can&apos;t open.
+              </div>
+            )}
             <section className="staff-mobile__home-intro" aria-labelledby="staff-mobile-home-title">
               <span className="staff-mobile__home-eyebrow">Your fleet, one conversation away</span>
               <h2 id="staff-mobile-home-title">What would you like to work on?</h2>

@@ -164,6 +164,17 @@
   padding-bottom: 8px;
 }
 
+/* Three 44px tabs plus the default gap and padding need 172px, so at 160px
+   (200% reflow) the Runs tab was clipped off the right edge (#3772). Trim the
+   chrome, not the targets. */
+@media (max-width: 200px) {
+  .staff-mobile__tabs {
+    gap: 4px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
 .staff-mobile__tab {
   flex: 1;
   min-height: 44px;

@@ -28,7 +28,8 @@ test.describe("Mobile shell bottom navigation", () => {
   test("renders bottom tab bar at mobile viewport", async ({ page }) => {
     await page.goto("/");
     // MobileShell bottom nav should be visible at mobile widths
-    const nav = page.locator('[role="tablist"]');
+    // Scoped by name: the Staff home has its own "Staff views" tablist (#3772).
+    const nav = page.getByRole("tablist", { name: "Main navigation" });
     await expect(nav).toBeVisible();
   });
 
