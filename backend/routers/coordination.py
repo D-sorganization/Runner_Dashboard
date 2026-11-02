@@ -33,7 +33,7 @@ from coordination import postman_runner, service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
-from coordination.claims import ClaimHeldError
+from coordination.claims import AgingPrBlockedError, ClaimHeldError
 from coordination.models import (
     AGENT_PATTERN,
     REPO_PATTERN,
@@ -44,32 +44,22 @@ from coordination.models import (
     MessageBody,
     PresenceBody,
     ReleaseBody,
-    bare_repo,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from identity import require_fleet_peer
+from routers.repo_query import bare_repo_query as _repo
 
 log = logging.getLogger("dashboard.coordination")
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
 WRITER = Depends(require_coordination_writer)  # one write-auth dependency for every POST
 
 
-def _repo(value: str | None) -> str | None:
-    """Query-string twin of the body validator: strip ``owner/``, reject paths with 422."""
-    if value is None:
-        return None
-    try:
-        return bare_repo(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
 async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str) -> dict[str, Any]:
     """Run one RM write off the event loop and map its failures to HTTP (DRY for every POST)."""
     try:
         result = await run_in_threadpool(action)
-    except (ClaimHeldError, service.NotRegisteredError) as exc:
+    except (ClaimHeldError, AgingPrBlockedError, service.NotRegisteredError) as exc:
         raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
     except service.ImpersonationError as exc:
         log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)
