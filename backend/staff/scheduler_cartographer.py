@@ -67,10 +67,17 @@ def reconcile_pending(
         rec = store.get_run(run_id)
         if rec is None or rec.status in ("queued", "preparing", "running", "needs_input"):
             continue
-        if rec.status != "succeeded":
+        # A "succeeded" run whose post-run verification (#1516) came back "failed" is not a
+        # successful sweep either -- the model-reported exit code is not the acceptance signal.
+        if rec.status != "succeeded" or rec.verification == "failed":
             with lock:
                 pending.pop(run_id, None)
-            log.info("staff scheduler: cartographer run %s ended %s; no capsule recorded", run_id, rec.status)
+            log.info(
+                "staff scheduler: cartographer run %s ended %s (verification=%s); no capsule recorded",
+                run_id,
+                rec.status,
+                rec.verification,
+            )
             continue
         try:
             result = cartographer_persona.run_cartographer_slot(
@@ -89,6 +96,22 @@ def reconcile_pending(
             # next tick's reconciliation pass, rather than being silently dropped (#3788).
             log.exception("staff scheduler: failed to record cartographer capsule for run %s", run_id)
             continue
+        status = result.get("status")
+        if status != "executed":
+            # The persona contract wrote no capsule/notify for "failed" or "skipped" (#3788
+            # follow-up). A fallback-lease-held or persistence-failed result is left pending so
+            # the next tick retries once the condition clears; a duplicate-slot skip is terminal
+            # (another holder already delivered this slot) and is dropped instead.
+            if result.get("reason") == "slot_already_executed":
+                with lock:
+                    pending.pop(run_id, None)
+            log.info(
+                "staff scheduler: cartographer run %s did not record a capsule (%s: %s)",
+                run_id,
+                status,
+                result.get("reason"),
+            )
+            continue
         with lock:
             pending.pop(run_id, None)
-        log.info("staff scheduler: cartographer run %s recorded (%s)", run_id, result.get("status"))
+        log.info("staff scheduler: cartographer run %s recorded (%s)", run_id, status)
