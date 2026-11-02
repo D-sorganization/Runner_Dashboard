@@ -63,7 +63,7 @@ def run_tools_weekly_pilot(
     doc["pilot"] = {
         "job": WEEKLY_JOB,
         "exit_criteria": list(EXIT_CRITERIA),
-        "recorded_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "recorded_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
     out = ledger_path or default_ledger_path()
     out.parent.mkdir(parents=True, exist_ok=True)
