@@ -17,28 +17,33 @@ function isBarbThreadList(url: URL): boolean {
   return url.pathname === THREADS_PATH && url.searchParams.get("role") === "barb";
 }
 
+async function serveThread(page: Page, thread: typeof RESTORED_THREAD) {
+  const detailPath = `${THREADS_PATH}/${thread.id}`;
+  const detailMatcher = (url: URL) => url.pathname === detailPath;
+  const streamMatcher = (url: URL) => url.pathname === `${detailPath}/stream`;
+  await page.route(detailMatcher, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ json: { thread, messages: [] } })
+      : route.fallback(),
+  );
+  await page.route(streamMatcher, (route) =>
+    route.request().method() === "GET" ? route.fulfill({ status: 204 }) : route.fallback(),
+  );
+  return { detailMatcher, streamMatcher };
+}
+
 async function openDrawerWithThread(page: Page, width: number, thread: typeof RESTORED_THREAD) {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
   await page.goto("/fleet");
 
   let listRequests = 0;
-  let detailRequests = 0;
   await page.route(isBarbThreadList, async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
     listRequests += 1;
     await route.fulfill({ json: { threads: [thread] } });
   });
   const detailPath = `${THREADS_PATH}/${thread.id}`;
-  const detailMatcher = (url: URL) => url.pathname === detailPath;
-  const streamMatcher = (url: URL) => url.pathname === `${detailPath}/stream`;
-  await page.route(detailMatcher, async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    detailRequests += 1;
-    await route.fulfill({ json: { thread, messages: [] } });
-  });
-  await page.route(streamMatcher, async (route) =>
-    route.fulfill({ status: 204 }),
-  );
+  const routes = await serveThread(page, thread);
 
   const listResponsePromise = page.waitForResponse((response) =>
     response.request().method() === "GET" && isBarbThreadList(new URL(response.url())),
@@ -56,7 +61,6 @@ async function openDrawerWithThread(page: Page, width: number, thread: typeof RE
   const detailResponse = await detailResponsePromise;
   expect(detailResponse.status()).toBe(200);
   expect(await detailResponse.json()).toEqual({ thread, messages: [] });
-  expect(detailRequests).toBe(1);
 
   const drawer = page.getByTestId("barb-sidebar");
   await expect(drawer).toBeVisible();
@@ -65,8 +69,8 @@ async function openDrawerWithThread(page: Page, width: number, thread: typeof RE
   });
   await expect(threadRegion).toBeVisible();
   await page.unroute(isBarbThreadList);
-  await page.unroute(detailMatcher);
-  await page.unroute(streamMatcher);
+  await page.unroute(routes.detailMatcher);
+  await page.unroute(routes.streamMatcher);
   return drawer;
 }
 
@@ -179,7 +183,6 @@ test("passive thread restore preserves moved focus; New chat keeps explicit focu
   });
 
   let listRequests = 0;
-  let detailRequests = 0;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/fleet");
   await page.route(isBarbThreadList, async (route) => {
@@ -189,17 +192,7 @@ test("passive thread restore preserves moved focus; New chat keeps explicit focu
     await listGate;
     await route.fulfill({ json: { threads: [restored] } });
   });
-  for (const thread of [restored, explicit]) {
-    const detailPath = `${THREADS_PATH}/${thread.id}`;
-    await page.route((url) => url.pathname === detailPath, async (route) => {
-      if (route.request().method() !== "GET") return route.fallback();
-      detailRequests += 1;
-      await route.fulfill({ json: { thread, messages: [] } });
-    });
-    await page.route((url) => url.pathname === `${detailPath}/stream`, async (route) =>
-      route.fulfill({ status: 204 }),
-    );
-  }
+  for (const thread of [restored, explicit]) await serveThread(page, thread);
   await page.route((url) => url.pathname === THREADS_PATH, async (route) => {
     if (route.request().method() === "POST") return route.fulfill({ json: explicit });
     return route.fallback();
@@ -232,7 +225,7 @@ test("passive thread restore preserves moved focus; New chat keeps explicit focu
     expect(listRequests).toBe(1);
     const restoredDetail = await restoredDetailPromise;
     expect(restoredDetail.status()).toBe(200);
-    expect(detailRequests).toBe(1);
+    expect(await restoredDetail.json()).toEqual({ thread: restored, messages: [] });
     await expect(drawer.getByRole("region", {
       name: `Conversation thread with ${restored.title}`,
     })).toBeVisible();

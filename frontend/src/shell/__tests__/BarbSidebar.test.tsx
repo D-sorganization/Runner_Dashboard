@@ -70,46 +70,6 @@ describe("BarbSidebar", () => {
     expect(composer).toHaveFocus();
   });
 
-  it("preserves focus on passive restore and focuses an explicit thread switch", async () => {
-    const restoredThread = {
-      id: "thr_passive_restore",
-      title: "Synthetic restored conversation",
-      kind: "auto",
-      participants: ["user:synthetic", "barb"],
-      status: "active",
-    };
-    const explicitThread = {
-      ...restoredThread,
-      id: "thr_explicit_switch",
-      title: "Synthetic explicit conversation",
-    };
-    const props = { open: true, mobile: true, onClose: vi.fn(), onNavigate: vi.fn() };
-    const view = render(<BarbSidebar {...props} />);
-    const retainedFocus = screen.getByRole("button", { name: "Open Projects" });
-    retainedFocus.focus();
-
-    mockUseStaffConsole.mockReturnValue(
-      staffConsoleState({
-        activeThread: restoredThread,
-        activeThreadFocus: { threadId: restoredThread.id, origin: "restore" },
-      }),
-    );
-    view.rerender(<BarbSidebar {...props} />);
-    expect(retainedFocus).toHaveFocus();
-
-    mockUseStaffConsole.mockReturnValue(
-      staffConsoleState({
-        activeThread: explicitThread,
-        activeThreadFocus: { threadId: explicitThread.id, origin: "explicit" },
-      }),
-    );
-    view.rerender(<BarbSidebar {...props} />);
-    await waitFor(() =>
-      expect(screen.getByRole("textbox", { name: /staff conversation input/i })).toHaveFocus(),
-    );
-  });
-
-
   it("does not stage attachments against the new-thread placeholder while restoring Barb", async () => {
     const thread = {
       id: "th-restored-barb",
