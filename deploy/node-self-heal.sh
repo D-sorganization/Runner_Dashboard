@@ -122,6 +122,22 @@ if [[ "${health_ok}" -eq 0 && "${auto_deploy_busy}" -eq 0 ]]; then
   fi
 fi
 
+# 3b. Ensure native-Linux tailnet serve bridge when loopback auth binds 127.0.0.1 only
+if [[ "${health_ok}" -eq 1 ]]; then
+  HUB_SERVE="${SCRIPT_DIR}/hub_tailnet_serve.py"
+  if [[ ! -f "${HUB_SERVE}" && -f "${DEPLOY_DIR}/deploy/hub_tailnet_serve.py" ]]; then
+    HUB_SERVE="${DEPLOY_DIR}/deploy/hub_tailnet_serve.py"
+  fi
+  ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${DASHBOARD_HOME}/.config/runner-dashboard/env}"
+  if [[ -f "${HUB_SERVE}" ]]; then
+    if serve_out="$("${PYTHON_BIN}" "${HUB_SERVE}" ensure --env-file "${ENV_FILE}" --port "${PORT}" 2>/dev/null)"; then
+      if echo "${serve_out}" | grep -q '"action": "configured"'; then
+        healed_actions+=("hub_tailnet_serve_configured")
+      fi
+    fi
+  fi
+fi
+
 # 4. Proactive disk guard (<15% free on runner base filesystem)
 if [[ -d "${BASE_DIR}" ]]; then
   free_pct="$("${PYTHON_BIN}" -c 'import os, shutil, sys; u = shutil.disk_usage(sys.argv[1]); print(int(round(u.free * 100.0 / u.total)))' "${BASE_DIR}" 2>/dev/null || echo 100)"

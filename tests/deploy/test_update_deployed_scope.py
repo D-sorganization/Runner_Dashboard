@@ -57,8 +57,13 @@ def _create_fixture_repository(repo: Path) -> None:
     (repo / "uv.lock").write_text("", encoding="utf-8")
     (repo / "backend" / "server.py").write_text("", encoding="utf-8")
     (repo / "backend" / "runner_autoscaler.py").write_text("", encoding="utf-8")
-    for filename in ("refresh-token.sh", "wsl-mirrored-port-helper.sh"):
-        (repo / "deploy" / filename).write_text("#!/bin/sh\n", encoding="utf-8")
+    for filename in (
+        "refresh-token.sh",
+        "wsl-mirrored-port-helper.sh",
+        "loopback_bind_guard.py",
+        "hub_tailnet_serve.py",
+    ):
+        (repo / "deploy" / filename).write_text("#!/usr/bin/env python3\n", encoding="utf-8")
     (repo / "local_apps.json").write_text("[]", encoding="utf-8")
     (repo / "VERSION").write_text("0.0.0", encoding="utf-8")
     (repo / "frontend" / "index.html").write_text("", encoding="utf-8")

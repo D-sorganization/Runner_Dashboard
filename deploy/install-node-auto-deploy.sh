@@ -73,6 +73,7 @@ install_node_auto_deploy() {
     install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.sh" "${DEPLOY_DIR}/deploy/node-auto-deploy.sh"
     install -m 0755 "${SCRIPT_DIR}/node-auto-deploy.py" "${DEPLOY_DIR}/deploy/node-auto-deploy.py"
     install -m 0755 "${SCRIPT_DIR}/loopback_bind_guard.py" "${DEPLOY_DIR}/deploy/loopback_bind_guard.py"
+    install -m 0755 "${SCRIPT_DIR}/hub_tailnet_serve.py" "${DEPLOY_DIR}/deploy/hub_tailnet_serve.py"
     rsync -a --delete "${SCRIPT_DIR}/node_auto_deploy/" "${DEPLOY_DIR}/deploy/node_auto_deploy/"
   fi
 
