@@ -486,7 +486,33 @@ def test_redundant_pr_closer_f7_contract() -> None:
         close_pr=lambda _r, n: closed.append(n),
         comment=lambda *_: None,
     )
-    assert closed == [11]
+    assert closed == []
+    closed.clear()
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[
+            _redundant_pr_payload(20, "Closes #99", "jules", head_ref="jules/lane-a", head_sha="abc"),
+            _redundant_pr_payload(21, "Closes #99", "jules", head_ref="jules/lane-a", head_sha="abc"),
+        ],
+        dry_run=False,
+        agent_filter=None,
+        close_pr=lambda _r, n: closed.append(n),
+        comment=lambda *_: None,
+    )
+    assert closed == [21]
+    closed.clear()
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[
+            _redundant_pr_payload(30, "Closes #99", "codex", head_ref="codex/a"),
+            _redundant_pr_payload(31, "Closes #99\nCloses #100", "codex", head_ref="codex/b"),
+        ],
+        dry_run=False,
+        agent_filter=None,
+        close_pr=lambda _r, n: closed.append(n),
+        comment=lambda *_: None,
+    )
+    assert closed == []
     import os
 
     os.environ.pop("GH_TOKEN", None)
@@ -495,16 +521,27 @@ def test_redundant_pr_closer_f7_contract() -> None:
         require_github_token()
 
 
-def _redundant_pr_payload(number: int, body: str, agent: str) -> dict:
+def _redundant_pr_payload(
+    number: int,
+    body: str,
+    agent: str,
+    *,
+    head_ref: str | None = None,
+    head_sha: str | None = None,
+) -> dict:
     login = "human" if agent == "user" else f"{agent}-bot"
     labels = [{"name": f"agent:{agent}"}] if agent != "user" else []
+    branch = head_ref or f"{agent}/lane-{number}"
+    head: dict[str, str] = {"ref": branch}
+    if head_sha:
+        head["sha"] = head_sha
     return {
         "number": number,
         "title": "",
         "body": body,
         "labels": labels,
         "user": {"login": login, "type": "User" if agent == "user" else "Bot"},
-        "head": {"ref": f"{agent}/lane"},
+        "head": head,
     }
 
 
