@@ -1,18 +1,79 @@
-import { expect, test } from "./fixtures";
+import { expect, test, type Page } from "./fixtures";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const HIDDEN_KINDS = ["css-visibility", "aria-hidden", "inert"] as const;
 const EDGES = ["before-first", "after-last"] as const;
+const THREADS_PATH = "/api/v1/staff/threads";
+const RESTORED_THREAD = {
+  id: "thr_focus_restore",
+  title: "Synthetic restored conversation",
+  kind: "auto",
+  participants: ["user:synthetic", "barb"],
+  status: "active",
+};
+
+function isBarbThreadList(url: URL): boolean {
+  return url.pathname === THREADS_PATH && url.searchParams.get("role") === "barb";
+}
+
+async function openDrawerWithThread(page: Page, width: number, thread: typeof RESTORED_THREAD) {
+  await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+  await page.goto("/fleet");
+
+  let listRequests = 0;
+  let detailRequests = 0;
+  await page.route(isBarbThreadList, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    listRequests += 1;
+    await route.fulfill({ json: { threads: [thread] } });
+  });
+  const detailPath = `${THREADS_PATH}/${thread.id}`;
+  const detailMatcher = (url: URL) => url.pathname === detailPath;
+  const streamMatcher = (url: URL) => url.pathname === `${detailPath}/stream`;
+  await page.route(detailMatcher, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    detailRequests += 1;
+    await route.fulfill({ json: { thread, messages: [] } });
+  });
+  await page.route(streamMatcher, async (route) =>
+    route.fulfill({ status: 204 }),
+  );
+
+  const listResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "GET" && isBarbThreadList(new URL(response.url())),
+  );
+  const detailResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "GET" && new URL(response.url()).pathname === detailPath,
+  );
+  const trigger = page.getByTestId(width === 390 ? "mobile-ask-barb" : "ask-barb-toggle");
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  const listResponse = await listResponsePromise;
+  expect(listResponse.status()).toBe(200);
+  expect(await listResponse.json()).toEqual({ threads: [thread] });
+  expect(listRequests).toBe(1);
+  const detailResponse = await detailResponsePromise;
+  expect(detailResponse.status()).toBe(200);
+  expect(await detailResponse.json()).toEqual({ thread, messages: [] });
+  expect(detailRequests).toBe(1);
+
+  const drawer = page.getByTestId("barb-sidebar");
+  await expect(drawer).toBeVisible();
+  const threadRegion = drawer.getByRole("region", {
+    name: `Conversation thread with ${thread.title}`,
+  });
+  await expect(threadRegion).toBeVisible();
+  await page.unroute(isBarbThreadList);
+  await page.unroute(detailMatcher);
+  await page.unroute(streamMatcher);
+  return drawer;
+}
 
 for (const kind of HIDDEN_KINDS) {
   for (const edge of EDGES) {
     test(`mobile focus wrap skips ${kind} candidate at ${edge}`, async ({ page }) => {
-      await page.setViewportSize({ width: 390, height: 844 });
-      await page.goto("/staff");
-      await page.getByRole("button", { name: "Ask Barb" }).click();
-      const drawer = page.getByTestId("barb-sidebar");
-      await expect(drawer).toBeVisible();
+      const drawer = await openDrawerWithThread(page, 390, RESTORED_THREAD);
       await expect(drawer).toHaveAttribute("aria-modal", "true");
 
       const visible = drawer.locator(FOCUSABLE).filter({ visible: true });
@@ -72,11 +133,7 @@ for (const kind of HIDDEN_KINDS) {
 }
 
 test("mobile focus skips an aria-hidden candidate inside the tab order", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/staff");
-  await page.getByRole("button", { name: "Ask Barb" }).click();
-  const drawer = page.getByTestId("barb-sidebar");
-  await expect(drawer).toBeVisible();
+  const drawer = await openDrawerWithThread(page, 390, RESTORED_THREAD);
 
   const visible = drawer.locator(FOCUSABLE).filter({ visible: true });
   await visible.first().evaluate((element) => {
@@ -106,13 +163,7 @@ test("mobile focus skips an aria-hidden candidate inside the tab order", async (
 });
 
 test("passive thread restore preserves moved focus; New chat keeps explicit focus", async ({ page }) => {
-  const restored = {
-    id: "thr_focus_restore",
-    title: "Synthetic restored conversation",
-    kind: "auto",
-    participants: ["user:synthetic", "barb"],
-    status: "active",
-  };
+  const restored = RESTORED_THREAD;
   const explicit = {
     ...restored,
     id: "thr_focus_explicit",
@@ -127,42 +178,76 @@ test("passive thread restore preserves moved focus; New chat keeps explicit focu
     signalListStarted = resolve;
   });
 
-  await page.route("**/api/v1/staff/threads**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const path = url.pathname;
-    if (request.method() === "GET" && path.endsWith("/threads") && url.searchParams.get("role") === "barb") {
-      signalListStarted();
-      await listGate;
-      await route.fulfill({ json: { threads: [restored] } });
-    } else if (request.method() === "GET" && path.endsWith(`/threads/${restored.id}/stream`)) {
-      await route.fulfill({ status: 204 });
-    } else if (request.method() === "GET" && path.endsWith(`/threads/${restored.id}`)) {
-      await route.fulfill({ json: { thread: restored, messages: [] } });
-    } else if (request.method() === "POST" && path.endsWith("/threads")) {
-      await route.fulfill({ json: explicit });
-    } else {
-      await route.fallback();
-    }
+  let listRequests = 0;
+  let detailRequests = 0;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/fleet");
+  await page.route(isBarbThreadList, async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    listRequests += 1;
+    signalListStarted();
+    await listGate;
+    await route.fulfill({ json: { threads: [restored] } });
+  });
+  for (const thread of [restored, explicit]) {
+    const detailPath = `${THREADS_PATH}/${thread.id}`;
+    await page.route((url) => url.pathname === detailPath, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      detailRequests += 1;
+      await route.fulfill({ json: { thread, messages: [] } });
+    });
+    await page.route((url) => url.pathname === `${detailPath}/stream`, async (route) =>
+      route.fulfill({ status: 204 }),
+    );
+  }
+  await page.route((url) => url.pathname === THREADS_PATH, async (route) => {
+    if (route.request().method() === "POST") return route.fulfill({ json: explicit });
+    return route.fallback();
   });
 
   try {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto("/staff");
-    await page.getByRole("button", { name: "Ask Barb" }).click();
+    const listResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && isBarbThreadList(new URL(response.url())),
+    );
+    const restoredDetailPromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `${THREADS_PATH}/${restored.id}`,
+    );
+    await page.getByTestId("mobile-ask-barb").click();
     await listStarted;
     const drawer = page.getByTestId("barb-sidebar");
     await expect(drawer).toBeVisible();
     const retainedFocus = drawer.getByRole("button", { name: "Open Projects" });
+    const close = drawer.getByRole("button", { name: "Close Ask Barb" });
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(drawer.getByRole("button", { name: "Open Fleet Command" })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(retainedFocus).toBeFocused();
 
     releaseList();
-    await expect(drawer.getByText(restored.title)).toBeVisible();
+    const listResponse = await listResponsePromise;
+    expect(listResponse.status()).toBe(200);
+    expect(await listResponse.json()).toEqual({ threads: [restored] });
+    expect(listRequests).toBe(1);
+    const restoredDetail = await restoredDetailPromise;
+    expect(restoredDetail.status()).toBe(200);
+    expect(detailRequests).toBe(1);
+    await expect(drawer.getByRole("region", {
+      name: `Conversation thread with ${restored.title}`,
+    })).toBeVisible();
     await expect(retainedFocus).toBeFocused();
 
+    const explicitDetailPromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" &&
+      new URL(response.url()).pathname === `${THREADS_PATH}/${explicit.id}`,
+    );
     await drawer.getByRole("button", { name: "New chat" }).click();
-    await expect(drawer.getByText(explicit.title)).toBeVisible();
+    const explicitDetail = await explicitDetailPromise;
+    expect(explicitDetail.status()).toBe(200);
+    await expect(drawer.getByRole("region", {
+      name: `Conversation thread with ${explicit.title}`,
+    })).toBeVisible();
     await expect(drawer.getByRole("textbox", { name: "Staff conversation input" })).toBeFocused();
   } finally {
     releaseList();
@@ -170,28 +255,30 @@ test("passive thread restore preserves moved focus; New chat keeps explicit focu
 });
 
 test("captures sanitized drawer screenshots at desktop and phone sizes", async ({ page }, testInfo) => {
-  await page.route("**/api/v1/staff/threads**", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (request.method() === "GET" && url.pathname.endsWith("/threads") && url.searchParams.get("role") === "barb") {
-      await route.fulfill({ json: { threads: [] } });
-    } else {
-      await route.fallback();
-    }
-  });
+  const masks = [
+    page.locator(".mobile-shell__header"),
+    page.locator(".mobile-shell__content"),
+    page.locator(".mobile-shell__nav"),
+    page.locator(".desktop-shell__topbar"),
+    page.locator(".desktop-shell__main"),
+    page.locator('nav[aria-label="Dashboard sections"]'),
+  ];
   for (const viewport of [
     { width: 1280, height: 900 },
     { width: 390, height: 844 },
   ]) {
-    await page.setViewportSize(viewport);
-    await page.goto("/staff");
-    await page.getByRole("button", { name: "Ask Barb" }).click();
-    const drawer = page.getByTestId("barb-sidebar");
-    await expect(drawer).toBeVisible();
-    const screenshot = await page.screenshot({ animations: "disabled" });
-    await testInfo.attach(`drawer-${viewport.width}`, {
-      body: screenshot,
-      contentType: "image/png",
-    });
+    const drawer = await openDrawerWithThread(page, viewport.width, RESTORED_THREAD);
+    const capture = async (state: string) => {
+      const screenshot = await page.screenshot({ animations: "disabled", mask: masks, maskColor: "#000000" });
+      await testInfo.attach(`drawer-${viewport.width}-${state}`, {
+        body: screenshot,
+        contentType: "image/png",
+      });
+    };
+    await capture("restored-default-focus");
+    const composer = drawer.getByRole("textbox", { name: "Staff conversation input" });
+    await composer.focus();
+    await expect(composer).toBeFocused();
+    await capture("composer-focused");
   }
 });
