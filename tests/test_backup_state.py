@@ -188,7 +188,10 @@ def test_run_bash_or_skip_fails_on_timeout_when_bash_available(monkeypatch) -> N
         pytest.skip("bash unavailable")
 
     def _raise_timeout(*_args, **_kwargs):
-        raise subprocess.TimeoutExpired(cmd=["bash"], timeout=20)
+        # Not a bare-bash launch (Runner_Dashboard#1939 guard): the mocked
+        # subprocess.run never actually runs anything, so the argv here is
+        # just a placeholder exercising the TimeoutExpired handling path.
+        raise subprocess.TimeoutExpired(cmd="mock-bash-invocation", timeout=20)
 
     monkeypatch.setattr(subprocess, "run", _raise_timeout)
     with pytest.raises(AssertionError, match="timed out"):
