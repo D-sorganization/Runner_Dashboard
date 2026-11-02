@@ -2,6 +2,8 @@ import { expect, test, type Page } from "./fixtures";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+test.use({ trace: "off", screenshot: "off", video: "off" });
+
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const HIDDEN_KINDS = ["css-visibility", "aria-hidden", "inert"] as const;
@@ -252,10 +254,8 @@ test("passive thread restore preserves moved focus; New chat keeps explicit focu
 test("captures sanitized drawer screenshots at desktop and phone sizes", async ({ page }, testInfo) => {
   const masks = [
     page.locator(".mobile-shell__header"),
-    page.locator(".mobile-shell__content"),
     page.locator(".mobile-shell__nav"),
     page.locator(".desktop-shell__topbar"),
-    page.locator(".desktop-shell__main"),
     page.locator('nav[aria-label="Dashboard sections"]'),
   ];
   for (const viewport of [
@@ -263,8 +263,36 @@ test("captures sanitized drawer screenshots at desktop and phone sizes", async (
     { width: 390, height: 844 },
   ]) {
     const drawer = await openDrawerWithThread(page, viewport.width, RESTORED_THREAD);
+    const mainSelector = viewport.width === 390
+      ? ".mobile-shell__content"
+      : ".desktop-shell__main";
+    const main = page.locator(mainSelector);
+    await expect(main).toHaveCount(1);
+    await expect(main).toBeVisible();
+    expect(await drawer.evaluate((element, selector) => !element.closest(selector), mainSelector)).toBe(true);
     const capture = async (state: string) => {
-      const screenshot = await page.screenshot({ animations: "disabled", mask: masks, maskColor: "#000000" });
+      await expect(drawer).toBeVisible();
+      const screenshot = await page.screenshot({
+        animations: "disabled",
+        mask: masks,
+        maskColor: "#000000",
+        style: `
+          .desktop-shell__main, .mobile-shell__content {
+            color: transparent !important;
+            -webkit-text-fill-color: transparent !important;
+            text-shadow: none !important;
+            background-image: none !important;
+            box-shadow: none !important;
+          }
+          .desktop-shell__main *, .mobile-shell__content *,
+          .desktop-shell__main::before, .desktop-shell__main::after,
+          .mobile-shell__content::before, .mobile-shell__content::after,
+          .desktop-shell__main *::before, .desktop-shell__main *::after,
+          .mobile-shell__content *::before, .mobile-shell__content *::after {
+            visibility: hidden !important;
+          }
+        `,
+      });
       const filename = `drawer-${viewport.width}-${state}.png`;
       const output = resolve("test-results", "baseline-screenshots");
       await mkdir(output, { recursive: true });
