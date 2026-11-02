@@ -44,6 +44,25 @@ def note_scheduled_miss(
     return count
 
 
+def record_scheduled_skip(
+    entry: dict[str, Any],
+    *,
+    role: str,
+    job: str | None,
+    slot: str,
+    machine: str,
+    reason: str,
+) -> None:
+    entry["last_reason"] = f"skipped {slot}: {reason}"
+    note_scheduled_miss(entry, role=role, job=job, slot=slot, machine=machine)
+
+
+def record_scheduled_fire(entry: dict[str, Any], *, slot: str, run_id: str, fired_at: str) -> None:
+    entry["last_fired"] = fired_at
+    entry["last_reason"] = f"fired {slot} as {run_id}"
+    record_success(entry)
+
+
 def build_alert(role: str, *, job: str | None, slot: str, count: int, machine: str) -> dict[str, Any]:
     label = f"{role}::{job}" if job else role
     return {
