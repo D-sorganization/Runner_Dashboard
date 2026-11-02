@@ -141,6 +141,52 @@ def test_sync_skips_unreadable_source_without_crashing(tmp_path: Path, caplog: p
 
 
 @pytest.mark.unit
+def test_audit_flags_stale_claude_mirror(tmp_path: Path) -> None:
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    wsl_home.mkdir()
+    win_home.mkdir()
+
+    win_claude = win_home / ".claude" / ".credentials.json"
+    win_claude.parent.mkdir(parents=True)
+    win_claude.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-new", "accessToken": "a-new", "expiresAt": 2000}}),
+        encoding="utf-8",
+    )
+    wsl_claude = wsl_home / ".claude" / ".credentials.json"
+    wsl_claude.parent.mkdir(parents=True)
+    wsl_claude.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-old", "accessToken": "a-old", "expiresAt": 1000}}),
+        encoding="utf-8",
+    )
+    os.utime(wsl_claude, (1_000_000, 1_000_000))
+    os.utime(win_claude, (2_000_000, 2_000_000))
+
+    audit = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[win_home])
+    assert audit["ok"] is False
+    claude = audit["providers"]["claude"]
+    assert claude["ok"] is False
+    assert any(row["reason"] in ("older_than_source", "content_drift") for row in claude["stale_copies"])
+    blob = json.dumps(audit)
+    assert "r-old" not in blob and "r-new" not in blob
+
+
+@pytest.mark.unit
+def test_audit_ok_after_sync(tmp_path: Path) -> None:
+    wsl_home = tmp_path / "wsl_home"
+    wsl_home.mkdir()
+    cred = wsl_home / ".claude" / ".credentials.json"
+    cred.parent.mkdir(parents=True)
+    cred.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-only", "accessToken": "a-only", "expiresAt": 3000}}),
+        encoding="utf-8",
+    )
+    sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[])
+    audit = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[])
+    assert audit["providers"]["claude"]["ok"] is True
+
+
+@pytest.mark.unit
 def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
     wsl_home = tmp_path / "wsl_home"
     wsl_home.mkdir()

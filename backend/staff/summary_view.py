@@ -15,6 +15,7 @@ from staff import fleet as staff_fleet
 from staff import friction_store
 from staff.anthropic_api_alerts import summary_fields as anthropic_api_summary_fields
 from staff.classifier import format_attention_items
+from staff.credential_mirror_health import attention_items_from_mirror_health
 from staff.exclusions import active_exclusions
 from staff.github_app_preflight import (
     attention_items_from_preflight,
@@ -75,8 +76,11 @@ async def build_staff_summary() -> dict[str, Any]:
                 "machines": {runner.machine: local_auth},
             }
     auth_attention: list[dict[str, Any]] = []
-    for _machine, snap in (provider_auth.get("machines") or {}).items():
+    for machine_name, snap in (provider_auth.get("machines") or {}).items():
         auth_attention.extend(attention_items_from_provider_auth(snap))
+        mirror = snap.get("credential_mirrors")
+        if isinstance(mirror, dict):
+            auth_attention.extend(attention_items_from_mirror_health(mirror, machine=machine_name))
     standards = load_fleet_standards()
     attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
     keep = (
