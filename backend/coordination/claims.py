@@ -18,9 +18,7 @@ RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
 
 from __future__ import annotations
 
-import json
 import re
-import subprocess  # noqa: S404
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -28,34 +26,21 @@ from typing import Any
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination.board import BOARD_COMMENT_LIMIT, BOARD_ISSUE, RMScriptError
+from coordination.gh_cli import gh_api_json
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.claim_guard import closing_pr_for, full_repo
 
 FAIL_OPEN_PREFIX = "error:"
-GH_TIMEOUT_SECONDS = 20
 _BRANCH_FOR_ISSUE = re.compile(r"(?:^|/)(\d+)(?:-|$)")
 
 _locks_guard = threading.Lock()
 _issue_locks: dict[str, threading.Lock] = {}
 
 
-def _gh_cli(path: str) -> Any:
-    proc = subprocess.run(  # noqa: S603
-        ["gh", "api", path],  # noqa: S607
-        capture_output=True,
-        text=True,
-        timeout=GH_TIMEOUT_SECONDS,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError((proc.stderr or proc.stdout or f"gh api {path} failed").strip()[:300])
-    return json.loads(proc.stdout) if proc.stdout.strip() else {}
-
-
 EvidenceFetch = Callable[[str], Any]
 # Tests monkeypatch this seam so a unit test never touches live GitHub.
-evidence_fetch: EvidenceFetch = _gh_cli
+evidence_fetch: EvidenceFetch = gh_api_json
 
 
 def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:

@@ -6,34 +6,19 @@ Before an agent claims a new issue, any open PR they own that exceeds
 
 from __future__ import annotations
 
-import json
 import logging
-import subprocess  # noqa: S404
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from coordination import roster
+from coordination.gh_cli import gh_api_json
 from flow_metrics import PR_AGE_RULE_HOURS, open_pr_age_hours
 from staff.claim_guard import full_repo
 
 log = logging.getLogger("dashboard.coordination.pr_age_rule")
 
-GH_TIMEOUT_SECONDS = 20
 AGENT_LABEL_PREFIX = "agent:"
 SyncFetch = Callable[[str], Any]
-
-
-def _gh_cli(path: str) -> Any:
-    proc = subprocess.run(  # noqa: S603
-        ["gh", "api", path],  # noqa: S607
-        capture_output=True,
-        text=True,
-        timeout=GH_TIMEOUT_SECONDS,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError((proc.stderr or proc.stdout or f"gh api {path} failed").strip()[:300])
-    return json.loads(proc.stdout) if proc.stdout.strip() else {}
 
 
 def _normalize_agent(agent: str) -> str:
@@ -97,7 +82,7 @@ def list_aging_prs_for_agent(
     rule_hours: float = PR_AGE_RULE_HOURS,
 ) -> list[dict[str, Any]]:
     """Open PRs owned by ``agent`` older than ``rule_hours`` across ``repos`` (short names)."""
-    get = fetch or _gh_cli
+    get = fetch or gh_api_json
     agent_ids = roster.agent_ids()
     target = _normalize_agent(agent)
     hits: list[dict[str, Any]] = []

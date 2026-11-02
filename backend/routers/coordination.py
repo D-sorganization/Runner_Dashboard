@@ -43,25 +43,15 @@ from coordination.models import (
     MessageBody,
     PresenceBody,
     ReleaseBody,
-    bare_repo,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from identity import require_fleet_peer
+from routers.repo_query import bare_repo_query as _repo
 
 log = logging.getLogger("dashboard.coordination")
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
 WRITER = Depends(require_coordination_writer)  # one write-auth dependency for every POST
-
-
-def _repo(value: str | None) -> str | None:
-    """Query-string twin of the body validator: strip ``owner/``, reject paths with 422."""
-    if value is None:
-        return None
-    try:
-        return bare_repo(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str) -> dict[str, Any]:

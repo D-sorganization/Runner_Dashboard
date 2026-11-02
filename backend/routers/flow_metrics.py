@@ -4,21 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from coordination.models import REPO_PATTERN, bare_repo
-from fastapi import APIRouter, Depends, HTTPException, Query
+from coordination.models import REPO_PATTERN
+from fastapi import APIRouter, Depends, Query
 from flow_metrics import collect_flow_metrics
 from identity import require_fleet_peer
+from routers.repo_query import bare_repo_query as _repo
 
 router = APIRouter(prefix="/api/v1/fleet", tags=["fleet-flow-metrics"])
-
-
-def _repo(value: str | None) -> str | None:
-    if value is None:
-        return None
-    try:
-        return bare_repo(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/flow-metrics")
