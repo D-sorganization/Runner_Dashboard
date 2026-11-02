@@ -533,7 +533,7 @@ test.describe("Staff Console bottom-nav regression (#1805)", () => {
       expect(staffBounds!.y + staffBounds!.height, "Staff Console fits above shell navigation")
         .toBeLessThanOrEqual(reservedNav!.y);
 
-      for (const view of ["roster", "inbox", "runs"]) {
+      for (const view of ["roster", "personas", "inbox", "runs"]) {
         const tab = page.getByTestId(`staff-mobile-tab-${view}`);
         expect(await ownsItsCentre(tab), `${view} hit target at ${width}px`).toBe(true);
         await tab.click();
