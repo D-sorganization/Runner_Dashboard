@@ -1,0 +1,18 @@
+{
+  "2657": ["type:chore", "complexity:complex", "effort:m", "judgement:design", "high", "tier:strong"],
+  "3216": ["type:research", "complexity:research", "effort:m", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3226": ["type:research", "complexity:research", "effort:m", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3487": ["type:docs", "complexity:complex", "effort:l", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3491": ["type:epic", "complexity:deep", "effort:xl", "judgement:design", "medium", "tier:strong"],
+  "3505": ["type:epic", "complexity:deep", "effort:xl", "judgement:design", "medium", "tier:strong"],
+  "3591": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"],
+  "3595": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"],
+  "3596": ["type:chore", "complexity:routine", "effort:m", "judgement:objective", "medium", "tier:cli"],
+  "3695": ["type:epic", "complexity:deep", "effort:xl", "judgement:objective", "medium", "tier:strong"],
+  "3700": ["type:task", "complexity:deep", "effort:m", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3702": ["type:task", "complexity:deep", "effort:m", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3711": ["type:task", "complexity:complex", "effort:l", "judgement:design", "medium", "tier:strong"],
+  "3722": ["type:epic", "complexity:deep", "effort:xl", "judgement:design", "medium", "tier:strong"],
+  "3727": ["type:epic", "complexity:deep", "effort:xl", "judgement:objective", "medium", "tier:strong"],
+  "3792": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"]
+}
