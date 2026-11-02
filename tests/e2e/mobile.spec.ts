@@ -533,8 +533,13 @@ test.describe("Staff Console bottom-nav regression (#1805)", () => {
       expect(staffBounds!.y + staffBounds!.height, "Staff Console fits above shell navigation")
         .toBeLessThanOrEqual(reservedNav!.y);
 
-      for (const view of ["roster", "inbox", "runs"]) {
+      for (const view of ["roster", "personas", "inbox", "runs"]) {
         const tab = page.getByTestId(`staff-mobile-tab-${view}`);
+        await tab.scrollIntoViewIfNeeded();
+        const box = await tab.boundingBox();
+        expect(box, `${view} tab has layout geometry at ${width}px`).not.toBeNull();
+        expect(box!.width, `${view} hit target width at ${width}px`).toBeGreaterThanOrEqual(44);
+        expect(box!.height, `${view} hit target height at ${width}px`).toBeGreaterThanOrEqual(44);
         expect(await ownsItsCentre(tab), `${view} hit target at ${width}px`).toBe(true);
         await tab.click();
         await expect(tab).toHaveAttribute("aria-selected", "true");
