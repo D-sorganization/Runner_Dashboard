@@ -13,12 +13,16 @@ All WSL credential files are written atomically with mode 0600 (parent dirs 0700
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger("sync_provider_credentials")
 
 _SKIP_WIN_USERS = {"Public", "Default", "Default User", "All Users", "desktop.ini"}
 
@@ -30,22 +34,46 @@ def discover_windows_homes(mnt_users: Path = Path("/mnt/c/Users")) -> list[Path]
     candidates: list[Path] = []
     try:
         entries = sorted(mnt_users.iterdir())
-    except OSError:
+    except OSError as exc:
+        log.warning("cannot list %s: %s", mnt_users, exc)
         return []
     for entry in entries:
-        if entry.name in _SKIP_WIN_USERS or not entry.is_dir():
+        if entry.name in _SKIP_WIN_USERS:
             continue
-        if any((entry / sub).exists() for sub in (".claude", ".codex", ".gemini")):
+        try:
+            if not entry.is_dir():
+                continue
+        except OSError as exc:
+            log.warning("skipping unreadable profile dir %s: %s", entry, exc)
+            continue
+        readable = False
+        for sub in (".claude", ".codex", ".gemini"):
+            child = entry / sub
+            try:
+                if child.exists():
+                    readable = True
+                    break
+            except OSError as exc:
+                log.warning("skipping unreadable path %s: %s", child, exc)
+        if readable:
             candidates.append(entry)
     return candidates
 
 
 def _load_json(path: Path) -> dict[str, Any] | list[Any] | None:
     try:
-        if not path.is_file() or path.stat().st_size == 0:
+        if not path.is_file():
+            return None
+        if path.stat().st_size == 0:
             return None
         return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except PermissionError as exc:
+        log.warning("skipping unreadable credential file %s: %s", path, exc)
+        return None
+    except OSError as exc:
+        log.warning("skipping credential file %s: %s", path, exc)
+        return None
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return None
 
 
@@ -59,6 +87,13 @@ def _atomic_copy(src: Path, dst: Path) -> bool:
         return False
     try:
         src_bytes = src.read_bytes()
+    except PermissionError as exc:
+        log.warning("skipping unreadable credential source %s: %s", src, exc)
+        return False
+    except OSError as exc:
+        log.warning("skipping credential source %s: %s", src, exc)
+        return False
+    try:
         if dst.is_file() and dst.read_bytes() == src_bytes:
             if _is_wsl_path(dst):
                 dst.chmod(0o600)
@@ -79,11 +114,15 @@ def _atomic_copy(src: Path, dst: Path) -> bool:
             if os.path.exists(tmp_name):
                 os.unlink(tmp_name)
         return True
-    except OSError:
+    except PermissionError as exc:
+        log.warning("cannot write credential mirror %s: %s", dst, exc)
+        return False
+    except OSError as exc:
+        log.warning("cannot write credential mirror %s: %s", dst, exc)
         return False
 
 
-def _claude_score(path: Path) -> tuple[float, float] | None:
+def _claude_oauth(path: Path) -> dict[str, Any] | None:
     data = _load_json(path)
     if not isinstance(data, dict):
         return None
@@ -92,9 +131,23 @@ def _claude_score(path: Path) -> tuple[float, float] | None:
         return None
     if not (oauth.get("refreshToken") or oauth.get("accessToken")):
         return None
+    return oauth
+
+
+def _claude_score(path: Path) -> tuple[tuple[float, float, str], Path] | None:
+    try:
+        mtime = path.stat().st_mtime
+    except OSError as exc:
+        log.warning("skipping unreadable claude credential %s: %s", path, exc)
+        return None
+    oauth = _claude_oauth(path)
+    if oauth is None:
+        return None
+    refresh = str(oauth.get("refreshToken") or "")
+    refresh_fp = hashlib.sha256(refresh.encode("utf-8")).hexdigest()[:16] if refresh else ""
     expires_at = float(oauth.get("expiresAt") or 0.0)
-    mtime = path.stat().st_mtime
-    return (expires_at, mtime)
+    # Prefer newest source file (refresh rotation) over stale expiresAt on older copies.
+    return ((mtime, expires_at, refresh_fp), path)
 
 
 def _codex_score(path: Path) -> float | None:
@@ -105,7 +158,11 @@ def _codex_score(path: Path) -> float | None:
     has_tokens = isinstance(tokens, dict) and bool(tokens.get("refresh_token") or tokens.get("access_token"))
     if not (has_tokens or data.get("OPENAI_API_KEY")):
         return None
-    return path.stat().st_mtime
+    try:
+        return path.stat().st_mtime
+    except OSError as exc:
+        log.warning("skipping unreadable codex credential %s: %s", path, exc)
+        return None
 
 
 def _agy_score(path: Path) -> float | None:
@@ -114,7 +171,11 @@ def _agy_score(path: Path) -> float | None:
         return None
     if isinstance(data, (dict, list)) and len(data) == 0:
         return None
-    return path.stat().st_mtime
+    try:
+        return path.stat().st_mtime
+    except OSError as exc:
+        log.warning("skipping unreadable antigravity credential %s: %s", path, exc)
+        return None
 
 
 def sync_all_credentials(
@@ -163,9 +224,12 @@ def sync_all_credentials(
     }
     for root in agy_roots:
         acc_dir = root / "accounts"
-        if acc_dir.is_dir():
-            for child in acc_dir.glob("*.json"):
-                rel_files.add(Path("accounts") / child.name)
+        try:
+            if acc_dir.is_dir():
+                for child in acc_dir.glob("*.json"):
+                    rel_files.add(Path("accounts") / child.name)
+        except OSError as exc:
+            log.warning("skipping unreadable antigravity dir %s: %s", acc_dir, exc)
 
     for rel in sorted(rel_files):
         candidates = [r / rel for r in agy_roots]
@@ -180,5 +244,6 @@ def sync_all_credentials(
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.WARNING, stream=sys.stderr, format="%(levelname)s: %(message)s")
     result = sync_all_credentials()
     sys.stdout.write(json.dumps({"ok": True, "synced": result}) + "\n")
