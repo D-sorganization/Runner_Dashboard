@@ -122,6 +122,106 @@ def test_shadow_run_posts_to_rd_thread_and_suppresses_webhook(tmp_path: Path) ->
     assert webhook_calls == [] and len(thread_posts) == 1 and thread_posts[0][0] == "th_cartographer_shadow"
 
 
+def test_capsule_save_exception_releases_claim_and_retry_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#3789: run_cartographer_slot calls record_slot_claim before save_cartographer_capsule --
+    a capsule persistence exception must release the claim instead of leaving the slot
+    permanently skipped (the bug reproduced in the issue: a retry used to return
+    slot_already_executed forever, with the capsule save called once and notify never called)."""
+    continuity_store = BarbContinuityStore(tmp_path / "continuity.db")
+    capsule_store = RoleCapsuleStore(tmp_path / "capsules")
+    opts = {"config": {}, "state_path": tmp_path / "cartographer-notify.json", "sender": lambda *a: None}
+    key = "cartographer/weekly_map_sweep/2026-11-08T04:00"
+    calls = {"n": 0}
+    real_save = cp.save_cartographer_capsule
+
+    def flaky_save(store: RoleCapsuleStore, payload: Any, **kwargs: Any) -> dict[str, Any]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("disk full")
+        return real_save(store, payload, **kwargs)
+
+    monkeypatch.setattr(cp, "save_cartographer_capsule", flaky_save)
+
+    first = cp.run_cartographer_slot(
+        continuity_store,
+        capsule_store,
+        job="weekly_map_sweep",
+        slot="2026-11-08T04:00",
+        sweep_date="2026-11-08",
+        notify_opts=opts,
+        now=datetime(2026, 11, 8, 4, 0, tzinfo=LA),
+    )
+    assert first["status"] == "failed" and "disk full" in first["reason"] and first["slot_key"] == key
+    assert calls["n"] == 1
+
+    second = cp.run_cartographer_slot(
+        continuity_store,
+        capsule_store,
+        job="weekly_map_sweep",
+        slot="2026-11-08T04:00",
+        sweep_date="2026-11-08",
+        notify_opts=opts,
+        now=datetime(2026, 11, 8, 4, 1, tzinfo=LA),
+    )
+    assert second["status"] == "executed" and calls["n"] == 2
+
+    third = cp.run_cartographer_slot(
+        continuity_store,
+        capsule_store,
+        job="weekly_map_sweep",
+        slot="2026-11-08T04:00",
+        sweep_date="2026-11-08",
+        notify_opts=opts,
+        now=datetime(2026, 11, 8, 4, 2, tzinfo=LA),
+    )
+    assert third == {"status": "skipped", "reason": "slot_already_executed", "slot_key": key}
+    assert calls["n"] == 2  # a genuinely completed slot never retries
+
+
+def test_failed_notify_releases_claim_so_retry_can_still_execute(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#3789: a persona_notify delivery failure (``ok: False``) must leave the slot retryable --
+    the capsule save already succeeded, but completion should still wait on the notify."""
+    continuity_store = BarbContinuityStore(tmp_path / "continuity.db")
+    capsule_store = RoleCapsuleStore(tmp_path / "capsules")
+    opts = {"config": {}, "state_path": tmp_path / "cartographer-notify.json", "sender": lambda *a: None}
+    calls = {"n": 0}
+    real_notify = cp._notify.persona_notify
+
+    def flaky_notify(role: str, msg: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"ok": False, "status": "not_sent", "error": "config_missing"}
+        return real_notify(role, msg, **kwargs)
+
+    monkeypatch.setattr(cp._notify, "persona_notify", flaky_notify)
+
+    first = cp.run_cartographer_slot(
+        continuity_store,
+        capsule_store,
+        job="weekly_map_sweep",
+        slot="2026-11-08T04:00",
+        sweep_date="2026-11-08",
+        notify_opts=opts,
+        now=datetime(2026, 11, 8, 4, 0, tzinfo=LA),
+    )
+    assert first["status"] == "failed" and "config_missing" in first["reason"]
+
+    second = cp.run_cartographer_slot(
+        continuity_store,
+        capsule_store,
+        job="weekly_map_sweep",
+        slot="2026-11-08T04:00",
+        sweep_date="2026-11-08",
+        notify_opts=opts,
+        now=datetime(2026, 11, 8, 4, 1, tzinfo=LA),
+    )
+    assert second["status"] == "executed" and second["notify"]["ok"] is True
+
+
 def test_staging_fallback_drill_and_slot_skip_after_fallback_ledger_entry(tmp_path: Path) -> None:
     webhook_calls: list[dict[str, Any]] = []
     cfg = {

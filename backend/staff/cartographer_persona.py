@@ -231,21 +231,32 @@ def run_cartographer_slot(
     key = _fl.slot_ledger_key(ROLE, job, slot)
     if _fl.is_scheduler_blocked_by_fallback(continuity_store, ROLE, now=clock):
         return {"status": "skipped", "reason": "fallback_lease_held", "slot_key": key}
-    if _fl.should_skip_slot(continuity_store, role=ROLE, job=job, slot=slot):
-        return {"status": "skipped", "reason": "slot_already_executed", "slot_key": key}
-    _fl.record_slot_claim(continuity_store, role=ROLE, job=job, slot=slot, holder=holder, epoch=epoch, now=clock)
-    payload = build_cartographer_capsule(
-        last_sweep_date=sweep_date, stale_repos=stale_repos, next_slots=next_cartographer_slots(clock)
+    claim = _fl.record_slot_claim(
+        continuity_store, role=ROLE, job=job, slot=slot, holder=holder, epoch=epoch, now=clock
     )
-    saved = save_cartographer_capsule(capsule_store, payload, epoch=epoch, now=clock.timestamp())
-    msg = {
-        "kind": "update",
-        "urgency": "normal",
-        "summary": summary,
-        "body": body,
-        "dedupe_key": f"{ROLE}-{job}-{slot}",
-    }
-    res = _notify.persona_notify(ROLE, msg, **notify_opts, clock=clock.timestamp)
+    if claim["duplicate"]:
+        return {"status": "skipped", "reason": "slot_already_executed", "slot_key": key}
+    # #3789: the slot is now claimed "in_progress", not yet "completed" -- a capsule-save
+    # exception or a failed notify must release it so a retry is not permanently skipped.
+    try:
+        payload = build_cartographer_capsule(
+            last_sweep_date=sweep_date, stale_repos=stale_repos, next_slots=next_cartographer_slots(clock)
+        )
+        saved = save_cartographer_capsule(capsule_store, payload, epoch=epoch, now=clock.timestamp())
+        msg = {
+            "kind": "update",
+            "urgency": "normal",
+            "summary": summary,
+            "body": body,
+            "dedupe_key": f"{ROLE}-{job}-{slot}",
+        }
+        res = _notify.persona_notify(ROLE, msg, **notify_opts, clock=clock.timestamp)
+        if not res.get("ok"):
+            raise RuntimeError(f"persona_notify did not deliver: {res}")
+    except Exception as exc:  # noqa: BLE001 -- any failure here must release the claim, not hide it
+        _fl.release_slot_claim(continuity_store, role=ROLE, job=job, slot=slot, holder=holder, epoch=epoch, now=clock)
+        return {"status": "failed", "reason": str(exc), "slot_key": key}
+    _fl.mark_slot_complete(continuity_store, role=ROLE, job=job, slot=slot, holder=holder, epoch=epoch, now=clock)
     return {"status": "executed", "slot_key": key, "capsule": saved, "notify": res}
 
 
