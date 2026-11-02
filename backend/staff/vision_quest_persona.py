@@ -80,7 +80,7 @@ def vision_quest_role_data() -> dict[str, Any]:
             "quorum": 2,
             "avenues_per_brief": "3-5",
             "panel_endpoint": "/api/v1/staff/panels",
-            "panel_hub": "http://deskcomputer:8321",
+            "panel_hub": "http://127.0.0.1:8321",
             "evidence_search": "/api/v1/staff/knowledge/findings/search",
             "does_not": ["decide", "file-issues", "submit-proposals", "implement", "lease"],
         },
