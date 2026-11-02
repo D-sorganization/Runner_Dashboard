@@ -110,6 +110,15 @@ def test_contract_gate_runs_regeneration_check_for_pr_2628() -> None:
 
 
 def _ci_classifier_module() -> Any:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    try:
+        import tests
+
+        if hasattr(tests, "__path__") and str(ROOT / "tests") not in tests.__path__:
+            tests.__path__.append(str(ROOT / "tests"))
+    except ImportError:
+        pass
     path = ROOT / "tests/frontend/test_api_generation_contract.py"
     spec = importlib.util.spec_from_file_location("_api_contract_ci", path)
     assert spec and spec.loader
@@ -171,3 +180,120 @@ def test_cli_reports_baseline_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPa
         gates.main(["--repository-root", str(tmp_path), "--only", "baseline", "--scanner-python", sys.executable]) == 1
     )
     assert "LibraryPage.test.tsx:93" in capsys.readouterr().err
+
+
+def test_resolve_bash_explicit_override_valid(tmp_path: Path) -> None:
+    fake_bash = tmp_path / "bash"
+    fake_bash.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    assert gates.resolve_bash(str(fake_bash)) == str(fake_bash.resolve())
+
+
+def test_resolve_bash_explicit_override_missing_raises() -> None:
+    with pytest.raises(FileNotFoundError, match="Specified bash executable not found"):
+        gates.resolve_bash("/nonexistent/path/to/bash")
+
+
+def test_resolve_bash_env_override(tmp_path: Path) -> None:
+    fake_bash = tmp_path / "custom-bash"
+    fake_bash.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    assert gates.resolve_bash(environ={"RD_BASH": str(fake_bash)}) == str(fake_bash)
+    assert gates.resolve_bash(environ={"BASH": str(fake_bash)}) == str(fake_bash)
+
+
+def test_resolve_bash_windows_prefers_git_bash(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    git_dir = tmp_path / "Git"
+    git_bash = git_dir / "bin" / "bash.exe"
+    git_bash.parent.mkdir(parents=True)
+    git_bash.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(gates.shutil, "which", lambda cmd: r"C:\Windows\System32\bash.exe" if cmd == "bash" else None)
+    resolved = gates.resolve_bash(
+        platform="win32",
+        environ={"ProgramFiles": str(tmp_path)},
+    )
+    assert resolved == str(git_bash)
+
+
+def test_resolve_bash_linux_defaults_to_bash() -> None:
+    assert gates.resolve_bash(platform="linux") in ("bash", "/bin/bash", "/usr/bin/bash")
+
+
+def test_check_contract_passes_python_and_resolved_bash_in_env(tmp_path: Path) -> None:
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    fake_bash = tmp_path / "bash"
+    fake_bash.write_text("", encoding="utf-8")
+
+    problems = gates.check_contract(
+        ROOT,
+        ["backend/app.py"],
+        run=fake_run,
+        bash_path=str(fake_bash),
+        python_path="/custom/bin/python",
+    )
+    assert problems == []
+    assert len(calls) == 1
+    cmd, kwargs = calls[0]
+    assert cmd[0] == str(fake_bash.resolve())
+    assert cmd[1:] == ["scripts/gen-api-client.sh", "--check"]
+    assert kwargs.get("env", {}).get("PYTHON") == "/custom/bin/python"
+
+
+class FakeResponse:
+    def __init__(
+        self,
+        status_code: int = 200,
+        headers: dict[str, str] | None = None,
+        text: str = "",
+        json_data: Any = None,
+    ) -> None:
+        self.status_code = status_code
+        self.headers = headers or {}
+        self.text = text
+        self._json_data = json_data
+
+    def json(self) -> Any:
+        if self._json_data is not None:
+            return self._json_data
+        raise json.JSONDecodeError("Expecting value", self.text, 0)
+
+
+def test_parse_api_response_success() -> None:
+    resp = FakeResponse(200, {"content-type": "application/json"}, json_data={"openapi": "3.1.0"})
+    assert gates.parse_api_response(resp) == {"openapi": "3.1.0"}
+
+
+def test_parse_api_response_status_error_includes_status_and_content_type_no_body() -> None:
+    secret_body = "SUPER_SECRET_TOKEN=xyz"
+    resp = FakeResponse(500, {"content-type": "text/html"}, text=secret_body)
+    with pytest.raises(ValueError) as exc_info:
+        gates.parse_api_response(resp)
+    msg = str(exc_info.value)
+    assert "status 500" in msg
+    assert "content-type: 'text/html'" in msg
+    assert secret_body not in msg
+
+
+def test_parse_api_response_non_json_content_type_no_body() -> None:
+    secret_body = "token=abc12345"
+    resp = FakeResponse(200, {"content-type": "text/plain"}, text=secret_body)
+    with pytest.raises(ValueError) as exc_info:
+        gates.parse_api_response(resp)
+    msg = str(exc_info.value)
+    assert "non-JSON content-type: 'text/plain'" in msg
+    assert secret_body not in msg
+
+
+def test_parse_api_response_decode_error_no_body() -> None:
+    secret_body = "INVALID_JSON_CONTENT_SECRET"
+    resp = FakeResponse(200, {"content-type": "application/json"}, text=secret_body)
+    with pytest.raises(ValueError) as exc_info:
+        gates.parse_api_response(resp)
+    msg = str(exc_info.value)
+    assert "Failed to decode API JSON response" in msg
+    assert "JSONDecodeError" in msg
+    assert secret_body not in msg

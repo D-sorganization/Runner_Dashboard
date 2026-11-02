@@ -9,6 +9,7 @@ scripts.pre_pr`.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 import pytest
 
@@ -52,3 +53,27 @@ def test_main_forwards_repository_root_and_base_to_merge_gates(monkeypatch: pyte
 
     assert captured_gates["argv"] == ["--repository-root", "/tmp/x", "--base", "origin/develop"]
     assert captured_markers["argv"] == ["--repository-root", "/tmp/x"]
+
+
+def test_main_forwards_bash_and_python_to_merge_gates(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_gates: dict[str, Sequence[str] | None] = {}
+
+    def fake_gates(argv: Sequence[str] | None = None) -> int:
+        captured_gates["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(pre_pr.verify_merge_gates, "main", fake_gates)
+    monkeypatch.setattr(pre_pr.check_conflict_markers, "main", lambda argv=None: 0)
+
+    pre_pr.main(["--bash", "/bin/bash", "--python", "/usr/bin/python3"])
+
+    assert captured_gates["argv"] == [
+        "--repository-root",
+        str(Path.cwd()),
+        "--base",
+        "origin/main",
+        "--bash",
+        "/bin/bash",
+        "--python",
+        "/usr/bin/python3",
+    ]
