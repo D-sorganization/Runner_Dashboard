@@ -28,7 +28,7 @@ gracefully for — the same state `tests/e2e/a11y.spec.ts` exercises in CI.
 
 ## Resolving "live vs fixture axe"
 
-Review A's 424-violation count came from the **live** OGLaptop/node build,
+Review A's 424-violation count came from the **live** hub-a/node-b build,
 which is hundreds of commits behind `main` under HOLD #2657 (no deploy of any
 kind). Reproducing against that exact stale build would require either
 deploying (blocked by the hold) or auditing a commit nobody can currently
