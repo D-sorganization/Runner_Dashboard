@@ -5813,6 +5813,44 @@
         "title": "RunBody",
         "type": "object"
       },
+      "RunJwtRequest": {
+        "properties": {
+          "principal_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": ["run_id", "principal_id"],
+        "title": "RunJwtRequest",
+        "type": "object"
+      },
+      "RunJwtResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "jti": {
+            "title": "Jti",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": ["token", "expires_at", "jti"],
+        "title": "RunJwtResponse",
+        "type": "object"
+      },
       "ScanRequestBody": {
         "properties": {
           "dry_run": {
@@ -14085,6 +14123,72 @@
         ],
         "summary": "Fleet Orchestration Dispatch",
         "tags": ["orchestration"]
+      }
+    },
+    "/api/fleet/run-jwt": {
+      "post": {
+        "description": "Mint a short-lived, run-scoped JWT for a staff run executing on a spoke node.",
+        "operationId": "post_run_jwt_api_fleet_run_jwt_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Fleet-Node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Fleet-Node"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunJwtRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunJwtResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Run Jwt",
+        "tags": ["fleet"]
       }
     },
     "/api/fleet/run-token": {

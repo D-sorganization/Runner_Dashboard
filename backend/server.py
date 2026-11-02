@@ -212,6 +212,7 @@ from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
 from routers import reports as _reports_router  # noqa: E402
 from routers import repos as _repos_router  # noqa: E402
+from routers import run_jwt as _run_jwt_router  # noqa: E402
 from routers import runner_audit as _runner_audit_router  # noqa: E402  # issue #298
 from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
 from routers import runner_groups as _runner_groups_router  # noqa: E402
@@ -746,6 +747,7 @@ app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics an
 app.include_router(_escalation_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_fleet_run_token_router.router)
+app.include_router(_run_jwt_router.router)
 app.include_router(_github_app_token_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)

@@ -2352,6 +2352,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/run-jwt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Run Jwt
+         * @description Mint a short-lived, run-scoped JWT for a staff run executing on a spoke node.
+         */
+        post: operations["post_run_jwt_api_fleet_run_jwt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/run-token": {
         parameters: {
             query?: never;
@@ -11392,6 +11412,22 @@ export interface components {
             /** Work Item Id */
             work_item_id?: string | null;
         };
+        /** RunJwtRequest */
+        RunJwtRequest: {
+            /** Principal Id */
+            principal_id: string;
+            /** Run Id */
+            run_id: string;
+        };
+        /** RunJwtResponse */
+        RunJwtResponse: {
+            /** Expires At */
+            expires_at: number;
+            /** Jti */
+            jti: string;
+            /** Token */
+            token: string;
+        };
         /** ScanRequestBody */
         ScanRequestBody: {
             /**
@@ -16605,6 +16641,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    post_run_jwt_api_fleet_run_jwt_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Fleet-Node"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunJwtRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunJwtResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

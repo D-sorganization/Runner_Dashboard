@@ -251,6 +251,15 @@ class IdentityManager:
         self._ephemeral_principals.pop(principal_id, None)
         self._ephemeral_tokens = {th: t for th, t in self._ephemeral_tokens.items() if t.principal_id != principal_id}
 
+    def revoke_ephemeral_token(self, token_hash: str) -> None:
+        """Revoke one ephemeral token without touching its principal's other tokens (#3879).
+
+        Unlike :meth:`revoke_ephemeral_principal`, this targets a single
+        ``token_hash`` — needed because one principal can have more than one
+        concurrent per-run JWT live at once.
+        """
+        self._ephemeral_tokens.pop(token_hash, None)
+
 
 def resolve_identity_dir() -> Path:
     """Return the directory holding principals.yml / tokens.yml (issue #944).
