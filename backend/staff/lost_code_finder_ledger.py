@@ -124,9 +124,7 @@ def validate_finding(data: Mapping[str, Any]) -> list[str]:
     missing = uncleared_indirection_checks(cleared)
     if missing:
         if verdict != VERDICT_UNKNOWN:
-            problems.append(
-                f"verdict must be {VERDICT_UNKNOWN} when indirection checks uncleared: {sorted(missing)}"
-            )
+            problems.append(f"verdict must be {VERDICT_UNKNOWN} when indirection checks uncleared: {sorted(missing)}")
         if verdict == VERDICT_RETIRE:
             problems.append(f"{VERDICT_RETIRE} forbidden when indirection checks uncleared: {sorted(missing)}")
 
