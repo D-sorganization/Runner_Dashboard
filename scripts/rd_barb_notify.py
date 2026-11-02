@@ -256,7 +256,8 @@ class Notifier:
             return {"ok": True, "status": "deduped"}
         if out["kind"] in ("fyi", "update"):
             if (self._cfg.get(f"{self._prefix}SHADOW") or "").strip().lower() in _TRUTHY:
-                self._mirror(out)
+                if not self._mirror(out, shadow_only=True):
+                    return {"ok": False, "status": "not_sent", "error": "shadow_thread_failed"}
                 self._mark(state, out["dedupe_key"])
                 return {"ok": True, "status": "shadow"}
             state["digest"].append(out)
@@ -347,7 +348,8 @@ class Notifier:
 
     def _deliver(self, msg: dict[str, Any]) -> dict[str, Any]:
         if (self._cfg.get(f"{self._prefix}SHADOW") or "").strip().lower() in _TRUTHY:
-            self._mirror(msg)
+            if not self._mirror(msg, shadow_only=True):
+                return {"ok": False, "status": "not_sent", "error": "shadow_thread_failed"}
             return {"ok": True, "status": "shadow"}
         url = self._cfg.get(f"{self._prefix}WEBHOOK_URL") or self._cfg.get("RD_BARB_WEBHOOK_URL")
         key = self._cfg.get(f"{self._prefix}WEBHOOK_KEY") or self._cfg.get("RD_BARB_WEBHOOK_KEY")
@@ -368,16 +370,27 @@ class Notifier:
         self._mirror(msg)
         return {"ok": True, "status": "sent"}
 
-    def _mirror(self, msg: dict[str, Any]) -> None:
+    def _mirror(self, msg: dict[str, Any], *, shadow_only: bool = False) -> bool:
+        """Post to the Staff thread mirror. Returns whether transport succeeded.
+
+        In ``shadow_only`` mode (#3792) the mirror is the sole delivery path: missing
+        thread/poster or a transport error is a failure. After a live webhook send the
+        mirror is best-effort and failures are logged but still return ``True``.
+        """
         thread_id = (
             msg.get("thread_id") or self._cfg.get(f"{self._prefix}THREAD_ID") or self._cfg.get("RD_BARB_THREAD_ID")
         )
-        if not (thread_id and self._post):
-            return
+        if not thread_id or not self._post:
+            if shadow_only:
+                log.error("rd-barb shadow mirror missing thread_id or poster")
+                return False
+            return True
         try:
             self._post(thread_id, json.dumps(msg, sort_keys=True), f"{self._role}-{msg['dedupe_key']}")
-        except Exception as exc:  # noqa: BLE001 - the webhook already delivered
+        except Exception as exc:  # noqa: BLE001
             log.warning("rd-barb thread mirror failed: %s", type(exc).__name__)
+            return not shadow_only
+        return True
 
     def _is_duplicate(self, state: dict[str, Any], key: str) -> bool:
         seen = state["seen"].get(key)

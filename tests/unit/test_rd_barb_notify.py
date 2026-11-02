@@ -372,3 +372,69 @@ def test_role_config_and_shadow_mode_suppress_webhook(tmp_path: Path, rec: Rec) 
     )
     assert res == {"ok": True, "status": "shadow"}
     assert rec.sent == [] and rec.posts[0][0] == "th_bob" and '"sender_role": "bob"' in rec.posts[0][1]
+
+
+def test_shadow_mode_fails_when_thread_poster_raises(tmp_path: Path) -> None:
+    class FailPost(Rec):
+        def post(self, tid: str, body: str, key: str) -> None:
+            raise OSError("transport down")
+
+    rec = FailPost()
+    cfg = {
+        "RD_CARTOGRAPHER_SHADOW": "1",
+        "RD_CARTOGRAPHER_THREAD_ID": "th_cartographer",
+        "RD_CARTOGRAPHER_WEBHOOK_URL": "https://hook.example/x",
+        "RD_CARTOGRAPHER_WEBHOOK_KEY": "k",
+    }
+    res = rn.persona_notify(
+        "cartographer",
+        _question(),
+        config=cfg,
+        state_path=tmp_path / "state.json",
+        sender=rec.send,
+        thread_poster=rec.post,
+    )
+    assert res == {"ok": False, "status": "not_sent", "error": "shadow_thread_failed"}
+    assert rec.sent == []
+
+
+def test_shadow_mode_fails_without_thread_or_poster(tmp_path: Path, rec: Rec) -> None:
+    cfg = {
+        "RD_BOB_SHADOW": "1",
+        "RD_BOB_WEBHOOK_URL": "https://hook.example/x",
+        "RD_BOB_WEBHOOK_KEY": "k",
+    }
+    res = rn.persona_notify(
+        "bob",
+        _question(),
+        config=cfg,
+        state_path=tmp_path / "bob.json",
+        sender=rec.send,
+        thread_poster=None,
+    )
+    assert res["ok"] is False and res["error"] == "shadow_thread_failed"
+
+
+def test_live_webhook_succeeds_when_mirror_raises(tmp_path: Path) -> None:
+    class FailPost(Rec):
+        def post(self, tid: str, body: str, key: str) -> None:
+            raise OSError("mirror down")
+
+    rec = FailPost()
+    res = _notifier(tmp_path, rec).notify(_question())
+    assert res == {"ok": True, "status": "sent"}
+    assert len(rec.sent) == 1
+
+
+def test_shadow_fyi_does_not_mark_dedupe_on_mirror_failure(tmp_path: Path) -> None:
+    class FailPost(Rec):
+        def post(self, tid: str, body: str, key: str) -> None:
+            raise OSError("nope")
+
+    rec = FailPost()
+    cfg = {**CFG, "RD_BARB_SHADOW": "1"}
+    n = rn.Notifier(cfg, tmp_path / "state.json", rec.send, rec.post)
+    first = n.notify(_fyi("f-shadow"))
+    assert first["ok"] is False
+    second = n.notify(_fyi("f-shadow"))
+    assert second["ok"] is False
