@@ -93,13 +93,21 @@ def pump_nudge_output(
     transcript: Path,
     store: RunStore,
     watchdog: StaffWatchdog | None = None,
+    *,
+    expected_session_id: str | None = None,
 ) -> PumpResult:
     """Stream stdout lines from retry nudge into transcript and event store (#1709).
 
     Accepts the result line ONLY on an exact prefix match (``text.startswith('STAFF_RESULT:')``).
+    When ``expected_session_id`` is set (#3591), the nudge stream must announce the same session
+    before a result line is accepted.
     """
+    from staff.chat_history import extract_session_id
+
     usage: dict[str, Any] = {}
     result_line = ""
+    nudge_session_id: str | None = None
+    session_mismatch = False
     assert proc.stdout is not None  # noqa: S101
     with transcript.open("a", encoding="utf-8") as tf:
         tf.write("\n--- [nudge retry for STAFF_RESULT] ---\n")
@@ -110,11 +118,32 @@ def pump_nudge_output(
             event = adapter.parse_line(line)
             if event.get("usage"):
                 usage.update(event["usage"])
+            if not nudge_session_id:
+                pid = getattr(adapter, "provider_id", getattr(rec, "provider", ""))
+                nudge_session_id = extract_session_id(pid, event, raw_line=line)
+                if (
+                    expected_session_id
+                    and nudge_session_id
+                    and nudge_session_id != expected_session_id
+                ):
+                    session_mismatch = True
+                    store.append_event(
+                        rec.id,
+                        "nudge",
+                        f"rejected STAFF_RESULT: nudge session {nudge_session_id!r} != original {expected_session_id!r}",
+                    )
             text = (event.get("text") or "").strip()
             if text:
                 store.append_event(rec.id, "nudge_reply", text)
-                if text.startswith("STAFF_RESULT:"):
-                    result_line = text
+                if text.startswith("STAFF_RESULT:") and not session_mismatch:
+                    if expected_session_id and not nudge_session_id:
+                        store.append_event(
+                            rec.id,
+                            "nudge",
+                            "rejected STAFF_RESULT: nudge stream announced no session id",
+                        )
+                    else:
+                        result_line = text
     return PumpResult(usage, result_line)
 
 
@@ -202,7 +231,9 @@ def execute_retry_nudge(
     )
     watchdog.start()
     try:
-        nudge_pump = pump_nudge_output(rec, adapter, nudge_proc, transcript, store, watchdog)
+        nudge_pump = pump_nudge_output(
+            rec, adapter, nudge_proc, transcript, store, watchdog, expected_session_id=session_id
+        )
         try:
             rc = nudge_proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
