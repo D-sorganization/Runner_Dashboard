@@ -32,7 +32,7 @@ from coordination import service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
-from coordination.claims import ClaimHeldError
+from coordination.claims import AgingPrBlockedError, ClaimHeldError
 from coordination.models import (
     AGENT_PATTERN,
     REPO_PATTERN,
@@ -68,7 +68,7 @@ async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str
     """Run one RM write off the event loop and map its failures to HTTP (DRY for every POST)."""
     try:
         result = await run_in_threadpool(action)
-    except (ClaimHeldError, service.NotRegisteredError) as exc:
+    except (ClaimHeldError, AgingPrBlockedError, service.NotRegisteredError) as exc:
         raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
     except service.ImpersonationError as exc:
         log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)

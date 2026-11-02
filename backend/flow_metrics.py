@@ -12,7 +12,7 @@ import asyncio
 import contextlib
 import json
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
@@ -82,6 +82,28 @@ def percentile(values: Sequence[float], pct: float) -> float:
     return round(ordered[low] * (1.0 - weight) + ordered[high] * weight, 1)
 
 
+def flag_aging_open_prs(pulls: Sequence[Mapping[str, Any]], *, rule_hours: float = PR_AGE_RULE_HOURS) -> list[dict[str, Any]]:
+    """Open PRs in ``pulls`` older than ``rule_hours`` (for dashboard flags)."""
+    flagged: list[dict[str, Any]] = []
+    for pr in pulls:
+        if not isinstance(pr, dict):
+            continue
+        age = open_pr_age_hours(str(pr.get("created_at") or ""))
+        if age <= rule_hours:
+            continue
+        flagged.append(
+            {
+                "number": pr.get("number"),
+                "url": str(pr.get("html_url") or ""),
+                "age_hours": age,
+                "rule_hours": rule_hours,
+                "action": "ci_diagnosis_or_iterate_or_close",
+            }
+        )
+    flagged.sort(key=lambda row: float(row["age_hours"]), reverse=True)
+    return flagged
+
+
 def summarize_open_pr_ages(ages: Sequence[float], *, rule_hours: float = PR_AGE_RULE_HOURS) -> dict[str, Any]:
     """Aggregate open-PR age hours for one repository."""
     if not ages:
@@ -129,6 +151,7 @@ def build_repo_row(
     cycle_hours: Sequence[float],
     opened_issues: int,
     closed_issues: int,
+    aging_prs: Sequence[dict[str, Any]] | None = None,
     error: str | None = None,
 ) -> dict[str, Any]:
     short = repo.rsplit("/", 1)[-1]
@@ -138,6 +161,7 @@ def build_repo_row(
         "open_pr_age": summarize_open_pr_ages(open_pr_ages),
         "pr_cycle_time": summarize_cycle_times(cycle_hours),
         "weekly_issue_burn": weekly_issue_burn(opened_issues, closed_issues),
+        "aging_prs": list(aging_prs or ()),
     }
     if error:
         row["error"] = error
@@ -172,16 +196,26 @@ async def _search_issue_count(run_gh: RunGh, repo_full: str, qualifier: str) -> 
     return 0, "unexpected search response"
 
 
+<<<<<<< HEAD
 async def _fetch_open_pr_ages(
     run_gh: RunGh, repo_full: str, *, now: datetime | None = None
 ) -> tuple[list[float], str | None]:
+=======
+def open_pr_age_hours(created_at: str, *, now: datetime | None = None) -> float:
+    """Hours since ``created_at`` (public helper for other modules)."""
+    return _age_hours(created_at, now=now)
+
+
+async def _fetch_open_pr_ages(run_gh: RunGh, repo_full: str, *, now: datetime | None = None) -> tuple[list[float], list[dict[str, Any]], str | None]:
+>>>>>>> 9e15d885 (feat(coordination): enforce 72-hour open PR rule on claims (#3819))
     payload, err = await _gh_json(run_gh, ["api", f"/repos/{repo_full}/pulls?state=open&per_page=100"])
     if err:
-        return [], err
+        return [], [], err
     if not isinstance(payload, list):
-        return [], "unexpected pulls response"
-    ages = [_age_hours(str(pr.get("created_at") or ""), now=now) for pr in payload if isinstance(pr, dict)]
-    return ages, None
+        return [], [], "unexpected pulls response"
+    pulls = [pr for pr in payload if isinstance(pr, dict)]
+    ages = [_age_hours(str(pr.get("created_at") or ""), now=now) for pr in pulls]
+    return ages, flag_aging_open_prs(pulls), None
 
 
 async def _fetch_cycle_hours(
@@ -218,7 +252,7 @@ async def collect_repo_metrics(
     """Fetch and aggregate metrics for one fleet repository (short name)."""
     runner = run_gh or _default_run_gh
     repo_full = full_repo(repo_short)
-    open_ages, open_err = await _fetch_open_pr_ages(runner, repo_full, now=now)
+    open_ages, aging_prs, open_err = await _fetch_open_pr_ages(runner, repo_full, now=now)
     cycle_hours, cycle_err = await _fetch_cycle_hours(runner, repo_full, now=now)
     opened, opened_err = await _search_issue_count(runner, repo_full, "created")
     closed, closed_err = await _search_issue_count(runner, repo_full, "closed")
@@ -229,6 +263,7 @@ async def collect_repo_metrics(
         cycle_hours=cycle_hours,
         opened_issues=opened,
         closed_issues=closed,
+        aging_prs=aging_prs,
         error="; ".join(errors) if errors else None,
     )
 
