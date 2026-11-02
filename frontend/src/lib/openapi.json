@@ -21466,6 +21466,65 @@
         "tags": ["fleet-brief"]
       }
     },
+    "/api/v1/fleet/flow-metrics": {
+      "get": {
+        "description": "Per-repo flow metrics: open PR age, merge cycle time, weekly issue burn-down.",
+        "operationId": "read_flow_metrics_api_v1_fleet_flow_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Flow Metrics Api V1 Fleet Flow Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Flow Metrics",
+        "tags": ["fleet-flow-metrics"]
+      }
+    },
     "/api/v1/fleet/friction": {
       "get": {
         "operationId": "list_friction_api_v1_fleet_friction_get",
