@@ -42,6 +42,8 @@ def test_sync_all_credentials_mirrors_newest_between_windows_and_wsl(tmp_path: P
         json.dumps({"claudeAiOauth": {"refreshToken": "r-old", "accessToken": "a-old", "expiresAt": 1000}}),
         encoding="utf-8",
     )
+    os.utime(wsl_claude, (1_000_000, 1_000_000))
+    os.utime(win_claude, (2_000_000, 2_000_000))
 
     # 2. Newer Codex credential on WSL -> mirrors to Windows
     wsl_codex = wsl_home / ".codex" / "auth.json"
