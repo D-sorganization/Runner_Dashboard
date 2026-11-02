@@ -68,6 +68,30 @@ def test_identity_manager_creates_empty_principals(tmp_path: Path) -> None:
     assert isinstance(mgr.principals, dict)
 
 
+# ---------------------------------------------------------------------------
+# revoke_ephemeral_token — targeted revocation (#3879 phase B)
+# ---------------------------------------------------------------------------
+
+
+def test_revoke_ephemeral_token_invalidates_only_that_token(tmp_path: Path) -> None:
+    mgr = id_mod.IdentityManager(config_dir=tmp_path)
+    principal = id_mod.Principal(id="runner-1", type="bot", name="Runner One")
+    mgr.add_ephemeral_token("hash-run-a", principal, expires_at=None, name="run:a")
+    mgr.add_ephemeral_token("hash-run-b", principal, expires_at=None, name="run:b")
+
+    mgr.revoke_ephemeral_token("hash-run-a")
+
+    assert mgr._ephemeral_tokens.get("hash-run-a") is None
+    # The sibling run's token for the same principal survives — unlike
+    # revoke_ephemeral_principal, this is a single-token, not single-principal, revoke.
+    assert mgr._ephemeral_tokens.get("hash-run-b") is not None
+
+
+def test_revoke_ephemeral_token_on_unknown_hash_is_a_noop(tmp_path: Path) -> None:
+    mgr = id_mod.IdentityManager(config_dir=tmp_path)
+    mgr.revoke_ephemeral_token("never-registered")  # must not raise
+
+
 def test_identity_manager_get_nonexistent_principal(tmp_path: Path) -> None:
     mgr = id_mod.IdentityManager(config_dir=tmp_path)
     result = mgr.get_principal("does-not-exist")
