@@ -32,10 +32,10 @@ test.describe("Mobile shell bottom navigation", () => {
     await expect(nav).toBeVisible();
   });
 
-  test("Fleet tab is default active tab", async ({ page }) => {
+  test("Staff tab is default active tab", async ({ page }) => {
     await page.goto("/");
-    const fleetTab = page.locator('[role="tab"][aria-selected="true"]');
-    await expect(fleetTab).toContainText(/fleet/i);
+    const activeTab = page.locator('[role="tab"][aria-selected="true"]');
+    await expect(activeTab).toContainText(/staff/i);
   });
 
   test("bottom nav tabs are at least 44px tall (touch target)", async ({
@@ -115,12 +115,14 @@ test.describe("Mobile header chrome (#3749)", () => {
 test.describe("Mobile 3-tap dispatch flow", () => {
   test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
 
-  test("Remediation tab is reachable via bottom nav", async ({ page }) => {
+  test("Remediation is reachable via the More drawer", async ({ page }) => {
     await page.goto("/");
-    const remediationTab = page.locator('[role="tab"]', {
-      hasText: /remediation/i,
-    });
-    await remediationTab.click();
+    // Remediation no longer has its own bottom-nav slot (Staff/Work/Fleet/More
+    // only); it lives in the "More" drawer alongside the other secondary tabs.
+    await page.getByRole("tab", { name: /more/i }).click();
+    const drawer = page.getByRole("dialog", { name: /more options/i });
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole("button", { name: /remediation/i }).click();
     // Should show remediation content without crashing
     await expect(page.locator("body")).not.toBeEmpty();
   });
@@ -360,12 +362,16 @@ test.describe("Mobile Staff Console (SC-D8)", () => {
 
     // 2. Open mobile dashboard and navigate to Staff Console
     await page.goto("/");
-    const staffTab = page.locator('[role="tab"]', { hasText: /staff/i });
+    // Exact match: the home view's own "Choose staff" tab also contains
+    // "staff" and would otherwise make this locator ambiguous.
+    const staffTab = page.getByRole("tab", { name: "Staff", exact: true });
     if (await staffTab.isVisible()) {
       await staffTab.click();
     }
 
-    // Verify roster view with Ask Barb
+    // Staff now opens the chat-first home (#2708/#3511); open the roster via
+    // its "Choose staff" tab to reach Ask Barb.
+    await page.getByTestId("staff-mobile-tab-roster").click();
     const askBarb = page.locator('[data-testid="staff-mobile-ask-barb"]');
     await expect(askBarb).toBeVisible();
 
@@ -399,6 +405,10 @@ test.describe("Mobile Staff Console (SC-D8)", () => {
   }) => {
     await mockStaffApi(page);
     await page.goto("/staff");
+
+    // /staff opens the chat-first home (#2708/#3511); the roster (and its
+    // Ask Barb entry) lives behind the "Choose staff" tab.
+    await page.getByTestId("staff-mobile-tab-roster").click();
 
     const askBarb = page.getByTestId("staff-mobile-ask-barb");
     await expect(askBarb).toBeVisible();
