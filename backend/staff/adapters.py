@@ -234,12 +234,19 @@ class ProviderAdapter:
             if session_id:
                 cmd += ["--resume", session_id]
         elif self.provider_id in ("codex", "ollama"):
-            cmd = [self.executable, "exec"]
-            if self.provider_id == "ollama":
-                cmd += ["--oss", "--local-provider", "ollama"]
-            cmd += read_only + ["--skip-git-repo-check"]
+            read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
             if session_id:
-                cmd += ["--session", session_id]
+                cmd = [self.executable, "exec", "resume", "--skip-git-repo-check", "--json"]
+                if chosen_model:
+                    cmd.extend(["-m", chosen_model])
+                cmd.extend([session_id, prompt])
+            else:
+                cmd = [self.executable, "exec", *read_only, "--skip-git-repo-check", "--json"]
+                if self.provider_id == "ollama":
+                    cmd += ["--oss", "--local-provider", "ollama"]
+                if chosen_model:
+                    cmd.extend(["-m", chosen_model])
+                cmd.append(prompt)
         elif self.provider_id == "antigravity":
             cmd = [self.executable, *(["--print", prompt] if self.chat_stdin(prompt) is None else [])]
             cmd += ["--output-format", "stream-json", "--add-dir", workdir, *read_only]
@@ -263,10 +270,8 @@ class ProviderAdapter:
             if session_id:
                 cmd += ["--resume", session_id]
 
-        if chosen_model:
+        if chosen_model and self.provider_id not in ("codex", "ollama"):
             cmd += ["--model", chosen_model]
-        if self.provider_id in ("codex", "ollama"):
-            cmd.append(prompt)
         assert not _CHAT_BYPASS_FLAGS & set(cmd), "chat argv must never bypass permissions"  # noqa: S101
         return cmd
 
@@ -362,7 +367,6 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         executable="codex",
         argv=(*_UNATTENDED_CODEX, "--model", "{model}", "{prompt}"),
         json_lines=True,
-        chat_json_lines=False,
         notes=(
             "--json events carry the answer (item.completed agent_message) and tokens (turn.completed). The "
             "workspace-write sandbox replaces the old approvals bypass (#1586)."
@@ -457,7 +461,6 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "{prompt}",
         ),
         json_lines=True,
-        chat_json_lines=False,
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
         env_builder=ollama_env.codex_ollama_env,
         lease_as="local",  # RM has no per-harness id for local models

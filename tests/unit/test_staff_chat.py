@@ -80,21 +80,25 @@ def test_codex_chat_argv_read_only_mode() -> None:
     adapter = get_adapter("codex")
     argv = adapter.chat_argv("Review PR 100", "/tmp/scratch", model="o3-mini")
     assert argv[0] == "codex"
-    assert "exec" in argv
-    # Must NOT have dangerous bypass flags
-    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
-    assert "--sandbox" in argv
+    assert argv[1:3] == ["exec", "--sandbox"]
     assert argv[argv.index("--sandbox") + 1] == "read-only"
+    assert "--json" in argv
+    assert "--skip-git-repo-check" in argv
+    assert "--dangerously-bypass-approvals-and-sandbox" not in argv
     assert "Review PR 100" in argv
-    assert "--resume" not in argv
+    assert "resume" not in argv
+    assert "-m" in argv and argv[argv.index("-m") + 1] == "o3-mini"
 
 
 @pytest.mark.unit
 def test_codex_chat_argv_session_resume() -> None:
     adapter = get_adapter("codex")
-    argv = adapter.chat_argv("Follow up question", "/tmp/scratch", session_id="codex_session_abc")
-    assert "resume" in argv or "--session" in argv
+    argv = adapter.chat_argv("Follow up question", "/tmp/scratch", session_id="codex_session_abc", model="o3-mini")
+    assert argv[:4] == ["codex", "exec", "resume", "--skip-git-repo-check"]
+    assert "--json" in argv
+    assert "--session" not in argv
     assert "codex_session_abc" in argv
+    assert "Follow up question" in argv
     assert "--dangerously-bypass-approvals-and-sandbox" not in argv
 
 
