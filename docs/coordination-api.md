@@ -181,18 +181,6 @@ Body `{repo, issue, agent?, session, reason}` → RM `release_agent_lease` →
 → 200 with `warnings`; nothing posted (e.g. RM "Release requires the current lease's exact agent and session")
 → 502 with RM's errors.
 
-### `GET /api/coordination/jobs?repo=&limit=&include_excluded=`
-
-Fleet Job Board S1+S2 (epic #2781, issues #2782/#2783), read-only: open issues (`repo` optional,
-`limit` 1–200, default 50) with no `claim:*`/hold label, no PR already closing them (#2765), an
-available, unheld `claims.check` (unknown is never free), no active schedule-kind hold
-(`staff.holds.HoldsList`/`matches`, #1726) matching the repo via a `hold:<id>` label, and no
-`code-request:board_review` label (Assessment Board gate, CR-6). Returns `{available, complete,
-jobs, excluded?, warnings, generated_at}`; `excluded` needs `include_excluded=true`. `available`
-is `false`, with `jobs: []`, when a repo's holds list cannot be read (fails closed — never an
-unfiltered list). Sort: priority label, then `priorities.service.top_priorities` position, then
-oldest. S3 (claim/release) is later.
-
 ### Status codes for writes
 
 | Code | When                                                                                                         |
@@ -236,6 +224,14 @@ every repository):
 - `holds` are the active Staff Hub holds (`/api/staff/holds`).
 - `rules` carries `staff.workspace.FLEET_RULES`, the guardrails every staff prompt ends with.
 
+### `GET /api/coordination/postman/reports?limit=`
+
+Read-only. The newest postman dry-run reports (`limit` 1 to 50, default 10), written by
+`scripts/postman_dry_run.py`. Each report lists what the postman would do on the board (`presence`,
+`message`, `alert`, `rejection`, `rollover`, `warning`), or an `error` when the board could not be read.
+The postman runs in dry run only, so the response's `live` is always `false` and nothing is delivered
+(proposal: `docs/agents/messenger-agents.md`).
+
 ## Configuration
 
 | Variable                  | Meaning                                                                       |
@@ -244,3 +240,4 @@ every repository):
 | `STAFF_RM_PYTHON`         | Interpreter for the RM scripts (default `python3`).                           |
 | `COORDINATION_REPOS`      | Comma-separated repos for the per-repo fallback read.                         |
 | `DASHBOARD_LOOPBACK_AUTH` | `1` lets the node's own loopback Conductor write without a token.             |
+| `POSTMAN_DATA_DIR`        | Where postman dry-run reports are kept (default `backend/data`).              |
