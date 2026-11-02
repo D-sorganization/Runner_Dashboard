@@ -5011,6 +5011,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/self-test/desk-core": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Self Test Desk Core
+         * @description Run dry-run self-tests for every configured Desk core staff role.
+         */
+        post: operations["self_test_desk_core_api_staff_self_test_desk_core_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/summary": {
         parameters: {
             query?: never;
@@ -5138,6 +5158,26 @@ export interface paths {
          *     ``plan.consolidation`` and the run's ``strategy_mode``.
          */
         post: operations["dispatch_api_staff__role__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/{role}/self-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Self Test Role
+         * @description Dry-run dispatch for one role; optional persona drill uses ephemeral stores only.
+         */
+        post: operations["self_test_role_api_staff__role__self_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -20744,6 +20784,39 @@ export interface operations {
             };
         };
     };
+    self_test_desk_core_api_staff_self_test_desk_core_post: {
+        parameters: {
+            query?: {
+                persona_drill?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     summary_api_staff_summary_get: {
         parameters: {
             query?: never;
@@ -20913,6 +20986,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffDispatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    self_test_role_api_staff__role__self_test_post: {
+        parameters: {
+            query?: {
+                /** @description Also run the isolated #3704 persona fallback drill. */
+                persona_drill?: boolean;
+            };
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
