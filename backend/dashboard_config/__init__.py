@@ -107,13 +107,9 @@ TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
 LIGHTWEIGHT_STARTUP = _env_flag("DASHBOARD_LIGHTWEIGHT_STARTUP", default=False)
 
 
-def _loopback_auth_enabled() -> bool:
-    return os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1"
-
-
 def _default_bind_host() -> str:
     """Default bind when ``DASHBOARD_HOST`` is unset or whitespace-only."""
-    if _loopback_auth_enabled():
+    if os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1":
         return "127.0.0.1"
     return "0.0.0.0"
 
@@ -131,7 +127,7 @@ def validate_loopback_auth_bind(*, force: bool = False) -> None:
     """Refuse startup when loopback auth bypass is enabled on a non-loopback bind (#3617)."""
     if not force and os.environ.get("PYTEST_CURRENT_TEST"):
         return
-    if not _loopback_auth_enabled():
+    if os.environ.get("DASHBOARD_LOOPBACK_AUTH") != "1":
         return
     host = _resolve_bind_host()
     if host in ("0.0.0.0", "::"):
