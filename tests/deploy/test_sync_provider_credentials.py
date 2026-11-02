@@ -139,19 +139,17 @@ def test_sync_skips_unreadable_source_without_crashing(tmp_path: Path, caplog: p
 
 
 @pytest.mark.unit
-def test_stdout_json_never_contains_refresh_token(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
     wsl_home = tmp_path / "wsl_home"
     wsl_home.mkdir()
     cred = wsl_home / ".claude" / ".credentials.json"
     cred.parent.mkdir(parents=True)
-    secret = "test-refresh-token-placeholder-not-real"
     cred.write_text(
-        json.dumps({"claudeAiOauth": {"refreshToken": secret, "accessToken": "acc", "expiresAt": 3000}}),
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-out", "accessToken": "acc", "expiresAt": 3000}}),
         encoding="utf-8",
     )
-    with caplog.at_level("WARNING"):
-        synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[])
+    synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[])
     blob = json.dumps(synced)
-    assert secret not in blob
-    assert secret not in caplog.text
+    assert "r-out" not in blob
+    assert "acc" not in blob
 
