@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "./fixtures";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -263,6 +265,10 @@ test("captures sanitized drawer screenshots at desktop and phone sizes", async (
     const drawer = await openDrawerWithThread(page, viewport.width, RESTORED_THREAD);
     const capture = async (state: string) => {
       const screenshot = await page.screenshot({ animations: "disabled", mask: masks, maskColor: "#000000" });
+      const filename = `drawer-${viewport.width}-${state}.png`;
+      const output = resolve("test-results", "baseline-screenshots");
+      await mkdir(output, { recursive: true });
+      await writeFile(join(output, filename), screenshot);
       await testInfo.attach(`drawer-${viewport.width}-${state}`, {
         body: screenshot,
         contentType: "image/png",
