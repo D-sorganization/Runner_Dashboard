@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 _lock = threading.Lock()
 _last: dict[str, Any] = {
