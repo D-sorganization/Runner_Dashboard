@@ -439,17 +439,13 @@ class StaffScheduler:
         with self._lock:
             entry = self._load_state().setdefault(key, {})
             if claimed:
-                record_scheduled_skip(
-                    entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed
-                )
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
                 log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
                 return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
             try:
                 rec = self.runner.submit(req)
             except ValueError as exc:
-                record_scheduled_skip(
-                    entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc)
-                )
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
                 log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
                 return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
             record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat())
@@ -469,5 +465,8 @@ class StaffScheduler:
         reports = [self.evaluate(role, now) for _, role in roles]
         return sorted(reports, key=lambda r: (r["schedule"] is None, r["role"]))
 
+
+# Tests inject a fake scheduler here; ``scheduler_registry.get_scheduler`` honors it.
+_scheduler: StaffScheduler | None = None
 
 from staff.scheduler_registry import get_scheduler, reset_scheduler  # noqa: E402,F401

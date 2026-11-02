@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,14 @@ _scheduler_lock = threading.Lock()
 _built_scheduler: StaffScheduler | None = None  # the instance get_scheduler() constructed (#3622)
 
 
+def _injected_scheduler() -> StaffScheduler | None:
+    """Tests patch ``staff.scheduler._scheduler``; honor that before the singleton."""
+    sched_mod = sys.modules.get("staff.scheduler")
+    if sched_mod is None:
+        return None
+    return getattr(sched_mod, "_scheduler", None)
+
+
 def get_scheduler() -> StaffScheduler:
     """Process-wide scheduler bound to the process-wide runner.
 
@@ -25,6 +34,10 @@ def get_scheduler() -> StaffScheduler:
     (#3622). An injected ``_scheduler`` is returned as is.
     """
     from staff.scheduler import StaffScheduler
+
+    injected = _injected_scheduler()
+    if injected is not None:
+        return injected
 
     global _scheduler, _built_scheduler  # noqa: PLW0603
     with _scheduler_lock:
@@ -43,6 +56,9 @@ def get_scheduler() -> StaffScheduler:
 
 
 def reset_scheduler() -> None:
+    sched_mod = sys.modules.get("staff.scheduler")
+    if sched_mod is not None:
+        sched_mod._scheduler = None
     global _scheduler  # noqa: PLW0603
     with _scheduler_lock:
         if _scheduler is not None:
