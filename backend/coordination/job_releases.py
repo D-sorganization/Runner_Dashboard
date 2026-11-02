@@ -62,4 +62,5 @@ def list_job_releases(*, since: str | None = None, limit: int = _DEFAULT_LIMIT) 
         rows.append(_row_from_envelope(env))
         if len(rows) >= bounded:
             break
-    return {"releases": rows, "complete": len(rows) < bounded, "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z")}
+    generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return {"releases": rows, "complete": len(rows) < bounded, "generated_at": generated_at}

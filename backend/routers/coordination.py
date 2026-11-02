@@ -28,8 +28,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from coordination import jobs as jobs_mod
 from coordination import job_releases as job_releases_mod
+from coordination import jobs as jobs_mod
 from coordination import service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
