@@ -33,7 +33,6 @@ from zoneinfo import ZoneInfo
 from staff import cartographer_persona, claim_guard, consolidation, verification
 from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
-from staff.exclusions import ExclusionsList
 from staff.holds import HoldsList
 from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
@@ -41,13 +40,6 @@ from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
-from staff.scheduler_issue_pick import (
-    ISSUE_REMEDIATOR_ROLE,
-    fetch_issue_claim_status,
-    fetch_open_issues,
-    pick_issue_target,
-    scheduled_repo,
-)
 from staff.scheduler_leader_lease import (
     acquire_leader_lease as _lease_acquire_leader_lease,
 )
@@ -59,7 +51,8 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
-from staff.scheduler_startup import mark_scheduler_started, skip_due_slot_during_startup
+from staff.scheduler_named_jobs import named_jobs, queue_due_slot
+from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.scheduler")
@@ -84,17 +77,6 @@ def state_path() -> Path:
 
 def _iso(when: datetime | None) -> str | None:
     return when.isoformat() if when else None
-
-
-def _named_jobs(role: RoleSpec) -> dict[str, str]:
-    """Named sub-schedules declared in ``role.scope.schedules`` (e.g. Bob's Monday value watch, #3790).
-
-    A role with named jobs is scheduled per job instead of by its flat ``role.schedule``: the flat
-    cron on these roles is a lossy union (it has no way to express a Monday-only slot alongside
-    weekday ones), so each named cron gets its own cursor and fires independently.
-    """
-    schedules = role.scope.get("schedules") if isinstance(role.scope, dict) else None
-    return {str(k): str(v) for k, v in schedules.items()} if isinstance(schedules, dict) and schedules else {}
 
 
 class StaffScheduler:
@@ -359,7 +341,7 @@ class StaffScheduler:
             for role in sorted(self.runner.roles().values(), key=lambda r: r.name):
                 if not role.dispatchable:
                     continue
-                jobs = _named_jobs(role)
+                jobs = named_jobs(role)
                 if jobs:
                     for job, cron in sorted(jobs.items()):
                         self._queue_due_slot(role, now, decisions, pending_fires, job=job, cron=cron)
@@ -385,53 +367,20 @@ class StaffScheduler:
         cron: str | None = None,
     ) -> None:
         """Evaluate one role (or one named job of it); append a skip decision or queue a fire."""
-        name = role.name
 
-        def _skip(due: str, reason: str) -> None:
-            entry["last_reason"] = f"skipped {due}: {reason}"
-            decision = {"role": name, "slot": due, "fired": False, "reason": reason}
-            if job:
-                decision["job"] = job
-            decisions.append(decision)
+        def _report(r: RoleSpec, n: datetime) -> dict[str, Any]:
+            return self._schedule_report(r, n, job=job, cron=cron) if job else self.evaluate(r, n)
 
-        report = self._schedule_report(role, now, job=job, cron=cron) if job else self.evaluate(role, now)
-        due = report["next_fire"]
-        if due is None or datetime.fromisoformat(due) > now:
-            return
-        if skip_due_slot_during_startup(name):
-            log.info("staff scheduler: %s slot %s deferred — hub startup grace", name, due)
-            return
-        key = f"{name}::{job}" if job else name
-        entry = self._load_state().setdefault(key, {})
-        entry["cursor"] = now.isoformat()
-        blocker = self._blocker(report)
-        if blocker:
-            log.info("staff scheduler: %s slot %s skipped — %s", name, due, blocker)
-            _skip(due, blocker)
-            return
-        repo = scheduled_repo(role.repos, now)
-        issue_number: int | None = None
-        if job is None and role.name == ISSUE_REMEDIATOR_ROLE:
-            selected_repo, selected_issue = pick_issue_target(
-                role, now, fetch_open=fetch_open_issues, fetch_claim=fetch_issue_claim_status
-            )
-            if not selected_repo or not selected_issue:
-                _skip(due, "no eligible issues in scheduled repositories")
-                return
-            repo = selected_repo
-            issue_number = selected_issue
-        repo_hold = self.holds.blocking(name, repo)
-        if repo_hold:
-            _skip(due, f"hold: {repo_hold.text}")
-            return
-        excluded = ExclusionsList().blocking(repo) if repo else None
-        if excluded:
-            reason = f"excluded: {excluded.owner}: {excluded.reason}"
-            log.info("staff scheduler: %s slot %s skipped - %s (%s)", name, due, reason, excluded.id)
-            _skip(due, reason)
-            return
-        pending_fires.append(
-            {"name": name, "role": role, "due": due, "repo": repo, "issue_number": issue_number, "job": job}
+        queue_due_slot(
+            role,
+            now,
+            decisions,
+            pending_fires,
+            job=job,
+            schedule_report=_report,
+            blocker=self._blocker,
+            load_state=self._load_state,
+            holds_blocking=self.holds.blocking,
         )
 
     def _fire_pending_slot(
