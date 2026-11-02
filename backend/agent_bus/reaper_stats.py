@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
+from typing import Any, Mapping
 
 _lock = threading.Lock()
 _last: dict[str, Any] = {
@@ -16,7 +16,7 @@ _last: dict[str, Any] = {
 }
 
 
-def record_reap(result: dict[str, int | float], *, deferred_sessions: int = 0, errors: int = 0) -> None:
+def record_reap(result: Mapping[str, int], *, deferred_sessions: int = 0, errors: int = 0) -> None:
     with _lock:
         _last.update(
             {
