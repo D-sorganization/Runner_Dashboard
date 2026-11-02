@@ -11,6 +11,7 @@
 import { randomUUID } from "node:crypto";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
+import { expectFocusWithState, SIDEBAR_FOCUSABLE } from "./focusTrapDiagnostics";
 import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
@@ -303,7 +304,7 @@ test.describe("Ask Barb drawer keyboard access", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }) => {
+  test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }, testInfo) => {
     for (const viewport of [
       { width: 1440, height: 900 },
       { width: 960, height: 900 },
@@ -323,21 +324,19 @@ test.describe("Ask Barb drawer keyboard access", () => {
       if (viewport.width === 390) {
         await expect(drawer).toHaveAttribute("aria-modal", "true");
         await close.focus();
-        const focusable = drawer
-          .locator('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
-          .filter({ visible: true });
+        const focusable = drawer.locator(SIDEBAR_FOCUSABLE).filter({ visible: true });
         const first = focusable.first();
         const last = focusable.last();
         await first.focus();
         await page.keyboard.press("Shift+Tab");
-        await expect(last).toBeFocused();
+        await expectFocusWithState(testInfo, last, drawer, "shift-tab-focus-state.json");
         await page.keyboard.press("Tab");
-        await expect(first).toBeFocused();
+        await expectFocusWithState(testInfo, first, drawer, "tab-focus-state.json");
       }
 
       await page.keyboard.press("Escape");
       await expect(drawer).toHaveAttribute("aria-hidden", "true");
-      await expect(trigger).toBeFocused();
+      await expectFocusWithState(testInfo, trigger, drawer, "escape-focus-state.json");
     }
   });
 });
