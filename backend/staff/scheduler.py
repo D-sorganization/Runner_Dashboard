@@ -40,6 +40,8 @@ from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
+from staff.scheduler_lost_code_finder import fire_guard as lost_code_finder_fire_guard
+from staff.lost_code_finder_pilot import ROLE as LOST_CODE_FINDER_ROLE, WEEKLY_JOB as LOST_CODE_FINDER_JOB
 from staff.scheduler_issue_pick import fetch_issue_claim_status, fetch_open_issues, scheduled_repo  # noqa: F401
 from staff.scheduler_leader_lease import (
     acquire_leader_lease as _lease_acquire_leader_lease,
@@ -402,6 +404,20 @@ class StaffScheduler:
             cartographer_job = next(iter(cartographer_persona.CARTOGRAPHER_SCHEDULE_ENTRIES))
             reason = cartographer_fire_guard(
                 role.name, continuity=self._cartographer_continuity(), job=cartographer_job, slot=due, now=now
+            )
+            if reason:
+                with self._lock:
+                    entry = self._load_state().setdefault(key, {})
+                    entry["last_reason"] = f"skipped {due}: {reason}"
+                log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
+                return {"role": name, "slot": due, "fired": False, "reason": reason}
+        if role.name == LOST_CODE_FINDER_ROLE:
+            reason = lost_code_finder_fire_guard(
+                role.name,
+                continuity=self._cartographer_continuity(),
+                job=LOST_CODE_FINDER_JOB,
+                slot=due,
+                now=now,
             )
             if reason:
                 with self._lock:
