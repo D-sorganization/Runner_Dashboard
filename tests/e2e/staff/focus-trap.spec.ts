@@ -136,34 +136,39 @@ for (const kind of HIDDEN_KINDS) {
   }
 }
 
-test("mobile focus skips an aria-hidden candidate inside the tab order", async ({ page }) => {
+test("mobile focus preserves native order while skipping hidden and closed-detail stops", async ({ page }) => {
   const drawer = await openDrawerWithThread(page, 390, RESTORED_THREAD);
-
-  const visible = drawer.locator(FOCUSABLE).filter({ visible: true });
-  await visible.first().evaluate((element) => {
-    element.setAttribute("data-focus-interior", "first");
-  });
-  await visible.nth(1).evaluate((element) => {
-    element.setAttribute("data-focus-interior", "next");
-  });
-  const first = drawer.locator('[data-focus-interior="first"]');
-  const next = drawer.locator('[data-focus-interior="next"]');
+  const baselineLast = drawer.locator(FOCUSABLE).filter({ visible: true }).last();
+  await baselineLast.evaluate((element) => element.setAttribute("data-baseline-last", ""));
   await drawer.evaluate((panel) => {
-    const next = panel.querySelector('[data-focus-interior="next"]');
-    if (!next?.parentNode) throw new Error("missing next focus candidate");
-    const group = document.createElement("div");
-    group.setAttribute("aria-hidden", "true");
-    const candidate = document.createElement("button");
-    candidate.dataset.focusCandidate = "interior-aria-hidden";
-    group.append(candidate);
-    next.parentNode.insertBefore(group, next);
+    const fixture = document.createElement("div");
+    fixture.innerHTML = '<button tabindex="1">First positive</button><button tabindex="2">Second positive</button><input type="radio" name="checked" aria-label="checked first"><input type="radio" name="checked" aria-label="checked selected" checked><div aria-hidden="true"><button tabindex="0">Hidden stop</button></div><div contenteditable="true" tabindex="0">Editable</div><details open><summary>Open summary</summary></details><details><summary>Closed summary</summary><button>Closed child</button></details><input type="radio" name="unchecked" aria-label="unchecked first"><input type="radio" name="unchecked" aria-label="unchecked second">';
+    panel.prepend(fixture);
   });
-  await expect(drawer.locator('[data-focus-candidate="interior-aria-hidden"]')).toHaveCount(1);
-
-  await first.focus();
-  await expect(first).toBeFocused();
+  const elements = [
+    drawer.getByRole("button", { name: "First positive" }),
+    drawer.getByRole("button", { name: "Second positive" }),
+    drawer.getByRole("radio", { name: "checked selected" }),
+    drawer.locator('[contenteditable="true"]'),
+    drawer.getByText("Open summary", { exact: true }),
+    drawer.getByText("Closed summary", { exact: true }),
+    drawer.getByRole("radio", { name: "unchecked first" }),
+  ];
+  await elements[0].focus();
+  await expect(elements[0]).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(drawer.locator("[data-baseline-last]")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(elements[0]).toBeFocused();
+  for (const element of elements.slice(1)) {
+    await page.keyboard.press("Tab");
+    await expect(element).toBeFocused();
+  }
+  const next = drawer.getByRole("button", { name: "New chat" });
   await page.keyboard.press("Tab");
   await expect(next).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(elements.at(-1)!).toBeFocused();
 });
 
 test("passive thread restore preserves moved focus; New chat keeps explicit focus", async ({ page }) => {
