@@ -144,7 +144,7 @@ def test_stdout_json_never_contains_refresh_token(tmp_path: Path, caplog: pytest
     wsl_home.mkdir()
     cred = wsl_home / ".claude" / ".credentials.json"
     cred.parent.mkdir(parents=True)
-    secret = "super-secret-refresh-token-value"
+    secret = "test-refresh-token-placeholder-not-real"
     cred.write_text(
         json.dumps({"claudeAiOauth": {"refreshToken": secret, "accessToken": "acc", "expiresAt": 3000}}),
         encoding="utf-8",
