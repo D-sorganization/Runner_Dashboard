@@ -24,19 +24,23 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import claim_guard, consolidation, verification
+from staff import cartographer_persona, claim_guard, consolidation, verification
+from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
 from staff.exclusions import ExclusionsList
 from staff.holds import HoldsList
+from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
+from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
+from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
 from staff.scheduler_issue_pick import (
     ISSUE_REMEDIATOR_ROLE,
     fetch_issue_claim_status,
@@ -91,6 +95,9 @@ class StaffScheduler:
         state_file: Path | None = None,
         tz: str = DEFAULT_TZ,
         decider: Callable[[RoleSpec, str], dict[str, Any] | None] = consolidation.decide,
+        cartographer_continuity_store: BarbContinuityStore | None = None,
+        cartographer_capsule_store: RoleCapsuleStore | None = None,
+        cartographer_notify_opts: Mapping[str, Any] | None = None,
     ) -> None:
         assert tick_seconds > 0, "tick_seconds must be positive"  # noqa: S101
         self.runner = runner
@@ -106,6 +113,11 @@ class StaffScheduler:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._next_verify_at = 0.0
+        # Cartographer scheduler↔persona wiring (#3788); lazy so an idle role never touches the DB.
+        self._cartographer_continuity_store = cartographer_continuity_store
+        self._cartographer_capsule_store = cartographer_capsule_store
+        self._cartographer_notify_opts = dict(cartographer_notify_opts or {})
+        self._cartographer_pending: dict[str, dict[str, str]] = {}
 
     # ── lifecycle ────────────────────────────────────────────────────────
     def start(self) -> None:
@@ -144,6 +156,27 @@ class StaffScheduler:
             verification.recheck_runs(self.runner.store, machine=self.runner.machine, opens_pr=self.runner.opens_pr)
         except Exception:  # noqa: BLE001
             log.exception("staff run verification recheck failed")
+
+    # ── Cartographer persona wiring (#3788) ─────────────────────────────────
+    def _cartographer_continuity(self) -> BarbContinuityStore:
+        self._cartographer_continuity_store = self._cartographer_continuity_store or get_barb_continuity_store()
+        return self._cartographer_continuity_store
+
+    def _cartographer_capsules(self) -> RoleCapsuleStore:
+        self._cartographer_capsule_store = self._cartographer_capsule_store or RoleCapsuleStore()
+        return self._cartographer_capsule_store
+
+    def _reconcile_cartographer_pending(self) -> None:
+        reconcile_cartographer_pending(
+            self._lock,
+            self._cartographer_pending,
+            store=self.runner.store,
+            continuity_factory=self._cartographer_continuity,
+            capsules_factory=self._cartographer_capsules,
+            notify_opts=self._cartographer_notify_opts,
+            machine=self.runner.machine,
+            now=self._clock(),
+        )
 
     # ── state ────────────────────────────────────────────────────────────
     @property
@@ -294,6 +327,7 @@ class StaffScheduler:
     def tick(self, now: datetime | None = None) -> list[dict[str, Any]]:
         """Handle every due slot once. Returns one decision per due role."""
         now = now or self._clock()
+        self._reconcile_cartographer_pending()
         decisions: list[dict[str, Any]] = []
         if not self._lease_allows_firing(now):
             return decisions
@@ -374,6 +408,18 @@ class StaffScheduler:
         issue_number: int | None,
     ) -> dict[str, Any]:
         """Run slow consolidation/claim/submit work without holding the scheduler lock (#3526)."""
+        cartographer_job = ""
+        if role.name == cartographer_persona.ROLE:
+            cartographer_job = next(iter(cartographer_persona.CARTOGRAPHER_SCHEDULE_ENTRIES))
+            reason = cartographer_fire_guard(
+                role.name, continuity=self._cartographer_continuity(), job=cartographer_job, slot=due, now=now
+            )
+            if reason:
+                with self._lock:
+                    entry = self._load_state().setdefault(name, {})
+                    entry["last_reason"] = f"skipped {due}: {reason}"
+                log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
+                return {"role": name, "slot": due, "fired": False, "reason": reason}
         decision = self._decider(role, repo or "")
         prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
         if issue_number:
@@ -401,6 +447,8 @@ class StaffScheduler:
                 return {"role": name, "slot": due, "fired": False, "reason": str(exc)}
             entry["last_fired"] = now.isoformat()
             entry["last_reason"] = f"fired {due} as {rec.id}"
+            if cartographer_job:
+                self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}
         log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
         fired: dict[str, Any] = {"role": name, "slot": due, "fired": True, "run_id": rec.id}
         if decision:
