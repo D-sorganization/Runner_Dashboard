@@ -12,6 +12,7 @@ from typing import Any
 
 import gh_client
 import pr_inventory
+from coordination import staff_view
 from coordination.queue_batching import (
     MERGE_QUEUE_PARAM_KEYS as _MERGE_QUEUE_PARAM_KEYS,
 )
@@ -111,6 +112,17 @@ async def _fetch_queue_depth(repo: str) -> tuple[int, str | None]:
     except Exception as exc:  # noqa: BLE001
         return 0, f"merge-queue depth unavailable: {exc}"
     return depth, None
+
+
+async def _fetch_dispatch_queue_depth() -> tuple[int | None, str | None]:
+    """RD agent/dispatch backlog depth (fleet-wide queued+running staff runs; design doc #3876)."""
+    try:
+        rows, warnings = await staff_view.staff_runs()
+    except Exception as exc:  # noqa: BLE001 — orthogonality: staff board failure must not break overload
+        return None, f"RD dispatch queue depth unavailable: {exc}"
+    if warnings:
+        return None, warnings[0]
+    return len(rows), None
 
 
 async def _fetch_merge_queue_settings(repo: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -433,9 +445,11 @@ async def build_overload_snapshot(
     open_count = len(open_prs)
     recent_prs, history_err = await _fetch_recent_prs(repo)
     queue_depth, queue_err = await _fetch_queue_depth(repo)
+    dispatch_queue_depth, dispatch_err = await _fetch_dispatch_queue_depth()
     merge_queue_settings, settings_err = await _fetch_merge_queue_settings(repo)
     completed_group_runs, group_runs_err = await fetch_completed_merge_group_runs(repo)
-    warnings = [err for err in (open_err, history_err, queue_err, settings_err, group_runs_err) if err]
+    queue_depth_warnings = [err for err in (queue_err, dispatch_err) if err]
+    warnings = [err for err in (open_err, history_err, queue_err, dispatch_err, settings_err, group_runs_err) if err]
 
     reasons: list[str] = []
     if _consecutive_overloaded_buckets(recent_prs, now=now):
@@ -476,7 +490,10 @@ async def build_overload_snapshot(
         "generated_at": now.isoformat(),
         "open_pr_count": open_count,
         "windows": win,
-        "merge_queue_depth": queue_depth,
+        "merge_queue_depth": queue_depth,  # deprecated alias, removed after one release (#3876)
+        "github_merge_queue_run_depth": queue_depth,
+        "rd_dispatch_queue_depth": dispatch_queue_depth,
+        "queue_depth_warnings": queue_depth_warnings,
         "merge_queue_settings": merge_queue_settings,
         "queue_batching": queue_batching,
         "overloaded": overloaded,
