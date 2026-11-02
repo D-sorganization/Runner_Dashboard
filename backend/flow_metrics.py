@@ -172,7 +172,9 @@ async def _search_issue_count(run_gh: RunGh, repo_full: str, qualifier: str) -> 
     return 0, "unexpected search response"
 
 
-async def _fetch_open_pr_ages(run_gh: RunGh, repo_full: str, *, now: datetime | None = None) -> tuple[list[float], str | None]:
+async def _fetch_open_pr_ages(
+    run_gh: RunGh, repo_full: str, *, now: datetime | None = None
+) -> tuple[list[float], str | None]:
     payload, err = await _gh_json(run_gh, ["api", f"/repos/{repo_full}/pulls?state=open&per_page=100"])
     if err:
         return [], err
@@ -182,7 +184,9 @@ async def _fetch_open_pr_ages(run_gh: RunGh, repo_full: str, *, now: datetime | 
     return ages, None
 
 
-async def _fetch_cycle_hours(run_gh: RunGh, repo_full: str, *, now: datetime | None = None) -> tuple[list[float], str | None]:
+async def _fetch_cycle_hours(
+    run_gh: RunGh, repo_full: str, *, now: datetime | None = None
+) -> tuple[list[float], str | None]:
     payload, err = await _gh_json(
         run_gh,
         ["api", f"/repos/{repo_full}/pulls?state=closed&sort=updated&direction=desc&per_page={MERGED_PR_PAGE}"],
