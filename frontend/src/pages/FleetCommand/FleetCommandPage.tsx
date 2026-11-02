@@ -15,6 +15,7 @@ import { SubTabs } from "../../components/SubTabs";
 import { ActiveWorkPanel } from "./ActiveWorkPanel";
 import { ClaimsPanel } from "./ClaimsPanel";
 import { DirectivesPanel } from "./DirectivesPanel";
+import { FlowMetricsPanel } from "./FlowMetricsPanel";
 import { DispatchPanel } from "./DispatchPanel";
 import { MessagesPanel, type MessageTarget } from "./MessagesPanel";
 import { PrioritiesPanel } from "./PrioritiesPanel";
@@ -109,6 +110,7 @@ export function FleetCommandPage() {
         <div className="fleet-cmd__stack">
           <PrioritiesPanel />
           <DirectivesPanel />
+          <FlowMetricsPanel />
         </div>
       ) : null}
       {section === "proposals" ? <ProposalsPanel initialPrefill={proposalPrefill ?? undefined} /> : null}

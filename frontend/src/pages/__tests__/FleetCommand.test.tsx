@@ -86,6 +86,14 @@ describe("FleetCommandPage — priorities", () => {
     expect(within(screen.getByTestId("priorities-deferred")).getByText("docs/agents/grok.md").tagName).toBe("CODE");
   });
 
+  it("shows flow metrics with aging PR badge on the priorities stack", async () => {
+    stubFetch();
+    render(<FleetCommandPage />);
+    const badge = await screen.findByTestId("flow-aging-Runner_Dashboard");
+    expect(badge).toHaveTextContent("1");
+    expect(screen.getByTestId("flow-metrics-table")).toHaveTextContent("+3");
+  });
+
   it("shows the no-board-meeting empty state when the backend reports none", async () => {
     stubFetch((url) =>
       url === "/api/priorities"
