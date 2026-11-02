@@ -704,5 +704,19 @@ describe("StaffConsoleMobile (SC-D8)", () => {
       // to a specialist's own authorized thread.
       expect(within(thread).getByTestId("composer-attach-btn")).not.toBeDisabled();
     });
+
+    it("switches to Personas tab and renders persona gallery", async () => {
+      render(
+        <StaffConsoleMobile
+          roles={MOCK_ROLES}
+          initialView="roster"
+        />,
+      );
+      const personasTab = screen.getByTestId("staff-mobile-tab-personas");
+      expect(personasTab).toBeInTheDocument();
+      fireEvent.click(personasTab);
+      expect(screen.getByTestId("staff-mobile-personas-view")).toBeInTheDocument();
+      expect(screen.getByTestId("persona-gallery")).toBeInTheDocument();
+    });
   });
 });

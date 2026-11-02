@@ -36,7 +36,7 @@ export interface UseMobileThreadUrlSyncArgs {
   initialThread: ThreadInfo | undefined;
   openRole: (roleName: string) => Promise<ThreadInfo | null>;
   openThread: (thread: ThreadInfo, roleName?: string) => void;
-  setView: (view: "thread" | "inbox" | "runs") => void;
+  setView: (view: "thread" | "inbox" | "runs" | "personas") => void;
 }
 
 /**
@@ -74,6 +74,7 @@ export function useMobileThreadUrlSync({
     }
     if (tab === "inbox") setView("inbox");
     else if (tab === "runs") setView("runs");
+    else if (tab === "personas") setView("personas");
   };
   const syncWithUrlRef = useRef(syncWithUrl);
   syncWithUrlRef.current = syncWithUrl;
