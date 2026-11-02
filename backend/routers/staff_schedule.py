@@ -33,6 +33,7 @@ from staff.models import (
     StaffScheduleToggleResponse,
 )
 from staff.scheduler import get_scheduler
+from staff.scheduler_pause import emit_pause_expired_alert, evaluate_pause
 
 # Production (start-dashboard.sh) and the E2E harness both launch server.py with only
 # backend/ on sys.path; the repo-root scripts package needs this explicit shim (#3311
@@ -87,6 +88,10 @@ def start_scheduler() -> None:
     enabled = scheduler_enabled()
     if not enabled:
         log.info("staff scheduler disabled by %s", SCHEDULER_ENABLED_ENV)
+        try:
+            emit_pause_expired_alert()
+        except Exception as exc:  # noqa: BLE001 — pause watchdog must not block bootstrap
+            log.exception("staff scheduler pause watchdog failed: %s", exc)
     sched = get_scheduler() if enabled else None
 
     def _reconcile_then_start() -> None:
@@ -125,11 +130,17 @@ def schedule_snapshot() -> dict[str, Any]:
     now = datetime.now(UTC)
     enabled = scheduler_enabled()
     roles = sched.status(now)
+    pause = evaluate_pause(enabled, now)
     if not enabled:
         for row in roles:
             row["enabled"] = False
             row["next_fire"] = None
             row["hold"] = f"inactive on this node: {SCHEDULER_ENABLED_ENV}=0"
+    if pause.applies:
+        try:
+            emit_pause_expired_alert(now)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("staff scheduler pause watchdog failed: %s", exc)
     return {
         "machine": sched.runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
@@ -137,6 +148,7 @@ def schedule_snapshot() -> dict[str, Any]:
         "running": sched.running,
         "tick_seconds": sched.tick_seconds,
         "leader_lease": sched.leader_status(now),
+        "pause": pause.to_dict(),
         "roles": roles,
     }
 
