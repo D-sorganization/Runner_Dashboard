@@ -27,8 +27,8 @@ from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
-from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.board import BOARD_COMMENT_LIMIT, BOARD_ISSUE, RMScriptError
+from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.claim_guard import closing_pr_for, full_repo
 

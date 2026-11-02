@@ -82,7 +82,9 @@ def percentile(values: Sequence[float], pct: float) -> float:
     return round(ordered[low] * (1.0 - weight) + ordered[high] * weight, 1)
 
 
-def flag_aging_open_prs(pulls: Sequence[Mapping[str, Any]], *, rule_hours: float = PR_AGE_RULE_HOURS) -> list[dict[str, Any]]:
+def flag_aging_open_prs(
+    pulls: Sequence[Mapping[str, Any]], *, rule_hours: float = PR_AGE_RULE_HOURS
+) -> list[dict[str, Any]]:
     """Open PRs in ``pulls`` older than ``rule_hours`` (for dashboard flags)."""
     flagged: list[dict[str, Any]] = []
     for pr in pulls:
