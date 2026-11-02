@@ -196,18 +196,14 @@ async def _search_issue_count(run_gh: RunGh, repo_full: str, qualifier: str) -> 
     return 0, "unexpected search response"
 
 
-<<<<<<< HEAD
-async def _fetch_open_pr_ages(
-    run_gh: RunGh, repo_full: str, *, now: datetime | None = None
-) -> tuple[list[float], str | None]:
-=======
 def open_pr_age_hours(created_at: str, *, now: datetime | None = None) -> float:
     """Hours since ``created_at`` (public helper for other modules)."""
     return _age_hours(created_at, now=now)
 
 
-async def _fetch_open_pr_ages(run_gh: RunGh, repo_full: str, *, now: datetime | None = None) -> tuple[list[float], list[dict[str, Any]], str | None]:
->>>>>>> 9e15d885 (feat(coordination): enforce 72-hour open PR rule on claims (#3819))
+async def _fetch_open_pr_ages(
+    run_gh: RunGh, repo_full: str, *, now: datetime | None = None
+) -> tuple[list[float], list[dict[str, Any]], str | None]:
     payload, err = await _gh_json(run_gh, ["api", f"/repos/{repo_full}/pulls?state=open&per_page=100"])
     if err:
         return [], [], err
