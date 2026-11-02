@@ -257,6 +257,14 @@ describe("StaffConsoleMobile (SC-D8)", () => {
     expect(threadApi.postThreadMessage.mock.calls.length).toBe(callsBefore);
   });
 
+  it("scrolls the rd-barb unavailable status with the home content so the staff tabs stay above the shell nav (#3772)", () => {
+    const rolesWithoutRdBarb = MOCK_ROLES.filter((role) => role.name !== "rd-barb");
+    render(<StaffConsoleMobile initialView="home" roles={rolesWithoutRdBarb} />);
+
+    const status = screen.getByTestId("staff-mobile-rd-barb-unavailable");
+    expect(status.closest(".staff-mobile__main-content")).not.toBeNull();
+  });
+
   it("does not reopen the thread when the user leaves home before a send completes", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
