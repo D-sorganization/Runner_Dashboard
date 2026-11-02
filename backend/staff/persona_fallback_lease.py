@@ -27,10 +27,17 @@ _SLOT_LEDGER_SCHEMA = """
 CREATE TABLE IF NOT EXISTS persona_slot_ledger (
     slot_key TEXT PRIMARY KEY, role TEXT NOT NULL, job TEXT NOT NULL, slot TEXT NOT NULL,
     holder TEXT NOT NULL, epoch INTEGER NOT NULL, board_claim_ref TEXT NOT NULL DEFAULT '',
-    recorded_at TEXT NOT NULL
+    recorded_at TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'completed'
 );
 CREATE INDEX IF NOT EXISTS idx_persona_slot_role ON persona_slot_ledger(role, recorded_at DESC);
 """
+
+# Slot lifecycle states (#3789): a claim starts "in_progress" and only becomes "completed"
+# once the scheduled work (capsule save + notify) actually succeeds. A row created before this
+# migration has no way to know whether its work finished, so the schema default above treats it
+# as "completed" -- the same "never retry" behavior the ledger already had for every row.
+_SLOT_STATUS_IN_PROGRESS = "in_progress"
+_SLOT_STATUS_COMPLETED = "completed"
 
 
 def validate_role_name(role: str) -> str:
@@ -65,6 +72,11 @@ def slot_ledger_key(role: str, job: str, slot: str) -> str:
 def _ensure_slot_table(store: BarbContinuityStore) -> None:
     with store._lock, store._conn:
         store._conn.executescript(_SLOT_LEDGER_SCHEMA)
+        cols = {row[1] for row in store._conn.execute("PRAGMA table_info(persona_slot_ledger)").fetchall()}
+        if "status" not in cols:
+            store._conn.execute(
+                f"ALTER TABLE persona_slot_ledger ADD COLUMN status TEXT NOT NULL DEFAULT '{_SLOT_STATUS_COMPLETED}'"
+            )
 
 
 def _row_to_slot(row: sqlite3.Row) -> dict[str, Any]:
@@ -77,6 +89,7 @@ def _row_to_slot(row: sqlite3.Row) -> dict[str, Any]:
         "epoch": int(row["epoch"]),
         "board_claim_ref": str(row["board_claim_ref"]),
         "recorded_at": str(row["recorded_at"]),
+        "status": str(row["status"]),
     }
 
 
@@ -157,6 +170,16 @@ def record_slot_claim(
     board_claim_ref: str = "",
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    """Atomically claim a slot for in-progress execution (#3789).
+
+    Returns ``recorded=True`` when this call now owns the slot. Returns
+    ``recorded=False, duplicate=True`` when another claim already exists for this slot --
+    either still ``in_progress`` (a concurrent attempt must not also execute) or already
+    ``completed`` (the work genuinely ran; never re-execute). Callers must only perform the
+    scheduled work when ``recorded`` is True, and must pair a successful claim with
+    :func:`mark_slot_complete` on success or :func:`release_slot_claim` on failure so a failed
+    attempt remains retryable instead of being stuck "in progress" forever.
+    """
     key = slot_ledger_key(role, job, slot)
     valid_holder = validate_persona_holder(holder)
     if int(epoch) < 1:
@@ -168,12 +191,92 @@ def record_slot_claim(
         if existing is not None:
             return {"recorded": False, "duplicate": True, **_row_to_slot(existing)}
         store._conn.execute(
-            "INSERT INTO persona_slot_ledger (slot_key, role, job, slot, holder, epoch, board_claim_ref, recorded_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (key, role.strip(), job.strip(), slot.strip(), valid_holder, int(epoch), board_claim_ref.strip(), now_s),
+            "INSERT INTO persona_slot_ledger (slot_key, role, job, slot, holder, epoch, board_claim_ref, "
+            "recorded_at, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                key,
+                role.strip(),
+                job.strip(),
+                slot.strip(),
+                valid_holder,
+                int(epoch),
+                board_claim_ref.strip(),
+                now_s,
+                _SLOT_STATUS_IN_PROGRESS,
+            ),
         )
         row = store._conn.execute("SELECT * FROM persona_slot_ledger WHERE slot_key = ?", (key,)).fetchone()
     return {"recorded": True, "duplicate": False, **_row_to_slot(row)}
+
+
+def _fence_slot_claim(store: BarbContinuityStore, key: str, holder: str, epoch: int) -> sqlite3.Row | None:
+    """Return the ledger row for ``key`` iff it is still ``in_progress`` under this exact
+    ``holder``/``epoch`` -- rejecting a stale claimant whose claim was released and reclaimed by
+    someone else in the meantime. Caller already holds ``store._lock``."""
+    row = store._conn.execute("SELECT * FROM persona_slot_ledger WHERE slot_key = ?", (key,)).fetchone()
+    if row is None or str(row["status"]) != _SLOT_STATUS_IN_PROGRESS:
+        return None
+    if str(row["holder"]) != holder or int(row["epoch"]) != int(epoch):
+        return None
+    return row
+
+
+def mark_slot_complete(
+    store: BarbContinuityStore,
+    *,
+    role: str,
+    job: str,
+    slot: str,
+    holder: str,
+    epoch: int,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Mark a slot claimed by this exact ``holder``/``epoch`` as completed (#3789).
+
+    Fenced like :func:`release_persona_lease`: a stale holder/epoch -- one whose in-progress
+    claim was already released and reclaimed by a different attempt -- cannot complete it.
+    """
+    key = slot_ledger_key(role, job, slot)
+    valid_holder = validate_persona_holder(holder)
+    now_s = _now_iso(now)
+    _ensure_slot_table(store)
+    with store._lock, store._conn:
+        row = _fence_slot_claim(store, key, valid_holder, epoch)
+        if row is None:
+            return {"completed": False, "reason": "stale_or_missing_claim", "key": key}
+        store._conn.execute(
+            "UPDATE persona_slot_ledger SET status = ?, recorded_at = ? WHERE slot_key = ?",
+            (_SLOT_STATUS_COMPLETED, now_s, key),
+        )
+        updated = store._conn.execute("SELECT * FROM persona_slot_ledger WHERE slot_key = ?", (key,)).fetchone()
+    assert updated is not None  # just written above, under the same lock
+    return {"completed": True, **_row_to_slot(updated)}
+
+
+def release_slot_claim(
+    store: BarbContinuityStore,
+    *,
+    role: str,
+    job: str,
+    slot: str,
+    holder: str,
+    epoch: int,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Release a failed in-progress slot claim so it becomes retryable (#3789).
+
+    Fenced like :func:`mark_slot_complete`: a stale holder/epoch cannot release a claim it no
+    longer owns.
+    """
+    key = slot_ledger_key(role, job, slot)
+    valid_holder = validate_persona_holder(holder)
+    _ensure_slot_table(store)
+    with store._lock, store._conn:
+        row = _fence_slot_claim(store, key, valid_holder, epoch)
+        if row is None:
+            return {"released": False, "reason": "stale_or_missing_claim", "key": key}
+        store._conn.execute("DELETE FROM persona_slot_ledger WHERE slot_key = ?", (key,))
+    return {"released": True, "key": key}
 
 
 def should_skip_slot(
