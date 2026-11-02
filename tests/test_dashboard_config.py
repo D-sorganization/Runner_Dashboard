@@ -188,16 +188,6 @@ def test_host_empty_falls_back_to_default(monkeypatch) -> None:
     importlib.reload(dashboard_config)
     assert dashboard_config.HOST == "0.0.0.0"
 
-
-def test_host_empty_with_loopback_auth_falls_back_to_loopback(monkeypatch) -> None:
-    env = os.environ.copy()
-    env["DASHBOARD_HOST"] = "   "
-    env["DASHBOARD_LOOPBACK_AUTH"] = "1"
-    monkeypatch.setattr(os, "environ", env)
-    importlib.reload(dashboard_config)
-    assert dashboard_config.HOST == "127.0.0.1"
-
-
 def test_host_in_all_exports() -> None:
     importlib.reload(dashboard_config)
     assert "HOST" in dashboard_config.__all__

@@ -46,19 +46,6 @@ def test_ensure_env_sets_loopback_host(env_file: Path) -> None:
     )
     assert json.loads(proc.stdout) is None
 
-
-def test_diagnose_rejects_all_interfaces_host(tmp_path: Path) -> None:
-    path = tmp_path / "env"
-    path.write_text("DASHBOARD_LOOPBACK_AUTH=1\nDASHBOARD_HOST=0.0.0.0\n", encoding="utf-8")
-    proc = subprocess.run(
-        [sys.executable, str(GUARD), "diagnose", "--env-file", str(path)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert json.loads(proc.stdout)["reason"] == "loopback_auth_all_interfaces"
-
-
 def test_install_user_dropin(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

@@ -214,9 +214,7 @@ install_loopback_host_dropin() {
     if sudo -n true 2>/dev/null; then
         sudo install -D -m 0644 "$src" "$dst" && sudo systemctl daemon-reload \
             && ok "Installed loopback bind drop-in ($dst)" \
-            || warn "Could not install $dst; loopback-auth nodes may crash-loop"
-    else
-        warn "loopback bind drop-in missing — run: sudo install -D -m 0644 $src $dst && sudo systemctl daemon-reload"
+            || warn "Could not install $dst"
     fi
 }
 if [[ "$DEPLOY_SCOPE" == "system" ]]; then
