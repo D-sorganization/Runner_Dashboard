@@ -1,4 +1,4 @@
-"""Read-only release qualification checks for Brick dashboard (#3596)."""
+"""Read-only release qualification checks for dashboard worker nodes (#3596)."""
 
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ def deferred_live_codex_worker() -> CheckResult:
     return CheckResult(
         "live_codex_worker_task",
         True,
-        "Requires qualified published release on Brick + dashboard-managed Codex run; record in deferred-validation catalog after deploy.",
+        "Requires qualified published release on the target node + dashboard-managed Codex run; record in deferred-validation catalog after deploy.",
         deferred=True,
     )
 
@@ -133,7 +133,7 @@ def run_qualify(hub_url: str, token: str | None = None) -> QualifyReport:
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Read-only Brick/RD release qualification (#3596)")
+    parser = argparse.ArgumentParser(description="Read-only RD release qualification on a dashboard worker node (#3596)")
     parser.add_argument("--hub-url", default=os.environ.get("FLEET_API_URL", "http://127.0.0.1:8321"))
     parser.add_argument("--token", default=os.environ.get("FLEET_API_TOKEN"))
     args = parser.parse_args(argv)

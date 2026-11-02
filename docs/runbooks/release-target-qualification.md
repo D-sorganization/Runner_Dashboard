@@ -1,6 +1,6 @@
-# Brick release qualification (#3596)
+# Release target qualification (#3596)
 
-Read-only preflight before upgrading the Runner Dashboard on **Brick** (dashboard-managed Codex workers). Does **not** deploy, change credentials, relabel runners, or bypass branch protection.
+Read-only preflight before upgrading the Runner Dashboard on a **dashboard worker node** (for example `node-b` in fleet docs). Does **not** deploy, change credentials, relabel runners, or bypass branch protection.
 
 ## When to run
 
@@ -11,10 +11,10 @@ After a release candidate is published through normal CI/publication gates and *
 ```bash
 export FLEET_API_URL="http://hub-a:8321"
 export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-codex.token)"
-python3 scripts/brick_release_qualify.py
+python3 scripts/release_target_qualify.py
 ```
 
-Exit `0` when all non-deferred checks pass. The `live_codex_worker_task` row is **deferred validation**: complete it manually after deploy by running one dashboard-managed Codex CLI task on Brick and capturing receipts.
+Exit `0` when all non-deferred checks pass. The `live_codex_worker_task` row is **deferred validation**: complete it manually after deploy by running one dashboard-managed Codex CLI task on the target node and capturing receipts.
 
 ## Checks
 
@@ -26,4 +26,4 @@ Exit `0` when all non-deferred checks pass. The `live_codex_worker_task` row is 
 | `codex_chat_argv` | Local contract: `exec resume` + `--json` (#3595) |
 | `live_codex_worker_task` | Deferred until post-deploy worker proof |
 
-Rollback stays the supported Brick backup/install path documented in deploy runbooks; this script never mutates the host.
+Rollback stays the supported backup/install path on the target node documented in deploy runbooks; this script never mutates the host.

@@ -12,7 +12,7 @@ if str(_ROOT) not in sys.path:
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-import brick_release_qualify as brq  # noqa: E402
+import release_target_qualify as brq  # noqa: E402
 
 
 def test_codex_chat_argv_check_reports_fix3595_until_merged() -> None:
