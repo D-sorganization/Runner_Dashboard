@@ -343,10 +343,16 @@ async function mockStaffApi(page: import("@playwright/test").Page): Promise<void
 
 /** The hit-tested center belongs to the control instead of an overlapping layer. */
 async function ownsItsCentre(locator: Locator): Promise<boolean> {
+  await locator.scrollIntoViewIfNeeded();
+  // Narrow viewports scroll the tab strip horizontally (#3809); center the tab
+  // before elementFromPoint so an adjacent tab or clip edge does not flake (#3794).
+  await locator.evaluate((el) => {
+    el.scrollIntoView({ block: "nearest", inline: "center" });
+  });
   return locator.evaluate((el) => {
     const box = el.getBoundingClientRect();
     const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return el.contains(top);
+    return top !== null && (el === top || el.contains(top));
   });
 }
 
