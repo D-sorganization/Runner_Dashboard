@@ -1,9 +1,10 @@
 /**
- * PersonaGallery.tsx — Dedicated mobile Persona gallery with persisted ordering (#3502).
+ * PersonaGallery.tsx — Dedicated mobile Persona gallery with persisted ordering and presentation editor (#3502, #3499).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { PersonaAvatar } from "./PersonaAvatar";
+import { PersonaEditor } from "./PersonaEditor";
 import {
   fetchPresentationPrefs,
   savePresentationPrefs,
@@ -38,6 +39,7 @@ export const PersonaGallery: React.FC<PersonaGalleryProps> = ({
     initialPrefs?.role_order ? [...initialPrefs.role_order] : roles.map((r) => r.name),
   );
   const [isEditing, setIsEditing] = useState(false);
+  const [editingPersonaRole, setEditingPersonaRole] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -119,23 +121,31 @@ export const PersonaGallery: React.FC<PersonaGalleryProps> = ({
       onPrefsSaved?.(updated);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setSaveError(msg.includes("409") ? "Conflict: preferences were updated elsewhere. Unsaved order retained." : `Failed to save: ${msg}. Unsaved order retained.`);
-      setAnnouncement("Failed to save order. Unsaved changes have been retained.");
+      setSaveError(msg.includes("409") ? "Conflict: preferences were updated elsewhere. Please reload." : (msg || "Failed to save order."));
     } finally {
       setIsSaving(false);
     }
   };
 
+  if (editingPersonaRole) {
+    const activePrefs: PresentationPrefsResponse = prefs ?? { operator_id: "", display_label: "", role_order: activeOrderNames, avatar_overrides: {}, revision: 0, updated_at: "" };
+    return (
+      <div className={`persona-gallery ${className}`} data-testid="persona-gallery-editor-view">
+        <PersonaEditor roles={roles} selectedRoleName={editingPersonaRole} onSelectRoleName={setEditingPersonaRole} prefs={activePrefs} onPrefsSaved={(u) => { setPrefs(u); onPrefsSaved?.(u); }} onClose={() => setEditingPersonaRole(null)} />
+      </div>
+    );
+  }
+
   return (
     <div className={`persona-gallery ${className}`} data-testid="persona-gallery">
-      <div role="status" aria-live="polite" className="sr-only">{announcement}</div>
+      <div className="sr-only" role="status" aria-live="polite">{announcement}</div>
       <div className="persona-gallery__header">
         <div className="persona-gallery__search-wrapper">
-          <input type="search" className="persona-gallery__search" placeholder="Filter personas..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} aria-label="Filter personas" />
+          <input type="search" className="persona-gallery__search" placeholder="Filter personas…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} aria-label="Filter personas" />
         </div>
         <div className="persona-gallery__actions">
           {!isEditing ? (
-            <button type="button" className="persona-gallery__btn" onClick={() => { setIsEditing(true); setSaveError(null); setAnnouncement("Entered edit mode."); }} data-testid="persona-gallery-edit-btn">Edit order</button>
+            <button type="button" className="persona-gallery__btn" onClick={() => { setIsEditing(true); setAnnouncement("Entered edit mode."); }} data-testid="persona-gallery-edit-btn">Edit order</button>
           ) : (
             <>
               <button type="button" className="persona-gallery__btn persona-gallery__btn--primary" onClick={handleSaveOrder} disabled={isSaving} data-testid="persona-gallery-save-btn">{isSaving ? "Saving..." : "Save order"}</button>
@@ -159,6 +169,7 @@ export const PersonaGallery: React.FC<PersonaGalleryProps> = ({
             const isFirst = roleIdx <= 0;
             const isLast = roleIdx >= activeOrderNames.length - 1;
             const isDragging = draggingRole === role.name;
+            const effectiveAvatar = prefs?.avatar_overrides[role.name] || role.avatar;
             return (
               <div
                 key={role.name}
@@ -194,7 +205,7 @@ export const PersonaGallery: React.FC<PersonaGalleryProps> = ({
                     ⋮⋮
                   </div>
                 )}
-                <PersonaAvatar variant="roster" roleName={role.name} initial={role.title ? role.title.charAt(0) : "B"} avatarUrl={role.avatar} isAutoRoute={role.name === "barb"} />
+                <PersonaAvatar variant="roster" roleName={role.name} initial={role.title ? role.title.charAt(0) : "B"} avatarUrl={effectiveAvatar} isAutoRoute={role.name === "barb"} />
                 <div className="persona-card__content">
                   <div className="persona-card__header-line">
                     <span className="persona-card__title">{role.title}</span>
@@ -203,6 +214,9 @@ export const PersonaGallery: React.FC<PersonaGalleryProps> = ({
                   </div>
                   {role.summary && <div className="persona-card__summary">{role.summary}</div>}
                 </div>
+                {!isEditing && (
+                  <button type="button" className="persona-card__edit-btn" aria-label={`Edit ${role.title} presentation`} onClick={(e) => { e.stopPropagation(); setEditingPersonaRole(role.name); }} data-testid={`edit-persona-${role.name}`}>Edit</button>
+                )}
                 {isEditing && (
                   <div className="persona-card__reorder-controls">
                     <button type="button" className="persona-gallery__move-btn" aria-label={`Move ${role.title} up`} disabled={isFirst} onClick={(e) => { e.stopPropagation(); moveRoleInCompleteList(role.name, -1); }} data-testid={`move-up-${role.name}`}>↑</button>
