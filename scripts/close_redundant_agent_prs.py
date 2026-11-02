@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Close redundant agent PRs by fleet priority (#2895); ``Refs #N`` is not a closer link."""
+"""Close redundant agent PRs when duplicate evidence exists (#2895); ``Refs #N`` is not a closer link."""
 
 from __future__ import annotations
 
@@ -22,7 +22,32 @@ _CLOSING_ISSUE_RE = re.compile(
 )
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FLEET_CAP = _REPO_ROOT / ".github" / "fleet-pr-cap"
-_DEFERRAL = "Closing as redundant: a higher-priority open PR already closes #{issue}."
+
+
+def _closing_comment(
+    *,
+    winner_number: int,
+    loser_number: int,
+    agent: str | None,
+    issues: frozenset[int],
+    head_ref: str,
+    head_sha: str,
+) -> str:
+    issue_list = ", ".join(f"#{n}" for n in sorted(issues))
+    evidence: list[str] = [
+        f"kept PR #{winner_number}",
+        f"same agent `{agent or 'unknown'}`",
+        f"identical closing issues ({issue_list})",
+    ]
+    if head_ref:
+        evidence.append(f"same head ref `{head_ref}`")
+    if head_sha:
+        evidence.append(f"same head SHA `{head_sha[:12]}`")
+    joined = "; ".join(evidence)
+    return (
+        f"Closing PR #{loser_number} as a redundant duplicate — {joined}. "
+        "Open a follow-up if this was a distinct lane PR."
+    )
 
 
 def _load_module_from_path(qualified_name: str, path: Path) -> ModuleType:
@@ -45,7 +70,6 @@ def _load_fleet_agent_identity() -> ModuleType:
 
 _ai = _load_fleet_agent_identity()
 identify_agent = _ai.identify_agent
-outranks = _ai.outranks
 resolve_pr_agent = _ai.resolve_pr_agent
 
 
@@ -60,6 +84,17 @@ class PullView:
     title: str
     body: str
     agent: str | None
+    head_ref: str = ""
+    head_sha: str = ""
+
+
+def duplicate_head_evidence(winner: PullView, loser: PullView) -> bool:
+    """True when two PRs point at the same branch or the same commit."""
+    if winner.head_ref and winner.head_ref == loser.head_ref:
+        return True
+    if winner.head_sha and winner.head_sha == loser.head_sha:
+        return True
+    return False
 
 
 @dataclass
@@ -87,16 +122,38 @@ def require_github_token() -> str:
     return token
 
 
+def _head_fields(pr: dict[str, Any]) -> tuple[str, str]:
+    head = pr.get("head")
+    if not isinstance(head, dict):
+        return "", ""
+    ref = str(head.get("ref") or "")
+    sha = str(head.get("sha") or "")
+    return ref, sha
+
+
 def _view_from_api(pr: dict[str, Any]) -> PullView:
     author = pr.get("user") if isinstance(pr.get("user"), dict) else {}
     login = str(author.get("login") or "")
     is_bot = author.get("type") == "Bot" or login.endswith("[bot]")
     agent = resolve_pr_agent(pr) or (identify_agent(login, is_bot) if login else None)
-    return PullView(int(pr["number"]), str(pr.get("title") or ""), str(pr.get("body") or ""), agent)
+    head_ref, head_sha = _head_fields(pr)
+    return PullView(
+        int(pr["number"]),
+        str(pr.get("title") or ""),
+        str(pr.get("body") or ""),
+        agent,
+        head_ref=head_ref,
+        head_sha=head_sha,
+    )
 
 
 def _pick_winner(candidates: list[PullView]) -> PullView:
     return min(candidates, key=lambda v: (_ai.priority_rank(v.agent or "local"), v.number))
+
+
+def _signature_key(view: PullView, issues: frozenset[int]) -> tuple[str, frozenset[int]]:
+    agent = view.agent or "local"
+    return agent, issues
 
 
 def run_closer(
@@ -110,33 +167,51 @@ def run_closer(
 ) -> CloserStats:
     stats = CloserStats(examined=len(pulls))
     filt = frozenset(p.strip() for p in (agent_filter or "").split(",") if p.strip()) or None
-    by_issue: dict[int, list[PullView]] = {}
+    by_signature: dict[tuple[str, frozenset[int]], list[PullView]] = {}
     for pr in pulls:
         view = _view_from_api(pr)
-        for issue in pr_closing_issue_numbers(view.title, view.body):
-            by_issue.setdefault(issue, []).append(view)
+        issues = pr_closing_issue_numbers(view.title, view.body)
+        if not issues:
+            stats.record_skip("no_closing_issues")
+            continue
+        by_signature.setdefault(_signature_key(view, issues), []).append(view)
 
-    for issue, group in sorted(by_issue.items()):
+    for (_agent, issues), group in sorted(by_signature.items(), key=lambda item: (item[0][0], sorted(item[0][1]))):
         if len(group) < 2:
-            stats.record_skip("sole_closer_on_issue")
+            stats.record_skip("sole_signature")
             continue
         winner = _pick_winner(group)
         for view in group:
-            if view.number == winner.number or view.agent == "user":
-                if view.number != winner.number:
-                    stats.record_skip("user_protected")
+            if view.number == winner.number:
+                continue
+            if view.agent == "user" or winner.agent == "user":
+                stats.record_skip("user_protected")
                 continue
             if filt is not None and view.agent not in filt:
                 stats.record_skip("not_eligible_agent")
                 continue
-            if not outranks(winner.agent or "local", view.agent or "local"):
-                stats.record_skip("not_lower_priority")
+            if view.agent != winner.agent:
+                stats.record_skip("distinct_agent")
+                continue
+            if not duplicate_head_evidence(winner, view):
+                stats.record_skip("no_duplicate_evidence")
                 continue
             if dry_run:
                 stats.record_skip("dry_run")
                 continue
             close_pr(repo, view.number)
-            comment(repo, view.number, _DEFERRAL.format(issue=issue))
+            comment(
+                repo,
+                view.number,
+                _closing_comment(
+                    winner_number=winner.number,
+                    loser_number=view.number,
+                    agent=view.agent,
+                    issues=issues,
+                    head_ref=winner.head_ref if winner.head_ref == view.head_ref else "",
+                    head_sha=winner.head_sha if winner.head_sha == view.head_sha else "",
+                ),
+            )
             stats.closed += 1
     return stats
 
