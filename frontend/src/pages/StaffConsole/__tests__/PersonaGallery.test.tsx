@@ -90,9 +90,9 @@ describe("PersonaGallery (#3502)", () => {
       fireEvent.touchEnd(dragHandle);
       expect(screen.getByRole("status")).toHaveTextContent(/moved chief architect to position 2 of 3/i);
 
-      const barbHandle = screen.getByTestId("drag-handle-barb");
-      fireEvent.keyDown(barbHandle, { key: "ArrowUp" });
-      expect(screen.getByRole("status")).toHaveTextContent(/moved barb to position 1 of 3/i);
+      // Architect is now at index 1; ArrowDown moves it to position 3
+      fireEvent.keyDown(dragHandle, { key: "ArrowDown" });
+      expect(screen.getByRole("status")).toHaveTextContent(/moved chief architect to position 3 of 3/i);
     });
   });
 
