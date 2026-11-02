@@ -11,6 +11,7 @@
 import { randomUUID } from "node:crypto";
 import type { Browser, Locator, Page } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
+import { expectFocusWithState, FailureRequestSummary, isBarbThreadList, SIDEBAR_FOCUSABLE } from "./focusTrapDiagnostics";
 import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
@@ -27,6 +28,21 @@ function reply(text: string): string {
 }
 
 const BARB = "Ask Barb (auto-route)";
+const requestsByPage = new WeakMap<Page, FailureRequestSummary>();
+
+function watchRequests(page: Page): FailureRequestSummary {
+  const summary = new FailureRequestSummary();
+  summary.watch(page);
+  requestsByPage.set(page, summary);
+  return summary;
+}
+
+test.afterEach(async ({ page }, testInfo) => {
+  const summary = requestsByPage.get(page);
+  if (!summary) return;
+  try { if (testInfo.status !== "passed") await summary.attach(testInfo); }
+  finally { summary.dispose(); requestsByPage.delete(page); }
+});
 
 /** Ask Barb for a dispatch and return the ActionCard her reply proposes. */
 async function proposeDispatch(page: Page, scenario = "dispatch"): Promise<Locator> {
@@ -41,9 +57,10 @@ async function proposeDispatch(page: Page, scenario = "dispatch"): Promise<Locat
  * Have a caller who can chat but not approve ask Barb for a dispatch; return the proposal id.
  * An approver's own request would run at once (#1786), so cards to act on come from here.
  */
-async function proposeAsRequester(browser: Browser): Promise<string> {
+async function proposeAsRequester(browser: Browser, summary?: FailureRequestSummary): Promise<string> {
   const context = await browser.newContext();
   const page = await context.newPage();
+  summary?.watch(page);
   await page.route("**/api/**", (route) =>
     route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
   );
@@ -72,11 +89,13 @@ async function occurrences(page: Page, needle: string): Promise<number> {
 
 test.describe("chat", () => {
   test("the persistent Barb panel follows the selected conversation across tab navigation", async ({ page, request }) => {
+    watchRequests(page);
     await page.goto("/staff");
     const backendPort = process.env.STAFF_E2E_BACKEND_PORT ?? "5092";
     const backendUrl = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${backendPort}`;
     const createThread = async (role: string, kind: "auto" | "direct", title: string) => {
-      const response = await request.post(`${backendUrl}/api/v1/staff/threads`, {
+      const url = `${backendUrl}/api/v1/staff/threads`;
+      const response = await request.post(url, {
         headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
         data: { role, kind, title },
       });
@@ -303,13 +322,23 @@ test.describe("Ask Barb drawer keyboard access", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page }) => {
+  test("Escape restores toggle focus at desktop, tablet, and mobile widths", async ({ page, request }, testInfo) => {
+    watchRequests(page);
+    const title = "Focus baseline conversation";
+    const backend = process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${process.env.STAFF_E2E_BACKEND_PORT ?? "5092"}`;
+    const url = `${backend}/api/v1/staff/threads`;
+    const seedResponse = await request.post(url, {
+      headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
+      data: { role: "barb", kind: "auto", title },
+    });
+    expect(seedResponse.ok()).toBe(true);
     for (const viewport of [
       { width: 1440, height: 900 },
       { width: 960, height: 900 },
       { width: 390, height: 844 },
     ]) {
       await page.setViewportSize(viewport);
+      const restored = page.waitForResponse(isBarbThreadList);
       await page.goto("/staff");
       const trigger = page.getByRole("button", { name: "Ask Barb" });
       await trigger.focus();
@@ -319,25 +348,41 @@ test.describe("Ask Barb drawer keyboard access", () => {
       const close = drawer.getByRole("button", { name: "Close Ask Barb" });
       await expect(drawer).toBeVisible();
       await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+      expect((await restored).ok()).toBe(true);
+      await expect(drawer.getByRole("region", { name: `Conversation thread with ${title}` })).toBeVisible();
+      await expect(drawer.getByRole("button", { name: "New chat" })).toBeVisible();
+
+      if (viewport.width === 1440) {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await expect(drawer).toBeVisible();
+        await testInfo.attach("before-drawer-1280.png", {
+          body: await page.screenshot({ mask: [page.getByTestId("shell-session-identity"), page.getByTestId("sidebar-footer")] }),
+          contentType: "image/png",
+        });
+        await page.setViewportSize(viewport);
+      } else if (viewport.width === 390) {
+        await testInfo.attach("before-drawer-390.png", {
+          body: await page.screenshot({ mask: [page.getByTestId("shell-session-identity"), page.getByTestId("sidebar-footer")] }),
+          contentType: "image/png",
+        });
+      }
 
       if (viewport.width === 390) {
         await expect(drawer).toHaveAttribute("aria-modal", "true");
         await close.focus();
-        const focusable = drawer
-          .locator('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
-          .filter({ visible: true });
+        const focusable = drawer.locator(SIDEBAR_FOCUSABLE).filter({ visible: true });
         const first = focusable.first();
         const last = focusable.last();
         await first.focus();
         await page.keyboard.press("Shift+Tab");
-        await expect(last).toBeFocused();
+        await expectFocusWithState(testInfo, last, drawer, "shift-tab-focus-state.json");
         await page.keyboard.press("Tab");
-        await expect(first).toBeFocused();
+        await expectFocusWithState(testInfo, first, drawer, "tab-focus-state.json");
       }
 
       await page.keyboard.press("Escape");
       await expect(drawer).toHaveAttribute("aria-hidden", "true");
-      await expect(trigger).toBeFocused();
+      await expectFocusWithState(testInfo, trigger, drawer, "escape-focus-state.json");
     }
   });
 });
@@ -363,7 +408,8 @@ test.describe("proposals", () => {
   });
 
   test("approving a dispatch proposal executes it", async ({ page, browser }) => {
-    const id = await proposeAsRequester(browser);
+    const diagnostics = watchRequests(page);
+    const id = await proposeAsRequester(browser, diagnostics);
     await openThread(page, BARB);
     const card = page.locator(`[data-proposal-id="${id}"]`);
 
