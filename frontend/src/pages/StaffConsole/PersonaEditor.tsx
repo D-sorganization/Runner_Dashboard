@@ -48,7 +48,7 @@ export const PersonaEditor: React.FC<PersonaEditorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (selectedRoleName && selectedRoleName !== activeRoleName) setActiveRoleName(selectedRoleName);
+    if (selectedRoleName) setActiveRoleName(selectedRoleName);
   }, [selectedRoleName]);
 
   const currentRole = roles.find((r) => r.name === activeRoleName) || roles[0];

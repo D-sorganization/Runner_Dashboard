@@ -58,7 +58,9 @@ export async function uploadCustomAvatar(
     try {
       const err = (await resp.json()) as { detail?: string; error?: { message?: string } };
       detail = err.detail || err.error?.message || detail;
-    } catch {}
+    } catch {
+      // Ignore body decode errors; keep status message fallback
+    }
     throw new ApiClientError(resp.status, detail, url);
   }
   return resp.json() as Promise<{ ok: boolean; operator_id: string; role_id: string; avatar_url: string }>;
