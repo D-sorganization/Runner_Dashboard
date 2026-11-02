@@ -352,7 +352,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               <div className="staff-mobile__content" data-testid="staff-mobile-personas-view">
                 <PersonaGallery
                   roles={roles}
-                  selectedRoleId={selectedRole}
+                  selectedRoleId={selectedRole ?? undefined}
                   onSelectRole={(roleName) => handleSelectRole(roleName)}
                   isLoading={rosterLoading}
                 />

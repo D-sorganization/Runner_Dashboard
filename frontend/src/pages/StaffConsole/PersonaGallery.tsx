@@ -2,26 +2,15 @@
  * PersonaGallery.tsx — Dedicated mobile Persona gallery with persisted ordering (#3502).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../../lib/api";
-import type { components } from "../../lib/api-types";
 import type { StaffRoleItem } from "./types";
 import { PersonaAvatar } from "./PersonaAvatar";
+import {
+  fetchPresentationPrefs,
+  savePresentationPrefs,
+  orderRoles,
+  type PresentationPrefsResponse,
+} from "./personaGalleryUtils";
 import "./personaGallery.css";
-
-export type PresentationPrefsResponse = components["schemas"]["PresentationPrefsResponse"];
-export type PresentationPrefsSaveBody = components["schemas"]["PresentationPrefsSaveBody"];
-const PREFS_BASE = "/api/v1/staff/presentation-prefs";
-
-export async function fetchPresentationPrefs(signal?: AbortSignal): Promise<PresentationPrefsResponse> {
-  return apiRequest<PresentationPrefsResponse>(PREFS_BASE, { signal });
-}
-
-export async function savePresentationPrefs(
-  body: PresentationPrefsSaveBody,
-  signal?: AbortSignal,
-): Promise<PresentationPrefsResponse> {
-  return apiRequest<PresentationPrefsResponse>(PREFS_BASE, { method: "PUT", body, signal });
-}
 
 export interface PersonaGalleryProps {
   roles: StaffRoleItem[];
@@ -31,28 +20,6 @@ export interface PersonaGalleryProps {
   className?: string;
   initialPrefs?: PresentationPrefsResponse;
   onPrefsSaved?: (prefs: PresentationPrefsResponse) => void;
-}
-
-export function orderRoles(roles: StaffRoleItem[], orderNames: string[]): StaffRoleItem[] {
-  if (!orderNames || orderNames.length === 0) return roles;
-  const roleMap = new Map<string, StaffRoleItem>();
-  for (const r of roles) roleMap.set(r.name, r);
-  const ordered: StaffRoleItem[] = [];
-  const seen = new Set<string>();
-  for (const name of orderNames) {
-    const role = roleMap.get(name);
-    if (role && !seen.has(name)) {
-      ordered.push(role);
-      seen.add(name);
-    }
-  }
-  for (const r of roles) {
-    if (!seen.has(r.name)) {
-      ordered.push(r);
-      seen.add(r.name);
-    }
-  }
-  return ordered;
 }
 
 export const PersonaGallery: React.FC<PersonaGalleryProps> = ({

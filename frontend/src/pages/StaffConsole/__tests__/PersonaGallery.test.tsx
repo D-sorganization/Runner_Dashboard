@@ -7,7 +7,8 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { PersonaGallery, orderRoles, type PresentationPrefsResponse } from "../PersonaGallery";
+import { PersonaGallery } from "../PersonaGallery";
+import { orderRoles, type PresentationPrefsResponse } from "../personaGalleryUtils";
 import type { StaffRoleItem } from "../types";
 
 // Mock apiRequest used by fetchPresentationPrefs / savePresentationPrefs
