@@ -62,7 +62,9 @@ def test_blocked_message_duplicates_to_barb_inbox(client: TestClient, bus_env: d
 
 
 @pytest.mark.unit
-def test_reaper_releases_tracked_claim_when_lease_expires(client: TestClient, bus_env: dict[str, str]) -> None:
+def test_reaper_releases_tracked_claim_when_lease_expires(
+    client: TestClient, bus_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     sess = "issue-remediator-stale-20261022"
     _register(
         client,
@@ -87,6 +89,11 @@ def test_reaper_releases_tracked_claim_when_lease_expires(client: TestClient, bu
     def fake_release(repo: str, issue: int, *, agent: str, session: str, reason: str) -> dict:
         released.append((repo, issue, reason))
         return {"released": True, "result": {}, "warnings": []}
+
+    monkeypatch.setattr(
+        "agent_bus.reaper.node_ready_for_claim_reap",
+        lambda *_a, **_k: True,
+    )
 
     with mock.patch("coordination.claims.release", side_effect=fake_release):
         from agent_bus.reaper import reap_once
