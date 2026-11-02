@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -32,7 +32,7 @@ def test_scheduler_fire_guard_allows_fresh_slot(tmp_path: Path) -> None:
             continuity=store,
             job="weekly_audit",
             slot="2026-11-08T06:00",
-            now=datetime.now(timezone.utc),
+            now=datetime.now(UTC),
         )
         == ""
     )
