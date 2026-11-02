@@ -7,7 +7,7 @@
 import { Badge } from "../../primitives/Badge";
 import { describeError, fetchFlowMetrics, useResource } from "./fleetApi";
 import { PanelFrame } from "./PanelFrame";
-import type { FlowMetricsRepoRow } from "./types";
+import type { FlowMetricsAgingPr, FlowMetricsRepoRow } from "./types";
 
 function formatHours(hours: number): string {
   if (!Number.isFinite(hours) || hours <= 0) return "—";
@@ -69,12 +69,24 @@ export function FlowMetricsPanel() {
                   </td>
                   <td>
                     {row.open_pr_age.over_rule_hours > 0 ? (
-                      <Badge variant="warning" data-testid={`flow-aging-${row.repo}`}>
+                      <Badge tone="warning" data-testid={`flow-aging-${row.repo}`}>
                         {row.open_pr_age.over_rule_hours}
                       </Badge>
                     ) : (
                       "0"
                     )}
+                    {row.aging_prs?.length ? (
+                      <ul className="fleet-cmd__aging-pr-list" data-testid={`flow-aging-links-${row.repo}`}>
+                        {row.aging_prs.map((pr: FlowMetricsAgingPr) => (
+                          <li key={pr.number ?? pr.url}>
+                            <a href={pr.url} target="_blank" rel="noreferrer">
+                              #{pr.number}
+                            </a>{" "}
+                            <span className="staff-muted">({formatHours(pr.age_hours)})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </td>
                   <td>
                     {row.pr_cycle_time.sample_size > 0

@@ -92,6 +92,11 @@ describe("FleetCommandPage — priorities", () => {
     const badge = await screen.findByTestId("flow-aging-Runner_Dashboard");
     expect(badge).toHaveTextContent("1");
     expect(screen.getByTestId("flow-metrics-table")).toHaveTextContent("+3");
+    const links = screen.getByTestId("flow-aging-links-Runner_Dashboard");
+    expect(within(links).getByRole("link", { name: "#3828" })).toHaveAttribute(
+      "href",
+      "https://github.com/D-sorganization/Runner_Dashboard/pull/3828",
+    );
   });
 
   it("shows the no-board-meeting empty state when the backend reports none", async () => {

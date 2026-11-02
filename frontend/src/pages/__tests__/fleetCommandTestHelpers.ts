@@ -51,6 +51,15 @@ export const FLOW_METRICS = {
       },
       pr_cycle_time: { sample_size: 3, p50_hours: 24, p90_hours: 48 },
       weekly_issue_burn: { window_days: 7, opened: 2, closed: 5, net: 3 },
+      aging_prs: [
+        {
+          number: 3828,
+          url: "https://github.com/D-sorganization/Runner_Dashboard/pull/3828",
+          age_hours: 90,
+          rule_hours: 72,
+          action: "ci_diagnosis_or_iterate_or_close",
+        },
+      ],
     },
   ],
   generated_at: "x",

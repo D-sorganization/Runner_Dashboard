@@ -298,6 +298,14 @@ export interface FlowMetricsWeeklyBurn {
   net: number;
 }
 
+export interface FlowMetricsAgingPr {
+  number?: number;
+  url: string;
+  age_hours: number;
+  rule_hours?: number;
+  action?: string;
+}
+
 export interface FlowMetricsRepoRow {
   repo: string;
   repo_full?: string;
@@ -305,6 +313,7 @@ export interface FlowMetricsRepoRow {
   open_pr_age: FlowMetricsOpenAge;
   pr_cycle_time: FlowMetricsCycleTime;
   weekly_issue_burn: FlowMetricsWeeklyBurn;
+  aging_prs?: FlowMetricsAgingPr[];
 }
 
 export interface FlowMetricsResponse extends Availability {
