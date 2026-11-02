@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "./fixtures";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { operatorHeaders } from "./identity";
 
 test.use({ trace: "off", screenshot: "off", video: "off" });
 
@@ -251,18 +252,67 @@ test("passive thread restore preserves moved focus; New chat keeps explicit focu
   }
 });
 
-test("captures sanitized drawer screenshots at desktop and phone sizes", async ({ page }, testInfo) => {
+test("captures sanitized drawer screenshots at desktop and phone sizes", async ({ page, request }, testInfo) => {
+  if (process.env.CI !== "true" || process.env.STAFF_E2E_BACKEND_URL) {
+    throw new Error("Screenshot capture requires the isolated CI fake backend and UI servers");
+  }
+  const backendPort = Number(process.env.STAFF_E2E_BACKEND_PORT);
+  if (!Number.isInteger(backendPort) || backendPort < 1024 || backendPort > 65535) {
+    throw new Error("Screenshot capture requires a valid allocated fake-backend port");
+  }
+  const backendUrl = `http://127.0.0.1:${backendPort}`;
+  const title = "Synthetic screenshot conversation";
+  const created = await request.post(`${backendUrl}${THREADS_PATH}`, {
+    headers: { ...operatorHeaders, "X-Requested-With": "XMLHttpRequest" },
+    data: { role: "barb", kind: "auto", title },
+  });
+  expect(created.ok()).toBeTruthy();
+  const createdThread = await created.json();
+  expect(createdThread.title).toBe(title);
+  expect(typeof createdThread.id).toBe("string");
+  const threadId = createdThread.id as string;
+
   const masks = [
     page.locator(".mobile-shell__header"),
     page.locator(".mobile-shell__nav"),
     page.locator(".desktop-shell__topbar"),
     page.locator('nav[aria-label="Dashboard sections"]'),
+    page.locator("#barb-sidebar nav.project-starter-actions button"),
   ];
   for (const viewport of [
     { width: 1280, height: 900 },
     { width: 390, height: 844 },
   ]) {
-    const drawer = await openDrawerWithThread(page, viewport.width, RESTORED_THREAD);
+    await page.setViewportSize({ width: viewport.width, height: viewport.width === 390 ? 844 : 900 });
+    await page.goto(`/fleet?role=barb&thread=${encodeURIComponent(threadId)}`);
+    const listResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && isBarbThreadList(new URL(response.url())),
+    );
+    const detailPath = `${THREADS_PATH}/${threadId}`;
+    const detailResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === detailPath,
+    );
+    const streamPath = `${detailPath}/stream`;
+    const streamResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "GET" && new URL(response.url()).pathname === streamPath,
+    );
+    const trigger = page.getByTestId(viewport.width === 390 ? "mobile-ask-barb" : "ask-barb-toggle");
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+    const listResponse = await listResponsePromise;
+    expect(listResponse.status()).toBe(200);
+    expect((await listResponse.json()).threads.map((thread: { id: string }) => thread.id)).toContain(threadId);
+    const detailResponse = await detailResponsePromise;
+    expect(detailResponse.status()).toBe(200);
+    expect(await detailResponse.json()).toMatchObject({ thread: { id: threadId, title }, messages: [] });
+    const streamResponse = await streamResponsePromise;
+    expect(streamResponse.status()).toBe(200);
+    expect(await streamResponse.headerValue("content-type")).toContain("text/event-stream");
+
+    const drawer = page.getByTestId("barb-sidebar");
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole("region", { name: `Conversation thread with ${title}` })).toBeVisible();
+    await expect(drawer.getByText("Reconnecting to thread events…", { exact: true })).toHaveCount(0);
     const mainSelector = viewport.width === 390
       ? ".mobile-shell__content"
       : ".desktop-shell__main";
