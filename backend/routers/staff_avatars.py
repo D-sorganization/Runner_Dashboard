@@ -89,8 +89,8 @@ def _save_override(
         raise HTTPException(status_code=code, detail=str(exc)) from exc
 
 
-@router.put("/avatars/custom/{role_id}")
-@router.post("/avatars/custom/{role_id}")
+@router.put("/avatars/custom/{role_id}", include_in_schema=False)
+@router.post("/avatars/custom/{role_id}", include_in_schema=False)
 async def upload_custom_avatar_v1(
     role_id: str,
     request: Request,
@@ -108,8 +108,8 @@ async def upload_custom_avatar_v1(
     return {"ok": True, "operator_id": peer.id, "role_id": role_id, "avatar_url": url}
 
 
-@router.post("/avatars/custom/{role_id}/reset")
-@router.delete("/avatars/custom/{role_id}")
+@router.post("/avatars/custom/{role_id}/reset", include_in_schema=False)
+@router.delete("/avatars/custom/{role_id}", include_in_schema=False)
 async def reset_custom_avatar_v1(
     role_id: str,
     expected_revision: int | None = Query(default=None),
@@ -121,7 +121,10 @@ async def reset_custom_avatar_v1(
     return {"ok": True, "role_id": role_id, "reset": True}
 
 
-@router.get("/avatars/personal/{operator_id}/{role_id}")
+@router.get(
+    "/avatars/personal/{operator_id}/{role_id}",
+    include_in_schema=False,
+)
 async def get_personal_avatar_v1(
     operator_id: str,
     role_id: str,
