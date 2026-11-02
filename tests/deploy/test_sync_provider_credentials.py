@@ -42,6 +42,8 @@ def test_sync_all_credentials_mirrors_newest_between_windows_and_wsl(tmp_path: P
         json.dumps({"claudeAiOauth": {"refreshToken": "r-old", "accessToken": "a-old", "expiresAt": 1000}}),
         encoding="utf-8",
     )
+    os.utime(wsl_claude, (1_000_000, 1_000_000))
+    os.utime(win_claude, (2_000_000, 2_000_000))
 
     # 2. Newer Codex credential on WSL -> mirrors to Windows
     wsl_codex = wsl_home / ".codex" / "auth.json"
@@ -74,3 +76,82 @@ def test_sync_all_credentials_mirrors_newest_between_windows_and_wsl(tmp_path: P
     assert wsl_agy_acc.is_file()
     _assert_owner_only(wsl_agy_acc)
     assert synced["claude"] and synced["codex"] and synced["antigravity"]
+
+
+@pytest.mark.unit
+def test_claude_prefers_newer_refresh_token_over_higher_expires_at(tmp_path: Path) -> None:
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    wsl_home.mkdir()
+    win_home.mkdir()
+
+    hub = wsl_home / ".config" / "runner-dashboard" / "claude" / ".credentials.json"
+    hub.parent.mkdir(parents=True)
+    hub.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-old", "accessToken": "a-old", "expiresAt": 9000}}),
+        encoding="utf-8",
+    )
+
+    win_claude = win_home / ".claude" / ".credentials.json"
+    win_claude.parent.mkdir(parents=True)
+    win_claude.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-new", "accessToken": "a-new", "expiresAt": 1000}}),
+        encoding="utf-8",
+    )
+    # Windows file is newer even though expiresAt is lower — hub must follow the refresh source.
+    os.utime(hub, (1_000_000, 1_000_000))
+    os.utime(win_claude, (2_000_000, 2_000_000))
+
+    synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[win_home])
+    assert str(hub) in synced["claude"]
+    assert json.loads(hub.read_text(encoding="utf-8"))["claudeAiOauth"]["refreshToken"] == "r-new"
+
+
+@pytest.mark.unit
+def test_sync_skips_unreadable_source_without_crashing(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    wsl_home.mkdir()
+    win_home.mkdir()
+    good = wsl_home / ".claude" / ".credentials.json"
+    good.parent.mkdir(parents=True)
+    good.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-ok", "accessToken": "a-ok", "expiresAt": 2000}}),
+        encoding="utf-8",
+    )
+
+    blocked = win_home / ".claude" / ".credentials.json"
+    blocked.parent.mkdir(parents=True)
+    blocked.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-blocked", "accessToken": "a-blocked", "expiresAt": 9999}}),
+        encoding="utf-8",
+    )
+    blocked.chmod(0o000)
+    try:
+        with caplog.at_level("WARNING"):
+            synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[win_home])
+    finally:
+        blocked.chmod(0o600)
+    assert any("skipping" in rec.message.lower() for rec in caplog.records)
+    hub = wsl_home / ".config" / "runner-dashboard" / "claude" / ".credentials.json"
+    assert hub.is_file()
+    assert json.loads(hub.read_text(encoding="utf-8"))["claudeAiOauth"]["refreshToken"] == "r-ok"
+    assert "r-blocked" not in caplog.text
+    assert synced["claude"]
+
+
+@pytest.mark.unit
+def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
+    wsl_home = tmp_path / "wsl_home"
+    wsl_home.mkdir()
+    cred = wsl_home / ".claude" / ".credentials.json"
+    cred.parent.mkdir(parents=True)
+    cred.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-out", "accessToken": "acc", "expiresAt": 3000}}),
+        encoding="utf-8",
+    )
+    synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[])
+    blob = json.dumps(synced)
+    assert "r-out" not in blob
+    assert "acc" not in blob
+
