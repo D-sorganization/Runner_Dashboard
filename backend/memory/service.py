@@ -250,15 +250,15 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
         "open_items": [redact_memory_text(item) for item in req.open_items],
     }
     enforce_entry_size(body, "session_digest")
+    raw_origin = body.get("reported_origin_principal")
+    origin_principal = raw_origin if isinstance(raw_origin, str) else req.reported_origin_principal
     _refuse_shared_memory_write(
         entry_type="session_digest",
         source_product=req.source_product,
         tags=[],
         body=body,
         author_principal=caller,
-        reported_origin_principal=body.get("reported_origin_principal")
-        if isinstance(body.get("reported_origin_principal"), str)
-        else req.reported_origin_principal,
+        reported_origin_principal=origin_principal,
         digest_summary=str(body.get("summary") or ""),
     )
     entry = MemoryEntry(
