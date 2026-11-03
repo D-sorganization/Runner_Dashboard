@@ -127,4 +127,3 @@ def schedule_inventory(
             }
         )
     return rows
-
