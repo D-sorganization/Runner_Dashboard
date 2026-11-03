@@ -36,7 +36,7 @@ from staff.budget import BudgetGuard
 from staff.holds import HoldsList
 from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
-from staff.runner import RunRequest, StaffRunner, get_runner
+from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
@@ -52,6 +52,7 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
+from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
 from staff.scheduler_named_jobs import named_jobs, queue_due_slot
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
@@ -334,6 +335,9 @@ class StaffScheduler:
         """Handle every due slot once. Returns one decision per due role or named job."""
         now = now or self._clock()
         self._reconcile_cartographer_pending()
+        with self._lock:
+            if reconcile_scheduled_runs(self._load_state(), store=self.runner.store, machine=self.runner.machine):
+                self._save_state()
         decisions: list[dict[str, Any]] = []
         if not self._lease_allows_firing(now):
             return decisions
@@ -406,7 +410,9 @@ class StaffScheduler:
             if reason:
                 with self._lock:
                     entry = self._load_state().setdefault(key, {})
-                    entry["last_reason"] = f"skipped {due}: {reason}"
+                    record_scheduled_skip(
+                        entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=reason
+                    )
                 log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
                 return {"role": name, "slot": due, "fired": False, "reason": reason}
         decision = self._decider(role, repo or "")
@@ -436,17 +442,16 @@ class StaffScheduler:
         with self._lock:
             entry = self._load_state().setdefault(key, {})
             if claimed:
-                entry["last_reason"] = f"skipped {due}: {claimed}"
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
                 log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
                 return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
             try:
                 rec = self.runner.submit(req)
             except ValueError as exc:
-                entry["last_reason"] = f"skipped {due}: {exc}"
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
                 log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
                 return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
-            entry["last_fired"] = now.isoformat()
-            entry["last_reason"] = f"fired {due} as {rec.id}"
+            record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat(), role=name, job=job)
             if cartographer_job:
                 self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}
         log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
@@ -464,37 +469,7 @@ class StaffScheduler:
         return sorted(reports, key=lambda r: (r["schedule"] is None, r["role"]))
 
 
+# Tests inject a fake scheduler here; ``scheduler_registry.get_scheduler`` honors it.
 _scheduler: StaffScheduler | None = None
-_scheduler_lock = threading.Lock()
-_built_scheduler: StaffScheduler | None = None  # the instance get_scheduler() constructed (#3622)
 
-
-def get_scheduler() -> StaffScheduler:
-    """Process-wide scheduler bound to the process-wide runner.
-
-    A scheduler built here follows the runner: once the process-wide runner (and its
-    store) is replaced it is rebuilt instead of keeping a budget guard on a closed store
-    (#3622). An injected ``_scheduler`` is returned as is.
-    """
-    global _scheduler, _built_scheduler  # noqa: PLW0603
-    with _scheduler_lock:
-        runner = get_runner()
-        was_running = False
-        if _scheduler is not None and _scheduler is _built_scheduler and _scheduler.runner is not runner:
-            was_running = _scheduler.running
-            _scheduler.stop()
-            _scheduler = None
-        if _scheduler is None:
-            _scheduler = StaffScheduler(runner, HoldsList(roles_loader=runner.roles), BudgetGuard(runner.store))
-            _built_scheduler = _scheduler
-            if was_running:
-                _scheduler.start()
-        return _scheduler
-
-
-def reset_scheduler() -> None:
-    global _scheduler  # noqa: PLW0603
-    with _scheduler_lock:
-        if _scheduler is not None:
-            _scheduler.stop()
-        _scheduler = None
+from staff.scheduler_registry import get_scheduler, reset_scheduler  # noqa: E402,F401
