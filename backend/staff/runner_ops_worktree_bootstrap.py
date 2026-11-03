@@ -124,8 +124,39 @@ def _main_checkout_root(worktree: Path, run: _Run) -> Path | None:
     return None
 
 
-def _submodule_update_command(worktree: Path, run: _Run) -> list[str]:
-    """Shallow, filtered submodule fetch, reusing the main checkout's objects when present (#3913)."""
+def _parse_git_version(stdout: str) -> tuple[int, int, int] | None:
+    raw = (stdout or "").strip()
+    if not raw.startswith("git version "):
+        return None
+    version_token = raw[len("git version ") :].split()[0]
+    parts = version_token.split(".")
+    if len(parts) < 2 or not parts[0].isdigit() or not parts[1].isdigit():
+        return None
+    patch = parts[2] if len(parts) > 2 and parts[2].isdigit() else 0
+    return int(parts[0]), int(parts[1]), patch
+
+
+def _git_version(worktree: Path, run: _Run) -> tuple[int, int, int] | None:
+    try:
+        proc = _run_checked(run, worktree, ["git", "--version"], timeout=30)
+    except subprocess.TimeoutExpired:
+        return None
+    if proc.returncode != 0:
+        return None
+    return _parse_git_version(proc.stdout or "")
+
+
+def _git_supports_submodule_blob_filter(version: tuple[int, int, int]) -> bool:
+    major, minor, _patch = version
+    return (major, minor) >= (2, 36)
+
+
+def build_submodule_update_argv(
+    *,
+    supports_blob_filter: bool,
+    reference_root: Path | None,
+) -> list[str]:
+    """Construct ``git submodule update`` argv for worktree bootstrap (#3913, #3921)."""
     command = [
         "git",
         "-c",
@@ -138,12 +169,27 @@ def _submodule_update_command(worktree: Path, run: _Run) -> list[str]:
         "1",
         "--jobs",
         "4",
-        "--filter=blob:none",
     ]
+    if supports_blob_filter:
+        command.append("--filter=blob:none")
+    if reference_root is not None:
+        command.append(f"--reference={reference_root}")
+    return command
+
+
+def submodule_update_command(worktree: Path, run: _Run) -> list[str]:
+    """Shallow submodule fetch; blob filter only when host git supports it (#3921)."""
+    version = _git_version(worktree, run)
+    supports_filter = version is not None and _git_supports_submodule_blob_filter(version)
+    reference_root: Path | None = None
     main_root = _main_checkout_root(worktree, run)
     if main_root is not None and main_root != worktree and (main_root / ".git" / "modules").is_dir():
-        command.append(f"--reference-if-able={main_root}")
-    return command
+        reference_root = main_root
+    return build_submodule_update_argv(supports_blob_filter=supports_filter, reference_root=reference_root)
+
+
+def _submodule_update_command(worktree: Path, run: _Run) -> list[str]:
+    return submodule_update_command(worktree, run)
 
 
 def _bootstrap_submodules(worktree: Path, run: _Run) -> WorktreeBootstrapPreflight | None:
@@ -175,7 +221,7 @@ def _bootstrap_submodules(worktree: Path, run: _Run) -> WorktreeBootstrapPreflig
             remediation=(
                 "Submodule fetch exceeded the per-attempt timeout; re-dispatch the run. "
                 "A warm main checkout (populated .git/modules) speeds up subsequent attempts "
-                "via --reference-if-able."
+                "via --reference."
             ),
         )
     return None

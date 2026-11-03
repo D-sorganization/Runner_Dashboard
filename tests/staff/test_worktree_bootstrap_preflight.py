@@ -5,11 +5,69 @@ from pathlib import Path
 
 import pytest
 from staff import runner_ops
+from staff.runner_ops_worktree_bootstrap import build_submodule_update_argv, submodule_update_command
 from staff.store import RunRecord, RunStore
+
+
+def _git_version_response(version: str) -> subprocess.CompletedProcess[str]:
+    argv = ["git", "--version"]
+    return _cp(argv, 0, f"git version {version}\n")
 
 
 def _cp(argv: list[str], code: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(argv, code, stdout=stdout, stderr=stderr)
+
+
+@pytest.mark.unit
+def test_submodule_update_argv_git_234_omits_blob_filter() -> None:
+    argv = build_submodule_update_argv(supports_blob_filter=False, reference_root=None)
+    assert "--filter=blob:none" not in argv
+    assert "--depth" in argv and "1" in argv
+    assert "--jobs" in argv and "4" in argv
+
+
+@pytest.mark.unit
+def test_submodule_update_argv_git_240_includes_blob_filter_and_reference(tmp_path: Path) -> None:
+    ref_root = tmp_path / "main"
+    argv = build_submodule_update_argv(supports_blob_filter=True, reference_root=ref_root)
+    assert "--filter=blob:none" in argv
+    assert f"--reference={ref_root}" in argv
+    assert not any(arg.startswith("--reference-if-able") for arg in argv)
+
+
+@pytest.mark.unit
+def test_submodule_update_command_uses_git_version_for_filter_gate(tmp_path: Path) -> None:
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    main_checkout = tmp_path / "repo"
+    (main_checkout / ".git" / "modules").mkdir(parents=True)
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:2] == ["git", "--version"]:
+            return _git_version_response("2.34.1")
+        if command[:2] == ["git", "worktree"]:
+            return _cp(command, 0, f"worktree {main_checkout}\nworktree {worktree}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    argv = submodule_update_command(worktree, fake_run)
+    assert "--filter=blob:none" not in argv
+    assert f"--reference={main_checkout}" in argv
+
+
+@pytest.mark.unit
+def test_submodule_update_command_adds_filter_on_git_240(tmp_path: Path) -> None:
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:2] == ["git", "--version"]:
+            return _git_version_response("2.40.0")
+        if command[:2] == ["git", "worktree"]:
+            return _cp(command, 0, f"worktree {worktree}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    argv = submodule_update_command(worktree, fake_run)
+    assert "--filter=blob:none" in argv
 
 
 @pytest.mark.unit
@@ -29,6 +87,8 @@ def test_bootstrap_preflight_initializes_submodules_installs_pytest_and_resolves
         calls.append(command)
         if command[:3] == ["git", "submodule", "status"]:
             return _cp(command, 0, "-abc123 vendor/ud-tools\n")
+        if command[:2] == ["git", "--version"]:
+            return _git_version_response("2.40.0")
         if command[:2] == ["git", "worktree"]:
             return _cp(command, 0, f"worktree {tmp_path}\n")
         if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
@@ -114,6 +174,8 @@ def test_bootstrap_preflight_reuses_main_checkout_reference_when_available(tmp_p
         calls.append(command)
         if command[:3] == ["git", "submodule", "status"]:
             return _cp(command, 0, "-abc123 vendor/ud-tools\n")
+        if command[:2] == ["git", "--version"]:
+            return _git_version_response("2.40.0")
         if command[:2] == ["git", "worktree"]:
             return _cp(command, 0, f"worktree {main_checkout}\nworktree {worktree}\n")
         if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
@@ -133,7 +195,7 @@ def test_bootstrap_preflight_reuses_main_checkout_reference_when_available(tmp_p
     assert result.ok is True
     submodule_calls = [cmd for cmd in calls if "submodule" in cmd and "update" in cmd]
     assert len(submodule_calls) == 1
-    assert f"--reference-if-able={main_checkout}" in submodule_calls[0]
+    assert f"--reference={main_checkout}" in submodule_calls[0]
 
 
 @pytest.mark.unit
@@ -148,6 +210,8 @@ def test_bootstrap_preflight_catches_submodule_timeout_and_retries_once(tmp_path
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if command[:3] == ["git", "submodule", "status"]:
             return _cp(command, 0, "-abc123 vendor/ud-tools\n")
+        if command[:2] == ["git", "--version"]:
+            return _git_version_response("2.40.0")
         if command[:2] == ["git", "worktree"]:
             return _cp(command, 0, f"worktree {tmp_path}\n")
         if "submodule" in command and "update" in command:
