@@ -52,7 +52,7 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
-from staff.scheduler_missed_runs import record_scheduled_fire, record_scheduled_skip
+from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
 from staff.scheduler_named_jobs import named_jobs, queue_due_slot
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
@@ -335,6 +335,9 @@ class StaffScheduler:
         """Handle every due slot once. Returns one decision per due role or named job."""
         now = now or self._clock()
         self._reconcile_cartographer_pending()
+        with self._lock:
+            if reconcile_scheduled_runs(self._load_state(), store=self.runner.store, machine=self.runner.machine):
+                self._save_state()
         decisions: list[dict[str, Any]] = []
         if not self._lease_allows_firing(now):
             return decisions
@@ -448,7 +451,7 @@ class StaffScheduler:
                 record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
                 log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
                 return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
-            record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat())
+            record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat(), role=name, job=job)
             if cartographer_job:
                 self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}
         log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)

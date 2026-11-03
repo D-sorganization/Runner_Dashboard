@@ -27,7 +27,8 @@ def record_success(entry: dict[str, Any]) -> None:
 
 
 def should_alert(count: int) -> bool:
-    return count >= MISSED_ALERT_THRESHOLD
+    """Alert once per streak: on the miss that reaches the threshold, not on later ones."""
+    return count == MISSED_ALERT_THRESHOLD
 
 
 def note_scheduled_miss(
@@ -57,10 +58,48 @@ def record_scheduled_skip(
     note_scheduled_miss(entry, role=role, job=job, slot=slot, machine=machine)
 
 
-def record_scheduled_fire(entry: dict[str, Any], *, slot: str, run_id: str, fired_at: str) -> None:
+def record_scheduled_fire(
+    entry: dict[str, Any], *, slot: str, run_id: str, fired_at: str, role: str, job: str | None
+) -> None:
+    """Note a fired slot; its run's outcome decides the streak in ``reconcile_scheduled_runs``."""
     entry["last_fired"] = fired_at
     entry["last_reason"] = f"fired {slot} as {run_id}"
-    record_success(entry)
+    entry["pending_run"] = {"run_id": run_id, "slot": slot, "role": role, "job": job}
+
+
+_LIVE_STATUSES = ("queued", "preparing", "running", "needs_input")
+
+
+def reconcile_scheduled_runs(state: dict[str, dict[str, Any]], *, store: Any, machine: str) -> bool:
+    """Settle fired slots whose run went terminal. Returns True when ``state`` changed.
+
+    A ``succeeded`` run resets the streak; a failed or cancelled run, or a succeeded run whose
+    post-run verification failed, is a missed slot. A run that is still live waits; one the
+    store no longer knows is a miss.
+    """
+    changed = False
+    for entry in state.values():
+        pending = entry.get("pending_run")
+        if not isinstance(pending, dict):
+            continue
+        rec = store.get_run(str(pending.get("run_id") or ""))
+        if rec is not None and rec.status in _LIVE_STATUSES:
+            continue
+        entry.pop("pending_run")
+        changed = True
+        if rec is not None and rec.status == "succeeded" and rec.verification != "failed":
+            record_success(entry)
+            continue
+        outcome = rec.status if rec is not None else "missing"
+        entry["last_reason"] = f"run {pending.get('run_id')} for {pending.get('slot')} ended {outcome}"
+        note_scheduled_miss(
+            entry,
+            role=str(pending.get("role") or ""),
+            job=pending.get("job"),
+            slot=str(pending.get("slot") or ""),
+            machine=machine,
+        )
+    return changed
 
 
 def build_alert(role: str, *, job: str | None, slot: str, count: int, machine: str) -> dict[str, Any]:
