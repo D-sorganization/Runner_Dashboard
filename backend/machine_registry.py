@@ -546,6 +546,15 @@ def _normalize_machine_entry(entry: dict[str, Any]) -> dict[str, Any]:
     normalized["workload_capacity"] = _workload_capacity_from_hardware(normalized["hardware"])
     normalized["storage"] = _normalize_storage(normalized.get("storage"), field_prefix="storage")
     normalized["runner_pools"] = _normalize_runner_pools(normalized, parent_machine=name)
+    staff = normalized.get("staff")
+    if staff is not None:
+        if not isinstance(staff, dict):
+            raise ValueError("Machine registry field 'staff' must be a mapping")
+        roles_enabled = staff.get("roles_enabled")
+        if roles_enabled is not None:
+            normalized["staff"] = {**staff, "roles_enabled": _coerce_str_list(roles_enabled)}
+        else:
+            normalized["staff"] = dict(staff)
 
     return normalized
 

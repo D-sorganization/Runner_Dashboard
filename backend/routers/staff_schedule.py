@@ -131,6 +131,10 @@ def schedule_snapshot() -> dict[str, Any]:
     enabled = scheduler_enabled()
     roles = sched.status(now)
     pause = evaluate_pause(enabled, now)
+    from staff.schedule_placement import load_placements, schedule_inventory  # noqa: PLC0415
+
+    placements = load_placements()
+    inventory = schedule_inventory(sched.runner.machine, sched.runner.roles(), placements=placements)
     if not enabled:
         for row in roles:
             row["enabled"] = False
@@ -149,6 +153,8 @@ def schedule_snapshot() -> dict[str, Any]:
         "tick_seconds": sched.tick_seconds,
         "leader_lease": sched.leader_status(now),
         "pause": pause.to_dict(),
+        "placements": placements,
+        "inventory": inventory,
         "roles": roles,
     }
 
