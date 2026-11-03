@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from machine_registry import _normalize_token, build_machine_registry_index, is_portable_machine
 import machine_registry as _machine_registry
+from machine_registry import _normalize_token, build_machine_registry_index, is_portable_machine
 from staff.role_spec import RoleSpec
 from staff.store import _config_dir
 
