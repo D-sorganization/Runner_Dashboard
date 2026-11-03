@@ -869,6 +869,10 @@ from routers import overload as _fleet_overload_router  # noqa: E402
 
 app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
 
+from routers import directives_drain as _directives_drain_router  # noqa: E402
+
+app.include_router(_directives_drain_router.router)  # operator drain-mode gate (#3915 slice 1)
+
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)

@@ -778,6 +778,58 @@ def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monke
     assert [d["fired"] for d in s.tick()] == [True]
 
 
+@pytest.mark.unit
+def test_scheduler_tick_skips_when_schedule_home_is_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    placements_file.write_text(json.dumps({"night-watch": "hub-a"}), encoding="utf-8")
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "night-watch": roles_mod.parse_role(
+            {
+                "name": "night-watch",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "node-b"
+    clock = {"now": _la(2026, 9, 22, 21, 59, 50)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    s = scheduler_mod.StaffScheduler(
+        runner,
+        holds,
+        guard,
+        clock=lambda: clock["now"],
+        state_file=tmp_path / "state.json",  # type: ignore[arg-type]
+    )
+    assert s.tick() == []
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    decision = s.tick()[0]
+    assert decision["fired"] is False and "hub-a" in decision["reason"]
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_schedule_route_includes_inventory_and_role_host(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    body = client.get("/api/staff/schedule").json()
+    assert body["inventory"]
+    assert "placements" in body
+    nw = next(row for row in body["roles"] if row["role"] == "night-watch")
+    assert nw["host"]
+
+
 def test_scheduled_repo_rotates_one_repo_per_day() -> None:
     repos = ("A", "B", "C")
     days = [_la(2026, 9, d, 22, 0) for d in (22, 23, 24, 25)]
