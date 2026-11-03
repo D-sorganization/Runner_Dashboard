@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from staff.runner_venv import ensure_staff_pytest_environment
+from staff.worktree_git_lock_cleanup import clear_stale_git_locks
 
 _PYTHON_VERSION_SNIPPET = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
 
@@ -206,12 +207,14 @@ def run_worktree_bootstrap_preflight(
     role: str = "",
     run: _Run = subprocess.run,
     which: _Which = shutil.which,
+    live_git_common_dirs: set[Path] | None = None,
 ) -> WorktreeBootstrapPreflight:
     """Bootstrap checks before a staff run starts coding in a worktree.
 
     Ensures submodules are populated, Python is >=3.11, pytest is available,
     and the repository has a local pre-PR entry point.
     """
+    clear_stale_git_locks(worktree, run=run, live_common_dirs=live_git_common_dirs)
     if (worktree / ".gitmodules").is_file() and not _submodules_already_populated(worktree, run):
         failure = _bootstrap_submodules(worktree, run)
         if failure is not None:
