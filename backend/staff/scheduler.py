@@ -247,6 +247,17 @@ class StaffScheduler:
         now = now or self._clock()
         return _lease_leader_status(self._load_state, leader_chain(), self.runner.machine, now)
 
+    def schedule_state_view(self) -> dict[str, dict[str, Any]]:
+        """Copy of persisted per-role scheduler state for operator snapshots (#3901)."""
+        with self._lock:
+            return {k: dict(v) for k, v in self._load_state().items() if isinstance(v, dict)}
+
+    def replace_schedule_state(self, state: Mapping[str, Mapping[str, Any]]) -> None:
+        """Replace on-disk scheduler state (used when re-homing schedules off a host)."""
+        with self._lock:
+            self._state = {k: dict(v) for k, v in state.items() if isinstance(v, Mapping)}
+            self._save_state()
+
     # ── evaluation ───────────────────────────────────────────────────────
     def _schedule_report(
         self, role: RoleSpec, now: datetime, *, job: str | None = None, cron: str | None = None
@@ -256,9 +267,13 @@ class StaffScheduler:
         key = f"{role.name}::{job}" if job else role.name
         entry = self._load_state().get(key, {})
         enabled = entry.get("enabled", True)
+        from staff.schedule_placement import load_placements, schedule_host_for_role  # noqa: PLC0415
+
+        placements = load_placements()
         out: dict[str, Any] = {
             "role": role.name,
             "schedule": cron,
+            "host": schedule_host_for_role(role.name, placements, self.runner.machine),
             "window": role.window,
             "next_fire": None,
             "in_window": in_window(role.window, now, self._tz),
@@ -293,6 +308,17 @@ class StaffScheduler:
             return "schedule disabled for role"
         if report.get("schedule_error"):
             return f"bad schedule: {report['schedule_error']}"
+        from machine_registry import load_machine_registry  # noqa: PLC0415
+        from staff.schedule_placement import load_placements, schedule_host_skip_reason  # noqa: PLC0415
+
+        host_reason = schedule_host_skip_reason(
+            str(report.get("role") or ""),
+            self.runner.machine,
+            load_placements(),
+            load_machine_registry(),
+        )
+        if host_reason:
+            return host_reason
         if not report["in_window"]:
             return "outside run window"
         if report["hold"]:

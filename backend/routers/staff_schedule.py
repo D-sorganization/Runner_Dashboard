@@ -131,6 +131,10 @@ def schedule_snapshot() -> dict[str, Any]:
     enabled = scheduler_enabled()
     roles = sched.status(now)
     pause = evaluate_pause(enabled, now)
+    from staff.schedule_placement import load_placements, schedule_inventory  # noqa: PLC0415
+
+    placements = load_placements()
+    inventory = schedule_inventory(sched.runner.machine, sched.runner.roles(), placements=placements)
     if not enabled:
         for row in roles:
             row["enabled"] = False
@@ -149,6 +153,8 @@ def schedule_snapshot() -> dict[str, Any]:
         "tick_seconds": sched.tick_seconds,
         "leader_lease": sched.leader_status(now),
         "pause": pause.to_dict(),
+        "placements": placements,
+        "inventory": inventory,
         "roles": roles,
     }
 
@@ -221,6 +227,90 @@ async def get_schedule(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     return schedule_snapshot()
+
+
+class SchedulePlacementBody(BaseModel):
+    host: str = Field(min_length=1, max_length=80)
+
+
+@router.put("/schedule/placements/{role}")
+async def put_schedule_placement(
+    role: str,
+    body: SchedulePlacementBody,
+    caller: Principal = Depends(require_scope("staff.admin")),
+) -> dict[str, Any]:
+    """Pin a role's scheduled runs to a fleet machine (#3901)."""
+    from staff.schedule_placement import load_placements, save_placements  # noqa: PLC0415
+
+    sched = get_scheduler()
+    roles = sched.runner.roles()
+    if role not in roles:
+        raise HTTPException(status_code=404, detail=f"role '{role}' not found")
+    placements = load_placements()
+    placements[role] = body.host.strip()
+    try:
+        save_placements(placements, roles=roles)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    caller_str = format_caller(caller)
+    record_audit(
+        action="schedule_placement",
+        target=role,
+        principal=caller_str,
+        surface="api",
+        outcome="success",
+        detail={"role": role, "host": body.host.strip()},
+        fail_closed=True,
+    )
+    return {"role": role, "host": body.host.strip()}
+
+
+class MigrateScheduleOffHostBody(BaseModel):
+    source_host: str = Field(min_length=1, max_length=80)
+    targets: list[str] = Field(min_length=1, max_length=8)
+    dry_run: bool = False
+
+
+@router.post("/schedule/migrate-off-host")
+async def migrate_schedule_off_host(
+    body: MigrateScheduleOffHostBody,
+    caller: Principal = Depends(require_scope("staff.admin")),
+) -> dict[str, Any]:
+    """Drop retired/dead placements on ``source_host`` and re-home live roles (#3901)."""
+    from machine_registry import load_machine_registry  # noqa: PLC0415
+    from staff.schedule_placement import (  # noqa: PLC0415
+        load_placements,
+        migrate_placements_off_host,
+        save_placements,
+    )
+
+    sched = get_scheduler()
+    roles = sched.runner.roles()
+    placements = load_placements()
+    state = sched.schedule_state_view()
+    targets = tuple(t.strip() for t in body.targets if t.strip())
+    result = migrate_placements_off_host(
+        body.source_host.strip(),
+        roles=roles,
+        placements=placements,
+        state=state,
+        registry=load_machine_registry(),
+        targets=targets,
+    )
+    if body.dry_run:
+        return {"dry_run": True, "removed": list(result.removed_roles), "moved": list(result.moved)}
+    save_placements(placements, roles=roles)
+    sched.replace_schedule_state(state)
+    record_audit(
+        action="schedule_migrate_off_host",
+        target=body.source_host.strip(),
+        principal=format_caller(caller),
+        surface="api",
+        outcome="success",
+        detail={"removed": list(result.removed_roles), "moved": list(result.moved), "targets": list(targets)},
+        fail_closed=True,
+    )
+    return {"removed": list(result.removed_roles), "moved": list(result.moved)}
 
 
 @router.post("/schedule/leader-lease", response_model_exclude_none=True)
