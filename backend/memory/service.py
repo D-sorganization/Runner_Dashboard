@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller, principal_has_scope
-from memory.barb_shared_guard import MemoryWriteProvenance, entry_allowed_in_shared_memory, refuse_shared_memory_write
+from memory.barb_shared_guard import entry_allowed_in_shared_memory
 from memory.contract import (
     CONTEXT_DIGEST_LIMIT,
     CONTEXT_TASK_LIMIT,
@@ -28,6 +28,7 @@ from memory.models import (
     SessionDigestAppendRequest,
 )
 from memory.redact import contains_secret, redact_memory_text
+from memory.service_guard import enforce_memory_append, enforce_session_digest_append, list_guarded_entries
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
@@ -36,29 +37,6 @@ from staff.barb_lease_fence import is_barb_seat
 from staff.lesson_locator import locate_lesson_evidence, verify_lesson_evidence
 from staff.lesson_provenance import authenticated_lesson_run, completed_run_for_review
 from staff.store import _now  # noqa: PLC2701
-
-
-def _refuse_shared_memory_write(
-    *,
-    entry_type: str,
-    source_product: str,
-    tags: list[str],
-    body: dict[str, Any],
-    author_principal: str = "",
-    reported_origin_principal: str | None = None,
-    digest_summary: str | None = None,
-) -> None:
-    prov = MemoryWriteProvenance(
-        source_product=source_product,
-        tags=tuple(tags),
-        body=body,
-        author_principal=author_principal,
-        reported_origin_principal=reported_origin_principal,
-    )
-    if reason := refuse_shared_memory_write(
-        prov, entry_type=entry_type, digest_summary=digest_summary if entry_type == "session_digest" else None
-    ):
-        raise HTTPException(status_code=422, detail={"code": "shared_memory_refused", "reason": reason})
 
 
 def _redact_body(body: dict[str, Any]) -> dict[str, Any]:
@@ -147,13 +125,7 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
         review_status, visibility = req.review_status, req.visibility
 
     body = _redact_body(req.body)
-    _refuse_shared_memory_write(
-        entry_type=req.entry_type,
-        source_product=req.source_product,
-        tags=req.tags,
-        body=body,
-        author_principal=format_caller(principal),
-    )
+    enforce_memory_append(principal, req, body)
     if req.entry_type == "lesson":
         body["standards_version"] = run.standards_version
         body.pop("locator", None)
@@ -252,14 +224,11 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
     enforce_entry_size(body, "session_digest")
     raw_origin = body.get("reported_origin_principal")
     origin_principal = raw_origin if isinstance(raw_origin, str) else req.reported_origin_principal
-    _refuse_shared_memory_write(
-        entry_type="session_digest",
+    enforce_session_digest_append(
+        caller,
         source_product=req.source_product,
-        tags=[],
         body=body,
-        author_principal=caller,
         reported_origin_principal=origin_principal,
-        digest_summary=str(body.get("summary") or ""),
     )
     entry = MemoryEntry(
         id=new_entry_id(),
@@ -279,14 +248,7 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
             raise HTTPException(status_code=507, detail="assistant memory store size cap exceeded") from exc
         raise
 
-
-def list_entries(**kwargs: Any) -> list[MemoryEntry]:
-    return [
-        entry
-        for entry in get_memory_store().list_entries(include_superseded=False, **kwargs)
-        if entry_allowed_in_shared_memory(entry)
-    ]
-
+list_entries = list_guarded_entries
 
 _CLOSED_TASK_STATUSES: frozenset[str] = frozenset({"done", "closed", "cancelled", "complete", "completed"})
 _WILDCARD_SCOPES: frozenset[str] = frozenset({"", "*", "fleet", "public", "shared", "all"})
