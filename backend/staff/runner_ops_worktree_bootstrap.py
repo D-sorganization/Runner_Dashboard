@@ -124,8 +124,24 @@ def _main_checkout_root(worktree: Path, run: _Run) -> Path | None:
     return None
 
 
+def _git_version(worktree: Path, run: _Run) -> tuple[int, ...] | None:
+    """Probe the git version tuple, e.g. (2, 34, 1) or (2, 47, 1) (#3921)."""
+    try:
+        proc = _run_checked(run, worktree, ["git", "--version"], timeout=10)
+    except (subprocess.TimeoutExpired, Exception):
+        return None
+    if proc.returncode != 0:
+        return None
+    raw = (proc.stdout or "").strip()
+    for token in raw.split():
+        nums = [int(p) for p in token.split(".") if p.isdigit()]
+        if len(nums) >= 2:
+            return tuple(nums)
+    return None
+
+
 def _submodule_update_command(worktree: Path, run: _Run) -> list[str]:
-    """Shallow, filtered submodule fetch, reusing the main checkout's objects when present (#3913)."""
+    """Shallow, filtered submodule fetch, reusing the main checkout's objects when present (#3913, #3921)."""
     command = [
         "git",
         "-c",
@@ -138,11 +154,14 @@ def _submodule_update_command(worktree: Path, run: _Run) -> list[str]:
         "1",
         "--jobs",
         "4",
-        "--filter=blob:none",
     ]
+    git_ver = _git_version(worktree, run)
+    if git_ver is not None and git_ver[:2] >= (2, 36):
+        command.append("--filter=blob:none")
+
     main_root = _main_checkout_root(worktree, run)
     if main_root is not None and main_root != worktree and (main_root / ".git" / "modules").is_dir():
-        command.append(f"--reference-if-able={main_root}")
+        command.extend(["--reference", str(main_root), "--dissociate"])
     return command
 
 
