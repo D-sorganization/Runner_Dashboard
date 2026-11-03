@@ -70,3 +70,56 @@ def test_job_releases_lists_manual_release_after_claim_release(
     assert row["agent"] == "codex"
     assert row["kind"] == "release"
     assert "released_at" in row
+
+
+def _claim_and_release(rm: FakeRM, client: TestClient) -> None:
+    claim_body = {"session": "codex-12", "repo": "Tools", "issue": 12, "agent": "codex", "intent": "implement"}
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result())
+    assert client.post("/api/coordination/claims", json=claim_body, headers=_BOT).status_code == 200
+    rel_body = {"session": "codex-12", "repo": "Tools", "issue": 12, "agent": "codex", "reason": "done"}
+    rm.respond("release_agent_lease", release_result())
+    assert client.post("/api/coordination/claims/release", json=rel_body, headers=_BOT).status_code == 200
+
+
+@pytest.mark.unit
+def test_job_releases_empty_log_is_complete(client: TestClient) -> None:
+    resp = client.get("/api/coordination/jobs/releases")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["releases"] == []
+    assert body["complete"] is True
+
+
+@pytest.mark.unit
+def test_job_releases_since_filters_older_rows(rm: FakeRM, client: TestClient) -> None:
+    _claim_and_release(rm, client)
+    past = client.get("/api/coordination/jobs/releases", params={"since": "2000-01-01T00:00:00Z"})
+    assert past.status_code == 200, past.text
+    assert [r["issue"] for r in past.json()["releases"]] == [12]
+    future = client.get("/api/coordination/jobs/releases", params={"since": "2999-01-01T00:00:00Z"})
+    assert future.status_code == 200, future.text
+    assert future.json()["releases"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("since", ["not-a-date", "2026-13-45T00:00:00Z"])
+def test_job_releases_malformed_since_is_422(client: TestClient, since: str) -> None:
+    resp = client.get("/api/coordination/jobs/releases", params={"since": since})
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.unit
+def test_job_releases_incomplete_when_scan_cap_reached(monkeypatch: pytest.MonkeyPatch) -> None:
+    from coordination import job_releases
+
+    class _Env:
+        source = "other"
+
+    class _Store:
+        def scan_recent(self, *, limit: int) -> list[Any]:
+            return [_Env()] * limit
+
+    monkeypatch.setattr(job_releases.activity_mod, "get_activity_store", lambda: _Store())
+    monkeypatch.setattr(job_releases, "_MAX_SCAN", 3)
+    assert job_releases.list_job_releases()["complete"] is False

@@ -18,7 +18,8 @@ _MAX_LIMIT = 500
 _MAX_SCAN = 5000
 
 
-def _parse_since(raw: str | None) -> datetime | None:
+def parse_since(raw: str | None) -> datetime | None:
+    """Parse an ISO-8601 ``since``; ``None`` for blank. Raises ``ValueError`` when malformed."""
     if not raw or not raw.strip():
         return None
     text = raw.strip().replace("Z", "+00:00")
@@ -48,7 +49,7 @@ def _row_from_envelope(env: Any) -> dict[str, Any]:
 def list_job_releases(*, since: str | None = None, limit: int = _DEFAULT_LIMIT) -> dict[str, Any]:
     """Return recent job-board release rows newest-first, optionally filtered by ``since`` (ISO-8601)."""
     bounded = max(1, min(limit, _MAX_LIMIT))
-    since_dt = _parse_since(since)
+    since_dt = parse_since(since)
     store = activity_mod.get_activity_store()
     envelopes = store.scan_recent(limit=_MAX_SCAN)
     rows: list[dict[str, Any]] = []
@@ -63,4 +64,6 @@ def list_job_releases(*, since: str | None = None, limit: int = _DEFAULT_LIMIT) 
         if len(rows) >= bounded:
             break
     generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    return {"releases": rows, "complete": len(rows) < bounded, "generated_at": generated_at}
+    # A full scan page may have cut off older matching rows, so it is never complete.
+    complete = len(rows) < bounded and len(envelopes) < _MAX_SCAN
+    return {"releases": rows, "complete": complete, "generated_at": generated_at}

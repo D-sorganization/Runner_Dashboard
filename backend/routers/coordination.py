@@ -147,6 +147,10 @@ async def get_job_releases(
     limit: int = Query(default=100, ge=1, le=500),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
+    try:
+        job_releases_mod.parse_since(since)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": f"since is not ISO-8601: {exc}"}) from exc
     return await run_in_threadpool(job_releases_mod.list_job_releases, since=since, limit=limit)
 
 
