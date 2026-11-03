@@ -58,7 +58,7 @@ def get_scheduler() -> StaffScheduler:
 def reset_scheduler() -> None:
     sched_mod = sys.modules.get("staff.scheduler")
     if sched_mod is not None:
-        sched_mod._scheduler = None
+        vars(sched_mod)["_scheduler"] = None
     global _scheduler  # noqa: PLW0603
     with _scheduler_lock:
         if _scheduler is not None:
