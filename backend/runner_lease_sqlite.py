@@ -287,6 +287,10 @@ class SqliteLeaseStore:
             log.debug("sqlite lease store: pruned %d expired lease(s)", removed)
         return removed
 
+    def journal_mode(self) -> str:
+        """The connection's SQLite journal mode, lower-cased (``"wal"`` when healthy)."""
+        return str(self._execute("PRAGMA journal_mode").fetchone()[0]).lower()
+
     def close(self) -> None:
         """Close the underlying SQLite connection."""
         try:
