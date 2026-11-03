@@ -154,6 +154,82 @@ def _merge_group(labels: Sequence[str], workflow: str) -> bool:
     return _MERGE_GROUP_LABEL in labels or "merge-group" in workflow.lower()
 
 
+def assert_classification_postcondition(report: Mapping[str, Any], *, job_count: int) -> None:
+    counts = report.get("classification_counts") or {}
+    total = sum(int(value) for value in counts.values())
+    if total != job_count:
+        raise DiagnosticPreconditionError(f"classification counts sum to {total}, expected {job_count}")
+
+
+def assert_min_queued_jobs(job_count: int, *, minimum: int) -> None:
+    if job_count < minimum:
+        raise DiagnosticPreconditionError(f"snapshot must include at least {minimum} queued jobs (got {job_count})")
+
+
+def top_causes(counts: Mapping[str, int], *, limit: int = 3) -> list[dict[str, Any]]:
+    total = sum(int(value) for value in counts.values())
+    if total <= 0:
+        return []
+    ranked = sorted(counts.items(), key=lambda item: (-int(item[1]), item[0]))
+    causes: list[dict[str, Any]] = []
+    for reason, count in ranked[:limit]:
+        if count <= 0:
+            continue
+        causes.append({"reason": reason, "count": int(count), "fraction": int(count) / total})
+    return causes
+
+
+def format_findings_comment(
+    report: Mapping[str, Any],
+    *,
+    captured_at_pt: str,
+    script_sha: str,
+    repos: Sequence[str],
+    api_findings: Sequence[str] = (),
+) -> str:
+    counts = {str(k): int(v) for k, v in (report.get("classification_counts") or {}).items()}
+    total = sum(counts.values())
+    lines = [
+        f"## Queued-job diagnostic snapshot ({captured_at_pt})",
+        "",
+        f"- **Script SHA:** `{script_sha}`",
+        f"- **Repos sampled:** {', '.join(repos)}",
+        f"- **Queued jobs classified:** {total}",
+        "",
+        "### Per-class counts",
+        "",
+        "| Class (`WaitReason`) | Count | Share |",
+        "| --- | ---: | ---: |",
+    ]
+    for reason in sorted(counts, key=lambda key: (-counts[key], key)):
+        share = (counts[reason] / total * 100) if total else 0.0
+        lines.append(f"| `{reason}` | {counts[reason]} | {share:.1f}% |")
+    lines.extend(["", "### Top causes", ""])
+    causes = top_causes(counts)
+    for index, cause in enumerate(causes, start=1):
+        pct = cause["fraction"] * 100
+        lines.append(f"{index}. **`{cause['reason']}`** — {cause['count']} / {total} ({pct:.1f}%)")
+    for index in range(len(causes) + 1, 4):
+        lines.append(f"{index}. *(none — 0 jobs in remaining classes)*")
+    f5 = report.get("f5_reserved_merge_group_label") or {}
+    proceed = bool(f5.get("proceed"))
+    lines.extend(
+        [
+            "",
+            "### Recommendation on F5 (#2768 — reserved `merge_group` runner label)",
+            "",
+            f"- **{'Proceed' if proceed else 'Do NOT proceed'} with F5** (`proceed: {str(proceed).lower()}`, "
+            f"`merge_group_jobs_waiting: {f5.get('merge_group_jobs_waiting', 0)}`, "
+            f"`merge_group_jobs_total: {f5.get('merge_group_jobs_total', 0)}`).",
+            f"- {f5.get('rationale', 'No F5 rationale recorded.')}",
+        ]
+    )
+    if api_findings:
+        lines.extend(["", "### API findings (not silently skipped)", ""])
+        lines.extend(f"- {finding}" for finding in api_findings)
+    return "\n".join(lines) + "\n"
+
+
 def _f5(classified: Sequence[ClassifiedJob], idle: Mapping[str, Any]) -> dict[str, Any]:
     merge = [j for j in classified if _merge_group(j.labels, j.workflow)]
     waiting = [j for j in merge if j.reason == WaitReason.WAITING_FOR_RUNNER]
@@ -203,6 +279,7 @@ def analyze_snapshot(
     runners: Sequence[Mapping[str, Any]],
     runner_groups: Mapping[str, Any] | None = None,
     utilization: Mapping[str, Any] | None = None,
+    api_findings: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     if not queued_jobs:
         raise DiagnosticPreconditionError("queued_jobs must be non-empty")
@@ -211,14 +288,18 @@ def analyze_snapshot(
     classified = [classify_job(j, online=online, idle=idle, access=access) for j in queued_jobs]
     counts = Counter(j.reason.value for j in classified)
     idle_explanation = _explain_idle(utilization, counts)
-    return {
+    report = {
         "classification_counts": dict(counts),
+        "classification_job_count": len(queued_jobs),
         "jobs": [j.to_dict() for j in classified],
         "runner_pool": {"online": len(online), "idle": len(idle)},
         "runner_groups": _group_report(classified, runners, access),
         "idle_explanation": idle_explanation,
         "f5_reserved_merge_group_label": _f5(classified, idle_explanation),
+        "api_findings": list(api_findings or ()),
     }
+    assert_classification_postcondition(report, job_count=len(queued_jobs))
+    return report
 
 
 def _load(path: Path) -> Any:
@@ -241,12 +322,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--runners", type=Path, required=True)
     p.add_argument("--runner-groups", type=Path)
     p.add_argument("--utilization", type=Path)
+    p.add_argument("--min-queued", type=int, default=0, help="Require at least N queued jobs in the snapshot")
     args = p.parse_args(list(argv) if argv is not None else None)
     logging.basicConfig(level=logging.INFO)
     try:
         jobs = _load(args.queued_jobs)
         if not isinstance(jobs, list):
             raise DiagnosticPreconditionError("--queued-jobs must be a JSON array")
+        assert_min_queued_jobs(len(jobs), minimum=args.min_queued) if args.min_queued else None
         groups = _load(args.runner_groups) if args.runner_groups else {}
         util = _load(args.utilization) if args.utilization else None
         report = analyze_snapshot(

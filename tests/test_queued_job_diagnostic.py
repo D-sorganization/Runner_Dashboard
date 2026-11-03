@@ -103,6 +103,60 @@ def test_cli_json_output(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     assert "classification_counts" in json.loads(capsys.readouterr().out)
 
 
+def test_classification_counts_sum_to_job_total() -> None:
+    report = _analyze()
+    assert report["classification_job_count"] == len(_OCT25["queued_jobs"])
+    assert sum(report["classification_counts"].values()) == report["classification_job_count"]
+
+
+def test_min_queued_precondition_rejects_small_snapshots() -> None:
+    with pytest.raises(diag.DiagnosticPreconditionError, match="at least 50"):
+        diag.assert_min_queued_jobs(len(_OCT25["queued_jobs"]), minimum=50)
+
+
+def test_format_findings_comment_includes_table_f5_and_sha() -> None:
+    report = _analyze()
+    body = diag.format_findings_comment(
+        report,
+        captured_at_pt="2026-10-27 08:15 PT",
+        script_sha="abc1234",
+        repos=("Runner_Dashboard", "Repository_Management"),
+        api_findings=("org runner-groups: HTTP 403 Resource not accessible by integration",),
+    )
+    assert "abc1234" in body
+    assert "label_mismatch" in body
+    assert "F5" in body and "#2768" in body
+    assert "403" in body
+    assert "Runner_Dashboard" in body
+
+
+def test_api_findings_surface_in_analyze_snapshot() -> None:
+    report = diag.analyze_snapshot(
+        queued_jobs=_OCT25["queued_jobs"][:2],
+        runners=_OCT25["runners"],
+        api_findings=["runner-groups lookup returned 403"],
+    )
+    assert report["api_findings"] == ["runner-groups lookup returned 403"]
+
+
+def test_cli_min_queued_precondition(tmp_path: Path) -> None:
+    (tmp_path / "jobs.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "runners.json").write_text("[]", encoding="utf-8")
+    assert (
+        diag.main(
+            [
+                "--queued-jobs",
+                str(tmp_path / "jobs.json"),
+                "--runners",
+                str(tmp_path / "runners.json"),
+                "--min-queued",
+                "1",
+            ]
+        )
+        == 2
+    )
+
+
 def test_bare_fleet_label_classified_as_self_hosted_not_github_hosted() -> None:
     runners = [
         {
