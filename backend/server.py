@@ -889,6 +889,11 @@ from routers import priorities as _priorities_router  # noqa: E402
 
 app.include_router(_priorities_router.router)
 
+# Drain-mode status for the node-side gh guard (issue #3915).
+from routers import drain as _drain_router  # noqa: E402
+
+app.include_router(_drain_router.router)
+
 # Board Proposals suggestion box (issue #1284, CR-7).
 from routers import intake_proposals as _intake_proposals_router  # noqa: E402
 from routers import proposals as _proposals_router  # noqa: E402

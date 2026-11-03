@@ -13531,6 +13531,57 @@
         "tags": ["diagnostics"]
       }
     },
+    "/api/directives/drain": {
+      "get": {
+        "operationId": "get_drain_status_api_directives_drain_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Drain Status Api Directives Drain Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Drain Status",
+        "tags": ["directives"]
+      }
+    },
     "/api/disk/pool-pressure": {
       "get": {
         "description": "Storage-tier aware disk pressure report for all registered runner pools.\n\nReturns per-pool pressure classification using tier-specific thresholds:\n- NVMe pools: IO saturation is the primary constraint\n- HDD/SSD pools: capacity is the primary constraint\n\nEach pool entry includes:\n  - ``pool_name``       \u2014 registry name\n  - ``storage_tier``    \u2014 nvme / hdd / ssd / unknown\n  - ``backing_disk``    \u2014 WSL mount path of the backing Windows drive\n  - ``vhdx_path``       \u2014 VHDX path if known\n  - ``disk_bus``        \u2014 bus type from registry (NVMe, SATA, etc.)\n  - ``disk_media_type`` \u2014 media type from registry (SSD, HDD, etc.)\n  - ``free_gb``, ``used_gb``, ``total_gb``, ``percent`` \u2014 live capacity\n  - ``io_pressure_full_avg10`` \u2014 Linux PSI IO stall (if available)\n  - ``pressure``        \u2014 tier-aware classification (low/medium/high/critical)\n\nDbC: this endpoint is read-only; it never mutates state.",
