@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from staff.rm_directives import DirectivesReconcileError, reconcile_directives_for_rm_root
+from staff.rm_sync_quarantine import quarantine_dirty_worktree
 from staff.rm_mail_policy import refresh_mail_policy_cache
 from staff.rm_reconcile import HoldReconcileError, format_hold_reconcile_diff, reconcile_holds_for_roles_dir
 from staff.roles import role_validation_errors, roles_dir
@@ -131,8 +132,34 @@ def stale_source_warning() -> str | None:
     return f"RM checkout sync {state.get('status')} ({reason}); board reads may be stale or target a retired board"
 
 
+def _attempt_fast_forward(root: Path, head: str, state: dict[str, Any]) -> None:
+    _git(root, "fetch", "--no-tags", "origin", "main")
+    target = _git(root, "rev-parse", "FETCH_HEAD")
+    # Recheck after the network wait so we do not overwrite owner work.
+    if (
+        _git(root, "branch", "--show-current") != "main"
+        or _git(root, "rev-parse", "HEAD") != head
+        or _git(root, "status", "--porcelain", "--untracked-files=all")
+    ):
+        state.update(status="skipped", reason="checkout changed during fetch")
+    elif target != head:
+        base = _git(root, "merge-base", head, target)
+        if base != head:
+            state.update(status="skipped", reason="main is ahead or diverged")
+        else:
+            stamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S-%f")
+            backup = f"refs/staff-rm-backups/bak-{stamp}"
+            _git(root, "update-ref", backup, head)
+            _git(root, "merge", "--ff-only", target)
+            state.update(status="updated", backup_ref=backup)
+
+
 def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
-    """Update clean main only; dirty, ahead/diverged and unavailable repos survive.
+    """Update clean main only; quarantine recoverable dirt, skip ahead/diverged work.
+
+    Local modifications and untracked files are copied under
+    ``$RUNNER_DASHBOARD_CONFIG_DIR/rm_dirty_quarantine/`` before fast-forward.
+    Committed owner branches and diverged histories are left untouched.
 
     The systemd oneshot unit serializes invocations. Operators must invoke that
     unit, not run simultaneous module processes against its clone.
@@ -158,27 +185,15 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
         if _git(root, "branch", "--show-current") != "main":
             state.update(status="skipped", reason="checkout is not on main")
         elif _git(root, "status", "--porcelain", "--untracked-files=all"):
-            state.update(status="skipped", reason="checkout has local changes")
+            quarantine = quarantine_dirty_worktree(root, git_run=_git)
+            if quarantine:
+                state["dirty_quarantine"] = quarantine
+            if _git(root, "status", "--porcelain", "--untracked-files=all"):
+                state.update(status="skipped", reason="checkout has local changes")
+            else:
+                _attempt_fast_forward(root, head, state)
         else:
-            _git(root, "fetch", "--no-tags", "origin", "main")
-            target = _git(root, "rev-parse", "FETCH_HEAD")
-            # Recheck after the network wait so we do not overwrite owner work.
-            if (
-                _git(root, "branch", "--show-current") != "main"
-                or _git(root, "rev-parse", "HEAD") != head
-                or _git(root, "status", "--porcelain", "--untracked-files=all")
-            ):
-                state.update(status="skipped", reason="checkout changed during fetch")
-            elif target != head:
-                base = _git(root, "merge-base", head, target)
-                if base != head:
-                    state.update(status="skipped", reason="main is ahead or diverged")
-                else:
-                    stamp = datetime.now(UTC).strftime("%Y-%m-%d-%H%M%S-%f")
-                    backup = f"refs/staff-rm-backups/bak-{stamp}"
-                    _git(root, "update-ref", backup, head)
-                    _git(root, "merge", "--ff-only", target)
-                    state.update(status="updated", backup_ref=backup)
+            _attempt_fast_forward(root, head, state)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         # Never log Git stderr/stdout: remote URLs and helpers may contain credentials.
         state.update(status="error", reason=type(exc).__name__)
