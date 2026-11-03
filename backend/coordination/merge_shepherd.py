@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 
 class _StrEnum(str, enum.Enum):  # noqa: UP042
-    """Python 3.10 compatible StrEnum."""
+    """Python 3.10 compatible StrEnum helper."""
 
     pass
 
