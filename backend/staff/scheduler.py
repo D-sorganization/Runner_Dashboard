@@ -248,12 +248,10 @@ class StaffScheduler:
         return _lease_leader_status(self._load_state, leader_chain(), self.runner.machine, now)
 
     def schedule_state_view(self) -> dict[str, dict[str, Any]]:
-        """Copy of persisted per-role scheduler state for operator snapshots (#3901)."""
         with self._lock:
             return {k: dict(v) for k, v in self._load_state().items() if isinstance(v, dict)}
 
     def replace_schedule_state(self, state: Mapping[str, Mapping[str, Any]]) -> None:
-        """Replace on-disk scheduler state (used when re-homing schedules off a host)."""
         with self._lock:
             self._state = {k: dict(v) for k, v in state.items() if isinstance(v, Mapping)}
             self._save_state()
