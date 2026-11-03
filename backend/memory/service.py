@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller, principal_has_scope
+from memory.barb_shared_guard import MemoryWriteProvenance, entry_allowed_in_shared_memory, refuse_shared_memory_write
 from memory.contract import (
     CONTEXT_DIGEST_LIMIT,
     CONTEXT_TASK_LIMIT,
@@ -26,7 +27,6 @@ from memory.models import (
     MemoryReviewRequest,
     SessionDigestAppendRequest,
 )
-from memory.barb_shared_guard import MemoryWriteProvenance, entry_allowed_in_shared_memory, refuse_shared_memory_write
 from memory.redact import contains_secret, redact_memory_text
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
