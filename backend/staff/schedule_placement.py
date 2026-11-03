@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import threading
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -184,7 +184,9 @@ def migrate_placements_off_host(
         for candidate in targets:
             if role_schedule_allowed_on_machine(role.name, candidate, registry):
                 return candidate
-        return targets[0]
+        raise ValueError(
+            f"no migration target allows scheduled role '{role.name}' (targets={list(targets)!r})"
+        )
 
     for role_name, host in list(placements.items()):
         if host != source_host.strip():
@@ -202,3 +204,21 @@ def migrate_placements_off_host(
         moved.append((role_name, target))
 
     return MigrationResult(removed_roles=tuple(removed), moved=tuple(moved))
+
+
+def purge_schedule_role_state(scheduler: Any, role_names: Iterable[str]) -> None:
+    """Drop persisted scheduler cursor rows for retired/unplaced roles (#3927).
+
+    Uses the scheduler's lock and state accessors so API migrations never replace
+    the full state snapshot (which raced with the background tick).
+    """
+    names = tuple(role_names)
+    if not names:
+        return
+    with scheduler._lock:  # noqa: SLF001 — paired with scheduler._load_state/_save_state
+        state = scheduler._load_state()
+        for role_name in names:
+            state.pop(role_name, None)
+            for key in [k for k in state if k.startswith(f"{role_name}::")]:
+                state.pop(key, None)
+        scheduler._save_state()
