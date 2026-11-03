@@ -92,15 +92,16 @@ def quarantine_dirty_worktree(
     if clean_paths:
         git_run(root, "clean", "-fd", "--", *clean_paths)
 
-    summary = {
+    paths = [entry["path"] for entry in entries]
+    summary: dict[str, Any] = {
         "dir": str(dest),
         "count": len(entries),
-        "paths": [entry["path"] for entry in entries],
+        "paths": paths,
     }
     log.warning(
         "quarantined %d local change(s) in STAFF_RM_ROOT to %s: %s",
         summary["count"],
         dest,
-        ", ".join(summary["paths"]),
+        ", ".join(paths),
     )
     return summary
