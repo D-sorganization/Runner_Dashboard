@@ -212,6 +212,7 @@ from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
 from routers import reports as _reports_router  # noqa: E402
 from routers import repos as _repos_router  # noqa: E402
+from routers import run_jwt as _run_jwt_router  # noqa: E402
 from routers import runner_audit as _runner_audit_router  # noqa: E402  # issue #298
 from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
 from routers import runner_groups as _runner_groups_router  # noqa: E402
@@ -746,6 +747,7 @@ app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics an
 app.include_router(_escalation_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_fleet_run_token_router.router)
+app.include_router(_run_jwt_router.router)
 app.include_router(_github_app_token_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
@@ -842,6 +844,10 @@ app.include_router(_coordination_router.router)
 from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
+
+from routers import flow_metrics as _flow_metrics_router  # noqa: E402
+
+app.include_router(_flow_metrics_router.router)  # PD-4 flow metrics (#3818)
 
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
@@ -3007,6 +3013,11 @@ async def _startup() -> None:
     from staff.provider_auth_preflight import periodic_provider_auth_evening_loop  # noqa: PLC0415
 
     asyncio.create_task(periodic_provider_auth_evening_loop(lambda: get_runner().machine))
+
+    if MACHINE_ROLE == "hub":  # agent token files live on the hub; nodes would duplicate warnings (#3895)
+        from agent_token_liveness import periodic_agent_token_loop  # noqa: PLC0415
+
+        asyncio.create_task(periodic_agent_token_loop())
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)

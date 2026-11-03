@@ -5813,6 +5813,44 @@
         "title": "RunBody",
         "type": "object"
       },
+      "RunJwtRequest": {
+        "properties": {
+          "principal_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "run_id": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": ["run_id", "principal_id"],
+        "title": "RunJwtRequest",
+        "type": "object"
+      },
+      "RunJwtResponse": {
+        "properties": {
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "jti": {
+            "title": "Jti",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": ["token", "expires_at", "jti"],
+        "title": "RunJwtResponse",
+        "type": "object"
+      },
       "ScanRequestBody": {
         "properties": {
           "dry_run": {
@@ -9562,6 +9600,32 @@
         "tags": ["admin"]
       }
     },
+    "/api/admin/token-health": {
+      "get": {
+        "description": "Agent token presence, validity and days to expiry per configured principal (#3895).",
+        "operationId": "get_token_health_api_admin_token_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Token Health",
+        "tags": ["admin"]
+      }
+    },
     "/api/admin/tokens": {
       "get": {
         "description": "List all active service tokens (hashes only).",
@@ -12732,6 +12796,76 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/jobs/releases": {
+      "get": {
+        "operationId": "get_job_releases_api_coordination_jobs_releases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Job Releases Api Coordination Jobs Releases Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Job Releases",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/messages": {
       "post": {
         "operationId": "post_message_api_coordination_messages_post",
@@ -12821,6 +12955,60 @@
           }
         ],
         "summary": "Post Message Ack",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/postman/reports": {
+      "get": {
+        "description": "Read-only: the postman runs in dry run only, so ``live`` is always False.",
+        "operationId": "get_postman_reports_api_coordination_postman_reports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Postman Reports Api Coordination Postman Reports Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Postman Reports",
         "tags": ["coordination"]
       }
     },
@@ -14031,6 +14219,72 @@
         ],
         "summary": "Fleet Orchestration Dispatch",
         "tags": ["orchestration"]
+      }
+    },
+    "/api/fleet/run-jwt": {
+      "post": {
+        "description": "Mint a short-lived, run-scoped JWT for a staff run executing on a spoke node.",
+        "operationId": "post_run_jwt_api_fleet_run_jwt_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Fleet-Node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Fleet-Node"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunJwtRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunJwtResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Run Jwt",
+        "tags": ["fleet"]
       }
     },
     "/api/fleet/run-token": {
@@ -21464,6 +21718,65 @@
         ],
         "summary": "Get Fleet Brief",
         "tags": ["fleet-brief"]
+      }
+    },
+    "/api/v1/fleet/flow-metrics": {
+      "get": {
+        "description": "Per-repo flow metrics: open PR age, merge cycle time, weekly issue burn-down.",
+        "operationId": "read_flow_metrics_api_v1_fleet_flow_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Flow Metrics Api V1 Fleet Flow Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Flow Metrics",
+        "tags": ["fleet-flow-metrics"]
       }
     },
     "/api/v1/fleet/friction": {

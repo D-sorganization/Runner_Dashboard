@@ -70,7 +70,6 @@ describe("BarbSidebar", () => {
     expect(composer).toHaveFocus();
   });
 
-
   it("does not stage attachments against the new-thread placeholder while restoring Barb", async () => {
     const thread = {
       id: "th-restored-barb",
