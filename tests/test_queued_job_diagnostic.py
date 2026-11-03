@@ -139,6 +139,24 @@ def test_api_findings_surface_in_analyze_snapshot() -> None:
     assert report["api_findings"] == ["runner-groups lookup returned 403"]
 
 
+def test_cli_min_queued_precondition(tmp_path: Path) -> None:
+    (tmp_path / "jobs.json").write_text("[]", encoding="utf-8")
+    (tmp_path / "runners.json").write_text("[]", encoding="utf-8")
+    assert (
+        diag.main(
+            [
+                "--queued-jobs",
+                str(tmp_path / "jobs.json"),
+                "--runners",
+                str(tmp_path / "runners.json"),
+                "--min-queued",
+                "1",
+            ]
+        )
+        == 2
+    )
+
+
 def test_bare_fleet_label_classified_as_self_hosted_not_github_hosted() -> None:
     runners = [
         {
