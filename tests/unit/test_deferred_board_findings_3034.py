@@ -298,9 +298,8 @@ def test_rd_5_leased_runners_active_lease_asserts_active_set(tmp_path: Path) -> 
 
     tra.test_leased_runners_active_lease(tmp_path)
     src = inspect.getsource(tra.test_leased_runners_active_lease)
-    assert "assert ra._leased_runners() == {\"runner-7\"}" in src
+    assert 'assert ra._leased_runners() == {"runner-7"}' in src
     assert "pass" not in src
-
 
 
 def test_rd_39_contract_and_capacity_modules_import_and_validate(tmp_path: Path) -> None:
