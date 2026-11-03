@@ -115,7 +115,19 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "andon": andon if isinstance(andon, dict) else {},
         "activity": activity,
         "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
+        "agent_tokens": _agent_token_rows(),
     }
+
+
+def _agent_token_rows() -> list[dict[str, Any]]:
+    """Agent token health rows (#3895); empty when the identity store is unavailable."""
+    try:
+        from agent_token_health import token_health_report  # noqa: PLC0415
+        from identity import identity_manager  # noqa: PLC0415
+
+        return token_health_report(identity_manager)
+    except Exception:
+        return []
 
 
 def render_prometheus_text(snapshot: dict[str, Any]) -> str:
@@ -240,6 +252,11 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
                 f"rd_andon_red_main_ttff_p90_minutes {float(am.get('red_main_ttff_p90_minutes', 0.0)):.2f}",
             ]
         )
+    agent_tokens = snapshot.get("agent_tokens") or []
+    if agent_tokens:
+        from agent_token_health import render_token_health_lines  # noqa: PLC0415
+
+        lines.extend(render_token_health_lines(agent_tokens))
     lines.append("")
     return "\n".join(lines)
 

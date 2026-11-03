@@ -9600,6 +9600,32 @@
         "tags": ["admin"]
       }
     },
+    "/api/admin/token-health": {
+      "get": {
+        "description": "Agent token presence, validity and days to expiry per configured principal (#3895).",
+        "operationId": "get_token_health_api_admin_token_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Token Health",
+        "tags": ["admin"]
+      }
+    },
     "/api/admin/tokens": {
       "get": {
         "description": "List all active service tokens (hashes only).",
