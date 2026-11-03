@@ -1226,3 +1226,21 @@ def test_self_hosted_jobs_do_not_run_playwright_install_with_deps_or_sudo() -> N
         "install-deps, or sudo inline. Use scripts/ci_install_playwright_browsers.sh. "
         f"Violations: {violations}"
     )
+
+
+def test_arm_cap_reconcile_pins_python_instead_of_probing_the_image() -> None:
+    """Issue #3891: ubuntu-latest moved to ubuntu-26.04, which has no python3.12/3.11 on PATH.
+
+    The reconcile step needs Python 3.11+ (datetime.UTC), so the job must install a pinned
+    interpreter with actions/setup-python before that step instead of relying on the image.
+    """
+    workflow = _load_workflow(_WORKFLOWS_DIR / "arm-cap-reconcile.yml")
+    steps = workflow["jobs"]["reconcile"]["steps"]
+    names = [step.get("name") or step.get("uses", "") for step in steps]
+    reconcile_index = names.index("Reconcile armed inventory")
+    setup_steps = [
+        step for step in steps[:reconcile_index] if str(step.get("uses", "")).startswith("actions/setup-python@")
+    ]
+
+    assert setup_steps, "arm-cap-reconcile must run actions/setup-python before reconciling"
+    assert str(setup_steps[0]["with"]["python-version"]) == "3.12"
