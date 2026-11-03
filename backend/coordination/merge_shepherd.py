@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
+import enum
 import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import Enum
 
-try:
-    from enum import StrEnum
-except ImportError:  # pragma: no cover (< 3.11 fallback)
 
-    class StrEnum(str, Enum):  # noqa: UP042
-        pass
+class _StrEnum(str, enum.Enum):  # noqa: UP042
+    """Python 3.10 compatible StrEnum."""
+
+    pass
 
 
 logger = logging.getLogger(__name__)
@@ -23,13 +22,13 @@ HOLD_LABELS = frozenset({"hold", "drain-hold", "do-not-merge", "dnm", "blocked",
 _HOLD_TITLE = re.compile(r"\[hold\]|\(held\)|\(hold\)|^\s*hold\b", re.IGNORECASE)
 
 
-class ShepherdAction(StrEnum):
+class ShepherdAction(_StrEnum):
     AUTO_ARM = "auto_arm"
     UPDATE_BRANCH = "update_branch"
     SKIP = "skip"
 
 
-class IneligibleReason(StrEnum):
+class IneligibleReason(_StrEnum):
     NOT_OPEN = "not_open"
     DRAFT = "draft"
     CONFLICT = "conflict"
