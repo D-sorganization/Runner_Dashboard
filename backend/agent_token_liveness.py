@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from agent_token_expiry import STATE_FILENAME as EXPIRY_STATE_FILENAME
 from agent_token_expiry import check_token_expiry, emit_expiry_warning
 from agent_token_health import token_health_report
+from agent_token_rotation import check_token_rotation
 
 if TYPE_CHECKING:
     from identity import IdentityManager
@@ -102,7 +103,7 @@ def check_token_liveness(
 
 
 async def periodic_agent_token_loop(interval: float = LIVENESS_INTERVAL_SECONDS) -> None:
-    """Hub background task: liveness every ``interval`` seconds, plus the (debounced) expiry warnings."""
+    """Hub background task: liveness and rotation every ``interval`` seconds, plus debounced expiry warnings."""
     from identity import identity_manager  # noqa: PLC0415
 
     config_dir = identity_manager.config_dir
@@ -115,4 +116,8 @@ async def periodic_agent_token_loop(interval: float = LIVENESS_INTERVAL_SECONDS)
                 await asyncio.to_thread(check, identity_manager, state_path=state)
             except Exception:  # noqa: BLE001 - the loop must outlive one bad check
                 log.exception("agent token check %s failed", check.__name__)
+        try:
+            await asyncio.to_thread(check_token_rotation, identity_manager)
+        except Exception:  # noqa: BLE001 - the loop must outlive one bad check
+            log.exception("agent token check %s failed", check_token_rotation.__name__)
         await asyncio.sleep(interval)
