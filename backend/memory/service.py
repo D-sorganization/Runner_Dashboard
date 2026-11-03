@@ -248,6 +248,7 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
             raise HTTPException(status_code=507, detail="assistant memory store size cap exceeded") from exc
         raise
 
+
 list_entries = list_guarded_entries
 
 _CLOSED_TASK_STATUSES: frozenset[str] = frozenset({"done", "closed", "cancelled", "complete", "completed"})
