@@ -6212,6 +6212,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/path-leases/acquire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acquire Lease */
+        post: operations["acquire_lease_api_v1_path_leases_acquire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/path-leases/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check Lease */
+        get: operations["check_lease_api_v1_path_leases_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/path-leases/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release Lease */
+        post: operations["release_lease_api_v1_path_leases_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/path-leases/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew Lease */
+        post: operations["renew_lease_api_v1_path_leases_renew_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/proposals": {
         parameters: {
             query?: never;
@@ -8892,6 +8960,17 @@ export interface components {
              */
             source: "script" | "qa-verifier";
         };
+        /** AcquireBody */
+        AcquireBody: {
+            /** Owner */
+            owner: string;
+            /** Repo */
+            repo: string;
+            /** Scope */
+            scope: string;
+            /** Ttl Seconds */
+            ttl_seconds: number;
+        };
         /**
          * ActionExecuteResponse
          * @description Result of executing an action.
@@ -9420,6 +9499,12 @@ export interface components {
             }[];
             /** Repo */
             repo: string;
+        };
+        /** CheckOut */
+        CheckOut: {
+            /** Held */
+            held: boolean;
+            lease: components["schemas"]["LeaseOut"] | null;
         };
         /**
          * ChildExecutionRecord
@@ -10280,6 +10365,21 @@ export interface components {
             machine: string;
             /** Ttl Seconds */
             ttl_seconds?: number | null;
+        };
+        /** LeaseOut */
+        LeaseOut: {
+            /** Acquired At */
+            acquired_at: number;
+            /** Expires At */
+            expires_at: number;
+            /** Lease Id */
+            lease_id: string;
+            /** Owner */
+            owner: string;
+            /** Repo */
+            repo: string;
+            /** Scope */
+            scope: string;
         };
         /**
          * LeaseRequest
@@ -11230,16 +11330,6 @@ export interface components {
              */
             version?: number | null;
         };
-        /**
-         * ReleaseBody
-         * @description ``release``: drop this session's presence.
-         */
-        ReleaseBody: {
-            /** Repo */
-            repo: string;
-            /** Session */
-            session: string;
-        };
         /** ReleaseRequest */
         ReleaseRequest: {
             /** Lease Id */
@@ -11259,6 +11349,15 @@ export interface components {
              * @default true
              */
             exclude_current: boolean;
+        };
+        /** RenewBody */
+        RenewBody: {
+            /** Lease Id */
+            lease_id: string;
+            /** Owner */
+            owner: string;
+            /** Ttl Seconds */
+            ttl_seconds: number;
         };
         /** ReportChildPayload */
         ReportChildPayload: {
@@ -13386,6 +13485,23 @@ export interface components {
             repo: string;
             /** Session */
             session: string;
+        };
+        /**
+         * ReleaseBody
+         * @description ``release``: drop this session's presence.
+         */
+        coordination__models__ReleaseBody: {
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+        };
+        /** ReleaseBody */
+        routers__path_leases__ReleaseBody: {
+            /** Lease Id */
+            lease_id: string;
+            /** Owner */
+            owner: string;
         };
     };
     responses: never;
@@ -15884,7 +16000,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ReleaseBody"];
+                "application/json": components["schemas"]["coordination__models__ReleaseBody"];
             };
         };
         responses: {
@@ -22749,6 +22865,135 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acquire_lease_api_v1_path_leases_acquire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcquireBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_lease_api_v1_path_leases_check_get: {
+        parameters: {
+            query: {
+                repo: string;
+                scope: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_lease_api_v1_path_leases_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["routers__path_leases__ReleaseBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renew_lease_api_v1_path_leases_renew_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenewBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseOut"];
                 };
             };
             /** @description Validation Error */

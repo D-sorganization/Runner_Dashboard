@@ -845,6 +845,10 @@ from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
 
+from routers import path_leases as _path_leases_router  # noqa: E402
+
+app.include_router(_path_leases_router.router)  # TTL path/issue leases (#3931 S1)
+
 from routers import flow_metrics as _flow_metrics_router  # noqa: E402
 
 app.include_router(_flow_metrics_router.router)  # PD-4 flow metrics (#3818)
