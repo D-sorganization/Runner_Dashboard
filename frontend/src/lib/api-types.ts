@@ -4951,6 +4951,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/schedule/migrate-off-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Migrate Schedule Off Host
+         * @description Drop retired/dead placements on ``source_host`` and re-home live roles (#3901).
+         */
+        post: operations["migrate_schedule_off_host_api_staff_schedule_migrate_off_host_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/schedule/placements/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Schedule Placement
+         * @description Pin a role's scheduled runs to a fleet machine (#3901).
+         */
+        put: operations["put_schedule_placement_api_staff_schedule_placements__role__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/schedule/toggle": {
         parameters: {
             query?: never;
@@ -10431,6 +10471,18 @@ export interface components {
             /** To */
             to: string;
         };
+        /** MigrateScheduleOffHostBody */
+        MigrateScheduleOffHostBody: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Source Host */
+            source_host: string;
+            /** Targets */
+            targets: string[];
+        };
         /** MintTokenRequest */
         MintTokenRequest: {
             /**
@@ -11492,6 +11544,11 @@ export interface components {
             dry_run: boolean;
             /** Repo */
             repo: string;
+        };
+        /** SchedulePlacementBody */
+        SchedulePlacementBody: {
+            /** Host */
+            host: string;
         };
         /** ScheduleToggleBody */
         ScheduleToggleBody: {
@@ -20329,6 +20386,78 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LeaderLeaseBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migrate_schedule_off_host_api_staff_schedule_migrate_off_host_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MigrateScheduleOffHostBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_schedule_placement_api_staff_schedule_placements__role__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchedulePlacementBody"];
             };
         };
         responses: {

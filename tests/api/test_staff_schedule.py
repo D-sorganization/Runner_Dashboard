@@ -818,16 +818,26 @@ def test_scheduler_tick_skips_when_schedule_home_is_elsewhere(
 
 
 @pytest.mark.unit
-def test_schedule_route_includes_inventory_and_role_host(
+def test_schedule_route_includes_inventory_host_and_placement_guard(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     placements_file = tmp_path / "placements.json"
     monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
     body = client.get("/api/staff/schedule").json()
     assert body["inventory"]
-    assert "placements" in body
     nw = next(row for row in body["roles"] if row["role"] == "night-watch")
     assert nw["host"]
+    reg = {
+        "version": 1,
+        "machines": [{"name": "hub-a", "staff": {"roles_enabled": ["maintenance"]}}],
+    }
+    monkeypatch.setattr("machine_registry.load_machine_registry", lambda: reg)
+    denied = client.put(
+        "/api/staff/schedule/placements/night-watch",
+        json={"host": "hub-a"},
+        headers=_XHR,
+    )
+    assert denied.status_code == 422
 
 
 def test_scheduled_repo_rotates_one_repo_per_day() -> None:
