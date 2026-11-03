@@ -9,7 +9,6 @@ liveness alert (slice 4). No alert, log line or state entry carries a token.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
 log = logging.getLogger("dashboard.agent_token_expiry")
 
 WARN_THRESHOLDS_DAYS = (14, 3)
-CHECK_INTERVAL_SECONDS = 3600.0
 STATE_FILENAME = "agent_token_expiry_warnings.json"
 
 
@@ -68,14 +66,18 @@ def due_warnings(report: list[dict[str, Any]], sent: set[str]) -> list[dict[str,
 
 
 def emit_expiry_warning(alert: dict[str, Any]) -> None:
-    """Send one warning to the fleet event log, the escalation push topic and the sentinel Barb inbox."""
+    """Send one alert to the fleet event log, the escalation push topic and the sentinel Barb inbox.
+
+    Severity comes from ``alert["severity"]`` (default ``warning``); the liveness
+    alert (slice 4) reuses this path with ``critical``.
+    """
     import push  # noqa: PLC0415
     from fleet_events import FleetEvent, get_event_store  # noqa: PLC0415
 
     get_event_store().record(
         FleetEvent(
             ts=int(time.time() * 1000),
-            severity="warning",
+            severity=alert.get("severity", "warning"),
             kind="watchdog",
             title=alert["title"],
             detail=alert["detail"],
@@ -117,16 +119,3 @@ def check_token_expiry(
     if alerts:
         state_path.write_text(json.dumps(sorted(sent)), encoding="utf-8")
     return alerts
-
-
-async def periodic_token_expiry_loop(interval: float = CHECK_INTERVAL_SECONDS) -> None:
-    """Hub background task: check agent token expiry every ``interval`` seconds."""
-    from identity import identity_manager  # noqa: PLC0415
-
-    state_path = identity_manager.config_dir / STATE_FILENAME
-    while True:
-        try:
-            await asyncio.to_thread(check_token_expiry, identity_manager, state_path=state_path)
-        except Exception:  # noqa: BLE001 - the loop must outlive one bad check
-            log.exception("agent token expiry check failed")
-        await asyncio.sleep(interval)
