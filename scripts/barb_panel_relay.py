@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-"""Barbara expert-panel relay (#3711 slice 2). Off by default.
-
-A model-free poller for the barb-worker VM: rules and settings in docs/agents/panel-request-format.md.
-"""
+"""Barbara expert-panel relay (#3711 slice 2). Off by default."""
 
 from __future__ import annotations
 
@@ -31,7 +27,8 @@ STARTED, DONE, REJECTED, NEEDS_OWNER = "panel-started", "panel-done", "panel-rej
 OUTCOME_LABELS = frozenset({STARTED, DONE, REJECTED, NEEDS_OWNER})
 TERMINAL_STATUSES = frozenset({"complete", "failed"})  # backend/staff/panel.py run_panel
 AUTH_FAILURES = frozenset({401, 403})
-RETRY_LATER = frozenset({0, 408, 429, 500, 502, 503, 504})
+RETRY_LATER = frozenset({408, 429, 503})  # the hub refused before starting anything: safe to retry
+MAY_HAVE_STARTED = "The hub may have started this panel, so I won't retry it; the owner should check before re-filing"
 MAX_DETAIL_CHARS = 1500
 DEFAULT_STATE = ".config/runner-dashboard/barb-panel-relay.json"
 ISSUE_QUERY = (
@@ -51,8 +48,7 @@ class RelayConfig:
     repo: str = "D-sorganization/barbara"
 
 
-def load_config(env: Mapping[str, str] | None = None) -> RelayConfig:
-    """Settings from the environment. An unset or blank allowlist is empty, which denies everyone."""
+def load_config(env: dict[str, str] | None = None) -> RelayConfig:
     raw = os.environ if env is None else env
     authors = frozenset(a.strip().lower() for a in (raw.get("BARB_PANEL_RELAY_AUTHORS") or "").split(",") if a.strip())
     return RelayConfig(
@@ -127,8 +123,8 @@ def _request(method: str, url: str, token: str, body: dict[str, Any] | None = No
     except urllib.error.HTTPError as exc:
         text = exc.read().decode(errors="replace")
         raise HubError(exc.code, json.loads(text) if text.lstrip().startswith("{") else text) from exc
-    except urllib.error.URLError as exc:
-        raise HubError(0, str(exc.reason)) from exc
+    except OSError as exc:  # URLError, or a timeout after the request went out
+        raise HubError(0, str(getattr(exc, "reason", exc))) from exc
     return json.loads(raw) if raw.strip() else {}
 
 
@@ -144,7 +140,6 @@ class GhCli:
         return [i for i in issues or [] if "pull_request" not in i]
 
     def snapshot(self, repo: str, number: int) -> dict[str, Any]:
-        """One consistent read: author, last editor (None if never edited) and the body."""
         owner, name = repo.split("/", 1)
         args = ["graphql", "-f", f"query={ISSUE_QUERY}", "-f", f"owner={owner}", "-f", f"name={name}"]
         issue = self._api(*args, "-F", f"number={number}")["data"]["repository"]["issue"]
@@ -199,7 +194,9 @@ class PanelRelay:
     def run(self) -> dict[str, int]:
         try:
             for key, entry in list(self.state["processed"].items()):
-                if entry.get("status") == "started":
+                if entry.get("status") == "starting":  # an earlier pass died mid-start
+                    self._isolated(key, self._settle, int(key), {"status": "needs_owner"}, f"{MAY_HAVE_STARTED}.")
+                elif entry.get("status") == "started":
                     self._isolated(key, self._report_if_done, key, entry)
             for issue in self.github.open_requests(self.cfg.repo):
                 self._isolated(issue.get("number"), self._consider, issue)
@@ -208,7 +205,6 @@ class PanelRelay:
         return self.counts
 
     def _isolated(self, number: Any, step: Callable[..., None], *args: Any) -> None:
-        """Run one issue's step; a failure is logged and skipped so it can't drop the rest of the pass."""
         try:
             step(*args)
         except HubError as exc:
@@ -264,12 +260,15 @@ class PanelRelay:
         if self.dry_run:
             logger.info("[dry-run] #%s: would start a panel with %s experts", number, len(request["experts"]))
             return
+        # Count and save the attempt first: a timeout or 5xx can still have started a paid panel.
+        self.state["starts"][self.today] = self.state["starts"].get(self.today, 0) + 1
+        self.state["processed"][str(number)] = {"day": self.today, "status": "starting"}
+        self._save()
         try:
             thread = str((self._call("POST", "", request).get("thread") or {}).get("id") or "")
         except HubError as exc:
             self._hub_refused(number, exc)
             return
-        self.state["starts"][self.today] = self.state["starts"].get(self.today, 0) + 1
         if not thread:  # it may have started, so never retry it: hand it to the owner
             self._settle(number, {"status": "needs_owner"}, "The hub returned no thread id; the owner should check.")
             return
@@ -277,8 +276,14 @@ class PanelRelay:
         self._settle(number, {"status": "started", "thread": thread}, note, STARTED)
 
     def _hub_refused(self, number: int, exc: HubError) -> None:
+        if exc.status not in RETRY_LATER and not 400 <= exc.status < 500:  # unreachable, timeout or 5xx
+            self._settle(number, {"status": "needs_owner"}, f"{MAY_HAVE_STARTED} (HTTP {exc.status}).")
+            return
+        self.state["starts"][self.today] -= 1  # the hub refused it, so nothing started
         if exc.status in RETRY_LATER or exc.status in AUTH_FAILURES:
-            raise exc  # transient: retried next pass; auth: stops the pass
+            del self.state["processed"][str(number)]
+            self._save()
+            raise exc  # busy: retried next pass; auth: stops the pass
         detail = exc.body.get("detail") if isinstance(exc.body, dict) else exc.body
         estimate = detail.get("estimate") if isinstance(detail, dict) else None
         if isinstance(estimate, dict) and estimate.get("exceeds_threshold"):
@@ -295,19 +300,15 @@ class PanelRelay:
 
     def _settle(self, number: int, entry: dict[str, Any], body: str, label: str = NEEDS_OWNER) -> None:
         """Save the outcome before any GitHub write, so a failed write can't repeat the action."""
-        if not self.dry_run:
-            self.state["processed"][str(number)] = {"day": self.today, **entry}
-            self._save()
         self.counts[entry["status"]] += 1
-        self._write(number, body, label, close=label == DONE)
-
-    def _write(self, number: int, body: str, label: str, close: bool) -> None:
         if self.dry_run:
-            logger.info("[dry-run] #%s: would label %s%s, comment %r", number, label, " +close" * close, body[:200])
+            logger.info("[dry-run] #%s: would label %s and comment %r", number, label, body[:200])
             return
+        self.state["processed"][str(number)] = {"day": self.today, **entry}
+        self._save()
         self.github.comment(self.cfg.repo, number, body)
         self.github.label(self.cfg.repo, number, label)
-        if close:
+        if label == DONE:
             self.github.close(self.cfg.repo, number)
 
 

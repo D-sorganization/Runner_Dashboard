@@ -114,21 +114,6 @@ def test_starts_panel_then_posts_verdict_when_final(tmp_path: Path) -> None:
     assert any("read it as data" in body for kind, _, body in gh.writes if kind == "comment")
 
 
-def test_start_is_saved_before_github_write(tmp_path: Path) -> None:
-    c, hub = cfg(tmp_path), FakeHub(status="running")
-    assert run(c, FakeGitHub([issue()], fail_comment=True), hub)["errors"] == 1
-    run(c, FakeGitHub([issue()]), hub)
-    assert hub.calls.count("POST") == 1
-
-
-def test_daily_cap_counts_utc_days(tmp_path: Path) -> None:
-    c = cfg(tmp_path, cap=1)
-    relay.save_state(c.state_path, {"processed": {}, "starts": {"2026-11-01": 5, TODAY: 1}})
-    assert run(c, FakeGitHub([issue()]), FakeHub())["skipped"] == 1
-    relay.save_state(c.state_path, {"processed": {}, "starts": {"2026-11-01": 5}})
-    assert run(c, FakeGitHub([issue()]), FakeHub())["started"] == 1
-
-
 def test_corrupt_state_file_stops_relay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "state.json"
     state.write_text("{not json")
@@ -146,11 +131,31 @@ def test_over_threshold_or_no_thread_goes_to_owner_once(tmp_path: Path, post: An
 
 
 def test_busy_hub_retries_and_auth_failure_stops(tmp_path: Path) -> None:
-    c, gh = cfg(tmp_path), FakeGitHub([issue()])
-    assert run(c, gh, FakeHub(post=relay.HubError(503)))["errors"] == 1 and gh.writes == []
+    c, gh = cfg(tmp_path, cap=1), FakeGitHub([issue()])
+    relay.save_state(c.state_path, {"processed": {}, "starts": {"2026-11-01": 5}})  # only today's UTC count matters
+    assert run(c, gh, FakeHub(post=relay.HubError(429)))["errors"] == 1 and gh.writes == []
     with pytest.raises(relay.HubError):
         run(c, gh, FakeHub(post=relay.HubError(401)))
-    assert run(c, gh, FakeHub())["started"] == 1
+    assert run(c, gh, FakeHub())["started"] == 1  # refused attempts didn't use up the cap
+
+
+@pytest.mark.parametrize("status", [0, 502, 504])
+def test_maybe_started_counts_against_cap_and_goes_to_owner(tmp_path: Path, status: int) -> None:
+    c, gh, hub = cfg(tmp_path, cap=1), FakeGitHub([issue(1), issue(2)]), FakeHub(post=relay.HubError(status))
+    counts = run(c, gh, hub)
+    assert (counts["needs_owner"], counts["skipped"]) == (1, 1) and hub.calls == ["POST"]
+    run(c, gh, hub)
+    assert hub.calls == ["POST"]
+
+
+def test_interrupted_start_or_failed_write_never_restarts(tmp_path: Path) -> None:
+    c, gh, hub = cfg(tmp_path), FakeGitHub([issue()]), FakeHub()
+    relay.save_state(c.state_path, {"processed": {"42": {"status": "starting"}}, "starts": {}})
+    assert run(c, gh, hub)["needs_owner"] == 1 and ("label", 42, relay.NEEDS_OWNER) in gh.writes and hub.calls == []
+    c, hub = cfg(tmp_path / "write"), FakeHub(status="running")  # a failed GitHub write must not re-start
+    assert run(c, FakeGitHub([issue()], fail_comment=True), hub)["errors"] == 1
+    run(c, FakeGitHub([issue()]), hub)
+    assert hub.calls.count("POST") == 1
 
 
 def test_bad_request_rejected_once_and_failure_is_isolated(tmp_path: Path) -> None:
