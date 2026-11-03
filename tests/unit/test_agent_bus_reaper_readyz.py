@@ -10,7 +10,7 @@ from agent_bus import reaper
 from agent_bus.reaper_health import node_reap_gate
 from agent_bus.reaper_stats import reset_reaper_stats_for_tests, snapshot
 
-_PEERS = {"Brick": "http://brick:8321"}
+_PEERS = {"Node-B": "http://node-b:8321"}
 
 
 def _stale(session_id: str, node: str) -> MagicMock:
@@ -41,12 +41,12 @@ def _gate(*, local: bool = True, peer: bool = True, calls: list[str] | None = No
         seen.append(url)
         return peer
 
-    return node_reap_gate(local_machine="Desk", peers=_PEERS, local_ready=local_ready, peer_ready=peer_ready)
+    return node_reap_gate(local_machine="Hub-A", peers=_PEERS, local_ready=local_ready, peer_ready=peer_ready)
 
 
 @pytest.mark.unit
 def test_unhealthy_remote_node_retains_session_and_claims(fake_store: MagicMock) -> None:
-    fake_store.list_stale_principals.return_value = [_stale("sess-remote", "brick")]
+    fake_store.list_stale_principals.return_value = [_stale("sess-remote", "node-b")]
 
     result = reaper.reap_once(allows_reap=_gate(peer=False))
 
@@ -58,7 +58,7 @@ def test_unhealthy_remote_node_retains_session_and_claims(fake_store: MagicMock)
 
 @pytest.mark.unit
 def test_healthy_remote_node_reaps_as_before(fake_store: MagicMock) -> None:
-    fake_store.list_stale_principals.return_value = [_stale("sess-remote", "Brick")]
+    fake_store.list_stale_principals.return_value = [_stale("sess-remote", "Node-B")]
 
     result = reaper.reap_once(allows_reap=_gate(peer=True))
 
@@ -69,7 +69,7 @@ def test_healthy_remote_node_reaps_as_before(fake_store: MagicMock) -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("node", ["Desk", "desk", "local"])
+@pytest.mark.parametrize("node", ["Hub-A", "hub-a", "local"])
 def test_local_node_uses_local_readyz_not_peer(fake_store: MagicMock, node: str) -> None:
     fake_store.list_stale_principals.return_value = [_stale("sess-local", node)]
     calls: list[str] = []
@@ -94,12 +94,12 @@ def test_unknown_node_keeps_existing_reap_behaviour(fake_store: MagicMock) -> No
 
 @pytest.mark.unit
 def test_readyz_checked_once_per_node_per_pass(fake_store: MagicMock) -> None:
-    fake_store.list_stale_principals.return_value = [_stale("a", "Brick"), _stale("b", "brick")]
+    fake_store.list_stale_principals.return_value = [_stale("a", "Node-B"), _stale("b", "node-b")]
     calls: list[str] = []
 
     reaper.reap_once(allows_reap=_gate(peer=False, calls=calls))
 
-    assert calls == ["http://brick:8321"]
+    assert calls == ["http://node-b:8321"]
     assert snapshot()["deferred_sessions"] == 2
 
 
