@@ -132,7 +132,8 @@ def _parse_git_version(stdout: str) -> tuple[int, int, int] | None:
     parts = version_token.split(".")
     if len(parts) < 2 or not parts[0].isdigit() or not parts[1].isdigit():
         return None
-    patch = parts[2] if len(parts) > 2 and parts[2].isdigit() else 0
+    patch_raw = parts[2] if len(parts) > 2 else "0"
+    patch = int(patch_raw) if patch_raw.isdigit() else 0
     return int(parts[0]), int(parts[1]), patch
 
 
