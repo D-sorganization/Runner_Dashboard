@@ -8,11 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
-import subprocess
 import uuid
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 from typing import TypedDict
 
@@ -26,6 +23,13 @@ from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
+from staff.runner_ops_worktree_bootstrap import (  # noqa: F401  re-exported for existing importers (#3913)
+    _PYTHON_VERSION_SNIPPET,
+    _SUBMODULE_ATTEMPTS,
+    WorktreeBootstrapPreflight,
+    resolve_repo_pre_pr_entrypoint,
+    run_worktree_bootstrap_preflight,
+)
 from staff.runner_stream import (  # noqa: F401  re-exported for existing importers (#2803)
     RESULT_NUDGE_PROMPT,
     PumpResult,
@@ -34,7 +38,6 @@ from staff.runner_stream import (  # noqa: F401  re-exported for existing import
     pump_nudge_output,
     pump_output,
 )
-from staff.runner_venv import ensure_staff_pytest_environment
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import mint_run_token
 
@@ -46,130 +49,6 @@ _GITHUB_AUTH_REMEDIATION = (
     "are set so staff runs can mint tokens via POST /api/fleet/run-token on the hub. "
     "STAFF_ALLOW_OPERATOR_TOKEN=1 is hub-only and does not apply on fleet nodes."
 )
-
-_PYTHON_VERSION_SNIPPET = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
-
-
-@dataclass(frozen=True)
-class WorktreeBootstrapPreflight:
-    ok: bool
-    attention: str = ""
-    python_executable: str = ""
-    pre_pr_entrypoint: str = ""
-    venv_dir: str = ""
-
-
-def resolve_repo_pre_pr_entrypoint(worktree: Path, *, python_executable: str = "python3") -> str | None:
-    """Repo-local pre-PR check command for prompts and diagnostics (#2796).
-
-    Preference order is specific -> generic. ``scripts.pre_pr`` is RM-only, so
-    other repositories need their own local entry point.
-    """
-    entries = (
-        ("scripts/pre_pr.py", f"{python_executable} -m scripts.pre_pr"),
-        ("shared_scripts/pre_pr.py", f"{python_executable} shared_scripts/pre_pr.py"),
-        ("scripts/verify_merge_gates.py", f"{python_executable} scripts/verify_merge_gates.py --repository-root ."),
-        ("scripts/agent-check", f"{python_executable} scripts/agent-check"),
-    )
-    for rel, command in entries:
-        if (worktree / rel).is_file():
-            return command
-    return None
-
-
-_Run = Callable[..., subprocess.CompletedProcess[str]]
-_Which = Callable[[str], str | None]
-
-
-def _run_checked(
-    run: _Run,
-    worktree: Path,
-    command: list[str],
-    *,
-    timeout: int = 300,
-) -> subprocess.CompletedProcess[str]:
-    return run(
-        command,
-        cwd=str(worktree),
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=timeout,
-    )
-
-
-def _python_version(worktree: Path, python_executable: str, run: _Run) -> tuple[int, int] | None:
-    proc = _run_checked(run, worktree, [python_executable, "-c", _PYTHON_VERSION_SNIPPET], timeout=30)
-    if proc.returncode != 0:
-        return None
-    raw = (proc.stdout or "").strip()
-    parts = raw.split(".", 1)
-    if len(parts) != 2 or not all(p.isdigit() for p in parts):
-        return None
-    return int(parts[0]), int(parts[1])
-
-
-def _select_python311_or_newer(worktree: Path, run: _Run, which: _Which) -> str | None:
-    seen: set[str] = set()
-    for candidate in ("python3.11", "python3", "python"):
-        executable = (which(candidate) or "").strip()
-        if not executable or executable in seen:
-            continue
-        seen.add(executable)
-        version = _python_version(worktree, executable, run)
-        if version is not None and version >= (3, 11):
-            return executable
-    return None
-
-
-def run_worktree_bootstrap_preflight(
-    worktree: Path,
-    *,
-    role: str = "",
-    run: _Run = subprocess.run,
-    which: _Which = shutil.which,
-) -> WorktreeBootstrapPreflight:
-    """Bootstrap checks before a staff run starts coding in a worktree.
-
-    Ensures submodules are populated, Python is >=3.11, pytest is available,
-    and the repository has a local pre-PR entry point.
-    """
-    if (worktree / ".gitmodules").is_file():
-        submodule = _run_checked(run, worktree, ["git", "submodule", "update", "--init", "--recursive"], timeout=900)
-        if submodule.returncode != 0:
-            detail = (submodule.stderr or submodule.stdout or "unknown git submodule error").strip()
-            return WorktreeBootstrapPreflight(ok=False, attention=f"submodule init failed: {detail}")
-
-    python_executable = _select_python311_or_newer(worktree, run, which)
-    if not python_executable:
-        return WorktreeBootstrapPreflight(
-            ok=False,
-            attention="python 3.11+ is required in the worktree environment, but no compatible interpreter was found",
-        )
-
-    ok, target_python, attention, venv_dir = ensure_staff_pytest_environment(
-        worktree, python_executable, role=role, run=run
-    )
-    if not ok:
-        return WorktreeBootstrapPreflight(
-            ok=False, attention=attention, python_executable=target_python, venv_dir=venv_dir
-        )
-
-    pre_pr = resolve_repo_pre_pr_entrypoint(worktree, python_executable=target_python)
-    if not pre_pr:
-        return WorktreeBootstrapPreflight(
-            ok=False,
-            attention=(
-                "no repository pre-PR entry point found (checked scripts/pre_pr.py, "
-                "shared_scripts/pre_pr.py, scripts/verify_merge_gates.py and scripts/agent-check)"
-            ),
-            python_executable=target_python,
-            venv_dir=venv_dir,
-        )
-
-    return WorktreeBootstrapPreflight(
-        ok=True, python_executable=target_python, pre_pr_entrypoint=pre_pr, venv_dir=venv_dir
-    )
 
 
 def ensure_worktree_bootstrap_ready(
@@ -196,9 +75,10 @@ def ensure_worktree_bootstrap_ready(
     store.update_run(
         rec.id,
         status="failed",
-        failure_class="environment_error",
-        retryable=False,
-        remediation="Worktree bootstrap preflight failed; fix environment prerequisites before re-dispatching.",
+        failure_class=result.failure_class or "environment_error",
+        retryable=result.retryable,
+        remediation=result.remediation
+        or "Worktree bootstrap preflight failed; fix environment prerequisites before re-dispatching.",
         error=result.attention,
         ended_at=_now(),
     )
