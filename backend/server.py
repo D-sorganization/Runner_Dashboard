@@ -3014,6 +3014,11 @@ async def _startup() -> None:
 
     asyncio.create_task(periodic_provider_auth_evening_loop(lambda: get_runner().machine))
 
+    if MACHINE_ROLE == "hub":  # agent token files live on the hub; nodes would duplicate warnings (#3895)
+        from agent_token_expiry import periodic_token_expiry_loop  # noqa: PLC0415
+
+        asyncio.create_task(periodic_token_expiry_loop())
+
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
 

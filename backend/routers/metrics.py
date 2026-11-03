@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 from identity import Principal, require_scope
 
+log = logging.getLogger("dashboard.metrics")
 router = APIRouter(tags=["metrics"])
 _METRICS_READ = require_scope("staff.read")
 PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -126,7 +128,8 @@ def _agent_token_rows() -> list[dict[str, Any]]:
         from identity import identity_manager  # noqa: PLC0415
 
         return token_health_report(identity_manager)
-    except Exception:
+    except Exception:  # noqa: BLE001 - metrics must render without the identity store
+        log.warning("agent token health unavailable for /api/metrics", exc_info=True)
         return []
 
 

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 from agent_principal_defaults import agent_token_files, configured_agent_ids
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from identity import IdentityManager
 
 _DAY_SECONDS = 86400.0
@@ -22,6 +24,15 @@ _DAY_SECONDS = 86400.0
 def _expires_at(manager: IdentityManager, raw: str) -> float | None:
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
     return next((t.expires_at for t in manager.tokens if t.token_hash == token_hash), None)
+
+
+def _read_token(path: Path) -> tuple[str, str | None]:
+    """The stripped token text, or a failure reason (empty or unreadable file)."""
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return "", "token_file_unreadable"
+    return raw, None if raw else "token_file_empty"
 
 
 def _check(manager: IdentityManager, agent_id: str, raw: str) -> tuple[bool, str | None]:
@@ -55,10 +66,10 @@ def token_health_report(manager: IdentityManager, now: float | None = None) -> l
         }
         path = files.get(agent_id)
         if path is not None and path.is_file():
-            raw = path.read_text(encoding="utf-8").strip()
             row["present"] = True
-            if not raw:
-                row["reason"] = "token_file_empty"
+            raw, failure = _read_token(path)
+            if failure is not None:
+                row["reason"] = failure
             else:
                 row["valid"], row["reason"] = _check(manager, agent_id, raw)
                 expires_at = _expires_at(manager, raw)
