@@ -110,6 +110,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/token-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Token Health
+         * @description Agent token presence, validity and days to expiry per configured principal (#3895).
+         */
+        get: operations["get_token_health_api_admin_token_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tokens": {
         parameters: {
             query?: never;
@@ -1480,6 +1500,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/jobs/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job Releases */
+        get: operations["get_job_releases_api_coordination_jobs_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/messages": {
         parameters: {
             query?: never;
@@ -1508,6 +1545,26 @@ export interface paths {
         put?: never;
         /** Post Message Ack */
         post: operations["post_message_ack_api_coordination_messages_ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coordination/postman/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Postman Reports
+         * @description Read-only: the postman runs in dry run only, so ``live`` is always False.
+         */
+        get: operations["get_postman_reports_api_coordination_postman_reports_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2326,6 +2383,26 @@ export interface paths {
          * @description Dispatch a workflow to a specific machine target.
          */
         post: operations["fleet_orchestration_dispatch_api_fleet_orchestration_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fleet/run-jwt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Run Jwt
+         * @description Mint a short-lived, run-scoped JWT for a staff run executing on a spoke node.
+         */
+        post: operations["post_run_jwt_api_fleet_run_jwt_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5562,6 +5639,26 @@ export interface paths {
         };
         /** Get Fleet Brief */
         get: operations["get_fleet_brief_api_v1_fleet_brief_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fleet/flow-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Flow Metrics
+         * @description Per-repo flow metrics: open PR age, merge cycle time, weekly issue burn-down.
+         */
+        get: operations["read_flow_metrics_api_v1_fleet_flow_metrics_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -11352,6 +11449,22 @@ export interface components {
             /** Work Item Id */
             work_item_id?: string | null;
         };
+        /** RunJwtRequest */
+        RunJwtRequest: {
+            /** Principal Id */
+            principal_id: string;
+            /** Run Id */
+            run_id: string;
+        };
+        /** RunJwtResponse */
+        RunJwtResponse: {
+            /** Expires At */
+            expires_at: number;
+            /** Jti */
+            jti: string;
+            /** Token */
+            token: string;
+        };
         /** ScanRequestBody */
         ScanRequestBody: {
             /**
@@ -13337,6 +13450,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_token_health_api_admin_token_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
@@ -15496,6 +15629,40 @@ export interface operations {
             };
         };
     };
+    get_job_releases_api_coordination_jobs_releases_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_message_api_coordination_messages_post: {
         parameters: {
             query?: never;
@@ -15543,6 +15710,39 @@ export interface operations {
                 "application/json": components["schemas"]["coordination__models__AckBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_postman_reports_api_coordination_postman_reports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -16532,6 +16732,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    post_run_jwt_api_fleet_run_jwt_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Fleet-Node"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunJwtRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunJwtResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -21172,6 +21407,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_flow_metrics_api_v1_fleet_flow_metrics_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

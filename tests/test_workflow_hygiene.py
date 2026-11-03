@@ -486,7 +486,33 @@ def test_redundant_pr_closer_f7_contract() -> None:
         close_pr=lambda _r, n: closed.append(n),
         comment=lambda *_: None,
     )
-    assert closed == [11]
+    assert closed == []
+    closed.clear()
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[
+            _redundant_pr_payload(20, "Closes #99", "jules", head_ref="jules/lane-a", head_sha="abc"),
+            _redundant_pr_payload(21, "Closes #99", "jules", head_ref="jules/lane-a", head_sha="abc"),
+        ],
+        dry_run=False,
+        agent_filter=None,
+        close_pr=lambda _r, n: closed.append(n),
+        comment=lambda *_: None,
+    )
+    assert closed == [21]
+    closed.clear()
+    run_closer(
+        "org/Runner_Dashboard",
+        pulls=[
+            _redundant_pr_payload(30, "Closes #99", "codex", head_ref="codex/a"),
+            _redundant_pr_payload(31, "Closes #99\nCloses #100", "codex", head_ref="codex/b"),
+        ],
+        dry_run=False,
+        agent_filter=None,
+        close_pr=lambda _r, n: closed.append(n),
+        comment=lambda *_: None,
+    )
+    assert closed == []
     import os
 
     os.environ.pop("GH_TOKEN", None)
@@ -495,16 +521,27 @@ def test_redundant_pr_closer_f7_contract() -> None:
         require_github_token()
 
 
-def _redundant_pr_payload(number: int, body: str, agent: str) -> dict:
+def _redundant_pr_payload(
+    number: int,
+    body: str,
+    agent: str,
+    *,
+    head_ref: str | None = None,
+    head_sha: str | None = None,
+) -> dict:
     login = "human" if agent == "user" else f"{agent}-bot"
     labels = [{"name": f"agent:{agent}"}] if agent != "user" else []
+    branch = head_ref or f"{agent}/lane-{number}"
+    head: dict[str, str] = {"ref": branch}
+    if head_sha:
+        head["sha"] = head_sha
     return {
         "number": number,
         "title": "",
         "body": body,
         "labels": labels,
         "user": {"login": login, "type": "User" if agent == "user" else "Bot"},
-        "head": {"ref": f"{agent}/lane"},
+        "head": head,
     }
 
 
@@ -1189,3 +1226,21 @@ def test_self_hosted_jobs_do_not_run_playwright_install_with_deps_or_sudo() -> N
         "install-deps, or sudo inline. Use scripts/ci_install_playwright_browsers.sh. "
         f"Violations: {violations}"
     )
+
+
+def test_arm_cap_reconcile_pins_python_instead_of_probing_the_image() -> None:
+    """Issue #3891: ubuntu-latest moved to ubuntu-26.04, which has no python3.12/3.11 on PATH.
+
+    The reconcile step needs Python 3.11+ (datetime.UTC), so the job must install a pinned
+    interpreter with actions/setup-python before that step instead of relying on the image.
+    """
+    workflow = _load_workflow(_WORKFLOWS_DIR / "arm-cap-reconcile.yml")
+    steps = workflow["jobs"]["reconcile"]["steps"]
+    names = [step.get("name") or step.get("uses", "") for step in steps]
+    reconcile_index = names.index("Reconcile armed inventory")
+    setup_steps = [
+        step for step in steps[:reconcile_index] if str(step.get("uses", "")).startswith("actions/setup-python@")
+    ]
+
+    assert setup_steps, "arm-cap-reconcile must run actions/setup-python before reconciling"
+    assert str(setup_steps[0]["with"]["python-version"]) == "3.12"

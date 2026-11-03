@@ -23,6 +23,53 @@ describe("Composer conversation transitions", () => {
     localStorage.clear();
   });
 
+  it("records a passively observed thread without focusing on a same-thread rerender", () => {
+    const onSend = vi.fn();
+    const view = render(
+      <>
+        <button type="button">Keep focus</button>
+        <Composer threadId="new" focusOnThreadChange={false} roles={MOCK_ROLES} onSendMessage={onSend} />
+      </>,
+    );
+    const retainedFocus = screen.getByRole("button", { name: "Keep focus" });
+    retainedFocus.focus();
+
+    view.rerender(
+      <>
+        <button type="button">Keep focus</button>
+        <Composer threadId="restored" focusOnThreadChange={false} roles={MOCK_ROLES} onSendMessage={onSend} />
+      </>,
+    );
+    expect(retainedFocus).toHaveFocus();
+
+    view.rerender(
+      <>
+        <button type="button">Keep focus</button>
+        <Composer threadId="restored" focusOnThreadChange roles={MOCK_ROLES} onSendMessage={onSend} />
+      </>,
+    );
+    expect(retainedFocus).toHaveFocus();
+  });
+
+  it("focuses the composer when an explicit thread switch is committed", async () => {
+    const onSend = vi.fn();
+    const view = render(
+      <>
+        <button type="button">Keep focus</button>
+        <Composer threadId="restored" focusOnThreadChange={false} roles={MOCK_ROLES} onSendMessage={onSend} />
+      </>,
+    );
+    screen.getByRole("button", { name: "Keep focus" }).focus();
+
+    view.rerender(
+      <>
+        <button type="button">Keep focus</button>
+        <Composer threadId="explicit" focusOnThreadChange roles={MOCK_ROLES} onSendMessage={onSend} />
+      </>,
+    );
+    await waitFor(() => expect(screen.getByPlaceholderText(/message barb/i)).toHaveFocus());
+  });
+
   it("preserves a handoff draft in StrictMode when completion changes the thread", () => {
     const { rerender } = render(
       <React.StrictMode>

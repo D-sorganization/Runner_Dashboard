@@ -27,6 +27,7 @@ import type {
   ProposalItem,
   ProposalsResponse,
   CreateProposalPayload,
+  FlowMetricsResponse,
   SessionsResponse,
   StaffRunSummary,
   WriteReceipt,
@@ -34,6 +35,7 @@ import type {
 
 export const PRIORITIES_BASE = "/api/priorities";
 export const COORDINATION_BASE = "/api/coordination";
+export const FLOW_METRICS_BASE = "/api/v1/fleet/flow-metrics";
 export const PROPOSALS_BASE = "/api/proposals";
 export const GITHUB_ORG = "D-sorganization";
 export const NOT_AVAILABLE = "Not available on this node.";
@@ -64,6 +66,9 @@ export const createProposal = (payload: CreateProposalPayload) =>
 // ── Calls ────────────────────────────────────────────────────────────────────
 
 export const fetchPriorities = (signal?: AbortSignal) => apiRequest<PrioritiesResponse>(PRIORITIES_BASE, { signal });
+
+export const fetchFlowMetrics = (signal?: AbortSignal) =>
+  apiRequest<FlowMetricsResponse>(FLOW_METRICS_BASE, { signal });
 
 export const fetchMeetings = (signal?: AbortSignal) =>
   apiRequest<MeetingsResponse>(`${PRIORITIES_BASE}/meetings`, { signal });

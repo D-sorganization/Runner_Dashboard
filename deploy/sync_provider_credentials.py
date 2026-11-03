@@ -178,6 +178,118 @@ def _agy_score(path: Path) -> float | None:
         return None
 
 
+def _stale_mirror_rows(candidates: list[Path], best: Path, *, valid: set[Path]) -> list[dict[str, Any]]:
+    """Flag mirror paths that lag the chosen source (mtime or bytes), without logging secrets."""
+    stale: list[dict[str, Any]] = []
+    if best not in valid:
+        return stale
+    try:
+        best_mtime = best.stat().st_mtime
+        best_bytes = best.read_bytes()
+    except OSError as exc:
+        log.warning("skipping mirror audit for unreadable source %s: %s", best, exc)
+        return stale
+    for path in candidates:
+        if path.resolve() == best.resolve():
+            continue
+        if path not in valid:
+            continue
+        try:
+            copy_mtime = path.stat().st_mtime
+            copy_bytes = path.read_bytes()
+        except OSError as exc:
+            log.warning("skipping mirror audit for unreadable copy %s: %s", path, exc)
+            stale.append({"path": str(path), "reason": "unreadable"})
+            continue
+        if copy_bytes == best_bytes and copy_mtime >= best_mtime:
+            continue
+        reason = "content_drift"
+        if copy_mtime < best_mtime:
+            reason = "older_than_source"
+        stale.append(
+            {
+                "path": str(path),
+                "reason": reason,
+                "source_path": str(best),
+                "copy_mtime": copy_mtime,
+                "source_mtime": best_mtime,
+            }
+        )
+    return stale
+
+
+def audit_credential_mirrors(
+    wsl_home: Path | None = None,
+    win_homes: list[Path] | None = None,
+) -> dict[str, Any]:
+    """Report provider credential copies that are older than or diverged from the sync source."""
+    home = (wsl_home or Path.home()).expanduser()
+    windows = discover_windows_homes() if win_homes is None else win_homes
+    providers: dict[str, Any] = {}
+
+    claude_paths = [
+        home / ".config" / "runner-dashboard" / "claude" / ".credentials.json",
+        home / ".claude" / ".credentials.json",
+        *[w / ".claude" / ".credentials.json" for w in windows],
+    ]
+    scored_claude = [(s, p) for p in claude_paths if (s := _claude_score(p)) is not None]
+    if scored_claude:
+        _, best_claude = max(scored_claude, key=lambda item: item[0])
+        valid_claude = {p for _, p in scored_claude}
+        stale = _stale_mirror_rows(claude_paths, best_claude, valid=valid_claude)
+        providers["claude"] = {"source_path": str(best_claude), "stale_copies": stale, "ok": not stale}
+
+    codex_paths = [
+        home / ".codex" / "auth.json",
+        *[w / ".codex" / "auth.json" for w in windows],
+    ]
+    scored_codex = [(s, p) for p in codex_paths if (s := _codex_score(p)) is not None]
+    if scored_codex:
+        _, best_codex = max(scored_codex, key=lambda item: item[0])
+        valid_codex = {p for _, p in scored_codex}
+        stale = _stale_mirror_rows(codex_paths, best_codex, valid=valid_codex)
+        providers["codex"] = {"source_path": str(best_codex), "stale_copies": stale, "ok": not stale}
+
+    agy_roots = [
+        home / ".gemini" / "antigravity-cli",
+        *[w / ".gemini" / "antigravity-cli" for w in windows],
+    ]
+    rel_files: set[Path] = {
+        Path("accounts.json"),
+        Path("active_account.json"),
+        Path("oauth_creds.json"),
+    }
+    for root in agy_roots:
+        acc_dir = root / "accounts"
+        try:
+            if acc_dir.is_dir():
+                for child in acc_dir.glob("*.json"):
+                    rel_files.add(Path("accounts") / child.name)
+        except OSError as exc:
+            log.warning("skipping unreadable antigravity dir %s: %s", acc_dir, exc)
+
+    agy_stale: list[dict[str, Any]] = []
+    agy_sources: list[str] = []
+    for rel in sorted(rel_files):
+        candidates = [r / rel for r in agy_roots]
+        scored_agy = [(s, p) for p in candidates if (s := _agy_score(p)) is not None]
+        if not scored_agy:
+            continue
+        _, best_agy = max(scored_agy, key=lambda item: item[0])
+        valid_agy = {p for _, p in scored_agy}
+        agy_sources.append(str(best_agy))
+        agy_stale.extend(_stale_mirror_rows(candidates, best_agy, valid=valid_agy))
+    if agy_sources or agy_stale:
+        providers["antigravity"] = {
+            "source_paths": agy_sources,
+            "stale_copies": agy_stale,
+            "ok": not agy_stale,
+        }
+
+    any_stale = any(not row.get("ok", True) for row in providers.values())
+    return {"ok": not any_stale, "providers": providers}
+
+
 def sync_all_credentials(
     wsl_home: Path | None = None,
     win_homes: list[Path] | None = None,

@@ -1,8 +1,8 @@
 name: Agent Redundant PR Closer
 
-# Closes duplicate agent PRs that close the same issue (not ``Refs #N``). See
-# shared_scripts/agent_identity.py::PRIORITY_ORDER. Missing token or closer errors
-# exit non-zero. ``pull_request`` runs only while the PR is open.
+# Closes duplicate agent PRs only when the same agent repeats the identical
+# closing-issue set on the same head ref or SHA (not merely a shared Closes #N).
+# See scripts/close_redundant_agent_prs.py and agent_identity.py.
 
 on:
   pull_request:
