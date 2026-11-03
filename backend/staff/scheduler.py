@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import cartographer_persona, claim_guard, consolidation, verification
+from staff import claim_guard, consolidation, verification
 from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
 from staff.holds import HoldsList
@@ -38,7 +38,6 @@ from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
 from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
-from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
 from staff.scheduler_issue_pick import fetch_issue_claim_status, fetch_open_issues, scheduled_repo  # noqa: F401
 from staff.scheduler_leader_lease import (
@@ -52,10 +51,9 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
-from staff.scheduler_lost_code_finder import ROLE as LOST_CODE_FINDER_ROLE
-from staff.scheduler_lost_code_finder import fire_guard as lost_code_finder_fire_guard
 from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
 from staff.scheduler_named_jobs import named_jobs, queue_due_slot
+from staff.scheduler_persona_guards import persona_fire_guard
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
 
@@ -427,18 +425,9 @@ class StaffScheduler:
     ) -> dict[str, Any]:
         """Run slow consolidation/claim/submit work without holding the scheduler lock (#3526)."""
         key = f"{name}::{job}" if job else name
-        cartographer_job = ""
-        reason = ""
-        if role.name == cartographer_persona.ROLE:
-            cartographer_job = next(iter(cartographer_persona.CARTOGRAPHER_SCHEDULE_ENTRIES))
-            reason = cartographer_fire_guard(
-                role.name, continuity=self._cartographer_continuity(), job=cartographer_job, slot=due, now=now
-            )
-        elif role.name == LOST_CODE_FINDER_ROLE:
-            # #3869: dormant until a lost-code-finder role file is registered.
-            reason = lost_code_finder_fire_guard(
-                role.name, continuity=self._cartographer_continuity(), job=job or "", slot=due, now=now
-            )
+        cartographer_job, reason = persona_fire_guard(
+            role.name, continuity=self._cartographer_continuity, job=job, slot=due, now=now
+        )
         if reason:
             with self._lock:
                 entry = self._load_state().setdefault(key, {})
