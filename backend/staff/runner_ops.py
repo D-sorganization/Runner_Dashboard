@@ -34,6 +34,7 @@ from staff.runner_stream import (  # noqa: F401  re-exported for existing import
     pump_nudge_output,
     pump_output,
 )
+from staff.runner_venv import ensure_staff_pytest_environment
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import mint_run_token
 
@@ -55,6 +56,7 @@ class WorktreeBootstrapPreflight:
     attention: str = ""
     python_executable: str = ""
     pre_pr_entrypoint: str = ""
+    venv_dir: str = ""
 
 
 def resolve_repo_pre_pr_entrypoint(worktree: Path, *, python_executable: str = "python3") -> str | None:
@@ -123,6 +125,7 @@ def _select_python311_or_newer(worktree: Path, run: _Run, which: _Which) -> str 
 def run_worktree_bootstrap_preflight(
     worktree: Path,
     *,
+    role: str = "",
     run: _Run = subprocess.run,
     which: _Which = shutil.which,
 ) -> WorktreeBootstrapPreflight:
@@ -144,26 +147,15 @@ def run_worktree_bootstrap_preflight(
             attention="python 3.11+ is required in the worktree environment, but no compatible interpreter was found",
         )
 
-    pytest_check = _run_checked(run, worktree, [python_executable, "-m", "pytest", "--version"], timeout=60)
-    if pytest_check.returncode != 0:
-        install = _run_checked(run, worktree, [python_executable, "-m", "pip", "install", "pytest"], timeout=900)
-        if install.returncode != 0:
-            detail = (install.stderr or install.stdout or "pip install failed").strip()
-            return WorktreeBootstrapPreflight(
-                ok=False,
-                attention=f"pytest is unavailable and could not be installed with {python_executable}: {detail}",
-                python_executable=python_executable,
-            )
-        pytest_check = _run_checked(run, worktree, [python_executable, "-m", "pytest", "--version"], timeout=60)
-        if pytest_check.returncode != 0:
-            detail = (pytest_check.stderr or pytest_check.stdout or "pytest still unavailable").strip()
-            return WorktreeBootstrapPreflight(
-                ok=False,
-                attention=f"pytest remains unavailable for {python_executable} after install attempt: {detail}",
-                python_executable=python_executable,
-            )
+    ok, target_python, attention, venv_dir = ensure_staff_pytest_environment(
+        worktree, python_executable, role=role, run=run
+    )
+    if not ok:
+        return WorktreeBootstrapPreflight(
+            ok=False, attention=attention, python_executable=target_python, venv_dir=venv_dir
+        )
 
-    pre_pr = resolve_repo_pre_pr_entrypoint(worktree, python_executable=python_executable)
+    pre_pr = resolve_repo_pre_pr_entrypoint(worktree, python_executable=target_python)
     if not pre_pr:
         return WorktreeBootstrapPreflight(
             ok=False,
@@ -171,13 +163,12 @@ def run_worktree_bootstrap_preflight(
                 "no repository pre-PR entry point found (checked scripts/pre_pr.py, "
                 "shared_scripts/pre_pr.py, scripts/verify_merge_gates.py and scripts/agent-check)"
             ),
-            python_executable=python_executable,
+            python_executable=target_python,
+            venv_dir=venv_dir,
         )
 
     return WorktreeBootstrapPreflight(
-        ok=True,
-        python_executable=python_executable,
-        pre_pr_entrypoint=pre_pr,
+        ok=True, python_executable=target_python, pre_pr_entrypoint=pre_pr, venv_dir=venv_dir
     )
 
 
@@ -190,7 +181,10 @@ def ensure_worktree_bootstrap_ready(
     """Run bootstrap preflight and fail fast with ``environment_error`` when it fails."""
     if not plan.repo:
         return WorktreeBootstrapPreflight(ok=True)
-    result = run_worktree_bootstrap_preflight(workdir)
+    try:
+        result = run_worktree_bootstrap_preflight(workdir, role=plan.role)
+    except TypeError:
+        result = run_worktree_bootstrap_preflight(workdir)
     if result.ok:
         if result.pre_pr_entrypoint:
             store.append_event(

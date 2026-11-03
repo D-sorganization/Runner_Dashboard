@@ -31,10 +31,13 @@ def test_bootstrap_preflight_initializes_submodules_installs_pytest_and_resolves
         if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
             return _cp(command, 0, "3.11\n")
         if command[:3] == ["python3.11", "-m", "pytest"] and "--version" in command:
-            pytest_checks["count"] += 1
-            return _cp(command, 1, stderr="No module named pytest") if pytest_checks["count"] == 1 else _cp(command, 0)
-        if command[:3] == ["python3.11", "-m", "pip"] and "install" in command:
+            return _cp(command, 1, stderr="No module named pytest")
+        if command[:3] == ["python3.11", "-m", "venv"]:
+            return _cp(command, 0)
+        if "-m" in command and "pip" in command and "install" in command:
             return _cp(command, 0, "installed")
+        if "-m" in command and "pytest" in command and "--version" in command:
+            return _cp(command, 0, "pytest 9.0.3\n")
         if command[:4] == ["git", "submodule", "update", "--init"]:
             return _cp(command, 0)
         raise AssertionError(f"unexpected command: {command}")
@@ -46,10 +49,12 @@ def test_bootstrap_preflight_initializes_submodules_installs_pytest_and_resolves
     )
 
     assert result.ok is True
-    assert result.python_executable == "python3.11"
-    assert result.pre_pr_entrypoint == "python3.11 scripts/verify_merge_gates.py --repository-root ."
+    assert "python" in result.python_executable
+    assert "scripts/verify_merge_gates.py" in result.pre_pr_entrypoint
     assert any(cmd[:4] == ["git", "submodule", "update", "--init"] for cmd in calls)
-    assert any(cmd[:4] == ["python3.11", "-m", "pip", "install"] for cmd in calls)
+    assert any(cmd[:3] == ["python3.11", "-m", "venv"] for cmd in calls)
+    assert any("-m" in cmd and "pip" in cmd and "install" in cmd for cmd in calls)
+    assert not any("--user" in cmd for cmd in calls)
 
 
 @pytest.mark.unit
