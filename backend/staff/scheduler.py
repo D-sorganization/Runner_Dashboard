@@ -52,6 +52,8 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
+from staff.scheduler_lost_code_finder import ROLE as LOST_CODE_FINDER_ROLE
+from staff.scheduler_lost_code_finder import fire_guard as lost_code_finder_fire_guard
 from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
 from staff.scheduler_named_jobs import named_jobs, queue_due_slot
 from staff.scheduler_startup import mark_scheduler_started
@@ -426,19 +428,23 @@ class StaffScheduler:
         """Run slow consolidation/claim/submit work without holding the scheduler lock (#3526)."""
         key = f"{name}::{job}" if job else name
         cartographer_job = ""
+        reason = ""
         if role.name == cartographer_persona.ROLE:
             cartographer_job = next(iter(cartographer_persona.CARTOGRAPHER_SCHEDULE_ENTRIES))
             reason = cartographer_fire_guard(
                 role.name, continuity=self._cartographer_continuity(), job=cartographer_job, slot=due, now=now
             )
-            if reason:
-                with self._lock:
-                    entry = self._load_state().setdefault(key, {})
-                    record_scheduled_skip(
-                        entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=reason
-                    )
-                log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
-                return {"role": name, "slot": due, "fired": False, "reason": reason}
+        elif role.name == LOST_CODE_FINDER_ROLE:
+            # #3869: dormant until a lost-code-finder role file is registered.
+            reason = lost_code_finder_fire_guard(
+                role.name, continuity=self._cartographer_continuity(), job=job or "", slot=due, now=now
+            )
+        if reason:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=reason)
+            log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
+            return {"role": name, "slot": due, "fired": False, "reason": reason}
         decision = self._decider(role, repo or "")
         report_only = bool(job) and isinstance(role.scope, dict) and bool(role.scope.get("report_only"))
         if report_only:
