@@ -193,6 +193,16 @@ is `false`, with `jobs: []`, when a repo's holds list cannot be read (fails clos
 unfiltered list). Sort: priority label, then `priorities.service.top_priorities` position, then
 oldest. S3 (claim/release) is later.
 
+### `GET /api/coordination/jobs/releases?since=&limit=`
+
+Fleet Job Board release log (#3856, a slice of #2785), read-only. It projects the `job_board`
+activity envelopes that claim transitions already emit, with no second store. Returns `{releases,
+complete, generated_at}`; each row is `{repo, issue, agent, session, reason, released_at, kind}`,
+`kind` one of `release`, `expiry`, `conflict`, newest first. `since` is an optional ISO-8601
+timestamp (naive means UTC); a malformed value → 422. `limit` is 1–500, default 100. At most the
+5000 newest activity envelopes are scanned, so `complete` is `false` when the page filled up or the
+scan cap was reached.
+
 ### Status codes for writes
 
 | Code | When                                                                                                         |
