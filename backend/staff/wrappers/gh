@@ -73,11 +73,16 @@ def main() -> int:
     args = list(sys.argv[1:])
     try:
         from staff.gh_cli_guard import check_and_prepare_issue_close, sanitize_pr_body_args
+        from staff.gh_drain_gate_guard import check_drain_gate_for_pr_create
 
         args = sanitize_pr_body_args(args, env=env)
         allowed, args, err = check_and_prepare_issue_close(real_gh, args, env=env)
         if not allowed:
             sys.stderr.write(err + "\n")
+            return 2
+        drain_ok, drain_err = check_drain_gate_for_pr_create(args, env=env)
+        if not drain_ok:
+            sys.stderr.write(drain_err + "\n")
             return 2
     except Exception:  # noqa: BLE001
         pass
