@@ -3570,33 +3570,6 @@
         "title": "MessageBody",
         "type": "object"
       },
-      "MigrateScheduleOffHostBody": {
-        "properties": {
-          "dry_run": {
-            "default": false,
-            "title": "Dry Run",
-            "type": "boolean"
-          },
-          "source_host": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Source Host",
-            "type": "string"
-          },
-          "targets": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Targets",
-            "type": "array"
-          }
-        },
-        "required": ["source_host", "targets"],
-        "title": "MigrateScheduleOffHostBody",
-        "type": "object"
-      },
       "MintTokenRequest": {
         "properties": {
           "expires_in_days": {
@@ -5894,19 +5867,6 @@
         },
         "required": ["repo"],
         "title": "ScanRequestBody",
-        "type": "object"
-      },
-      "SchedulePlacementBody": {
-        "properties": {
-          "host": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Host",
-            "type": "string"
-          }
-        },
-        "required": ["host"],
-        "title": "SchedulePlacementBody",
         "type": "object"
       },
       "ScheduleToggleBody": {
@@ -19985,117 +19945,6 @@
           }
         ],
         "summary": "Post Leader Lease",
-        "tags": ["staff"]
-      }
-    },
-    "/api/staff/schedule/migrate-off-host": {
-      "post": {
-        "description": "Drop retired/dead placements on ``source_host`` and re-home live roles (#3901).",
-        "operationId": "migrate_schedule_off_host_api_staff_schedule_migrate_off_host_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MigrateScheduleOffHostBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Migrate Schedule Off Host Api Staff Schedule Migrate Off Host Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Migrate Schedule Off Host",
-        "tags": ["staff"]
-      }
-    },
-    "/api/staff/schedule/placements/{role}": {
-      "put": {
-        "description": "Pin a role's scheduled runs to a fleet machine (#3901).",
-        "operationId": "put_schedule_placement_api_staff_schedule_placements__role__put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "role",
-            "required": true,
-            "schema": {
-              "title": "Role",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SchedulePlacementBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Put Schedule Placement Api Staff Schedule Placements  Role  Put",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Put Schedule Placement",
         "tags": ["staff"]
       }
     },
