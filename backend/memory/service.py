@@ -26,6 +26,7 @@ from memory.models import (
     MemoryReviewRequest,
     SessionDigestAppendRequest,
 )
+from memory.barb_shared_guard import MemoryWriteProvenance, entry_allowed_in_shared_memory, refuse_shared_memory_write
 from memory.redact import contains_secret, redact_memory_text
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
@@ -35,6 +36,29 @@ from staff.barb_lease_fence import is_barb_seat
 from staff.lesson_locator import locate_lesson_evidence, verify_lesson_evidence
 from staff.lesson_provenance import authenticated_lesson_run, completed_run_for_review
 from staff.store import _now  # noqa: PLC2701
+
+
+def _refuse_shared_memory_write(
+    *,
+    entry_type: str,
+    source_product: str,
+    tags: list[str],
+    body: dict[str, Any],
+    author_principal: str = "",
+    reported_origin_principal: str | None = None,
+    digest_summary: str | None = None,
+) -> None:
+    prov = MemoryWriteProvenance(
+        source_product=source_product,
+        tags=tuple(tags),
+        body=body,
+        author_principal=author_principal,
+        reported_origin_principal=reported_origin_principal,
+    )
+    if reason := refuse_shared_memory_write(
+        prov, entry_type=entry_type, digest_summary=digest_summary if entry_type == "session_digest" else None
+    ):
+        raise HTTPException(status_code=422, detail={"code": "shared_memory_refused", "reason": reason})
 
 
 def _redact_body(body: dict[str, Any]) -> dict[str, Any]:
@@ -123,6 +147,13 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
         review_status, visibility = req.review_status, req.visibility
 
     body = _redact_body(req.body)
+    _refuse_shared_memory_write(
+        entry_type=req.entry_type,
+        source_product=req.source_product,
+        tags=req.tags,
+        body=body,
+        author_principal=format_caller(principal),
+    )
     if req.entry_type == "lesson":
         body["standards_version"] = run.standards_version
         body.pop("locator", None)
@@ -219,6 +250,17 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
         "open_items": [redact_memory_text(item) for item in req.open_items],
     }
     enforce_entry_size(body, "session_digest")
+    _refuse_shared_memory_write(
+        entry_type="session_digest",
+        source_product=req.source_product,
+        tags=[],
+        body=body,
+        author_principal=caller,
+        reported_origin_principal=body.get("reported_origin_principal")
+        if isinstance(body.get("reported_origin_principal"), str)
+        else req.reported_origin_principal,
+        digest_summary=str(body.get("summary") or ""),
+    )
     entry = MemoryEntry(
         id=new_entry_id(),
         entry_type="session_digest",
@@ -239,7 +281,11 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
 
 
 def list_entries(**kwargs: Any) -> list[MemoryEntry]:
-    return get_memory_store().list_entries(include_superseded=False, **kwargs)
+    return [
+        entry
+        for entry in get_memory_store().list_entries(include_superseded=False, **kwargs)
+        if entry_allowed_in_shared_memory(entry)
+    ]
 
 
 _CLOSED_TASK_STATUSES: frozenset[str] = frozenset({"done", "closed", "cancelled", "complete", "completed"})
@@ -458,6 +504,8 @@ def _collect_scoped_context_entries(
             cursor=cursor, entry_type=entry_type, include_barb_only=include_barb, active_only=True, limit=limit * 2
         )
         for entry in page:
+            if not entry_allowed_in_shared_memory(entry):
+                continue
             if open_tasks_only and str(entry.body.get("status", "open")).lower() in _CLOSED_TASK_STATUSES:
                 continue
             if _entry_allowed_for_caller(
