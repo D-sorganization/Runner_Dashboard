@@ -73,3 +73,31 @@ def test_schedule_host_skip_reason_when_home_is_peer() -> None:
     placements = {"night-watch": "hub-a"}
     reason = sp.schedule_host_skip_reason("night-watch", "node-c", placements, reg)
     assert reason and "hub-a" in reason
+
+
+def test_migrate_off_host_drops_retired_and_rehomes_live(tmp_path: Path) -> None:
+    reg = _registry(
+        {"name": "node-c", "portable": True},
+        {"name": "hub-a", "staff": {"roles_enabled": ["*"]}},
+        {"name": "node-a", "staff": {"roles_enabled": ["*"]}, "hardware": {"workload_tags": ["memory-heavy"]}},
+    )
+    roles = {
+        "archivist": _role("archivist", retired=True),
+        "night-watch": _role("night-watch", tier="routine"),
+        "heavy-job": _role("heavy-job", tier="complex"),
+    }
+    placements = {"archivist": "node-c", "night-watch": "node-c", "heavy-job": "node-c"}
+    state = {"archivist": {"cursor": "1"}, "night-watch": {"cursor": "2"}, "heavy-job": {"cursor": "3"}}
+    result = sp.migrate_placements_off_host(
+        "node-c",
+        roles=roles,
+        placements=placements,
+        state=state,
+        registry=reg,
+        targets=("hub-a", "node-a"),
+    )
+    assert "archivist" in result.removed_roles
+    assert "archivist" not in placements
+    assert "archivist" not in state
+    assert placements["heavy-job"] == "node-a"
+    assert placements["night-watch"] == "hub-a"

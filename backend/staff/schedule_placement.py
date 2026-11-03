@@ -1,4 +1,4 @@
-"""Per-role schedule home host, registry enablement, and portable-node guards (#3901)."""
+"""Per-role schedule home host, registry enablement, and migration off portable nodes (#3901)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,11 @@ import logging
 import os
 import threading
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import machine_registry as _machine_registry
 from machine_registry import _normalize_token, build_machine_registry_index, is_portable_machine
 from staff.role_spec import RoleSpec
 from staff.store import _config_dir
@@ -45,6 +47,27 @@ def load_placements(path: Path | None = None) -> dict[str, str]:
         if isinstance(key, str) and key.strip() and isinstance(value, str) and value.strip():
             out[key.strip()] = value.strip()
     return out
+
+
+def save_placements(
+    placements: dict[str, str],
+    *,
+    roles: Mapping[str, RoleSpec],
+    registry: dict[str, Any] | None = None,
+    path: Path | None = None,
+) -> dict[str, str]:
+    reg = registry if registry is not None else _machine_registry.load_machine_registry()
+    cleaned = {str(k).strip(): str(v).strip() for k, v in placements.items() if str(k).strip() and str(v).strip()}
+    for role_name, host in cleaned.items():
+        spec = roles.get(role_name)
+        validate_schedule_host(role_name, host, reg, spec)
+    p = path or placements_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    with _persist_lock:
+        tmp.write_text(json.dumps(cleaned, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(p)
+    return cleaned
 
 
 def _registry_entry(machine: str, registry: dict[str, Any]) -> dict[str, Any] | None:
@@ -127,3 +150,55 @@ def schedule_inventory(
             }
         )
     return rows
+
+
+def _is_heavy_role(role: RoleSpec) -> bool:
+    if role.tier == "complex":
+        return True
+    tags = role.scope.get("workload") if isinstance(role.scope, dict) else None
+    return isinstance(tags, str) and "heavy" in tags.lower()
+
+
+@dataclass(frozen=True)
+class MigrationResult:
+    removed_roles: tuple[str, ...]
+    moved: tuple[tuple[str, str], ...]
+
+
+def migrate_placements_off_host(
+    source_host: str,
+    *,
+    roles: Mapping[str, RoleSpec],
+    placements: dict[str, str],
+    state: dict[str, dict[str, Any]],
+    registry: dict[str, Any],
+    targets: tuple[str, ...],
+) -> MigrationResult:
+    removed: list[str] = []
+    moved: list[tuple[str, str]] = []
+
+    def _pick_target(role: RoleSpec) -> str:
+        preferred = targets[-1] if _is_heavy_role(role) and len(targets) > 1 else targets[0]
+        if role_schedule_allowed_on_machine(role.name, preferred, registry):
+            return preferred
+        for candidate in targets:
+            if role_schedule_allowed_on_machine(role.name, candidate, registry):
+                return candidate
+        return targets[0]
+
+    for role_name, host in list(placements.items()):
+        if host != source_host.strip():
+            continue
+        spec = roles.get(role_name)
+        if spec is None or spec.retired or not spec.dispatchable:
+            placements.pop(role_name, None)
+            state.pop(role_name, None)
+            for key in [k for k in state if k.startswith(f"{role_name}::")]:
+                state.pop(key, None)
+            removed.append(role_name)
+            continue
+        target = _pick_target(spec)
+        placements[role_name] = target
+        moved.append((role_name, target))
+
+    return MigrationResult(removed_roles=tuple(removed), moved=tuple(moved))
