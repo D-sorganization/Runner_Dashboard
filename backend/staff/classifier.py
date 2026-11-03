@@ -37,6 +37,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "orphaned",
         "workspace_error",
         "environment_error",
+        "submodule_timeout",
         "unkillable",
         "unknown",
         "no_result",

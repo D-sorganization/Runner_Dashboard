@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -57,6 +59,196 @@ class WorktreeBootstrapPreflight:
     python_executable: str = ""
     pre_pr_entrypoint: str = ""
     venv_dir: str = ""
+    failure_class: str = ""
+    retryable: bool = False
+    remediation: str = ""
+
+
+_SUBMODULE_TIMEOUT_REMEDIATION = (
+    "Git submodule initialization timed out on this node. Warm the per-host cache at "
+    "~/staff-worktrees/.submodule-cache/<repo>.git (git fetch --prune), verify network "
+    "access to submodule hosts, then re-dispatch the run."
+)
+_GITHUB_REPO_NAME_RE = re.compile(r"/([^/]+?)(?:\.git)?/?$")
+_SHALLOW_SUBMODULE_FALLBACK_MARKERS = (
+    "does not allow request for unadvertised object",
+    "could not be shallow",
+    "fatal: remote error",
+    "not our ref",
+    "unable to find",
+)
+
+
+def _submodule_update_timeout_seconds() -> int:
+    raw = os.environ.get("STAFF_SUBMODULE_UPDATE_TIMEOUT", "300").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 300
+
+
+def _submodules_need_init(worktree: Path, run: _Run) -> bool:
+    status = _run_checked(run, worktree, ["git", "submodule", "status", "--recursive"], timeout=120)
+    if status.returncode != 0:
+        return True
+    for line in (status.stdout or "").splitlines():
+        if line.startswith("-"):
+            return True
+    return False
+
+
+def _origin_repo_cache_name(worktree: Path, run: _Run) -> str:
+    proc = _run_checked(run, worktree, ["git", "config", "--get", "remote.origin.url"], timeout=30)
+    url = (proc.stdout or "").strip()
+    if url:
+        match = _GITHUB_REPO_NAME_RE.search(url)
+        if match:
+            return f"{match.group(1)}.git"
+    return f"{worktree.name}.git"
+
+
+def _submodule_cache_path(worktree: Path, run: _Run) -> Path:
+    return workspace.staff_worktrees_root() / ".submodule-cache" / _origin_repo_cache_name(worktree, run)
+
+
+def _ensure_submodule_reference_cache(
+    cache_path: Path,
+    worktree: Path,
+    run: _Run,
+    *,
+    timeout: int,
+) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    origin = _run_checked(run, worktree, ["git", "config", "--get", "remote.origin.url"], timeout=30)
+    origin_url = (origin.stdout or "").strip()
+    if not origin_url:
+        return
+    if not cache_path.is_dir():
+        init = run(
+            ["git", "clone", "--mirror", origin_url, str(cache_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout,
+        )
+        if init.returncode != 0:
+            detail = (init.stderr or init.stdout or "").strip()
+            log.warning("submodule reference cache init failed for %s: %s", cache_path, detail)
+            return
+    fetch = run(
+        ["git", "fetch", "--prune"],
+        cwd=str(cache_path),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+    if fetch.returncode != 0:
+        detail = (fetch.stderr or fetch.stdout or "").strip()
+        log.warning("submodule reference cache fetch failed for %s: %s", cache_path, detail)
+
+
+def _shallow_submodule_update_command(_worktree: Path, cache_path: Path) -> list[str]:
+    cmd = [
+        "git",
+        "-c",
+        "protocol.version=2",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+        "--depth",
+        "1",
+        "--filter=blob:none",
+        "--jobs",
+        "4",
+    ]
+    if cache_path.is_dir():
+        cmd.extend(["--reference-if-able", str(cache_path)])
+    return cmd
+
+
+def _full_submodule_update_command(_worktree: Path, cache_path: Path) -> list[str]:
+    cmd = [
+        "git",
+        "-c",
+        "protocol.version=2",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+        "--jobs",
+        "4",
+    ]
+    if cache_path.is_dir():
+        cmd.extend(["--reference-if-able", str(cache_path)])
+    return cmd
+
+
+def _submodule_update_needs_full_fetch(proc: subprocess.CompletedProcess[str]) -> bool:
+    if proc.returncode == 0:
+        return False
+    combined = f"{proc.stderr or ''}\n{proc.stdout or ''}".lower()
+    return any(marker in combined for marker in _SHALLOW_SUBMODULE_FALLBACK_MARKERS)
+
+
+def _run_submodule_update_with_retry(
+    worktree: Path,
+    run: _Run,
+    *,
+    timeout: int,
+) -> WorktreeBootstrapPreflight | None:
+    cache_path = _submodule_cache_path(worktree, run)
+    _ensure_submodule_reference_cache(cache_path, worktree, run, timeout=timeout)
+    shallow_cmd = _shallow_submodule_update_command(worktree, cache_path)
+    full_cmd = _full_submodule_update_command(worktree, cache_path)
+    attempts = 2
+    last_timeout: subprocess.TimeoutExpired | None = None
+    for _attempt in range(attempts):
+        try:
+            shallow = _run_checked(run, worktree, shallow_cmd, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            last_timeout = exc
+            continue
+        if shallow.returncode == 0:
+            return None
+        if _submodule_update_needs_full_fetch(shallow):
+            try:
+                full = _run_checked(run, worktree, full_cmd, timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                last_timeout = exc
+                continue
+            if full.returncode == 0:
+                return None
+            detail = (full.stderr or full.stdout or "unknown git submodule error").strip()
+            return WorktreeBootstrapPreflight(ok=False, attention=f"submodule init failed: {detail}")
+        detail = (shallow.stderr or shallow.stdout or "unknown git submodule error").strip()
+        return WorktreeBootstrapPreflight(ok=False, attention=f"submodule init failed: {detail}")
+    if last_timeout is not None:
+        cmd_preview = " ".join(shallow_cmd[:6])
+        return WorktreeBootstrapPreflight(
+            ok=False,
+            attention=f"submodule update timed out after {timeout}s ({attempts} attempts): {cmd_preview}…",
+            failure_class="submodule_timeout",
+            retryable=True,
+            remediation=_SUBMODULE_TIMEOUT_REMEDIATION,
+        )
+    return WorktreeBootstrapPreflight(
+        ok=False,
+        attention=f"submodule update timed out after {timeout}s ({attempts} attempts)",
+        failure_class="submodule_timeout",
+        retryable=True,
+        remediation=_SUBMODULE_TIMEOUT_REMEDIATION,
+    )
+
+
+def _ensure_worktree_submodules(worktree: Path, run: _Run) -> WorktreeBootstrapPreflight | None:
+    if not (worktree / ".gitmodules").is_file():
+        return None
+    if not _submodules_need_init(worktree, run):
+        return None
+    timeout = _submodule_update_timeout_seconds()
+    return _run_submodule_update_with_retry(worktree, run, timeout=timeout)
 
 
 def resolve_repo_pre_pr_entrypoint(worktree: Path, *, python_executable: str = "python3") -> str | None:
@@ -134,11 +326,9 @@ def run_worktree_bootstrap_preflight(
     Ensures submodules are populated, Python is >=3.11, pytest is available,
     and the repository has a local pre-PR entry point.
     """
-    if (worktree / ".gitmodules").is_file():
-        submodule = _run_checked(run, worktree, ["git", "submodule", "update", "--init", "--recursive"], timeout=900)
-        if submodule.returncode != 0:
-            detail = (submodule.stderr or submodule.stdout or "unknown git submodule error").strip()
-            return WorktreeBootstrapPreflight(ok=False, attention=f"submodule init failed: {detail}")
+    submodule_result = _ensure_worktree_submodules(worktree, run)
+    if submodule_result is not None:
+        return submodule_result
 
     python_executable = _select_python311_or_newer(worktree, run, which)
     if not python_executable:
@@ -193,12 +383,18 @@ def ensure_worktree_bootstrap_ready(
                 f"worktree bootstrap ok: python={result.python_executable}; pre_pr={result.pre_pr_entrypoint}",
             )
         return result
+    failure_class = result.failure_class or "environment_error"
+    retryable = result.retryable if result.failure_class else False
+    remediation = (
+        result.remediation
+        or "Worktree bootstrap preflight failed; fix environment prerequisites before re-dispatching."
+    )
     store.update_run(
         rec.id,
         status="failed",
-        failure_class="environment_error",
-        retryable=False,
-        remediation="Worktree bootstrap preflight failed; fix environment prerequisites before re-dispatching.",
+        failure_class=failure_class,
+        retryable=retryable,
+        remediation=remediation,
         error=result.attention,
         ended_at=_now(),
     )
