@@ -16,14 +16,30 @@ from agent_principal_defaults import agent_token_files, configured_agent_ids
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from identity import IdentityManager
+    from identity import IdentityManager, TokenRecord
 
 _DAY_SECONDS = 86400.0
 
 
-def _expires_at(manager: IdentityManager, raw: str) -> float | None:
+def _token_record(manager: IdentityManager, raw: str) -> TokenRecord | None:
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
-    return next((t.expires_at for t in manager.tokens if t.token_hash == token_hash), None)
+    return next((t for t in manager.tokens if t.token_hash == token_hash), None)
+
+
+def _expires_at(manager: IdentityManager, raw: str) -> float | None:
+    record = _token_record(manager, raw)
+    return record.expires_at if record else None
+
+
+def current_token_record(manager: IdentityManager, agent_id: str) -> TokenRecord | None:
+    """The :class:`TokenRecord` backing ``agent_id``'s on-disk token file, or ``None`` (#3895 slice 3)."""
+    path = agent_token_files(manager).get(agent_id)
+    if path is None or not path.is_file():
+        return None
+    raw, failure = _read_token(path)
+    if failure is not None:
+        return None
+    return _token_record(manager, raw)
 
 
 def _read_token(path: Path) -> tuple[str, str | None]:
