@@ -222,6 +222,7 @@ def claim_issue(body: ClaimBody, caller: Caller) -> dict[str, Any]:
             session=body.session,
             intent=body.intent,
             holder_principal=caller.label.removeprefix("principal:"),
+            paths=body.paths,
         )
     )
 

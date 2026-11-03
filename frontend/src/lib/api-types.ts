@@ -9418,6 +9418,8 @@ export interface components {
             intent: string;
             /** Issue */
             issue: number;
+            /** Paths */
+            paths?: string[];
             /** Repo */
             repo: string;
             /** Session */
