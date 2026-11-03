@@ -108,9 +108,9 @@ export const Composer: React.FC<ComposerComponentProps> = ({
   // SC-D9: after a thread switch, keyboard focus follows the conversation.
   const focusedThreadRef = useRef(threadId);
   useEffect(() => {
-    if (!focusOnThreadChange || focusedThreadRef.current === threadId) return;
+    if (focusedThreadRef.current === threadId) return;
     focusedThreadRef.current = threadId;
-    textareaRef.current?.focus();
+    if (focusOnThreadChange) textareaRef.current?.focus();
   }, [focusOnThreadChange, threadId]);
 
   // Voice Input integration
