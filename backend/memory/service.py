@@ -10,6 +10,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller, principal_has_scope
+from memory.barb_shared_guard import entry_allowed_in_shared_memory
 from memory.contract import (
     CONTEXT_DIGEST_LIMIT,
     CONTEXT_TASK_LIMIT,
@@ -27,6 +28,7 @@ from memory.models import (
     SessionDigestAppendRequest,
 )
 from memory.redact import contains_secret, redact_memory_text
+from memory.service_guard import enforce_memory_append, enforce_session_digest_append, list_guarded_entries
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
@@ -123,6 +125,7 @@ def append_entry(principal: Principal, req: MemoryAppendRequest) -> MemoryEntry:
         review_status, visibility = req.review_status, req.visibility
 
     body = _redact_body(req.body)
+    enforce_memory_append(principal, req, body)
     if req.entry_type == "lesson":
         body["standards_version"] = run.standards_version
         body.pop("locator", None)
@@ -219,6 +222,14 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
         "open_items": [redact_memory_text(item) for item in req.open_items],
     }
     enforce_entry_size(body, "session_digest")
+    raw_origin = body.get("reported_origin_principal")
+    origin_principal = raw_origin if isinstance(raw_origin, str) else req.reported_origin_principal
+    enforce_session_digest_append(
+        caller,
+        source_product=req.source_product,
+        body=body,
+        reported_origin_principal=origin_principal,
+    )
     entry = MemoryEntry(
         id=new_entry_id(),
         entry_type="session_digest",
@@ -238,9 +249,7 @@ def append_session_digest(principal: Principal, req: SessionDigestAppendRequest)
         raise
 
 
-def list_entries(**kwargs: Any) -> list[MemoryEntry]:
-    return get_memory_store().list_entries(include_superseded=False, **kwargs)
-
+list_entries = list_guarded_entries
 
 _CLOSED_TASK_STATUSES: frozenset[str] = frozenset({"done", "closed", "cancelled", "complete", "completed"})
 _WILDCARD_SCOPES: frozenset[str] = frozenset({"", "*", "fleet", "public", "shared", "all"})
@@ -458,6 +467,8 @@ def _collect_scoped_context_entries(
             cursor=cursor, entry_type=entry_type, include_barb_only=include_barb, active_only=True, limit=limit * 2
         )
         for entry in page:
+            if not entry_allowed_in_shared_memory(entry):
+                continue
             if open_tasks_only and str(entry.body.get("status", "open")).lower() in _CLOSED_TASK_STATUSES:
                 continue
             if _entry_allowed_for_caller(
