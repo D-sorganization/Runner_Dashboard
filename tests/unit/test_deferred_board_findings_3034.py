@@ -72,6 +72,7 @@ def test_rd_28_reaper_retains_principal_when_release_tracked_claims_raises(
     stale_row = MagicMock()
     stale_row.session_id = "sess-transient-err"
     stale_row.role = "issue-remediator"
+    stale_row.node = "node-outside-fleet"  # unresolvable node: no readyz gate (#3823)
 
     fake_store = MagicMock()
     fake_store.list_stale_principals.return_value = [stale_row]
