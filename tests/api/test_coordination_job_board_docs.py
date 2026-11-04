@@ -30,7 +30,10 @@ def _coordination_router_paths() -> set[str]:
 
 def _documented_coordination_paths() -> set[str]:
     text = _COORD_DOC.read_text(encoding="utf-8")
-    return {path.split("?", 1)[0] for _, path in _DOC_ROUTE.findall(text)}
+    paths: set[str] = set()
+    for _, path in _DOC_ROUTE.findall(text):
+        paths.add(path.split("?", 1)[0].rstrip("/") or path)
+    return paths
 
 
 @pytest.fixture
