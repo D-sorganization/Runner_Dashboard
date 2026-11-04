@@ -194,6 +194,20 @@ unfiltered list). Sort: priority label, then `priorities.service.top_priorities`
 oldest. To **claim**, call `POST /api/coordination/claims` after picking a row (or use the Fleet
 Command **Job board** panel beside Claims); release with `POST /api/coordination/claims/release`.
 
+### `POST /api/coordination/jobs/claim`
+
+Fleet Job Board S4 (#2784): atomic claim with fencing token. Body `{repo, issue, agent, session, intent?}` →
+claim result or 409 when held. Prefer this path from the job board; `POST /api/coordination/claims` remains for
+direct issue claims.
+
+### `POST /api/coordination/jobs/release`
+
+Fleet Job Board S4 (#2784): release a job-board lease. Body `{repo, issue, agent, session, reason?}`.
+
+### `POST /api/coordination/jobs/heartbeat`
+
+Fleet Job Board S4 (#2785): renew TTL for an active job-board claim. Body `{repo, issue, agent, session, fencing_token}`.
+
 ### `GET /api/coordination/jobs/releases?since=&limit=`
 
 Fleet Job Board release log (#3856, a slice of #2785), read-only. It projects the `job_board`
