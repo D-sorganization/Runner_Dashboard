@@ -108,7 +108,7 @@ def test_run_jwt_bearer_gate_rejects_invalid_signature() -> None:
             "nbf": int(time.time()),
             "exp": int(time.time()) + 60,
         },
-        "wrong-signing-keyxxxxxxxxxxxxxxx",
+        "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
         algorithm="HS256",
     )
 
@@ -116,9 +116,10 @@ def test_run_jwt_bearer_gate_rejects_invalid_signature() -> None:
 
 
 def test_run_jwt_rejection_never_logs_raw_token(
-    identity_manager: IdentityManager, caplog: pytest.LogCaptureFixture
+    identity_manager: IdentityManager, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    secret = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    signing_key = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    monkeypatch.setenv("RUN_JWT_SIGNING_KEY", signing_key)
     raw = jwt.encode(
         {
             "sub": "agent-claude",
@@ -130,7 +131,7 @@ def test_run_jwt_rejection_never_logs_raw_token(
             "nbf": int(time.time()),
             "exp": int(time.time()) + 60,
         },
-        secret,
+        signing_key,
         algorithm="HS256",
     )
     caplog.set_level(logging.WARNING)
