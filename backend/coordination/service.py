@@ -19,7 +19,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from activity_producers import emit_activity
-from coordination import board, claims, jobs as jobs_mod, roster
+from coordination import board, claims, roster
+from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
 from coordination.models import (
     AckBody,
