@@ -155,9 +155,7 @@ async def post_jobs_claim(body: JobClaimBody, caller: Caller = WRITER) -> dict[s
 
 @router.post("/jobs/release")
 async def post_jobs_release(body: JobReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(
-        lambda: service.release_job(body, caller), caller, f"jobs release {body.repo}#{body.issue}"
-    )
+    return await _write(lambda: service.release_job(body, caller), caller, f"jobs release {body.repo}#{body.issue}")
 
 
 @router.get("/jobs/releases")
