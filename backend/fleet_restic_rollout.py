@@ -63,7 +63,7 @@ def plan_restic_rollout(
         item = {
             "host": host_id,
             "display_name": str(host.get("display_name") or host_id),
-            "restic_repo_env": str(host.get("restic_repo_env") or ""),
+            "restic_repo_env": str(host.get("repo_env") or host.get("restic_repo_env") or ""),
             "paths": ",".join(host.get("backup_paths") or []),
         }
         if not ready:

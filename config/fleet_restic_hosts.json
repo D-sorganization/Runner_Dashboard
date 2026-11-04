@@ -7,8 +7,8 @@
     {
       "id": "desk",
       "display_name": "Desk",
-      "restic_repo_env": "RESTIC_REPOSITORY_DESK",
-      "password_file_env": "RESTIC_PASSWORD_FILE",
+      "repo_env": "RESTIC_REPOSITORY_DESK",
+      "credentials_env": "RESTIC_CREDENTIALS_FILE",
       "backup_paths": [
         "/var/backups/runner-dashboard",
         "~/.config/runner-dashboard"
@@ -17,8 +17,8 @@
     {
       "id": "controltower",
       "display_name": "ControlTower",
-      "restic_repo_env": "RESTIC_REPOSITORY_CONTROLTOWER",
-      "password_file_env": "RESTIC_PASSWORD_FILE",
+      "repo_env": "RESTIC_REPOSITORY_CONTROLTOWER",
+      "credentials_env": "RESTIC_CREDENTIALS_FILE",
       "backup_paths": [
         "/var/backups/runner-dashboard",
         "~/.config/runner-dashboard"
@@ -27,8 +27,8 @@
     {
       "id": "brick",
       "display_name": "Brick",
-      "restic_repo_env": "RESTIC_REPOSITORY_BRICK",
-      "password_file_env": "RESTIC_PASSWORD_FILE",
+      "repo_env": "RESTIC_REPOSITORY_BRICK",
+      "credentials_env": "RESTIC_CREDENTIALS_FILE",
       "backup_paths": [
         "/var/backups/runner-dashboard",
         "~/.config/runner-dashboard"
