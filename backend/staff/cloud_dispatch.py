@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from dashboard_config import ORG
+from staff.launch_guard import check_launch_allowed
 
 ExecutionMode = Literal["local", "cloud"]
 
@@ -173,6 +174,10 @@ def resolve_plan_execution(
     """Return ``(execution_mode, argv, cloud_stdin, lease)`` for :meth:`StaffRunner.plan`."""
     execution_mode = (getattr(req, "execution_mode", "local") or "local").strip().lower()
     if execution_mode == "cloud":
+        if req.issue is not None:
+            verdict = check_launch_allowed(req.repo, req.issue)
+            if not verdict.allowed:
+                raise ValueError(f"launch guard refused {req.repo}#{req.issue}: {verdict.reason}")
         cloud = build_cloud_dispatch(
             provider,
             prompt,
