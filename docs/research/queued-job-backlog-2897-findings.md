@@ -11,7 +11,7 @@ Read-only research explaining why self-hosted runners sat **30–54% idle** on *
 | Dominant stall class (Oct 2025 backlog) | **`label_mismatch`** — jobs requested labels no online runner carried |
 | Primary missing label | **`d-sorg-fleet-public-heavy`** (public-repo heavy CI jobs, #3084) |
 | Idle runners with standard fleet labels | Yes — **`d-sorg-fleet`** pool was online and idle while heavy jobs waited |
-| Does F5 (#2768, reserved `merge_group` label) help? | **No** — merge-group work used `d-sorg-fleet` / `CI_QUEUE_RUNNER_LABEL` and was not the starving queue |
+| Does reserved merge-group runner routing help this backlog? | **No** — merge-group work used standard fleet labels; starvation was **`label_mismatch`** on **`d-sorg-fleet-public-heavy`** |
 | Policy change in the diagnostic PR? | **No** — instrumentation and docs only |
 
 ## Workflow and label sources (static)
@@ -47,7 +47,7 @@ DbC postconditions: per-class counts must sum to the sampled job count; API **40
 Two dated snapshots on #2897 (2026-10-27 and 2026-10-30 PT) sampled Runner_Dashboard during large backlogs:
 
 - **Snapshot 2 (203 jobs):** **100% `label_mismatch`** after the #3590 classifier fix — all waiting on **`d-sorg-fleet-public-heavy`** while **0** online runners carried that label and **21/21** online fleet runners were idle on other labels.
-- **F5 recommendation:** `proceed: false` — reserved merge-group capacity does not address a missing **`public-heavy`** provisioning lane.
+- **Merge-queue routing note:** reserved merge-group runner capacity does not address a missing **`public-heavy`** provisioning lane.
 
 Partial runs also recorded **HTTP 403** on org runner-group reads for some integrations; those are findings, not grounds to bypass permissions.
 
@@ -62,11 +62,13 @@ Partial runs also recorded **HTTP 403** on org runner-group reads for some integ
 
 Use `/api/queue/diagnose` during the next ≥50 queued-run event to refresh counts without mutating queue state.
 
+**Publication (GitHub comments):** paste bodies from [`2897-publication-record.md`](2897-publication-record.md); operator runbook [`../runbooks/queued-job-diagnostic.md`](../runbooks/queued-job-diagnostic.md).
+
 ## Recommended follow-ups (policy — separate issues)
 
 1. **Provision** self-hosted runners (or a dedicated runner group) with label **`d-sorg-fleet-public-heavy`**, scoped per `docs/runner-labels.md` / `ci-self-hosted-heavy-public`.
 2. **Grant read** on org runner-groups to the dashboard integration where policy review requires group visibility (403 is expected today for some tokens).
-3. **F5 (#2768):** remain **deferred** until a snapshot shows merge-group jobs stuck in `waiting_for_runner` with idle `d-sorg-fleet-merge-group` capacity — not observed in Oct 2025 data.
+3. **Reserved merge-group runner policy:** remain **deferred** until a snapshot shows merge-group jobs stuck in `waiting_for_runner` with idle dedicated merge-group capacity — not observed in Oct 2025 data.
 
 ## Non-claims
 
