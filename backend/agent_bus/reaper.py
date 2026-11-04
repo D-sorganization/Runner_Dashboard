@@ -6,6 +6,7 @@ import logging
 from agent_bus.reaper_health import ReapGate, node_reap_gate
 from agent_bus.reaper_stats import record_reap
 from agent_bus.store import get_store
+from coordination import jobs as coordination_jobs
 
 log = logging.getLogger("dashboard.agent_bus.reaper")
 REAP_INTERVAL_SECONDS = 60
@@ -31,6 +32,15 @@ def reap_once(allows_reap: ReapGate | None = None) -> dict[str, int]:
             log.warning("agent_bus reaper: claim release failed for %s: %s", row.session_id, exc)
             continue
         store.drop_principal(row.session_id)
+    try:
+        board = coordination_jobs.sweep_expired_job_claims()
+        released += int(board.get("released") or 0)
+        for err in board.get("errors") or []:
+            errors += 1
+            log.warning("agent_bus reaper: job-board sweep: %s", err)
+    except Exception as exc:  # noqa: BLE001
+        errors += 1
+        log.warning("agent_bus reaper: job-board sweep failed: %s", exc)
     if stale:
         log.info("agent_bus reaper: cleared %d stale sessions, released %d claims", len(stale), released)
     result = {"released_claims": released, "stale_sessions": len(stale)}

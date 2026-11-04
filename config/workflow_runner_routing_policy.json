@@ -52,8 +52,7 @@
         "recurring-scan.yml",
         "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",
-        "Verify-Issue-Closure.yml",
-        "verify-tag.yml"
+        "Verify-Issue-Closure.yml"
       ]
     },
     "docker": {
@@ -72,7 +71,6 @@
         "frontend-tests.yml",
         "api-contract-regeneration.yml",
         "lockfile-upgrade.yml",
-        "release.yml",
         "main-ci-auto-release.yml"
       ]
     }
