@@ -4,8 +4,33 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
+
+# backend/ needs 3.11+ (datetime.UTC); hooks often launch under a system python3 3.10.
+MIN_PYTHON = (3, 11)
+NEWER_PYTHONS = ("python3.13", "python3.12", "python3.11")
+REEXEC_ENV = "FLEET_HOOK_BRIDGE_REEXEC"
+
+
+def _ensure_supported_python(args: list[str]) -> bool:
+    """Re-exec under a 3.11+ interpreter if needed; False means skip (fail open)."""
+    if tuple(sys.version_info[:2]) >= MIN_PYTHON:
+        return True
+    if not os.environ.get(REEXEC_ENV):
+        for name in NEWER_PYTHONS:
+            exe = shutil.which(name)
+            if exe:
+                os.environ[REEXEC_ENV] = "1"
+                os.execv(exe, [exe, str(Path(__file__).resolve()), *args])
+    print(
+        "agent-bus-hook-bridge: requires Python 3.11+ (found "
+        f"{sys.version_info[0]}.{sys.version_info[1]}); skipping agent-bus hook",
+        file=sys.stderr,
+    )
+    return False
 
 
 def _paths() -> Path | None:
@@ -58,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) != 1:
         print("usage: agent-bus-hook-bridge.py <session-start|pre-push>", file=sys.stderr)
         return 2
+    if not _ensure_supported_python(args):
+        return 0
     if args[0] == "session-start":
         return session_start()
     if args[0] == "pre-push":

@@ -58,3 +58,57 @@ def test_bridge_session_start_registers_without_fleet_agent_env(
 
     assert code == 0
     assert captured["session"].startswith("claude-")
+
+
+@pytest.mark.unit
+def test_bridge_reexecs_under_newer_python_when_interpreter_too_old(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """System python3 3.10 must not crash on backend's datetime.UTC import."""
+    bridge = _load_bridge()
+    monkeypatch.setattr(sys, "version_info", (3, 10, 12))
+    monkeypatch.setenv(bridge.REEXEC_ENV, "")
+    found = {"python3.11": "/usr/bin/python3.11"}
+    monkeypatch.setattr(bridge.shutil, "which", found.get)
+    execv = mock.Mock(side_effect=SystemExit(0))
+    monkeypatch.setattr(bridge.os, "execv", execv)
+
+    with pytest.raises(SystemExit):
+        bridge.main(["session-start"])
+
+    execv.assert_called_once_with("/usr/bin/python3.11", ["/usr/bin/python3.11", str(BRIDGE), "session-start"])
+    assert bridge.os.environ[bridge.REEXEC_ENV] == "1"
+
+
+@pytest.mark.unit
+def test_bridge_fails_open_without_traceback_when_no_supported_python(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bridge = _load_bridge()
+    monkeypatch.setattr(sys, "version_info", (3, 10, 12))
+    monkeypatch.setenv(bridge.REEXEC_ENV, "")
+    monkeypatch.setattr(bridge.shutil, "which", lambda _name: None)
+    execv = mock.Mock()
+    monkeypatch.setattr(bridge.os, "execv", execv)
+    session_start = mock.Mock()
+    monkeypatch.setattr(bridge, "session_start", session_start)
+
+    assert bridge.main(["session-start"]) == 0
+
+    execv.assert_not_called()
+    session_start.assert_not_called()
+    assert "requires Python 3.11+" in capsys.readouterr().err
+
+
+@pytest.mark.unit
+def test_bridge_does_not_reexec_twice(monkeypatch: pytest.MonkeyPatch) -> None:
+    bridge = _load_bridge()
+    monkeypatch.setattr(sys, "version_info", (3, 10, 12))
+    monkeypatch.setenv(bridge.REEXEC_ENV, "1")
+    monkeypatch.setattr(bridge.shutil, "which", lambda name: f"/usr/bin/{name}")
+    execv = mock.Mock()
+    monkeypatch.setattr(bridge.os, "execv", execv)
+
+    assert bridge.main(["pre-push"]) == 0
+    execv.assert_not_called()
