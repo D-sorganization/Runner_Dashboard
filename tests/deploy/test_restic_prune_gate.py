@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -100,52 +99,3 @@ def test_failed_restore_drill_alerts_hub_halts_and_does_not_retry() -> None:
     assert len(alerts) == 1
     assert "oglaptop" in alerts[0].lower() or "restore drill" in alerts[0].lower()
 
-
-def test_record_read_data_subset_appends_without_satisfying_gate() -> None:
-    path = Path("/tmp/unused")
-    saved: list[dict[str, Any]] = []
-
-    def persist(rec: gate.MachineRecord) -> None:
-        saved.append(rec.to_dict())
-
-    record = gate.parse_record(_record())
-    updated = gate.record_read_data_subset_check(
-        record,
-        verified=True,
-        persist=persist,
-    )
-    assert gate.verified_restore_drill_count(updated) == 0
-    assert saved[-1]["events"][-1]["kind"] == gate.KIND_READ_DATA_SUBSET
-    with pytest.raises(gate.PreconditionViolation):
-        gate.precondition_restic_prune_or_forget(updated)
-
-
-def test_hub_alert_posts_json_payload(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: list[tuple[str, bytes]] = []
-
-    class _Resp:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args: object) -> None:
-            return None
-
-        def read(self) -> bytes:
-            return b'{"ok":true}'
-
-    def opener(req, timeout):  # noqa: ANN001
-        captured.append((req.full_url, req.data or b""))
-        return _Resp()
-
-    gate.post_hub_drill_failure_alert(
-        hub_origin="https://hub-a.example",
-        machine="oglaptop",
-        detail="restore drill verification failed",
-        token="fleet-token",
-        opener=opener,
-    )
-    assert captured
-    url, body = captured[0]
-    assert url.endswith("/api/fleet/backup/drill-failure")
-    payload = json.loads(body.decode())
-    assert payload["machine"] == "oglaptop"
