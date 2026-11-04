@@ -60,10 +60,9 @@ def _parse_worktree_list(checkout: Path) -> list[WorktreeEntry]:
     return entries
 
 
-def _is_linked_worktree(worktree: Path) -> bool:
-    """True for checkouts added via ``git worktree add`` (``.git`` is a file, not a directory)."""
-    git_path = worktree / ".git"
-    return git_path.is_file()
+def _is_primary_checkout(worktree: Path) -> bool:
+    """True for the main repo checkout (``.git`` is a directory, not a linked worktree file)."""
+    return (worktree / ".git").is_dir()
 
 
 def _is_protected(entry: WorktreeEntry, protected: tuple[str, ...]) -> bool:
@@ -118,7 +117,7 @@ def worktree_entry_is_eligible(
 ) -> tuple[bool, str]:
     """Return (eligible, reason) for one linked worktree (not the primary checkout)."""
     wt = entry if isinstance(entry, WorktreeEntry) else WorktreeEntry(path=entry["path"], branch=entry["branch"])
-    if not _is_linked_worktree(wt.path):
+    if _is_primary_checkout(wt.path):
         return False, "primary"
     if _is_protected(wt, protected):
         return False, "protected"
@@ -165,12 +164,12 @@ def plan_agent_worktree_prune(
         url_res = _git(checkout, "remote", "get-url", "origin")
         if url_res.returncode == 0:
             origin_url = url_res.stdout.strip()
-            local_origin = origin_url.startswith("file:") or (
-                origin_url.startswith("/") and Path(origin_url).exists()
-            )
+            local_origin = origin_url.startswith("file:") or (origin_url.startswith("/") and Path(origin_url).exists())
             if not local_origin:
                 _git(checkout, "fetch", "origin", "--prune", "--quiet")
         for entry in _parse_worktree_list(checkout):
+            if _is_primary_checkout(entry.path):
+                continue
             ok, reason = worktree_entry_is_eligible(
                 checkout,
                 entry,
