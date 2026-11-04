@@ -115,10 +115,14 @@ def install(
         store_mod.reset_store, runner_mod.reset_runner, scheduler_mod.reset_scheduler,
         board_mod.reset_cache, roster_mod.reset_cache, claims_mod.reset_locks,
     )  # fmt: skip
+    from coordination import jobs as jobs_mod  # noqa: PLC0415
+
     for reset in resets:
         reset()
+    jobs_mod.reset_job_board_claim_state()
     yield fake
     board_mod.join_refreshes()  # no background refresh may outlive the test and touch the next one
+    jobs_mod.reset_job_board_claim_state()
     for reset in reversed(resets):
         reset()
 

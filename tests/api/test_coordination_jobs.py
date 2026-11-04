@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 from coordination import claims as claims_mod
-from coordination_fake_rm import FakeRM, bot, claim_status, install
+from coordination_fake_rm import FakeRM, bot, claim_status, install, lease_result, release_result
 from coordination_fake_rm import issue as _issue
 from coordination_fake_rm import pr as _pr
 from fastapi.testclient import TestClient
@@ -130,3 +131,94 @@ def test_jobs_repo_filter_and_limit_bounds(rm: FakeRM, client: TestClient, monke
 
     assert client.get("/api/coordination/jobs?limit=0").status_code == 422
     assert client.get("/api/coordination/jobs?limit=201").status_code == 422
+
+
+def _claim_issue(number: int, *, labels: list[str] | None = None) -> dict[str, Any]:
+    payload = _issue(number, labels=labels or [])
+    payload["state"] = "open"
+    return payload
+
+
+def _claim_fetch(number: int, *, labels: list[str] | None = None) -> Any:
+    payload = _claim_issue(number, labels=labels)
+
+    def fetch(path: str) -> Any:
+        if path.endswith(f"/issues/{number}"):
+            return payload
+        if path.endswith("/pulls?state=all&per_page=100"):
+            return []
+        return []
+
+    return fetch
+
+
+@pytest.mark.unit
+def test_jobs_claim_ineligible_409(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    from coordination import jobs as jobs_mod
+    from coordination.jobs import JobIneligibleError
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(55, labels=["blocked"]))
+    rm.respond("check_agent_claim", claim_status(False))
+    with pytest.raises(JobIneligibleError, match="blocked"):
+        jobs_mod.claim_job("Tools", 55, agent="codex", session="codex-55", intent="ship")
+    assert "post_agent_lease" not in [n for n, _ in rm.calls()]
+
+
+@pytest.mark.unit
+def test_jobs_claim_fail_open_502(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    from coordination import jobs as jobs_mod
+    from coordination.board import RMScriptError
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(56))
+    rm.respond("check_agent_claim", claim_status(False, "", "error:Timeout"))
+    with pytest.raises(RMScriptError):
+        jobs_mod.claim_job("Tools", 56, agent="codex", session="codex-56", intent="ship")
+    assert "post_agent_lease" not in [n for n, _ in rm.calls()]
+
+
+@pytest.mark.unit
+def test_jobs_concurrent_claim_one_wins(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    from coordination import jobs as jobs_mod
+    from coordination.jobs import JobIneligibleError
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(57))
+    rm.respond("post_agent_lease", lease_result())
+    rm.respond("release_agent_lease", release_result())
+    posts = {"n": 0}
+    winner = {"session": ""}
+    real = claims_mod.post_lease
+
+    def post(*a: Any, **k: Any) -> dict[str, Any]:
+        posts["n"] += 1
+        winner["session"] = k.get("session") or a[3]
+        return real(*a, **k)
+
+    monkeypatch.setattr(claims_mod, "post_lease", post)
+    monkeypatch.setattr(
+        claims_mod,
+        "check",
+        lambda repo, issue: {
+            "available": True,
+            "held": posts["n"] > 0,
+            "agent": "codex",
+            "session": winner["session"],
+            "reason": "lease",
+        }
+        if posts["n"] > 0
+        else {"available": True, "held": False, "agent": "", "session": "", "reason": ""},
+    )
+    out: list[str] = []
+
+    def go(sess: str) -> None:
+        try:
+            jobs_mod.claim_job("Tools", 57, agent="codex", session=sess, intent="race")
+            out.append("ok")
+        except (claims_mod.ClaimHeldError, JobIneligibleError):
+            out.append("held")
+
+    t1, t2 = threading.Thread(target=go, args=("codex-57a",)), threading.Thread(target=go, args=("codex-57b",))
+    t1.start()
+    t2.start()
+    t1.join(10)
+    t2.join(10)
+    assert sorted(out) == ["held", "ok"]

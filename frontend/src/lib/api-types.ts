@@ -1500,6 +1500,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/jobs/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Jobs Claim */
+        post: operations["post_jobs_claim_api_coordination_jobs_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/jobs/releases": {
         parameters: {
             query?: never;
@@ -10461,6 +10478,25 @@ export interface components {
         InitializeExecutorPayload: {
             config?: components["schemas"]["ExecutionConfig"] | null;
         };
+        /**
+         * JobClaimBody
+         * @description Take a listed job atomically (Fleet Job Board S3, #2784).
+         */
+        JobClaimBody: {
+            /** Agent */
+            agent?: string | null;
+            /**
+             * Intent
+             * @default implement
+             */
+            intent: string;
+            /** Issue */
+            issue: number;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+        };
         /** LaunchAuthRequest */
         LaunchAuthRequest: {
             /**
@@ -15948,6 +15984,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_jobs_claim_api_coordination_jobs_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobClaimBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

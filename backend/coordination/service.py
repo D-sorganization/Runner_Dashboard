@@ -20,8 +20,17 @@ from typing import Any
 
 from activity_producers import emit_activity
 from coordination import board, claims, roster
+from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
-from coordination.models import AckBody, ClaimBody, ClaimReleaseBody, MessageBody, PresenceBody, ReleaseBody
+from coordination.models import (
+    AckBody,
+    ClaimBody,
+    ClaimReleaseBody,
+    JobClaimBody,
+    MessageBody,
+    PresenceBody,
+    ReleaseBody,
+)
 from coordination.staff_view import staff_runs
 from staff.rm_sync import stale_source_warning
 
@@ -237,6 +246,21 @@ def release_claim(body: ClaimReleaseBody, caller: Caller) -> dict[str, Any]:
             agent=agent,
             session=body.session,
             reason=body.reason,
+            holder_principal=caller.label.removeprefix("principal:"),
+        )
+    )
+
+
+def claim_job(body: JobClaimBody, caller: Caller) -> dict[str, Any]:
+    agent = _bind(caller, body.session, body.agent, needs_agent=True)
+    assert agent is not None
+    return _stamp(
+        jobs_mod.claim_job(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            intent=body.intent,
             holder_principal=caller.label.removeprefix("principal:"),
         )
     )
