@@ -18,7 +18,8 @@ WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 PR_SWITCH = "github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest'"
 
 LIGHT_JOBS = {
-    "ci-standard.yml": ["pick-runner"],
+    # ci-standard pick-runner pinned to ubuntu-latest for go-public (#3303 part 8);
+    # PR mode is enforced in the select script, not runs-on YAML.
     "frontend-tests.yml": ["frontend-required", "frontend-scope", "typecheck", "vitest", "perf-budget"],
     "ci-secrets.yml": ["gitleaks", "detect-secrets"],
     "anti-phantom-merge.yml": None,
