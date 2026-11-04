@@ -62,11 +62,7 @@ def policy_provisioning_snapshot(runners: list[dict[str, Any]]) -> dict[str, Any
             if runner.get("status") != "online":
                 continue
             labels = runner.get("labels", []) or []
-            names = {
-                str(label.get("name") if isinstance(label, dict) else label)
-                for label in labels
-                if label
-            }
+            names = {str(label.get("name") if isinstance(label, dict) else label) for label in labels if label}
             if group_label in names:
                 online_with_label += 1
     jobs = policy.get("jobs") if isinstance(policy.get("jobs"), list) else []
