@@ -143,6 +143,8 @@ class ClaimBody(_SessionRepo):
     issue: int = Field(gt=0)
     agent: str | None = Field(default=None, pattern=AGENT_PATTERN)
     intent: str = Field(default="implement", min_length=1, max_length=200)
+    # Files/dirs the claimant will touch; scopes the aging-PR check to overlapping PRs (#3892).
+    paths: list[str] = Field(default_factory=list, max_length=50)
 
     @field_validator("intent")
     @classmethod
@@ -150,6 +152,11 @@ class ClaimBody(_SessionRepo):
         if value.startswith("-"):
             raise ValueError("intent must not start with '-'")
         return single_line(value, "intent")
+
+    @field_validator("paths")
+    @classmethod
+    def _paths(cls, value: list[str]) -> list[str]:
+        return [normalize_scope_path(p) for p in value]
 
 
 class ClaimReleaseBody(_SessionRepo):

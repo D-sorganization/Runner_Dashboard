@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from activity_producers import record_job_claim_activity
@@ -241,8 +241,12 @@ def claim(
     intent: str,
     holder_principal: str | None = None,
     fencing_token: str | None = None,
+    paths: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Check, then lease, serialized per ``repo#issue`` in this process.
+
+    ``paths`` (optional) are the files/dirs the claimant intends to touch; an aging PR
+    blocks only when it is in ``repo`` and, if ``paths`` are given, overlaps them (#3892).
 
     Raises ``ClaimHeldError`` (held by anyone but this agent+session), ``AgingPrBlockedError``,
     or ``RMScriptError``.
@@ -269,7 +273,7 @@ def claim(
             )
             raise ClaimHeldError(status)
         if not (status["held"] and _is_own(status, agent, session)):
-            aging_block = claim_blocked_by_aging_prs(agent, fetch=evidence_fetch)
+            aging_block = claim_blocked_by_aging_prs(agent, claim_repo=repo, claim_paths=paths, fetch=evidence_fetch)
             if aging_block is not None:
                 raise AgingPrBlockedError(aging_block)
         posted = _post(repo, issue, agent, session, intent)

@@ -1421,6 +1421,14 @@
             "title": "Issue",
             "type": "integer"
           },
+          "paths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Paths",
+            "type": "array"
+          },
           "repo": {
             "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
             "title": "Repo",

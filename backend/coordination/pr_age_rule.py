@@ -2,6 +2,10 @@
 
 Before an agent claims a new issue, any open PR they own that exceeds
 ``PR_AGE_RULE_HOURS`` must be cleared (merged or closed) or diagnosed.
+
+Scope (#3892): only an aging PR in the claim's own repository blocks, and,
+when the claim names its paths, only one whose changed files overlap them.
+An old draft PR in another repository is not a reason to refuse a claim.
 """
 
 from __future__ import annotations
@@ -10,6 +14,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from activity_context import _hit_path
 from coordination import roster
 from coordination.gh_cli import gh_api_json
 from flow_metrics import PR_AGE_RULE_HOURS, open_pr_age_hours
@@ -116,26 +121,52 @@ def list_aging_prs_for_agent(
     return hits
 
 
+def _overlapping_files(repo_short: str, number: Any, claim_paths: Sequence[str], get: SyncFetch) -> list[str] | None:
+    """Changed files of the PR that overlap ``claim_paths``; ``None`` when the files are unreadable."""
+    try:
+        files = get(f"/repos/{full_repo(repo_short)}/pulls/{number}/files?per_page=100")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("pr age rule: cannot list files for %s#%s: %s", repo_short, number, exc)
+        return None
+    names = [str(f.get("filename") or "") for f in files if isinstance(f, dict)] if isinstance(files, list) else []
+    wanted = [p.casefold() for p in claim_paths]
+    return sorted({n for n in names if n and any(_hit_path(n.casefold(), w) for w in wanted)})
+
+
 def claim_blocked_by_aging_prs(
     agent: str,
     *,
-    repos: Sequence[str] | None = None,
+    claim_repo: str,
+    claim_paths: Sequence[str] = (),
     fetch: SyncFetch | None = None,
 ) -> dict[str, Any] | None:
-    """When non-empty, the agent must clear aging PRs before claiming a new issue."""
-    from coordination.board import fleet_repos
+    """The agent's aging PRs that block a claim in ``claim_repo``, or ``None``.
 
-    scoped = list(repos or fleet_repos())
-    aging = list_aging_prs_for_agent(agent, repos=scoped, fetch=fetch)
-    if not aging:
+    Pre: ``claim_repo`` is the repository of the issue being claimed.
+    Post: every reported PR is in ``claim_repo``; with ``claim_paths`` it also
+    touches an overlapping path (unreadable PR files count as overlapping, so
+    the rule fails closed rather than open).
+    """
+    get = fetch or gh_api_json
+    blocking: list[dict[str, Any]] = []
+    for hit in list_aging_prs_for_agent(agent, repos=[claim_repo], fetch=get):
+        overlap: list[str] = []
+        if claim_paths:
+            files = _overlapping_files(claim_repo, hit.get("number"), claim_paths, get)
+            if files == []:
+                continue
+            overlap = files or []
+        blocking.append({**hit, "overlapping_paths": overlap})
+    if not blocking:
         return None
-    first = aging[0]
+    first = blocking[0]
+    where = f" touching {', '.join(first['overlapping_paths'])}" if first["overlapping_paths"] else ""
     return {
         "code": "aging_pr_blocks_claim",
         "message": (
-            f"Open PR #{first.get('number')} in {first.get('repo')} is "
+            f"Open PR #{first.get('number')} in {first.get('repo')}{where} is "
             f"{first.get('age_hours')}h old (limit {first.get('rule_hours')}h); run CI diagnosis or "
-            "iterate/close before claiming a new issue."
+            "iterate/close before claiming a new issue in that repository."
         ),
-        "aging_prs": aging,
+        "aging_prs": blocking,
     }
