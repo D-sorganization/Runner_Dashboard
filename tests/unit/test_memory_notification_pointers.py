@@ -63,6 +63,8 @@ def test_dedup_key_normalizes_casing_and_whitespace() -> None:
     k1 = notification_dedup_key("fleet_event", "Disk_Fill", "host-1", "Disk usage 85%")
     k2 = notification_dedup_key("fleet_event", "disk_fill", "host-1", "  disk usage  85%  ")
     assert k1 == k2
+    k3 = notification_dedup_key("fleet_event", "disk_fill", "host-1", "disk usage 85%")
+    assert k1 == k3
 
 
 def test_dedup_key_differs_by_topic_or_target() -> None:
