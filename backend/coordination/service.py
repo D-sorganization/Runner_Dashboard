@@ -27,6 +27,7 @@ from coordination.models import (
     ClaimBody,
     ClaimReleaseBody,
     JobClaimBody,
+    JobReleaseBody,
     MessageBody,
     PresenceBody,
     ReleaseBody,
@@ -261,6 +262,22 @@ def claim_job(body: JobClaimBody, caller: Caller) -> dict[str, Any]:
             agent=agent,
             session=body.session,
             intent=body.intent,
+            holder_principal=caller.label.removeprefix("principal:"),
+        )
+    )
+
+
+def release_job(body: JobReleaseBody, caller: Caller) -> dict[str, Any]:
+    agent = _bind(caller, body.session, body.agent, needs_agent=True)
+    assert agent is not None
+    return _stamp(
+        jobs_mod.release_job(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            fence=body.fence,
+            reason=body.reason,
             holder_principal=caller.label.removeprefix("principal:"),
         )
     )

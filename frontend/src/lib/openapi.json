@@ -3113,6 +3113,54 @@
         "title": "JobClaimBody",
         "type": "object"
       },
+      "JobReleaseBody": {
+        "additionalProperties": false,
+        "description": "Release a job-board claim; requires the fence returned by claim (#2784).",
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
+          "fence": {
+            "exclusiveMinimum": 0.0,
+            "title": "Fence",
+            "type": "integer"
+          },
+          "issue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Issue",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "work completed",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo", "issue", "fence"],
+        "title": "JobReleaseBody",
+        "type": "object"
+      },
       "LaunchAuthRequest": {
         "properties": {
           "provider": {
@@ -13188,6 +13236,52 @@
           }
         ],
         "summary": "Post Jobs Claim",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/jobs/release": {
+      "post": {
+        "operationId": "post_jobs_release_api_coordination_jobs_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Jobs Release Api Coordination Jobs Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Jobs Release",
         "tags": ["coordination"]
       }
     },
