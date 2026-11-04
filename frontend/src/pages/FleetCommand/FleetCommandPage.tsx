@@ -14,6 +14,7 @@ import { useCallback, useState } from "react";
 import { SubTabs } from "../../components/SubTabs";
 import { ActiveWorkPanel } from "./ActiveWorkPanel";
 import { ClaimsPanel } from "./ClaimsPanel";
+import { JobBoardPanel } from "./JobBoardPanel";
 import { DirectivesPanel } from "./DirectivesPanel";
 import { FlowMetricsPanel } from "./FlowMetricsPanel";
 import { DispatchPanel } from "./DispatchPanel";
@@ -116,7 +117,12 @@ export function FleetCommandPage() {
       {section === "proposals" ? <ProposalsPanel initialPrefill={proposalPrefill ?? undefined} /> : null}
       {section === "work" ? <ActiveWorkPanel onMessage={messageSession} /> : null}
       {section === "messages" ? <MessagesPanel target={messageTarget} /> : null}
-      {section === "claims" ? <ClaimsPanel /> : null}
+      {section === "claims" ? (
+        <div className="fleet-cmd__stack">
+          <JobBoardPanel />
+          <ClaimsPanel />
+        </div>
+      ) : null}
       {section === "dispatch" ? <DispatchPanel /> : null}
     </div>
   );
