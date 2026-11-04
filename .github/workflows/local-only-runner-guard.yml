@@ -68,6 +68,7 @@ jobs:
               "issue-taxonomy-backfill.yml",
               "labels-sync.yml",
               "lockfile-upgrade.yml",
+              "main-ci-auto-release.yml",
               "reusable-pr-cap.yml",
               "taxonomy-rollout.yml",
               "ci-secrets.yml",
