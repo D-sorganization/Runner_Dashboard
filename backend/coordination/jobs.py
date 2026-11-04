@@ -16,6 +16,7 @@ from typing import Any
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination import claims as claims_mod
+from coordination import job_board_lease
 from coordination.board import RMScriptError
 from coordination.job_filters import gate_reason, repo_schedule_holds
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
@@ -228,9 +229,10 @@ _fences: dict[str, int] = {}
 
 
 def reset_job_board_claim_state() -> None:
-    """Forget in-process fencing bookkeeping (tests)."""
+    """Forget in-process fencing and TTL bookkeeping (tests)."""
     with _fence_guard:
         _fences.clear()
+    job_board_lease.clear_lease_state()
 
 
 def _fence_key(repo: str, issue: int) -> str:
@@ -314,9 +316,11 @@ def claim_job(
     session: str,
     intent: str,
     holder_principal: str | None = None,
+    ttl_hours: float = job_board_lease.DEFAULT_TTL_HOURS,
 ) -> dict[str, Any]:
     """Atomic job-board claim with monotonic fencing (#2784)."""
     assert agent and session and intent  # noqa: S101 — route validates
+    job_board_lease.validate_ttl(ttl_hours)
     with claims_mod.hold_issue(repo, issue):
         _assert_claimable(repo, issue)
         status = claims_mod.check(repo, issue)
@@ -327,7 +331,7 @@ def claim_job(
         aging_block = claim_blocked_by_aging_prs(agent, claim_repo=repo, fetch=claims_mod.evidence_fetch)
         if aging_block is not None:
             raise claims_mod.AgingPrBlockedError(aging_block)
-        posted = claims_mod.post_lease(repo, issue, agent, session, intent)
+        posted = claims_mod.post_lease(repo, issue, agent, session, intent, ttl_hours=ttl_hours)
         after = claims_mod.check(repo, issue)
         if after.get("held") and (after.get("agent"), after.get("session")) != (agent, session):
             try:
@@ -370,6 +374,11 @@ def claim_job(
         )
         # fmt: on
         expires_at = str(lease.get("expires_at") or after.get("expires_at") or "")
+        # fmt: off
+        job_board_lease.remember_lease(
+            repo, issue, agent=agent, session=session, fence=fence, ttl_hours=ttl_hours, expires_at=expires_at or None,
+        )
+        # fmt: on
         principal = holder_principal or f"agent-{agent}"
         return {
             "claimed": True,
@@ -411,6 +420,7 @@ def release_job(
             holder_principal=holder_principal,
             fencing_token=str(fence),
         )
+        job_board_lease.drop_lease(repo, issue)
         return {
             "released": True,
             "repo": repo,
@@ -418,3 +428,10 @@ def release_job(
             "fence": fence,
             "warnings": released.get("warnings") or [],
         }
+
+
+# Re-export TTL helpers for routes, reaper, and tests.
+heartbeat_job = job_board_lease.heartbeat_job
+sweep_expired_job_claims = job_board_lease.sweep_expired_job_claims
+DEFAULT_TTL_HOURS = job_board_lease.DEFAULT_TTL_HOURS
+_remember_lease = job_board_lease.remember_lease

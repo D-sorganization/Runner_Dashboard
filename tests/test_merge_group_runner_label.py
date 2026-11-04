@@ -94,9 +94,11 @@ def test_ci_standard_merge_group_resolves_queue_label_when_set() -> None:
 
 def test_ci_standard_pick_runner_job_runs_on_carries_queue_label_switch() -> None:
     job = _jobs("ci-standard.yml", ["pick-runner"])["pick-runner"]
-    runs_on = " ".join(str(job["runs-on"]).split())
-    assert PICK_RUNNER_QUEUE_LABEL_SWITCH in runs_on
-    assert runs_on.endswith("'d-sorg-fleet')) }}")
+    assert job["runs-on"] == "ubuntu-latest"
+    select = next(step for step in job["steps"] if step.get("id") == "select")
+    script = str(select["run"])
+    assert "CI_QUEUE_RUNNER_LABEL" in script
+    assert "merge_group" in script
 
 
 def test_ci_standard_select_step_declares_queue_label_env() -> None:
@@ -209,7 +211,8 @@ def test_fork_pr_never_reaches_fleet_even_with_queue_label_set() -> None:
 
 def test_ci_standard_pick_runner_job_runs_on_hosted_mode_precedes_queue_label() -> None:
     job = _jobs("ci-standard.yml", ["pick-runner"])["pick-runner"]
-    runs_on = " ".join(str(job["runs-on"]).split())
-    hosted_idx = runs_on.index("vars.CI_QUEUE_RUNNER_MODE == 'hosted'")
-    label_idx = runs_on.index(PICK_RUNNER_QUEUE_LABEL_SWITCH)
+    select = next(step for step in job["steps"] if step.get("id") == "select")
+    script = str(select["run"])
+    hosted_idx = script.index("CI_QUEUE_RUNNER_MODE")
+    label_idx = script.index("CI_QUEUE_RUNNER_LABEL")
     assert hosted_idx < label_idx
