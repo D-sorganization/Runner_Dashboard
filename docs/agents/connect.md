@@ -296,6 +296,26 @@ revoked without affecting the other agents.
    The response is `{"principal_id": "agent-codex", "token": "svc_..."}`. Put it in the agent's `FLEET_API_TOKEN`.
    Never commit it, and never paste it into a handoff or an issue.
 
+   `deploy/setup-agent-token.sh` (bash) and `deploy/Setup-AgentToken.ps1` (PowerShell) wrap
+   this mint call: both are idempotent (skip minting when a non-empty token file already
+   exists; pass `--force`/`-Force` to re-mint), send the required `X-Requested-With` header,
+   write the token file with mode `600` and never print it.
+
+   ```bash
+   # bash / WSL
+   ./deploy/setup-agent-token.sh --principal agent-codex --expires-in-days 90
+   ```
+
+   ```powershell
+   # PowerShell (Windows)
+   .\deploy\Setup-AgentToken.ps1 -Principal agent-codex -ExpiresInDays 90
+   ```
+
+   Both default `--api-url`/`-ApiUrl` to `$FLEET_API_URL`/`$env:FLEET_API_URL` (else
+   `http://127.0.0.1:8321`) and `--identity-dir`/`-IdentityDir` to
+   `$DASHBOARD_IDENTITY_DIR`/`$env:DASHBOARD_IDENTITY_DIR` (else the platform's default
+   identity directory). Use `--dry-run`/`-DryRun` to preview without minting or writing.
+
 3. To revoke a token, find its hash with `GET /api/admin/tokens` and call
    `DELETE /api/admin/tokens/{token_hash}`.
 
