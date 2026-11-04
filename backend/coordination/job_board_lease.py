@@ -94,15 +94,12 @@ def heartbeat_job(
             ttl_hours=ttl_hours,
             expires_at=expires_at or None,
         )
+        # fmt: off
         return {
-            "heartbeated": True,
-            "repo": repo,
-            "issue": issue,
-            "session": session,
-            "fence": fence,
-            "expires_at": expires_at or None,
-            "warnings": posted.get("warnings") or [],
+            "heartbeated": True, "repo": repo, "issue": issue, "session": session, "fence": fence,
+            "expires_at": expires_at or None, "warnings": posted.get("warnings") or [],
         }
+        # fmt: on
 
 
 def sweep_expired_job_claims(*, now: datetime | None = None) -> dict[str, Any]:

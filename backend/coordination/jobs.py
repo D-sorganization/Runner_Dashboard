@@ -322,23 +322,6 @@ def claim_job(
     assert agent and session and intent  # noqa: S101 — route validates
     job_board_lease.validate_ttl(ttl_hours)
     with claims_mod.hold_issue(repo, issue):
-        pre = claims_mod.check(repo, issue)
-        if not pre["available"]:
-            raise RMScriptError(f"check_agent_claim unavailable: {pre['reason']}")
-        if pre.get("held") and (pre.get("agent"), pre.get("session")) != (agent, session):
-            record_job_claim_activity(
-                kind="conflict",
-                repo=repo,
-                issue=issue,
-                agent=agent,
-                session=session,
-                holder_principal=holder_principal,
-                extra={
-                    "challenger_principal": holder_principal or f"agent-{agent}",
-                    "reason": str(pre.get("reason") or ""),
-                },
-            )
-            raise claims_mod.ClaimHeldError(pre)
         _assert_claimable(repo, issue)
         status = claims_mod.check(repo, issue)
         if not status["available"]:
@@ -391,15 +374,11 @@ def claim_job(
         )
         # fmt: on
         expires_at = str(lease.get("expires_at") or after.get("expires_at") or "")
+        # fmt: off
         job_board_lease.remember_lease(
-            repo,
-            issue,
-            agent=agent,
-            session=session,
-            fence=fence,
-            ttl_hours=ttl_hours,
-            expires_at=expires_at or None,
+            repo, issue, agent=agent, session=session, fence=fence, ttl_hours=ttl_hours, expires_at=expires_at or None,
         )
+        # fmt: on
         principal = holder_principal or f"agent-{agent}"
         return {
             "claimed": True,

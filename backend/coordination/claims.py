@@ -254,7 +254,18 @@ def post_lease(
     ttl_hours: float | None = None,
 ) -> dict[str, Any]:
     """Post an RM lease comment and ``claim:*`` label (same subprocess as :func:`claim`)."""
-    args: list[str] = ["--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session, "--intent", intent]
+    args: list[str] = [
+        "--repo",
+        repo,
+        "--issue",
+        str(issue),
+        "--agent",
+        agent,
+        "--session",
+        session,
+        "--intent",
+        intent,
+    ]
     if ttl_hours is not None:
         args += ["--ttl-hours", str(float(ttl_hours))]
     return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
