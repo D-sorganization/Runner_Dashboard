@@ -1,0 +1,38 @@
+{
+  "pilot": {
+    "complete_env": "FLEET_RESTIC_PILOT_COMPLETE",
+    "note": "Set only after issue #4011 WSL export pilot succeeds; this PR ships repo artifacts only."
+  },
+  "hosts": [
+    {
+      "id": "hub-a",
+      "display_name": "Hub A",
+      "repo_env": "RESTIC_REPOSITORY_HUB_A",
+      "credentials_env": "RESTIC_CREDENTIALS_FILE",
+      "backup_paths": [
+        "/var/backups/runner-dashboard",
+        "~/.config/runner-dashboard"
+      ]
+    },
+    {
+      "id": "node-b",
+      "display_name": "Node B",
+      "repo_env": "RESTIC_REPOSITORY_NODE_B",
+      "credentials_env": "RESTIC_CREDENTIALS_FILE",
+      "backup_paths": [
+        "/var/backups/runner-dashboard",
+        "~/.config/runner-dashboard"
+      ]
+    },
+    {
+      "id": "node-c",
+      "display_name": "Node C",
+      "repo_env": "RESTIC_REPOSITORY_NODE_C",
+      "credentials_env": "RESTIC_CREDENTIALS_FILE",
+      "backup_paths": [
+        "/var/backups/runner-dashboard",
+        "~/.config/runner-dashboard"
+      ]
+    }
+  ]
+}
