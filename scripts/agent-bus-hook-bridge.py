@@ -59,15 +59,27 @@ def _paths() -> Path | None:
     return root
 
 
+def _report_missing_deps(exc: ImportError) -> None:
+    """Fail open with one stderr line when the interpreter lacks backend deps (#3982)."""
+    print(
+        f"agent-bus-hook-bridge: backend dependencies unavailable under {sys.executable} ({exc.name or exc})",
+        file=sys.stderr,
+    )
+
+
 def session_start() -> int:
     if not ensure_python_runtime():
         return 0
     root = _paths()
     if root is None:
         return 0
-    from agent_bus.session_hooks import session_start as run_start  # noqa: PLC0415
-    from fleet_client import FleetClient  # noqa: PLC0415
-    from fleet_provider_identity import infer_fleet_agent, infer_fleet_session  # noqa: PLC0415
+    try:
+        from agent_bus.session_hooks import session_start as run_start  # noqa: PLC0415
+        from fleet_client import FleetClient  # noqa: PLC0415
+        from fleet_provider_identity import infer_fleet_agent, infer_fleet_session  # noqa: PLC0415
+    except ImportError as exc:
+        _report_missing_deps(exc)
+        return 0
 
     raw = sys.stdin.read()
     agent = infer_fleet_agent()
@@ -85,7 +97,11 @@ def pre_push() -> int:
         return 0
     if _paths() is None:
         return 0
-    from agent_bus.session_hooks import pre_push as run_pre_push  # noqa: PLC0415
+    try:
+        from agent_bus.session_hooks import pre_push as run_pre_push  # noqa: PLC0415
+    except ImportError as exc:
+        _report_missing_deps(exc)
+        return 0
 
     run_pre_push()
     return 0
