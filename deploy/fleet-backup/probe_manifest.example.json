@@ -1,0 +1,8 @@
+{
+  "files": [
+    {
+      "path": "data/restic-drill-probe.txt",
+      "sha256": "REPLACE_AFTER_FIRST_BACKUP"
+    }
+  ]
+}
