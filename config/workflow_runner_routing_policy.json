@@ -44,7 +44,6 @@
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
         "lint-workflow-files.yml",
-        "priority-expedite-guard.yml",
         "pr-cap.yml",
         "pr-body-lint.yml",
         "publish-guard.yml",

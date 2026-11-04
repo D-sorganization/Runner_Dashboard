@@ -70,6 +70,7 @@ jobs:
               "lockfile-upgrade.yml",
               "main-ci-auto-release.yml",
               "release.yml",
+              "priority-expedite-guard.yml",
               "reusable-pr-cap.yml",
               "taxonomy-rollout.yml",
               "ci-secrets.yml",
