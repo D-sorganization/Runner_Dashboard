@@ -84,6 +84,8 @@ _BUILTIN = FleetStandards(
         "- on Windows, gh is the fleet App wrapper (d-sorggeneralagent[bot]); gh-personal only for owner-run actions.\n"
         "- subscriptions only; never use pay-per-use API keys.\n"
         "- ship change fragments; include the PR URL, if you opened one, in your STAFF_RESULT summary.\n"
+        "- Take unassigned fleet work only through GET /api/coordination/jobs and claim it with "
+        "POST /api/coordination/claims before editing.\n"
         f"- {_RESULT_CONTRACT}"
     ),
     content_hash=hashlib.sha256(b"fleet-standards-v1-builtin").hexdigest(),
