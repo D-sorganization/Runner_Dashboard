@@ -118,7 +118,16 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "activity": activity,
         "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
         "agent_tokens": _agent_token_rows(),
+        "watchdog_rows": _watchdog_rows(nodes, in_flight=len(board.get("running", [])) + len(board.get("queued", []))),
     }
+
+
+def _watchdog_rows(nodes: dict[str, dict[str, Any]], *, in_flight: int) -> list[dict[str, Any]]:
+    """Fleet health watchdog rows (#3934 S2): per-host anomaly/disk-fill projection."""
+    from host_trend_watchdog import get_registry  # noqa: PLC0415
+
+    annotated = {name: {**info, "in_flight": in_flight} for name, info in nodes.items()}
+    return get_registry().observe(annotated, now=datetime.now(UTC))
 
 
 def _agent_token_rows() -> list[dict[str, Any]]:
@@ -260,6 +269,11 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
         from agent_token_health import render_token_health_lines  # noqa: PLC0415
 
         lines.extend(render_token_health_lines(agent_tokens))
+    watchdog_rows = snapshot.get("watchdog_rows") or []
+    if watchdog_rows:
+        from host_trend_watchdog import render_watchdog_lines  # noqa: PLC0415
+
+        lines.extend(render_watchdog_lines(watchdog_rows))
     lines.append("")
     return "\n".join(lines)
 
