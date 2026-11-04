@@ -14,6 +14,8 @@ The Antigravity CLI (`agy`) provides headless and unattended execution using Goo
 - **Unattended Execution:** Runs in `--mode plan` with `--print <prompt> --output-format stream-json --add-dir <workdir> --model <model>`.
 - **Output Contract:** Results stream NDJSON events; the final answer appears in `result.response` and token accounting in `result.usage`. The runner parses `STAFF_RESULT: ok|failed` from the output stream.
 
+**Finding work:** list claimable issues with `GET /api/coordination/jobs`, claim via `POST /api/coordination/claims`, and release with `POST /api/coordination/claims/release` when finished.
+
 ---
 
 ## 2. Installation on Fleet Nodes
