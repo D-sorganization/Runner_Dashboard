@@ -192,13 +192,11 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
 
 
 class JobIneligibleError(RuntimeError):
-    """Listed job is not claimable; mapped to HTTP 409."""
+    """Listed job is not claimable (HTTP 409)."""
 
     def __init__(self, reason: str, *, held_by: str = "", expires_at: str | None = None) -> None:
         super().__init__(reason)
-        self.reason = reason
-        self.held_by = held_by
-        self.expires_at = expires_at
+        self.reason, self.held_by, self.expires_at = reason, held_by, expires_at
 
     def to_detail(self) -> dict[str, Any]:
         return {
@@ -316,31 +314,19 @@ def claim_job(
                     reason="race loser",
                     holder_principal=holder_principal,
                 )
-            except Exception:  # noqa: BLE001 — best-effort rollback; caller still gets 409
+            except Exception:  # noqa: BLE001
                 log.warning("jobs: race rollback release failed for %s#%s", repo, issue, exc_info=True)
             record_job_claim_activity(
-                kind="conflict",
-                repo=repo,
-                issue=issue,
-                agent=agent,
-                session=session,
-                holder_principal=holder_principal,
-                extra={"reason": "race loser"},
+                kind="conflict", repo=repo, issue=issue, agent=agent, session=session,
+                holder_principal=holder_principal, extra={"reason": "race loser"},
             )
             raise claims_mod.ClaimHeldError(after)
         fence = _mint_fence(repo, issue)
         lease = posted["result"]
         receipt = str(lease.get("receipt") or "")
         record_job_claim_activity(
-            kind="claim",
-            repo=repo,
-            issue=issue,
-            agent=agent,
-            session=session,
-            holder_principal=holder_principal,
-            receipt=receipt,
-            fencing_token=str(fence),
-            extra={"intent": intent},
+            kind="claim", repo=repo, issue=issue, agent=agent, session=session,
+            holder_principal=holder_principal, receipt=receipt, fencing_token=str(fence), extra={"intent": intent},
         )
         expires_at = str(lease.get("expires_at") or after.get("expires_at") or "")
         principal = holder_principal or f"agent-{agent}"
