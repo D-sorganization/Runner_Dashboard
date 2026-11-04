@@ -170,3 +170,41 @@ class ClaimReleaseBody(_SessionRepo):
     @classmethod
     def _reason(cls, value: str) -> str:
         return single_line(value, "reason")
+
+
+class JobClaimBody(_SessionRepo):
+    """Take a listed job atomically (Fleet Job Board S3, #2784)."""
+
+    issue: int = Field(gt=0)
+    agent: str | None = Field(default=None, pattern=AGENT_PATTERN)
+    intent: str = Field(default="implement", min_length=1, max_length=200)
+    ttl_hours: float = Field(default=2.0, ge=0.1, le=8.0)
+
+    @field_validator("intent")
+    @classmethod
+    def _intent(cls, value: str) -> str:
+        if value.startswith("-"):
+            raise ValueError("intent must not start with '-'")
+        return single_line(value, "intent")
+
+
+class JobReleaseBody(_SessionRepo):
+    """Release a job-board claim; requires the fence returned by claim (#2784)."""
+
+    issue: int = Field(gt=0)
+    agent: str | None = Field(default=None, pattern=AGENT_PATTERN)
+    fence: int = Field(gt=0)
+    reason: str = Field(default="work completed", min_length=1, max_length=300)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        return single_line(value, "reason")
+
+
+class JobHeartbeatBody(_SessionRepo):
+    """Renew a job-board claim TTL (#2785)."""
+
+    issue: int = Field(gt=0)
+    fence: int = Field(gt=0)
+    ttl_hours: float = Field(default=2.0, ge=0.1, le=8.0)
