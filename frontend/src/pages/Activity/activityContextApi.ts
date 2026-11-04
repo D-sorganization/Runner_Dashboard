@@ -21,8 +21,8 @@ export type ActivityContextResponse = {
 };
 
 export function fetchActivityContext(repo?: string, signal?: AbortSignal): Promise<ActivityContextResponse> {
-  const qs = repo ? `?repo=${encodeURIComponent(repo)}` : "";
-  return apiRequest<ActivityContextResponse>(`/api/v1/activity/context${qs}`, { signal });
+  const query = repo ? `?repo=${encodeURIComponent(repo)}` : "";
+  return apiRequest<ActivityContextResponse>("/api/v1/activity/context" + query, { signal });
 }
 
 /** Map C1 conflicts to per-event badge labels (C1 output only). */
