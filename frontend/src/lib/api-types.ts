@@ -1500,6 +1500,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/jobs/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Jobs Claim */
+        post: operations["post_jobs_claim_api_coordination_jobs_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coordination/jobs/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Jobs Heartbeat */
+        post: operations["post_jobs_heartbeat_api_coordination_jobs_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coordination/jobs/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Jobs Release */
+        post: operations["post_jobs_release_api_coordination_jobs_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/jobs/releases": {
         parameters: {
             query?: never;
@@ -5011,6 +5062,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/self-test/desk-core": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Self Test Desk Core
+         * @description Run dry-run self-tests for every configured Desk core staff role.
+         */
+        post: operations["self_test_desk_core_api_staff_self_test_desk_core_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/summary": {
         parameters: {
             query?: never;
@@ -5138,6 +5209,26 @@ export interface paths {
          *     ``plan.consolidation`` and the run's ``strategy_mode``.
          */
         post: operations["dispatch_api_staff__role__run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/{role}/self-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Self Test Role
+         * @description Dry-run dispatch for one role; optional persona drill uses ephemeral stores only.
+         */
+        post: operations["self_test_role_api_staff__role__self_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10420,6 +10511,70 @@ export interface components {
          */
         InitializeExecutorPayload: {
             config?: components["schemas"]["ExecutionConfig"] | null;
+        };
+        /**
+         * JobClaimBody
+         * @description Take a listed job atomically (Fleet Job Board S3, #2784).
+         */
+        JobClaimBody: {
+            /** Agent */
+            agent?: string | null;
+            /**
+             * Intent
+             * @default implement
+             */
+            intent: string;
+            /** Issue */
+            issue: number;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+            /**
+             * Ttl Hours
+             * @default 2
+             */
+            ttl_hours: number;
+        };
+        /**
+         * JobHeartbeatBody
+         * @description Renew a job-board claim TTL (#2785).
+         */
+        JobHeartbeatBody: {
+            /** Fence */
+            fence: number;
+            /** Issue */
+            issue: number;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+            /**
+             * Ttl Hours
+             * @default 2
+             */
+            ttl_hours: number;
+        };
+        /**
+         * JobReleaseBody
+         * @description Release a job-board claim; requires the fence returned by claim (#2784).
+         */
+        JobReleaseBody: {
+            /** Agent */
+            agent?: string | null;
+            /** Fence */
+            fence: number;
+            /** Issue */
+            issue: number;
+            /**
+             * Reason
+             * @default work completed
+             */
+            reason: string;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
         };
         /** LaunchAuthRequest */
         LaunchAuthRequest: {
@@ -15931,6 +16086,111 @@ export interface operations {
             };
         };
     };
+    post_jobs_claim_api_coordination_jobs_claim_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobClaimBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_jobs_heartbeat_api_coordination_jobs_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobHeartbeatBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_jobs_release_api_coordination_jobs_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobReleaseBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_job_releases_api_coordination_jobs_releases_get: {
         parameters: {
             query?: {
@@ -20744,6 +21004,39 @@ export interface operations {
             };
         };
     };
+    self_test_desk_core_api_staff_self_test_desk_core_post: {
+        parameters: {
+            query?: {
+                persona_drill?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     summary_api_staff_summary_get: {
         parameters: {
             query?: never;
@@ -20913,6 +21206,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffDispatchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    self_test_role_api_staff__role__self_test_post: {
+        parameters: {
+            query?: {
+                /** @description Also run the isolated #3704 persona fallback drill. */
+                persona_drill?: boolean;
+            };
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
