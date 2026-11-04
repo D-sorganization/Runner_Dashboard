@@ -185,3 +185,17 @@ class JobClaimBody(_SessionRepo):
         if value.startswith("-"):
             raise ValueError("intent must not start with '-'")
         return single_line(value, "intent")
+
+
+class JobReleaseBody(_SessionRepo):
+    """Release a job-board claim; requires the fence returned by claim (#2784)."""
+
+    issue: int = Field(gt=0)
+    agent: str | None = Field(default=None, pattern=AGENT_PATTERN)
+    fence: int = Field(gt=0)
+    reason: str = Field(default="work completed", min_length=1, max_length=300)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, value: str) -> str:
+        return single_line(value, "reason")
