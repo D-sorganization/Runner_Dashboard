@@ -146,7 +146,7 @@ def _claude_oauth(path: Path) -> dict[str, Any] | None:
     return oauth
 
 
-def _claude_score(path: Path) -> tuple[tuple[float, float, str], Path] | None:
+def _claude_score(path: Path) -> tuple[tuple[bool, float, float, str], Path] | None:
     try:
         mtime = path.stat().st_mtime
     except OSError as exc:
@@ -157,9 +157,14 @@ def _claude_score(path: Path) -> tuple[tuple[float, float, str], Path] | None:
         return None
     refresh = str(oauth.get("refreshToken") or "")
     refresh_fp = hashlib.sha256(refresh.encode("utf-8")).hexdigest()[:16] if refresh else ""
-    expires_at = float(oauth.get("expiresAt") or 0.0)
-    # Prefer newest source file (refresh rotation) over stale expiresAt on older copies.
-    return ((mtime, expires_at, refresh_fp), path)
+    try:
+        expires_at = float(oauth.get("expiresAt") or 0.0)
+    except (TypeError, ValueError):
+        expires_at = 0.0
+    # A zeroed/missing expiresAt must never outrank a real expiry (#3971); among copies
+    # with a real expiry, prefer the newest file (refresh rotation) over stale expiresAt.
+    has_expiry = expires_at > 0
+    return ((has_expiry, mtime, expires_at, refresh_fp), path)
 
 
 def _codex_score(path: Path) -> float | None:
