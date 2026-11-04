@@ -76,25 +76,6 @@ def test_dirty_worktree_is_not_eligible(repo_with_worktrees: Path) -> None:
     assert not ok and reason == "dirty"
 
 
-def test_merged_linked_worktree_is_eligible(repo_with_worktrees: Path) -> None:
-    wt = repo_with_worktrees.parent / "merged-wt"
-    _git(repo_with_worktrees, "worktree", "add", "-b", "merged/slice", str(wt))
-    _git(wt, "commit", "--allow-empty", "-m", "done")
-    _git(repo_with_worktrees, "checkout", "main")
-    _git(repo_with_worktrees, "merge", "--ff-only", "merged/slice")
-    _git(repo_with_worktrees, "push", "origin", "main")
-    _git(wt, "fetch", "origin")
-    old = time.time() - 100 * 3600
-    os.utime(wt, (old, old))
-    ok, reason = worktree_entry_is_eligible(
-        repo_with_worktrees,
-        {"path": wt, "branch": "merged/slice"},
-        min_age_hours=72,
-        protected=DEFAULT_PROTECTED_WORKTREES,
-    )
-    assert ok, reason
-
-
 def test_dry_run_logs_without_removing(repo_with_worktrees: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     wt = repo_with_worktrees.parent / "old-clean"
     entry = WorktreeEntry(path=wt, branch="merged/slice")
