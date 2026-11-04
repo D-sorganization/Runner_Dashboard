@@ -15,15 +15,19 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | item                                                 | owner   | source     | check                                                                           | verified_at (PT) | ttl |
 | ---------------------------------------------------- | ------- | ---------- | ------------------------------------------------------------------------------- | ---------------- | --- |
 | **— Holds and gates —**                              |         |            |                                                                                 |                  |     |
-| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | UNVERIFIED       | 1h  |
-| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
-| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
-| GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | UNVERIFIED       | 1h  |
-| GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED       | 1h  |
+| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-04 06:31 (issue open) | 1h  |
+| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-04 06:31 (open, null) | 1h  |
+| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-04 06:31 (open, null) | 1h  |
+| GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | UNVERIFIED (2026-11-04 06:31: fleet App cannot resolve `D-sorganization/Gasification_Model`; repo renamed or not in the installation) | 1h  |
+| GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED (same as GM #5540 row) | 1h  |
 | **— Red mains —**                                    |         |            |                                                                                 |                  |     |
+| RD main green                                        | rd-barb | RD CI      | `gh api repos/D-sorganization/Runner_Dashboard/actions/runs?branch=main&event=push` | 2026-11-04 06:31 (green at 894ba0bf) | 1h  |
 | **— Runner state —**                                 |         |            |                                                                                 |                  |     |
-| Private minutes under 45,000 of 50,000 (RD is public; its CI doesn't count) | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED       | 1h  |
+| Private minutes under 45,000 of 50,000 (RD is public; its CI doesn't count) | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED (2026-11-04 06:31: org billing usage API returns 403 to the fleet App) | 1h  |
+| Local RD API (`127.0.0.1:8321`) reachable from the rd-barb host | rd-barb | staff summary | `curl -s http://127.0.0.1:8321/api/staff/summary`                         | UNVERIFIED (2026-11-04 06:31: connection timed out) | 24h |
 | **— Watching —**                                     |         |            |                                                                                 |                  |     |
+| 72h rule: RD #2792 bot AGENTS sync, open since 2026-10-24, conflicting and 356 commits behind main; red checks are staleness only (diagnosed in PR comment). Recommend close and let the sync bot regenerate; closing is for the redundant-PR closer or the owning bot, not rd-barb | d-sorg-jules | RD #2792 | `gh pr view 2792 --json state,mergeable` | 2026-11-04 06:31 (open, CONFLICTING) | 24h |
+| 72h rule: RD #2852 topology sanitize deploy paths, open since 2026-10-25, title says held (deploy HOLD #2657) | Dieter | RD #2852 | `gh pr view 2852 --json state,autoMergeRequest` | 2026-11-04 06:31 (open, unarmed) | 24h |
 | **— Reminders —**                                    |         |            |                                                                                 |                  |     |
 
 ## PR-crush lanes
@@ -39,3 +43,6 @@ Caps: 2 armed per lane in RD, 4 elsewhere. Back off when a repo's `merge_group` 
 
 | item | resolved_at (PT) | resolved by |
 | ---- | ---------------- | ----------- |
+| Board #5 RD #2811 (ignore `wc -l` total row in PR line-cap check) merged | 2026-10-25 17:32 | rd-barb (merged_at verified via GitHub API) |
+| Board #5 RD #2793 (Docker PR scope via git diff) merged | 2026-10-25 17:49 | rd-barb (merged_at verified via GitHub API) |
+| Board #5 RD #2810 (fail-closed fleet-gh App wrappers) merged | 2026-10-25 22:01 | rd-barb (merged_at verified via GitHub API) |
