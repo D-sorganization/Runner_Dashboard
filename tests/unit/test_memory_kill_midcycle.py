@@ -162,17 +162,17 @@ class TestRedactionSurvivesKillAndRebuild:
         _kill_mid_cycle(db_path)
 
         fresh = AssistantMemoryStore(db_path)
-        secret = "ghs_" + "A" * 30
+        tok = "ghs_" + "A" * 30
         fresh.append(
             _entry(
                 id="mem_secret",
                 entry_type="lesson",
-                body={"summary": f"Use host token {secret} for the handoff"},
+                body={"summary": f"Use host token {tok} for the handoff"},
             )
         )
         entries = fresh.list_entries(limit=50)
         brief = build_context_brief(entries, now_iso=NOW)
-        assert secret not in brief.content
+        assert tok not in brief.content
         assert "[REDACTED_GITHUB_TOKEN]" in brief.content
 
     def test_marge_and_hold_lint_entries_stay_excluded_after_kill(self, db_path: Path) -> None:
