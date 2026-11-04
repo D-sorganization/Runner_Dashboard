@@ -13,6 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from coordination.cursor_dispatch_lease import cursor_finalize_on_publish, cursor_pre_launch_or_block
 from staff import claim_guard, consolidation, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
@@ -268,11 +269,7 @@ class StaffRunner:
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
             antigravity_permissions(read_only=role.code_read_only, workdir=workdir, gitdir=gitdir)
-        from staff.cloud_dispatch import (
-            record_cloud_session_from_transcript,
-            resolve_execute_launch,
-            targets_from_record,
-        )
+        from staff.cloud_dispatch import record_cloud_session_from_transcript, resolve_execute_launch
 
         launch_argv, launch_label, stdin_payload = resolve_execute_launch(
             plan, adapter, prompt, workdir, ops.read_only_kwargs(role), launch_paths
@@ -284,13 +281,7 @@ class StaffRunner:
         real_gh = os.environ.get("STAFF_REAL_GH", "").strip() or "/usr/bin/gh"
 
         env = ops.apply_staff_run_github_child_env(
-            store,
-            rec,
-            os.environ,
-            role,
-            plan.repo or "",
-            run_id=rec.id,
-            real_gh_path=real_gh,
+            store, rec, os.environ, role, plan.repo or "", run_id=rec.id, real_gh_path=real_gh
         )
         if env is None:
             return
@@ -300,25 +291,8 @@ class StaffRunner:
         )
         if env is None:
             return
-        cursor_lease = None
-        if plan.provider == "cursor-agent":
-            from coordination.cursor_dispatch_lease import pre_launch_lease_recheck
-
-            issue_number, pr_number = targets_from_record(plan.target_kind, plan.target_ref)
-            cursor_lease = pre_launch_lease_recheck(
-                plan.repo, issue_number, pr_number, rec.id, wall_clock_timeout + 300.0
-            )
-            if cursor_lease is None:
-                store.update_run(
-                    rec.id,
-                    status="blocked",
-                    failure_class="cursor_path_lease_blocked",
-                    ended_at=_now(),
-                    error="cursor dispatch path lease held by another run",
-                )
-                claim_guard.release_claim(rec.id, "blocked")
-                store.append_event(rec.id, "blocked", "pre-launch path-lease re-check: scope already leased")
-                return
+        if not cursor_pre_launch_or_block(store, plan, rec, wall_clock_timeout):
+            return
         try:
             proc = subprocess.Popen(  # noqa: S603
                 launch_argv,
@@ -370,19 +344,7 @@ class StaffRunner:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
             if plan.execution_mode == "cloud":
-                if cursor_lease is not None:
-                    from coordination.cursor_dispatch_lease import (
-                        pre_publish_lease_recheck,
-                        release_lease_quietly,
-                    )
-
-                    if not pre_publish_lease_recheck(cursor_lease.repo, issue_number, pr_number, rec.id):
-                        store.append_event(
-                            rec.id,
-                            "lease",
-                            "pre-publish path-lease re-check: scope taken over by another run since launch",
-                        )
-                    release_lease_quietly(cursor_lease)
+                cursor_finalize_on_publish(store, rec.id)
                 record_cloud_session_from_transcript(store, rec.id, plan.provider, transcript)
             question = ops.extract_transcript_question(transcript)
 
