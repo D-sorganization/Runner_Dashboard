@@ -62,6 +62,8 @@ Partial runs also recorded **HTTP 403** on org runner-group reads for some integ
 
 Use `/api/queue/diagnose` during the next ≥50 queued-run event to refresh counts without mutating queue state.
 
+**Publication (GitHub comments):** paste bodies from [`2897-publication-record.md`](2897-publication-record.md); operator runbook [`../runbooks/queued-job-diagnostic.md`](../runbooks/queued-job-diagnostic.md).
+
 ## Recommended follow-ups (policy — separate issues)
 
 1. **Provision** self-hosted runners (or a dedicated runner group) with label **`d-sorg-fleet-public-heavy`**, scoped per `docs/runner-labels.md` / `ci-self-hosted-heavy-public`.
