@@ -15,9 +15,9 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | item                                                 | owner   | source     | check                                                                           | verified_at (PT) | ttl |
 | ---------------------------------------------------- | ------- | ---------- | ------------------------------------------------------------------------------- | ---------------- | --- |
 | **— Holds and gates —**                              |         |            |                                                                                 |                  |     |
-| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-04 06:35 | 1h  |
-| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-04 06:35 | 1h  |
-| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-04 06:35 | 1h  |
+| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-04 07:05 | 1h  |
+| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-04 07:05 | 1h  |
+| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-04 07:05 | 1h  |
 | GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | 2026-11-04 06:35 | 1h  |
 | GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | 2026-11-04 06:35 | 1h  |
 | **— Red mains —**                                    |         |            |                                                                                 |                  |     |
@@ -28,7 +28,11 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | RD #2792 open >72h (bot/sync-fleet-agents, author app/d-sorg-jules) — Jules-owned sync PR, not a lane claim | rd-barb | 72h-open-PR watch | `gh pr view 2792 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-04 06:35 | 24h |
 | RD #2852 open >72h (cursor/topology-sanitize-deploy-hold-a43e) — held, not touched per lane rules | rd-barb | 72h-open-PR watch | `gh pr view 2852 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-04 06:35 | 24h |
 | RD #2880 open >72h (cursor/rd-fast-checks-runner-fc21) — auto-merge off per hold above | rd-barb | 72h-open-PR watch | `gh pr view 2880 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-04 06:35 | 24h |
+| RD #3833 superseded by merged #3908 (handoff: Barb closes after #3908 merges) — close blocked: App 403 on `addComment` | rd-barb | PR follow-through | `gh pr view 3833 -R D-sorganization/Runner_Dashboard --json state` | 2026-11-04 07:05 | 24h |
+| RD #3920 redundant per its owner (#3918 merged the same drain endpoint) — do not arm; needs the redundant-PR closer | rd-barb | PR follow-through | `gh pr view 3920 -R D-sorganization/Runner_Dashboard --json state` | 2026-11-04 07:05 | 24h |
+| RD #3845, #3863 all checks green, merge_group queue 0 — arm blocked: App 403 on `enablePullRequestAutoMerge` (cursor-authored) | rd-barb | merge-queue pre-flight | `python scripts/automerge_guard.py D-sorganization/Runner_Dashboard <pr> --arm` | 2026-11-04 07:05 | 1h |
 | **— Reminders —**                                    |         |            |                                                                                 |                  |     |
+| Alert Dieter on the App 403 arm/close gap above — direct notify not sent: host python is 3.10 (`datetime.UTC` ImportError) and the 3.11 venv was unavailable to this run; dashboard :8321 also not answering | rd-barb | messaging | `scripts/rd_barb_direct_notify.py status` | 2026-11-04 07:05 | 24h |
 
 ## PR-crush lanes
 
