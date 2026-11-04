@@ -16,11 +16,15 @@ from agent_worktree_hygiene import (
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"):
+        env.pop(key, None)
     return subprocess.run(  # noqa: S603
         ["git", "-C", str(cwd), *args],
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
 
 

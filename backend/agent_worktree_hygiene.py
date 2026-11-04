@@ -9,6 +9,7 @@ uses ``git worktree remove`` without ``--force``.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -28,12 +29,16 @@ class WorktreeEntry:
 
 
 def _git(cwd: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"):
+        env.pop(key, None)
     return subprocess.run(  # noqa: S603
         ["git", "-C", str(cwd), *args],
         check=False,
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
 
 
