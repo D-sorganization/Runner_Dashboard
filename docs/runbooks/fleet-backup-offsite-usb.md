@@ -4,7 +4,7 @@ Offsite copies use **restic copy** from the primary fleet backup repository (`SO
 
 ## Prerequisites
 
-- Primary restic backups are healthy (OGLaptop pilot #4015 or successor).
+- Primary restic backups are healthy (fleet backup pilot #4015 or successor).
 - Two USB SSDs, encrypted (BitLocker), labeled `FLEET-OFFSITE-A` and `FLEET-OFFSITE-B` (override via env file).
 - `restic` on PATH; `RESTIC_PASSWORD` (source) and `RESTIC_PASSWORD2` (USB repo) set in the task environment — never commit passwords.
 
@@ -25,4 +25,4 @@ Register a weekly task (owner-run) that mounts/unlocks the active USB, exports r
 
 ## Rollout
 
-Issue #4009 waits on the OGLaptop pilot (#4015). Do not point `SOURCE_RESTIC_REPOSITORY` at production data until pilot last-success markers are green on the hub.
+Issue #4009 waits on the fleet backup pilot (#4015). Do not point `SOURCE_RESTIC_REPOSITORY` at production data until pilot last-success markers are green on the hub.

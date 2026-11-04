@@ -109,7 +109,8 @@ function Get-FleetBackupOffsiteResticCopyArguments {
         [Parameter(Mandatory)][string]$UsbRepositoryRoot,
         [string[]]$Extra = @()
     )
-    $dest = Join-Path $UsbRepositoryRoot 'restic-offsite'
+    $root = $UsbRepositoryRoot.TrimEnd('\', '/')
+    $dest = "$root/restic-offsite"
     $args = @(
         'copy',
         '--repo', $SourceRepository,
