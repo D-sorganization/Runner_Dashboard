@@ -15,8 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from staff.worktree_status import worktree_has_unpushed_commits
-
 log = logging.getLogger("dashboard.agent_worktree_hygiene")
 
 DEFAULT_PROTECTED_WORKTREES: tuple[str, ...] = ("pr-10507", "pr-10633")
@@ -67,9 +65,29 @@ def _is_protected(entry: WorktreeEntry, protected: tuple[str, ...]) -> bool:
     return any(token in haystack for token in protected)
 
 
+def _worktree_clean(worktree: Path) -> bool:
+    """True when the linked worktree has no local changes and nothing ahead of main."""
+    status = _git(worktree, "status", "--porcelain")
+    if status.returncode != 0 or status.stdout.strip():
+        return False
+    for base in ("origin/main", "main"):
+        ahead = _git(worktree, "rev-list", f"{base}..HEAD", "--count")
+        if ahead.returncode == 0:
+            return ahead.stdout.strip() == "0"
+    return False
+
+
 def _branch_merged_or_closed(checkout: Path, branch: str) -> bool:
     if not branch or branch in {"main", "master", "HEAD"}:
         return False
+    branch_tip = _git(checkout, "rev-parse", branch)
+    main_tip = _git(checkout, "rev-parse", "main")
+    if (
+        branch_tip.returncode == 0
+        and main_tip.returncode == 0
+        and branch_tip.stdout.strip() == main_tip.stdout.strip()
+    ):
+        return True
     for base in ("origin/main", "main"):
         ancestor = _git(checkout, "merge-base", "--is-ancestor", branch, base)
         if ancestor.returncode == 0:
@@ -103,7 +121,7 @@ def worktree_entry_is_eligible(
         return False, "stat_failed"
     if age_h < min_age_hours:
         return False, "too_young"
-    if worktree_has_unpushed_commits(wt.path):
+    if not _worktree_clean(wt.path):
         return False, "dirty"
     if not _branch_merged_or_closed(checkout, wt.branch):
         return False, "branch_active"

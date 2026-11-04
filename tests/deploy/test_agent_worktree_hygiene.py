@@ -78,6 +78,7 @@ def test_dry_run_logs_without_removing(repo_with_worktrees: Path, monkeypatch: p
     _git(repo_with_worktrees, "checkout", "main")
     _git(repo_with_worktrees, "merge", "--ff-only", "merged/slice")
     _git(repo_with_worktrees, "push", "origin", "main")
+    _git(wt, "fetch", "origin")
     old = time.time() - 100 * 3600
     os.utime(wt, (old, old))
     removed: list[str] = []
@@ -102,6 +103,7 @@ def test_apply_uses_worktree_remove_without_force(repo_with_worktrees: Path, mon
     _git(repo_with_worktrees, "checkout", "main")
     _git(repo_with_worktrees, "merge", "--ff-only", "merged/two")
     _git(repo_with_worktrees, "push", "origin", "main")
+    _git(wt, "fetch", "origin")
     old = time.time() - 100 * 3600
     os.utime(wt, (old, old))
     calls: list[list[str]] = []
