@@ -1,0 +1,17 @@
+[Unit]
+Description=Runner Dashboard agent repo worktree hygiene (daily, dry-run by default)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@DASHBOARD_USER@
+Environment=HOME=@DASHBOARD_HOME@
+Environment=RUNNER_DASHBOARD_DEPLOY_DIR=@DEPLOY_DIR@
+Environment=RUNNER_DASHBOARD_PYTHON=@PYTHON_BIN@
+EnvironmentFile=-@ENV_FILE@
+ExecStart=@PYTHON_BIN@ @DASHBOARD_HOME@/.config/runner-dashboard/self-heal/prune_agent_worktrees.py
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
