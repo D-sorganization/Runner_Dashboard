@@ -241,3 +241,48 @@ def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
     blob = json.dumps(synced)
     assert "r-out" not in blob
     assert "acc" not in blob
+
+
+@pytest.mark.unit
+def test_claude_mirror_write_logs_audit_line_with_caller_and_expiry_flag(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """RD #3975: every Claude mirror write must log its source and an expiresAt>0 flag, no secrets."""
+    wsl_home = tmp_path / "wsl_home"
+    wsl_home.mkdir()
+    cred = wsl_home / ".claude" / ".credentials.json"
+    cred.parent.mkdir(parents=True)
+    cred.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-secret", "accessToken": "a-secret", "expiresAt": 3000}}),
+        encoding="utf-8",
+    )
+    with caplog.at_level("INFO"):
+        synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[])
+    assert synced["claude"]
+    audit_records = [rec for rec in caplog.records if "credential mirror write" in rec.message]
+    assert audit_records, "expected an audit log line for the Claude mirror write"
+    assert any("expires_at_positive=True" in rec.getMessage() for rec in audit_records)
+    assert "r-secret" not in caplog.text and "a-secret" not in caplog.text
+
+
+@pytest.mark.unit
+def test_cli_reports_structured_error_and_exits_nonzero_on_sync_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """RD #3975: the CLI must fail loudly (non-zero exit + JSON error summary), not silently.
+
+    Self-heal previously had no way to tell a crashed sync from a clean one: the script
+    propagated a raw traceback and a non-JSON exit instead of a single parseable line.
+    """
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("secret-token-xyz should never reach the summary")
+
+    monkeypatch.setattr(sync_mod, "sync_all_credentials", _boom)
+    exit_code = sync_mod._cli_main()
+    assert exit_code != 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["error"].startswith("RuntimeError:")
+    assert "Traceback" not in out
