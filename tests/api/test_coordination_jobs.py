@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from coordination import claims as claims_mod
+from coordination import jobs as jobs_mod
 from coordination_fake_rm import FakeRM, bot, claim_status, install, lease_result, release_result
 from coordination_fake_rm import issue as _issue
 from coordination_fake_rm import pr as _pr
@@ -16,6 +18,7 @@ from fastapi.testclient import TestClient
 from priorities import service as priorities_service
 
 _REMOTE = ("100.64.0.9", 51000)
+_BOT = {"Authorization": "Bearer bot-token", "X-Requested-With": "XMLHttpRequest"}
 TOOLS = "D-sorganization/Tools"
 GAMES = "D-sorganization/Games"
 
@@ -222,3 +225,60 @@ def test_jobs_concurrent_claim_one_wins(rm: FakeRM, monkeypatch: pytest.MonkeyPa
     t1.join(10)
     t2.join(10)
     assert sorted(out) == ["held", "ok"]
+
+
+def _ttl_fetch(number: int) -> Any:
+    payload = _claim_issue(number)
+
+    def fetch(path: str) -> Any:
+        if path == f"/repos/{TOOLS}/issues?state=open&per_page=100":
+            return [payload]
+        if path.endswith(f"/issues/{number}"):
+            return payload
+        if path.endswith("/pulls?state=all&per_page=100"):
+            return []
+        return []
+
+    return fetch
+
+
+def _post_claim(client: TestClient, rm: FakeRM, monkeypatch: pytest.MonkeyPatch, number: int) -> dict[str, Any]:
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _ttl_fetch(number))
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result())
+    resp = client.post(
+        "/api/coordination/jobs/claim",
+        json={
+            "session": f"codex-{number}",
+            "repo": "Tools",
+            "issue": number,
+            "agent": "codex",
+            "intent": "ship",
+            "ttl_hours": 0.1,
+        },
+        headers=_BOT,
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+@pytest.mark.unit
+def test_jobs_ttl_sweep_relists_unheartbeated(rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    claimed = _post_claim(client, rm, monkeypatch, 70)
+    held = {**claim_status(True, "codex", "active lease"), "session": claimed["session"]}
+    rm.respond("check_agent_claim", held)
+    rm.respond("release_agent_lease", release_result())
+    assert jobs_mod.sweep_expired_job_claims(now=datetime.now(UTC) + timedelta(hours=1))["released"] == 1
+    rm.respond("check_agent_claim", claim_status(False))
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _ttl_fetch(70))
+    assert any(j["issue"] == 70 for j in client.get("/api/coordination/jobs?repo=Tools").json()["jobs"])
+
+
+@pytest.mark.unit
+def test_jobs_heartbeat_extends_ttl(rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    claimed = _post_claim(client, rm, monkeypatch, 71)
+    held = {**claim_status(True, "codex", "active lease"), "session": claimed["session"]}
+    rm.respond("check_agent_claim", held)
+    hb = {"session": claimed["session"], "repo": "Tools", "issue": 71, "fence": claimed["fence"], "ttl_hours": 2}
+    assert client.post("/api/coordination/jobs/heartbeat", json=hb, headers=_BOT).status_code == 200
+    assert jobs_mod.sweep_expired_job_claims(now=datetime.now(UTC) + timedelta(minutes=30))["released"] == 0

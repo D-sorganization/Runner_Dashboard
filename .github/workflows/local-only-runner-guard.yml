@@ -69,6 +69,7 @@ jobs:
               "labels-sync.yml",
               "lockfile-upgrade.yml",
               "priority-expedite-guard.yml",
+              "release.yml",
               "reusable-pr-cap.yml",
               "taxonomy-rollout.yml",
               "ci-secrets.yml",

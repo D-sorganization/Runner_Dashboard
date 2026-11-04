@@ -55,6 +55,7 @@ _UNCLASSIFIED: dict[str, str] = {
     ),
     "ci-slo-check.yml": "Hosted ubuntu-latest for go-public queue SLO metrics (#3303).",
     "priority-expedite-guard.yml": "Hosted ubuntu-latest for go-public expedite guard (#3303 part 7).",
+    "release.yml": "Hosted ubuntu-latest for go-public supply-chain release pipeline (#3303 part 6).",
 }
 
 
