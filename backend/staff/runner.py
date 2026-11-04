@@ -13,6 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from coordination.cursor_dispatch_lease import cursor_finalize_on_publish, cursor_pre_launch_or_block
 from staff import claim_guard, consolidation, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
@@ -280,13 +281,7 @@ class StaffRunner:
         real_gh = os.environ.get("STAFF_REAL_GH", "").strip() or "/usr/bin/gh"
 
         env = ops.apply_staff_run_github_child_env(
-            store,
-            rec,
-            os.environ,
-            role,
-            plan.repo or "",
-            run_id=rec.id,
-            real_gh_path=real_gh,
+            store, rec, os.environ, role, plan.repo or "", run_id=rec.id, real_gh_path=real_gh
         )
         if env is None:
             return
@@ -295,6 +290,8 @@ class StaffRunner:
             store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
         )
         if env is None:
+            return
+        if not cursor_pre_launch_or_block(store, plan, rec, wall_clock_timeout):
             return
         try:
             proc = subprocess.Popen(  # noqa: S603
@@ -347,6 +344,7 @@ class StaffRunner:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
             if plan.execution_mode == "cloud":
+                cursor_finalize_on_publish(store, rec.id)
                 record_cloud_session_from_transcript(store, rec.id, plan.provider, transcript)
             question = ops.extract_transcript_question(transcript)
 

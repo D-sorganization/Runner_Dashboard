@@ -1,0 +1,36 @@
+# Prometheus/Alertmanager alerting rules for the fleet health watchdog (#3934).
+#
+# Notify-only: these rules page a human, they never trigger automated
+# remediation. Scrape the dashboard's `/api/metrics` endpoint (which exposes
+# the metrics referenced below, from `backend/host_trend_watchdog.py`) and
+# load this file into an external Prometheus/Alertmanager install; this
+# repository does not run that install itself.
+groups:
+  - name: fleet-health-watchdog
+    rules:
+      - alert: RDHostDiskFillProjected
+        expr: rd_host_disk_fill_hours_to_full < 24
+        for: 5m
+        labels:
+          severity: warning
+          notify_only: "true"
+        annotations:
+          summary: "{{ $labels.host }} disk projected to fill in under 24h"
+          description: >-
+            Host {{ $labels.host }}'s free-disk trend projects it reaching
+            zero in {{ $value | humanizeDuration }}. Notify-only: no
+            automated remediation runs for this alert.
+
+      - alert: RDHostMetricAnomaly
+        expr: rd_host_metric_anomaly == 1
+        for: 10m
+        labels:
+          severity: warning
+          notify_only: "true"
+        annotations:
+          summary: "Anomalous metric trend on {{ $labels.host }}"
+          description: >-
+            Host {{ $labels.host }} has a tracked metric (disk free, queue
+            depth, or in-flight runs) more than 3 EWMA standard deviations
+            from its rolling baseline for at least 10 minutes. Notify-only:
+            no automated remediation runs for this alert.
