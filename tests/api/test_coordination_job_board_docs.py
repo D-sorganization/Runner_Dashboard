@@ -23,7 +23,8 @@ def _coordination_router_paths() -> set[str]:
         path = getattr(route, "path", "")
         if not path or not methods.intersection({"GET", "POST", "PUT", "PATCH", "DELETE"}):
             continue
-        out.add(f"{prefix}{path}")
+        full = path if path.startswith(prefix) else f"{prefix}{path}"
+        out.add(full)
     return out
 
 

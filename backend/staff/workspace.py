@@ -49,10 +49,7 @@ RESULT_CONTRACT = (
     "one-sentence summary. A run that ends without that line is recorded as failed, even when the work is done."
 )
 
-FLEET_RULES = (
-    _BUILTIN.body + " Take unassigned fleet work only through GET /api/coordination/jobs and claim it with "
-    "POST /api/coordination/claims before editing."
-)
+FLEET_RULES = _BUILTIN.body
 
 READ_ONLY_FLEET_RULES = (
     "Fleet rules (code-read-only run, #1659): read and report only; do not edit, create or delete files, "
