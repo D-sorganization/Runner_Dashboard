@@ -32,6 +32,7 @@ from fleet_status_cache import fleet_status_cache_key, serve_fleet_status
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
 from machine_registry import load_machine_registry
+from fleet_backup_pilot_status import read_fleet_backup_pilot_status
 from node_auto_deploy_status import read_auto_deploy_fleet_status
 from proxy_utils import (
     proxy_to_hub,
@@ -267,6 +268,7 @@ async def _collect_fleet_status(*, exclude_pools: bool) -> dict[str, Any]:
     local_metrics["runner_control"] = get_runner_control_health()
     local_metrics["deployment"] = get_deployment_info(VERSION, DEPLOYMENT_FILE)
     local_metrics["auto_deploy"] = read_auto_deploy_fleet_status()
+    local_metrics["fleet_backup_pilot"] = read_fleet_backup_pilot_status()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
     local_res_reason = resource_offline_reason(local_metrics)
     if local_res_reason:
