@@ -845,6 +845,14 @@ from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
 
+from routers import path_leases as _path_leases_router  # noqa: E402
+
+app.include_router(_path_leases_router.router)  # TTL path/issue leases (#3931 S1)
+
+from routers import agent_inbox as _agent_inbox_router  # noqa: E402
+
+app.include_router(_agent_inbox_router.router)  # per-agent inbox + ack + overdue (#3931 S3)
+
 from routers import flow_metrics as _flow_metrics_router  # noqa: E402
 
 app.include_router(_flow_metrics_router.router)  # PD-4 flow metrics (#3818)
@@ -868,6 +876,10 @@ app.include_router(_staff_presentation_prefs_router.router)  # personal presenta
 from routers import overload as _fleet_overload_router  # noqa: E402
 
 app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
+
+from routers import directives_drain as _directives_drain_router  # noqa: E402
+
+app.include_router(_directives_drain_router.router)  # operator drain-mode gate (#3915 slice 1)
 
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
@@ -3013,6 +3025,11 @@ async def _startup() -> None:
     from staff.provider_auth_preflight import periodic_provider_auth_evening_loop  # noqa: PLC0415
 
     asyncio.create_task(periodic_provider_auth_evening_loop(lambda: get_runner().machine))
+
+    if MACHINE_ROLE == "hub":  # agent token files live on the hub; nodes would duplicate warnings (#3895)
+        from agent_token_liveness import periodic_agent_token_loop  # noqa: PLC0415
+
+        asyncio.create_task(periodic_agent_token_loop())
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)

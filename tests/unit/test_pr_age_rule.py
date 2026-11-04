@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from coordination import pr_age_rule as rule
+
+# Relative to "now" so these fixtures never bit-rot into a flaky time bomb as
+# the real clock advances past a hardcoded absolute date (#3953 CI-unblock).
+_OLD_PR_CREATED_AT = (datetime.now(UTC) - timedelta(hours=360)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_FRESH_PR_CREATED_AT = (datetime.now(UTC) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+_VERY_OLD_PR_CREATED_AT = (datetime.now(UTC) - timedelta(hours=800)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @pytest.mark.unit
@@ -19,14 +27,14 @@ def test_list_aging_prs_for_agent_filters_by_age() -> None:
                 {
                     "number": 1,
                     "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/1",
-                    "created_at": "2026-10-20T00:00:00Z",
+                    "created_at": _OLD_PR_CREATED_AT,
                     "head": {"ref": "cursor/old-work"},
                     "labels": [],
                 },
                 {
                     "number": 2,
                     "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/2",
-                    "created_at": "2026-11-01T00:00:00Z",
+                    "created_at": _FRESH_PR_CREATED_AT,
                     "head": {"ref": "cursor/fresh"},
                     "labels": [],
                 },
@@ -53,7 +61,7 @@ def test_claim_blocked_payload() -> None:
                 {
                     "number": 9,
                     "html_url": "https://example/pull/9",
-                    "created_at": "2026-10-01T00:00:00Z",
+                    "created_at": _VERY_OLD_PR_CREATED_AT,
                     "head": {"ref": "cursor/stale"},
                     "labels": [],
                 }

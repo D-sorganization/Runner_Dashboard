@@ -44,6 +44,7 @@ python scripts/automerge_guard.py D-sorganization/Runner_Dashboard <pr> --arm
 - **Coding Conventions.** Python 3.11+ with type annotations and `logging` (no `print()`); React + TSX in `frontend/src/` with design tokens (no plain JS). ([Guide](docs/agents/repository-guide.md#coding-conventions))
 - **Engineering Principles (Mandatory).** TDD, Design by Contract (`backend/dispatch_contract.py`), DRY, Law of Demeter, orthogonality, reversible deploys. Deploy/auto-release fixes require a failing regression test in the `#2116` deploy smoke suite (`tests/deploy/`, `tests/test_main_ci_release_wait.py`) first. ([Guide](docs/agents/repository-guide.md#engineering-principles-mandatory))
 - **Dispatch & Claims.** Check pickability and `judgement:design`/`judgement:contested` before starting ([Guide](docs/agents/repository-guide.md#issue-taxonomy-and-dispatch)). Run `python -m scripts.check_agent_claim --repo Runner_Dashboard --issue <N>` and `python -m scripts.post_agent_lease` first.
+- **Lane Rules v2.** All lanes (cursor, agy, gemini, claude, codex) follow [lane-rules-v2](docs/agents/lane-rules-v2.md): claim-before-code, open-PR cap 5, usage-limit stop, lane branch prefix.
 - **Closing Issues & Secrets.** Follow closure evidence ([Guide](docs/agents/repository-guide.md#closing-issues-non-negotiable-rule)) and secret hygiene ([Guide](docs/agents/repository-guide.md#safety-security-critical)).
 
 ## Fleet Core Rules (Synced)

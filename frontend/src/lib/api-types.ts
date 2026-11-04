@@ -110,6 +110,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/token-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Token Health
+         * @description Agent token presence, validity and days to expiry per configured principal (#3895).
+         */
+        get: operations["get_token_health_api_admin_token_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/tokens": {
         parameters: {
             query?: never;
@@ -1480,6 +1500,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/jobs/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job Releases */
+        get: operations["get_job_releases_api_coordination_jobs_releases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/messages": {
         parameters: {
             query?: never;
@@ -1905,6 +1942,23 @@ export interface paths {
          *     Changes nothing on the host.
          */
         get: operations["get_wsl_disk_status_api_diagnostics_wsl_disk_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/directives/drain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Directive Drain Status */
+        get: operations["get_directive_drain_status_api_directives_drain_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4897,6 +4951,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/schedule/migrate-off-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Migrate Schedule Off Host
+         * @description Drop retired/dead placements on ``source_host`` and re-home live roles (#3901).
+         */
+        post: operations["migrate_schedule_off_host_api_staff_schedule_migrate_off_host_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/staff/schedule/placements/{role}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Schedule Placement
+         * @description Pin a role's scheduled runs to a fleet machine (#3901).
+         */
+        put: operations["put_schedule_placement_api_staff_schedule_placements__role__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/schedule/toggle": {
         parameters: {
             query?: never;
@@ -5414,6 +5508,74 @@ export interface paths {
         get: operations["read_activity_sessions_api_v1_activity_sessions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-inbox/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ack Message */
+        post: operations["ack_message_api_v1_agent_inbox_ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-inbox/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Messages */
+        get: operations["list_messages_api_v1_agent_inbox_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-inbox/overdue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overdue Messages */
+        get: operations["overdue_messages_api_v1_agent_inbox_overdue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-inbox/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Message */
+        post: operations["send_message_api_v1_agent_inbox_send_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6112,6 +6274,74 @@ export interface paths {
         get: operations["metrics_weekly_summary_api_v1_metrics_weekly_summary_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/path-leases/acquire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acquire Lease */
+        post: operations["acquire_lease_api_v1_path_leases_acquire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/path-leases/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Check Lease */
+        get: operations["check_lease_api_v1_path_leases_check_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/path-leases/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release Lease */
+        post: operations["release_lease_api_v1_path_leases_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/path-leases/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew Lease */
+        post: operations["renew_lease_api_v1_path_leases_renew_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8798,6 +9028,17 @@ export interface components {
              */
             source: "script" | "qa-verifier";
         };
+        /** AcquireBody */
+        AcquireBody: {
+            /** Owner */
+            owner: string;
+            /** Repo */
+            repo: string;
+            /** Scope */
+            scope: string;
+            /** Ttl Seconds */
+            ttl_seconds: number;
+        };
         /**
          * ActionExecuteResponse
          * @description Result of executing an action.
@@ -9326,6 +9567,12 @@ export interface components {
             }[];
             /** Repo */
             repo: string;
+        };
+        /** CheckOut */
+        CheckOut: {
+            /** Held */
+            held: boolean;
+            lease: components["schemas"]["LeaseOut"] | null;
         };
         /**
          * ChildExecutionRecord
@@ -10189,6 +10436,21 @@ export interface components {
             /** Ttl Seconds */
             ttl_seconds?: number | null;
         };
+        /** LeaseOut */
+        LeaseOut: {
+            /** Acquired At */
+            acquired_at: number;
+            /** Expires At */
+            expires_at: number;
+            /** Lease Id */
+            lease_id: string;
+            /** Owner */
+            owner: string;
+            /** Repo */
+            repo: string;
+            /** Scope */
+            scope: string;
+        };
         /**
          * LeaseRequest
          * @description Conductor's request for a CI dispatch slot.
@@ -10378,6 +10640,37 @@ export interface components {
             text: string;
             /** To */
             to: string;
+        };
+        /** MessageOut */
+        MessageOut: {
+            /** Ack Deadline Seconds */
+            ack_deadline_seconds: number | null;
+            /** Acked At */
+            acked_at: number | null;
+            /** Body */
+            body: string;
+            /** From Agent */
+            from_agent: string;
+            /** Message Id */
+            message_id: string;
+            /** Requires Ack */
+            requires_ack: boolean;
+            /** Sent At */
+            sent_at: number;
+            /** To Agent */
+            to_agent: string;
+        };
+        /** MigrateScheduleOffHostBody */
+        MigrateScheduleOffHostBody: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /** Source Host */
+            source_host: string;
+            /** Targets */
+            targets: string[];
         };
         /** MintTokenRequest */
         MintTokenRequest: {
@@ -11126,16 +11419,6 @@ export interface components {
              */
             version?: number | null;
         };
-        /**
-         * ReleaseBody
-         * @description ``release``: drop this session's presence.
-         */
-        ReleaseBody: {
-            /** Repo */
-            repo: string;
-            /** Session */
-            session: string;
-        };
         /** ReleaseRequest */
         ReleaseRequest: {
             /** Lease Id */
@@ -11155,6 +11438,15 @@ export interface components {
              * @default true
              */
             exclude_current: boolean;
+        };
+        /** RenewBody */
+        RenewBody: {
+            /** Lease Id */
+            lease_id: string;
+            /** Owner */
+            owner: string;
+            /** Ttl Seconds */
+            ttl_seconds: number;
         };
         /** ReportChildPayload */
         ReportChildPayload: {
@@ -11441,32 +11733,15 @@ export interface components {
             /** Repo */
             repo: string;
         };
+        /** SchedulePlacementBody */
+        SchedulePlacementBody: {
+            /** Host */
+            host: string;
+        };
         /** ScheduleToggleBody */
         ScheduleToggleBody: {
             /** Enabled */
             enabled: boolean;
-        };
-        /** SendBody */
-        SendBody: {
-            /** Body */
-            body: string;
-            /** Idempotency Key */
-            idempotency_key: string;
-            /** Repo */
-            repo: string;
-            /** Session */
-            session: string;
-            /** To */
-            to: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "request" | "status" | "handoff" | "blocked";
-            /** Work Kind */
-            work_kind?: ("issue" | "pr") | null;
-            /** Work Number */
-            work_number?: number | null;
         };
         /**
          * SessionDigestAppendRequest
@@ -13266,6 +13541,28 @@ export interface components {
             /** Session */
             session: string;
         };
+        /** SendBody */
+        agent_bus__models__SendBody: {
+            /** Body */
+            body: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+            /** To */
+            to: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "request" | "status" | "handoff" | "blocked";
+            /** Work Kind */
+            work_kind?: ("issue" | "pr") | null;
+            /** Work Number */
+            work_number?: number | null;
+        };
         /**
          * AckBody
          * @description ``ack``: confirm receipt (not agreement) of a message.
@@ -13277,6 +13574,46 @@ export interface components {
             repo: string;
             /** Session */
             session: string;
+        };
+        /**
+         * ReleaseBody
+         * @description ``release``: drop this session's presence.
+         */
+        coordination__models__ReleaseBody: {
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+        };
+        /** AckBody */
+        routers__agent_inbox__AckBody: {
+            /** Agent */
+            agent: string;
+            /** Message Id */
+            message_id: string;
+        };
+        /** SendBody */
+        routers__agent_inbox__SendBody: {
+            /** Ack Deadline Seconds */
+            ack_deadline_seconds?: number | null;
+            /** Body */
+            body: string;
+            /** From */
+            from_: string;
+            /**
+             * Requires Ack
+             * @default false
+             */
+            requires_ack: boolean;
+            /** To */
+            to: string;
+        };
+        /** ReleaseBody */
+        routers__path_leases__ReleaseBody: {
+            /** Lease Id */
+            lease_id: string;
+            /** Owner */
+            owner: string;
         };
     };
     responses: never;
@@ -13415,6 +13752,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_token_health_api_admin_token_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
@@ -15574,6 +15931,40 @@ export interface operations {
             };
         };
     };
+    get_job_releases_api_coordination_jobs_releases_get: {
+        parameters: {
+            query?: {
+                since?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_message_api_coordination_messages_post: {
         parameters: {
             query?: never;
@@ -15721,7 +16112,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ReleaseBody"];
+                "application/json": components["schemas"]["coordination__models__ReleaseBody"];
             };
         };
         responses: {
@@ -16117,6 +16508,40 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_directive_drain_status_api_directives_drain_get: {
+        parameters: {
+            query: {
+                repo: string;
+                threshold?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -20214,6 +20639,78 @@ export interface operations {
             };
         };
     };
+    migrate_schedule_off_host_api_staff_schedule_migrate_off_host_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MigrateScheduleOffHostBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_schedule_placement_api_staff_schedule_placements__role__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                role: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchedulePlacementBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     toggle_scheduler_api_staff_schedule_toggle_post: {
         parameters: {
             query?: never;
@@ -20975,6 +21472,124 @@ export interface operations {
             };
         };
     };
+    ack_message_api_v1_agent_inbox_ack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["routers__agent_inbox__AckBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_messages_api_v1_agent_inbox_list_get: {
+        parameters: {
+            query: {
+                agent: string;
+                include_acked?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overdue_messages_api_v1_agent_inbox_overdue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+        };
+    };
+    send_message_api_v1_agent_inbox_send_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["routers__agent_inbox__SendBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_backlog_api_v1_agent_backlog_get: {
         parameters: {
             query?: never;
@@ -21146,7 +21761,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SendBody"];
+                "application/json": components["schemas"]["agent_bus__models__SendBody"];
             };
         };
         responses: {
@@ -22480,6 +23095,135 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    acquire_lease_api_v1_path_leases_acquire_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcquireBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_lease_api_v1_path_leases_check_get: {
+        parameters: {
+            query: {
+                repo: string;
+                scope: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_lease_api_v1_path_leases_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["routers__path_leases__ReleaseBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    renew_lease_api_v1_path_leases_renew_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenewBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaseOut"];
                 };
             };
             /** @description Validation Error */

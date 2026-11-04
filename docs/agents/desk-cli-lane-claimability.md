@@ -25,7 +25,9 @@ Lanes also typically filter on **taxonomy** (complexity, tier, repo). Issues **w
 | #3702 Linus | Dieter scope decision per `role-seats.md`—see `3702-linus-persona-port.md` |
 | #3704 | Closed tracker; code on main—pick fix/tasks, not the epic checkbox |
 
-## Unlabeled open issues (23 on 2026-11-02)
+## Unlabeled open issues (board 11-02)
+
+See **`docs/agents/unlabeled-issue-triage-2026-11-02.md`** and per-issue specs in `docs/agents/issue-specs/3818-*.md` … `3852-*.md`.
 
 Missing `type:*`, `complexity:*`, `effort:*`, `judgement:*` per `docs/issue-taxonomy.md`. Until labeled, orchestrators cannot route “three routine objective CLI tasks” reliably.
 

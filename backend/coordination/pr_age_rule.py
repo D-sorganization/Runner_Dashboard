@@ -14,6 +14,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from activity_context import _hit_path
 from coordination import roster
 from coordination.gh_cli import gh_api_json
 from flow_metrics import PR_AGE_RULE_HOURS, open_pr_age_hours
@@ -118,10 +119,6 @@ def list_aging_prs_for_agent(
             )
     hits.sort(key=lambda row: float(row.get("age_hours") or 0), reverse=True)
     return hits
-
-
-def _hit_path(a: str, b: str) -> bool:
-    return a == b or a.startswith(f"{b}/") or b.startswith(f"{a}/")
 
 
 def _overlapping_files(repo_short: str, number: Any, claim_paths: Sequence[str], get: SyncFetch) -> list[str] | None:

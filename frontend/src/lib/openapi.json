@@ -35,6 +35,37 @@
         "title": "AcceptanceCheck",
         "type": "object"
       },
+      "AcquireBody": {
+        "properties": {
+          "owner": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          },
+          "scope": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 86400.0,
+            "title": "Ttl Seconds",
+            "type": "number"
+          }
+        },
+        "required": ["repo", "scope", "owner", "ttl_seconds"],
+        "title": "AcquireBody",
+        "type": "object"
+      },
       "ActionExecuteResponse": {
         "description": "Result of executing an action.",
         "properties": {
@@ -1171,6 +1202,27 @@
         },
         "required": ["repo"],
         "title": "CIFixSweepRequest",
+        "type": "object"
+      },
+      "CheckOut": {
+        "properties": {
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "lease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["held", "lease"],
+        "title": "CheckOut",
         "type": "object"
       },
       "ChildExecutionRecord": {
@@ -3056,6 +3108,44 @@
         "title": "LeaderLeaseBody",
         "type": "object"
       },
+      "LeaseOut": {
+        "properties": {
+          "acquired_at": {
+            "title": "Acquired At",
+            "type": "number"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "lease_id": {
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lease_id",
+          "repo",
+          "scope",
+          "owner",
+          "acquired_at",
+          "expires_at"
+        ],
+        "title": "LeaseOut",
+        "type": "object"
+      },
       "LeaseRequest": {
         "description": "Conductor's request for a CI dispatch slot.",
         "properties": {
@@ -3576,6 +3666,95 @@
         },
         "required": ["session", "repo", "to", "text"],
         "title": "MessageBody",
+        "type": "object"
+      },
+      "MessageOut": {
+        "properties": {
+          "ack_deadline_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ack Deadline Seconds"
+          },
+          "acked_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acked At"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "from_agent": {
+            "title": "From Agent",
+            "type": "string"
+          },
+          "message_id": {
+            "title": "Message Id",
+            "type": "string"
+          },
+          "requires_ack": {
+            "title": "Requires Ack",
+            "type": "boolean"
+          },
+          "sent_at": {
+            "title": "Sent At",
+            "type": "number"
+          },
+          "to_agent": {
+            "title": "To Agent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "to_agent",
+          "from_agent",
+          "body",
+          "sent_at",
+          "requires_ack",
+          "ack_deadline_seconds",
+          "acked_at"
+        ],
+        "title": "MessageOut",
+        "type": "object"
+      },
+      "MigrateScheduleOffHostBody": {
+        "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "source_host": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source Host",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": ["source_host", "targets"],
+        "title": "MigrateScheduleOffHostBody",
         "type": "object"
       },
       "MintTokenRequest": {
@@ -5224,25 +5403,6 @@
         "title": "RelayRunCardRequest",
         "type": "object"
       },
-      "ReleaseBody": {
-        "additionalProperties": false,
-        "description": "``release``: drop this session's presence.",
-        "properties": {
-          "repo": {
-            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
-            "title": "Repo",
-            "type": "string"
-          },
-          "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Session",
-            "type": "string"
-          }
-        },
-        "required": ["session", "repo"],
-        "title": "ReleaseBody",
-        "type": "object"
-      },
       "ReleaseRequest": {
         "properties": {
           "lease_id": {
@@ -5280,6 +5440,31 @@
           }
         },
         "title": "RemoteLogoutRequest",
+        "type": "object"
+      },
+      "RenewBody": {
+        "properties": {
+          "lease_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "owner": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 86400.0,
+            "title": "Ttl Seconds",
+            "type": "number"
+          }
+        },
+        "required": ["lease_id", "owner", "ttl_seconds"],
+        "title": "RenewBody",
         "type": "object"
       },
       "ReportChildPayload": {
@@ -5877,6 +6062,19 @@
         "title": "ScanRequestBody",
         "type": "object"
       },
+      "SchedulePlacementBody": {
+        "properties": {
+          "host": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          }
+        },
+        "required": ["host"],
+        "title": "SchedulePlacementBody",
+        "type": "object"
+      },
       "ScheduleToggleBody": {
         "properties": {
           "enabled": {
@@ -5886,79 +6084,6 @@
         },
         "required": ["enabled"],
         "title": "ScheduleToggleBody",
-        "type": "object"
-      },
-      "SendBody": {
-        "additionalProperties": false,
-        "properties": {
-          "body": {
-            "maxLength": 4000,
-            "minLength": 1,
-            "title": "Body",
-            "type": "string"
-          },
-          "idempotency_key": {
-            "maxLength": 128,
-            "minLength": 8,
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Idempotency Key",
-            "type": "string"
-          },
-          "repo": {
-            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
-            "title": "Repo",
-            "type": "string"
-          },
-          "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Session",
-            "type": "string"
-          },
-          "to": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "To",
-            "type": "string"
-          },
-          "type": {
-            "enum": ["request", "status", "handoff", "blocked"],
-            "title": "Type",
-            "type": "string"
-          },
-          "work_kind": {
-            "anyOf": [
-              {
-                "enum": ["issue", "pr"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Work Kind"
-          },
-          "work_number": {
-            "anyOf": [
-              {
-                "exclusiveMinimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Work Number"
-          }
-        },
-        "required": [
-          "session",
-          "to",
-          "type",
-          "repo",
-          "body",
-          "idempotency_key"
-        ],
-        "title": "SendBody",
         "type": "object"
       },
       "SessionDigestAppendRequest": {
@@ -9385,6 +9510,79 @@
         "title": "AckBody",
         "type": "object"
       },
+      "agent_bus__models__SendBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 8,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "to": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "To",
+            "type": "string"
+          },
+          "type": {
+            "enum": ["request", "status", "handoff", "blocked"],
+            "title": "Type",
+            "type": "string"
+          },
+          "work_kind": {
+            "anyOf": [
+              {
+                "enum": ["issue", "pr"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Kind"
+          },
+          "work_number": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Number"
+          }
+        },
+        "required": [
+          "session",
+          "to",
+          "type",
+          "repo",
+          "body",
+          "idempotency_key"
+        ],
+        "title": "SendBody",
+        "type": "object"
+      },
       "coordination__models__AckBody": {
         "additionalProperties": false,
         "description": "``ack``: confirm receipt (not agreement) of a message.",
@@ -9407,6 +9605,106 @@
         },
         "required": ["session", "repo", "message_id"],
         "title": "AckBody",
+        "type": "object"
+      },
+      "coordination__models__ReleaseBody": {
+        "additionalProperties": false,
+        "description": "``release``: drop this session's presence.",
+        "properties": {
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo"],
+        "title": "ReleaseBody",
+        "type": "object"
+      },
+      "routers__agent_inbox__AckBody": {
+        "properties": {
+          "agent": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent",
+            "type": "string"
+          },
+          "message_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          }
+        },
+        "required": ["message_id", "agent"],
+        "title": "AckBody",
+        "type": "object"
+      },
+      "routers__agent_inbox__SendBody": {
+        "properties": {
+          "ack_deadline_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 86400.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ack Deadline Seconds"
+          },
+          "body": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "from_": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "From",
+            "type": "string"
+          },
+          "requires_ack": {
+            "default": false,
+            "title": "Requires Ack",
+            "type": "boolean"
+          },
+          "to": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": ["to", "from_", "body"],
+        "title": "SendBody",
+        "type": "object"
+      },
+      "routers__path_leases__ReleaseBody": {
+        "properties": {
+          "lease_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "owner": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          }
+        },
+        "required": ["lease_id", "owner"],
+        "title": "ReleaseBody",
         "type": "object"
       }
     },
@@ -9605,6 +9903,32 @@
           }
         ],
         "summary": "Create Service Token",
+        "tags": ["admin"]
+      }
+    },
+    "/api/admin/token-health": {
+      "get": {
+        "description": "Agent token presence, validity and days to expiry per configured principal (#3895).",
+        "operationId": "get_token_health_api_admin_token_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Token Health",
         "tags": ["admin"]
       }
     },
@@ -12778,6 +13102,76 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/jobs/releases": {
+      "get": {
+        "operationId": "get_job_releases_api_coordination_jobs_releases_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Job Releases Api Coordination Jobs Releases Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Job Releases",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/messages": {
       "post": {
         "operationId": "post_message_api_coordination_messages_post",
@@ -12977,7 +13371,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReleaseBody"
+                "$ref": "#/components/schemas/coordination__models__ReleaseBody"
               }
             }
           },
@@ -13441,6 +13835,70 @@
         },
         "summary": "Get Wsl Disk Status",
         "tags": ["diagnostics"]
+      }
+    },
+    "/api/directives/drain": {
+      "get": {
+        "operationId": "get_directive_drain_status_api_directives_drain_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "threshold",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 10000,
+              "minimum": 1,
+              "title": "Threshold",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Directive Drain Status Api Directives Drain Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Directive Drain Status",
+        "tags": ["directives"]
       }
     },
     "/api/disk/pool-pressure": {
@@ -19860,6 +20318,117 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/schedule/migrate-off-host": {
+      "post": {
+        "description": "Drop retired/dead placements on ``source_host`` and re-home live roles (#3901).",
+        "operationId": "migrate_schedule_off_host_api_staff_schedule_migrate_off_host_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrateScheduleOffHostBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Migrate Schedule Off Host Api Staff Schedule Migrate Off Host Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Migrate Schedule Off Host",
+        "tags": ["staff"]
+      }
+    },
+    "/api/staff/schedule/placements/{role}": {
+      "put": {
+        "description": "Pin a role's scheduled runs to a fleet machine (#3901).",
+        "operationId": "put_schedule_placement_api_staff_schedule_placements__role__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role",
+            "required": true,
+            "schema": {
+              "title": "Role",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchedulePlacementBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Put Schedule Placement Api Staff Schedule Placements  Role  Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Put Schedule Placement",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/schedule/toggle": {
       "post": {
         "description": "Toggle the background scheduler on or off (SC-A8, Issue #1298).",
@@ -21085,6 +21654,195 @@
         "tags": ["activity"]
       }
     },
+    "/api/v1/agent-inbox/ack": {
+      "post": {
+        "operationId": "ack_message_api_v1_agent_inbox_ack_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/routers__agent_inbox__AckBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Ack Message",
+        "tags": ["agent-inbox"]
+      }
+    },
+    "/api/v1/agent-inbox/list": {
+      "get": {
+        "operationId": "list_messages_api_v1_agent_inbox_list_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Agent",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_acked",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Acked",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  },
+                  "title": "Response List Messages Api V1 Agent Inbox List Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Messages",
+        "tags": ["agent-inbox"]
+      }
+    },
+    "/api/v1/agent-inbox/overdue": {
+      "get": {
+        "operationId": "overdue_messages_api_v1_agent_inbox_overdue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageOut"
+                  },
+                  "title": "Response Overdue Messages Api V1 Agent Inbox Overdue Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Overdue Messages",
+        "tags": ["agent-inbox"]
+      }
+    },
+    "/api/v1/agent-inbox/send": {
+      "post": {
+        "operationId": "send_message_api_v1_agent_inbox_send_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/routers__agent_inbox__SendBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Send Message",
+        "tags": ["agent-inbox"]
+      }
+    },
     "/api/v1/agent/backlog": {
       "get": {
         "operationId": "get_backlog_api_v1_agent_backlog_get",
@@ -21327,7 +22085,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SendBody"
+                "$ref": "#/components/schemas/agent_bus__models__SendBody"
               }
             }
           },
@@ -23760,6 +24518,201 @@
         ],
         "summary": "Metrics Weekly Summary",
         "tags": ["delivery-metrics"]
+      }
+    },
+    "/api/v1/path-leases/acquire": {
+      "post": {
+        "operationId": "acquire_lease_api_v1_path_leases_acquire_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcquireBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Acquire Lease",
+        "tags": ["path-leases"]
+      }
+    },
+    "/api/v1/path-leases/check": {
+      "get": {
+        "operationId": "check_lease_api_v1_path_leases_check_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Check Lease",
+        "tags": ["path-leases"]
+      }
+    },
+    "/api/v1/path-leases/release": {
+      "post": {
+        "operationId": "release_lease_api_v1_path_leases_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/routers__path_leases__ReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release Lease",
+        "tags": ["path-leases"]
+      }
+    },
+    "/api/v1/path-leases/renew": {
+      "post": {
+        "operationId": "renew_lease_api_v1_path_leases_renew_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Renew Lease",
+        "tags": ["path-leases"]
       }
     },
     "/api/v1/proposals": {

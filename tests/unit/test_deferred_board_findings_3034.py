@@ -72,6 +72,7 @@ def test_rd_28_reaper_retains_principal_when_release_tracked_claims_raises(
     stale_row = MagicMock()
     stale_row.session_id = "sess-transient-err"
     stale_row.role = "issue-remediator"
+    stale_row.node = "node-outside-fleet"  # unresolvable node: no readyz gate (#3823)
 
     fake_store = MagicMock()
     fake_store.list_stale_principals.return_value = [stale_row]
@@ -297,9 +298,8 @@ def test_rd_5_leased_runners_active_lease_asserts_active_set(tmp_path: Path) -> 
 
     tra.test_leased_runners_active_lease(tmp_path)
     src = inspect.getsource(tra.test_leased_runners_active_lease)
-    assert "assert ra._leased_runners() == {\"runner-7\"}" in src
+    assert 'assert ra._leased_runners() == {"runner-7"}' in src
     assert "pass" not in src
-
 
 
 def test_rd_39_contract_and_capacity_modules_import_and_validate(tmp_path: Path) -> None:
