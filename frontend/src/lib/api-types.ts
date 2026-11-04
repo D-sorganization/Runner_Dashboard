@@ -5514,6 +5514,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/agent-inbox/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ack Message */
+        post: operations["ack_message_api_v1_agent_inbox_ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-inbox/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Messages */
+        get: operations["list_messages_api_v1_agent_inbox_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-inbox/overdue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overdue Messages */
+        get: operations["overdue_messages_api_v1_agent_inbox_overdue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/agent-inbox/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Message */
+        post: operations["send_message_api_v1_agent_inbox_send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agent/backlog": {
         parameters: {
             query?: never;
@@ -10571,6 +10639,25 @@ export interface components {
             /** To */
             to: string;
         };
+        /** MessageOut */
+        MessageOut: {
+            /** Ack Deadline Seconds */
+            ack_deadline_seconds: number | null;
+            /** Acked At */
+            acked_at: number | null;
+            /** Body */
+            body: string;
+            /** From Agent */
+            from_agent: string;
+            /** Message Id */
+            message_id: string;
+            /** Requires Ack */
+            requires_ack: boolean;
+            /** Sent At */
+            sent_at: number;
+            /** To Agent */
+            to_agent: string;
+        };
         /** MigrateScheduleOffHostBody */
         MigrateScheduleOffHostBody: {
             /**
@@ -11653,28 +11740,6 @@ export interface components {
         ScheduleToggleBody: {
             /** Enabled */
             enabled: boolean;
-        };
-        /** SendBody */
-        SendBody: {
-            /** Body */
-            body: string;
-            /** Idempotency Key */
-            idempotency_key: string;
-            /** Repo */
-            repo: string;
-            /** Session */
-            session: string;
-            /** To */
-            to: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "request" | "status" | "handoff" | "blocked";
-            /** Work Kind */
-            work_kind?: ("issue" | "pr") | null;
-            /** Work Number */
-            work_number?: number | null;
         };
         /**
          * SessionDigestAppendRequest
@@ -13474,6 +13539,28 @@ export interface components {
             /** Session */
             session: string;
         };
+        /** SendBody */
+        agent_bus__models__SendBody: {
+            /** Body */
+            body: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+            /** To */
+            to: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "request" | "status" | "handoff" | "blocked";
+            /** Work Kind */
+            work_kind?: ("issue" | "pr") | null;
+            /** Work Number */
+            work_number?: number | null;
+        };
         /**
          * AckBody
          * @description ``ack``: confirm receipt (not agreement) of a message.
@@ -13495,6 +13582,29 @@ export interface components {
             repo: string;
             /** Session */
             session: string;
+        };
+        /** AckBody */
+        routers__agent_inbox__AckBody: {
+            /** Agent */
+            agent: string;
+            /** Message Id */
+            message_id: string;
+        };
+        /** SendBody */
+        routers__agent_inbox__SendBody: {
+            /** Ack Deadline Seconds */
+            ack_deadline_seconds?: number | null;
+            /** Body */
+            body: string;
+            /** From */
+            from_: string;
+            /**
+             * Requires Ack
+             * @default false
+             */
+            requires_ack: boolean;
+            /** To */
+            to: string;
         };
         /** ReleaseBody */
         routers__path_leases__ReleaseBody: {
@@ -21360,6 +21470,124 @@ export interface operations {
             };
         };
     };
+    ack_message_api_v1_agent_inbox_ack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["routers__agent_inbox__AckBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_messages_api_v1_agent_inbox_list_get: {
+        parameters: {
+            query: {
+                agent: string;
+                include_acked?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overdue_messages_api_v1_agent_inbox_overdue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"][];
+                };
+            };
+        };
+    };
+    send_message_api_v1_agent_inbox_send_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["routers__agent_inbox__SendBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_backlog_api_v1_agent_backlog_get: {
         parameters: {
             query?: never;
@@ -21531,7 +21759,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SendBody"];
+                "application/json": components["schemas"]["agent_bus__models__SendBody"];
             };
         };
         responses: {

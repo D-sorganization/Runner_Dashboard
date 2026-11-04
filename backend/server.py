@@ -849,6 +849,10 @@ from routers import path_leases as _path_leases_router  # noqa: E402
 
 app.include_router(_path_leases_router.router)  # TTL path/issue leases (#3931 S1)
 
+from routers import agent_inbox as _agent_inbox_router  # noqa: E402
+
+app.include_router(_agent_inbox_router.router)  # per-agent inbox + ack + overdue (#3931 S3)
+
 from routers import flow_metrics as _flow_metrics_router  # noqa: E402
 
 app.include_router(_flow_metrics_router.router)  # PD-4 flow metrics (#3818)
