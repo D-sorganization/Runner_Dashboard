@@ -29,6 +29,7 @@ _SEVERITY_RANK = {"critical": 3, "error": 2, "warning": 1, "info": 0}
 
 
 def cap_digest_summary(text: str, max_chars: int = SHARED_DIGEST_MAX_CHARS) -> str:
+    """Cap digest summary text to max_chars with ellipsis."""
     cleaned = text.strip()
     return cleaned if len(cleaned) <= max_chars else cleaned[: max_chars - 3].rstrip() + "..."
 
