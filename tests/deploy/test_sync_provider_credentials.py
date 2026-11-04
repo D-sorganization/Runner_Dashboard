@@ -148,6 +148,7 @@ def test_claude_audit_source_is_valid_seat_not_expires_at_zero_copy(tmp_path: Pa
 
 
 @pytest.mark.unit
+@pytest.mark.skipif(os.name != "posix", reason="chmod(0o000) does not block reads on Windows")
 def test_sync_skips_unreadable_source_without_crashing(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     wsl_home = tmp_path / "wsl_home"
     win_home = tmp_path / "win_home"
