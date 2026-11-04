@@ -317,16 +317,28 @@ def claim_job(
             except Exception:  # noqa: BLE001
                 log.warning("jobs: race rollback release failed for %s#%s", repo, issue, exc_info=True)
             record_job_claim_activity(
-                kind="conflict", repo=repo, issue=issue, agent=agent, session=session,
-                holder_principal=holder_principal, extra={"reason": "race loser"},
+                kind="conflict",
+                repo=repo,
+                issue=issue,
+                agent=agent,
+                session=session,
+                holder_principal=holder_principal,
+                extra={"reason": "race loser"},
             )
             raise claims_mod.ClaimHeldError(after)
         fence = _mint_fence(repo, issue)
         lease = posted["result"]
         receipt = str(lease.get("receipt") or "")
         record_job_claim_activity(
-            kind="claim", repo=repo, issue=issue, agent=agent, session=session,
-            holder_principal=holder_principal, receipt=receipt, fencing_token=str(fence), extra={"intent": intent},
+            kind="claim",
+            repo=repo,
+            issue=issue,
+            agent=agent,
+            session=session,
+            holder_principal=holder_principal,
+            receipt=receipt,
+            fencing_token=str(fence),
+            extra={"intent": intent},
         )
         expires_at = str(lease.get("expires_at") or after.get("expires_at") or "")
         principal = holder_principal or f"agent-{agent}"
