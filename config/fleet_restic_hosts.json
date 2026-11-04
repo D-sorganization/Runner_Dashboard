@@ -1,13 +1,13 @@
 {
   "pilot": {
-    "oglaptop_complete_env": "FLEET_RESTIC_PILOT_COMPLETE",
-    "note": "Set only after RM #4011 OGLaptop WSL export pilot succeeds; this PR ships repo artifacts only."
+    "complete_env": "FLEET_RESTIC_PILOT_COMPLETE",
+    "note": "Set only after issue #4011 WSL export pilot succeeds; this PR ships repo artifacts only."
   },
   "hosts": [
     {
-      "id": "desk",
-      "display_name": "Desk",
-      "repo_env": "RESTIC_REPOSITORY_DESK",
+      "id": "hub-a",
+      "display_name": "Hub A",
+      "repo_env": "RESTIC_REPOSITORY_HUB_A",
       "credentials_env": "RESTIC_CREDENTIALS_FILE",
       "backup_paths": [
         "/var/backups/runner-dashboard",
@@ -15,9 +15,9 @@
       ]
     },
     {
-      "id": "controltower",
-      "display_name": "ControlTower",
-      "repo_env": "RESTIC_REPOSITORY_CONTROLTOWER",
+      "id": "node-b",
+      "display_name": "Node B",
+      "repo_env": "RESTIC_REPOSITORY_NODE_B",
       "credentials_env": "RESTIC_CREDENTIALS_FILE",
       "backup_paths": [
         "/var/backups/runner-dashboard",
@@ -25,9 +25,9 @@
       ]
     },
     {
-      "id": "brick",
-      "display_name": "Brick",
-      "repo_env": "RESTIC_REPOSITORY_BRICK",
+      "id": "node-c",
+      "display_name": "Node C",
+      "repo_env": "RESTIC_REPOSITORY_NODE_C",
       "credentials_env": "RESTIC_CREDENTIALS_FILE",
       "backup_paths": [
         "/var/backups/runner-dashboard",

@@ -1,8 +1,8 @@
-"""Plan fleet restic rollout to Desk, ControlTower, and Brick (#4012).
+"""Plan fleet restic rollout to hub-a, node-b, and node-c (#4012).
 
 Ships configuration and installer hooks only. Default mode is dry-run logging;
 ``FLEET_RESTIC_ROLLOUT_APPLY=1`` or ``apply=True`` records the install steps an
-operator would run after the OGLaptop pilot (#4011). Never invokes restic or SSH.
+operator would run after the WSL export restic pilot (#4011). Never invokes restic or SSH.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any
 
 log = logging.getLogger("dashboard.fleet_restic_rollout")
 
-DEFAULT_HOSTS = ("desk", "controltower", "brick")
+DEFAULT_HOSTS = ("hub-a", "node-b", "node-c")
 _CONFIG = Path(__file__).resolve().parents[1] / "config" / "fleet_restic_hosts.json"
 RunFn = Callable[[list[str]], int]
 
@@ -26,17 +26,18 @@ def load_rollout_config(path: Path | None = None) -> dict[str, Any]:
     raw = json.loads(cfg_path.read_text(encoding="utf-8"))
     hosts = raw.get("hosts") or []
     if [h.get("id") for h in hosts] != list(DEFAULT_HOSTS):
-        msg = "fleet_restic_hosts.json must list desk, controltower, brick in order"
+        msg = "fleet_restic_hosts.json must list hub-a, node-b, node-c in order"
         raise ValueError(msg)
     return raw
 
 
 def _pilot_ready(cfg: dict[str, Any]) -> tuple[bool, str]:
-    env_name = str((cfg.get("pilot") or {}).get("oglaptop_complete_env") or "FLEET_RESTIC_PILOT_COMPLETE")
+    pilot = cfg.get("pilot") or {}
+    env_name = str(pilot.get("complete_env") or "FLEET_RESTIC_PILOT_COMPLETE")
     val = os.environ.get(env_name, "").strip().lower()
     if val in {"1", "true", "yes"}:
         return True, ""
-    return False, f"pilot gate: set {env_name}=1 after OGLaptop restic pilot (#4011)"
+    return False, f"pilot gate: set {env_name}=1 after restic export pilot (#4011)"
 
 
 def plan_restic_rollout(

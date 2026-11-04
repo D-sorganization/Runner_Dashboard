@@ -1,9 +1,8 @@
-"""Fleet restic rollout to Desk, ControlTower, and Brick (#4012). Repo-only; no live host changes."""
+"""Fleet restic rollout planner tests (#4012). Repo-only; no live host changes."""
 
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -18,26 +17,26 @@ from fleet_restic_rollout import (
 @pytest.fixture
 def config_path(tmp_path: Path) -> Path:
     data = {
-        "pilot": {"oglaptop_complete_env": "FLEET_RESTIC_PILOT_COMPLETE"},
+        "pilot": {"complete_env": "FLEET_RESTIC_PILOT_COMPLETE"},
         "hosts": [
             {
-                "id": "desk",
-                "display_name": "Desk",
-                "repo_env": "RESTIC_REPOSITORY_DESK",
+                "id": "hub-a",
+                "display_name": "Hub A",
+                "repo_env": "RESTIC_REPOSITORY_HUB_A",
                 "credentials_env": "RESTIC_CREDENTIALS_FILE",
                 "backup_paths": ["/var/backups/runner-dashboard"],
             },
             {
-                "id": "controltower",
-                "display_name": "ControlTower",
-                "repo_env": "RESTIC_REPOSITORY_CONTROLTOWER",
+                "id": "node-b",
+                "display_name": "Node B",
+                "repo_env": "RESTIC_REPOSITORY_NODE_B",
                 "credentials_env": "RESTIC_CREDENTIALS_FILE",
                 "backup_paths": ["/var/backups/runner-dashboard"],
             },
             {
-                "id": "brick",
-                "display_name": "Brick",
-                "repo_env": "RESTIC_REPOSITORY_BRICK",
+                "id": "node-c",
+                "display_name": "Node C",
+                "repo_env": "RESTIC_REPOSITORY_NODE_C",
                 "credentials_env": "RESTIC_CREDENTIALS_FILE",
                 "backup_paths": ["/var/backups/runner-dashboard"],
             },

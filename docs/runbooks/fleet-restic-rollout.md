@@ -1,8 +1,9 @@
 # Fleet restic rollout (#4012)
 
-Repo-only rollout artifacts for **Desk**, **ControlTower**, and **Brick** after the
-OGLaptop restic pilot (issue #4011). This change does **not** SSH to hosts or run
-`restic` on fleet machines.
+Repo-only rollout artifacts for **hub-a**, **node-b**, and **node-c** (documented
+example host ids; map to production nodes via `machine_registry.yml` on the hub)
+after the WSL export restic pilot (issue #4011). This change does **not** SSH to
+hosts or run `restic` on fleet machines.
 
 ## Configuration
 
