@@ -212,6 +212,31 @@ export interface WriteReceipt {
   generated_at?: string;
 }
 
+export interface JobBoardJob {
+  repo: string;
+  issue: number;
+  title: string;
+  url: string;
+  labels: string[];
+  priority: string;
+  updated_at: string;
+}
+
+export interface JobBoardExcluded {
+  repo: string;
+  issue: number;
+  title: string;
+  url: string;
+  reason: string;
+}
+
+export interface JobsResponse extends Availability {
+  complete?: boolean;
+  jobs: JobBoardJob[];
+  excluded?: JobBoardExcluded[];
+  warnings?: string[];
+}
+
 // ── Proposals (/api/proposals) ───────────────────────────────────────────────
 
 export interface ProposalItem {
