@@ -111,6 +111,18 @@ def test_main_exits_zero_when_within_limit(tmp_path: Path, capsys: pytest.Captur
     assert "0 <= 500" in capsys.readouterr().out
 
 
+def test_real_allowlist_file_round_trips_through_load_allowlist() -> None:
+    # Regression for #3963 S3: config/pr_size_allowlist.json must parse as the
+    # exact shape `_load_allowlist` expects ({"allowed_prs": [...]}) rather
+    # than some other guessed shape. Starts empty; Dieter is the only editor.
+    from scripts.pr_size_gate import _load_allowlist
+
+    real_repo = Path(__file__).resolve().parents[2]
+    allowlist_path = real_repo / "config" / "pr_size_allowlist.json"
+    assert allowlist_path.exists()
+    assert _load_allowlist(allowlist_path) == frozenset()
+
+
 def test_main_exits_one_when_over_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from scripts import pr_size_gate
 
