@@ -15,15 +15,18 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | item                                                 | owner   | source     | check                                                                           | verified_at (PT) | ttl |
 | ---------------------------------------------------- | ------- | ---------- | ------------------------------------------------------------------------------- | ---------------- | --- |
 | **— Holds and gates —**                              |         |            |                                                                                 |                  |     |
-| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | UNVERIFIED       | 1h  |
-| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
-| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
-| GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | UNVERIFIED       | 1h  |
-| GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED       | 1h  |
+| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-04 05:32 | 1h  |
+| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-04 05:32 | 1h  |
+| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-04 05:32 | 1h  |
+| GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | UNVERIFIED (bot gets 404 on GM repo) | 1h  |
+| GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED (bot gets 404 on GM repo) | 1h  |
 | **— Red mains —**                                    |         |            |                                                                                 |                  |     |
 | **— Runner state —**                                 |         |            |                                                                                 |                  |     |
-| Private minutes under 42,500 of 50,000               | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED       | 1h  |
+| Private minutes under 42,500 of 50,000               | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED (billing API 403 for App) | 1h  |
 | **— Watching —**                                     |         |            |                                                                                 |                  |     |
+| Hook bridge fails open on missing backend deps       | claude  | RD #3982   | `gh pr view 3983 --json state` (armed; staff runs log a fastapi traceback until it merges) | 2026-11-04 05:32 | 24h |
+| 72h: #2792 fleet AGENTS.md sync conflicting, far behind main | bot     | RD #2792   | `gh pr view 2792 --json mergeable`; regenerate from the sync workflow or close via redundant-PR closer | 2026-11-04 05:32 | 24h |
+| 72h: #2852 topology sanitize, `do-not-merge` under HOLD #2657 | Dieter  | RD #2852   | stays parked until HOLD #2657 lifts                                             | 2026-11-04 05:32 | 24h |
 | **— Reminders —**                                    |         |            |                                                                                 |                  |     |
 
 ## PR-crush lanes
