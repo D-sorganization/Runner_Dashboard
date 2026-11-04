@@ -184,9 +184,7 @@ def migrate_placements_off_host(
         for candidate in targets:
             if role_schedule_allowed_on_machine(role.name, candidate, registry):
                 return candidate
-        raise ValueError(
-            f"no migration target allows scheduled role '{role.name}' (targets={list(targets)!r})"
-        )
+        raise ValueError(f"no migration target allows scheduled role '{role.name}' (targets={list(targets)!r})")
 
     for role_name, host in list(placements.items()):
         if host != source_host.strip():
