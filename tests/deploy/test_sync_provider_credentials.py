@@ -240,4 +240,3 @@ def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
     blob = json.dumps(synced)
     assert "r-out" not in blob
     assert "acc" not in blob
-
