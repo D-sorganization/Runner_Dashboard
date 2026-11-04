@@ -15,15 +15,18 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | item                                                 | owner   | source     | check                                                                           | verified_at (PT) | ttl |
 | ---------------------------------------------------- | ------- | ---------- | ------------------------------------------------------------------------------- | ---------------- | --- |
 | **— Holds and gates —**                              |         |            |                                                                                 |                  |     |
-| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | UNVERIFIED       | 1h  |
-| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
-| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
-| GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | UNVERIFIED       | 1h  |
-| GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED       | 1h  |
+| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-04 06:02 open  | 1h  |
+| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-04 06:02 null  | 1h  |
+| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-04 06:02 null  | 1h  |
+| GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | UNVERIFIED (App 404 on GM, 2026-11-04 06:02) | 1h  |
+| GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED (App 404 on GM, 2026-11-04 06:02) | 1h  |
 | **— Red mains —**                                    |         |            |                                                                                 |                  |     |
+| RD main green at 894ba0bf                            | rd-barb | main CI    | `gh api repos/D-sorganization/Runner_Dashboard/actions/runs?branch=main&event=push` | 2026-11-04 06:02 | 1h  |
 | **— Runner state —**                                 |         |            |                                                                                 |                  |     |
-| Private minutes under 45,000 of 50,000 (RD is public; its CI doesn't count) | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED       | 1h  |
+| Private minutes under 45,000 of 50,000 (RD is public; its CI doesn't count) | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED (billing API 403, 2026-11-04 06:02) | 1h  |
 | **— Watching —**                                     |         |            |                                                                                 |                  |     |
+| Hook bridge crashes on python3.11 without fastapi     | rd-barb | RD #3982   | PR #3983 armed, CI pending                                                      | 2026-11-04 06:02 | 24h |
+| #2792 fleet AGENTS sync over 72h, conflicts with main | rd-barb | RD #2792   | AGENTS.md part already on main; adapter part conflicts; needs re-sync or close | 2026-11-04 06:02 | 24h |
 | **— Reminders —**                                    |         |            |                                                                                 |                  |     |
 
 ## PR-crush lanes
