@@ -31,6 +31,7 @@ API_KEY_ENV_VARS: frozenset[str] = frozenset(
 _PROVIDER_ALIASES: dict[str, str] = {"cursor": "cursor-agent", "jules_api": "jules"}
 _CLOUD_CLI: frozenset[str] = frozenset({"claude", "codex"})
 _CLOUD_WORKFLOW: frozenset[str] = frozenset({"cursor-agent", "jules"})
+_GUARDED_LOCAL_PROVIDERS: frozenset[str] = frozenset({"antigravity", "gemini"})
 _URL_RE = re.compile(r"https://[^\s\"')]+")
 _CLAUDE_URL_RE = re.compile(r"https://claude\.ai/[^\s\"')]+")
 _GH_RUN_RE = re.compile(r"https://github\.com/[^\s\"')]+/actions/runs/\d+")
@@ -187,6 +188,10 @@ def resolve_plan_execution(
             pr=req.pr,
         )
         return execution_mode, cloud.argv, cloud.stdin or "", False
+    if normalize_provider(provider) in _GUARDED_LOCAL_PROVIDERS and req.issue is not None:
+        verdict = check_launch_allowed(req.repo, req.issue)
+        if not verdict.allowed:
+            raise ValueError(f"launch guard refused {req.repo}#{req.issue}: {verdict.reason}")
     argv = adapter.build_command(prompt, "<workdir>", effective_model, **read_only_kwargs)
     return execution_mode, argv, "", lease
 
