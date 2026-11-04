@@ -43,7 +43,7 @@ export function JobBoardPanel() {
     (signal) => fetchJobs({ repo: repoFilter || undefined, include_excluded: showExcluded }, signal),
     `${repoFilter}|${showExcluded}`,
   );
-  const jobs = res.data?.jobs ?? [];
+  const jobs = useMemo(() => res.data?.jobs ?? [], [res.data?.jobs]);
   const repos = useMemo(() => Array.from(new Set(jobs.map((j) => j.repo))).sort(), [jobs]);
   const filteredJobs = useMemo(
     () => jobs.filter((j) => jobMatchesPriority(j, priorityFilter)),
