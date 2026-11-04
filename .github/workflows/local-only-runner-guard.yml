@@ -72,6 +72,8 @@ jobs:
               "taxonomy-rollout.yml",
               "ci-secrets.yml",
               "ci-spec-check.yml",
+              "util-queued-job-reaper.yml",
+              "verify-tag.yml",
               "docker-build.yml",
               "frontend-tests.yml",
               "lint-workflow-files.yml",
