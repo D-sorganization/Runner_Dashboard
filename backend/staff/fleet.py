@@ -385,3 +385,14 @@ def holds_snapshot() -> list[dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001
         log.warning("staff: holds unavailable: %s", exc)
         return []
+
+
+# Re-export delegation helpers (module split for fleet.py line cap; #4025).
+from staff.on_behalf_of import (  # noqa: E402, F401
+    caller_identity,
+    extract_on_behalf_of,
+    hub_fleet_bearer_authenticated,
+    is_fleet_peer,
+    sign_on_behalf_of,
+    verify_on_behalf_of,
+)
