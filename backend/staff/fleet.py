@@ -85,6 +85,14 @@ def fleet_headers() -> dict[str, str]:
     return headers
 
 
+def hub_fleet_bearer_authenticated(header_token: str | None) -> bool:
+    """True when ``Authorization`` presents the configured ``HUB_FLEET_TOKEN`` (#4025)."""
+    hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+    if not hub_token or not header_token or not header_token.startswith("Bearer "):
+        return False
+    return hmac.compare_digest(header_token[7:], hub_token)
+
+
 def peer_nodes() -> dict[str, str]:
     """Name → base URL of every other dashboard node (env first, registry second)."""
     nodes = dict(FLEET_NODES)
@@ -399,16 +407,25 @@ def caller_identity(principal: Any) -> str:
     return f"principal:{pid}"
 
 
-def extract_on_behalf_of(header: str | None, is_peer: bool) -> dict[str, Any] | None:
-    """Validate and unpack on-behalf-of header if caller is a peer (issue #1311)."""
+def extract_on_behalf_of(
+    header: str | None,
+    is_peer: bool,
+    *,
+    fleet_bearer_authenticated: bool = False,
+) -> dict[str, Any] | None:
+    """Validate and unpack on-behalf-of header for trusted fleet forwarders (#1311, #4025)."""
     if not header:
         return None
-    if not is_peer:
-        log.warning("staff: ignored X-Staff-On-Behalf-Of header from non-peer")
-        return None
     verified = verify_on_behalf_of(header)
+    trusted_forwarder = is_peer or fleet_bearer_authenticated
     if verified is None:
-        log.warning("staff: invalid X-Staff-On-Behalf-Of header from peer")
+        if trusted_forwarder:
+            log.warning("staff: invalid X-Staff-On-Behalf-Of header from peer")
+        else:
+            log.warning("staff: ignored X-Staff-On-Behalf-Of header from non-peer")
+        return None
+    if not trusted_forwarder:
+        log.warning("staff: ignored X-Staff-On-Behalf-Of header from non-peer")
         return None
     return verified
 
