@@ -124,8 +124,7 @@ Loaded from Repository_Management `skills/fleet/*/SKILL.md`, the same way for
 every provider:
 
 - Ported: `barb-operator` (existing copy, linked), `fleet-grok-coordination`,
-  `goal`, `panel`, `expert-panel-consultation`, plus these RD docs
-  (`docs/agents/*.md`).
+  `fleet-goal`, `panel`, plus these RD docs (`docs/agents/*.md`).
 - App-only, stay with Grok Barb through the webhook: connectors (Gmail,
   Calendar, Drive, Monarch, Dropbox), vault and credentials, routines and
   schedules, chat cards and question widgets, email drafts, long-term memory.
