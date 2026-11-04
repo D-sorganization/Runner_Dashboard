@@ -97,7 +97,8 @@ def test_dry_run_logs_without_removing(repo_with_worktrees: Path, monkeypatch: p
         protected=DEFAULT_PROTECTED_WORKTREES,
     )
     assert report["dry_run"] is True
-    assert report["would_remove"] and removed == []
+    assert report["would_remove"], report.get("skipped", removed)
+    assert removed == []
 
 
 def test_apply_uses_worktree_remove_without_force(repo_with_worktrees: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,6 +119,13 @@ def test_apply_uses_worktree_remove_without_force(repo_with_worktrees: Path, mon
         return res.returncode == 0
 
     monkeypatch.setattr("agent_worktree_hygiene._git_worktree_remove", fake_remove)
+    ok, reason = worktree_entry_is_eligible(
+        repo_with_worktrees,
+        {"path": wt, "branch": "merged/two"},
+        min_age_hours=72,
+        protected=DEFAULT_PROTECTED_WORKTREES,
+    )
+    assert ok, reason
     report = plan_agent_worktree_prune([repo_with_worktrees], apply=True, min_age_hours=72)
-    assert report["removed"] == 1
+    assert report["removed"] == 1, report.get("skipped")
     assert calls and "remove" in calls[0] and "--force" not in calls[0]

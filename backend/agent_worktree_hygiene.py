@@ -162,7 +162,14 @@ def plan_agent_worktree_prune(
     for checkout in repo_checkouts:
         if not (checkout / ".git").exists():
             continue
-        _git(checkout, "fetch", "origin", "--prune", "--quiet")
+        url_res = _git(checkout, "remote", "get-url", "origin")
+        if url_res.returncode == 0:
+            origin_url = url_res.stdout.strip()
+            local_origin = origin_url.startswith("file:") or (
+                origin_url.startswith("/") and Path(origin_url).exists()
+            )
+            if not local_origin:
+                _git(checkout, "fetch", "origin", "--prune", "--quiet")
         for entry in _parse_worktree_list(checkout):
             ok, reason = worktree_entry_is_eligible(
                 checkout,
