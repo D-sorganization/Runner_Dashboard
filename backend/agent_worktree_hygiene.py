@@ -82,11 +82,7 @@ def _branch_merged_or_closed(checkout: Path, branch: str) -> bool:
         return False
     branch_tip = _git(checkout, "rev-parse", branch)
     main_tip = _git(checkout, "rev-parse", "main")
-    if (
-        branch_tip.returncode == 0
-        and main_tip.returncode == 0
-        and branch_tip.stdout.strip() == main_tip.stdout.strip()
-    ):
+    if branch_tip.returncode == 0 and main_tip.returncode == 0 and branch_tip.stdout.strip() == main_tip.stdout.strip():
         return True
     for base in ("origin/main", "main"):
         ancestor = _git(checkout, "merge-base", "--is-ancestor", branch, base)
