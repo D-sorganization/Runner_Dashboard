@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import re
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from typing import Any
 
 from activity_producers import record_job_claim_activity
@@ -35,7 +36,7 @@ FAIL_OPEN_PREFIX = "error:"
 _BRANCH_FOR_ISSUE = re.compile(r"(?:^|/)(\d+)(?:-|$)")
 
 _locks_guard = threading.Lock()
-_issue_locks: dict[str, threading.Lock] = {}
+_issue_locks: dict[str, threading.RLock] = {}
 
 
 EvidenceFetch = Callable[[str], Any]
@@ -124,10 +125,21 @@ def reset_locks() -> None:
         _issue_locks.clear()
 
 
-def _issue_lock(repo: str, issue: int) -> threading.Lock:
+@contextmanager
+def hold_issue(repo: str, issue: int) -> Iterator[None]:
+    """Serialize job-board and claim writes for one ``repo#issue`` (same lock as :func:`claim`)."""
+    lock = _issue_lock(repo, issue)
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+def _issue_lock(repo: str, issue: int) -> threading.RLock:
     key = f"{repo.casefold()}#{issue}"
     with _locks_guard:
-        return _issue_locks.setdefault(key, threading.Lock())
+        return _issue_locks.setdefault(key, threading.RLock())
 
 
 def _check_incomplete(data: dict[str, Any]) -> str | None:
@@ -229,6 +241,33 @@ def _write_result(script: str, res: ScriptResult) -> dict[str, Any]:
 
 def _post(repo: str, issue: int, agent: str, session: str, intent: str) -> dict[str, Any]:
     args = ("--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session, "--intent", intent)
+    return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
+
+
+def post_lease(
+    repo: str,
+    issue: int,
+    agent: str,
+    session: str,
+    intent: str,
+    *,
+    ttl_hours: float | None = None,
+) -> dict[str, Any]:
+    """Post an RM lease comment and ``claim:*`` label (same subprocess as :func:`claim`)."""
+    args: list[str] = [
+        "--repo",
+        repo,
+        "--issue",
+        str(issue),
+        "--agent",
+        agent,
+        "--session",
+        session,
+        "--intent",
+        intent,
+    ]
+    if ttl_hours is not None:
+        args += ["--ttl-hours", str(float(ttl_hours))]
     return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
 
 
