@@ -194,7 +194,8 @@ class StaffScheduler:
 
     def _save_state(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
+        # Per-writer temp names avoid torn writes when tick and API paths save concurrently (#3927).
+        tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(self._state or {}, indent=2), encoding="utf-8")
         os.replace(tmp, self.path)
 
@@ -246,15 +247,6 @@ class StaffScheduler:
     def leader_status(self, now: datetime | None = None) -> dict[str, Any]:
         now = now or self._clock()
         return _lease_leader_status(self._load_state, leader_chain(), self.runner.machine, now)
-
-    def schedule_state_view(self) -> dict[str, dict[str, Any]]:
-        with self._lock:
-            return {k: dict(v) for k, v in self._load_state().items() if isinstance(v, dict)}
-
-    def replace_schedule_state(self, state: Mapping[str, Mapping[str, Any]]) -> None:
-        with self._lock:
-            self._state = {k: dict(v) for k, v in state.items() if isinstance(v, Mapping)}
-            self._save_state()
 
     # ── evaluation ───────────────────────────────────────────────────────
     def _schedule_report(

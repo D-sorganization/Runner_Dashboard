@@ -272,7 +272,7 @@ class MigrateScheduleOffHostBody(BaseModel):
 
 
 @router.post("/schedule/migrate-off-host")
-async def migrate_schedule_off_host(
+def migrate_schedule_off_host(
     body: MigrateScheduleOffHostBody,
     caller: Principal = Depends(require_scope("staff.admin")),
 ) -> dict[str, Any]:
@@ -281,29 +281,40 @@ async def migrate_schedule_off_host(
     from staff.schedule_placement import (  # noqa: PLC0415
         load_placements,
         migrate_placements_off_host,
+        purge_schedule_role_state,
         save_placements,
     )
 
     sched = get_scheduler()
     roles = sched.runner.roles()
-    placements = load_placements()
-    state = sched.schedule_state_view()
     targets = tuple(t.strip() for t in body.targets if t.strip())
-    result = migrate_placements_off_host(
-        body.source_host.strip(),
-        roles=roles,
-        placements=placements,
-        state=state,
-        registry=load_machine_registry(),
-        targets=targets,
-    )
+    if not targets:
+        raise HTTPException(status_code=422, detail="targets must include at least one non-empty host name")
+    source = body.source_host.strip()
+    if not source:
+        raise HTTPException(status_code=422, detail="source_host must be non-empty")
+    placements = load_placements()
+    try:
+        result = migrate_placements_off_host(
+            source,
+            roles=roles,
+            placements=placements,
+            state={},
+            registry=load_machine_registry(),
+            targets=targets,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if body.dry_run:
         return {"dry_run": True, "removed": list(result.removed_roles), "moved": list(result.moved)}
-    save_placements(placements, roles=roles)
-    sched.replace_schedule_state(state)
+    try:
+        save_placements(placements, roles=roles)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    purge_schedule_role_state(sched, result.removed_roles)
     record_audit(
         action="schedule_migrate_off_host",
-        target=body.source_host.strip(),
+        target=source,
         principal=format_caller(caller),
         surface="api",
         outcome="success",
