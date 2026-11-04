@@ -103,9 +103,7 @@ def test_advisory_check_result_surfaces_without_blocking() -> None:
         return Unknown(signal="staleness", severity="advisory", detail="branch pushed 9 days ago")
 
     cache = _cache(claim_check=_claim_check(True, False))
-    verdict = is_eligible(
-        "Runner_Dashboard", 1234, "claude-a", cache=cache, advisory_checks=[stale_branch_advisory]
-    )
+    verdict = is_eligible("Runner_Dashboard", 1234, "claude-a", cache=cache, advisory_checks=[stale_branch_advisory])
     assert verdict.allowed is True
     assert verdict.unknowns == [Unknown(signal="staleness", severity="advisory", detail="branch pushed 9 days ago")]
 
