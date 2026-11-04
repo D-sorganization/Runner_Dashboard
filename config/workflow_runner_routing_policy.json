@@ -71,7 +71,6 @@
         "frontend-tests.yml",
         "api-contract-regeneration.yml",
         "lockfile-upgrade.yml",
-        "release.yml",
         "main-ci-auto-release.yml"
       ]
     }
