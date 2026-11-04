@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from dashboard_config import ORG
-from staff.launch_guard import LaunchGuardVerdict, check_launch_allowed
+from staff.launch_guard import check_launch_allowed
 
 ExecutionMode = Literal["local", "cloud"]
 
