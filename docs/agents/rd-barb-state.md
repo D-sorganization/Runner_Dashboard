@@ -15,15 +15,18 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | item                                                 | owner   | source     | check                                                                           | verified_at (PT) | ttl |
 | ---------------------------------------------------- | ------- | ---------- | ------------------------------------------------------------------------------- | ---------------- | --- |
 | **— Holds and gates —**                              |         |            |                                                                                 |                  |     |
-| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | UNVERIFIED       | 1h  |
-| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
-| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | UNVERIFIED       | 1h  |
+| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-04 01:32 (open) | 1h  |
+| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-04 01:32 (null) | 1h  |
+| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-04 01:32 (null) | 1h  |
 | GM #5540 auto-merge off until the hosted PDF passes  | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest` | UNVERIFIED       | 1h  |
 | GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED       | 1h  |
 | **— Red mains —**                                    |         |            |                                                                                 |                  |     |
 | **— Runner state —**                                 |         |            |                                                                                 |                  |     |
 | Private minutes under 42,500 of 50,000               | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED       | 1h  |
+| GM and billing checks: fleet App gets 404/403         | rd-barb | 2026-11-04 pass | GM repo not visible to the App; billing usage and RD vars return 403       | UNVERIFIED       | 1h  |
 | **— Watching —**                                     |         |            |                                                                                 |                  |     |
+| 72h: RD #2792 conflicting (dirty); AGENTS.md hunks already on main | redundant-PR closer | 72h rule | `gh api repos/D-sorganization/Runner_Dashboard/pulls/2792 --jq .mergeable_state` | 2026-11-04 01:32 (dirty) | 24h |
+| 72h: RD #2852 held (`do-not-merge`, deploy HOLD #2657), dirty | Dieter  | RD #2657   | labels still include `do-not-merge`                                             | 2026-11-04 01:32 | 24h |
 | **— Reminders —**                                    |         |            |                                                                                 |                  |     |
 
 ## PR-crush lanes
