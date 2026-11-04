@@ -107,7 +107,48 @@ def test_claude_prefers_newer_refresh_token_over_higher_expires_at(tmp_path: Pat
     assert json.loads(hub.read_text(encoding="utf-8"))["claudeAiOauth"]["refreshToken"] == "r-new"
 
 
+def _zeroed_newer_copy_over_valid_hub(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Hub seat holds a real expiry; a newer Windows copy carries expiresAt 0 (#3971)."""
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    hub = wsl_home / ".config" / "runner-dashboard" / "claude" / ".credentials.json"
+    hub.parent.mkdir(parents=True)
+    hub.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-valid", "accessToken": "a-valid", "expiresAt": 9000}}),
+        encoding="utf-8",
+    )
+    win_claude = win_home / ".claude" / ".credentials.json"
+    win_claude.parent.mkdir(parents=True)
+    win_claude.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-zero", "accessToken": "a-zero", "expiresAt": 0}}),
+        encoding="utf-8",
+    )
+    os.utime(hub, (1_000_000, 1_000_000))
+    os.utime(win_claude, (2_000_000, 2_000_000))
+    return wsl_home, win_home, hub
+
+
 @pytest.mark.unit
+def test_claude_sync_never_mirrors_expires_at_zero_over_valid_seat(tmp_path: Path) -> None:
+    wsl_home, win_home, hub = _zeroed_newer_copy_over_valid_hub(tmp_path)
+
+    synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[win_home])
+
+    assert str(hub) not in synced["claude"]
+    assert json.loads(hub.read_text(encoding="utf-8"))["claudeAiOauth"]["expiresAt"] == 9000
+
+
+@pytest.mark.unit
+def test_claude_audit_source_is_valid_seat_not_expires_at_zero_copy(tmp_path: Path) -> None:
+    wsl_home, win_home, hub = _zeroed_newer_copy_over_valid_hub(tmp_path)
+
+    report = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[win_home])
+
+    assert report["providers"]["claude"]["source_path"] == str(hub)
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(os.name != "posix", reason="chmod(0o000) does not block reads on Windows")
 def test_sync_skips_unreadable_source_without_crashing(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     wsl_home = tmp_path / "wsl_home"
     win_home = tmp_path / "win_home"
@@ -200,4 +241,3 @@ def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
     blob = json.dumps(synced)
     assert "r-out" not in blob
     assert "acc" not in blob
-
