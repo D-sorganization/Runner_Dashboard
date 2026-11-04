@@ -4,8 +4,42 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+
+MIN_PYTHON = (3, 11)
+REEXEC_ENV = "AGENT_BUS_HOOK_REEXEC"
+_NEWEST_MINOR = 20
+
+
+def _find_supported_python() -> str | None:
+    for minor in range(_NEWEST_MINOR, MIN_PYTHON[1] - 1, -1):
+        path = shutil.which(f"python3.{minor}")
+        if path:
+            return path
+    return None
+
+
+def ensure_supported_python(args: Sequence[str], version_info: Sequence[int] = sys.version_info) -> int | None:
+    """Return None to proceed, or an exit code when the hook must stop (#3980).
+
+    The backend needs Python 3.11+ (``datetime.UTC``), but hooks run bare
+    ``python3``. Re-exec once under the newest ``python3.1x`` on PATH; with
+    none available, fail open with one stderr line instead of a traceback.
+    """
+    if tuple(version_info[:2]) >= MIN_PYTHON:
+        return None
+    if os.environ.get(REEXEC_ENV) != "1":
+        candidate = _find_supported_python()
+        if candidate:
+            os.environ[REEXEC_ENV] = "1"
+            os.execv(candidate, [candidate, str(Path(__file__).resolve()), *args])
+    found = ".".join(str(part) for part in version_info[:2])
+    print(f"agent-bus hook skipped: needs Python 3.11+, found {found} (#3980)", file=sys.stderr)
+    return 0
 
 
 def _paths() -> Path | None:
@@ -58,12 +92,18 @@ def main(argv: list[str] | None = None) -> int:
     if len(args) != 1:
         print("usage: agent-bus-hook-bridge.py <session-start|pre-push>", file=sys.stderr)
         return 2
-    if args[0] == "session-start":
-        return session_start()
-    if args[0] == "pre-push":
-        return pre_push()
-    print(f"unknown mode: {args[0]}", file=sys.stderr)
-    return 2
+    stop = ensure_supported_python(args)
+    if stop is not None:
+        return stop
+    modes = {"session-start": session_start, "pre-push": pre_push}
+    if args[0] not in modes:
+        print(f"unknown mode: {args[0]}", file=sys.stderr)
+        return 2
+    try:
+        return modes[args[0]]()
+    except ImportError as exc:
+        print(f"agent-bus hook skipped: backend dependencies unavailable ({exc}) (#3980)", file=sys.stderr)
+        return 0
 
 
 if __name__ == "__main__":
