@@ -1,4 +1,4 @@
-"""Fleet Job Board S3: ``POST /api/coordination/jobs/claim`` and ``/jobs/release`` (#2784)."""
+"""Fleet Job Board S3: ``POST /api/coordination/jobs/claim`` (#2784, slice 1)."""
 
 from __future__ import annotations
 
@@ -135,25 +135,3 @@ def test_concurrent_claims_exactly_one_wins(
     t1.join(timeout=10)
     t2.join(timeout=10)
     assert sorted(results) == ["held", "ok"]
-
-
-@pytest.mark.unit
-def test_release_with_stale_fence_refused(
-    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _evidence({TOOLS: {58: _open_issue(58)}}))
-    rm.respond("check_agent_claim", claim_status(False))
-    rm.respond("post_agent_lease", lease_result())
-    claim_body = {"session": "codex-58", "repo": "Tools", "issue": 58, "agent": "codex", "intent": "ship"}
-    claimed = client.post("/api/coordination/jobs/claim", json=claim_body, headers=_BOT)
-    assert claimed.status_code == 200, claimed.text
-    fence = claimed.json()["fence"]
-
-    held = {**claim_status(True, "codex", "active lease"), "session": "codex-58"}
-    rm.respond("check_agent_claim", held)
-    stale = {"session": "codex-58", "repo": "Tools", "issue": 58, "agent": "codex", "fence": fence + 99, "reason": "done"}
-    assert client.post("/api/coordination/jobs/release", json=stale, headers=_BOT).status_code == 409
-
-    rm.respond("release_agent_lease", release_result())
-    good = {**stale, "fence": fence}
-    assert client.post("/api/coordination/jobs/release", json=good, headers=_BOT).status_code == 200

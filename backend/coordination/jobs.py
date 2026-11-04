@@ -210,19 +210,6 @@ class JobIneligibleError(RuntimeError):
         }
 
 
-class StaleFenceError(RuntimeError):
-    """Release/heartbeat fence does not match the current lease epoch."""
-
-    def to_detail(self) -> dict[str, Any]:
-        return {
-            "error": str(self),
-            "held_by": "",
-            "reason": "stale fence",
-            "expires_at": None,
-            "guidance": "Re-read GET /api/coordination/claims for the current fence.",
-        }
-
-
 _fence_guard = threading.Lock()
 _fences: dict[str, int] = {}
 
@@ -243,16 +230,6 @@ def _mint_fence(repo: str, issue: int) -> int:
         value = _fences.get(key, 0) + 1
         _fences[key] = value
         return value
-
-
-def _current_fence(repo: str, issue: int) -> int:
-    with _fence_guard:
-        return _fences.get(_fence_key(repo, issue), 0)
-
-
-def _require_fence(repo: str, issue: int, fence: int) -> None:
-    if fence <= 0 or fence != _current_fence(repo, issue):
-        raise StaleFenceError(f"fence {fence} is not current for {repo}#{issue}")
 
 
 def _fetch_open_issue(repo: str, issue: int) -> dict[str, Any]:
@@ -377,40 +354,4 @@ def claim_job(
             "expires_at": expires_at or None,
             "fence": fence,
             "warnings": posted.get("warnings") or [],
-        }
-
-
-def release_job(
-    repo: str,
-    issue: int,
-    *,
-    agent: str,
-    session: str,
-    fence: int,
-    reason: str,
-    holder_principal: str | None = None,
-) -> dict[str, Any]:
-    """Release a job-board claim; requires the current fence (#2784)."""
-    _require_fence(repo, issue, fence)
-    with claims_mod.hold_issue(repo, issue):
-        status = claims_mod.check(repo, issue)
-        if not status["available"]:
-            raise RMScriptError(f"check_agent_claim unavailable: {status['reason']}")
-        if not status.get("held") or (status.get("agent"), status.get("session")) != (agent, session):
-            raise StaleFenceError(f"session {session!r} does not hold {repo}#{issue}")
-        released = claims_mod.release(
-            repo,
-            issue,
-            agent=agent,
-            session=session,
-            reason=reason,
-            holder_principal=holder_principal,
-            fencing_token=str(fence),
-        )
-        return {
-            "released": True,
-            "repo": repo,
-            "issue": issue,
-            "fence": fence,
-            "warnings": released.get("warnings") or [],
         }
