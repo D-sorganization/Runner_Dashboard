@@ -31,8 +31,8 @@ CLAIMS_HINT = (
 )
 JOBS_HINT = (
     "Find unassigned fleet work on GET /api/coordination/jobs (Fleet Command job board or this briefing's "
-    "endpoints.jobs). Claim with POST /api/coordination/claims, release with POST /api/coordination/claims/release "
-    "when done; never bypass holds or the job-board filters."
+    "endpoints.jobs). Claim with POST /api/coordination/jobs/claim, release with POST /api/coordination/jobs/release, "
+    "heartbeat with POST /api/coordination/jobs/heartbeat when needed; never bypass holds or the job-board filters."
 )
 ENDPOINTS = {
     "briefing": "GET /api/coordination/briefing?repo=&agent=",

@@ -30,7 +30,7 @@ def _coordination_router_paths() -> set[str]:
 
 def _documented_coordination_paths() -> set[str]:
     text = _COORD_DOC.read_text(encoding="utf-8")
-    return {path for _, path in _DOC_ROUTE.findall(text)}
+    return {path.split("?", 1)[0] for _, path in _DOC_ROUTE.findall(text)}
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def test_briefing_lists_jobs_endpoints_and_hint(rm: FakeRM, client: TestClient) 
     assert "/api/coordination/jobs/releases" in endpoints["jobs_releases"]
     hint = body["jobs_hint"]
     assert "/api/coordination/jobs" in hint
-    assert "POST /api/coordination/claims" in hint
+    assert "POST /api/coordination/jobs/claim" in hint
 
 
 @pytest.mark.unit

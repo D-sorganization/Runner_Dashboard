@@ -191,8 +191,22 @@ available, unheld `claims.check` (unknown is never free), no active schedule-kin
 jobs, excluded?, warnings, generated_at}`; `excluded` needs `include_excluded=true`. `available`
 is `false`, with `jobs: []`, when a repo's holds list cannot be read (fails closed — never an
 unfiltered list). Sort: priority label, then `priorities.service.top_priorities` position, then
-oldest. To **claim**, call `POST /api/coordination/claims` after picking a row (or use the Fleet
-Command **Job board** panel beside Claims); release with `POST /api/coordination/claims/release`.
+oldest. To **claim**, call `POST /api/coordination/jobs/claim` after picking a row (or use the Fleet
+Command **Job board** panel beside Claims); release with `POST /api/coordination/jobs/release` and
+renew TTL with `POST /api/coordination/jobs/heartbeat`.
+
+### `POST /api/coordination/jobs/claim`
+
+Fleet Job Board S3 (#2784): atomic claim with monotonic **fence**. Body: `{session, repo, issue, agent?, intent, ttl_hours?}`.
+Re-runs list eligibility and launch gate; 409 when ineligible or held; 502 when claim check fails open.
+
+### `POST /api/coordination/jobs/release`
+
+Fleet Job Board S3 (#2784): release requires current **fence**. Body: `{session, repo, issue, agent?, fence, reason}`.
+
+### `POST /api/coordination/jobs/heartbeat`
+
+Fleet Job Board S4 (#2785): renew in-process TTL. Body: `{session, repo, issue, fence, ttl_hours?}`.
 
 ### `GET /api/coordination/jobs/releases?since=&limit=`
 
@@ -235,7 +249,7 @@ every repository):
   "board_available": true,
   "staff_runs": [],
   "claims_hint": "Before editing: GET /api/coordination/claims …",
-  "jobs_hint": "Find work on GET /api/coordination/jobs; claim with POST /api/coordination/claims …",
+  "jobs_hint": "Find work on GET /api/coordination/jobs; claim with POST /api/coordination/jobs/claim …",
   "rules": ["Fleet rules: …"],
   "endpoints": {
     "claims": "GET|POST /api/coordination/claims",
