@@ -50,8 +50,7 @@ RESULT_CONTRACT = (
 )
 
 FLEET_RULES = (
-    _BUILTIN.body
-    + " Take unassigned fleet work only through GET /api/coordination/jobs and claim it with "
+    _BUILTIN.body + " Take unassigned fleet work only through GET /api/coordination/jobs and claim it with "
     "POST /api/coordination/claims before editing."
 )
 
