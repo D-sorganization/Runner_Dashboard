@@ -49,14 +49,6 @@ exit {chromium_launch_exit}
     node = tmp_path / "node"
     node.write_text(node_stub, encoding="utf-8")
     node.chmod(0o755)
-    sudo_stub = """#!/usr/bin/env bash
-set -euo pipefail
-if [[ "$1" == "-n" && "$2" == "true" ]]; then exit 1; fi
-exit 0
-"""
-    sudo = tmp_path / "sudo"
-    sudo.write_text(sudo_stub, encoding="utf-8")
-    sudo.chmod(0o755)
     return subprocess.run(
         [require_bash(), str(_SCRIPT), "chromium"],
         cwd=tmp_path,

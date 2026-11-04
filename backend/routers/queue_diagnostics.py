@@ -13,10 +13,6 @@ from dashboard_config import ORG
 from fastapi import APIRouter, HTTPException
 from gh_utils import gh_api_admin
 from queue_cleanup import is_routable
-from queue_job_diagnostic_bridge import (
-    build_wait_reason_classification,
-    policy_provisioning_snapshot,
-)
 from runner_inventory import fetch_org_runners
 
 from .queue import _queue_impl
@@ -118,18 +114,6 @@ async def _queued_jobs_for_run(run: dict[str, Any]) -> list[dict[str, Any]]:
     data = await gh_api_admin(f"/repos/{ORG}/{repo}/actions/runs/{run_id}/jobs?per_page=100")
     jobs = data.get("jobs", []) if isinstance(data, dict) else []
     return [job for job in jobs if isinstance(job, dict) and job.get("status") == "queued"]
-
-
-async def _fetch_runner_groups_payload() -> tuple[dict[str, Any], list[str]]:
-    findings: list[str] = []
-    try:
-        data = await gh_api_admin(f"/orgs/{ORG}/actions/runner-groups")
-        if isinstance(data, dict):
-            return data, findings
-        findings.append("org runner-groups: response was not a JSON object")
-    except Exception as exc:  # noqa: BLE001
-        findings.append(f"org runner-groups: {exc}")
-    return {}, findings
 
 
 async def _sample_queued_jobs(runs: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
@@ -298,14 +282,6 @@ async def diagnose_queue() -> dict[str, Any]:
     active_runs = list(queue_data.get("queued", []) or []) + list(queue_data.get("in_progress", []) or [])
     queued_runs = [run for run in queue_data.get("queued", []) or [] if isinstance(run, dict)]
     sampled_jobs, job_errors = await _sample_queued_jobs([run for run in active_runs if isinstance(run, dict)])
-    runner_groups_payload, runner_group_findings = await _fetch_runner_groups_payload()
-    classification_findings = list(runner_group_findings)
-    wait_reason_classification = build_wait_reason_classification(
-        sampled_jobs=sampled_jobs,
-        runners=[runner for runner in runners if isinstance(runner, dict)],
-        runner_groups=runner_groups_payload,
-        api_findings=classification_findings or None,
-    )
 
     target_counts = Counter(str(job.get("target") or "unknown") for job in sampled_jobs)
     online_label_sets = [
@@ -360,10 +336,6 @@ async def diagnose_queue() -> dict[str, Any]:
             "runner_inventory": runner_error,
             "job_details": job_errors,
         },
-        "wait_reason_classification": wait_reason_classification,
-        "workflow_label_policy": policy_provisioning_snapshot(
-            [runner for runner in runners if isinstance(runner, dict)]
-        ),
         "generated_at": datetime.now(UTC).isoformat(),
     }
     cache_set(_DIAGNOSE_CACHE_KEY, result)

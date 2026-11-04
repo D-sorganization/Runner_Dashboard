@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "repository": "Runner_Dashboard",
-  "updated": "2026-11-04",
+  "updated": "2026-10-23",
   "records": [
     {
       "id": "DV-#2613",
@@ -43,40 +43,6 @@
       "reviewed_on": null,
       "record_url": null,
       "notes": "Part of epic #2566 (fleet security scanner). The q5 panel verdict listed a VM e2e launch test as a should-fix follow-up. Runbook: docs/operations/security-scanning.md (lands with PR #2612). No measurement has been taken."
-    },
-    {
-      "id": "DV-#2511",
-      "title": "Fleet-decision panel preset: live hub run with Barb turnover",
-      "origin_issue_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/2511",
-      "origin_state": "open",
-      "disposition": "retain",
-      "retained_issue_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/2511",
-      "blocked_on": ["live_hub", "owner_or_operator"],
-      "validation_state": "pending_measurement",
-      "justification": "Unit tests and docs cover preset availability, repo grounding snapshots and turnover failure tolerance. The issue's remaining acceptance is one live Staff Console panel run on a hub where antigravity, codex and claude read-only seats are enabled, proving per-seat availability flags and a Barb turnover note after completion.",
-      "evidence": [
-        "https://github.com/D-sorganization/Runner_Dashboard/issues/2511",
-        "https://github.com/D-sorganization/Runner_Dashboard/pull/3623",
-        "docs/agents/issue-specs/2511-fleet-decision-preset.md"
-      ],
-      "resource_prerequisites": [
-        "Runner Dashboard hub with staff panel providers antigravity, codex and claude enabled",
-        "Operator session with staff.read and panel launch permissions",
-        "Repository_Management checkout for Barb turnover scripts"
-      ],
-      "acceptance_criteria": [
-        "Launch preset `fleet-decision` from Staff Console; each seat shows correct provider/model and unavailable seats are marked, not swapped.",
-        "Panel completes at least one round with repo grounding enabled; snapshot has no `.git` directory.",
-        "Barb turnover note is posted on completion (failure to post must not fail the panel run)."
-      ],
-      "reopen_criteria": [
-        "Hub providers or panel preset definitions change materially after this catalog entry."
-      ],
-      "discovery": "issue_reconciliation",
-      "reviewed_by": null,
-      "reviewed_on": null,
-      "record_url": null,
-      "notes": "Code/doc slices merged (#3623 and follow-ons). Close #2511 after this live run is recorded with receipts."
     }
   ]
 }
