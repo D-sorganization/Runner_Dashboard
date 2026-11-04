@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from staff.cloud_dispatch import build_cloud_dispatch, resolve_plan_execution
+from staff.launch_guard import LaunchGuardVerdict
 from staff.retry import retry_plan
 from staff.roles import RoleSpec
 from staff.store import RunRecord
@@ -27,7 +28,7 @@ def test_cloud_plan_uses_composed_prompt_not_raw_operator_prompt(monkeypatch: py
     monkeypatch.setattr(
         cloud_dispatch,
         "check_launch_allowed",
-        lambda repo, issue: cloud_dispatch.LaunchGuardVerdict(allowed=True, reason="eligible"),
+        lambda repo, issue: LaunchGuardVerdict(allowed=True, reason="eligible"),
     )
     req = SimpleNamespace(
         prompt="",
@@ -91,7 +92,7 @@ def test_resolve_plan_execution_refuses_when_launch_guard_blocks(monkeypatch: py
     monkeypatch.setattr(
         cloud_dispatch,
         "check_launch_allowed",
-        lambda repo, issue: cloud_dispatch.LaunchGuardVerdict(
+        lambda repo, issue: LaunchGuardVerdict(
             allowed=False, reason="issue already claimed or has an open PR: held"
         ),
     )
@@ -107,9 +108,9 @@ def test_resolve_plan_execution_allows_when_launch_guard_passes(monkeypatch: pyt
 
     calls: list[tuple[str, int]] = []
 
-    def _allow(repo: str, issue: int) -> cloud_dispatch.LaunchGuardVerdict:
+    def _allow(repo: str, issue: int) -> LaunchGuardVerdict:
         calls.append((repo, issue))
-        return cloud_dispatch.LaunchGuardVerdict(allowed=True, reason="eligible")
+        return LaunchGuardVerdict(allowed=True, reason="eligible")
 
     monkeypatch.setattr(cloud_dispatch, "check_launch_allowed", _allow)
     req = SimpleNamespace(prompt="", execution_mode="cloud", repo="Runner_Dashboard", issue=3962, pr=None)
@@ -126,7 +127,7 @@ def test_resolve_plan_execution_skips_launch_guard_without_issue(monkeypatch: py
     """A PR-target cloud run (no issue number) has nothing for the guard to check; it must not be called."""
     from staff import cloud_dispatch
 
-    def _boom(repo: str, issue: int) -> cloud_dispatch.LaunchGuardVerdict:
+    def _boom(repo: str, issue: int) -> LaunchGuardVerdict:
         raise AssertionError("launch guard must not be called when req.issue is None")
 
     monkeypatch.setattr(cloud_dispatch, "check_launch_allowed", _boom)
