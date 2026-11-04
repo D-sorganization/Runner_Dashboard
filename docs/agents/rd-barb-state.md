@@ -22,7 +22,7 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | GM 5535, 5542, 5548, 5549 unarmed until #5540 merges | Dieter  | GM #5540   | autoMergeRequest null on each                                                   | UNVERIFIED       | 1h  |
 | **— Red mains —**                                    |         |            |                                                                                 |                  |     |
 | **— Runner state —**                                 |         |            |                                                                                 |                  |     |
-| Private minutes under 42,500 of 50,000               | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED       | 1h  |
+| Private minutes under 45,000 of 50,000 (RD is public; its CI doesn't count) | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED       | 1h  |
 | **— Watching —**                                     |         |            |                                                                                 |                  |     |
 | **— Reminders —**                                    |         |            |                                                                                 |                  |     |
 
