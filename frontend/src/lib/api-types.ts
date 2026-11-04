@@ -1517,6 +1517,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/jobs/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Jobs Heartbeat */
+        post: operations["post_jobs_heartbeat_api_coordination_jobs_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/jobs/release": {
         parameters: {
             query?: never;
@@ -10513,6 +10530,30 @@ export interface components {
             repo: string;
             /** Session */
             session: string;
+            /**
+             * Ttl Hours
+             * @default 2
+             */
+            ttl_hours: number;
+        };
+        /**
+         * JobHeartbeatBody
+         * @description Renew a job-board claim TTL (#2785).
+         */
+        JobHeartbeatBody: {
+            /** Fence */
+            fence: number;
+            /** Issue */
+            issue: number;
+            /** Repo */
+            repo: string;
+            /** Session */
+            session: string;
+            /**
+             * Ttl Hours
+             * @default 2
+             */
+            ttl_hours: number;
         };
         /**
          * JobReleaseBody
@@ -16055,6 +16096,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["JobClaimBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_jobs_heartbeat_api_coordination_jobs_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobHeartbeatBody"];
             };
         };
         responses: {

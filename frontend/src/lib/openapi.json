@@ -3107,10 +3107,53 @@
             "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
             "title": "Session",
             "type": "string"
+          },
+          "ttl_hours": {
+            "default": 2.0,
+            "maximum": 8.0,
+            "minimum": 0.1,
+            "title": "Ttl Hours",
+            "type": "number"
           }
         },
         "required": ["session", "repo", "issue"],
         "title": "JobClaimBody",
+        "type": "object"
+      },
+      "JobHeartbeatBody": {
+        "additionalProperties": false,
+        "description": "Renew a job-board claim TTL (#2785).",
+        "properties": {
+          "fence": {
+            "exclusiveMinimum": 0.0,
+            "title": "Fence",
+            "type": "integer"
+          },
+          "issue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Issue",
+            "type": "integer"
+          },
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "ttl_hours": {
+            "default": 2.0,
+            "maximum": 8.0,
+            "minimum": 0.1,
+            "title": "Ttl Hours",
+            "type": "number"
+          }
+        },
+        "required": ["session", "repo", "issue", "fence"],
+        "title": "JobHeartbeatBody",
         "type": "object"
       },
       "JobReleaseBody": {
@@ -13236,6 +13279,52 @@
           }
         ],
         "summary": "Post Jobs Claim",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/jobs/heartbeat": {
+      "post": {
+        "operationId": "post_jobs_heartbeat_api_coordination_jobs_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobHeartbeatBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Jobs Heartbeat Api Coordination Jobs Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Jobs Heartbeat",
         "tags": ["coordination"]
       }
     },
