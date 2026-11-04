@@ -1,0 +1,23 @@
+{
+	// Fleet backup hub ACL fragment (#4016, panel th_958c7b53ae45).
+	// Merge into the tailnet policy in the Tailscale admin console BEFORE
+	// enabling restic-rest-server on DeskComputer. Remove the legacy SMB grant
+	// (tcp/445) once clients use restic over this port.
+	//
+	// Tag DeskComputer with "tag:fleet-backup-hub" (or your equivalent hub tag).
+
+	"grants": [
+		// REMOVE after cutover (legacy Windows/SMB offsite path):
+		// {
+		//   "src": ["tag:fleet-member", "tag:fleet-hub"],
+		//   "dst": ["tag:fleet-backup-hub"],
+		//   "ip": ["*:445"]
+		// },
+
+		{
+			"src": ["tag:fleet-member", "tag:fleet-hub"],
+			"dst": ["tag:fleet-backup-hub"],
+			"ip": ["*:8000"]
+		}
+	]
+}
