@@ -10,12 +10,13 @@ from __future__ import annotations
 import importlib
 import logging
 import threading
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination import claims as claims_mod
+from coordination import job_board_lease
 from coordination.board import RMScriptError
 from coordination.job_filters import gate_reason, repo_schedule_holds
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
@@ -225,19 +226,13 @@ class StaleFenceError(RuntimeError):
 
 _fence_guard = threading.Lock()
 _fences: dict[str, int] = {}
-_lease_guard = threading.Lock()
-_lease_state: dict[str, tuple[str, int, str, str, int, datetime, float]] = {}
-DEFAULT_TTL_HOURS = 2.0
-MIN_TTL_HOURS = 0.1
-MAX_TTL_HOURS = 8.0
 
 
 def reset_job_board_claim_state() -> None:
     """Forget in-process fencing and TTL bookkeeping (tests)."""
     with _fence_guard:
         _fences.clear()
-    with _lease_guard:
-        _lease_state.clear()
+    job_board_lease.clear_lease_state()
 
 
 def _fence_key(repo: str, issue: int) -> str:
@@ -260,39 +255,6 @@ def _current_fence(repo: str, issue: int) -> int:
 def _require_fence(repo: str, issue: int, fence: int) -> None:
     if fence <= 0 or fence != _current_fence(repo, issue):
         raise StaleFenceError(f"fence {fence} is not current for {repo}#{issue}")
-
-
-def _parse_expires(raw: str | None, *, ttl_hours: float) -> datetime:
-    if raw:
-        text = raw.strip().replace("Z", "+00:00")
-        parsed = datetime.fromisoformat(text)
-        return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-    return datetime.now(UTC) + timedelta(hours=ttl_hours)
-
-
-def _remember_lease(
-    repo: str,
-    issue: int,
-    *,
-    agent: str,
-    session: str,
-    fence: int,
-    ttl_hours: float,
-    expires_at: str | None,
-) -> None:
-    expires = _parse_expires(expires_at, ttl_hours=ttl_hours)
-    with _lease_guard:
-        _lease_state[_fence_key(repo, issue)] = (repo, issue, agent, session, fence, expires, ttl_hours)
-
-
-def _drop_lease(repo: str, issue: int) -> None:
-    with _lease_guard:
-        _lease_state.pop(_fence_key(repo, issue), None)
-
-
-def _validate_ttl(ttl_hours: float) -> None:
-    if not MIN_TTL_HOURS <= ttl_hours <= MAX_TTL_HOURS:
-        raise ValueError(f"ttl_hours must be between {MIN_TTL_HOURS} and {MAX_TTL_HOURS}")
 
 
 def _fetch_open_issue(repo: str, issue: int) -> dict[str, Any]:
@@ -354,11 +316,11 @@ def claim_job(
     session: str,
     intent: str,
     holder_principal: str | None = None,
-    ttl_hours: float = DEFAULT_TTL_HOURS,
+    ttl_hours: float = job_board_lease.DEFAULT_TTL_HOURS,
 ) -> dict[str, Any]:
     """Atomic job-board claim with monotonic fencing (#2784)."""
     assert agent and session and intent  # noqa: S101 — route validates
-    _validate_ttl(ttl_hours)
+    job_board_lease.validate_ttl(ttl_hours)
     with claims_mod.hold_issue(repo, issue):
         pre = claims_mod.check(repo, issue)
         if not pre["available"]:
@@ -429,7 +391,7 @@ def claim_job(
         )
         # fmt: on
         expires_at = str(lease.get("expires_at") or after.get("expires_at") or "")
-        _remember_lease(
+        job_board_lease.remember_lease(
             repo,
             issue,
             agent=agent,
@@ -479,7 +441,7 @@ def release_job(
             holder_principal=holder_principal,
             fencing_token=str(fence),
         )
-        _drop_lease(repo, issue)
+        job_board_lease.drop_lease(repo, issue)
         return {
             "released": True,
             "repo": repo,
@@ -489,71 +451,8 @@ def release_job(
         }
 
 
-def heartbeat_job(
-    repo: str,
-    issue: int,
-    *,
-    agent: str,
-    session: str,
-    fence: int,
-    holder_principal: str | None = None,
-    ttl_hours: float = DEFAULT_TTL_HOURS,
-) -> dict[str, Any]:
-    """Renew a job-board lease TTL (#2785)."""
-    _validate_ttl(ttl_hours)
-    _require_fence(repo, issue, fence)
-    with claims_mod.hold_issue(repo, issue):
-        status = claims_mod.check(repo, issue)
-        if not status["available"]:
-            raise RMScriptError(f"check_agent_claim unavailable: {status['reason']}")
-        if not status.get("held") or (status.get("agent"), status.get("session")) != (agent, session):
-            raise StaleFenceError(f"session {session!r} does not hold {repo}#{issue}")
-        posted = claims_mod.post_lease(repo, issue, agent, session, "heartbeat", ttl_hours=ttl_hours)
-        lease = posted["result"]
-        expires_at = str(lease.get("expires_at") or status.get("expires_at") or "")
-        _remember_lease(
-            repo,
-            issue,
-            agent=agent,
-            session=session,
-            fence=fence,
-            ttl_hours=ttl_hours,
-            expires_at=expires_at or None,
-        )
-        return {
-            "heartbeated": True,
-            "repo": repo,
-            "issue": issue,
-            "session": session,
-            "fence": fence,
-            "expires_at": expires_at or None,
-            "warnings": posted.get("warnings") or [],
-        }
-
-
-def sweep_expired_job_claims(*, now: datetime | None = None) -> dict[str, Any]:
-    """Release heartbeated job-board leases past their TTL (#2785)."""
-    moment = now or datetime.now(UTC)
-    with _lease_guard:
-        snapshot = list(_lease_state.items())
-    released = 0
-    errors: list[str] = []
-    for _key, row in snapshot:
-        repo, issue, agent, session, fence, expires, _ttl = row
-        if moment < expires:
-            continue
-        try:
-            release_job(
-                repo,
-                issue,
-                agent=agent,
-                session=session,
-                fence=fence,
-                reason="agent_bus lease expired",
-            )
-            released += 1
-        except Exception as exc:  # noqa: BLE001 — sweep continues on one failure
-            msg = f"{repo}#{issue}: {exc}"
-            errors.append(msg)
-            log.warning("jobs: expiry sweep failed for %s#%s: %s", repo, issue, exc)
-    return {"released": released, "errors": errors}
+# Re-export TTL helpers for routes, reaper, and tests.
+heartbeat_job = job_board_lease.heartbeat_job
+sweep_expired_job_claims = job_board_lease.sweep_expired_job_claims
+DEFAULT_TTL_HOURS = job_board_lease.DEFAULT_TTL_HOURS
+_remember_lease = job_board_lease.remember_lease
