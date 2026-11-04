@@ -24,7 +24,8 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
    fewer. Arm with plain `gh pr merge --auto` (merge queues). Arming caps: 2 per
    lane in RD, 4 per lane elsewhere. Back off when a queue is over 6.
 2. **Private-minutes burn guard.** Check the month's private Actions minutes
-   (budget 50,000, trip at 42,500). On a trip, delete the RD variables
+   (budget 50,000, trip at 45,000). Runner_Dashboard is public, so its own CI
+   does not count against private minutes. On a trip, delete the RD variables
    `CI_QUEUE_RUNNER_MODE` and `CI_PR_RUNNER_MODE` so CI falls back to hosted
    defaults. That write needs Dieter's login: if the fleet bot gets 403, send an
    `alert` instead of retrying another way.
