@@ -35,3 +35,11 @@ def test_go_public_part4_workflows_allowlisted_in_local_only_guard() -> None:
     text = (ROOT / ".github" / "workflows" / "local-only-runner-guard.yml").read_text(encoding="utf-8")
     assert '"verify-tag.yml"' in text
     assert '"util-queued-job-reaper.yml"' in text
+
+
+def test_reaper_job_has_explicit_actions_permissions() -> None:
+    data = yaml.safe_load(REAPER.read_text(encoding="utf-8"))
+    perms = data["jobs"]["reap"].get("permissions") or {}
+    assert perms.get("contents") == "read"
+    assert perms.get("actions") == "write"
+    assert perms.get("pull-requests") == "read"

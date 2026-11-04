@@ -105,11 +105,10 @@ def test_release_workflow_uses_d_sorg_fleet() -> None:
         _assert_d_sorg_fleet_runner(RELEASE_WORKFLOW, v)
 
 
-def test_verify_tag_workflow_uses_d_sorg_fleet() -> None:
+def test_verify_tag_workflow_uses_hosted_runner_for_go_public_prep() -> None:
+    """verify-tag moved to ubuntu-latest in #3303 part 4; release.yml stays on fleet."""
     values = _runs_on_values(VERIFY_TAG_WORKFLOW)
-    assert values, "verify-tag.yml has no jobs"
-    for v in values:
-        _assert_d_sorg_fleet_runner(VERIFY_TAG_WORKFLOW, v)
+    assert values == ["ubuntu-latest"], values
 
 
 # ---------------------------------------------------------------------------
