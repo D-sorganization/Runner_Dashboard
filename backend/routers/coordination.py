@@ -162,9 +162,7 @@ async def post_jobs_release(body: JobReleaseBody, caller: Caller = WRITER) -> di
 
 @router.post("/jobs/heartbeat")
 async def post_jobs_heartbeat(body: JobHeartbeatBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(
-        lambda: service.heartbeat_job(body, caller), caller, f"jobs heartbeat {body.repo}#{body.issue}"
-    )
+    return await _write(lambda: service.heartbeat_job(body, caller), caller, f"jobs heartbeat {body.repo}#{body.issue}")
 
 
 @router.get("/jobs/releases")
