@@ -8,12 +8,9 @@ Runner Dashboard is the **shared context hub** for personal-assistant agents (Ba
 | ----------------- | -------------------------------- | ------------------------------------------------------------------------------ |
 | Front door        | `agent-grok` (Barb)              | Intake, routing, owner-facing proposals; notifies Dieter when needed           |
 | Hands             | `agent-codex-hands`              | Execute work (computer control, dispatch); reports back via memory and threads |
-| VM workers        | `agent-grok-vm`, `agent-duet`    | barb-worker VM Barbs; same Barb scope set as `agent-grok`                      |
 | CLI orchestrators | `agent-codex`, `agent-claude`, … | Existing MCP/CLI paths; see per-product guides                                 |
 
-All Barb principals (`agent-grok`, `agent-grok-vm`, `agent-duet`, `agent-codex-hands`) share one scope set: `fleet.read`, `memory.read`, `memory.write`, `staff.read`, `staff.dispatch`, `priorities.write`, `staff.holds.write`, `staff.chat` (panels, threads), `staff.cancel`, `coordination.write` (claims), `proposals.write`, `assessments.dispatch` (board). No admin or token-issuing scope. Holds change only on Dieter's say-so; when Dieter approves lifting or setting a hold, the Barb does it directly via `GET` then `PUT /api/staff/holds` (owner decision 2026-10-31).
-
-Barb is the **single front door** for Dieter-facing notifications. Other assistants are **hands**: they take assigned work, follow holds and directives from the dashboard, and **do not** ping Dieter directly—post updates to shared memory or staff threads instead.
+Barb is the **front door** for Dieter-facing notifications, and any agent (Grok Barb, rd-barb, the proposed Claude planner in [claude-planner.md](claude-planner.md), or a hand) may contact Dieter directly as long as Grok Barb is copied (Dieter, 2026-10-27), through a staff thread or a `to: barb` envelope, so the front door keeps the full picture. Hands still take assigned work, follow holds and directives from the dashboard, and post routine updates to shared memory or staff threads.
 
 ## Session Lifecycle
 
@@ -35,6 +32,5 @@ Repo defaults: `config/agent_principals.yml` (`assistant_profile` + per-agent `k
 - [Codex hands](codex-hands.md)
 - [Codex CLI (MCP)](codex.md)
 - [Claude](claude.md)
-- [Barb exchange repo](barb-exchange.md)
-- [Role seats for Barb's Grok Bot roles (proposed)](role-seats.md)
+- [Claude planner seat and Barb channel (proposed)](claude-planner.md)
 - [Connect index](connect.md)
