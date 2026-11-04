@@ -1,0 +1,38 @@
+{
+  "pilot": {
+    "oglaptop_complete_env": "FLEET_RESTIC_PILOT_COMPLETE",
+    "note": "Set only after RM #4011 OGLaptop WSL export pilot succeeds; this PR ships repo artifacts only."
+  },
+  "hosts": [
+    {
+      "id": "desk",
+      "display_name": "Desk",
+      "restic_repo_env": "RESTIC_REPOSITORY_DESK",
+      "password_file_env": "RESTIC_PASSWORD_FILE",
+      "backup_paths": [
+        "/var/backups/runner-dashboard",
+        "~/.config/runner-dashboard"
+      ]
+    },
+    {
+      "id": "controltower",
+      "display_name": "ControlTower",
+      "restic_repo_env": "RESTIC_REPOSITORY_CONTROLTOWER",
+      "password_file_env": "RESTIC_PASSWORD_FILE",
+      "backup_paths": [
+        "/var/backups/runner-dashboard",
+        "~/.config/runner-dashboard"
+      ]
+    },
+    {
+      "id": "brick",
+      "display_name": "Brick",
+      "restic_repo_env": "RESTIC_REPOSITORY_BRICK",
+      "password_file_env": "RESTIC_PASSWORD_FILE",
+      "backup_paths": [
+        "/var/backups/runner-dashboard",
+        "~/.config/runner-dashboard"
+      ]
+    }
+  ]
+}
