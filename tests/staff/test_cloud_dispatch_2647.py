@@ -92,9 +92,7 @@ def test_resolve_plan_execution_refuses_when_launch_guard_blocks(monkeypatch: py
     monkeypatch.setattr(
         cloud_dispatch,
         "check_launch_allowed",
-        lambda repo, issue: LaunchGuardVerdict(
-            allowed=False, reason="issue already claimed or has an open PR: held"
-        ),
+        lambda repo, issue: LaunchGuardVerdict(allowed=False, reason="issue already claimed or has an open PR: held"),
     )
     req = SimpleNamespace(prompt="", execution_mode="cloud", repo="Runner_Dashboard", issue=3962, pr=None)
     adapter = SimpleNamespace(build_command=lambda *a, **k: ["claude", "local-only"])
@@ -138,3 +136,83 @@ def test_resolve_plan_execution_skips_launch_guard_without_issue(monkeypatch: py
     )
     assert mode == "cloud"
     assert argv[:2] == ["claude", "--remote"]
+
+
+@pytest.mark.parametrize("provider", ["antigravity", "gemini"])
+def test_resolve_plan_execution_refuses_local_agy_gemini_when_launch_guard_blocks(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """#3962 S3: the agy/gemini local lane keepers must hit the same guard as cloud dispatch."""
+    from staff import cloud_dispatch
+
+    monkeypatch.setattr(
+        cloud_dispatch,
+        "check_launch_allowed",
+        lambda repo, issue: LaunchGuardVerdict(allowed=False, reason="issue already claimed or has an open PR: held"),
+    )
+    req = SimpleNamespace(prompt="", execution_mode="local", repo="Runner_Dashboard", issue=3962, pr=None)
+    adapter = SimpleNamespace(build_command=lambda *a, **k: ["agy", "local-only"])
+    with pytest.raises(ValueError, match="launch guard refused"):
+        cloud_dispatch.resolve_plan_execution(req, _role(), provider, adapter, "prompt", None, True, {})
+
+
+@pytest.mark.parametrize("provider", ["antigravity", "gemini"])
+def test_resolve_plan_execution_allows_local_agy_gemini_when_launch_guard_passes(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """#3962 S3: an allowed verdict must not change the existing local dispatch behaviour."""
+    from staff import cloud_dispatch
+
+    calls: list[tuple[str, int]] = []
+
+    def _allow(repo: str, issue: int) -> LaunchGuardVerdict:
+        calls.append((repo, issue))
+        return LaunchGuardVerdict(allowed=True, reason="eligible")
+
+    monkeypatch.setattr(cloud_dispatch, "check_launch_allowed", _allow)
+    req = SimpleNamespace(prompt="", execution_mode="local", repo="Runner_Dashboard", issue=3962, pr=None)
+    adapter = SimpleNamespace(build_command=lambda *a, **k: [provider, "local-only"])
+    mode, argv, _stdin, _lease = cloud_dispatch.resolve_plan_execution(
+        req, _role(), provider, adapter, "prompt", None, True, {}
+    )
+    assert mode == "local"
+    assert argv == [provider, "local-only"]
+    assert calls == [("Runner_Dashboard", 3962)]
+
+
+def test_resolve_plan_execution_skips_launch_guard_for_other_local_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local launches outside agy/gemini (e.g. claude/codex/ollama) are unaffected by S3."""
+    from staff import cloud_dispatch
+
+    def _boom(repo: str, issue: int) -> LaunchGuardVerdict:
+        raise AssertionError("launch guard must not be called for non-agy/gemini local providers")
+
+    monkeypatch.setattr(cloud_dispatch, "check_launch_allowed", _boom)
+    req = SimpleNamespace(prompt="", execution_mode="local", repo="Runner_Dashboard", issue=3962, pr=None)
+    adapter = SimpleNamespace(build_command=lambda *a, **k: ["claude", "local-only"])
+    mode, argv, _stdin, _lease = cloud_dispatch.resolve_plan_execution(
+        req, _role(), "claude", adapter, "prompt", None, True, {}
+    )
+    assert mode == "local"
+    assert argv == ["claude", "local-only"]
+
+
+def test_resolve_plan_execution_skips_launch_guard_local_agy_without_issue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A PR-target local agy/gemini run has nothing for the guard to check; it must not be called."""
+    from staff import cloud_dispatch
+
+    def _boom(repo: str, issue: int) -> LaunchGuardVerdict:
+        raise AssertionError("launch guard must not be called when req.issue is None")
+
+    monkeypatch.setattr(cloud_dispatch, "check_launch_allowed", _boom)
+    req = SimpleNamespace(prompt="", execution_mode="local", repo="Runner_Dashboard", issue=None, pr=99)
+    adapter = SimpleNamespace(build_command=lambda *a, **k: ["agy", "local-only"])
+    mode, argv, _stdin, _lease = cloud_dispatch.resolve_plan_execution(
+        req, _role(), "antigravity", adapter, "prompt", None, True, {}
+    )
+    assert mode == "local"
+    assert argv == ["agy", "local-only"]
