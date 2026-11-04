@@ -209,7 +209,7 @@ def test_bootstrap_preflight_catches_submodule_timeout_and_retries_once(tmp_path
             return _cp(command, 0, f"worktree {tmp_path}\n")
         if "submodule" in command and "update" in command:
             attempts["count"] += 1
-            raise subprocess.TimeoutExpired(command, timeout=kwargs.get("timeout", 300))
+            raise subprocess.TimeoutExpired(command, timeout=float(str(kwargs.get("timeout", 300))))
         raise AssertionError(f"unexpected command: {command}")
 
     result = runner_ops.run_worktree_bootstrap_preflight(
@@ -362,3 +362,165 @@ def test_ensure_worktree_bootstrap_ready_propagates_submodule_timeout_failure(tm
     assert updated.failure_class == "submodule_timeout"
     assert updated.retryable is True
     assert "re-dispatch" in updated.remediation.lower()
+
+
+@pytest.mark.unit
+def test_clean_stale_git_locks_removes_stale_locks_when_no_git_process_active(tmp_path: Path) -> None:
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    dot_git = worktree / ".git"
+    dot_git.mkdir()
+    (dot_git / "index.lock").write_text("lock", encoding="utf-8")
+    (dot_git / "HEAD.lock").write_text("lock", encoding="utf-8")
+    sub_modules = dot_git / "modules" / "vendor" / "ud-tools"
+    sub_modules.mkdir(parents=True)
+    (sub_modules / "index.lock").write_text("lock", encoding="utf-8")
+    (sub_modules / "config.lock").write_text("lock", encoding="utf-8")
+
+    removed = runner_ops.clean_stale_git_locks(
+        worktree,
+        is_git_process_active=lambda p: False,
+    )
+
+    assert len(removed) == 4
+    assert not (dot_git / "index.lock").exists()
+    assert not (dot_git / "HEAD.lock").exists()
+    assert not (sub_modules / "index.lock").exists()
+    assert not (sub_modules / "config.lock").exists()
+
+
+@pytest.mark.unit
+def test_clean_stale_git_locks_preserves_live_locks_when_git_process_active(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    dot_git = worktree / ".git"
+    dot_git.mkdir()
+    lock_file = dot_git / "index.lock"
+    lock_file.write_text("live", encoding="utf-8")
+
+    removed = runner_ops.clean_stale_git_locks(
+        worktree,
+        is_git_process_active=lambda p: True,
+    )
+
+    assert removed == []
+    assert lock_file.exists()
+    assert "live git process" in caplog.text.lower()
+
+
+@pytest.mark.unit
+def test_bootstrap_preflight_cleans_stale_locks_before_submodule_status(tmp_path: Path) -> None:
+    dot_git = tmp_path / ".git"
+    dot_git.mkdir()
+    stale_lock = dot_git / "index.lock"
+    stale_lock.write_text("stale", encoding="utf-8")
+    (tmp_path / ".gitmodules").write_text(
+        '[submodule "vendor/ud-tools"]\n\tpath = vendor/ud-tools\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "verify_merge_gates.py").write_text("# marker\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:2] == ["git", "--version"]:
+            return _cp(command, 0, "git version 2.47.1\n")
+        if command[:3] == ["git", "submodule", "status"]:
+            assert not stale_lock.exists()
+            return _cp(command, 0, " abc123 vendor/ud-tools (heads/main)\n")
+        if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
+            return _cp(command, 0, "3.11\n")
+        if command[:3] == ["python3.11", "-m", "pytest"] and "--version" in command:
+            return _cp(command, 0, "pytest 9.0.3\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = runner_ops.run_worktree_bootstrap_preflight(
+        tmp_path,
+        run=fake_run,
+        which=lambda name: "python3.11" if name == "python3.11" else None,
+        is_git_process_active=lambda p: False,
+    )
+
+    assert result.ok is True
+    assert not stale_lock.exists()
+
+
+@pytest.mark.unit
+def test_is_git_process_active_in_repo_matches_git_process_and_repo_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo_path = tmp_path / "my-repo"
+    repo_path.mkdir()
+
+    class FakeProc:
+        def __init__(self, name: str, cmdline: list[str], cwd: str):
+            self.info = {"name": name, "cmdline": cmdline, "cwd": cwd}
+
+    # Case 1: active git process with matching cwd
+    fake_procs = [
+        FakeProc("git", ["git", "status"], str(repo_path)),
+    ]
+    import psutil
+
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs: fake_procs)
+    assert runner_ops.is_git_process_active_in_repo(repo_path) is True
+
+    # Case 2: active git process with matching cmdline
+    fake_procs = [
+        FakeProc("git", ["git", "-C", str(repo_path), "status"], "/tmp"),
+    ]
+    assert runner_ops.is_git_process_active_in_repo(repo_path) is True
+
+    # Case 3: non-git process with matching cwd
+    fake_procs = [
+        FakeProc("python3", ["python3", "script.py"], str(repo_path)),
+    ]
+    assert runner_ops.is_git_process_active_in_repo(repo_path) is False
+
+    # Case 4: git process in completely different repo
+    fake_procs = [
+        FakeProc("git", ["git", "status"], "/other/path"),
+    ]
+    assert runner_ops.is_git_process_active_in_repo(repo_path) is False
+
+    # Case 5: exception during iteration is handled gracefully
+    class BrokenProc:
+        @property
+        def info(self) -> dict[str, object]:
+            raise psutil.NoSuchProcess(pid=1234)
+
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs: [BrokenProc()])
+    assert runner_ops.is_git_process_active_in_repo(repo_path) is False
+
+
+@pytest.mark.unit
+def test_clean_stale_git_locks_handles_linked_worktree_and_main_checkout(tmp_path: Path) -> None:
+    main_repo = tmp_path / "main-repo"
+    main_git = main_repo / ".git"
+    main_modules = main_git / "modules" / "vendor" / "ud-tools"
+    main_modules.mkdir(parents=True)
+    (main_modules / "index.lock").write_text("lock", encoding="utf-8")
+
+    real_wt_gitdir = main_git / "worktrees" / "staff-123"
+    real_wt_gitdir.mkdir(parents=True)
+    (real_wt_gitdir / "index.lock").write_text("lock", encoding="utf-8")
+
+    wt_path = tmp_path / "staff-123"
+    wt_path.mkdir()
+    (wt_path / ".git").write_text(f"gitdir: {real_wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {wt_path}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    removed = runner_ops.clean_stale_git_locks(
+        wt_path,
+        run=fake_run,
+        is_git_process_active=lambda p: False,
+    )
+
+    assert len(removed) == 2
+    assert not (real_wt_gitdir / "index.lock").exists()
+    assert not (main_modules / "index.lock").exists()

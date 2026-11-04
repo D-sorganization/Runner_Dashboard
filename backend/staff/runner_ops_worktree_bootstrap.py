@@ -8,6 +8,8 @@ importers and monkeypatches.
 
 from __future__ import annotations
 
+import logging
+import os
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -16,7 +18,10 @@ from pathlib import Path
 
 from staff.runner_venv import ensure_staff_pytest_environment
 
+log = logging.getLogger("dashboard.staff.worktree_bootstrap")
+
 _PYTHON_VERSION_SNIPPET = "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"
+STALE_LOCK_NAMES: tuple[str, ...] = ("index.lock", "shallow.lock", "HEAD.lock", "config.lock")
 
 
 @dataclass(frozen=True)
@@ -114,7 +119,7 @@ def _main_checkout_root(worktree: Path, run: _Run) -> Path | None:
     """Resolve the primary checkout a linked worktree was branched from, if any."""
     try:
         listing = _run_checked(run, worktree, ["git", "worktree", "list", "--porcelain"], timeout=30)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, Exception):
         return None
     if listing.returncode != 0:
         return None
@@ -200,18 +205,148 @@ def _bootstrap_submodules(worktree: Path, run: _Run) -> WorktreeBootstrapPreflig
     return None
 
 
+def _git_dir(workspace: Path) -> Path | None:
+    """Return the real git directory for ``workspace`` (handles worktrees and submodule checkouts)."""
+    dot_git = workspace / ".git"
+    if dot_git.is_dir():
+        return dot_git
+    if dot_git.is_file():
+        try:
+            content = dot_git.read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        prefix = "gitdir:"
+        if content.startswith(prefix):
+            target = content[len(prefix) :].strip()
+            if os.path.isabs(target):
+                resolved = Path(target)
+            else:
+                resolved = (workspace / target).resolve()
+            return resolved if resolved.exists() else None
+    return None
+
+
+def is_git_process_active_in_repo(repo_path: Path) -> bool:
+    """Check whether any live git process has its cwd or arguments referencing ``repo_path`` (#3935)."""
+    try:
+        import psutil
+    except ImportError:
+        return False
+
+    try:
+        norm_target = str(repo_path.resolve())
+    except Exception:
+        norm_target = str(repo_path)
+
+    for proc in psutil.process_iter(["pid", "name", "cmdline", "cwd"]):
+        try:
+            name = (proc.info.get("name") or "").lower()
+            if "git" not in name:
+                continue
+            cwd = proc.info.get("cwd") or ""
+            if cwd:
+                try:
+                    resolved_cwd = str(Path(cwd).resolve())
+                except Exception:
+                    resolved_cwd = cwd
+                if resolved_cwd == norm_target or resolved_cwd.startswith(norm_target + os.sep):
+                    return True
+            cmdline = proc.info.get("cmdline") or []
+            for arg in cmdline:
+                if norm_target in arg:
+                    return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return False
+
+
+def find_candidate_git_locks(worktree: Path, run: _Run = subprocess.run) -> list[Path]:
+    """Find potential stale .lock files in the worktree gitdir, modules, and linked main checkout (#3935)."""
+    git_dir = _git_dir(worktree)
+    if git_dir is None or not git_dir.is_dir():
+        return []
+
+    candidates: set[Path] = set()
+    dirs_to_check: list[Path] = [git_dir]
+
+    if (worktree / ".git").is_file():
+        main_root = _main_checkout_root(worktree, run)
+        if main_root is not None and main_root != worktree:
+            main_git = _git_dir(main_root)
+            if main_git and (main_git / "modules").is_dir():
+                dirs_to_check.append(main_git / "modules")
+
+    if (worktree / ".gitmodules").is_file():
+        for sub_git in (*worktree.glob("*/.git"), *worktree.glob("*/*/.git")):
+            sub_dir = _git_dir(sub_git.parent)
+            if sub_dir and sub_dir.is_dir() and sub_dir not in dirs_to_check:
+                dirs_to_check.append(sub_dir)
+
+    for d in dirs_to_check:
+        for lock_name in STALE_LOCK_NAMES:
+            direct = d / lock_name
+            if direct.is_file():
+                candidates.add(direct)
+            for sublock in d.glob(f"modules/**/{lock_name}"):
+                if sublock.is_file():
+                    candidates.add(sublock)
+            if d.name == "modules":
+                for sublock in d.glob(f"**/{lock_name}"):
+                    if sublock.is_file():
+                        candidates.add(sublock)
+    return sorted(candidates)
+
+
+def clean_stale_git_locks(
+    worktree: Path,
+    *,
+    run: _Run = subprocess.run,
+    is_git_process_active: Callable[[Path], bool] | None = None,
+) -> list[Path]:
+    """Detect and remove stale git/submodule lock files safely (#3935).
+
+    Only removes locks when no live git process is active in the repository or main checkout.
+    When a live git process is detected, locks are preserved and logged.
+    """
+    checker = is_git_process_active or is_git_process_active_in_repo
+    locks = find_candidate_git_locks(worktree, run=run)
+    if not locks:
+        return []
+
+    main_root = _main_checkout_root(worktree, run)
+    if checker(worktree) or (main_root is not None and checker(main_root)):
+        for lock in locks:
+            log.warning("Preserved live git lock (live git process detected): %s", lock)
+        return []
+
+    removed: list[Path] = []
+    for lock in locks:
+        try:
+            lock.unlink()
+            removed.append(lock)
+            log.info("Removed stale git lock: %s", lock)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            log.warning("Failed to remove stale git lock %s: %s", lock, exc)
+    return removed
+
+
 def run_worktree_bootstrap_preflight(
     worktree: Path,
     *,
     role: str = "",
     run: _Run = subprocess.run,
     which: _Which = shutil.which,
+    is_git_process_active: Callable[[Path], bool] | None = None,
 ) -> WorktreeBootstrapPreflight:
     """Bootstrap checks before a staff run starts coding in a worktree.
 
     Ensures submodules are populated, Python is >=3.11, pytest is available,
     and the repository has a local pre-PR entry point.
     """
+    clean_stale_git_locks(worktree, run=run, is_git_process_active=is_git_process_active)
+
     if (worktree / ".gitmodules").is_file() and not _submodules_already_populated(worktree, run):
         failure = _bootstrap_submodules(worktree, run)
         if failure is not None:
