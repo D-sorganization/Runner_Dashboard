@@ -207,6 +207,12 @@ class IdentityManager:
         """Resolve a bearer token or return ``(None, reason_code)`` without logging secrets."""
         import hashlib
 
+        from staff.run_jwt_service import run_jwt_bearer_gate
+
+        jwt_reason = run_jwt_bearer_gate(raw_token)
+        if jwt_reason:
+            return None, jwt_reason
+
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
         e_rec = self._ephemeral_tokens.get(token_hash)
