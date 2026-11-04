@@ -13,6 +13,7 @@ Routes (all under ``/api/coordination``):
   GET  /jobs                Claimable work (``?repo=&limit=&include_excluded=``); read-only (epic #2781 S1).
   POST /jobs/claim          Atomically claim a listed job with fencing (#2784).
   POST /jobs/release        Release a job-board claim (current fence required, #2784).
+  POST /jobs/heartbeat      Renew a job-board claim TTL (#2785).
   GET  /jobs/releases       Recent job-board claim releases (activity projection; slice toward #2785).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
   GET  /postman/reports     Newest postman dry-run reports (what it would deliver; nothing is sent).
@@ -47,6 +48,7 @@ from coordination.models import (
     ClaimBody,
     ClaimReleaseBody,
     JobClaimBody,
+    JobHeartbeatBody,
     JobReleaseBody,
     MessageBody,
     PresenceBody,
@@ -156,6 +158,13 @@ async def post_jobs_claim(body: JobClaimBody, caller: Caller = WRITER) -> dict[s
 @router.post("/jobs/release")
 async def post_jobs_release(body: JobReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
     return await _write(lambda: service.release_job(body, caller), caller, f"jobs release {body.repo}#{body.issue}")
+
+
+@router.post("/jobs/heartbeat")
+async def post_jobs_heartbeat(body: JobHeartbeatBody, caller: Caller = WRITER) -> dict[str, Any]:
+    return await _write(
+        lambda: service.heartbeat_job(body, caller), caller, f"jobs heartbeat {body.repo}#{body.issue}"
+    )
 
 
 @router.get("/jobs/releases")

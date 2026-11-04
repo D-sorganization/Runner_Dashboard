@@ -27,6 +27,7 @@ from coordination.models import (
     ClaimBody,
     ClaimReleaseBody,
     JobClaimBody,
+    JobHeartbeatBody,
     JobReleaseBody,
     MessageBody,
     PresenceBody,
@@ -263,6 +264,23 @@ def claim_job(body: JobClaimBody, caller: Caller) -> dict[str, Any]:
             session=body.session,
             intent=body.intent,
             holder_principal=caller.label.removeprefix("principal:"),
+            ttl_hours=body.ttl_hours,
+        )
+    )
+
+
+def heartbeat_job(body: JobHeartbeatBody, caller: Caller) -> dict[str, Any]:
+    agent = _bind(caller, body.session, None, needs_agent=True)
+    assert agent is not None
+    return _stamp(
+        jobs_mod.heartbeat_job(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            fence=body.fence,
+            holder_principal=caller.label.removeprefix("principal:"),
+            ttl_hours=body.ttl_hours,
         )
     )
 
