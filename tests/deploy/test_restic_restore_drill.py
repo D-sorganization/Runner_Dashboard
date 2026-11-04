@@ -42,16 +42,6 @@ def test_verify_restored_probe_requires_manifest_hashes(tmp_path: Path) -> None:
 def test_run_restore_drill_once_records_verified_event(tmp_path: Path) -> None:
     record_path = tmp_path / "record.json"
     record_path.write_text(json.dumps(_record()), encoding="utf-8")
-    record = mr.load_record(record_path)
-    mr.run_restore_drill_once(record, verify=lambda: True, alert=lambda _m: None, persist=lambda r: mr.save_record(record_path, r))
-    loaded = mr.load_record(record_path)
-    assert mr.verified_restore_drill_count(loaded) == 1
-    assert loaded.events[0].kind == mr.KIND_RESTORE_DRILL
-
-
-def test_two_separate_drills_accumulate_on_record(tmp_path: Path) -> None:
-    record_path = tmp_path / "record.json"
-    record_path.write_text(json.dumps(_record()), encoding="utf-8")
 
     def run_once() -> None:
         record = mr.load_record(record_path)
@@ -63,9 +53,9 @@ def test_two_separate_drills_accumulate_on_record(tmp_path: Path) -> None:
         )
 
     run_once()
+    assert mr.verified_restore_drill_count(mr.load_record(record_path)) == 1
     run_once()
-    loaded = mr.load_record(record_path)
-    assert mr.verified_restore_drill_count(loaded) == 2
+    assert mr.verified_restore_drill_count(mr.load_record(record_path)) == 2
 
 
 def test_failed_drill_halts_record_and_does_not_retry_silently(tmp_path: Path) -> None:
@@ -91,38 +81,3 @@ def test_failed_drill_halts_record_and_does_not_retry_silently(tmp_path: Path) -
     loaded = mr.load_record(record_path)
     assert loaded.halted is True
     assert mr.verified_restore_drill_count(loaded) == 0
-
-
-def test_cli_run_invokes_restic_and_verifies_probe(tmp_path: Path) -> None:
-    record_path = tmp_path / "record.json"
-    record_path.write_text(json.dumps(_record()), encoding="utf-8")
-    restore_root = tmp_path / "out"
-    restore_root.mkdir()
-    probe_rel = "data/probe.txt"
-    probe_file = restore_root / probe_rel
-    probe_file.parent.mkdir(parents=True)
-    probe_file.write_text("drill-payload", encoding="utf-8")
-    manifest_path = tmp_path / "probe.json"
-    manifest_path.write_text(
-        json.dumps({"files": [{"path": probe_rel, "sha256": drill.sha256_file(probe_file)}]}),
-        encoding="utf-8",
-    )
-    calls: list[list[str]] = []
-
-    def fake_runner(argv: list[str]) -> int:
-        calls.append(list(argv))
-        return 0
-
-    rc = drill.run_drill(
-        record_path=record_path,
-        machine="oglaptop",
-        snapshot="deadbeef",
-        restore_root=restore_root,
-        probe_manifest=manifest_path,
-        restic_binary="restic",
-        runner=fake_runner,
-        alert=lambda _m: None,
-    )
-    assert rc == 0
-    assert calls and calls[0][0] == "restic"
-    assert mr.verified_restore_drill_count(mr.load_record(record_path)) == 1

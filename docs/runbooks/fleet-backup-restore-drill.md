@@ -1,10 +1,8 @@
 # Fleet backup restore drill (#4013)
 
-Two **verified restore drills** must be recorded on the machine backup record before any `restic forget` / `restic prune` (see #4020). Weekly read-data-subset checks do **not** count.
+Record **two verified restore drills** on the machine JSON before `restic forget` / `restic prune` (#4020). Weekly read-data-subset checks do not count.
 
-## Operator script (automated)
-
-From the repo root on the backed-up machine (after the OGLaptop pilot #4015 is taking snapshots):
+## Script
 
 ```bash
 python3 deploy/fleet-backup/restic_restore_drill.py \
@@ -15,32 +13,15 @@ python3 deploy/fleet-backup/restic_restore_drill.py \
   --probe-manifest deploy/fleet-backup/probe_manifest.json
 ```
 
-Environment:
+Requires restic env (`RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, …). Optional failure alert: `HUB_URL` + `HUB_FLEET_TOKEN` → `/api/fleet/backup/drill-failure` when deployed (#4020). Run twice (distinct snapshots); confirm two `restore_drill` events before prune.
 
-- `RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, and rest-server credentials as for scheduled backup.
-- Optional hub alert on failure: `HUB_URL`, `HUB_FLEET_TOKEN` (posts to `/api/fleet/backup/drill-failure` when the hub route is deployed).
+Probe manifest: `{"files":[{"path":"REL/PATH","sha256":"<sha256>"}]}` for files always in backup scope.
 
-Run the command **twice** on different days (or after two distinct snapshots). Confirm the record shows two verified `restore_drill` events before approving prune/forget.
+## Owner-only checklist
 
-## Probe manifest
+1. [ ] Note snapshot id/time for drill #1; restore to an isolated directory only.
+2. [ ] Manually open one restored file; confirm content; keep log outside git.
+3. [ ] Script success appends verified event; repeat for drill #2 on another snapshot.
+4. [ ] Approve prune/forget only after two verified events. Failed drill halts the record (fix before retry; no silent retry).
 
-Copy `deploy/fleet-backup/probe_manifest.example.json` to a local `probe_manifest.json`. After the first successful backup, set each file's `sha256` to the digest of a small path that restic always backs up (for example `python3 -c "import hashlib,pathlib; p=pathlib.Path('REL'); print(hashlib.sha256(p.read_bytes()).hexdigest())"`).
-
-## Owner-only checklist (not automated)
-
-Complete manually and keep evidence outside git:
-
-1. [ ] Pick a snapshot date/time and ticket/note for drill #1.
-2. [ ] Restore to an isolated directory (not production paths); do not start services from restored data.
-3. [ ] Open one restored document or config and confirm it matches expectations.
-4. [ ] Record drill #1 in the machine JSON (via script success) and archive the log.
-5. [ ] Repeat for drill #2 on a **different** snapshot.
-6. [ ] Only after two verified drills, approve `restic forget` / `restic prune` on this machine.
-
-If a drill fails, the record is **halted**, the hub is alerted, and operators must fix root cause before retrying (no silent auto-retry).
-
-## Tests
-
-```bash
-pytest tests/deploy/test_restic_restore_drill.py -q
-```
+Tests: `pytest tests/deploy/test_restic_restore_drill.py -q`

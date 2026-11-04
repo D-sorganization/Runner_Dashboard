@@ -22,7 +22,6 @@ from machine_record import (
     DEFAULT_RECORD_PATH,
     DrillFailedError,
     load_or_init_record,
-    post_hub_drill_failure_alert,
     run_restore_drill_once,
     save_record,
     verified_restore_drill_count,
@@ -31,6 +30,32 @@ from machine_record import (
 log = logging.getLogger("restic_restore_drill")
 
 RunnerFn = Callable[[list[str]], int]
+
+
+def post_hub_drill_failure_alert(
+    *,
+    hub_origin: str,
+    machine: str,
+    detail: str,
+    token: str | None = None,
+) -> None:
+    import json as _json
+    from urllib.error import HTTPError, URLError
+    from urllib.request import Request, urlopen
+
+    url = f"{hub_origin.rstrip('/')}/api/fleet/backup/drill-failure"
+    body = _json.dumps({"machine": machine, "detail": detail}).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urlopen(req, timeout=10.0) as resp:  # noqa: S310
+            resp.read()
+    except HTTPError as exc:
+        raise RuntimeError(f"hub drill alert HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"hub drill alert failed: {exc}") from exc
 
 
 def sha256_file(path: Path) -> str:
