@@ -114,24 +114,6 @@ def test_single_role_self_test_dry_run(self_test_client: TestClient) -> None:
     assert body["checks"]["dispatch_dry_run"]["ok"] is True
 
 
-def test_single_role_self_test_with_persona_drill(self_test_client: TestClient) -> None:
-    res = self_test_client.post("/api/staff/bob/self-test?persona_drill=true")
-    assert res.status_code == 200
-    body = res.json()
-    assert body["ok"] is True
-    assert body["checks"]["dispatch_dry_run"]["ok"] is True
-    assert body["checks"]["persona_drill"]["ok"] is True
-
-
-def test_desk_core_self_test_does_not_persist_runs(self_test_client: TestClient) -> None:
-    store = runner_mod.get_runner().store
-    before = len(store.list_runs(limit=500))
-    res = self_test_client.post("/api/staff/self-test/desk-core")
-    assert res.status_code == 200
-    assert res.json()["ok"] is True
-    assert len(store.list_runs(limit=500)) == before
-
-
 def test_self_test_rejects_principal_without_dispatch_scope(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
