@@ -64,6 +64,7 @@ def test_ineligible_job_claim_409_with_reason(
         "evidence_fetch",
         _evidence({TOOLS: {55: payload}}),
     )
+    rm.respond("check_agent_claim", claim_status(False))
     body = {"session": "codex-55", "repo": "Tools", "issue": 55, "agent": "codex", "intent": "ship"}
     resp = client.post("/api/coordination/jobs/claim", json=body, headers=_BOT)
     assert resp.status_code == 409, resp.text
