@@ -6,12 +6,12 @@ privacy-safety assertions, and ~400-char shared digest ceilings.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
-import hashlib
-import re
 from typing import Any
 
 from memory.barb_shared_guard import (
@@ -253,4 +253,3 @@ class LocalTranscriptBuffer:
         for tid in to_delete:
             del self._transcripts[tid]
         return len(to_delete)
-
