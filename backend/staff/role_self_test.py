@@ -31,6 +31,7 @@ def desk_core_staff_roles() -> tuple[str, ...]:
     parts = tuple(r.strip() for r in raw.split(",") if r.strip())
     return parts or _DEFAULT_DESK_CORE
 
+
 SELF_TEST_PROMPT = (
     "Self-test only: validate that this role can plan a staff run. Do not push, open a pull request, or merge."
 )
@@ -89,9 +90,7 @@ async def run_desk_core_self_tests(
 ) -> dict[str, Any]:
     del include_persona_drill
     roles = desk_core_staff_roles()
-    results = [
-        await run_role_self_test(r, caller, runner=runner, include_persona_drill=False) for r in roles
-    ]
+    results = [await run_role_self_test(r, caller, runner=runner, include_persona_drill=False) for r in roles]
     return {
         "roles": list(roles),
         "ok": all(r.get("ok") for r in results),
