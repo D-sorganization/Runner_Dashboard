@@ -35,6 +35,37 @@
         "title": "AcceptanceCheck",
         "type": "object"
       },
+      "AcquireBody": {
+        "properties": {
+          "owner": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "repo": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repo",
+            "type": "string"
+          },
+          "scope": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Scope",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 86400.0,
+            "title": "Ttl Seconds",
+            "type": "number"
+          }
+        },
+        "required": ["repo", "scope", "owner", "ttl_seconds"],
+        "title": "AcquireBody",
+        "type": "object"
+      },
       "ActionExecuteResponse": {
         "description": "Result of executing an action.",
         "properties": {
@@ -1171,6 +1202,27 @@
         },
         "required": ["repo"],
         "title": "CIFixSweepRequest",
+        "type": "object"
+      },
+      "CheckOut": {
+        "properties": {
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "lease": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LeaseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["held", "lease"],
+        "title": "CheckOut",
         "type": "object"
       },
       "ChildExecutionRecord": {
@@ -3046,6 +3098,44 @@
         },
         "required": ["machine"],
         "title": "LeaderLeaseBody",
+        "type": "object"
+      },
+      "LeaseOut": {
+        "properties": {
+          "acquired_at": {
+            "title": "Acquired At",
+            "type": "number"
+          },
+          "expires_at": {
+            "title": "Expires At",
+            "type": "number"
+          },
+          "lease_id": {
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "owner": {
+            "title": "Owner",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lease_id",
+          "repo",
+          "scope",
+          "owner",
+          "acquired_at",
+          "expires_at"
+        ],
+        "title": "LeaseOut",
         "type": "object"
       },
       "LeaseRequest": {
@@ -5243,25 +5333,6 @@
         "title": "RelayRunCardRequest",
         "type": "object"
       },
-      "ReleaseBody": {
-        "additionalProperties": false,
-        "description": "``release``: drop this session's presence.",
-        "properties": {
-          "repo": {
-            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
-            "title": "Repo",
-            "type": "string"
-          },
-          "session": {
-            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
-            "title": "Session",
-            "type": "string"
-          }
-        },
-        "required": ["session", "repo"],
-        "title": "ReleaseBody",
-        "type": "object"
-      },
       "ReleaseRequest": {
         "properties": {
           "lease_id": {
@@ -5299,6 +5370,31 @@
           }
         },
         "title": "RemoteLogoutRequest",
+        "type": "object"
+      },
+      "RenewBody": {
+        "properties": {
+          "lease_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "owner": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          },
+          "ttl_seconds": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 86400.0,
+            "title": "Ttl Seconds",
+            "type": "number"
+          }
+        },
+        "required": ["lease_id", "owner", "ttl_seconds"],
+        "title": "RenewBody",
         "type": "object"
       },
       "ReportChildPayload": {
@@ -9440,6 +9536,44 @@
         "required": ["session", "repo", "message_id"],
         "title": "AckBody",
         "type": "object"
+      },
+      "coordination__models__ReleaseBody": {
+        "additionalProperties": false,
+        "description": "``release``: drop this session's presence.",
+        "properties": {
+          "repo": {
+            "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+            "title": "Repo",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          }
+        },
+        "required": ["session", "repo"],
+        "title": "ReleaseBody",
+        "type": "object"
+      },
+      "routers__path_leases__ReleaseBody": {
+        "properties": {
+          "lease_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Lease Id",
+            "type": "string"
+          },
+          "owner": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Owner",
+            "type": "string"
+          }
+        },
+        "required": ["lease_id", "owner"],
+        "title": "ReleaseBody",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -13105,7 +13239,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReleaseBody"
+                "$ref": "#/components/schemas/coordination__models__ReleaseBody"
               }
             }
           },
@@ -24063,6 +24197,201 @@
         ],
         "summary": "Metrics Weekly Summary",
         "tags": ["delivery-metrics"]
+      }
+    },
+    "/api/v1/path-leases/acquire": {
+      "post": {
+        "operationId": "acquire_lease_api_v1_path_leases_acquire_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcquireBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Acquire Lease",
+        "tags": ["path-leases"]
+      }
+    },
+    "/api/v1/path-leases/check": {
+      "get": {
+        "operationId": "check_lease_api_v1_path_leases_check_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Scope",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Check Lease",
+        "tags": ["path-leases"]
+      }
+    },
+    "/api/v1/path-leases/release": {
+      "post": {
+        "operationId": "release_lease_api_v1_path_leases_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/routers__path_leases__ReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release Lease",
+        "tags": ["path-leases"]
+      }
+    },
+    "/api/v1/path-leases/renew": {
+      "post": {
+        "operationId": "renew_lease_api_v1_path_leases_renew_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeaseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Renew Lease",
+        "tags": ["path-leases"]
       }
     },
     "/api/v1/proposals": {

@@ -27,6 +27,9 @@ from staff.runner_ops_worktree_bootstrap import (  # noqa: F401  re-exported for
     _PYTHON_VERSION_SNIPPET,
     _SUBMODULE_ATTEMPTS,
     WorktreeBootstrapPreflight,
+    clean_stale_git_locks,
+    find_candidate_git_locks,
+    is_git_process_active_in_repo,
     resolve_repo_pre_pr_entrypoint,
     run_worktree_bootstrap_preflight,
 )
