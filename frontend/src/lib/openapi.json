@@ -20477,58 +20477,6 @@
         "tags": ["staff"]
       }
     },
-    "/api/staff/self-test/desk-core": {
-      "post": {
-        "description": "Run dry-run self-tests for every configured Desk core staff role.",
-        "operationId": "self_test_desk_core_api_staff_self_test_desk_core_post",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "persona_drill",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Persona Drill",
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Self Test Desk Core Api Staff Self Test Desk Core Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Self Test Desk Core",
-        "tags": ["staff"]
-      }
-    },
     "/api/staff/summary": {
       "get": {
         "description": "The one-call brief for Barb and Orchestrator (#1195).\n\nFlat payload: what is in flight fleet-wide, what needs attention (failed or\nblocked in the last 24 h on this node), spend today, provider availability\nper machine, active holds, late/dead scheduled roles (#1209) and the\nroster with schedules.",
@@ -20812,69 +20760,6 @@
           }
         ],
         "summary": "Dispatch",
-        "tags": ["staff"]
-      }
-    },
-    "/api/staff/{role}/self-test": {
-      "post": {
-        "description": "Dry-run dispatch for one role; optional persona drill uses ephemeral stores only.",
-        "operationId": "self_test_role_api_staff__role__self_test_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "role",
-            "required": true,
-            "schema": {
-              "title": "Role",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Also run the isolated #3704 persona fallback drill.",
-            "in": "query",
-            "name": "persona_drill",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Also run the isolated #3704 persona fallback drill.",
-              "title": "Persona Drill",
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Self Test Role Api Staff  Role  Self Test Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "APIKeyHeader": []
-          },
-          {
-            "APIKeyCookie": []
-          }
-        ],
-        "summary": "Self Test Role",
         "tags": ["staff"]
       }
     },
