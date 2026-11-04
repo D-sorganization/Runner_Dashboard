@@ -26,6 +26,9 @@ LIGHT_JOBS = {
     "ci-spec-check.yml": None,
     "lint-workflow-files.yml": None,
     "architecture-map-contract.yml": None,
+    "api-contract-regeneration.yml": None,
+    "ci-private-roles-redaction-gate.yml": None,
+    "ci-standalone-smoke.yml": None,
     "local-only-runner-guard.yml": None,
 }
 HEAVY_JOBS = {
