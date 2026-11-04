@@ -63,9 +63,9 @@ def session_start() -> int:
     root = _paths()
     if root is None:
         return 0
+    from agent_bus.session_hooks import session_start as run_start  # noqa: PLC0415
     from fleet_client import FleetClient  # noqa: PLC0415
     from fleet_provider_identity import infer_fleet_agent, infer_fleet_session  # noqa: PLC0415
-    from agent_bus.session_hooks import session_start as run_start  # noqa: PLC0415
 
     raw = sys.stdin.read()
     agent = infer_fleet_agent()
