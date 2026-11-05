@@ -46,11 +46,14 @@ function Resolve-FleetBackupWslExportPaths {
         $base = Join-Path $programData 'runner-dashboard'
     }
     else {
-        $base = if ($env:RUNNER_DASHBOARD_STATE_DIR) {
-            $env:RUNNER_DASHBOARD_STATE_DIR
+        if ($env:RUNNER_DASHBOARD_STATE_DIR) {
+            $base = $env:RUNNER_DASHBOARD_STATE_DIR
+        }
+        elseif ($env:XDG_STATE_HOME) {
+            $base = Join-Path $env:XDG_STATE_HOME 'runner-dashboard'
         }
         else {
-            Join-Path (if ($env:XDG_STATE_HOME) { $env:XDG_STATE_HOME } else { '/var/lib' }) 'runner-dashboard'
+            $base = '/var/lib/runner-dashboard'
         }
     }
     return [pscustomobject]@{
