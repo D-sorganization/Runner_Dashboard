@@ -1,4 +1,4 @@
-"""Contracts for OGLaptop WSL export into restic (#4011)."""
+"""Contracts for node-b WSL export into restic (#4011)."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def test_dry_run_does_not_require_wsl_or_restic(tmp_path: Path) -> None:
     assert PWSH is not None
     config = tmp_path / "wsl-export.env"
     config.write_text(
-        "RESTIC_REPOSITORY=rest:http://127.0.0.1:8000/oglaptop-pilot\n"
+        "RESTIC_REPOSITORY=rest:http://127.0.0.1:8000/node-b-pilot\n"
         "WSL_DISTRO_NAME=Ubuntu\n",
         encoding="utf-8",
     )

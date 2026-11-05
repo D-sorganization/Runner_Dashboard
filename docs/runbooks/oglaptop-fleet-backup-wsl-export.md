@@ -1,12 +1,12 @@
-# OGLaptop WSL export into restic (#4011)
+# node-b WSL export into restic (#4011)
 
-Fleet backup **PR 3 of 3** (panel `th_958c7b53ae45`): after the Windows-path pilot (#4015) backs up selected directories with VSS, this script exports the OGLaptop WSL distribution to a tar archive and runs `restic backup` on that tar into the **same** rest-server repository.
+Fleet backup **PR 3 of 3** (panel `th_958c7b53ae45`): after the Windows-path pilot (#4015) backs up selected directories with VSS, this script exports the **node-b** workstation WSL distribution to a tar archive and runs `restic backup` on that tar into the **same** rest-server repository.
 
 ## Preconditions
 
-- Desk rest-server hub (#4017) and OGLaptop pilot client (#4015) are configured.
+- Desk rest-server hub (#4017) and node-b pilot client (#4015) are configured.
 - `restic` and `wsl.exe` are on PATH for the operator account.
-- **OGLaptop WSL must be healthy** before a live run. While WSL is broken, use `-DryRun` only (repo CI validates scripts without calling WSL).
+- **node-b WSL must be healthy** before a live run. While WSL is broken, use `-DryRun` only (repo CI validates scripts without calling WSL).
 
 ## Configuration
 
@@ -43,13 +43,12 @@ Re-backup an existing tar without re-exporting:
 .\oglaptop-fleet-backup-wsl-export.ps1 -SkipExport
 ```
 
-## Integrity check
+## Verification
 
-Before trusting a tar for restore, confirm the export finished: a complete `wsl --export` archive ends with **1024 zero bytes**. The script runs this check automatically after export (see `docs/runbooks/runner-registration-purge-recovery.md`).
+- Footer check: last 1024 bytes of the export tar must be zero (truncated exports fail closed).
+- `restic snapshots --tag wsl-export` should list the new snapshot after a live run.
 
-## Non-goals
+## Related
 
-- No scheduled task in this PR (operator or a follow-up may chain after pilot `-InstallTask`).
-- No cloud backends; tailnet rest-server only.
-
-Refs #4011, #4015, #4017
+- Epic #3874 / fleet backup panel `th_958c7b53ae45`
+- Pilot (#4015), hub (#4017), client (#4018)

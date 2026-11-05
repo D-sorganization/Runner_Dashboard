@@ -41,8 +41,18 @@ function Resolve-FleetBackupWslExportPaths {
         [string]$ExportDir = '',
         [string]$StateFile = ''
     )
-    $programData = if ($env:ProgramData) { $env:ProgramData } else { 'C:\ProgramData' }
-    $base = Join-Path $programData 'runner-dashboard'
+    if ($IsWindows -or ($env:OS -eq 'Windows_NT')) {
+        $programData = if ($env:ProgramData) { $env:ProgramData } else { 'C:\ProgramData' }
+        $base = Join-Path $programData 'runner-dashboard'
+    }
+    else {
+        $base = if ($env:RUNNER_DASHBOARD_STATE_DIR) {
+            $env:RUNNER_DASHBOARD_STATE_DIR
+        }
+        else {
+            Join-Path (if ($env:XDG_STATE_HOME) { $env:XDG_STATE_HOME } else { '/var/lib' }) 'runner-dashboard'
+        }
+    }
     return [pscustomobject]@{
         ConfigFile = if ($ConfigFile) { $ConfigFile } else { Join-Path $base 'fleet-backup-wsl-export.env' }
         ExportDir  = if ($ExportDir) { $ExportDir } else { Join-Path $base 'wsl-exports' }
@@ -107,7 +117,7 @@ function Get-FleetBackupWslExportResticArguments {
         [Parameter(Mandatory)][string]$TarPath,
         [string[]]$Extra = @()
     )
-    $args = @('backup', '--json', '--tag', 'wsl-export', '--tag', 'oglaptop')
+    $args = @('backup', '--json', '--tag', 'wsl-export', '--tag', 'node-b')
     if ($Extra) { $args += $Extra }
     $args += $TarPath
     return ,$args
