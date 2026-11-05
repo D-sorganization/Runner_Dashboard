@@ -332,7 +332,7 @@ def test_forwarded_dispatch_with_tailscale_principal_and_fleet_bearer_preserves_
 
     resp = client.post(
         "/api/staff/ad-hoc/run",
-        json={"prompt": "brick via desk", "machine": "local"},
+        json={"prompt": "desk ad-hoc via hub", "machine": "local"},
         headers={
             **_XHR,
             "Authorization": f"Bearer {token_key}",
