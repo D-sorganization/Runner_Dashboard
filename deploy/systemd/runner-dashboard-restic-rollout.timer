@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly fleet restic rollout plan (Desk, ControlTower, Brick)
+
+[Timer]
+OnCalendar=Sun *-*-* 05:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

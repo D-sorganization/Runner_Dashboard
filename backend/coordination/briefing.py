@@ -29,6 +29,11 @@ CLAIMS_HINT = (
     "{repo, issue, agent, session}; 409 means another agent holds it — pick other work. Register presence with "
     "POST /api/coordination/presence and read GET /api/coordination/inbox?session= at each checkpoint."
 )
+JOBS_HINT = (
+    "Find unassigned fleet work on GET /api/coordination/jobs (Fleet Command job board or this briefing's "
+    "endpoints.jobs). Claim with POST /api/coordination/jobs/claim, release with POST /api/coordination/jobs/release, "
+    "heartbeat with POST /api/coordination/jobs/heartbeat when needed; never bypass holds or the job-board filters."
+)
 ENDPOINTS = {
     "briefing": "GET /api/coordination/briefing?repo=&agent=",
     "sessions": "GET /api/coordination/sessions?repo=",
@@ -39,6 +44,8 @@ ENDPOINTS = {
     "messages_ack": "POST /api/coordination/messages/ack",
     "claims": "GET|POST /api/coordination/claims",
     "claims_release": "POST /api/coordination/claims/release",
+    "jobs": "GET /api/coordination/jobs?repo=&limit=&include_excluded=",
+    "jobs_releases": "GET /api/coordination/jobs/releases?since=&limit=",
     "priorities": "GET /api/priorities",
     "staff": "GET /api/staff/summary",
     "friction": "GET|POST /api/v1/fleet/friction",
@@ -115,6 +122,7 @@ async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
         "board_available": board_view["available"],
         "staff_runs": runs,
         "claims_hint": CLAIMS_HINT,
+        "jobs_hint": JOBS_HINT,
         "standards_pin": standards.pin,
         "standards_source": standards.source_path,
         "standards_version": standards.version,
