@@ -17,7 +17,7 @@ import restic_prune_gate as gate  # noqa: E402
 def _record(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "version": 1,
-        "machine": "oglaptop",
+        "machine": "node-b",
         "halted": False,
         "halt_reason": None,
         "events": [],
@@ -97,5 +97,5 @@ def test_failed_restore_drill_alerts_hub_halts_and_does_not_retry() -> None:
 
     assert attempts["n"] == 1, "failed drills must not be retried silently"
     assert len(alerts) == 1
-    assert "oglaptop" in alerts[0].lower() or "restore drill" in alerts[0].lower()
+    assert "node-b" in alerts[0].lower() or "restore drill" in alerts[0].lower()
 

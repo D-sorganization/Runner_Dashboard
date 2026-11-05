@@ -2247,6 +2247,25 @@
         "title": "DraftEdit",
         "type": "object"
       },
+      "DrillFailureBody": {
+        "properties": {
+          "detail": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "machine": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          }
+        },
+        "required": ["machine", "detail"],
+        "title": "DrillFailureBody",
+        "type": "object"
+      },
       "EscalationIngestBody": {
         "properties": {
           "concurrent_cap": {
@@ -14407,6 +14426,57 @@
         ],
         "summary": "Get Fleet Audit Log",
         "tags": ["orchestration", "orchestration", "fleet"]
+      }
+    },
+    "/api/fleet/backup/drill-failure": {
+      "post": {
+        "operationId": "post_backup_drill_failure_api_fleet_backup_drill_failure_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DrillFailureBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Post Backup Drill Failure Api Fleet Backup Drill Failure Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Post Backup Drill Failure",
+        "tags": ["fleet-backup"]
       }
     },
     "/api/fleet/capacity": {
