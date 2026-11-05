@@ -1,30 +1,17 @@
 """Canonical provider registry table — the ONE source of truth (issue #810).
 
-Before this module, provider identity and metadata were duplicated across at
-least three hand-maintained lists:
+Collapses three formerly duplicated lists (``agent_remediation.providers.PROVIDERS``,
+the Conductor adapters' ``ProviderMeta``, and the remediation router's
+``_PROVIDERS_WITH_MODEL_SELECTION`` set) into one list of :class:`ProviderEntry`
+records. Each entry pairs the dashboard ``dashboard_id`` (underscore) with the
+Conductor ``conductor_id`` (hyphen) and carries the *static* metadata shared by
+both the dashboard UI and the Conductor orchestrator.
 
-1. ``agent_remediation.providers.PROVIDERS`` (dashboard underscore ids),
-2. the Conductor adapters' ``ProviderMeta`` (hyphen ids, auth/resource/cost),
-3. the ad-hoc ``_PROVIDERS_WITH_MODEL_SELECTION`` set in the remediation router.
-
-This table collapses them into a single list of :class:`ProviderEntry` records.
-Each entry pairs the dashboard ``dashboard_id`` (underscore) with the Conductor
-``conductor_id`` (hyphen) and carries the *static* metadata shared by both the
-dashboard UI and the Conductor orchestrator: label, execution/dispatch modes,
-auth mode, resource class, capabilities, baseline cost, concurrency, and the
-curated model list.
-
-DRY direction (documented): this table is the source; ``providers.py`` derives
-its ``PROVIDERS`` dict and ``AgentProvider`` instances *from* this table by
-projecting each entry onto the legacy shape. There is exactly one
-hand-maintained list.
-
-Design by Contract: :func:`validate_registry` asserts the table's invariants
-(unique ids, allowed auth/resource/capability values) at import time so a
-malformed edit fails loudly rather than silently shipping a bad contract.
-
-Law of Demeter: entries are flat, frozen dataclasses; consumers read scalar
-fields and flat tuples directly and never traverse nested structure.
+DRY: this table is the source; ``providers.py`` derives its ``PROVIDERS`` dict
+and ``AgentProvider`` instances *from* this table. Design by Contract:
+:func:`validate_registry` asserts the table's invariants at import time so a
+malformed edit fails loudly. Law of Demeter: entries are flat, frozen
+dataclasses; consumers read scalar fields and flat tuples directly.
 """
 
 from __future__ import annotations
@@ -68,13 +55,12 @@ class ProviderEntry:
             routes and history remain resolvable) but are never planned.
         cloud_mutation_allowed: Whether this provider's *cloud* dispatch path
             (``staff.cloud_dispatch``) may mutate — open PRs, push branches,
-            trigger workflows. Defaults to ``True``; a row is hard-gated to
-            ``False`` when its cloud lane cannot satisfy identity/ingress
-            requirements (#4081: Cursor cloud agents, ADR-0007 local-ingress
-            — the fleet-gh wrapper is local-only, so a Cursor cloud session
-            cannot authenticate as the fleet bot). The gate is enforced in
-            code at the dispatch boundary, not left to prompt restraint, and
-            is independent of ``enabled``.
+            trigger workflows. Defaults to ``True``; hard-gated to ``False``
+            when the cloud lane cannot satisfy identity/ingress requirements
+            (#4081: Cursor cloud agents, ADR-0007 — the fleet-gh wrapper is
+            local-only, so a Cursor cloud session cannot authenticate as the
+            fleet bot). Enforced at the dispatch boundary; independent of
+            ``enabled``.
         notes: Free-form operator notes.
     """
 
