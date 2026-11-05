@@ -32,7 +32,6 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
 from fleet_status_cache import fleet_status_cache_key, serve_fleet_status
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
-from pydantic import BaseModel, Field
 from machine_registry import load_machine_registry
 from node_auto_deploy_status import read_auto_deploy_fleet_status
 from proxy_utils import (
@@ -40,6 +39,7 @@ from proxy_utils import (
     should_mark_hub_circuit_degraded,
     should_proxy_fleet_to_hub,
 )
+from pydantic import BaseModel, Field
 from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
 from runner_inventory import fetch_org_runners
 from system_utils import (
@@ -324,7 +324,10 @@ class _DrillFailureBody(BaseModel):
 
 
 @router.post("/api/fleet/backup/drill-failure")
-async def post_backup_drill_failure(body: _DrillFailureBody, _peer: str = Depends(require_fleet_peer)) -> dict[str, bool]:
+async def post_backup_drill_failure(
+    body: _DrillFailureBody,
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, bool]:
     emit_restore_drill_failure_alert(body.machine, body.detail)
     return {"ok": True}
 

@@ -41,7 +41,12 @@ class BackupEvent:
         kind = str(raw.get("kind") or "")
         if kind not in (KIND_RESTORE_DRILL, KIND_READ_DATA_SUBSET):
             raise ValueError(f"unknown backup event kind {kind!r}")
-        return cls(kind=kind, verified=bool(raw.get("verified")), at=str(raw.get("at") or ""), failed=bool(raw.get("failed")))
+        return cls(
+            kind=kind,
+            verified=bool(raw.get("verified")),
+            at=str(raw.get("at") or ""),
+            failed=bool(raw.get("failed")),
+        )
 
 
 @dataclass
@@ -87,7 +92,9 @@ def precondition_restic_prune_or_forget(record: MachineRecord) -> None:
         raise PreconditionViolation(f"backup pipeline halted: {record.halt_reason or 'restore drill pipeline halted'}")
     count = verified_restore_drill_count(record)
     if count < REQUIRED_VERIFIED_RESTORE_DRILLS:
-        raise PreconditionViolation(f"need {REQUIRED_VERIFIED_RESTORE_DRILLS} verified restore drills on record, have {count}")
+        raise PreconditionViolation(
+            f"need {REQUIRED_VERIFIED_RESTORE_DRILLS} verified restore drills on record, have {count}"
+        )
 
 
 def restic_mutation_requires_gate(argv: list[str]) -> bool:
