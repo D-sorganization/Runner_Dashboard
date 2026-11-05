@@ -11,7 +11,12 @@ Routes (all under ``/api/coordination``):
   POST /claims              Check then lease; 409 when another agent holds it.
   POST /claims/release      Release the lease (RM ``release_agent_lease``).
   GET  /jobs                Claimable work (``?repo=&limit=&include_excluded=``); read-only (epic #2781 S1).
+  POST /jobs/claim          Atomically claim a listed job with fencing (#2784).
+  POST /jobs/release        Release a job-board claim (current fence required, #2784).
+  POST /jobs/heartbeat      Renew a job-board claim TTL (#2785).
+  GET  /jobs/releases       Recent job-board claim releases (activity projection; slice toward #2785).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
+  GET  /postman/reports     Newest postman dry-run reports (what it would deliver; nothing is sent).
 
 Auth: reads ``require_fleet_peer``; writes ``require_coordination_writer``
 (scope ``coordination.write`` or the loopback orchestrator peer) plus the
@@ -27,12 +32,14 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
-from coordination import service
+from coordination import postman_runner, service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
-from coordination.claims import ClaimHeldError
+from coordination.claims import AgingPrBlockedError, ClaimHeldError
+from coordination.jobs import JobIneligibleError, StaleFenceError
 from coordination.models import (
     AGENT_PATTERN,
     REPO_PATTERN,
@@ -40,35 +47,30 @@ from coordination.models import (
     AckBody,
     ClaimBody,
     ClaimReleaseBody,
+    JobClaimBody,
+    JobHeartbeatBody,
+    JobReleaseBody,
     MessageBody,
     PresenceBody,
     ReleaseBody,
-    bare_repo,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from identity import require_fleet_peer
+from routers.repo_query import bare_repo_query as _repo
 
 log = logging.getLogger("dashboard.coordination")
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
 WRITER = Depends(require_coordination_writer)  # one write-auth dependency for every POST
 
 
-def _repo(value: str | None) -> str | None:
-    """Query-string twin of the body validator: strip ``owner/``, reject paths with 422."""
-    if value is None:
-        return None
-    try:
-        return bare_repo(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
 async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str) -> dict[str, Any]:
     """Run one RM write off the event loop and map its failures to HTTP (DRY for every POST)."""
     try:
         result = await run_in_threadpool(action)
-    except (ClaimHeldError, service.NotRegisteredError) as exc:
+    except (ClaimHeldError, AgingPrBlockedError, service.NotRegisteredError) as exc:
+        raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
+    except (JobIneligibleError, StaleFenceError) as exc:
         raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
     except service.ImpersonationError as exc:
         log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)
@@ -148,6 +150,34 @@ async def get_jobs(
     return await run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
 
 
+@router.post("/jobs/claim")
+async def post_jobs_claim(body: JobClaimBody, caller: Caller = WRITER) -> dict[str, Any]:
+    return await _write(lambda: service.claim_job(body, caller), caller, f"jobs claim {body.repo}#{body.issue}")
+
+
+@router.post("/jobs/release")
+async def post_jobs_release(body: JobReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
+    return await _write(lambda: service.release_job(body, caller), caller, f"jobs release {body.repo}#{body.issue}")
+
+
+@router.post("/jobs/heartbeat")
+async def post_jobs_heartbeat(body: JobHeartbeatBody, caller: Caller = WRITER) -> dict[str, Any]:
+    return await _write(lambda: service.heartbeat_job(body, caller), caller, f"jobs heartbeat {body.repo}#{body.issue}")
+
+
+@router.get("/jobs/releases")
+async def get_job_releases(
+    since: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=100, ge=1, le=500),
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    try:
+        job_releases_mod.parse_since(since)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": f"since is not ISO-8601: {exc}"}) from exc
+    return await run_in_threadpool(job_releases_mod.list_job_releases, since=since, limit=limit)
+
+
 @router.get("/briefing")
 async def get_briefing(
     repo: str | None = Query(default=None, pattern=REPO_PATTERN),
@@ -155,3 +185,13 @@ async def get_briefing(
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     return await build_briefing(_repo(repo), agent)
+
+
+@router.get("/postman/reports")
+async def get_postman_reports(
+    limit: int = Query(default=10, ge=1, le=postman_runner.REPORT_KEEP),
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Read-only: the postman runs in dry run only, so ``live`` is always False."""
+    reports = await run_in_threadpool(postman_runner.read_reports, None, limit)
+    return {"live": False, "reports": reports}

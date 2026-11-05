@@ -181,8 +181,10 @@ def test_ci_uses_reversible_zero_polling_runner_selector() -> None:
     assert "d-sorg-fleet" in text
     assert "gh api" not in str(picker)
     assert "gh repo list" not in str(picker)
-    for job_name in ("ci-health-check", "quality-gate", "security-scan", "tests", "tests-required"):
-        assert "needs.pick-runner.outputs.runner" in str(workflow["jobs"][job_name]["runs-on"])
+    go_public_pinned = ("ci-health-check", "quality-gate", "security-scan", "tests", "tests-required", "changes", "lint")
+    for job_name in go_public_pinned:
+        assert workflow["jobs"][job_name]["runs-on"] == "ubuntu-latest", job_name
+    assert picker["runs-on"] == "ubuntu-latest"
 
 
 def test_job_level_environment_uses_pre_runner_contexts_only() -> None:

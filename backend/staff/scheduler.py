@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import cartographer_persona, claim_guard, consolidation, verification
+from staff import claim_guard, consolidation, verification
 from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
 from staff.holds import HoldsList
@@ -38,7 +38,6 @@ from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
 from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
-from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
 from staff.scheduler_issue_pick import fetch_issue_claim_status, fetch_open_issues, scheduled_repo  # noqa: F401
 from staff.scheduler_leader_lease import (
@@ -54,6 +53,7 @@ from staff.scheduler_leader_lease import (
 )
 from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
 from staff.scheduler_named_jobs import named_jobs, queue_due_slot
+from staff.scheduler_persona_guards import persona_fire_guard
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
 
@@ -194,7 +194,8 @@ class StaffScheduler:
 
     def _save_state(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
+        # Per-writer temp names avoid torn writes when tick and API paths save concurrently (#3927).
+        tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(self._state or {}, indent=2), encoding="utf-8")
         os.replace(tmp, self.path)
 
@@ -256,9 +257,13 @@ class StaffScheduler:
         key = f"{role.name}::{job}" if job else role.name
         entry = self._load_state().get(key, {})
         enabled = entry.get("enabled", True)
+        from staff.schedule_placement import load_placements, schedule_host_for_role  # noqa: PLC0415
+
+        placements = load_placements()
         out: dict[str, Any] = {
             "role": role.name,
             "schedule": cron,
+            "host": schedule_host_for_role(role.name, placements, self.runner.machine),
             "window": role.window,
             "next_fire": None,
             "in_window": in_window(role.window, now, self._tz),
@@ -293,6 +298,17 @@ class StaffScheduler:
             return "schedule disabled for role"
         if report.get("schedule_error"):
             return f"bad schedule: {report['schedule_error']}"
+        from machine_registry import load_machine_registry  # noqa: PLC0415
+        from staff.schedule_placement import load_placements, schedule_host_skip_reason  # noqa: PLC0415
+
+        host_reason = schedule_host_skip_reason(
+            str(report.get("role") or ""),
+            self.runner.machine,
+            load_placements(),
+            load_machine_registry(),
+        )
+        if host_reason:
+            return host_reason
         if not report["in_window"]:
             return "outside run window"
         if report["hold"]:
@@ -401,20 +417,15 @@ class StaffScheduler:
     ) -> dict[str, Any]:
         """Run slow consolidation/claim/submit work without holding the scheduler lock (#3526)."""
         key = f"{name}::{job}" if job else name
-        cartographer_job = ""
-        if role.name == cartographer_persona.ROLE:
-            cartographer_job = next(iter(cartographer_persona.CARTOGRAPHER_SCHEDULE_ENTRIES))
-            reason = cartographer_fire_guard(
-                role.name, continuity=self._cartographer_continuity(), job=cartographer_job, slot=due, now=now
-            )
-            if reason:
-                with self._lock:
-                    entry = self._load_state().setdefault(key, {})
-                    record_scheduled_skip(
-                        entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=reason
-                    )
-                log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
-                return {"role": name, "slot": due, "fired": False, "reason": reason}
+        cartographer_job, reason = persona_fire_guard(
+            role.name, continuity=self._cartographer_continuity, job=job, slot=due, now=now
+        )
+        if reason:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=reason)
+            log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
+            return {"role": name, "slot": due, "fired": False, "reason": reason}
         decision = self._decider(role, repo or "")
         report_only = bool(job) and isinstance(role.scope, dict) and bool(role.scope.get("report_only"))
         if report_only:

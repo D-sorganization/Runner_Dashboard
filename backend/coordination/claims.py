@@ -18,43 +18,30 @@ RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
 
 from __future__ import annotations
 
-import json
 import re
-import subprocess  # noqa: S404
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination.board import BOARD_COMMENT_LIMIT, BOARD_ISSUE, RMScriptError
+from coordination.gh_cli import gh_api_json
+from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.claim_guard import closing_pr_for, full_repo
 
 FAIL_OPEN_PREFIX = "error:"
-GH_TIMEOUT_SECONDS = 20
 _BRANCH_FOR_ISSUE = re.compile(r"(?:^|/)(\d+)(?:-|$)")
 
 _locks_guard = threading.Lock()
-_issue_locks: dict[str, threading.Lock] = {}
-
-
-def _gh_cli(path: str) -> Any:
-    proc = subprocess.run(  # noqa: S603
-        ["gh", "api", path],  # noqa: S607
-        capture_output=True,
-        text=True,
-        timeout=GH_TIMEOUT_SECONDS,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError((proc.stderr or proc.stdout or f"gh api {path} failed").strip()[:300])
-    return json.loads(proc.stdout) if proc.stdout.strip() else {}
+_issue_locks: dict[str, threading.RLock] = {}
 
 
 EvidenceFetch = Callable[[str], Any]
 # Tests monkeypatch this seam so a unit test never touches live GitHub.
-evidence_fetch: EvidenceFetch = _gh_cli
+evidence_fetch: EvidenceFetch = gh_api_json
 
 
 def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:
@@ -100,6 +87,20 @@ def classify_release_reason(repo: str, issue: int, *, agent_reason: str) -> str:
     return f"abandoned: no PR or branch found for #{issue}; agent reported: {agent_reason}"
 
 
+class AgingPrBlockedError(RuntimeError):
+    """Agent owns a PR older than the fleet rule; the API maps this to 409."""
+
+    def __init__(self, detail: dict[str, Any]) -> None:
+        super().__init__(detail.get("message") or "aging PR blocks claim")
+        self.detail = detail
+
+    def to_detail(self) -> dict[str, Any]:
+        return {
+            **self.detail,
+            "guidance": "Diagnose CI, iterate, or close the aging PR before claiming new work.",
+        }
+
+
 class ClaimHeldError(RuntimeError):
     """The issue is held by someone other than this agent+session; the API maps this to 409."""
 
@@ -124,10 +125,21 @@ def reset_locks() -> None:
         _issue_locks.clear()
 
 
-def _issue_lock(repo: str, issue: int) -> threading.Lock:
+@contextmanager
+def hold_issue(repo: str, issue: int) -> Iterator[None]:
+    """Serialize job-board and claim writes for one ``repo#issue`` (same lock as :func:`claim`)."""
+    lock = _issue_lock(repo, issue)
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+
+
+def _issue_lock(repo: str, issue: int) -> threading.RLock:
     key = f"{repo.casefold()}#{issue}"
     with _locks_guard:
-        return _issue_locks.setdefault(key, threading.Lock())
+        return _issue_locks.setdefault(key, threading.RLock())
 
 
 def _check_incomplete(data: dict[str, Any]) -> str | None:
@@ -232,6 +244,33 @@ def _post(repo: str, issue: int, agent: str, session: str, intent: str) -> dict[
     return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
 
 
+def post_lease(
+    repo: str,
+    issue: int,
+    agent: str,
+    session: str,
+    intent: str,
+    *,
+    ttl_hours: float | None = None,
+) -> dict[str, Any]:
+    """Post an RM lease comment and ``claim:*`` label (same subprocess as :func:`claim`)."""
+    args: list[str] = [
+        "--repo",
+        repo,
+        "--issue",
+        str(issue),
+        "--agent",
+        agent,
+        "--session",
+        session,
+        "--intent",
+        intent,
+    ]
+    if ttl_hours is not None:
+        args += ["--ttl-hours", str(float(ttl_hours))]
+    return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
+
+
 def claim(
     repo: str,
     issue: int,
@@ -241,10 +280,15 @@ def claim(
     intent: str,
     holder_principal: str | None = None,
     fencing_token: str | None = None,
+    paths: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Check, then lease, serialized per ``repo#issue`` in this process.
 
-    Raises ``ClaimHeldError`` (held by anyone but this agent+session) or ``RMScriptError``.
+    ``paths`` (optional) are the files/dirs the claimant intends to touch; an aging PR
+    blocks only when it is in ``repo`` and, if ``paths`` are given, overlaps them (#3892).
+
+    Raises ``ClaimHeldError`` (held by anyone but this agent+session), ``AgingPrBlockedError``,
+    or ``RMScriptError``.
     """
     with _issue_lock(repo, issue):
         status = check(repo, issue)
@@ -267,6 +311,10 @@ def claim(
                 },
             )
             raise ClaimHeldError(status)
+        if not (status["held"] and _is_own(status, agent, session)):
+            aging_block = claim_blocked_by_aging_prs(agent, claim_repo=repo, claim_paths=paths, fetch=evidence_fetch)
+            if aging_block is not None:
+                raise AgingPrBlockedError(aging_block)
         posted = _post(repo, issue, agent, session, intent)
         receipt = str(posted["result"].get("receipt") or "")
         record_job_claim_activity(

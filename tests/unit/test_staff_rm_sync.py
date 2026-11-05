@@ -58,15 +58,11 @@ def test_fast_forward_reloads_roles_and_exposes_revision(repo):
     assert status["check_age_seconds"] >= 0
 
 
-@pytest.mark.parametrize("kind", ["dirty", "untracked", "diverged", "branch"])
+@pytest.mark.parametrize("kind", ["diverged", "branch"])
 def test_unsafe_checkout_is_preserved(repo, kind):
     origin, clone, state = repo
     advance(origin)
-    if kind == "dirty":
-        (clone / "staff/roles/worker.yml").write_text("owner edit\n")
-    elif kind == "untracked":
-        (clone / "owner.txt").write_text("do not delete\n")
-    elif kind == "branch":
+    if kind == "branch":
         git(clone, "checkout", "-b", "owner-work")
     else:
         (clone / "owner.txt").write_text("local commit\n")
@@ -78,23 +74,68 @@ def test_unsafe_checkout_is_preserved(repo, kind):
     assert git(clone, "rev-parse", "HEAD") == before
 
 
+def test_dirty_untracked_tooling_is_quarantined_and_fast_forward_proceeds(repo, monkeypatch, tmp_path):
+    origin, clone, state = repo
+    config = tmp_path / "config"
+    config.mkdir()
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config))
+    agents = clone / ".agents"
+    agents.mkdir()
+    dirty = '{"version": 1, "hooks": {}}\n'
+    (agents / "hooks.json").write_text(dirty, encoding="utf-8")
+    (clone / ".claude").mkdir()
+    (clone / ".claude" / "settings.json").write_text('{"env": {}}\n', encoding="utf-8")
+    target = advance(origin)
+    result = refresh(clone, state_path=state)
+    assert result["status"] == "updated"
+    assert git(clone, "rev-parse", "HEAD") == target
+    assert result["dirty_quarantine"]["count"] == 2
+    saved_root = Path(result["dirty_quarantine"]["dir"])
+    assert (saved_root / ".agents" / "hooks.json").read_text(encoding="utf-8") == dirty
+    assert (saved_root / "manifest.json").exists()
+    assert not git(clone, "status", "--porcelain", "--untracked-files=all")
+
+
+def test_dirty_tracked_edit_is_quarantined_before_fast_forward(repo, monkeypatch, tmp_path):
+    origin, clone, state = repo
+    config = tmp_path / "config"
+    config.mkdir()
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config))
+    edited = "name: worker\nproviders: [local]\n"
+    role_path = clone / "staff/roles/worker.yml"
+    role_path.write_text(edited, encoding="utf-8")
+    target = advance(origin)
+    result = refresh(clone, state_path=state)
+    assert result["status"] == "updated"
+    assert git(clone, "rev-parse", "HEAD") == target
+    saved = Path(result["dirty_quarantine"]["dir"]) / "staff/roles/worker.yml"
+    assert saved.read_text(encoding="utf-8") == edited
+    assert role_path.read_text(encoding="utf-8") != edited
+    assert load_roles()["worker"].providers == ("claude-ollama",)
+
+
 def test_consecutive_skips_raise_attention_and_success_resets_counter(repo, monkeypatch):
     import staff.rm_sync as rm_sync
 
-    _, clone, state = repo
-    (clone / "owner.txt").write_text("owner work\n")
+    origin, clone, state = repo
+    advance(origin)
+    (clone / "owner.txt").write_text("local commit\n")
+    git(clone, "add", ".")
+    git(clone, "commit", "-m", "owner work")
     now = [1_800_000_000.0]
     monkeypatch.setattr(rm_sync.time, "time", lambda: now[0])
 
     for expected_count in range(1, rm_sync.SKIPPED_ATTENTION_THRESHOLD + 1):
         result = refresh(clone, state_path=state)
+        assert result["status"] == "skipped"
         assert result["consecutive_skips"] == expected_count
         assert result["attention"] is (expected_count >= rm_sync.SKIPPED_ATTENTION_THRESHOLD)
         now[0] += rm_sync.INTERVAL_SECONDS
 
-    (clone / "owner.txt").unlink()
+    git(clone, "fetch", "origin", "main")
+    git(clone, "reset", "--hard", "FETCH_HEAD")
     result = refresh(clone, state_path=state)
-    assert result["status"] == "unchanged"
+    assert result["status"] in {"updated", "unchanged"}
     assert result["consecutive_skips"] == 0
     assert result["attention"] is False
 

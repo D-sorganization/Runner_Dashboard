@@ -34,6 +34,12 @@ export interface ConsoleError {
   message: string;
 }
 
+export type ThreadFocusOrigin = "restore" | "explicit";
+export interface ActiveThreadFocus {
+  threadId: string;
+  origin: ThreadFocusOrigin;
+}
+
 export type SendResult = { ok: boolean; [key: string]: unknown };
 
 export interface UseStaffConsoleOptions {
@@ -63,6 +69,7 @@ export interface StaffConsoleState {
   rosterLoading: boolean;
   selectedRole: string | null;
   activeThread: ThreadInfo | null;
+  activeThreadFocus: ActiveThreadFocus | null;
   openingRole: string | null;
   messages: ThreadMessage[];
   isReconnecting: boolean;
@@ -118,7 +125,11 @@ export function useStaffConsole({
   const [fetchedRoles, setFetchedRoles] = useState<StaffRoleItem[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<string | null>(initialRole ?? null);
-  const [activeThread, setActiveThread] = useState<ThreadInfo | null>(initialThread ?? null);
+  const [threadSelection, setThreadSelection] = useState<{ thread: ThreadInfo | null; focus: ActiveThreadFocus | null }>(() => ({
+    thread: initialThread ?? null,
+    focus: initialThread ? { threadId: initialThread.id, origin: "explicit" as const } : null,
+  }));
+  const { thread: activeThread, focus: activeThreadFocus } = threadSelection;
   const newThreadFromThisConsole = useRef<string | null>(null);
   // Repeated clicks share a create only within this console and until it settles.
   const pendingNewConversations = useRef(new Map<string, Promise<ThreadInfo>>());
@@ -129,6 +140,12 @@ export function useStaffConsole({
     const revision = selectionIntent.current.revision + 1;
     selectionIntent.current = { revision, kind, role };
     return revision;
+  }, []);
+  const commitThread = useCallback((thread: ThreadInfo | null, origin: ThreadFocusOrigin = "explicit") => {
+    setThreadSelection({
+      thread,
+      focus: thread ? { threadId: thread.id, origin } : null,
+    });
   }, []);
   const isSelectionCurrent = useCallback(
     (revision: number) => selectionIntent.current.revision === revision,
@@ -180,13 +197,13 @@ export function useStaffConsole({
       .then((res) => {
         if (controller.signal.aborted || !isSelectionCurrent(revision)) return;
         setHistory(res?.messages ?? NO_MESSAGES);
-        setActiveThread(res.thread);
+        commitThread(res.thread);
       })
       .catch((err: unknown) => {
         if (!controller.signal.aborted && isSelectionCurrent(revision)) report("thread", err);
       });
     return () => controller.abort();
-  }, [initialThreadId, initialThread, beginSelection, isSelectionCurrent, report]);
+  }, [initialThreadId, initialThread, beginSelection, isSelectionCurrent, commitThread, report]);
 
   // Optional entry points such as the global assistant can restore an existing
   // role conversation after navigation or reload. Never create a thread here.
@@ -217,7 +234,7 @@ export function useStaffConsole({
           ?? pickRoleThread(roleThreads, initialRole);
         if (thread) {
           setHistory(NO_MESSAGES);
-          setActiveThread(thread);
+          commitThread(thread, "restore");
           setError(null);
         }
       })
@@ -230,7 +247,7 @@ export function useStaffConsole({
     return () => {
       cancelled = true;
     };
-  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, preferredRoleThreadId, threadApi, beginSelection, isSelectionCurrent, report]);
+  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, preferredRoleThreadId, threadApi, beginSelection, isSelectionCurrent, commitThread, report]);
 
   // History for the open thread. The seeded thread keeps its seeded messages.
   const threadId = activeThread?.id ?? "";
@@ -262,8 +279,8 @@ export function useStaffConsole({
     beginSelection("thread", roleName ?? null);
     if (roleName) setSelectedRole(roleName);
     setOpeningRole(null);
-    setActiveThread(thread);
-  }, [beginSelection]);
+    commitThread(thread);
+  }, [beginSelection, commitThread]);
 
   const openRole = useCallback(
     async (roleName: string): Promise<ThreadInfo | null> => {
@@ -275,7 +292,7 @@ export function useStaffConsole({
         const thread = await resolveRoleThread(roleName, title, threadApi);
         if (!isSelectionCurrent(revision)) return null;
         setHistory(NO_MESSAGES);
-        setActiveThread(thread);
+        commitThread(thread);
         setError(null);
         return thread;
       } catch (err) {
@@ -285,14 +302,14 @@ export function useStaffConsole({
         if (isSelectionCurrent(revision)) setOpeningRole(null);
       }
     },
-    [beginSelection, isSelectionCurrent, roleByName, threadApi, report],
+    [beginSelection, isSelectionCurrent, roleByName, threadApi, commitThread, report],
   );
 
   const closeThread = useCallback(() => {
     beginSelection("close", null);
     setOpeningRole(null);
-    setActiveThread(null);
-  }, [beginSelection]);
+    commitThread(null);
+  }, [beginSelection, commitThread]);
 
   const newConversation = useCallback(async (): Promise<ThreadInfo | null> => {
     const roleName = selectedRole ?? AUTO_ROUTE_ROLE;
@@ -321,7 +338,7 @@ export function useStaffConsole({
       if (!isSelectionCurrent(revision)) return null;
       newThreadFromThisConsole.current = thread.id;
       setHistory(NO_MESSAGES);
-      setActiveThread(thread);
+      commitThread(thread);
       setSelectedRole(roleName);
       setError(null);
       return thread;
@@ -331,7 +348,7 @@ export function useStaffConsole({
     } finally {
       if (isSelectionCurrent(revision)) setOpeningRole(null);
     }
-  }, [beginSelection, isSelectionCurrent, selectedRole, roleByName, threadApi, report]);
+  }, [beginSelection, isSelectionCurrent, selectedRole, roleByName, threadApi, commitThread, report]);
 
   const sendNow = useCallback(
     async (payload: SendMessagePayload): Promise<SendResult> => {
@@ -446,6 +463,7 @@ export function useStaffConsole({
     rosterLoading,
     selectedRole,
     activeThread,
+    activeThreadFocus,
     openingRole,
     messages,
     isReconnecting: stream.isReconnecting,
