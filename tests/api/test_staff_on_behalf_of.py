@@ -157,7 +157,7 @@ def test_verify_on_behalf_of_missing_principal_rejected() -> None:
 def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from staff.dispatch_auth import require_staff_run_dispatch
 
-    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"node-b": "http://og:8321"})
+    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"node-b": "http://node-b.fleet-example.ts.net:8321"})
     monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-token")  # pragma: allowlist secret
 
     seen: dict[str, Any] = {}
