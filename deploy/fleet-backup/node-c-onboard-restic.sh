@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Brick restic client onboarding (#4010). Defaults to dry-run; set RESTIC_DRY_RUN=0 to apply.
+# node-c restic client onboarding (#4010). Defaults to dry-run; set RESTIC_DRY_RUN=0 to apply.
 set -Eeuo pipefail
 
-ENV_FILE="${BRICK_RESTIC_ENV:-/etc/brick-restic/env}"
+ENV_FILE="${NODE_C_RESTIC_ENV:-/etc/node-c-restic/env}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 load_env() {
@@ -11,11 +11,11 @@ load_env() {
         set -a
         source "$ENV_FILE"
         set +a
-    elif [[ -f "$SCRIPT_DIR/brick-client.env.example" ]]; then
+    elif [[ -f "$SCRIPT_DIR/node-c-client.env.example" ]]; then
         echo "warning: using example env (not $ENV_FILE)" >&2
         # shellcheck disable=SC1091
         set -a
-        source "$SCRIPT_DIR/brick-client.env.example"
+        source "$SCRIPT_DIR/node-c-client.env.example"
         set +a
     else
         echo "env file not found: $ENV_FILE" >&2
@@ -38,8 +38,8 @@ require_vars() {
         echo "password file missing: $RESTIC_PASSWORD_FILE" >&2
         exit 2
     }
-    if [[ "$RESTIC_REPOSITORY" != *"/brick" ]]; then
-        echo "RESTIC_REPOSITORY must end with /brick (private repo user)" >&2
+    if [[ "$RESTIC_REPOSITORY" != *"/node-c" ]]; then
+        echo "RESTIC_REPOSITORY must end with /node-c (private repo user)" >&2
         exit 2
     fi
     return 0
@@ -63,7 +63,7 @@ main() {
         echo "install restic before onboarding (apt/brew/restic release tarball)" >&2
         exit 2
     fi
-    echo "Brick restic onboarding against $RESTIC_REPOSITORY"
+    echo "node-c restic onboarding against $RESTIC_REPOSITORY"
     if run_restic snapshots >/dev/null 2>&1; then
         echo "repository already initialized"
     else

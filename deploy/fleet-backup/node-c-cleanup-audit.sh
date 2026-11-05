@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Report-only pre-backup cleanup inventory for Brick (#4010).
+# Report-only pre-backup cleanup inventory for node-c (#4010).
 # Never deletes on live hosts; use runner-cleanup / fleet_storage_gc after review.
 set -Eeuo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: brick-cleanup-audit.sh [--json]
+Usage: node-c-cleanup-audit.sh [--json]
 
 Prints reclaimable-space hints (du/find only). Does not modify the filesystem.
 Deletion flags are intentionally unsupported on fleet hosts.
@@ -38,13 +38,13 @@ for arg in "$@"; do
     esac
 done
 
-if [[ "${BRICK_CLEANUP_ALLOW_DELETE:-0}" == "1" ]]; then
+if [[ "${NODE_C_CLEANUP_ALLOW_DELETE:-0}" == "1" ]]; then
     refuse_delete
 fi
 
 JSON="${JSON:-0}"
 RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
-HOME_DIR="${BRICK_AUDIT_HOME:-$HOME}"
+HOME_DIR="${NODE_C_AUDIT_HOME:-$HOME}"
 
 report_line() {
     local category="$1"
@@ -62,7 +62,7 @@ report_line() {
 }
 
 if [[ "$JSON" != "1" ]]; then
-    echo "Brick cleanup audit (report-only; no deletions)"
+    echo "node-c cleanup audit (report-only; no deletions)"
     printf '%-24s %12s  %s\n' "category" "bytes" "path"
 fi
 

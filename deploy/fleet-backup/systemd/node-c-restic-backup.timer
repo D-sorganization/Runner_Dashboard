@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Brick restic backup
+Description=Daily node-c restic backup
 
 [Timer]
 OnCalendar=*-*-* 03:15:00

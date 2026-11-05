@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Scheduled Brick restic backup (#4010). Expects EnvironmentFile from systemd install.
+# Scheduled node-c restic backup (#4010). Expects EnvironmentFile from systemd install.
 set -Eeuo pipefail
 
-ENV_FILE="${BRICK_RESTIC_ENV:-/etc/brick-restic/env}"
+ENV_FILE="${NODE_C_RESTIC_ENV:-/etc/node-c-restic/env}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -f "$ENV_FILE" ]]; then
