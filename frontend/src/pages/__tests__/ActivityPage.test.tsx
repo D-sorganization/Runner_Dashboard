@@ -98,13 +98,26 @@ const EVENTS_PAGE = {
   next_cursor: null,
 };
 
-function stubFetch(): void {
+function stubFetch(options?: { fleetItems?: unknown[]; conflicts?: unknown[] }): void {
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string) => {
       const ok = { ok: true, status: 200 } as Response;
-      if (String(url).includes("/activity/sessions")) {
+      const u = String(url);
+      if (u.includes("/activity/sessions")) {
         return Promise.resolve({ ...ok, json: async () => SESSIONS_PAGE } as Response);
+      }
+      if (u.includes("/activity/context")) {
+        return Promise.resolve({
+          ...ok,
+          json: async () => ({ conflicts: options?.conflicts ?? [] }),
+        } as Response);
+      }
+      if (u.includes("/activity?") && !u.includes("session_id=")) {
+        return Promise.resolve({
+          ...ok,
+          json: async () => ({ items: options?.fleetItems ?? EVENTS_PAGE.items, next_cursor: null }),
+        } as Response);
       }
       return Promise.resolve({ ...ok, json: async () => EVENTS_PAGE } as Response);
     }),
@@ -118,6 +131,43 @@ afterEach(() => {
 });
 
 describe("ActivityPage", () => {
+  it("defaults to the All work fleet feed when no session is in the URL", async () => {
+    stubFetch();
+    render(<ActivityPage />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "All work" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "All work" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("persists repo/issue/agent/node filters in the URL", async () => {
+    stubFetch();
+    const user = userEvent.setup();
+    render(<ActivityPage />);
+    await waitFor(() => expect(screen.getByLabelText("Repo")).toBeInTheDocument());
+    await user.type(screen.getByLabelText("Repo"), "Runner_Dashboard");
+    await waitFor(() => expect(window.location.search).toContain("repo=Runner_Dashboard"));
+  });
+
+  it("shows conflict badges from activity context on matching events", async () => {
+    stubFetch({
+      conflicts: [
+        {
+          conflict_id: "c1",
+          kind: "scope_conflict",
+          repo: "Runner_Dashboard",
+          issue: 2864,
+          sessions: ["claude-a-s1"],
+          agents: [],
+          branches: [],
+          paths: [],
+          goals: [],
+          detected_at: "2026-10-28T18:00:00Z",
+        },
+      ],
+    });
+    render(<ActivityPage />);
+    await waitFor(() => expect(screen.getAllByText(/\[scope conflict\]/).length).toBeGreaterThan(0));
+  });
+
   it("groups sessions by node and status with counts", async () => {
     stubFetch();
     render(<ActivityPage />);
@@ -127,11 +177,12 @@ describe("ActivityPage", () => {
     expect(screen.getByText(/claude-a-s1/)).toBeInTheDocument();
   });
 
-  it("has no composer or input affordance (read-only)", async () => {
+  it("has no chat composer (read-only transcript; filter fields only)", async () => {
     stubFetch();
     render(<ActivityPage />);
     await waitFor(() => expect(screen.getByText("node-a")).toBeInTheDocument());
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("textbox")).toHaveLength(4);
+    expect(screen.queryByRole("textbox", { name: /compose|message|reply/i })).not.toBeInTheDocument();
   });
 
   it("selecting a session loads its scrollback and flags gap events, and the selection is URL-addressable", async () => {

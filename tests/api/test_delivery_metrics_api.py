@@ -86,7 +86,15 @@ def test_summary_and_pull_drill_down(app: FastAPI) -> None:
     assert body["summary"]["prs"] >= 1
     assert body["groupings"]["by_role"]
     assert body["pr_drill_down"]
-    trends = client.get("/api/v1/metrics/trends", params={"repo_full": REPO}, headers=_XHR)
+    trends = client.get(
+        "/api/v1/metrics/trends",
+        params={
+            "repo_full": REPO,
+            "since": "2026-10-01T00:00:00Z",
+            "until": "2026-10-31T00:00:00Z",
+        },
+        headers=_XHR,
+    )
     assert trends.status_code == 200
     assert trends.json()["weekly_trends"]
     pull = client.get("/api/v1/metrics/pull", params={"repo_full": REPO, "number": 2111}, headers=_XHR)

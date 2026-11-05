@@ -49,7 +49,11 @@ concurrency:
 jobs:
   release:
     name: Build release, sign, attest, and publish
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}

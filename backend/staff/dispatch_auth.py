@@ -51,8 +51,14 @@ def require_staff_run_dispatch() -> Callable[..., Principal]:
                     },
                 )
 
-        prin = _resolve_principal_optional(request, header_token)
         hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+        if hub_token and header_token and header_token.startswith("Bearer "):
+            if hmac.compare_digest(header_token[7:], hub_token):
+                prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+                if principal_has_scope(prin, _DISPATCH_SCOPE):
+                    return prin
+
+        prin = _resolve_principal_optional(request, header_token)
         if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
             if hmac.compare_digest(header_token[7:], hub_token):
                 prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
