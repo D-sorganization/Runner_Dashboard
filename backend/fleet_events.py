@@ -79,6 +79,7 @@ EventKind = Literal[
     "context_health",
     "slot_health",
     "node_forwarder_alert",
+    "backup_drill_failure",
 ]
 
 # Default ring-buffer capacity. Large enough to hold a meaningful operator
@@ -123,6 +124,7 @@ class FleetEvent:
             "context_health",
             "slot_health",
             "node_forwarder_alert",
+            "backup_drill_failure",
         ):
             raise ValueError(f"FleetEvent.kind invalid: {self.kind!r}")
         if not self.title:
