@@ -19,7 +19,7 @@ from fleet_backup_pilot_status import (  # noqa: E402
 
 
 def test_read_status_missing_file_on_non_pilot_host(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RUNNER_DASHBOARD_HOSTNAME", "DeskComputer")
+    monkeypatch.setattr("fleet_backup_pilot_status.local_runner_machine_names", lambda: frozenset({"node-a"}))
     monkeypatch.delenv("FLEET_BACKUP_PILOT", raising=False)
     payload = read_fleet_backup_pilot_status()
     assert payload["enabled"] is False

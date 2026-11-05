@@ -24,6 +24,7 @@ from fleet_autoconfig import (
     derive_fleet_nodes_from_registry,
     derive_pool_topology,
 )  # issue #942, #1169 — registry-driven pool topology & federation
+from fleet_backup_pilot_status import read_fleet_backup_pilot_status
 from fleet_events import (  # issue #863 — record runner/disk transitions
     FleetEventPoller,
     nodes_from_fleet_status,
@@ -32,7 +33,6 @@ from fleet_status_cache import fleet_status_cache_key, serve_fleet_status
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
 from machine_registry import load_machine_registry
-from fleet_backup_pilot_status import read_fleet_backup_pilot_status
 from node_auto_deploy_status import read_auto_deploy_fleet_status
 from proxy_utils import (
     proxy_to_hub,

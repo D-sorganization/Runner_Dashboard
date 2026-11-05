@@ -1225,7 +1225,7 @@ async def get_system_metrics_snapshot(
 
             metrics["fleet_backup_pilot"] = read_fleet_backup_pilot_status()
         except Exception:  # noqa: BLE001 - telemetry must not fail the snapshot
-            metrics["fleet_backup_pilot"] = {"enabled": False, "pilot": "oglaptop"}
+            metrics["fleet_backup_pilot"] = {"enabled": False, "pilot": "node-b"}
 
         return metrics
 

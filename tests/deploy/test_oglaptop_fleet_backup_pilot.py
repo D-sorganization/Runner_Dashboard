@@ -1,4 +1,4 @@
-"""Contracts for OGLaptop fleet backup pilot scripts (#4015)."""
+"""Contracts for node-b fleet backup pilot scripts (#4015)."""
 
 from __future__ import annotations
 

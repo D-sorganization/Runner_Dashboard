@@ -1,17 +1,16 @@
-"""OGLaptop fleet backup pilot telemetry for fleet status (#4015)."""
+"""Fleet backup pilot last-success marker on fleet status (#4015)."""
 
 from __future__ import annotations
 
 import json
 import os
-import re
 from pathlib import Path
 from typing import Any
 
-from dashboard_config import HOSTNAME
+from dashboard_config import local_runner_machine_names
 
 MARKER_INLINE_MAX_BYTES = 4096
-_PILOT_HOST = re.compile(r"oglaptop", re.IGNORECASE)
+_PILOT_MACHINE = "node-b"
 
 
 def _pilot_enabled() -> bool:
@@ -20,7 +19,7 @@ def _pilot_enabled() -> bool:
         return True
     if flag in {"0", "false", "no", "off"}:
         return False
-    return bool(_PILOT_HOST.search(HOSTNAME or ""))
+    return _PILOT_MACHINE in local_runner_machine_names()
 
 
 def _state_path() -> Path:
@@ -39,56 +38,41 @@ def _state_path() -> Path:
     return Path.home() / ".config" / "runner-dashboard" / "fleet_backup_pilot.json"
 
 
+def _pilot_payload(**extra: Any) -> dict[str, Any]:
+    return {"enabled": True, "pilot": _PILOT_MACHINE, **extra}
+
+
 def read_fleet_backup_pilot_status() -> dict[str, Any]:
     """Best-effort read of the Windows scheduled backup last-success marker."""
     if not _pilot_enabled():
-        return {"enabled": False, "pilot": "oglaptop"}
+        return {"enabled": False, "pilot": _PILOT_MACHINE}
     path = _state_path()
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
-        return {
-            "enabled": True,
-            "pilot": "oglaptop",
-            "attention": False,
-            "last_success_at": None,
-            "last_result": None,
-            "bandwidth_mbps": None,
-        }
+        return _pilot_payload(
+            attention=False,
+            last_success_at=None,
+            last_result=None,
+            bandwidth_mbps=None,
+        )
     except OSError:
-        return {
-            "enabled": True,
-            "pilot": "oglaptop",
-            "attention": True,
-            "last_result": "error",
-        }
+        return _pilot_payload(attention=True, last_result="error")
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return {
-            "enabled": True,
-            "pilot": "oglaptop",
-            "attention": True,
-            "last_result": "error",
-        }
+        return _pilot_payload(attention=True, last_result="error")
     if not isinstance(payload, dict):
-        return {
-            "enabled": True,
-            "pilot": "oglaptop",
-            "attention": True,
-            "last_result": "error",
-        }
-    result: dict[str, Any] = {
-        "enabled": True,
-        "pilot": "oglaptop",
-        "attention": bool(payload.get("attention")),
-        "last_success_at": payload.get("last_success_at"),
-        "last_attempt_at": payload.get("last_attempt_at"),
-        "last_result": payload.get("last_result"),
-        "bandwidth_mbps": payload.get("bandwidth_mbps"),
-        "bandwidth_probe_completed_at": payload.get("bandwidth_probe_completed_at"),
-        "message": payload.get("message"),
-    }
+        return _pilot_payload(attention=True, last_result="error")
+    result: dict[str, Any] = _pilot_payload(
+        attention=bool(payload.get("attention")),
+        last_success_at=payload.get("last_success_at"),
+        last_attempt_at=payload.get("last_attempt_at"),
+        last_result=payload.get("last_result"),
+        bandwidth_mbps=payload.get("bandwidth_mbps"),
+        bandwidth_probe_completed_at=payload.get("bandwidth_probe_completed_at"),
+        message=payload.get("message"),
+    )
     if len(raw) <= MARKER_INLINE_MAX_BYTES:
         result["marker"] = payload
     else:

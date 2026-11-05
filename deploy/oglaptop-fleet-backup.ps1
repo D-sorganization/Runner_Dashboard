@@ -21,7 +21,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path $PSScriptRoot 'fleet-backup-pilot.lib.ps1') -FunctionsOnly
+$ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+
+. (Join-Path $ScriptRoot 'fleet-backup-pilot.lib.ps1') -FunctionsOnly
 
 function Install-OGLaptopFleetBackupTask {
     param(
@@ -41,7 +43,7 @@ function Install-OGLaptopFleetBackupTask {
         }
         return
     }
-    $launcher = Join-Path $PSScriptRoot 'run-hidden.vbs'
+    $launcher = Join-Path $ScriptRoot 'run-hidden.vbs'
     $psExe = (Get-Command powershell.exe).Source
     $inner = '-NoProfile -ExecutionPolicy Bypass -File "' + $ScriptPath + '"'
     $actionArgs = '//B //Nologo "' + $launcher + '" ' + $psExe + ' ' + $inner
@@ -84,7 +86,7 @@ if (-not $backupPaths) { throw 'BACKUP_PATHS missing' }
 
 $state = Read-FleetBackupPilotStateFile -Path $paths.StateFile
 $state = Merge-FleetBackupPilotState -Existing $state -Update @{
-    pilot = 'oglaptop'; last_attempt_at = (Get-Date).ToUniversalTime().ToString('o'); last_result = 'running'
+    pilot = 'node-b'; last_attempt_at = (Get-Date).ToUniversalTime().ToString('o'); last_result = 'running'
 }
 if (-not (Test-Path -LiteralPath $paths.LogDir)) { New-Item -ItemType Directory -Path $paths.LogDir -Force | Out-Null }
 
