@@ -104,12 +104,13 @@ def _overlay_token_paths() -> dict[str, Path]:
     return paths
 
 
-def merge_agent_principal_defaults(manager: IdentityManager) -> None:
-    """Apply config/agent_principals.yml and ingest agent-tokens/*.token files."""
-    from identity import Principal, TokenRecord  # noqa: PLC0415
+def configured_agent_ids() -> list[str]:
+    """Principal ids declared in config/agent_principals.yml, sorted."""
+    return sorted(_load_config()[1])
 
-    _, defaults_by_id = _load_config()
 
+def agent_token_files(manager: IdentityManager) -> dict[str, Path]:
+    """Existing agent token files by principal id (overlay paths win over the local glob)."""
     tok_dir = manager.config_dir / "agent-tokens"
     token_files: dict[str, Path] = {}
     if tok_dir.is_dir():
@@ -119,6 +120,15 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
     # Overlay-declared paths take priority over the local directory glob: the
     # overlay is what category 2 moves this config behind (#3082).
     token_files.update(_overlay_token_paths())
+    return token_files
+
+
+def merge_agent_principal_defaults(manager: IdentityManager) -> None:
+    """Apply config/agent_principals.yml and ingest agent-tokens/*.token files."""
+    from identity import Principal, TokenRecord  # noqa: PLC0415
+
+    _, defaults_by_id = _load_config()
+    token_files = agent_token_files(manager)
 
     for agent_id, row in defaults_by_id.items():
         fields = _principal_fields(row, agent_id)

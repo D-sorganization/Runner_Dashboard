@@ -22,6 +22,8 @@ Claude clients interact with the Staff Console through the fleet MCP server (`cl
                                                          +--------------------------+
 ```
 
+**Finding work:** call `GET /api/coordination/jobs` (or `fleet_briefing` for `jobs_hint`), claim with `POST /api/coordination/claims`, and release with `POST /api/coordination/claims/release` when the issue is done.
+
 ---
 
 ## 2. Token Minting (Least-Privilege Scopes)

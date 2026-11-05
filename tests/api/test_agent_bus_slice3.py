@@ -7,14 +7,11 @@ from unittest import mock
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.api.test_agent_bus_slice1 import _auth, _register, bus_env as _bus_env_fixture
+from tests.api.test_agent_bus_slice1 import _auth, _register, bus_env
 
 _REMOTE = ("100.64.0.9", 51000)
 
-
-@pytest.fixture
-def bus_env(_bus_env_fixture: dict[str, str]) -> dict[str, str]:
-    return _bus_env_fixture
+__all__ = ["bus_env"]
 
 
 @pytest.fixture
@@ -62,7 +59,9 @@ def test_blocked_message_duplicates_to_barb_inbox(client: TestClient, bus_env: d
 
 
 @pytest.mark.unit
-def test_reaper_releases_tracked_claim_when_lease_expires(client: TestClient, bus_env: dict[str, str]) -> None:
+def test_reaper_releases_tracked_claim_when_lease_expires(
+    client: TestClient, bus_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
     sess = "issue-remediator-stale-20261022"
     _register(
         client,
@@ -88,10 +87,11 @@ def test_reaper_releases_tracked_claim_when_lease_expires(client: TestClient, bu
         released.append((repo, issue, reason))
         return {"released": True, "result": {}, "warnings": []}
 
-    with mock.patch("coordination.claims.release", side_effect=fake_release):
-        from agent_bus.reaper import reap_once
+    from agent_bus import reaper
 
-        summary = reap_once()
+    monkeypatch.setattr(reaper, "node_reap_gate", lambda: lambda _node: True)  # node health gated in #3823 tests
+    with mock.patch("coordination.claims.release", side_effect=fake_release):
+        summary = reaper.reap_once()
     assert summary["released_claims"] >= 1
     assert ("Tools", 42, "agent_bus lease expired") in released
 

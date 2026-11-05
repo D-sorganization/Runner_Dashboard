@@ -217,7 +217,9 @@ def execute_retry_nudge(
     )
     watchdog.start()
     try:
-        nudge_pump = pump_nudge_output(rec, adapter, nudge_proc, transcript, store, watchdog)
+        nudge_pump = pump_nudge_output(
+            rec, adapter, nudge_proc, transcript, store, watchdog, expected_session_id=session_id
+        )
         try:
             rc = nudge_proc.wait(timeout=5.0)
         except subprocess.TimeoutExpired:

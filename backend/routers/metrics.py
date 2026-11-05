@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 from identity import Principal, require_scope
 
+log = logging.getLogger("dashboard.metrics")
 router = APIRouter(tags=["metrics"])
 _METRICS_READ = require_scope("staff.read")
 PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -115,7 +117,29 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "andon": andon if isinstance(andon, dict) else {},
         "activity": activity,
         "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
+        "agent_tokens": _agent_token_rows(),
+        "watchdog_rows": _watchdog_rows(nodes, in_flight=len(board.get("running", [])) + len(board.get("queued", []))),
     }
+
+
+def _watchdog_rows(nodes: dict[str, dict[str, Any]], *, in_flight: int) -> list[dict[str, Any]]:
+    """Fleet health watchdog rows (#3934 S2): per-host anomaly/disk-fill projection."""
+    from host_trend_watchdog import get_registry  # noqa: PLC0415
+
+    annotated = {name: {**info, "in_flight": in_flight} for name, info in nodes.items()}
+    return get_registry().observe(annotated, now=datetime.now(UTC))
+
+
+def _agent_token_rows() -> list[dict[str, Any]]:
+    """Agent token health rows (#3895); empty when the identity store is unavailable."""
+    try:
+        from agent_token_health import token_health_report  # noqa: PLC0415
+        from identity import identity_manager  # noqa: PLC0415
+
+        return token_health_report(identity_manager)
+    except Exception:  # noqa: BLE001 - metrics must render without the identity store
+        log.warning("agent token health unavailable for /api/metrics", exc_info=True)
+        return []
 
 
 def render_prometheus_text(snapshot: dict[str, Any]) -> str:
@@ -240,6 +264,16 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
                 f"rd_andon_red_main_ttff_p90_minutes {float(am.get('red_main_ttff_p90_minutes', 0.0)):.2f}",
             ]
         )
+    agent_tokens = snapshot.get("agent_tokens") or []
+    if agent_tokens:
+        from agent_token_health import render_token_health_lines  # noqa: PLC0415
+
+        lines.extend(render_token_health_lines(agent_tokens))
+    watchdog_rows = snapshot.get("watchdog_rows") or []
+    if watchdog_rows:
+        from host_trend_watchdog import render_watchdog_lines  # noqa: PLC0415
+
+        lines.extend(render_watchdog_lines(watchdog_rows))
     lines.append("")
     return "\n".join(lines)
 

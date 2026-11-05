@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/D-sorganization/Runner_Dashboard/docs/lanes/schema/lane-profile.schema.json",
+  "title": "Lane profile",
+  "description": "A lane's declared identity and the fleet-policy hooks it runs at each hook point. Loaded and enforced by scripts/lane_hooks.py (#3933 S2).",
+  "type": "object",
+  "required": ["name"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The lane's own identifier, e.g. 'claude-k'."
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "on_start": { "$ref": "#/$defs/hookList" },
+        "pre_tool": { "$ref": "#/$defs/hookList" },
+        "post_tool": { "$ref": "#/$defs/hookList" },
+        "on_stop": { "$ref": "#/$defs/hookList" }
+      }
+    }
+  },
+  "$defs": {
+    "hookList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hookEntry" }
+    },
+    "hookEntry": {
+      "type": "object",
+      "required": ["id", "callable"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Unique within its hook point; used in logs and error messages."
+        },
+        "callable": {
+          "type": "string",
+          "pattern": "^[^:]+:[^:]+$",
+          "description": "'module:function' resolved with importlib. The function receives one dict argument (the hook context) and returns nothing; raising fails the hook."
+        },
+        "blocking": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true (the default), a failing hook raises HookBlockedError and stops the triggering action. If false, the failure is only recorded in the run() results."
+        }
+      }
+    }
+  }
+}

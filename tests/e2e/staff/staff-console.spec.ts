@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Browser, Locator, Page } from "@playwright/test";
+import type { Browser, Locator, Page, Response } from "@playwright/test";
 import { conversation, expect, openThread, send, test } from "./fixtures";
 import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
@@ -62,6 +62,28 @@ async function requestAndFollowRun(page: Page, scenario: string): Promise<Locato
   await proposeDispatch(page, scenario);
   await expect(runCards).toHaveCount(before + 1);
   return runCards.nth(before);
+}
+
+/** The drawer's passive restore: GET /api/v1/staff/threads?role=barb (#3861). */
+function isBarbThreadList(response: Response): boolean {
+  const url = new URL(response.url());
+  return (
+    response.request().method() === "GET" &&
+    url.pathname === "/api/v1/staff/threads" &&
+    url.searchParams.get("role") === "barb"
+  );
+}
+
+/**
+ * Wait until the drawer's passive thread restore has rendered (#3861).
+ * A restored thread adds a "New chat" button ahead of Close, which changes the
+ * drawer's first focusable element; asserting the focus trap before it lands races.
+ */
+async function settleBarbRestore(drawer: Locator, listResponse: Promise<Response>): Promise<void> {
+  const body = (await (await listResponse).json()) as { threads?: unknown[] };
+  if (!body.threads?.length) return;
+  await expect(drawer.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(drawer.getByRole("region", { name: /^Conversation thread with / })).toBeVisible();
 }
 
 /** Occurrences of `needle` in the conversation log's visible text. */
@@ -313,11 +335,13 @@ test.describe("Ask Barb drawer keyboard access", () => {
       await page.goto("/staff");
       const trigger = page.getByRole("button", { name: "Ask Barb" });
       await trigger.focus();
+      const restored = page.waitForResponse(isBarbThreadList);
       await page.keyboard.press("Enter");
 
       const drawer = page.getByTestId("barb-sidebar");
       const close = drawer.getByRole("button", { name: "Close Ask Barb" });
       await expect(drawer).toBeVisible();
+      await settleBarbRestore(drawer, restored);
       await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
 
       if (viewport.width === 390) {

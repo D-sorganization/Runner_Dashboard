@@ -5,8 +5,12 @@
  * requests only, so third-party requests (fonts) never carry it.
  */
 
+import { existsSync } from "node:fs";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { test as base, expect, type Page } from "@playwright/test";
 import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
+import { NETWORK_CHANGED, isNetworkChanged, networkChangedMarker, retryAllowed } from "./networkChangedRetry";
 
 type Principal = "operator" | "viewer" | "requester";
 
@@ -16,8 +20,31 @@ const HEADERS: Record<Principal, Record<string, string>> = {
   requester: requesterHeaders,
 };
 
-export const test = base.extend<{ principal: Principal }>({
+export const test = base.extend<{ principal: Principal; networkChangedGate: void }>({
   principal: ["operator", { option: true }],
+  // Every test: a CI retry only follows a Chromium network-change abort (#3861).
+  networkChangedGate: [
+    async ({ context }, use, testInfo) => {
+      const marker = networkChangedMarker(testInfo.project.outputDir, testInfo.testId);
+      if (!retryAllowed(testInfo.retry, existsSync(marker))) {
+        throw new Error(`retry ${testInfo.retry} refused: only a ${NETWORK_CHANGED} abort earns a retry (#3861)`);
+      }
+      if (testInfo.retry > 0) {
+        await rm(marker, { force: true });
+        testInfo.annotations.push({ type: "network-changed-retry", description: `previous attempt saw ${NETWORK_CHANGED}` });
+      }
+      let networkChanged = false;
+      context.on("requestfailed", (request) => {
+        if (isNetworkChanged(request.failure()?.errorText)) networkChanged = true;
+      });
+      await use();
+      if (networkChanged && testInfo.status !== testInfo.expectedStatus) {
+        await mkdir(dirname(marker), { recursive: true });
+        await writeFile(marker, `${testInfo.title}\n`, "utf-8");
+      }
+    },
+    { auto: true },
+  ],
   page: async ({ page, principal }, use) => {
     await page.route("**/api/**", (route) =>
       route.continue({ headers: { ...route.request().headers(), ...HEADERS[principal] } }),

@@ -107,7 +107,48 @@ def test_claude_prefers_newer_refresh_token_over_higher_expires_at(tmp_path: Pat
     assert json.loads(hub.read_text(encoding="utf-8"))["claudeAiOauth"]["refreshToken"] == "r-new"
 
 
+def _zeroed_newer_copy_over_valid_hub(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """Hub seat holds a real expiry; a newer Windows copy carries expiresAt 0 (#3971)."""
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    hub = wsl_home / ".config" / "runner-dashboard" / "claude" / ".credentials.json"
+    hub.parent.mkdir(parents=True)
+    hub.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-valid", "accessToken": "a-valid", "expiresAt": 9000}}),
+        encoding="utf-8",
+    )
+    win_claude = win_home / ".claude" / ".credentials.json"
+    win_claude.parent.mkdir(parents=True)
+    win_claude.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-zero", "accessToken": "a-zero", "expiresAt": 0}}),
+        encoding="utf-8",
+    )
+    os.utime(hub, (1_000_000, 1_000_000))
+    os.utime(win_claude, (2_000_000, 2_000_000))
+    return wsl_home, win_home, hub
+
+
 @pytest.mark.unit
+def test_claude_sync_never_mirrors_expires_at_zero_over_valid_seat(tmp_path: Path) -> None:
+    wsl_home, win_home, hub = _zeroed_newer_copy_over_valid_hub(tmp_path)
+
+    synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[win_home])
+
+    assert str(hub) not in synced["claude"]
+    assert json.loads(hub.read_text(encoding="utf-8"))["claudeAiOauth"]["expiresAt"] == 9000
+
+
+@pytest.mark.unit
+def test_claude_audit_source_is_valid_seat_not_expires_at_zero_copy(tmp_path: Path) -> None:
+    wsl_home, win_home, hub = _zeroed_newer_copy_over_valid_hub(tmp_path)
+
+    report = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[win_home])
+
+    assert report["providers"]["claude"]["source_path"] == str(hub)
+
+
+@pytest.mark.unit
+@pytest.mark.skipif(os.name != "posix", reason="chmod(0o000) does not block reads on Windows")
 def test_sync_skips_unreadable_source_without_crashing(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     wsl_home = tmp_path / "wsl_home"
     win_home = tmp_path / "win_home"
@@ -141,6 +182,52 @@ def test_sync_skips_unreadable_source_without_crashing(tmp_path: Path, caplog: p
 
 
 @pytest.mark.unit
+def test_audit_flags_stale_claude_mirror(tmp_path: Path) -> None:
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    wsl_home.mkdir()
+    win_home.mkdir()
+
+    win_claude = win_home / ".claude" / ".credentials.json"
+    win_claude.parent.mkdir(parents=True)
+    win_claude.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-new", "accessToken": "a-new", "expiresAt": 2000}}),
+        encoding="utf-8",
+    )
+    wsl_claude = wsl_home / ".claude" / ".credentials.json"
+    wsl_claude.parent.mkdir(parents=True)
+    wsl_claude.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-old", "accessToken": "a-old", "expiresAt": 1000}}),
+        encoding="utf-8",
+    )
+    os.utime(wsl_claude, (1_000_000, 1_000_000))
+    os.utime(win_claude, (2_000_000, 2_000_000))
+
+    audit = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[win_home])
+    assert audit["ok"] is False
+    claude = audit["providers"]["claude"]
+    assert claude["ok"] is False
+    assert any(row["reason"] in ("older_than_source", "content_drift") for row in claude["stale_copies"])
+    blob = json.dumps(audit)
+    assert "r-old" not in blob and "r-new" not in blob
+
+
+@pytest.mark.unit
+def test_audit_ok_after_sync(tmp_path: Path) -> None:
+    wsl_home = tmp_path / "wsl_home"
+    wsl_home.mkdir()
+    cred = wsl_home / ".claude" / ".credentials.json"
+    cred.parent.mkdir(parents=True)
+    cred.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-only", "accessToken": "a-only", "expiresAt": 3000}}),
+        encoding="utf-8",
+    )
+    sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[])
+    audit = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[])
+    assert audit["providers"]["claude"]["ok"] is True
+
+
+@pytest.mark.unit
 def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
     wsl_home = tmp_path / "wsl_home"
     wsl_home.mkdir()
@@ -155,3 +242,47 @@ def test_sync_result_json_lists_paths_only(tmp_path: Path) -> None:
     assert "r-out" not in blob
     assert "acc" not in blob
 
+
+@pytest.mark.unit
+def test_claude_mirror_write_logs_audit_line_with_caller_and_expiry_flag(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """RD #3975: every Claude mirror write must log its source and an expiresAt>0 flag, no secrets."""
+    wsl_home = tmp_path / "wsl_home"
+    wsl_home.mkdir()
+    cred = wsl_home / ".claude" / ".credentials.json"
+    cred.parent.mkdir(parents=True)
+    cred.write_text(
+        json.dumps({"claudeAiOauth": {"refreshToken": "r-secret", "accessToken": "a-secret", "expiresAt": 3000}}),
+        encoding="utf-8",
+    )
+    with caplog.at_level("INFO"):
+        synced = sync_mod.sync_all_credentials(wsl_home=wsl_home, win_homes=[])
+    assert synced["claude"]
+    audit_records = [rec for rec in caplog.records if "credential mirror write" in rec.message]
+    assert audit_records, "expected an audit log line for the Claude mirror write"
+    assert any("expires_at_positive=True" in rec.getMessage() for rec in audit_records)
+    assert "r-secret" not in caplog.text and "a-secret" not in caplog.text
+
+
+@pytest.mark.unit
+def test_cli_reports_structured_error_and_exits_nonzero_on_sync_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """RD #3975: the CLI must fail loudly (non-zero exit + JSON error summary), not silently.
+
+    Self-heal previously had no way to tell a crashed sync from a clean one: the script
+    propagated a raw traceback and a non-JSON exit instead of a single parseable line.
+    """
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("secret-token-xyz should never reach the summary")
+
+    monkeypatch.setattr(sync_mod, "sync_all_credentials", _boom)
+    exit_code = sync_mod._cli_main()
+    assert exit_code != 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["ok"] is False
+    assert payload["error"].startswith("RuntimeError:")
+    assert "Traceback" not in out

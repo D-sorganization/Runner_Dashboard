@@ -68,4 +68,9 @@ commits = [
   # #3264: tests/test_private_mode_credentials.py:146 fake GitHub App installation token
   # (StaffGithubToken fixture asserting it never leaks into the sandboxed env) — not a secret.
   "be7f93f99c15b4f62a2556da2aa858a18cce2e2e",  # pragma: allowlist secret (commit SHA)
+  # #3081: .github/workflows/ci-secrets.yml's own self-test step ("Verify staged secret
+  # hook rejects a fake token") writes a fixture line explicitly commented
+  # "# clearly fake scanner self-test value" and asserts gitleaks protect rejects it —
+  # the detection is the intended, documented behavior, not a real credential.
+  "9f3f0980165637266fdf6fa7c2fcfe36d6a1c8bc",  # pragma: allowlist secret (commit SHA)
 ]
