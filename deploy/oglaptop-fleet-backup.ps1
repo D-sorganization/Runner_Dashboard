@@ -106,7 +106,9 @@ try {
         $mbps = Measure-FleetBackupPilotBandwidthMbps -ProbeFile $probeFile -Upload {
             param($FilePath)
             $probeArgs = Get-FleetBackupResticArguments -BackupPaths @($FilePath) -UseFsSnapshot -Extra @('--tag', 'bandwidth-probe')
-            if ((Invoke-FleetBackupPilotRestic -ResticPath $ResticPath -Arguments $probeArgs -DryRun:$DryRun) -ne 0) {
+            if ($DryRun) {
+                Invoke-FleetBackupPilotRestic -ResticPath $ResticPath -Arguments $probeArgs -DryRun | Out-Null
+            } elseif ((Invoke-FleetBackupPilotRestic -ResticPath $ResticPath -Arguments $probeArgs) -ne 0) {
                 throw 'bandwidth probe failed'
             }
         }
@@ -116,7 +118,9 @@ try {
     }
     if (-not $SkipBackup) {
         $backupArgs = Get-FleetBackupResticArguments -BackupPaths $backupPaths -UseFsSnapshot -Extra @('--tag', 'oglaptop-pilot')
-        if ((Invoke-FleetBackupPilotRestic -ResticPath $ResticPath -Arguments $backupArgs -DryRun:$DryRun) -ne 0) {
+        if ($DryRun) {
+            Invoke-FleetBackupPilotRestic -ResticPath $ResticPath -Arguments $backupArgs -DryRun
+        } elseif ((Invoke-FleetBackupPilotRestic -ResticPath $ResticPath -Arguments $backupArgs) -ne 0) {
             throw 'restic backup failed'
         }
     }
