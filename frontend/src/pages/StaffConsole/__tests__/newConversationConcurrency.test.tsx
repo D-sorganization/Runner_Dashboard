@@ -319,6 +319,10 @@ it("does not let mount-time role restoration replace a newer explicit thread sel
     restore.resolve([thread("restored-barb", "barb")]);
   });
   expect(result.current.activeThread?.id).toBe(opened.id);
+  expect(result.current.activeThreadFocus).toEqual({
+    threadId: opened.id,
+    origin: "explicit",
+  });
   expect(result.current.selectedRole).toBe("grok");
   expect(result.current.openingRole).toBeNull();
 });

@@ -137,6 +137,18 @@ def _run_api_scope_classifier(classifier: str, changed_files: list[str]) -> subp
                 "run_api_contract": "true",
             },
         ),
+        (
+            [
+                "backend/coordination/models.py",
+                "frontend/src/lib/api-types.ts",
+                "frontend/src/lib/openapi.json",
+            ],
+            {
+                "run_frontend_tests": "false",
+                "run_staff_e2e": "false",
+                "run_api_contract": "true",
+            },
+        ),
     ],
 )
 def test_api_scope_classifier_outputs(

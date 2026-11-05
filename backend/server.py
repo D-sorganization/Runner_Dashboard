@@ -212,6 +212,7 @@ from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
 from routers import reports as _reports_router  # noqa: E402
 from routers import repos as _repos_router  # noqa: E402
+from routers import run_jwt as _run_jwt_router  # noqa: E402
 from routers import runner_audit as _runner_audit_router  # noqa: E402  # issue #298
 from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
 from routers import runner_groups as _runner_groups_router  # noqa: E402
@@ -746,6 +747,7 @@ app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics an
 app.include_router(_escalation_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_fleet_run_token_router.router)
+app.include_router(_run_jwt_router.router)
 app.include_router(_github_app_token_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
@@ -825,8 +827,10 @@ app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # out
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
 from routers import staff_rd_barb as _staff_rd_barb_router  # noqa: E402
+from routers import staff_role_self_test as _staff_role_self_test_router  # noqa: E402
 
 app.include_router(_staff_rd_barb_router.router)  # rd-barb guidelines doc (#3065)
+app.include_router(_staff_role_self_test_router.router)  # desk role dry-run self-test (#3847)
 app.include_router(_library_router.router)  # Alexandria library (#2165)
 from routers import vault as _vault_router  # noqa: E402
 
@@ -842,6 +846,14 @@ app.include_router(_coordination_router.router)
 from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
+
+from routers import path_leases as _path_leases_router  # noqa: E402
+
+app.include_router(_path_leases_router.router)  # TTL path/issue leases (#3931 S1)
+
+from routers import agent_inbox as _agent_inbox_router  # noqa: E402
+
+app.include_router(_agent_inbox_router.router)  # per-agent inbox + ack + overdue (#3931 S3)
 
 from routers import flow_metrics as _flow_metrics_router  # noqa: E402
 
@@ -866,6 +878,10 @@ app.include_router(_staff_presentation_prefs_router.router)  # personal presenta
 from routers import overload as _fleet_overload_router  # noqa: E402
 
 app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
+
+from routers import directives_drain as _directives_drain_router  # noqa: E402
+
+app.include_router(_directives_drain_router.router)  # operator drain-mode gate (#3915 slice 1)
 
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
@@ -3011,6 +3027,11 @@ async def _startup() -> None:
     from staff.provider_auth_preflight import periodic_provider_auth_evening_loop  # noqa: PLC0415
 
     asyncio.create_task(periodic_provider_auth_evening_loop(lambda: get_runner().machine))
+
+    if MACHINE_ROLE == "hub":  # agent token files live on the hub; nodes would duplicate warnings (#3895)
+        from agent_token_liveness import periodic_agent_token_loop  # noqa: PLC0415
+
+        asyncio.create_task(periodic_agent_token_loop())
 
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)

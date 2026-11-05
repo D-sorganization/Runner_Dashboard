@@ -17,6 +17,7 @@ from typing import Any
 from staff.exclusions import ExclusionsList
 from staff.roles import RoleSpec
 from staff.scheduler_issue_pick import ISSUE_REMEDIATOR_ROLE, pick_issue_target
+from staff.scheduler_missed_runs import record_scheduled_skip
 from staff.scheduler_startup import skip_due_slot_during_startup
 
 log = logging.getLogger("dashboard.staff.scheduler")
@@ -46,7 +47,9 @@ def queue_due_slot(
     name = role.name
 
     def _skip(due: str, reason: str) -> None:
-        entry["last_reason"] = f"skipped {due}: {reason}"
+        from staff.runner import get_runner
+
+        record_scheduled_skip(entry, role=name, job=job, slot=due, machine=get_runner().machine, reason=reason)
         decision = {"role": name, "slot": due, "fired": False, "reason": reason}
         if job:
             decision["job"] = job

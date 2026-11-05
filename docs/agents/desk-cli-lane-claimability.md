@@ -33,7 +33,9 @@ Lanes also typically filter on **taxonomy** (complexity, tier, repo). Issues **w
 4. **Thin CLI queue:** on 2026-11-02 only **#3792** matched `tier:cli` + `judgement:objective` + open + unclaimed on RD; label more fix/tasks via `scripts/rd_unlabeled_issue_labels.json` + `scripts/apply_rd_issue_labels.sh`.
 5. **Lane-specific filters:** remediation-style lanes often enable pickable-only plus repo/tier/complexity filters in the UI or local wrapper—match labels to the lane profile.
 
-## Unlabeled open issues (23 on 2026-11-02)
+## Unlabeled open issues (board 11-02)
+
+See **`docs/agents/unlabeled-issue-triage-2026-11-02.md`** and per-issue specs in `docs/agents/issue-specs/3818-*.md` … `3852-*.md`.
 
 Missing `type:*`, `complexity:*`, `effort:*`, `judgement:*` per `docs/issue-taxonomy.md`. Until labeled, orchestrators cannot route “three routine objective CLI tasks” reliably.
 

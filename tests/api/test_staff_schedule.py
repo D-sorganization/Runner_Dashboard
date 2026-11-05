@@ -609,14 +609,16 @@ def test_scheduler_thread_start_stop_and_tolerates_tick_errors(
 def client(
     sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]], monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
-    from identity import require_fleet_peer, require_orchestrator_peer  # noqa: PLC0415
+    from identity import Principal, require_fleet_peer, require_orchestrator_peer, require_scope  # noqa: PLC0415
     from routers import staff_schedule as schedule_router  # noqa: PLC0415
 
+    admin = Principal(id="test-admin", type="bot", name="Test Admin", roles=["admin"])
     monkeypatch.setattr(scheduler_mod, "_scheduler", sched[0])
     app = FastAPI()
     app.include_router(schedule_router.router)
     app.dependency_overrides[require_fleet_peer] = lambda: "test-peer"
     app.dependency_overrides[require_orchestrator_peer] = lambda: "test-orchestrator"
+    app.dependency_overrides[require_scope("staff.admin")] = lambda: admin
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -776,6 +778,106 @@ def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monke
     assert runner.submitted == []
     clock["now"] = _la(2026, 9, 22, 22, 0, 25)
     assert [d["fired"] for d in s.tick()] == [True]
+
+
+@pytest.mark.unit
+def test_scheduler_tick_skips_when_schedule_home_is_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    placements_file.write_text(json.dumps({"night-watch": "hub-a"}), encoding="utf-8")
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "night-watch": roles_mod.parse_role(
+            {
+                "name": "night-watch",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "node-b"
+    clock = {"now": _la(2026, 9, 22, 21, 59, 50)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    s = scheduler_mod.StaffScheduler(
+        runner,
+        holds,
+        guard,
+        clock=lambda: clock["now"],
+        state_file=tmp_path / "state.json",  # type: ignore[arg-type]
+    )
+    assert s.tick() == []
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    decision = s.tick()[0]
+    assert decision["fired"] is False and "hub-a" in decision["reason"]
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_schedule_route_includes_inventory_host_and_placement_guard(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    body = client.get("/api/staff/schedule").json()
+    assert body["inventory"]
+    nw = next(row for row in body["roles"] if row["role"] == "night-watch")
+    assert nw["host"]
+    reg = {
+        "version": 1,
+        "machines": [{"name": "hub-a", "staff": {"roles_enabled": ["maintenance"]}}],
+    }
+    monkeypatch.setattr("machine_registry.load_machine_registry", lambda: reg)
+    denied = client.put(
+        "/api/staff/schedule/placements/night-watch",
+        json={"host": "hub-a"},
+        headers=_XHR,
+    )
+    assert denied.status_code == 422
+
+
+@pytest.mark.unit
+def test_migrate_off_host_rejects_blank_targets(client: TestClient) -> None:
+    resp = client.post(
+        "/api/staff/schedule/migrate-off-host",
+        json={"source_host": "node-c", "targets": ["  "]},
+        headers=_XHR,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.unit
+def test_migrate_off_host_dry_run_keeps_scheduler_running(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    placements_file.write_text(json.dumps({"night-watch": "node-c"}), encoding="utf-8")
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    reg = {
+        "version": 1,
+        "machines": [
+            {"name": "node-c", "portable": True},
+            {"name": "hub-a", "staff": {"roles_enabled": ["*"]}},
+        ],
+    }
+    monkeypatch.setattr("machine_registry.load_machine_registry", lambda: reg)
+    sched = scheduler_mod.get_scheduler()
+    sched.start()
+    assert sched.running
+    resp = client.post(
+        "/api/staff/schedule/migrate-off-host",
+        json={"source_host": "node-c", "targets": ["hub-a"], "dry_run": True},
+        headers=_XHR,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dry_run"] is True
+    assert sched.running
 
 
 def test_scheduled_repo_rotates_one_repo_per_day() -> None:
