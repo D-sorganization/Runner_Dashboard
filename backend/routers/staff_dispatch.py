@@ -29,7 +29,12 @@ async def run_dispatch(
     thread_id = body.thread_id or ""
     origin_node = body.origin_node or ""
     on_behalf_of = ""
-    obo = staff_fleet.extract_on_behalf_of(request.headers.get("x-staff-on-behalf-of"), is_peer)
+    fleet_bearer = staff_fleet.hub_fleet_bearer_authenticated(request.headers.get("authorization"))
+    obo = staff_fleet.extract_on_behalf_of(
+        request.headers.get("x-staff-on-behalf-of"),
+        is_peer,
+        fleet_bearer_authenticated=fleet_bearer,
+    )
     if obo:
         caller_id = obo["principal"]
         on_behalf_of = obo["principal"]
