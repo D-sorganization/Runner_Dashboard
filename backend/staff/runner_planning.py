@@ -13,6 +13,7 @@ from staff import focus as focus_mod
 from staff import runner_ops as ops
 from staff.adapters import ProviderAdapter
 from staff.lessons import select_repo_lessons
+from staff.lifecycle_fence import assert_fence_consumed, resolve_pr_lifecycle
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec
 from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP, estimate_tokens
@@ -46,6 +47,7 @@ def build_run_plan(
         raise ValueError(f"role '{req.role}' is scoped to {', '.join(role.repos)}")
     if not (req.issue or req.pr or req.prompt.strip()):
         raise ValueError("one of issue, pr or prompt is required")
+    lifecycle = resolve_pr_lifecycle(req.pr_lifecycle, req.pr_restrictions)
     branch = f"staff/{role.name}-{req.issue or req.pr or 'task'}-{uuid.uuid4().hex[:6]}"
     lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
     paragraph = consolidation.prompt_paragraph(req.consolidation) if req.consolidation else ""
@@ -75,7 +77,9 @@ def build_run_plan(
         library_references=references_block,
         repo_lessons_result=repo_lessons,
         prompt_token_cap=prompt_token_cap,
+        lifecycle_fence=lifecycle.prompt_block,
     )
+    assert_fence_consumed(lifecycle, prompt)
     adapter = adapters[provider]
     chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)
     step = next((s for s in chain if s.provider == provider), None)
@@ -105,7 +109,7 @@ def build_run_plan(
         lease_ritual=lease,
         consolidation=dict(req.consolidation) if req.consolidation else None,
         focus=focus,
-        pr_lifecycle=req.pr_lifecycle,
+        pr_lifecycle=lifecycle.pr_lifecycle,
         head_ref=req.head_ref,
         skill_pin=bundle.skill_pin,
         standards_version=bundle.standards_version,

@@ -37,6 +37,8 @@ class RunRequest:
     consolidation: dict[str, Any] | None = None
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
+    # Explicit operator PR restrictions (RM#2712); resolved by ``staff.lifecycle_fence``.
+    pr_restrictions: tuple[str, ...] = ()
     # Existing branch the worktree starts from instead of origin/main (RD-1 CI fixes, #1881).
     head_ref: str = ""
     task_type: str = ""
