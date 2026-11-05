@@ -157,7 +157,7 @@ def test_verify_on_behalf_of_missing_principal_rejected() -> None:
 def test_forward_run_includes_signed_on_behalf_of_header(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from staff.dispatch_auth import require_staff_run_dispatch
 
-    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"node-b": "http://og:8321"})
+    monkeypatch.setattr(fleet_mod, "peer_nodes", lambda: {"node-b": "http://node-b.fleet-example.ts.net:8321"})
     monkeypatch.setenv("HUB_FLEET_TOKEN", "test-fleet-token")  # pragma: allowlist secret
 
     seen: dict[str, Any] = {}
@@ -306,3 +306,45 @@ def test_non_peer_cannot_spoof_on_behalf_of(
     # Must NOT adopt user:admin
     assert run_data["requested_by"] == "user:bob"
     assert run_data.get("on_behalf_of", "") == ""
+
+
+@pytest.mark.unit
+def test_forwarded_dispatch_with_tailscale_principal_and_fleet_bearer_preserves_on_behalf_of(
+    client: TestClient,
+    tmp_audit_db: store_mod.RunStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression #4025: fleet bearer + signed OBO must win over Tailscale identity."""
+    import tailnet_identity
+
+    token_key = "test-fleet-token"  # pragma: allowlist secret
+    monkeypatch.setenv("HUB_FLEET_TOKEN", token_key)
+
+    owner = Principal(id="user:owner@example.com", type="human", name="Owner", roles=["loopback"])
+    monkeypatch.setattr(tailnet_identity, "tailnet_principal", lambda _req: owner)
+
+    obo_header = fleet_mod.sign_on_behalf_of(
+        principal="agent-codex-hands",
+        surface="api",
+        thread_id="barb-thread",
+        secret=token_key,
+    )
+
+    resp = client.post(
+        "/api/staff/ad-hoc/run",
+        json={"prompt": "desk ad-hoc via hub", "machine": "local"},
+        headers={
+            **_XHR,
+            "Authorization": f"Bearer {token_key}",
+            "X-Staff-On-Behalf-Of": obo_header,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    run_data = resp.json()["run"]
+    assert run_data["requested_by"] == "agent-codex-hands"
+    assert run_data["on_behalf_of"] == "agent-codex-hands"
+
+    audit_store = audit_mod.StaffAuditStore(tmp_audit_db.path)
+    dispatch_entry = next(e for e in audit_store.list_entries(limit=10) if e.action == "dispatch")
+    assert dispatch_entry.principal == "fleet-peer"
+    assert dispatch_entry.on_behalf_of == "agent-codex-hands"
