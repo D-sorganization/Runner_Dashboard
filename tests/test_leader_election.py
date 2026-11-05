@@ -20,6 +20,7 @@ def test_autoscaler_leader_election(tmp_path: Path) -> None:
 
     # Let's just create a small wrapper
     repo_root = Path(__file__).parent.parent
+    ready_path = tmp_path / "lock_ready"
     wrapper_code = f"""
 import sys
 import time
@@ -40,6 +41,7 @@ import fcntl
 try:
     fd = patched_open("{lock_path.as_posix()}", "w")
     fcntl.flock(fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    open("{ready_path.as_posix()}", "w", encoding="utf-8").write("1")
     # Sleep to hold the lock
     time.sleep(2)
     sys.exit(0)
@@ -52,10 +54,18 @@ except (OSError, IOError):
     # Start first process, which should acquire the lock and sleep
     p1 = subprocess.Popen([sys.executable, str(wrapper_path)])
 
-    time.sleep(0.5)  # give p1 time to acquire lock
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        if ready_path.is_file():
+            break
+        time.sleep(0.05)
+    else:
+        p1.kill()
+        p1.wait(timeout=5)
+        pytest.fail("leader process did not acquire flock in time")
 
     # Start second process, which should fail with 75
-    p2 = subprocess.run([sys.executable, str(wrapper_path)])
+    p2 = subprocess.run([sys.executable, str(wrapper_path)], check=False)
 
     assert p2.returncode == 75
 
