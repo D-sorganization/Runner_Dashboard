@@ -204,6 +204,18 @@ else
     record "maintenance_assets" FAIL "stale host asset(s): $(printf '%s' "$DRIFT_OUT" | grep DRIFT | paste -sd ';' -) — run deploy/update-deployed.sh"
 fi
 
+# ── 10. Runner job hooks (#4046) ─────────────────────────────────────────────
+HOOKS_RESTORE="${RUNNER_HOOKS_RESTORE:-/usr/local/bin/runner-hooks-restore}"
+if (( TOTAL == 0 )); then
+    record "runner_hooks" PASS "no runner units → hooks not required"
+elif [[ ! -x "$HOOKS_RESTORE" ]]; then
+    record "runner_hooks" FAIL "$HOOKS_RESTORE missing — run deploy/install-runner-maintenance.sh"
+elif "$HOOKS_RESTORE" --check >/dev/null 2>&1; then
+    record "runner_hooks" PASS "job hooks installed and match source"
+else
+    record "runner_hooks" FAIL "hook drift or missing wiring — run $HOOKS_RESTORE (timer heals automatically)"
+fi
+
 # ── reporting ────────────────────────────────────────────────────────────────
 fail_count=0
 warn_count=0

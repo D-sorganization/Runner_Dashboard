@@ -350,6 +350,32 @@ def runner_num(unit: str, workdir: Path | None) -> int | None:
     return None
 
 
+def lookup_unit(unit_name: str, *, cleanup_stale: bool = False) -> RunnerUnit | None:
+    """Resolve a single systemd unit without RUNNER_ROOT filtering (#4046)."""
+    workdir = unit_workdir(unit_name)
+    if workdir is None:
+        return None
+    num = runner_num(unit_name, workdir)
+    if num is None:
+        num = 0
+    return RunnerUnit(
+        num=num,
+        unit=unit_name,
+        workdir=workdir,
+        active=unit_active(unit_name),
+        busy=runner_busy(workdir, unit=unit_name, cleanup_stale=cleanup_stale),
+    )
+
+
+def stop_unit_by_name(unit_name: str) -> bool:
+    """Stop one runner unit using the freeze/recheck contract (#4046)."""
+    unit = lookup_unit(unit_name, cleanup_stale=True)
+    if unit is None:
+        log.error("cannot resolve runner unit %s", unit_name)
+        return False
+    return stop_runner_safely(unit)
+
+
 def list_units(*, cleanup_stale: bool = False) -> list[RunnerUnit]:
     result = run_cmd(["systemctl", "list-unit-files", "--type=service", "--no-legend"])
     units: list[RunnerUnit] = []
@@ -747,11 +773,27 @@ def main() -> int:
     parser.add_argument("--reboot", action="store_true", help="with --drain: reboot once fully drained")
     parser.add_argument("--resume", action="store_true", help="clear the maintenance hold")
     parser.add_argument("--drain-timeout", type=float, default=MAINTENANCE_DRAIN_TIMEOUT_SECONDS)
+    parser.add_argument(
+        "--stop-unit",
+        metavar="UNIT",
+        help="freeze/recheck stop for one actions.runner.* unit (#4046)",
+    )
     args = parser.parse_args()
     if args.reboot and not args.drain:
         parser.error("--reboot requires --drain")
     if args.drain and args.resume:
         parser.error("--drain and --resume are mutually exclusive")
+    if args.stop_unit:
+        if args.drain or args.resume or args.target is not None:
+            parser.error("--stop-unit cannot be combined with schedule overrides")
+        unit = lookup_unit(args.stop_unit, cleanup_stale=not args.dry_run)
+        if unit is None:
+            log.error("unknown unit %s", args.stop_unit)
+            return 2
+        if args.dry_run or not args.apply:
+            sys.stdout.write(f"would stop {unit.unit} safely busy={unit.busy}\n")
+            return 0
+        return 0 if stop_unit_by_name(args.stop_unit) else 1
 
     config = load_config()
     dry_run = args.dry_run or not args.apply
