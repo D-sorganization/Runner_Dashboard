@@ -3,26 +3,17 @@
 
 from __future__ import annotations
 
-import argparse
 import json
-import logging
-import subprocess
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-log = logging.getLogger("restic_prune_gate")
-
 KIND_RESTORE_DRILL = "restore_drill"
 KIND_READ_DATA_SUBSET = "read_data_subset"
 REQUIRED_VERIFIED_RESTORE_DRILLS = 2
-
-DEFAULT_RECORD_PATH = Path("~/.config/runner-dashboard/fleet_backup_machine_record.json")
 
 PersistFn = Callable[["MachineRecord"], None]
 AlertFn = Callable[[str], None]
@@ -50,18 +41,7 @@ class BackupEvent:
         kind = str(raw.get("kind") or "")
         if kind not in (KIND_RESTORE_DRILL, KIND_READ_DATA_SUBSET):
             raise ValueError(f"unknown backup event kind {kind!r}")
-        return cls(
-            kind=kind,
-            verified=bool(raw.get("verified")),
-            at=str(raw.get("at") or ""),
-            failed=bool(raw.get("failed")),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"kind": self.kind, "verified": self.verified, "at": self.at}
-        if self.failed:
-            out["failed"] = True
-        return out
+        return cls(kind=kind, verified=bool(raw.get("verified")), at=str(raw.get("at") or ""), failed=bool(raw.get("failed")))
 
 
 @dataclass
@@ -72,24 +52,14 @@ class MachineRecord:
     halted: bool = False
     halt_reason: str | None = None
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "version": self.version,
-            "machine": self.machine,
-            "halted": self.halted,
-            "halt_reason": self.halt_reason,
-            "events": [e.to_dict() for e in self.events],
-        }
-
 
 def _now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def parse_record(raw: dict[str, Any]) -> MachineRecord:
-    version = int(raw.get("version") or 0)
-    if version != 1:
-        raise ValueError(f"unsupported machine record version {version!r}")
+    if int(raw.get("version") or 0) != 1:
+        raise ValueError("unsupported machine record version")
     machine = str(raw.get("machine") or "").strip()
     if not machine:
         raise ValueError("machine record missing machine name")
@@ -98,7 +68,7 @@ def parse_record(raw: dict[str, Any]) -> MachineRecord:
         raise ValueError("events must be a list")
     events = [BackupEvent.from_dict(item) for item in events_raw if isinstance(item, dict)]
     return MachineRecord(
-        version=version,
+        version=1,
         machine=machine,
         events=events,
         halted=bool(raw.get("halted")),
@@ -106,38 +76,22 @@ def parse_record(raw: dict[str, Any]) -> MachineRecord:
     )
 
 
-def load_record(path: Path) -> MachineRecord:
-    data = json.loads(path.expanduser().read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("machine record must be a JSON object")
-    return parse_record(data)
-
-
 def verified_restore_drill_count(record: MachineRecord) -> int:
     return sum(
-        1
-        for event in record.events
-        if event.kind == KIND_RESTORE_DRILL and event.verified and not event.failed
+        1 for event in record.events if event.kind == KIND_RESTORE_DRILL and event.verified and not event.failed
     )
 
 
 def precondition_restic_prune_or_forget(record: MachineRecord) -> None:
     if record.halted:
-        reason = record.halt_reason or "restore drill pipeline halted"
-        raise PreconditionViolation(f"backup pipeline halted: {reason}")
+        raise PreconditionViolation(f"backup pipeline halted: {record.halt_reason or 'restore drill pipeline halted'}")
     count = verified_restore_drill_count(record)
     if count < REQUIRED_VERIFIED_RESTORE_DRILLS:
-        raise PreconditionViolation(
-            f"need {REQUIRED_VERIFIED_RESTORE_DRILLS} verified restore drills on record, have {count}"
-        )
+        raise PreconditionViolation(f"need {REQUIRED_VERIFIED_RESTORE_DRILLS} verified restore drills on record, have {count}")
 
 
 def restic_mutation_requires_gate(argv: list[str]) -> bool:
-    if not argv or argv[0] != "restic":
-        return False
-    if len(argv) < 2:
-        return False
-    return argv[1] in {"forget", "prune"}
+    return len(argv) >= 2 and argv[0] == "restic" and argv[1] in {"forget", "prune"}
 
 
 def _default_opener(req: Request, timeout: float) -> Any:
@@ -177,12 +131,9 @@ def run_restore_drill_once(
 ) -> MachineRecord:
     if record.halted:
         raise DrillFailedError(record.halt_reason or "backup pipeline already halted")
-    ok = verify()
-    if not ok:
+    if not verify():
         detail = "restore drill verification failed"
-        record.events.append(
-            BackupEvent(kind=KIND_RESTORE_DRILL, verified=False, at=_now_iso(), failed=True),
-        )
+        record.events.append(BackupEvent(kind=KIND_RESTORE_DRILL, verified=False, at=_now_iso(), failed=True))
         record.halted = True
         record.halt_reason = detail
         persist(record)
@@ -194,12 +145,7 @@ def run_restore_drill_once(
     return record
 
 
-def record_read_data_subset_check(
-    record: MachineRecord,
-    *,
-    verified: bool,
-    persist: PersistFn,
-) -> MachineRecord:
+def record_read_data_subset_check(record: MachineRecord, *, verified: bool, persist: PersistFn) -> MachineRecord:
     record.events.append(
         BackupEvent(kind=KIND_READ_DATA_SUBSET, verified=verified, at=_now_iso(), failed=not verified),
     )
@@ -207,54 +153,7 @@ def record_read_data_subset_check(
     return record
 
 
-def run_gated_restic(
-    record: MachineRecord,
-    argv: list[str],
-    *,
-    runner: RunnerFn,
-) -> int:
+def run_gated_restic(record: MachineRecord, argv: list[str], *, runner: RunnerFn) -> int:
     if restic_mutation_requires_gate(argv):
         precondition_restic_prune_or_forget(record)
     return runner(argv)
-
-
-def _cli_precondition(args: argparse.Namespace) -> int:
-    record = load_record(Path(args.record))
-    precondition_restic_prune_or_forget(record)
-    return 0
-
-
-def _cli_run_gated(args: argparse.Namespace) -> int:
-    record = load_record(Path(args.record))
-    rc = run_gated_restic(record, args.restic_argv, runner=lambda cmd: subprocess.call(cmd))
-    return int(rc)
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Fleet restic prune/forget gate")
-    parser.add_argument("--record", default=str(DEFAULT_RECORD_PATH), help="Machine backup record JSON path")
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    pre = sub.add_parser("precondition", help="Assert prune/forget preconditions")
-    pre.set_defaults(func=_cli_precondition)
-
-    run = sub.add_parser("run-gated", help="Run restic after gate check")
-    run.add_argument("restic_argv", nargs=argparse.REMAINDER, help="restic command argv (include restic)")
-    run.set_defaults(func=_cli_run_gated)
-
-    args = parser.parse_args(argv)
-    try:
-        return int(args.func(args))
-    except PreconditionViolation as exc:
-        log.error("%s", exc)
-        return 2
-    except DrillFailedError as exc:
-        log.error("%s", exc)
-        return 3
-    except (ValueError, OSError, json.JSONDecodeError) as exc:
-        log.error("%s", exc)
-        return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())

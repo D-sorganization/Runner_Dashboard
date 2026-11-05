@@ -197,7 +197,6 @@ from routers import dispatch as _dispatch_router  # noqa: E402
 from routers import escalation as _escalation_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import fleet as _fleet_router  # noqa: E402
-from routers import fleet_backup_drill as _fleet_backup_drill_router  # noqa: E402
 from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
 from routers import github_app_token as _github_app_token_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
@@ -747,7 +746,6 @@ app.include_router(_client_errors_router.router)  # issue #1292 client error bea
 app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics and page tracking
 app.include_router(_escalation_router.router)
 app.include_router(_fleet_router.router)
-app.include_router(_fleet_backup_drill_router.router)
 app.include_router(_fleet_run_token_router.router)
 app.include_router(_run_jwt_router.router)
 app.include_router(_github_app_token_router.router)

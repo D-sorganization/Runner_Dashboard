@@ -2247,25 +2247,6 @@
         "title": "DraftEdit",
         "type": "object"
       },
-      "DrillFailureBody": {
-        "properties": {
-          "detail": {
-            "maxLength": 4000,
-            "minLength": 1,
-            "title": "Detail",
-            "type": "string"
-          },
-          "machine": {
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Machine",
-            "type": "string"
-          }
-        },
-        "required": ["machine", "detail"],
-        "title": "DrillFailureBody",
-        "type": "object"
-      },
       "EscalationIngestBody": {
         "properties": {
           "concurrent_cap": {
@@ -9644,6 +9625,25 @@
         "title": "WorkSummary",
         "type": "object"
       },
+      "_DrillFailureBody": {
+        "properties": {
+          "detail": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "machine": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          }
+        },
+        "required": ["machine", "detail"],
+        "title": "_DrillFailureBody",
+        "type": "object"
+      },
       "agent_bus__models__AckBody": {
         "additionalProperties": false,
         "properties": {
@@ -14435,7 +14435,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DrillFailureBody"
+                "$ref": "#/components/schemas/_DrillFailureBody"
               }
             }
           },
@@ -14476,7 +14476,7 @@
           }
         ],
         "summary": "Post Backup Drill Failure",
-        "tags": ["fleet-backup"]
+        "tags": ["fleet"]
       }
     },
     "/api/fleet/capacity": {

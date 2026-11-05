@@ -24,6 +24,7 @@ from fleet_autoconfig import (
     derive_fleet_nodes_from_registry,
     derive_pool_topology,
 )  # issue #942, #1169 — registry-driven pool topology & federation
+from fleet_backup_drill import emit_restore_drill_failure_alert
 from fleet_events import (  # issue #863 — record runner/disk transitions
     FleetEventPoller,
     nodes_from_fleet_status,
@@ -31,6 +32,7 @@ from fleet_events import (  # issue #863 — record runner/disk transitions
 from fleet_status_cache import fleet_status_cache_key, serve_fleet_status
 from gh_utils import gh_api_admin
 from identity import require_fleet_peer  # issue #922 — intra-fleet auth gate
+from pydantic import BaseModel, Field
 from machine_registry import load_machine_registry
 from node_auto_deploy_status import read_auto_deploy_fleet_status
 from proxy_utils import (
@@ -314,6 +316,17 @@ async def get_fleet_status(request: Request, response: Response, exclude_pools: 
     except Exception as exc:  # pragma: no cover - observability only
         log.debug("email intake status skipped: %s", exc)
     return responses
+
+
+class _DrillFailureBody(BaseModel):
+    machine: str = Field(..., min_length=1, max_length=128)
+    detail: str = Field(..., min_length=1, max_length=4000)
+
+
+@router.post("/api/fleet/backup/drill-failure")
+async def post_backup_drill_failure(body: _DrillFailureBody, _peer: str = Depends(require_fleet_peer)) -> dict[str, bool]:
+    emit_restore_drill_failure_alert(body.machine, body.detail)
+    return {"ok": True}
 
 
 # /api/health is defined in backend/health.py and registered via _health_router.

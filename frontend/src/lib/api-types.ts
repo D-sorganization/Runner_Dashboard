@@ -10152,13 +10152,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** DrillFailureBody */
-        DrillFailureBody: {
-            /** Detail */
-            detail: string;
-            /** Machine */
-            machine: string;
-        };
         /** EscalationIngestBody */
         EscalationIngestBody: {
             /** Concurrent Cap */
@@ -13713,6 +13706,13 @@ export interface components {
              */
             planned: number;
         };
+        /** _DrillFailureBody */
+        _DrillFailureBody: {
+            /** Detail */
+            detail: string;
+            /** Machine */
+            machine: string;
+        };
         /** AckBody */
         agent_bus__models__AckBody: {
             /** Message Id */
@@ -17015,7 +17015,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["DrillFailureBody"];
+                "application/json": components["schemas"]["_DrillFailureBody"];
             };
         };
         responses: {
