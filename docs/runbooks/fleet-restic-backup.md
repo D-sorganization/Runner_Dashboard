@@ -50,7 +50,7 @@ tailscale ip -4
 Each client initializes against:
 
 ```text
-rest:http://<deskcomputer-tailscale-dns-or-ip>:8000/<htpasswd_user>
+rest:http://<deskcomputer-tailscale-dns-or-ip>:8000/<rest_repo_user>
 ```
 
 Use `restic -r … init` once per client repo; passwords are **not** shared across machines.

@@ -64,7 +64,7 @@ def test_runbook_requires_acl_before_go_live() -> None:
 
 def test_clients_example_one_user_per_machine() -> None:
     text = _read(BACKUP / "clients.example.yml")
-    users = re.findall(r"htpasswd_user:\s*(\w+)", text)
+    users = re.findall(r"rest_repo_user:\s*(\w+)", text)
     assert len(users) == len(set(users))
     assert "oglaptop" in users
     assert "DeskComputer" in text

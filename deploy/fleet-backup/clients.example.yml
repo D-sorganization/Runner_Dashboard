@@ -1,15 +1,15 @@
-# One htpasswd user (and private restic repo name) per backup client.
+# One rest-server auth user (and private restic repo name) per backup client.
 # Usernames must match rest-server --private-repos layout under RESTIC_REST_DATA_DIR.
-# Password material: store only on the client and in DeskComputer htpasswd (never in git).
+# Credential material lives only on hosts (see docs/runbooks/fleet-restic-backup.md).
 version: 1
 hub:
   machine: DeskComputer
   tailscale_only: true
-  rest_url_pattern: "rest:http://<deskcomputer-tailscale-host>:8000/<htpasswd_user>"
+  rest_url_pattern: "rest:http://<deskcomputer-tailscale-host>:8000/<rest_repo_user>"
 clients:
   - machine: OGLaptop
-    htpasswd_user: oglaptop
+    rest_repo_user: oglaptop
   - machine: ControlTower
-    htpasswd_user: controltower
+    rest_repo_user: controltower
   - machine: Brick
-    htpasswd_user: brick
+    rest_repo_user: brick
