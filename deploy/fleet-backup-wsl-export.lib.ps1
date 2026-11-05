@@ -65,14 +65,18 @@ function Resolve-FleetBackupWslExportPaths {
 
 function Get-FleetBackupWslExportSettings {
     param([Parameter(Mandatory)][hashtable]$Config)
-    $distro = ($Config['WSL_DISTRO_NAME'] | ForEach-Object { $_.Trim() })
+    $distro = "$($Config['WSL_DISTRO_NAME'])".Trim()
     if (-not $distro) { throw 'WSL_DISTRO_NAME missing' }
-    $repo = ($Config['RESTIC_REPOSITORY'] | ForEach-Object { $_.Trim() })
+    $repo = "$($Config['RESTIC_REPOSITORY'])".Trim()
     if (-not $repo) { throw 'RESTIC_REPOSITORY missing' }
+    $passwordFile = ''
+    if ($Config.ContainsKey('RESTIC_PASSWORD_FILE') -and $null -ne $Config['RESTIC_PASSWORD_FILE']) {
+        $passwordFile = "$($Config['RESTIC_PASSWORD_FILE'])".Trim()
+    }
     return [pscustomobject]@{
         DistroName = $distro
         ResticRepository = $repo
-        PasswordFile = ($Config['RESTIC_PASSWORD_FILE'] | ForEach-Object { $_.Trim() })
+        PasswordFile = $passwordFile
     }
 }
 
