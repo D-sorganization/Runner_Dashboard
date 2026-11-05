@@ -44,7 +44,6 @@
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
         "lint-workflow-files.yml",
-        "priority-expedite-guard.yml",
         "pr-cap.yml",
         "pr-body-lint.yml",
         "publish-guard.yml",
@@ -70,9 +69,7 @@
         "ci-standard.yml",
         "frontend-tests.yml",
         "api-contract-regeneration.yml",
-        "lockfile-upgrade.yml",
-        "release.yml",
-        "main-ci-auto-release.yml"
+        "lockfile-upgrade.yml"
       ]
     }
   }

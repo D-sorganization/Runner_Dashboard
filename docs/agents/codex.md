@@ -8,6 +8,8 @@ This guide walks through configuring the **Codex CLI** to interact with the Runn
 
 Codex connects via the standard Model Context Protocol (MCP) server provided by `clients/fleet/fleet_mcp.py`. Codex delegates coordination, thread management, and staff conversation calls to MCP tools declared in `clients/fleet/fleet_tools.py`.
 
+**Finding work:** use `GET /api/coordination/jobs` (or `fleet_briefing` / `fleetctl briefing`) to list claimable issues, then `POST /api/coordination/claims` before editing; release with `POST /api/coordination/claims/release` when done.
+
 ---
 
 ## 2. Token Minting (Least-Privilege Scopes)

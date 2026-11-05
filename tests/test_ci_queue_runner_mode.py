@@ -76,9 +76,10 @@ def _run_select(env: dict[str, str]) -> tuple[int, dict[str, str], str]:
 
 
 def test_pick_runner_runs_on_includes_merge_queue_hosted_clause() -> None:
-    runs_on = _pick_runner_runs_on()
-    assert "vars.CI_QUEUE_RUNNER_MODE == 'hosted'" in runs_on
-    assert "github.event_name == 'merge_group'" in runs_on
+    assert _load_workflow()["jobs"]["pick-runner"]["runs-on"] == "ubuntu-latest"
+    script = _select_step_script()
+    assert 'CI_QUEUE_RUNNER_MODE" = "hosted"' in script
+    assert 'EVENT_NAME" = "merge_group"' in script
 
 
 def test_private_merge_group_hosted_selects_ubuntu_latest() -> None:
@@ -190,12 +191,7 @@ def test_fleet_pinned_jobs_force_local_runner_when_hosted_queue_enabled() -> Non
         assert "d-sorg-fleet" in runs_on
         assert "hosted-queue" in runs_on or "CI_QUEUE_RUNNER_MODE" in runs_on
 
-    routed_jobs = {
-        job_id
-        for job_id, job in jobs.items()
-        if job_id != "pick-runner" and "needs.pick-runner.outputs.runner" in str(job.get("runs-on", ""))
-    }
-    assert routed_jobs >= {
+    go_public_hosted_jobs = {
         "changes",
         "ci-health-check",
         "lint",
@@ -203,7 +199,17 @@ def test_fleet_pinned_jobs_force_local_runner_when_hosted_queue_enabled() -> Non
         "tests",
         "tests-required",
         "quality-gate",
+        "pick-runner",
     }
+    for job_id in go_public_hosted_jobs:
+        assert jobs[job_id]["runs-on"] == "ubuntu-latest", job_id
+
+    routed_jobs = {
+        job_id
+        for job_id, job in jobs.items()
+        if job_id != "pick-runner" and "needs.pick-runner.outputs.runner" in str(job.get("runs-on", ""))
+    }
+    assert routed_jobs >= {"push-hygiene", "pr-size-gate"}
     assert routed_jobs.isdisjoint(MERGE_QUEUE_FLEET_PINNED_JOBS)
 
 

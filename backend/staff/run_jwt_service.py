@@ -1,10 +1,9 @@
-"""Hub-side minting of per-run JWT credentials (#3879 phase B).
+"""Per-run JWT credentials: hub minting and bearer verification (#3879).
 
-Mint-path helper only: the contract (claim shapes, revocation, migration
-sequencing) lives in docs/architecture/per-run-jwt-credentials.md. Static
-``agent-tokens/*.token`` ingestion is untouched; nothing here changes which
-credentials a real request can authenticate with — that is the separate,
-later verification-wiring PR the sequencing doc describes.
+Contract: docs/architecture/per-run-jwt-credentials.md. Minting is hub-only;
+verification runs on every ``IdentityManager.resolve_bearer_token`` call for
+tokens in the ``runner-dashboard-agent-run`` issuer family (fail closed).
+Static ``agent-tokens/*.token`` ingestion is unchanged.
 """
 
 from __future__ import annotations
@@ -29,6 +28,69 @@ log = logging.getLogger("dashboard.staff.run_jwt")
 
 ISSUER = "runner-dashboard-agent-run"
 DEFAULT_TTL_SECONDS = 15 * 60
+_MAX_JWT_BYTES = 16_384
+
+
+def _uses_run_jwt_issuer(raw_token: str) -> bool:
+    if not isinstance(raw_token, str) or not raw_token or len(raw_token) > _MAX_JWT_BYTES:
+        return False
+    if raw_token.count(".") != 2:
+        return False
+    try:
+        claims = jwt.decode(raw_token, options={"verify_signature": False})
+    except jwt.PyJWTError:
+        return False
+    return claims.get("iss") == ISSUER
+
+
+def run_jwt_bearer_gate(raw_token: str) -> str | None:
+    """Cryptographically verify a run JWT before hash lookup.
+
+    Returns ``None`` when ``raw_token`` is not in the run-JWT issuer family,
+    or when verification succeeded. Otherwise returns a reason code (never logs
+    the token).
+    """
+    if not _uses_run_jwt_issuer(raw_token):
+        return None
+    if not run_jwt_signing_key_configured():
+        return "run_jwt_verification_unavailable"
+    audience = resolve_hub_public_origin_from_registry(load_machine_registry())
+    if not audience:
+        return "run_jwt_verification_unavailable"
+    try:
+        claims = jwt.decode(
+            raw_token,
+            run_jwt_signing_key(),
+            algorithms=["HS256"],
+            audience=audience,
+            issuer=ISSUER,
+            options={"require": ["exp", "nbf", "sub", "jti", "run_id"]},
+            leeway=0,
+        )
+    except jwt.ExpiredSignatureError:
+        return "run_jwt_expired"
+    except jwt.InvalidAudienceError:
+        return "run_jwt_audience_mismatch"
+    except jwt.InvalidIssuerError:
+        return "run_jwt_issuer_mismatch"
+    except jwt.PyJWTError:
+        return "run_jwt_invalid"
+    run_id = claims.get("run_id")
+    jti = claims.get("jti")
+    sub = claims.get("sub")
+    if not isinstance(run_id, str) or not run_id.strip():
+        return "run_jwt_claims_invalid"
+    if not isinstance(jti, str) or not jti.strip():
+        return "run_jwt_claims_invalid"
+    if not isinstance(sub, str) or not sub.strip():
+        return "run_jwt_claims_invalid"
+    return None
+
+
+def revoke_run_jwt(identity_manager: IdentityManager, raw_token: str) -> None:
+    """Revoke one minted run JWT by its raw bearer value (hash-only storage)."""
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    identity_manager.revoke_ephemeral_token(token_hash)
 
 
 def run_jwt_signing_key_configured() -> bool:

@@ -16,6 +16,7 @@ from typing import Any
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination import claims as claims_mod
+from coordination import job_board_lease
 from coordination.board import RMScriptError
 from coordination.job_filters import gate_reason, repo_schedule_holds
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
@@ -192,11 +193,13 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
 
 
 class JobIneligibleError(RuntimeError):
-    """Listed job is not claimable (HTTP 409)."""
+    """Listed job is not claimable; mapped to HTTP 409."""
 
     def __init__(self, reason: str, *, held_by: str = "", expires_at: str | None = None) -> None:
         super().__init__(reason)
-        self.reason, self.held_by, self.expires_at = reason, held_by, expires_at
+        self.reason = reason
+        self.held_by = held_by
+        self.expires_at = expires_at
 
     def to_detail(self) -> dict[str, Any]:
         return {
@@ -208,14 +211,28 @@ class JobIneligibleError(RuntimeError):
         }
 
 
+class StaleFenceError(RuntimeError):
+    """Release/heartbeat fence does not match the current lease epoch."""
+
+    def to_detail(self) -> dict[str, Any]:
+        return {
+            "error": str(self),
+            "held_by": "",
+            "reason": "stale fence",
+            "expires_at": None,
+            "guidance": "Re-read GET /api/coordination/claims for the current fence.",
+        }
+
+
 _fence_guard = threading.Lock()
 _fences: dict[str, int] = {}
 
 
 def reset_job_board_claim_state() -> None:
-    """Forget in-process fencing bookkeeping (tests)."""
+    """Forget in-process fencing and TTL bookkeeping (tests)."""
     with _fence_guard:
         _fences.clear()
+    job_board_lease.clear_lease_state()
 
 
 def _fence_key(repo: str, issue: int) -> str:
@@ -228,6 +245,16 @@ def _mint_fence(repo: str, issue: int) -> int:
         value = _fences.get(key, 0) + 1
         _fences[key] = value
         return value
+
+
+def _current_fence(repo: str, issue: int) -> int:
+    with _fence_guard:
+        return _fences.get(_fence_key(repo, issue), 0)
+
+
+def _require_fence(repo: str, issue: int, fence: int) -> None:
+    if fence <= 0 or fence != _current_fence(repo, issue):
+        raise StaleFenceError(f"fence {fence} is not current for {repo}#{issue}")
 
 
 def _fetch_open_issue(repo: str, issue: int) -> dict[str, Any]:
@@ -289,9 +316,11 @@ def claim_job(
     session: str,
     intent: str,
     holder_principal: str | None = None,
+    ttl_hours: float = job_board_lease.DEFAULT_TTL_HOURS,
 ) -> dict[str, Any]:
     """Atomic job-board claim with monotonic fencing (#2784)."""
     assert agent and session and intent  # noqa: S101 — route validates
+    job_board_lease.validate_ttl(ttl_hours)
     with claims_mod.hold_issue(repo, issue):
         _assert_claimable(repo, issue)
         status = claims_mod.check(repo, issue)
@@ -302,7 +331,7 @@ def claim_job(
         aging_block = claim_blocked_by_aging_prs(agent, claim_repo=repo, fetch=claims_mod.evidence_fetch)
         if aging_block is not None:
             raise claims_mod.AgingPrBlockedError(aging_block)
-        posted = claims_mod.post_lease(repo, issue, agent, session, intent)
+        posted = claims_mod.post_lease(repo, issue, agent, session, intent, ttl_hours=ttl_hours)
         after = claims_mod.check(repo, issue)
         if after.get("held") and (after.get("agent"), after.get("session")) != (agent, session):
             try:
@@ -314,12 +343,17 @@ def claim_job(
                     reason="race loser",
                     holder_principal=holder_principal,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — best-effort rollback; caller still gets 409
                 log.warning("jobs: race rollback release failed for %s#%s", repo, issue, exc_info=True)
             # fmt: off
             record_job_claim_activity(
-                kind="conflict", repo=repo, issue=issue, agent=agent, session=session,
-                holder_principal=holder_principal, extra={"reason": "race loser"},
+                kind="conflict",
+                repo=repo,
+                issue=issue,
+                agent=agent,
+                session=session,
+                holder_principal=holder_principal,
+                extra={"reason": "race loser"},
             )
             # fmt: on
             raise claims_mod.ClaimHeldError(after)
@@ -328,11 +362,23 @@ def claim_job(
         receipt = str(lease.get("receipt") or "")
         # fmt: off
         record_job_claim_activity(
-            kind="claim", repo=repo, issue=issue, agent=agent, session=session,
-            holder_principal=holder_principal, receipt=receipt, fencing_token=str(fence), extra={"intent": intent},
+            kind="claim",
+            repo=repo,
+            issue=issue,
+            agent=agent,
+            session=session,
+            holder_principal=holder_principal,
+            receipt=receipt,
+            fencing_token=str(fence),
+            extra={"intent": intent},
         )
         # fmt: on
         expires_at = str(lease.get("expires_at") or after.get("expires_at") or "")
+        # fmt: off
+        job_board_lease.remember_lease(
+            repo, issue, agent=agent, session=session, fence=fence, ttl_hours=ttl_hours, expires_at=expires_at or None,
+        )
+        # fmt: on
         principal = holder_principal or f"agent-{agent}"
         return {
             "claimed": True,
@@ -345,3 +391,47 @@ def claim_job(
             "fence": fence,
             "warnings": posted.get("warnings") or [],
         }
+
+
+def release_job(
+    repo: str,
+    issue: int,
+    *,
+    agent: str,
+    session: str,
+    fence: int,
+    reason: str,
+    holder_principal: str | None = None,
+) -> dict[str, Any]:
+    """Release a job-board claim; requires the current fence (#2784)."""
+    _require_fence(repo, issue, fence)
+    with claims_mod.hold_issue(repo, issue):
+        status = claims_mod.check(repo, issue)
+        if not status["available"]:
+            raise RMScriptError(f"check_agent_claim unavailable: {status['reason']}")
+        if not status.get("held") or (status.get("agent"), status.get("session")) != (agent, session):
+            raise StaleFenceError(f"session {session!r} does not hold {repo}#{issue}")
+        released = claims_mod.release(
+            repo,
+            issue,
+            agent=agent,
+            session=session,
+            reason=reason,
+            holder_principal=holder_principal,
+            fencing_token=str(fence),
+        )
+        job_board_lease.drop_lease(repo, issue)
+        return {
+            "released": True,
+            "repo": repo,
+            "issue": issue,
+            "fence": fence,
+            "warnings": released.get("warnings") or [],
+        }
+
+
+# Re-export TTL helpers for routes, reaper, and tests.
+heartbeat_job = job_board_lease.heartbeat_job
+sweep_expired_job_claims = job_board_lease.sweep_expired_job_claims
+DEFAULT_TTL_HOURS = job_board_lease.DEFAULT_TTL_HOURS
+_remember_lease = job_board_lease.remember_lease
