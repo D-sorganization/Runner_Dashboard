@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from agent_remediation.provider_registry import PROVIDER_REGISTRY, by_dashboard_id, canonical_provider_id
+from agent_remediation.provider_registry import (
+    PROVIDER_REGISTRY,
+    by_dashboard_id,
+    canonical_provider_id,
+    cloud_mutation_allowed,
+)
 from staff.adapters import ADAPTERS, get_adapter
 
 
@@ -43,6 +48,25 @@ def test_canonical_ids_and_historical_spellings_share_one_identity() -> None:
 def test_unknown_provider_ids_fail_closed(provider_id: str) -> None:
     with pytest.raises(KeyError, match="provider id|unknown provider"):
         canonical_provider_id(provider_id)
+
+
+def test_cursor_agent_is_registered_non_mutating_for_cloud_dispatch() -> None:
+    """#4081: Cursor cloud agents are a hard-gated, non-mutating lane (ADR-0007)."""
+    entry = by_dashboard_id()["cursor_agent"]
+    assert entry.cloud_mutation_allowed is False
+    assert cloud_mutation_allowed("cursor-agent") is False
+    assert cloud_mutation_allowed("cursor_agent") is False
+
+
+@pytest.mark.parametrize("provider_id", ["claude", "codex", "claude_code_cli", "codex_cli"])
+def test_other_providers_default_to_cloud_mutation_allowed(provider_id: str) -> None:
+    assert cloud_mutation_allowed(provider_id) is True
+
+
+def test_cloud_mutation_allowed_fails_open_for_an_unregistered_id() -> None:
+    """No registry row to consult means no gate recorded here; closed-world ids are
+    enforced separately by :func:`canonical_provider_id`."""
+    assert cloud_mutation_allowed("jules") is True
 
 
 def test_anthropic_api_adapter_ships_inert_without_a_key(monkeypatch: pytest.MonkeyPatch) -> None:
