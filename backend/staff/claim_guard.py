@@ -410,68 +410,6 @@ def _audit_override(cmd: Any, caller: Principal, verdict: ClaimVerdict) -> None:
 
 # ── label lifecycle ──────────────────────────────────────────────────────────
 
-_DISPATCH_HOLD_BLOCKERS = (
-    "merged pr",
-    "open pr",
-    "closing pr",
-    "do-not-automate",
-    "branch pushed",
-    "claimed by",
-    "active lease",
-)
-
-
-def expected_staff_session(run_id: str) -> str:
-    return f"staff-{run_id}"
-
-
-def applied_entry(run_id: str) -> tuple[str, int, str] | None:
-    """Label this process applied at dispatch admission, if any."""
-    with _applied_lock:
-        entry = _applied.get(run_id)
-    if entry is not None:
-        return entry
-    return _recover_entry(run_id)
-
-
-def is_own_dispatch_claim_hold(
-    run_id: str,
-    check: dict[str, Any],
-    *,
-    agent: str,
-    session: str,
-) -> bool:
-    """True when ``check_agent_claim`` is held only because dispatch pre-applied our label (#4063).
-
-    Foreign leases (another agent+session), merged/open-PR duplicate guards, and holds without a
-    dispatch ``apply_claim`` entry for this ``run_id`` still count as blocking.
-    """
-    if not check.get("held"):
-        return False
-    if session != expected_staff_session(run_id):
-        return False
-    applied = applied_entry(run_id)
-    if applied is None:
-        return False
-    _repo_full, _issue, label = applied
-    check_session = str(check.get("session") or "")
-    if check_session and check_session != session:
-        return False
-    if check_session == session:
-        return True
-    reason_l = str(check.get("reason") or "").lower()
-    if any(marker in reason_l for marker in _DISPATCH_HOLD_BLOCKERS):
-        return False
-    check_agent = str(check.get("agent") or "")
-    label_agent = label.removeprefix("claim:")
-    if check_agent and check_agent not in {agent, "staff", label_agent}:
-        return False
-    if label.lower() in reason_l:
-        return True
-    if run_id in reason_l:
-        return True
-    return not check_agent and "claim:" in reason_l
-
 
 async def apply_claim(run_id: str, repo: str, issue: int, role: str, *, write: AsyncWrite | None = None) -> str | None:
     """Label the issue for an admitted run. Best effort: returns the label, or None when skipped/failed."""
@@ -520,6 +458,12 @@ def _recover_entry(run_id: str) -> tuple[str, int, str] | None:
         if ev.get("kind") == "claim_label" and match:
             return match.group(1), int(match.group(2)), match.group(3)
     return None
+
+
+def applied_label_entry(run_id: str) -> tuple[str, int, str] | None:
+    with _applied_lock:
+        entry = _applied.get(run_id)
+    return entry if entry is not None else _recover_entry(run_id)
 
 
 def release_claim(

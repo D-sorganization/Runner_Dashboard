@@ -13,6 +13,7 @@ from typing import Any
 
 from coordination.rm_scripts import run_module
 from staff import claim_guard
+from staff import dispatch_self_claim as dispatch_self_claim_mod
 from staff.store import RunRecord, RunStore
 from staff.workspace import rm_root
 
@@ -32,7 +33,7 @@ def _blocks_on_claim_check(
     if check is not None:
         if not check.get("held"):
             return False
-        if claim_guard.is_own_dispatch_claim_hold(run_id, check, agent=agent, session=session):
+        if dispatch_self_claim_mod.is_own_dispatch_claim_hold(run_id, check, agent=agent, session=session):
             return False
         return True
     return _claim_held(res_output)
@@ -44,7 +45,7 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
     if root is None:
         store.append_event(run_id, "lease", "Repository_Management checkout not found; lease ritual skipped")
         return LEASE_SKIPPED_NOTE
-    session = claim_guard.expected_staff_session(run_id)
+    session = dispatch_self_claim_mod.expected_staff_session(run_id)
     res = run_module("check_agent_claim", "--repo", repo, "--issue", issue, root=root)
     store.append_event(run_id, "lease", f"check_agent_claim rc={res.rc}: {res.output[:300]}")
     check = res.json()

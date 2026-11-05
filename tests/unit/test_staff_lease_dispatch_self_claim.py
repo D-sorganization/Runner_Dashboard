@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from staff import claim_guard, lease as lease_mod
+from staff import claim_guard, dispatch_self_claim, lease as lease_mod
 from staff.store import RunRecord, RunStore
 from tests.api.coordination_fake_rm import FakeRM, claim_status, lease_result
 
@@ -120,10 +120,10 @@ def test_is_own_dispatch_claim_hold_unit() -> None:
         "reason": "claim:issue-remediator present",
     }
     claim_guard._applied["run-x"] = ("D-sorganization/Runner_Dashboard", 1, "claim:issue-remediator")
-    assert claim_guard.is_own_dispatch_claim_hold(
+    assert dispatch_self_claim.is_own_dispatch_claim_hold(
         "run-x", check, agent="antigravity", session="staff-run-x"
     )
     foreign = {**claim_status(True, "codex", "active lease"), "session": "codex-1"}
-    assert not claim_guard.is_own_dispatch_claim_hold(
+    assert not dispatch_self_claim.is_own_dispatch_claim_hold(
         "run-x", foreign, agent="antigravity", session="staff-run-x"
     )
