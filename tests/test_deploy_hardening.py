@@ -20,7 +20,7 @@ _LOCK = _ROOT / "requirements.lock.txt"
 _UV_LOCK = _ROOT / "uv.lock"
 _PYPROJECT = _ROOT / "pyproject.toml"
 
-_PYTHON_313_SLIM_DIGEST = "7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4"  # pragma: allowlist secret
+_PYTHON_313_SLIM_DIGEST = "09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc"  # pragma: allowlist secret
 _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u3"
 _PCRE2_DEBIAN_SECURITY_VERSION = "10.46-1~deb13u3"
 _CURL_DEBIAN_SECURITY_VERSION = "8.14.1-2+deb13u7"
