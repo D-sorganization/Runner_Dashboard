@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-from staff.cloud_dispatch import build_cloud_dispatch, resolve_plan_execution
+from staff.cloud_dispatch import CloudMutationRefused, build_cloud_dispatch, resolve_plan_execution
 from staff.launch_guard import LaunchGuardVerdict
 from staff.retry import retry_plan
 from staff.roles import RoleSpec
@@ -83,6 +83,20 @@ def test_build_codex_cloud_argv_matches_subscription_cli_contract(monkeypatch: p
     monkeypatch.setenv("STAFF_CODEX_CLOUD_ENV", "acme-web")
     spec = build_cloud_dispatch("codex", "ship it", model="gpt-5.2")
     assert spec.argv == ["codex", "cloud", "exec", "--env", "acme-web", "ship it"]
+
+
+def test_build_cloud_dispatch_refuses_cursor_agent_mutating_dispatch() -> None:
+    """#4081: Cursor cloud agents are hard-gated non-mutating (ADR-0007 local-ingress)."""
+    with pytest.raises(CloudMutationRefused, match="ADR-0007"):
+        build_cloud_dispatch("cursor-agent", "open a PR fixing the bug", repo="Runner_Dashboard", issue=4081)
+
+
+def test_resolve_plan_execution_refuses_cursor_agent_cloud_dispatch() -> None:
+    """The gate must trip through the same path ``StaffRunner.plan`` uses, not just the builder."""
+    req = SimpleNamespace(prompt="", execution_mode="cloud", repo="Runner_Dashboard", issue=None, pr=4081)
+    adapter = SimpleNamespace(build_command=lambda *a, **k: ["cursor-agent", "local-only"])
+    with pytest.raises(CloudMutationRefused, match="ADR-0007"):
+        resolve_plan_execution(req, _role(), "cursor-agent", adapter, "prompt", None, True, {})
 
 
 def test_resolve_plan_execution_refuses_when_launch_guard_blocks(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -66,6 +66,15 @@ class ProviderEntry:
         enabled: Whether the provider may be selected for dispatch (#1193).
             Retired providers stay in the table for back-compat (their ids,
             routes and history remain resolvable) but are never planned.
+        cloud_mutation_allowed: Whether this provider's *cloud* dispatch path
+            (``staff.cloud_dispatch``) may mutate — open PRs, push branches,
+            trigger workflows. Defaults to ``True``; a row is hard-gated to
+            ``False`` when its cloud lane cannot satisfy identity/ingress
+            requirements (#4081: Cursor cloud agents, ADR-0007 local-ingress
+            — the fleet-gh wrapper is local-only, so a Cursor cloud session
+            cannot authenticate as the fleet bot). The gate is enforced in
+            code at the dispatch boundary, not left to prompt restraint, and
+            is independent of ``enabled``.
         notes: Free-form operator notes.
     """
 
@@ -89,6 +98,7 @@ class ProviderEntry:
     remote: bool = False
     experimental: bool = False
     enabled: bool = True
+    cloud_mutation_allowed: bool = True
     notes: str = ""
 
     @property
@@ -373,10 +383,13 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         credential_id="cursor_agent",
         setup_hint="Install Cursor CLI (cursor-agent) on the node, then `cursor-agent login`",
         editable=True,
+        cloud_mutation_allowed=False,
         notes=(
             "Uses `cursor-agent -p` for headless branch-local remediation. Grok models are "
             "reached through the Cursor subscription; the Grok Build CLI is not used because "
-            "it requires SuperGrok."
+            "it requires SuperGrok. Cloud dispatch is hard-gated non-mutating (#4081, ADR-0007): "
+            "a Cursor cloud agent cannot reach the local fleet-gh wrapper, so it cannot "
+            "authenticate as the fleet bot for a mutating action."
         ),
     ),
 )
@@ -451,6 +464,7 @@ def validate_registry(entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY) ->
         assert e.cost_per_task >= 0.0, f"{e.dashboard_id}: negative cost"
         assert e.max_concurrency >= 1, f"{e.dashboard_id}: max_concurrency < 1"
         assert isinstance(e.enabled, bool), f"{e.dashboard_id}: enabled must be bool"
+        assert isinstance(e.cloud_mutation_allowed, bool), f"{e.dashboard_id}: cloud_mutation_allowed must be bool"
         if e.execution_mode == "local_exec":
             assert e.availability_probe, f"{e.dashboard_id}: local_exec provider needs an availability_probe"
         for cap in e.capabilities:
@@ -467,6 +481,23 @@ def selectable_entries(
 ) -> tuple[ProviderEntry, ...]:
     """Providers the dashboard UI may offer in pickers (``enabled`` rows only)."""
     return tuple(e for e in entries if e.enabled)
+
+
+def cloud_mutation_allowed(provider_id: str) -> bool:
+    """Whether the registry permits mutating cloud dispatch for ``provider_id`` (#4081).
+
+    Resolves aliases via :func:`canonical_provider_id` first. A provider id
+    with no registry row returns ``True`` (there is no row to consult here);
+    callers that need a closed-world provider list already enforce that via
+    :func:`canonical_provider_id` raising ``KeyError``. A registered row with
+    ``cloud_mutation_allowed=False`` (e.g. Cursor cloud agents, ADR-0007)
+    returns ``False`` regardless of ``enabled``.
+    """
+    try:
+        canonical_id = canonical_provider_id(provider_id)
+    except KeyError:
+        return True
+    return by_dashboard_id()[canonical_id].cloud_mutation_allowed
 
 
 def selectable_conductor_ids(

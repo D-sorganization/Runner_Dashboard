@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from agent_remediation.provider_registry import cloud_mutation_allowed as _cloud_mutation_allowed
 from dashboard_config import ORG
 from staff.launch_guard import check_launch_allowed
 
@@ -37,6 +38,10 @@ _CLAUDE_URL_RE = re.compile(r"https://claude\.ai/[^\s\"')]+")
 _GH_RUN_RE = re.compile(r"https://github\.com/[^\s\"')]+/actions/runs/\d+")
 
 
+class CloudMutationRefused(ValueError):
+    """Raised when the provider registry hard-gates a provider's cloud dispatch (#4081)."""
+
+
 @dataclass(frozen=True)
 class CloudDispatch:
     """Resolved cloud launch: CLI argv or ``gh api`` with JSON stdin."""
@@ -53,6 +58,8 @@ def normalize_provider(provider: str) -> str:
 def supports_cloud_execution(provider: str, *, installed: Mapping[str, bool] | None = None) -> bool:
     """Whether this host can launch ``provider`` in cloud mode."""
     pid = normalize_provider(provider)
+    if not _cloud_mutation_allowed(pid):
+        return False
     if pid in _CLOUD_CLI:
         if installed is not None:
             return bool(installed.get(pid))
@@ -140,6 +147,11 @@ def build_cloud_dispatch(
     pid = normalize_provider(provider)
     if pid not in _CLOUD_CLI | _CLOUD_WORKFLOW:
         raise ValueError(f"provider '{provider}' does not support cloud execution")
+    if not _cloud_mutation_allowed(pid):
+        raise CloudMutationRefused(
+            f"'{pid}' cloud dispatch is hard-gated non-mutating (ADR-0007 local-ingress; "
+            "see Runner_Dashboard#4081) until an approved identity-path change lifts the gate"
+        )
     text = _truncate(prompt)
     if pid == "claude":
         return CloudDispatch(argv=["claude", "--remote", text])
