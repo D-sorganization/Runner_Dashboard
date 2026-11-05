@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from coordination.rm_scripts import run_module
+from coordination.rm_scripts import ScriptResult, run_module
 from staff import claim_guard
 from staff.store import RunRecord, RunStore
 from staff.workspace import rm_root
@@ -19,10 +19,16 @@ LEASE_SKIPPED_NOTE = (
     "Lease ritual could not run from this node; post a `lease:` comment on the issue yourself before editing."
 )
 
+# ``claim_guard.apply_claim`` tags an admitted run's issue with one of these role labels
+# before the worker reaches this ritual. check_agent_claim then reports the bare label
+# (no RM lease posted yet) as held under the label's suffix as "agent" — that is this
+# run's own admission hold, not a foreign claim (#4063).
+_OWN_HOLD_AGENTS = frozenset(label.removeprefix(claim_guard.CLAIM_PREFIX) for label in claim_guard.OWN_LABELS)
 
-def _claim_held(output: str) -> bool:
-    compact = output.replace(" ", "").lower()
-    return '"held":true' in compact or "held=true" in compact
+
+def _foreign_hold(res: ScriptResult) -> bool:
+    status = res.json() or {}
+    return bool(status.get("held")) and status.get("agent") not in _OWN_HOLD_AGENTS
 
 
 def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, branch: str) -> str | None:
@@ -34,7 +40,7 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
     session = f"staff-{run_id}"
     res = run_module("check_agent_claim", "--repo", repo, "--issue", issue, root=root)
     store.append_event(run_id, "lease", f"check_agent_claim rc={res.rc}: {res.output[:300]}")
-    if _claim_held(res.output):
+    if _foreign_hold(res):
         store.update_run(
             run_id,
             status="blocked",
