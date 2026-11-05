@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily agent git worktree hygiene under fleet repo checkouts
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+AccuracySec=1h
+Unit=runner-dashboard-agent-worktree-hygiene.service
+
+[Install]
+WantedBy=timers.target
