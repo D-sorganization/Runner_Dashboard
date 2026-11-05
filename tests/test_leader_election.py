@@ -52,7 +52,15 @@ except (OSError, IOError):
     # Start first process, which should acquire the lock and sleep
     p1 = subprocess.Popen([sys.executable, str(wrapper_path)])
 
-    time.sleep(0.5)  # give p1 time to acquire lock
+    # CI hosts can be slow to spawn; wait until the lock file exists before p2.
+    deadline = time.monotonic() + 15.0
+    while time.monotonic() < deadline:
+        if lock_path.exists():
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("leader process did not create lock file in time")
+    time.sleep(0.25)  # allow flock(LOCK_EX) to complete after create
 
     # Start second process, which should fail with 75
     p2 = subprocess.run([sys.executable, str(wrapper_path)])
