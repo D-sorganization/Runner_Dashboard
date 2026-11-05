@@ -101,17 +101,12 @@ def test_pull_request_jobs_never_need_queue_entry_alive_job(name: str) -> None:
         )
 
 
-_GO_PUBLIC_RUNS_ON = (
-    "${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}"
-)
-
-
 @pytest.mark.parametrize("name", _STANDALONE_GUARD_JOB_WORKFLOWS)
 def test_merge_group_only_workflows_keep_standalone_guard_job(name: str) -> None:
     workflow = _load_workflow(name)
     job = workflow["jobs"]["queue-entry-alive"]
     assert "github.event_name == 'merge_group'" in str(job.get("if", ""))
-    assert job["runs-on"] == _GO_PUBLIC_RUNS_ON
+    assert job["runs-on"] == "d-sorg-fleet"
     assert job["permissions"] == {"actions": "write", "contents": "read"}
 
 

@@ -2163,23 +2163,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/fleet/backup/drill-failure": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Post Backup Drill Failure */
-        post: operations["post_backup_drill_failure_api_fleet_backup_drill_failure_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/fleet/capacity": {
         parameters: {
             query?: never;
@@ -13706,13 +13689,6 @@ export interface components {
              */
             planned: number;
         };
-        /** _DrillFailureBody */
-        _DrillFailureBody: {
-            /** Detail */
-            detail: string;
-            /** Machine */
-            machine: string;
-        };
         /** AckBody */
         agent_bus__models__AckBody: {
             /** Message Id */
@@ -16992,41 +16968,6 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_backup_drill_failure_api_fleet_backup_drill_failure_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["_DrillFailureBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
                     };
                 };
             };
