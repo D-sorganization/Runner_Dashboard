@@ -191,7 +191,22 @@ available, unheld `claims.check` (unknown is never free), no active schedule-kin
 jobs, excluded?, warnings, generated_at}`; `excluded` needs `include_excluded=true`. `available`
 is `false`, with `jobs: []`, when a repo's holds list cannot be read (fails closed — never an
 unfiltered list). Sort: priority label, then `priorities.service.top_priorities` position, then
-oldest. S3 (claim/release) is later.
+oldest. To **claim**, call `POST /api/coordination/jobs/claim` after picking a row (or use the Fleet
+Command **Job board** panel beside Claims); release with `POST /api/coordination/jobs/release` and
+renew TTL with `POST /api/coordination/jobs/heartbeat`.
+
+### `POST /api/coordination/jobs/claim`
+
+Fleet Job Board S3 (#2784): atomic claim with monotonic **fence**. Body: `{session, repo, issue, agent?, intent, ttl_hours?}`.
+Re-runs list eligibility and launch gate; 409 when ineligible or held; 502 when claim check fails open.
+
+### `POST /api/coordination/jobs/release`
+
+Fleet Job Board S3 (#2784): release requires current **fence**. Body: `{session, repo, issue, agent?, fence, reason}`.
+
+### `POST /api/coordination/jobs/heartbeat`
+
+Fleet Job Board S4 (#2785): renew in-process TTL. Body: `{session, repo, issue, fence, ttl_hours?}`.
 
 ### `GET /api/coordination/jobs/releases?since=&limit=`
 
@@ -234,8 +249,12 @@ every repository):
   "board_available": true,
   "staff_runs": [],
   "claims_hint": "Before editing: GET /api/coordination/claims …",
+  "jobs_hint": "Find work on GET /api/coordination/jobs; claim with POST /api/coordination/jobs/claim …",
   "rules": ["Fleet rules: …"],
-  "endpoints": { "claims": "GET|POST /api/coordination/claims" },
+  "endpoints": {
+    "claims": "GET|POST /api/coordination/claims",
+    "jobs": "GET /api/coordination/jobs?repo=&limit=&include_excluded="
+  },
   "warnings": [],
   "generated_at": "…"
 }
@@ -244,7 +263,12 @@ every repository):
 - `priorities` comes from `priorities.service.top_priorities(5)` when the Priorities module is installed on
   this node, else `[]`; a failure there adds a warning and never fails the briefing.
 - `holds` are the active Staff Hub holds (`/api/staff/holds`).
+- `jobs_hint` points agents at the fleet job board feed and claim/release ritual.
 - `rules` carries `staff.workspace.FLEET_RULES`, the guardrails every staff prompt ends with.
+
+### `GET /api/coordination/postman/reports`
+
+Newest postman dry-run reports (read-only; nothing is sent on this route).
 
 ## Configuration
 
