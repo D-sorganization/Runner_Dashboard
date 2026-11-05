@@ -40,6 +40,13 @@ interface OverviewResponse {
     blocked: Array<{ id: string; repo: string; work_number: number; body: string }>;
   };
   empty_reason?: EmptyReason | null;
+  reaper?: {
+    last_tick_age_seconds: number | null;
+    stale_sessions: number;
+    released_claims: number;
+    deferred_sessions: number;
+    errors: number;
+  };
 }
 
 /** Deep-link into the existing #2864 Activity session inspector, never a second viewer. */
@@ -91,6 +98,19 @@ export function AgentBusPage(): React.ReactElement {
     <div className="agent-bus-page">
       <h1>Agent bus</h1>
       <p>Live fleet sessions, inboxes, and work-item threads (#2155).</p>
+      {data.reaper ? (
+        <p className="agent-bus-reaper-meta" data-testid="agent-bus-reaper-meta">
+          Reaper last tick:{" "}
+          {data.reaper.last_tick_age_seconds == null
+            ? "never"
+            : `${Math.round(data.reaper.last_tick_age_seconds)}s ago`}
+          ; cleared {data.reaper.released_claims} claim(s) on last pass
+          {data.reaper.deferred_sessions > 0
+            ? `; deferred ${data.reaper.deferred_sessions} stale session(s) (health gate)`
+            : ""}
+          .
+        </p>
+      ) : null}
 
       <section>
         <h2>Live agents ({data.agents.length})</h2>

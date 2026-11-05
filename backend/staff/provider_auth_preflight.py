@@ -91,10 +91,14 @@ def probe_local_provider_auth(machine: str = "") -> dict[str, Any]:
         refreshed = oauth_last_refresh_epoch_for_provider(pid)
         has_refresh = oauth_has_refresh_token_for_provider(pid)
         providers[pid] = _classify(pid, alive, detail, expires, refreshed, has_refresh_token=has_refresh)
+    from staff.credential_mirror_health import probe_credential_mirror_health  # noqa: PLC0415
+
+    mirror_health = probe_credential_mirror_health()
     return {
         "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "machine": machine,
         "providers": providers,
+        "credential_mirrors": mirror_health,
     }
 
 

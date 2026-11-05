@@ -49,6 +49,14 @@ exit {chromium_launch_exit}
     node = tmp_path / "node"
     node.write_text(node_stub, encoding="utf-8")
     node.chmod(0o755)
+    sudo_stub = """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "-n" && "$2" == "true" ]]; then exit 1; fi
+exit 0
+"""
+    sudo = tmp_path / "sudo"
+    sudo.write_text(sudo_stub, encoding="utf-8")
+    sudo.chmod(0o755)
     return subprocess.run(
         [require_bash(), str(_SCRIPT), "chromium"],
         cwd=tmp_path,
@@ -87,6 +95,51 @@ def test_install_script_fails_with_action_error_when_chromium_launch_fails(tmp_p
     assert "::error::" in fleet.stdout
     assert "sudo npx playwright install-deps chromium" in fleet.stdout
     assert "self-hosted fleet runner" in fleet.stdout
+
+
+def test_install_script_uses_passwordless_sudo_install_deps_when_launch_fails(tmp_path: Path) -> None:
+    log = tmp_path / "npx.log"
+    launch_log = tmp_path / "launch.log"
+    launch_count = tmp_path / "launch.count"
+    launch_count.write_text("0", encoding="utf-8")
+    npx_stub = f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "{log}"
+exit 0
+"""
+    node_stub = f"""#!/usr/bin/env bash
+set -euo pipefail
+n=$(cat "{launch_count}")
+echo "$n" >> "{launch_log}"
+echo $((n+1)) > "{launch_count}"
+if [[ "$n" == "0" ]]; then exit 1; fi
+exit 0
+"""
+    sudo_stub = f"""#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1" == "-n" && "$2" == "true" ]]; then exit 0; fi
+printf '%s\\n' "$*" >> "{tmp_path / "sudo.log"}"
+exit 0
+"""
+    for name, body in (("npx", npx_stub), ("node", node_stub), ("sudo", sudo_stub)):
+        path = tmp_path / name
+        path.write_text(body, encoding="utf-8")
+        path.chmod(0o755)
+    result = subprocess.run(
+        [require_bash(), str(_SCRIPT), "chromium"],
+        cwd=tmp_path,
+        env={
+            "PATH": f"{tmp_path}:{os.environ.get('PATH', '')}",
+            "RUNNER_ENVIRONMENT": "self-hosted",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "install-deps" in (tmp_path / "sudo.log").read_text(encoding="utf-8")
+    assert (tmp_path / "launch.log").read_text(encoding="utf-8").strip().splitlines() == ["0", "1"]
 
 
 def test_frontend_playwright_jobs_use_shared_install_script() -> None:

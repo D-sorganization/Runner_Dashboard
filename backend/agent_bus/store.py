@@ -375,8 +375,14 @@ class AgentBusStore:
                 "blocked": backlog["blocked"],
             },
             "empty_reason": empty_reason,
+            "reaper": self._reaper_diagnostics(),
             "generated_at": utc_now_iso(),
         }
+
+    def _reaper_diagnostics(self) -> dict[str, Any]:
+        from agent_bus.reaper_stats import snapshot
+
+        return snapshot()
 
     def expire_session(self, session_id: str) -> None:
         store_ops.expire_session(self, session_id)
