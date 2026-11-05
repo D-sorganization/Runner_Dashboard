@@ -1,0 +1,15 @@
+# One rest-server auth user (and private restic repo name) per backup client.
+# Usernames must match rest-server --private-repos layout under RESTIC_REST_DATA_DIR.
+# Credential material lives only on hosts (see docs/runbooks/fleet-restic-backup.md).
+version: 1
+hub:
+  machine: hub-a
+  tailscale_only: true
+  rest_url_pattern: "rest:http://<hub-a-tailscale-host>:8000/<rest_repo_user>"
+clients:
+  - machine: node-b
+    rest_repo_user: node-b
+  - machine: node-c
+    rest_repo_user: node-c
+  - machine: node-d
+    rest_repo_user: node-d
