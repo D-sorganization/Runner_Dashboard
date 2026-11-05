@@ -342,18 +342,40 @@ async function mockStaffApi(page: import("@playwright/test").Page): Promise<void
 }
 
 /** The hit-tested center belongs to the control instead of an overlapping layer. */
-async function ownsItsCentre(locator: Locator): Promise<boolean> {
+async function centerForHitTest(locator: Locator): Promise<void> {
   await locator.scrollIntoViewIfNeeded();
-  // Narrow viewports scroll the tab strip horizontally (#3809); center the tab
-  // before elementFromPoint so an adjacent tab or clip edge does not flake (#3794).
   await locator.evaluate((el) => {
-    el.scrollIntoView({ block: "nearest", inline: "center" });
+    const tab = el as HTMLElement;
+    const strip = tab.closest(".staff-mobile__tabs");
+    if (strip instanceof HTMLElement) {
+      const target = tab.offsetLeft + tab.offsetWidth / 2 - strip.clientWidth / 2;
+      strip.scrollLeft = Math.max(0, Math.min(target, strip.scrollWidth - strip.clientWidth));
+    }
+    tab.scrollIntoView({ block: "nearest", inline: "center" });
   });
+}
+
+async function hitTestOwnsCentre(locator: Locator): Promise<boolean> {
   return locator.evaluate((el) => {
     const box = el.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1) {
+      return false;
+    }
     const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
     return top !== null && (el === top || el.contains(top));
   });
+}
+
+async function ownsItsCentre(locator: Locator): Promise<boolean> {
+  await centerForHitTest(locator);
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    if (await hitTestOwnsCentre(locator)) {
+      return true;
+    }
+    await locator.page().waitForTimeout(50);
+  }
+  return hitTestOwnsCentre(locator);
 }
 
 test.describe("Mobile Staff Console (SC-D8)", () => {
