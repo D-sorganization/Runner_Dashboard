@@ -61,8 +61,11 @@ if ($InstallTask -or $UninstallTask) {
 }
 
 function Resolve-FleetBackupPilotPaths {
-    $programData = if ($env:ProgramData) { $env:ProgramData } else { 'C:\ProgramData' }
-    $base = Join-Path $programData 'runner-dashboard'
+    $base = $null
+    if (-not $ConfigFile -or -not $StateFile -or -not $LogDir) {
+        $programData = if ($env:ProgramData) { $env:ProgramData } else { 'C:\ProgramData' }
+        $base = Join-Path $programData 'runner-dashboard'
+    }
     return [pscustomobject]@{
         ConfigFile = if ($ConfigFile) { $ConfigFile } else { Join-Path $base 'fleet-backup-pilot.env' }
         StateFile  = if ($StateFile) { $StateFile } else { Join-Path $base 'fleet_backup_pilot.json' }
