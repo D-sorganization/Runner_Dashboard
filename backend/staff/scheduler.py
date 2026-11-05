@@ -30,15 +30,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import cartographer_persona, claim_guard, consolidation, verification
+from staff import claim_guard, consolidation, verification
 from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
 from staff.holds import HoldsList
 from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
-from staff.runner import RunRequest, StaffRunner, get_runner
+from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
-from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
 from staff.scheduler_issue_pick import fetch_issue_claim_status, fetch_open_issues, scheduled_repo  # noqa: F401
 from staff.scheduler_leader_lease import (
@@ -52,7 +51,9 @@ from staff.scheduler_leader_lease import (
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
+from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
 from staff.scheduler_named_jobs import named_jobs, queue_due_slot
+from staff.scheduler_persona_guards import persona_fire_guard
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
 
@@ -193,7 +194,8 @@ class StaffScheduler:
 
     def _save_state(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
+        # Per-writer temp names avoid torn writes when tick and API paths save concurrently (#3927).
+        tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(self._state or {}, indent=2), encoding="utf-8")
         os.replace(tmp, self.path)
 
@@ -255,9 +257,13 @@ class StaffScheduler:
         key = f"{role.name}::{job}" if job else role.name
         entry = self._load_state().get(key, {})
         enabled = entry.get("enabled", True)
+        from staff.schedule_placement import load_placements, schedule_host_for_role  # noqa: PLC0415
+
+        placements = load_placements()
         out: dict[str, Any] = {
             "role": role.name,
             "schedule": cron,
+            "host": schedule_host_for_role(role.name, placements, self.runner.machine),
             "window": role.window,
             "next_fire": None,
             "in_window": in_window(role.window, now, self._tz),
@@ -292,6 +298,17 @@ class StaffScheduler:
             return "schedule disabled for role"
         if report.get("schedule_error"):
             return f"bad schedule: {report['schedule_error']}"
+        from machine_registry import load_machine_registry  # noqa: PLC0415
+        from staff.schedule_placement import load_placements, schedule_host_skip_reason  # noqa: PLC0415
+
+        host_reason = schedule_host_skip_reason(
+            str(report.get("role") or ""),
+            self.runner.machine,
+            load_placements(),
+            load_machine_registry(),
+        )
+        if host_reason:
+            return host_reason
         if not report["in_window"]:
             return "outside run window"
         if report["hold"]:
@@ -334,6 +351,9 @@ class StaffScheduler:
         """Handle every due slot once. Returns one decision per due role or named job."""
         now = now or self._clock()
         self._reconcile_cartographer_pending()
+        with self._lock:
+            if reconcile_scheduled_runs(self._load_state(), store=self.runner.store, machine=self.runner.machine):
+                self._save_state()
         decisions: list[dict[str, Any]] = []
         if not self._lease_allows_firing(now):
             return decisions
@@ -397,18 +417,15 @@ class StaffScheduler:
     ) -> dict[str, Any]:
         """Run slow consolidation/claim/submit work without holding the scheduler lock (#3526)."""
         key = f"{name}::{job}" if job else name
-        cartographer_job = ""
-        if role.name == cartographer_persona.ROLE:
-            cartographer_job = next(iter(cartographer_persona.CARTOGRAPHER_SCHEDULE_ENTRIES))
-            reason = cartographer_fire_guard(
-                role.name, continuity=self._cartographer_continuity(), job=cartographer_job, slot=due, now=now
-            )
-            if reason:
-                with self._lock:
-                    entry = self._load_state().setdefault(key, {})
-                    entry["last_reason"] = f"skipped {due}: {reason}"
-                log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
-                return {"role": name, "slot": due, "fired": False, "reason": reason}
+        cartographer_job, reason = persona_fire_guard(
+            role.name, continuity=self._cartographer_continuity, job=job, slot=due, now=now
+        )
+        if reason:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=reason)
+            log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
+            return {"role": name, "slot": due, "fired": False, "reason": reason}
         decision = self._decider(role, repo or "")
         report_only = bool(job) and isinstance(role.scope, dict) and bool(role.scope.get("report_only"))
         if report_only:
@@ -436,17 +453,16 @@ class StaffScheduler:
         with self._lock:
             entry = self._load_state().setdefault(key, {})
             if claimed:
-                entry["last_reason"] = f"skipped {due}: {claimed}"
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
                 log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
                 return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
             try:
                 rec = self.runner.submit(req)
             except ValueError as exc:
-                entry["last_reason"] = f"skipped {due}: {exc}"
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
                 log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
                 return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
-            entry["last_fired"] = now.isoformat()
-            entry["last_reason"] = f"fired {due} as {rec.id}"
+            record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat(), role=name, job=job)
             if cartographer_job:
                 self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}
         log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
@@ -464,37 +480,7 @@ class StaffScheduler:
         return sorted(reports, key=lambda r: (r["schedule"] is None, r["role"]))
 
 
+# Tests inject a fake scheduler here; ``scheduler_registry.get_scheduler`` honors it.
 _scheduler: StaffScheduler | None = None
-_scheduler_lock = threading.Lock()
-_built_scheduler: StaffScheduler | None = None  # the instance get_scheduler() constructed (#3622)
 
-
-def get_scheduler() -> StaffScheduler:
-    """Process-wide scheduler bound to the process-wide runner.
-
-    A scheduler built here follows the runner: once the process-wide runner (and its
-    store) is replaced it is rebuilt instead of keeping a budget guard on a closed store
-    (#3622). An injected ``_scheduler`` is returned as is.
-    """
-    global _scheduler, _built_scheduler  # noqa: PLW0603
-    with _scheduler_lock:
-        runner = get_runner()
-        was_running = False
-        if _scheduler is not None and _scheduler is _built_scheduler and _scheduler.runner is not runner:
-            was_running = _scheduler.running
-            _scheduler.stop()
-            _scheduler = None
-        if _scheduler is None:
-            _scheduler = StaffScheduler(runner, HoldsList(roles_loader=runner.roles), BudgetGuard(runner.store))
-            _built_scheduler = _scheduler
-            if was_running:
-                _scheduler.start()
-        return _scheduler
-
-
-def reset_scheduler() -> None:
-    global _scheduler  # noqa: PLW0603
-    with _scheduler_lock:
-        if _scheduler is not None:
-            _scheduler.stop()
-        _scheduler = None
+from staff.scheduler_registry import get_scheduler, reset_scheduler  # noqa: E402,F401

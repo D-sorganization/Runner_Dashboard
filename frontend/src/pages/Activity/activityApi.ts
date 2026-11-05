@@ -50,6 +50,19 @@ export function fetchSessionEvents(sessionId: string, signal?: AbortSignal): Pro
   );
 }
 
+export type FleetLogQuery = {
+  repo?: string;
+  node?: string;
+};
+
+/** Fleet-wide append-only log (#2865 All work); bounded by {@link EVENTS_LIMIT}. */
+export function fetchFleetEvents(query: FleetLogQuery = {}, signal?: AbortSignal): Promise<ActivityPage> {
+  const params = new URLSearchParams({ limit: String(EVENTS_LIMIT) });
+  if (query.repo?.trim()) params.set("repo", query.repo.trim());
+  if (query.node?.trim()) params.set("node", query.node.trim());
+  return apiRequest<ActivityPage>(`/api/v1/activity?${params.toString()}`, { signal });
+}
+
 /** Group sessions by node, then by status in {@link STATUS_ORDER}, for the left panel. */
 export function groupSessions(items: SessionSummary[]): Map<string, Map<string, SessionSummary[]>> {
   const byNode = new Map<string, Map<string, SessionSummary[]>>();

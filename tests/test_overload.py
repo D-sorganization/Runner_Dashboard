@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import coordination.overload as overload_mod
+import coordination.staff_view as staff_view_mod
 import gh_client
 import pr_inventory
 import pytest
@@ -86,10 +87,14 @@ def _default_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fake_get(_path: str) -> Any:
         return []
 
+    async def _fake_staff_runs(_repo: str | None = None) -> tuple[list[dict], list[str]]:
+        return [], []
+
     monkeypatch.setattr(pr_inventory, "fetch_repo_prs", _fake_fetch_repo_prs)
     monkeypatch.setattr(GhClientDeliveryCollector, "list_pulls_updated_since", _fake_list_pulls_updated_since)
     monkeypatch.setattr(gh_client, "get", _fake_get)
     monkeypatch.setattr(gh_client, "paginate", _empty_paginate)
+    monkeypatch.setattr(staff_view_mod, "staff_runs", _fake_staff_runs)
 
 
 @pytest.mark.asyncio
@@ -125,6 +130,9 @@ async def test_build_overload_snapshot_combines_every_source(monkeypatch: pytest
     assert snapshot["repo"] == REPO
     assert snapshot["open_pr_count"] == 2
     assert snapshot["merge_queue_depth"] == 4
+    assert snapshot["github_merge_queue_run_depth"] == 4
+    assert snapshot["rd_dispatch_queue_depth"] == 0
+    assert snapshot["queue_depth_warnings"] == []
     assert snapshot["merge_queue_settings"] == {
         "max_entries_to_build": 5,
         "max_entries_to_merge": 5,
@@ -205,6 +213,46 @@ async def test_degrades_independently_when_a_source_fails(monkeypatch: pytest.Mo
     # the rest of the snapshot is still assembled
     assert "windows" in snapshot
     assert snapshot["merge_queue_depth"] == 0
+
+
+@pytest.mark.asyncio
+async def test_rd_dispatch_queue_depth_counts_fleet_wide_staff_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_staff_runs(_repo: str | None = None) -> tuple[list[dict], list[str]]:
+        return [{"id": "a"}, {"id": "b"}, {"id": "c"}], []
+
+    monkeypatch.setattr(staff_view_mod, "staff_runs", _fake_staff_runs)
+
+    snapshot = await build_overload_snapshot(REPO)
+
+    assert snapshot["rd_dispatch_queue_depth"] == 3
+    assert snapshot["queue_depth_warnings"] == []
+
+
+@pytest.mark.asyncio
+async def test_rd_dispatch_queue_depth_degrades_to_null_on_staff_board_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_staff_runs(_repo: str | None = None) -> tuple[list[dict], list[str]]:
+        return [], ["staff runs unavailable: boom"]
+
+    monkeypatch.setattr(staff_view_mod, "staff_runs", _fake_staff_runs)
+
+    snapshot = await build_overload_snapshot(REPO)
+
+    assert snapshot["rd_dispatch_queue_depth"] is None
+    assert any("staff runs unavailable" in w for w in snapshot["queue_depth_warnings"])
+    assert any("staff runs unavailable" in w for w in snapshot["warnings"])
+
+
+@pytest.mark.asyncio
+async def test_rd_dispatch_queue_depth_degrades_to_null_on_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _boom_staff_runs(_repo: str | None = None) -> tuple[list[dict], list[str]]:
+        raise RuntimeError("staff board down")
+
+    monkeypatch.setattr(staff_view_mod, "staff_runs", _boom_staff_runs)
+
+    snapshot = await build_overload_snapshot(REPO)
+
+    assert snapshot["rd_dispatch_queue_depth"] is None
+    assert any("RD dispatch queue depth unavailable" in w for w in snapshot["queue_depth_warnings"])
 
 
 @pytest.mark.asyncio

@@ -71,6 +71,10 @@ class LeaseRecord(BaseModel):
     expires_at: float | None = None
     task_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    # Monotonic per-lease generation counter (#3878); only the SQLite store
+    # populates it today. Defaults to 0 so the YAML backend and existing
+    # serialized leases.yml files are unaffected.
+    fencing_token: int = 0
 
 
 def _default_config_dir() -> Path:

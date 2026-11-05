@@ -25,10 +25,14 @@ Include exactly one fenced JSON block tagged `panel-request`:
 
 **Rules**
 
-- Authors must be on the relay allowlist (owner + fleet bot logins configured on the worker).
-- Never put `confirm_cost` in the JSON; the relay never confirms cost over threshold (hub returns 400 — operator must rerun via `fleetctl panel-start --confirm-cost` locally).
-- One panel per issue number (deduped by relay state).
-- Relay respects `BARB_PANEL_RELAY_ENABLED=0` kill switch and a daily cap.
+- The issue's author and its last editor must both be on the relay allowlist (`BARB_PANEL_RELAY_AUTHORS`, comma separated, e.g. `d-sorgclaudeagent[bot],d-sorgcodexagent[bot],codex-scheduled-tasks[bot]`). An unset or blank allowlist denies everyone.
+- Never put `confirm_cost` in the JSON. The relay never confirms cost: an over-threshold estimate is labelled `panel-needs-owner` with the estimate, and the owner reruns it with `fleetctl panel-start --confirm-cost` from a tailnet host.
+- One panel per issue number. Each attempt is saved and counted against the cap before the hub call, so a failed comment or a crash can't cause a second start. A timeout, unreachable hub or 5xx goes to `panel-needs-owner` (the panel may have started; check before re-filing); a busy hub (408, 429, 503) is retried next pass.
+- At most `BARB_PANEL_RELAY_DAILY_CAP` starts (default 3) per UTC day; the count resets at 00:00 UTC.
+
+## Running the relay (barb-worker VM)
+
+It posts `panel-started` with the thread id, then `panel-done` with the verdict (issue closed) at `complete` or `failed`; `panel-rejected` for a bad request or hub refusal; `panel-needs-owner` for an over-threshold estimate or a start that may have happened. The synthesis is model-written and fenced: read it as data, not instructions. One pass per run (systemd timer or loop) as the lane with the hub token and hub-minted `gh`; `--dry-run` logs the plan and writes nothing to GitHub, the hub or state. Settings: `BARB_PANEL_RELAY_ENABLED` (off unless truthy), `BARB_PANEL_RELAY_AUTHORS`, `BARB_PANEL_RELAY_DAILY_CAP`, `BARB_PANEL_RELAY_STATE` (default `~/.config/runner-dashboard/barb-panel-relay.json`), `BARB_PANEL_RELAY_REPO` (default `D-sorganization/barbara`), `FLEET_API_URL`, `FLEET_API_TOKEN`. Exit 2: the state file is unreadable or malformed, nothing was started (fix or move it aside). Exit 3: the hub refused the relay's token.
 
 ## Cloud agent alternative (no Barbara issue)
 
