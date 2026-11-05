@@ -1,4 +1,4 @@
 ---
 issue: 4059
-summary: "rd-barb 20:40 PT state-file freshness pass (folds duplicate #4058 pass)"
+summary: "rd-barb state-file freshness pass, re-stamped at 21:35 PT on current main (folds duplicate #4058 pass)"
 ---
