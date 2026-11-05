@@ -6,7 +6,7 @@ Record **two verified restore drills** on the machine JSON before `restic forget
 
 ```bash
 python3 deploy/fleet-backup/restic_restore_drill.py \
-  --machine oglaptop \
+  --machine node-b \
   --record ~/.config/runner-dashboard/fleet_backup_machine_record.json \
   --snapshot latest \
   --target /var/tmp/fleet-restic-drill \

@@ -19,7 +19,7 @@ import restic_restore_drill as drill  # noqa: E402
 def _record(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "version": 1,
-        "machine": "oglaptop",
+        "machine": "node-b",
         "halted": False,
         "halt_reason": None,
         "events": [],
