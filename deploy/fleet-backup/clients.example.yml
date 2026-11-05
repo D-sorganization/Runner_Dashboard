@@ -3,13 +3,13 @@
 # Credential material lives only on hosts (see docs/runbooks/fleet-restic-backup.md).
 version: 1
 hub:
-  machine: DeskComputer
+  machine: hub-a
   tailscale_only: true
-  rest_url_pattern: "rest:http://<deskcomputer-tailscale-host>:8000/<rest_repo_user>"
+  rest_url_pattern: "rest:http://<hub-a-tailscale-host>:8000/<rest_repo_user>"
 clients:
-  - machine: OGLaptop
-    rest_repo_user: oglaptop
-  - machine: ControlTower
-    rest_repo_user: controltower
-  - machine: Brick
-    rest_repo_user: brick
+  - machine: node-b
+    rest_repo_user: node-b
+  - machine: node-c
+    rest_repo_user: node-c
+  - machine: node-d
+    rest_repo_user: node-d

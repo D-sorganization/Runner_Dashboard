@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install restic rest-server on DeskComputer (WSL/system systemd). Does not create
+# Install restic rest-server on the fleet backup hub (WSL/system systemd). Does not create
 # htpasswd or ACL changes — see docs/runbooks/fleet-restic-backup.md (#4016).
 set -euo pipefail
 

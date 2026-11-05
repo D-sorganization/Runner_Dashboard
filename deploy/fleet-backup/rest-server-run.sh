@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start restic rest-server on the node Tailscale IPv4 only (append-only hub).
 # Secrets live outside git; paths come from /etc/restic-rest-server/env (see
-# rest-server.env.example). Intended for DeskComputer (#4016).
+# rest-server.env.example). Intended for the fleet backup hub (example hub-a, #4016).
 set -euo pipefail
 
 RESTIC_REST_DATA_DIR="${RESTIC_REST_DATA_DIR:-/var/lib/restic-rest-server/data}"
