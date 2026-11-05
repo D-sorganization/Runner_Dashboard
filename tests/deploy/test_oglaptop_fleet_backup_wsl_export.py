@@ -15,7 +15,9 @@ SCRIPT = REPO_ROOT / "deploy" / "oglaptop-fleet-backup-wsl-export.ps1"
 RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "oglaptop-fleet-backup-wsl-export.md"
 
 PWSH = find_pwsh()
-PWSH_REQUIRED = pytest.mark.skipif(PWSH is None, reason="PowerShell not available on this runner")
+PWSH_REQUIRED = pytest.mark.skipif(
+    PWSH is None, reason="PowerShell not available on this runner"
+)
 
 
 def test_wsl_export_artifacts_exist() -> None:
@@ -39,13 +41,11 @@ def test_tar_footer_complete_detects_truncated_export(tmp_path: Path) -> None:
     bad = tmp_path / "bad.tar"
     bad.write_bytes(b"payload" + (b"\x00" * 100))
 
-    body = textwrap.dedent(
-        f"""
+    body = textwrap.dedent(f"""
         . '{LIB.as_posix()}' -FunctionsOnly
         if (Test-WslExportTarFooterComplete -TarPath '{good.as_posix()}') {{ 'good-ok' }} else {{ 'good-bad' }}
         if (Test-WslExportTarFooterComplete -TarPath '{bad.as_posix()}') {{ 'bad-ok' }} else {{ 'bad-bad' }}
-        """
-    )
+        """)
     result = run_pwsh_command(PWSH, body)
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
