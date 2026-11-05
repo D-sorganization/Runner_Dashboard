@@ -306,7 +306,9 @@ describe("security panel", () => {
     render(<SecurityPanel />);
     fireEvent.click(await screen.findByRole("button", { name: /open finding sql injection/i }));
     const drawer = await screen.findByTestId("security-finding-detail");
-    expect(within(drawer).getByTestId("security-finding-root-cause")).toHaveTextContent(
+    expect(
+      await within(drawer).findByTestId("security-finding-root-cause"),
+    ).toHaveTextContent(
       "User input is concatenated into SQL.",
     );
     expect(within(drawer).getByTestId("security-finding-patch").tagName).toBe("PRE");

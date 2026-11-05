@@ -11,6 +11,8 @@ Grok Bot executes tools in environments where a resident MCP host may not be ava
 1. Direct HTTP `curl` commands against `/api/v1/staff` and `/api/coordination`.
 2. The `fleetctl.py` CLI utility (`clients/fleet/fleetctl.py`).
 
+**Finding work:** `GET /api/coordination/jobs` lists claimable fleet issues; claim with `POST /api/coordination/claims` and release with `POST /api/coordination/claims/release` (also surfaced in `GET /api/coordination/briefing` as `jobs_hint`).
+
 ### Active Grok Agents in the Fleet
 
 In the fleet topology, **Barb** is the single front door:

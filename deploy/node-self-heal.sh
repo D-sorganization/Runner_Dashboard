@@ -28,11 +28,30 @@ SYNC_SCRIPT="${SCRIPT_DIR}/sync_provider_credentials.py"
 if [[ ! -f "${SYNC_SCRIPT}" && -f "${DASHBOARD_HOME}/.config/runner-dashboard/self-heal/sync_provider_credentials.py" ]]; then
   SYNC_SCRIPT="${DASHBOARD_HOME}/.config/runner-dashboard/self-heal/sync_provider_credentials.py"
 fi
+credential_sync_ok=1
+credential_sync_error=""
 if [[ -f "${SYNC_SCRIPT}" ]]; then
   if sync_out="$("${PYTHON_BIN}" "${SYNC_SCRIPT}" 2>/dev/null)"; then
     if echo "${sync_out}" | grep -q '"\/'; then
       healed_actions+=("synced_provider_credentials")
     fi
+  else
+    credential_sync_ok=0
+    credential_sync_error="$(printf '%s' "${sync_out:-}" | "${PYTHON_BIN}" -c '
+import json, sys
+raw = sys.stdin.read().strip()
+try:
+    payload = json.loads(raw) if raw else {}
+except ValueError:
+    payload = {}
+print(str(payload.get("error") or "sync_provider_credentials.py exited non-zero")[:200])
+' 2>/dev/null || echo "sync_provider_credentials.py exited non-zero")"
+    healed_actions+=("alert:credential_sync_failed")
+  fi
+  # Detect a self-heal copy that has drifted from the live deployed script (#3975).
+  CANONICAL_SYNC_SCRIPT="${DEPLOY_DIR}/deploy/sync_provider_credentials.py"
+  if [[ -f "${CANONICAL_SYNC_SCRIPT}" ]] && ! cmp -s "${SYNC_SCRIPT}" "${CANONICAL_SYNC_SCRIPT}" 2>/dev/null; then
+    healed_actions+=("alert:sync_script_stale")
   fi
 fi
 
@@ -150,14 +169,19 @@ if [[ -d "${BASE_DIR}" ]]; then
 fi
 
 mkdir -p "$(dirname "${STATUS_FILE}")"
-"${PYTHON_BIN}" - "${STATUS_FILE}" "${health_ok}" "${healed_actions[@]:-}" << 'PY'
+"${PYTHON_BIN}" - "${STATUS_FILE}" "${health_ok}" "${credential_sync_ok}" "${credential_sync_error}" "${healed_actions[@]:-}" << 'PY'
 import datetime, json, os, sys
 status_path = sys.argv[1]
 health_ok = sys.argv[2] == "1"
-actions = [a for a in sys.argv[3:] if a]
+credential_sync_ok = sys.argv[3] == "1"
+credential_sync_error = sys.argv[4]
+actions = [a for a in sys.argv[5:] if a]
 payload = {
     "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-    "healthy": health_ok,
+    "healthy": health_ok and credential_sync_ok,
+    "http_healthy": health_ok,
+    "credential_sync_ok": credential_sync_ok,
+    "credential_sync_error": credential_sync_error or None,
     "actions": actions,
 }
 tmp = f"{status_path}.tmp"

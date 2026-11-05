@@ -84,10 +84,7 @@ jobs:
   pick-runner:
     name: Select reversible CI runner
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || (github.event_name == 'workflow_dispatch' && inputs.force_local) && 'd-sorg-fleet' || (!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || (github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE != 'hosted' && vars.CI_QUEUE_RUNNER_LABEL || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet')) }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       actions: write
@@ -213,10 +210,7 @@ jobs:
     name: Decide CI tier
     needs: [pick-runner]
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       tier: ${{ steps.tier.outputs.tier }}
@@ -336,10 +330,7 @@ jobs:
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -529,10 +520,7 @@ jobs:
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -714,6 +702,42 @@ jobs:
               --progress-spinner=off "${IGNORE_FLAGS[@]}"
           fi
 
+  pr-size-gate:
+    name: PR size gate (CI mirror, #3963 S3)
+    # Server-side mirror of the local pre-push hook (scripts/pr_size_gate.py):
+    # the hook is bypassable with --no-verify or a skipped install, so this
+    # job re-runs the exact same script against the exact same inputs
+    # (merge-base vs. origin/main, PR number for allowlist lookup) so a
+    # locally-bypassed oversize diff still fails CI.
+    needs: [pick-runner, pr-guard, push-hygiene]
+    if: >-
+      always() && !cancelled() &&
+      github.event_name == 'pull_request' &&
+      (needs.push-hygiene.result == 'skipped' ||
+      needs.push-hygiene.result == 'success') &&
+      (needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
+    # Fork PRs run on a hosted runner, never the fleet (RM#1989).
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    timeout-minutes: 5
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history (not a shallow/base-SHA fetch): the script computes
+          # a real merge-base against origin/main via `git diff --numstat
+          # <merge-base>...HEAD`, same as the local pre-push hook.
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: Run the 500-line size gate against origin/main
+        run: python scripts/pr_size_gate.py --merge-base origin/main --pr "${PR_NUMBER}"
+
   security-scan:
     needs: [pick-runner, changes, ci-health-check, pr-guard, push-hygiene]
     # pull_request (in scope), schedule, or workflow_dispatch — not merge_group (#2891).
@@ -731,10 +755,7 @@ jobs:
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -793,10 +814,7 @@ jobs:
       actions: write
       contents: read
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -918,10 +936,7 @@ jobs:
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Confirm Python test matrix
@@ -1040,10 +1055,7 @@ jobs:
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -212,6 +212,31 @@ export interface WriteReceipt {
   generated_at?: string;
 }
 
+export interface JobBoardJob {
+  repo: string;
+  issue: number;
+  title: string;
+  url: string;
+  labels: string[];
+  priority: string;
+  updated_at: string;
+}
+
+export interface JobBoardExcluded {
+  repo: string;
+  issue: number;
+  title: string;
+  url: string;
+  reason: string;
+}
+
+export interface JobsResponse extends Availability {
+  complete?: boolean;
+  jobs: JobBoardJob[];
+  excluded?: JobBoardExcluded[];
+  warnings?: string[];
+}
+
 // ── Proposals (/api/proposals) ───────────────────────────────────────────────
 
 export interface ProposalItem {
@@ -272,6 +297,54 @@ export interface CreateProposalPayload {
   source?: string;
   code_request_url?: string;
   confirm_not_duplicate?: boolean;
+}
+
+// ── Flow metrics (/api/v1/fleet/flow-metrics) ────────────────────────────────
+
+export interface FlowMetricsOpenAge {
+  count: number;
+  p50_hours: number;
+  p90_hours: number;
+  max_hours: number;
+  over_rule_hours: number;
+  rule_hours: number;
+}
+
+export interface FlowMetricsCycleTime {
+  sample_size: number;
+  p50_hours: number;
+  p90_hours: number;
+}
+
+export interface FlowMetricsWeeklyBurn {
+  window_days: number;
+  opened: number;
+  closed: number;
+  net: number;
+}
+
+export interface FlowMetricsAgingPr {
+  number?: number;
+  url: string;
+  age_hours: number;
+  rule_hours?: number;
+  action?: string;
+}
+
+export interface FlowMetricsRepoRow {
+  repo: string;
+  repo_full?: string;
+  error?: string;
+  open_pr_age: FlowMetricsOpenAge;
+  pr_cycle_time: FlowMetricsCycleTime;
+  weekly_issue_burn: FlowMetricsWeeklyBurn;
+  aging_prs?: FlowMetricsAgingPr[];
+}
+
+export interface FlowMetricsResponse extends Availability {
+  complete?: boolean;
+  repos: FlowMetricsRepoRow[];
+  pr_age_rule_hours?: number;
 }
 
 export interface DuplicateCandidate {

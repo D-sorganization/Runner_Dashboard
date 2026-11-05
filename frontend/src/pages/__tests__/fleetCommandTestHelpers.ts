@@ -33,6 +33,37 @@ export const BOARD = {
 };
 
 export const PRIORITIES = { available: true, board: BOARD, directives: [], portfolios: [], generated_at: "x" };
+
+export const FLOW_METRICS = {
+  available: true,
+  complete: true,
+  pr_age_rule_hours: 72,
+  repos: [
+    {
+      repo: "Runner_Dashboard",
+      open_pr_age: {
+        count: 2,
+        p50_hours: 30,
+        p90_hours: 90,
+        max_hours: 90,
+        over_rule_hours: 1,
+        rule_hours: 72,
+      },
+      pr_cycle_time: { sample_size: 3, p50_hours: 24, p90_hours: 48 },
+      weekly_issue_burn: { window_days: 7, opened: 2, closed: 5, net: 3 },
+      aging_prs: [
+        {
+          number: 3828,
+          url: "https://github.com/D-sorganization/Runner_Dashboard/pull/3828",
+          age_hours: 90,
+          rule_hours: 72,
+          action: "ci_diagnosis_or_iterate_or_close",
+        },
+      ],
+    },
+  ],
+  generated_at: "x",
+};
 export const MEETINGS = {
   available: true,
   meetings: [
@@ -144,6 +175,7 @@ export function stubFetch(extra: Handler = () => undefined) {
     if (url === "/api/priorities/meetings") return jsonResponse(200, MEETINGS);
     if (url === "/api/priorities/meetings/2026-09-14") return jsonResponse(200, OLD_MEETING);
     if (url === "/api/priorities/directives") return jsonResponse(200, { directives: [DIRECTIVE] });
+    if (url === "/api/v1/fleet/flow-metrics") return jsonResponse(200, FLOW_METRICS);
     if (url === "/api/coordination/sessions") return jsonResponse(200, SESSIONS);
     if (url === "/api/staff/roster" || url === "/api/v1/staff/roster") return jsonResponse(200, ROSTER);
     return jsonResponse(404, { detail: "Not Found" });

@@ -199,13 +199,27 @@ jobs:
               "tsconfig.app.json",
               "tsconfig.node.json",
           }
-          run_frontend = any((path.startswith("frontend/") or (path.startswith("scripts/") and not path.startswith("scripts/ci/"))) or path in exact for path in files)
+          api_generated = {
+              "frontend/src/lib/api-types.ts",
+              "frontend/src/lib/openapi.json",
+          }
+          run_frontend = any(
+              (
+                  (path.startswith("frontend/") and path not in api_generated)
+                  or (path.startswith("scripts/") and not path.startswith("scripts/ci/"))
+              )
+              or path in exact
+              for path in files
+          )
           print(f"run_frontend_tests={'true' if run_frontend else 'false'}")
           staff_prefixes = ("frontend/src/pages/Staff", "backend/staff/", "backend/routers/staff", "tests/e2e/")
           run_staff = run_frontend or any(path.startswith(staff_prefixes) for path in files)
           print(f"run_staff_e2e={'true' if run_staff else 'false'}")
           # Backend routes and models change the generated OpenAPI snapshot (#1819).
-          run_api_contract = run_frontend or any(path.startswith("backend/") for path in files)
+          run_api_contract = (
+              run_frontend
+              or any(path.startswith("backend/") or path in api_generated for path in files)
+          )
           print(f"run_api_contract={'true' if run_api_contract else 'false'}")
           print(f"changed_file_count={len(files)}", file=sys.stderr)
           EOF

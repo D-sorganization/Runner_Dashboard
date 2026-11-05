@@ -207,6 +207,12 @@ class IdentityManager:
         """Resolve a bearer token or return ``(None, reason_code)`` without logging secrets."""
         import hashlib
 
+        from staff.run_jwt_service import run_jwt_bearer_gate
+
+        jwt_reason = run_jwt_bearer_gate(raw_token)
+        if jwt_reason:
+            return None, jwt_reason
+
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
         e_rec = self._ephemeral_tokens.get(token_hash)
@@ -250,6 +256,15 @@ class IdentityManager:
         """Revoke any in-memory ephemeral principal and associated tokens (#1310)."""
         self._ephemeral_principals.pop(principal_id, None)
         self._ephemeral_tokens = {th: t for th, t in self._ephemeral_tokens.items() if t.principal_id != principal_id}
+
+    def revoke_ephemeral_token(self, token_hash: str) -> None:
+        """Revoke one ephemeral token without touching its principal's other tokens (#3879).
+
+        Unlike :meth:`revoke_ephemeral_principal`, this targets a single
+        ``token_hash`` — needed because one principal can have more than one
+        concurrent per-run JWT live at once.
+        """
+        self._ephemeral_tokens.pop(token_hash, None)
 
 
 def resolve_identity_dir() -> Path:

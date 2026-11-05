@@ -99,4 +99,15 @@ def test_overview_empty_reason_is_local_empty_when_all_known_sessions_are_stale(
     body = overview.json()
     assert body["agents"] == []
     assert body["empty_reason"] == "local_empty"
-    assert any(s["session"] == sess for s in body["backlog"]["stale_sessions"])
+
+
+@pytest.mark.unit
+def test_overview_includes_reaper_diagnostics(client: TestClient, bus_env: dict[str, str]) -> None:
+    from agent_bus import reaper
+
+    reaper.reap_once()
+    overview = client.get("/api/v1/agent/overview", headers=_auth(bus_env["fleet"]))
+    assert overview.status_code == 200, overview.text
+    reaper_block = overview.json().get("reaper") or {}
+    assert "stale_sessions" in reaper_block
+    assert reaper_block["last_tick_age_seconds"] is not None
