@@ -9,9 +9,11 @@ subprocess helper is shared with the coordination API (``coordination.rm_scripts
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from coordination.rm_scripts import run_module
 from staff import claim_guard
+from staff import dispatch_self_claim as dispatch_self_claim_mod
 from staff.store import RunRecord, RunStore
 from staff.workspace import rm_root
 
@@ -25,16 +27,29 @@ def _claim_held(output: str) -> bool:
     return '"held":true' in compact or "held=true" in compact
 
 
+def _blocks_on_claim_check(
+    run_id: str, res_output: str, check: dict[str, Any] | None, *, agent: str, session: str
+) -> bool:
+    if check is not None:
+        if not check.get("held"):
+            return False
+        if dispatch_self_claim_mod.is_own_dispatch_claim_hold(run_id, check, agent=agent, session=session):
+            return False
+        return True
+    return _claim_held(res_output)
+
+
 def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, branch: str) -> str | None:
     """Run the ritual. Returns the prompt note, or None when the run is blocked."""
     root = rm_root()
     if root is None:
         store.append_event(run_id, "lease", "Repository_Management checkout not found; lease ritual skipped")
         return LEASE_SKIPPED_NOTE
-    session = f"staff-{run_id}"
+    session = dispatch_self_claim_mod.expected_staff_session(run_id)
     res = run_module("check_agent_claim", "--repo", repo, "--issue", issue, root=root)
     store.append_event(run_id, "lease", f"check_agent_claim rc={res.rc}: {res.output[:300]}")
-    if _claim_held(res.output):
+    check = res.json()
+    if _blocks_on_claim_check(run_id, res.output, check, agent=agent, session=session):
         store.update_run(
             run_id,
             status="blocked",
