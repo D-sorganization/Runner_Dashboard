@@ -11,6 +11,9 @@ Routes (all under ``/api/coordination``):
   POST /claims              Check then lease; 409 when another agent holds it.
   POST /claims/release      Release the lease (RM ``release_agent_lease``).
   GET  /jobs                Claimable work (``?repo=&limit=&include_excluded=``); read-only (epic #2781 S1).
+  POST /jobs/claim          Atomically claim a listed job with fencing (#2784).
+  POST /jobs/release        Release a job-board claim (current fence required, #2784).
+  POST /jobs/heartbeat      Renew a job-board claim TTL (#2785).
   GET  /jobs/releases       Recent job-board claim releases (activity projection; slice toward #2785).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
   GET  /postman/reports     Newest postman dry-run reports (what it would deliver; nothing is sent).
@@ -36,6 +39,7 @@ from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
 from coordination.claims import AgingPrBlockedError, ClaimHeldError
+from coordination.jobs import JobIneligibleError, StaleFenceError
 from coordination.models import (
     AGENT_PATTERN,
     REPO_PATTERN,
@@ -43,6 +47,9 @@ from coordination.models import (
     AckBody,
     ClaimBody,
     ClaimReleaseBody,
+    JobClaimBody,
+    JobHeartbeatBody,
+    JobReleaseBody,
     MessageBody,
     PresenceBody,
     ReleaseBody,
@@ -62,6 +69,8 @@ async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str
     try:
         result = await run_in_threadpool(action)
     except (ClaimHeldError, AgingPrBlockedError, service.NotRegisteredError) as exc:
+        raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
+    except (JobIneligibleError, StaleFenceError) as exc:
         raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
     except service.ImpersonationError as exc:
         log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)
@@ -139,6 +148,21 @@ async def get_jobs(
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     return await run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
+
+
+@router.post("/jobs/claim")
+async def post_jobs_claim(body: JobClaimBody, caller: Caller = WRITER) -> dict[str, Any]:
+    return await _write(lambda: service.claim_job(body, caller), caller, f"jobs claim {body.repo}#{body.issue}")
+
+
+@router.post("/jobs/release")
+async def post_jobs_release(body: JobReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
+    return await _write(lambda: service.release_job(body, caller), caller, f"jobs release {body.repo}#{body.issue}")
+
+
+@router.post("/jobs/heartbeat")
+async def post_jobs_heartbeat(body: JobHeartbeatBody, caller: Caller = WRITER) -> dict[str, Any]:
+    return await _write(lambda: service.heartbeat_job(body, caller), caller, f"jobs heartbeat {body.repo}#{body.issue}")
 
 
 @router.get("/jobs/releases")
