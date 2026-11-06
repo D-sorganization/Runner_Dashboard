@@ -95,6 +95,17 @@ def last_commit_touching(repo_root: Path, paths: Sequence[str]) -> str | None:
         return None
 
 
+def _is_ancestor(repo_root: Path, older: str, newer: str) -> bool:
+    """True when ``older`` is ``newer`` or reachable from it (docs caught up)."""
+    result = subprocess.run(  # noqa: S603
+        ["git", "-C", str(repo_root), "merge-base", "--is-ancestor", older, newer],
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def stale_sections(repo_root: Path, *, section_overrides: Mapping[str, Mapping[str, object]] | None = None) -> list[str]:
     overrides = section_overrides or {}
     stale: list[str] = []
@@ -102,7 +113,7 @@ def stale_sections(repo_root: Path, *, section_overrides: Mapping[str, Mapping[s
         meta = dict(overrides.get(spec.name) or {})
         source_tip = meta.get("source_commit") or last_commit_touching(repo_root, spec.source_paths)
         doc_tip = meta.get("doc_commit") or last_commit_touching(repo_root, spec.doc_paths)
-        if source_tip is None or doc_tip is None or source_tip != doc_tip:
+        if source_tip is None or doc_tip is None or not _is_ancestor(repo_root, str(source_tip), str(doc_tip)):
             stale.append(spec.name)
     return stale
 
@@ -187,6 +198,11 @@ def refresh(repo_root: Path) -> dict[str, object]:
     repo_root = repo_root.resolve()
     if not (repo_root / ".git").exists():
         raise CodemapRefreshError(f"not a git repository: {repo_root}")
+    for anchor in ("backend/server.py", "start-dashboard.sh"):
+        if not (repo_root / anchor).exists():
+            raise CodemapRefreshError(
+                f"not a Runner_Dashboard checkout: {anchor} is missing under {repo_root}"
+            )
     commit = head_commit(repo_root)
     write_repo_map(repo_root)
     payload = dict(build_report(repo_root))
