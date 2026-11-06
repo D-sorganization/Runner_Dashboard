@@ -14,7 +14,7 @@ COPY package.json package-lock.json vite.config.ts tsconfig.json tsconfig.app.js
 COPY frontend ./frontend
 RUN npm ci && npm run build
 
-FROM python:3.13-slim@sha256:7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4
+FROM python:3.13-slim@sha256:09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc
 
 WORKDIR /app
 

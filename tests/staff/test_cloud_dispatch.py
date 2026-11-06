@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 from staff.cloud_dispatch import (
     API_KEY_ENV_VARS,
+    CloudMutationRefused,
     build_cloud_dispatch,
     cloud_capabilities_payload,
     normalize_provider,
@@ -43,20 +42,15 @@ def test_build_codex_cloud_argv_includes_model_when_set(monkeypatch: pytest.Monk
     assert spec.argv == ["codex", "cloud", "exec", "--env", "fleet-env", "ship it"]
 
 
-def test_build_cursor_workflow_dispatch() -> None:
-    spec = build_cloud_dispatch(
-        "cursor",
-        "review PR",
-        repo="Runner_Dashboard",
-        issue=99,
-    )
-    assert spec.is_workflow is True
-    assert spec.argv[0] == "gh"
-    assert "Staff-Cloud-Dispatch.yml" in spec.argv[2]
-    body = json.loads(spec.stdin or "{}")
-    assert body["inputs"]["execution_mode"] == "cloud"
-    assert body["inputs"]["provider"] == "cursor-agent"
-    assert body["inputs"]["number"] == "99"
+def test_build_cursor_workflow_dispatch_is_hard_gated_non_mutating() -> None:
+    """#4081: Cursor cloud agents can't reach the local fleet-gh wrapper (ADR-0007)."""
+    with pytest.raises(CloudMutationRefused, match="ADR-0007"):
+        build_cloud_dispatch(
+            "cursor",
+            "review PR",
+            repo="Runner_Dashboard",
+            issue=99,
+        )
 
 
 def test_build_jules_requires_issue_or_pr() -> None:
@@ -86,6 +80,7 @@ def test_cloud_capabilities_payload() -> None:
     assert payload["providers"]["claude"]["cloud"] is True
     assert payload["providers"]["codex"]["cloud"] is False
     assert payload["providers"]["jules"]["cloud"] is True
+    assert payload["providers"]["cursor-agent"]["cloud"] is False  # #4081: hard-gated non-mutating
 
 
 def test_normalize_provider_aliases() -> None:

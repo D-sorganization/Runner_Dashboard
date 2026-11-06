@@ -6051,6 +6051,15 @@
             ],
             "title": "Pr"
           },
+          "pr_restrictions": {
+            "items": {
+              "enum": ["draft_only", "no_arm", "no_merge"],
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Pr Restrictions",
+            "type": "array"
+          },
           "prompt": {
             "default": "",
             "maxLength": 20000,
