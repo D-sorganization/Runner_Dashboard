@@ -60,6 +60,8 @@ repo_root_str = str(REPO_ROOT)
 if repo_root_str not in sys.path:
     sys.path.insert(0, repo_root_str)
 
+from tests.real_subprocess_popen import REAL_SUBPROCESS_POPEN  # noqa: E402
+
 # Fleet API clients (#1228) are stdlib scripts, imported by module name in tests/clients.
 clients_dir = str(REPO_ROOT / "clients" / "fleet")
 if clients_dir not in sys.path:
@@ -90,7 +92,6 @@ def _isolated_provider_cooldown_file(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def _no_real_provider_cli(monkeypatch):
     """Provider CLIs are never launched by tests; provider fixtures use fakes."""
-    real_popen = subprocess.Popen
     provider_names = {"codex", "claude", "agy", "antigravity"}
 
     def guarded_popen(args, *positional, **kwargs):
@@ -110,7 +111,7 @@ def _no_real_provider_cli(monkeypatch):
         )
         if executable in provider_names:
             raise AssertionError(f"Tests must not execute a real provider CLI: {executable}")
-        return real_popen(args, *positional, **kwargs)
+        return REAL_SUBPROCESS_POPEN(args, *positional, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", guarded_popen)
 

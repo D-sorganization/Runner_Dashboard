@@ -54,8 +54,8 @@ def test_hook_entry_requires_id_and_callable(tmp_path: Path) -> None:
 def test_runner_runs_hooks_in_declared_order(tmp_path: Path) -> None:
     data = _profile_data(
         pre_tool=[
-            {"id": "first", "callable": "test_lane_hooks:_record_first"},
-            {"id": "second", "callable": "test_lane_hooks:_record_second"},
+            {"id": "first", "callable": "tests.test_lane_hooks:_record_first"},
+            {"id": "second", "callable": "tests.test_lane_hooks:_record_second"},
         ]
     )
     path = _write_profile(tmp_path, data)
@@ -86,7 +86,7 @@ def _always_fail(context: dict) -> None:
 
 
 def test_blocking_hook_failure_raises_and_logs(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    data = _profile_data(pre_tool=[{"id": "guard", "callable": "test_lane_hooks:_always_fail"}])
+    data = _profile_data(pre_tool=[{"id": "guard", "callable": "tests.test_lane_hooks:_always_fail"}])
     path = _write_profile(tmp_path, data)
     profile = lane_hooks.LaneProfile.load(path)
     runner = lane_hooks.HookRunner(profile)
@@ -105,7 +105,7 @@ def test_non_blocking_hook_failure_is_recorded_not_raised(tmp_path: Path, caplog
         post_tool=[
             {
                 "id": "advisory",
-                "callable": "test_lane_hooks:_always_fail",
+                "callable": "tests.test_lane_hooks:_always_fail",
                 "blocking": False,
             }
         ]
