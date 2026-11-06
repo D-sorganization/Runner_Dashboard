@@ -1957,7 +1957,7 @@
           },
           "owner_approval_ref": {
             "default": "",
-            "description": "Required when agent-grok approves; names Dieter's explicit approval.",
+            "description": "Optional audit reference when approving (e.g. owner thread id).",
             "title": "Owner Approval Ref",
             "type": "string"
           },

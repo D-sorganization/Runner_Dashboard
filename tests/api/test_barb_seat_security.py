@@ -104,20 +104,23 @@ def test_cannot_release_or_renew_other_lease(client: TestClient) -> None:
     assert _checkout(client, "beta").status_code == 409  # renew path is not a back door
 
 
-def test_takeover_requires_operator_and_reason_and_audits(client: TestClient, tmp_path: Path) -> None:
+def test_takeover_requires_barb_or_operator_reason_and_audits(client: TestClient, tmp_path: Path) -> None:
     first = _checkout(client, "alpha").json()["lease"]
     client.post(
         "/api/v1/staff/barb/turnover",
         headers=_h("alpha"),
         json={"scope": "barb:pr-queue", "summary": "s", "next_actions": ["do x"]},
     )
-    assert _checkout(client, "beta", takeover=True, reason="stuck").status_code == 403
+    assert _checkout(client, "beta", takeover=True, reason="n/a").status_code == 403
     assert _checkout(client, "oper", takeover=True).status_code == 422
+    barb_take = _checkout(client, "dots", takeover=True, reason="handoff from alpha")
+    assert barb_take.status_code == 200, barb_take.text
+    assert barb_take.json()["lease"]["holder"] == "agent-codex-hands"
     ok = _checkout(client, "oper", takeover=True, reason="alpha wedged")
     assert ok.status_code == 200, ok.text
     lease = ok.json()["lease"]
     assert lease["holder"] == "op-1"
-    assert lease["epoch"] == first["epoch"] + 1
+    assert lease["epoch"] == first["epoch"] + 2
     assert lease["last_turnover_id"]  # inherited
     rows = [json.loads(x) for x in (tmp_path / "audit.ndjson").read_text().splitlines()]
     assert rows[-1]["action"] == "barb.lease.takeover"

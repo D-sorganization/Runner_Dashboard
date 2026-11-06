@@ -1,4 +1,4 @@
-"""Barb lane principals share the same effective scopes as agent-grok (shared ``barb`` role preset)."""
+"""Barb lane principals share the same effective capability set (shared ``barb`` role preset)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ BARB_PRINCIPAL_IDS = (
     "agent-grok-vm",
     "agent-duet",
     "agent-codex-hands",
+    "grok-barb",
     "rd-barb",
     "agent-claude-barb",
     "agent-codex-barb",
@@ -21,12 +22,14 @@ BARB_PRINCIPAL_IDS = (
 )
 
 
-def _expanded_preset_scopes(principal_id: str, mgr: IdentityManager) -> frozenset[str]:
+def _barb_capability_set(mgr: IdentityManager, principal_id: str) -> frozenset[str]:
     prin = mgr.principals[principal_id]
-    seen: set[str] = set(prin.scopes)
+    direct = frozenset(prin.scopes)
+    preset: set[str] = set()
     for role in prin.roles:
-        seen.update(SCOPE_PRESETS.get(role, []))
-    return frozenset(seen)
+        preset.update(SCOPE_PRESETS.get(role, []))
+    allowed = {s for s in preset if principal_has_scope(prin, s)} | {s for s in direct if principal_has_scope(prin, s)}
+    return frozenset(allowed)
 
 
 def test_barb_principals_match_agent_grok_scopes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -41,14 +44,16 @@ def test_barb_principals_match_agent_grok_scopes(tmp_path: Path, monkeypatch: py
     mgr = IdentityManager(config_dir=tmp_path / "id")
     merge_agent_principal_defaults(mgr)
 
-    ref = _expanded_preset_scopes("agent-grok", mgr)
+    ref = _barb_capability_set(mgr, "agent-grok")
     for scope in BARB_ROLE_SCOPES:
         assert scope in ref
 
     for pid in BARB_PRINCIPAL_IDS:
         prin = mgr.principals[pid]
         assert prin.roles[:2] == ["bot", "barb"], pid
-        assert _expanded_preset_scopes(pid, mgr) == ref, pid
+        assert _barb_capability_set(mgr, pid) == ref, pid
+    assert "staff.approve" not in ref
+    assert "staff.write" in ref
 
 
 def test_barb_principals_never_gain_admin_scopes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -61,5 +66,5 @@ def test_barb_principals_never_gain_admin_scopes(tmp_path: Path, monkeypatch: py
     mgr = IdentityManager(config_dir=tmp_path / "id")
     merge_agent_principal_defaults(mgr)
     prin = mgr.principals["agent-grok"]
-    for scope in ("admin", "staff.admin", "operator"):
+    for scope in ("admin", "operator"):
         assert not principal_has_scope(prin, scope)

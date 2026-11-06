@@ -43,7 +43,7 @@ def build_run_plan(
     provider, _chain_model, model_tier, auth_skipped = resolve_provider_and_model(adapters, machine, req, role)
     if req.repo and not _SAFE_REF.match(req.repo):
         raise ValueError("repo must be a bare repository name")
-    if role.repos and req.repo and req.repo not in role.repos:
+    if role.repos and req.repo and req.repo not in role.repos and not req.barb_bypass_role_repos:
         raise ValueError(f"role '{req.role}' is scoped to {', '.join(role.repos)}")
     if not (req.issue or req.pr or req.prompt.strip()):
         raise ValueError("one of issue, pr or prompt is required")

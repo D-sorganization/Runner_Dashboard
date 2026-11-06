@@ -59,6 +59,7 @@ BARB_SEAT_IDS = frozenset(
         "agent-grok-vm",
         "agent-duet",
         "agent-codex-hands",
+        "grok-barb",
         "rd-barb",
         "agent-claude-barb",
         "agent-codex-barb",
@@ -117,7 +118,11 @@ def parse_barb_claim(headers: Mapping[str, str], caller_id: str) -> BarbClaim | 
 
 
 def is_barb_seat(principal: Principal | None) -> bool:
-    """True for a principal that acts as a Barb seat (Grok-kind assistant, a Barb id or the ``barb`` role/scope).
+    """True for a principal that acts as a Barb seat (the ``barb`` role/scope or a known Barb lane id).
+
+    Assistant kind alone does not grant Barb seat status: every Barb-capable identity shares the same
+    ``barb`` role preset and lane ids (``BARB_SEAT_IDS`` / ``-barb`` suffixes); Grok vs Codex vs Claude
+    must not change fence behavior.
 
     Admins are deliberately not Barb seats here: they may read Barb-only memory, but their writes are
     operator writes, not Barb-authority writes.
@@ -128,8 +133,6 @@ def is_barb_seat(principal: Principal | None) -> bool:
     if "barb" in marks:
         return True
     if principal.id in BARB_SEAT_IDS:
-        return True
-    if principal.assistant_kind == "grokbot":
         return True
     pid = principal.id
     return any(pid.endswith(suffix) for suffix in BARB_ID_SUFFIXES)

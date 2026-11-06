@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import Request
-from identity import Principal
+from identity import Principal, identity_manager
 from staff import fleet as staff_fleet
 from staff.barb_lease_fence import EPOCH_HEADER, SCOPE_HEADER, claim_for_write
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
@@ -44,8 +44,6 @@ async def run_dispatch(
 
     is_force = force_duplicate
     authenticated_origin = dispatcher_origin(caller_id, caller.type)
-    if caller.assistant_kind == "grokbot":
-        authenticated_origin = "grok"
     try:
         raw_json = await request.json()
         if isinstance(raw_json, dict):
@@ -93,17 +91,21 @@ async def run_dispatch(
     # the effective *run* identity is the OBO principal, but the transport is still fleet-peer,
     # so the Barb unclaimed-write fence must not treat the OBO id as the Barb seat (#3064).
     fence_principal = caller
+    headers = request.headers
     if obo and on_behalf_of and not (fleet_bearer and obo):
         raw_id = on_behalf_of.removeprefix("principal:").removeprefix("user:")
-        fence_principal = Principal(
-            id=raw_id,
-            type="bot" if raw_id.startswith("agent-") or raw_id == "barb" else caller.type,
-            name=raw_id,
-            roles=list(caller.roles),
-            scopes=list(caller.scopes),
-            assistant_kind="grokbot" if authenticated_origin == "grok" else (caller.assistant_kind or ""),
-        )
-    headers = request.headers
+        subj = identity_manager.get_principal(raw_id)
+        if subj is not None:
+            fence_principal = subj
+        else:
+            fence_principal = Principal(
+                id=raw_id,
+                type="bot" if raw_id.startswith("agent-") or raw_id == "barb" else caller.type,
+                name=raw_id,
+                roles=list(caller.roles),
+                scopes=list(caller.scopes),
+                assistant_kind=caller.assistant_kind or "",
+            )
     barb_declared = bool((headers.get(SCOPE_HEADER) or "").strip() or (headers.get(EPOCH_HEADER) or "").strip())
     # #4025: Hub path uses HUB_FLEET_TOKEN + signed OBO (no Barb lease headers on the wire).
     # Do not treat the OBO principal as an unclaimed Barb seat for fence purposes unless the

@@ -12,7 +12,7 @@
 # inbox_roles: agent-bus role addresses (defaults: agent-<id suffix>, or rd-barb -> rd-barb).
 #
 # Barb lane principals use roles [bot, barb]: the ``barb`` preset in identity.SCOPE_PRESETS
-# is the single source for Barb-capable scopes (parity with agent-grok).
+# is the single source for Barb-capable scopes (full hub agent surface except staff.approve).
 #
 # Mint a bearer without printing it in logs (run on the hub or a machine with admin session):
 #   TOKEN=$(curl -s -X POST "$FLEET_API_URL/api/admin/principals/<id>/token" \
@@ -37,6 +37,12 @@ agents:
   - id: agent-grok-vm
     kind: grokbot
     name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
+    roles:
+      - bot
+      - barb
+  - id: grok-barb
+    kind: grokbot
+    name: Grok Barb persona principal
     roles:
       - bot
       - barb
