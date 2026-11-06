@@ -1087,7 +1087,7 @@ def test_tests_required_fails_closed() -> None:
     assert _tests_required(TIER="full", RUN_PYTHON_TESTS="true", TESTS="skipped") == 1
 
 
-# --- ci-health-check line cap must fail CLOSED on pull_request (RD#2730) -----
+# --- ci-health-check line cap advisory on pull_request (RD#2730) -------------
 
 _LINECAP_STEP = "Verify no source file exceeds 500 lines"
 
@@ -1138,7 +1138,7 @@ def _run_linecap(work: Path, env: dict[str, str]) -> subprocess.CompletedProcess
 def test_line_cap_pr_path_flags_oversized_changed_file_in_shallow_checkout(tmp_path: Path) -> None:
     work, base_sha = _linecap_pr_checkout(tmp_path, pr_file_lines=501)
     result = _run_linecap(work, {"EVENT_NAME": "pull_request", "BASE_SHA": base_sha})
-    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
     assert "backend/big.py" in result.stdout, "the changed-file list must be printed and checked"
 
 

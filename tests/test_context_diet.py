@@ -168,7 +168,10 @@ def test_agents_md_aligned_with_fleet_standards_v1_2_0() -> None:
     assert "python scripts/automerge_guard.py <owner>/<repo> <pr> --arm`; never pass a merge-method flag" in text
 
     # 4. PR lifecycle & lane PRs updates
-    assert "6. **PR size and stacking.** Every PR must stay under 500 changed lines." in text
+    assert (
+        "6. **PR size and stacking.** Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count."
+        in text
+    )
     assert "7. **Issue closure evidence.** Include `Closes #<issue>` on a real newline in PR descriptions" in text
     assert "Cap: three non-draft open PRs per agent per repo." in text
 

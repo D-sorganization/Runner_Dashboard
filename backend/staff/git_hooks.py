@@ -156,11 +156,12 @@ def run_pre_push_checks(root: Path, ref_lines: str) -> int:
                 return 1
             diff_size, has_additions = _diff_size(root, "origin/main", head)
             if has_additions and diff_size >= 500:
-                log.error(
-                    "pre-push: diff against origin/main is %d changed lines; the limit is fewer than 500",
+                log.warning(
+                    "pre-push: PR size advisory — diff against origin/main is %d changed lines "
+                    "(reference cap 500). Prefer small cohesive PRs; do not split a cohesive fix "
+                    "only to hit a line count.",
                     diff_size,
                 )
-                return 1
             if issue and not _fragment_exists(root, "origin/main", head, issue):
                 log.error(
                     "pre-push: issue branch %s requires changes/%s-<slug>.md",

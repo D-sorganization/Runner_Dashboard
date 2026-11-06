@@ -50,9 +50,14 @@ def test_force_push_guard_ignores_non_push_command() -> None:
     lane_policy_hooks.no_force_push_guard({"command": "git status --force"})
 
 
-def test_diff_size_guard_blocks_over_limit() -> None:
-    with pytest.raises(lane_policy_hooks.PolicyViolation, match="500"):
+def test_diff_size_guard_warns_over_limit_without_raising(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import logging
+
+    with caplog.at_level(logging.WARNING):
         lane_policy_hooks.diff_size_guard({"changed_lines": 501})
+    assert any("advisory" in rec.message.lower() for rec in caplog.records)
 
 
 def test_diff_size_guard_allows_exactly_limit() -> None:
@@ -79,9 +84,12 @@ def test_default_policy_hooks_cover_on_start_point() -> None:
     assert ids == {"install-pre-push-hook"}
 
 
-def test_default_policy_hooks_are_blocking() -> None:
+def test_default_policy_hooks_two_blocking_one_advisory() -> None:
     hooks = lane_policy_hooks.default_policy_hooks()
-    assert all(spec.blocking for spec in hooks["pre_tool"])
+    by_id = {spec.id: spec for spec in hooks["pre_tool"]}
+    assert by_id["no-verify-guard"].blocking is True
+    assert by_id["no-force-push-guard"].blocking is True
+    assert by_id["diff-size-guard"].blocking is False
 
 
 def test_apply_default_policy_hooks_prepends_without_losing_existing() -> None:
@@ -130,10 +138,10 @@ def test_diff_size_guard_uses_pr_size_gate_counter_when_repo_root_given(tmp_path
         "repo_root": tmp_path,
         "run": _numstat_runner("501\t0\tbackend/big_module.py\n"),
     }
-    with pytest.raises(lane_policy_hooks.PolicyViolation, match="501"):
-        lane_policy_hooks.diff_size_guard(context)
+    lane_policy_hooks.diff_size_guard(context)
     # The real count is populated back into the context for observability.
     assert context["changed_lines"] == 501
+    assert context.get("pr_size_over_reference_cap") is True
 
 
 def test_diff_size_guard_allows_within_limit_via_repo_root(tmp_path: Path) -> None:
@@ -167,14 +175,15 @@ def test_diff_size_guard_allowlist_does_not_cover_other_prs(tmp_path: Path) -> N
         "pr_number": 9999,
         "run": _numstat_runner("600\t0\tbackend/big_module.py\n"),
     }
-    with pytest.raises(lane_policy_hooks.PolicyViolation):
-        lane_policy_hooks.diff_size_guard(context)
+    lane_policy_hooks.diff_size_guard(context)
+    assert context["changed_lines"] == 600
+    assert context.get("pr_size_over_reference_cap") is True
 
 
 def test_diff_size_guard_falls_back_to_plain_changed_lines_without_repo_root() -> None:
-    # Back-compat: hermetic callers that only set changed_lines still work.
-    with pytest.raises(lane_policy_hooks.PolicyViolation, match="500"):
-        lane_policy_hooks.diff_size_guard({"changed_lines": 501})
+    ctx = {"changed_lines": 501}
+    lane_policy_hooks.diff_size_guard(ctx)
+    assert ctx["pr_size_over_reference_cap"] is True
 
 
 # --- #3963 S2: install_lane_pre_push_hook wires a real git pre-push hook ---

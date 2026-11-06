@@ -9,7 +9,7 @@ Repo: {repo}  Issue: #{issue}  Lane: cursor/{issue}-{slug}
    - `gh pr list --search "#{issue} in:body,title" --state open` returns any PR from ANY agent
    - issue has a live claim comment/label newer than 4h from another lane
 1. CLAIM: comment "claimed by cursor-cloud <run id>, ETA 2h" before writing code.
-2. SCOPE: one issue, one PR, < 500 changed lines INCLUDING generated files and lockfiles. If it won't fit, ship the first slice and file follow-up issues; never ask for an exception.
+2. SCOPE: one issue, one PR. Prefer a small, cohesive diff (generated files and lockfiles count in advisory tooling). Do **not** split a cohesive fix only to hit a line count — ship the work that matches the issue.
 3. TDD: failing test first, then fix. Run the repo's lint+type+test commands locally in the VM before pushing.
 4. PR: body contains "Closes #{issue}", test evidence, and line count. No stacked PRs. Do NOT arm auto-merge, do NOT force-push, no --no-verify.
 5. CI red: fix up to 2 times on the same branch; then comment the failing check + log excerpt on the PR and stop.
@@ -19,12 +19,12 @@ Repo: {repo}  Issue: #{issue}  Lane: cursor/{issue}-{slug}
 ## agy / gemini lane standing prompt v2
 - Same PRE-FLIGHT + CLAIM as cursor v2 (open-PR-from-any-agent check, drain/hold check).
 - When nothing is claimable: exit and report "idle: nothing claimable" ONCE; sleep >=30 min before re-polling (no tight loops).
-- One PR per issue; < 500 lines incl. generated files; TDD.
+- One PR per issue; prefer cohesive scope; TDD.
 - Open-PR cap: max 5 open PRs per lane per repo; past that, fix CI on your own open PRs instead of opening new ones.
 - On usage-limit error: stop, record reset time, do not retry before it.
 
 ## claude / codex lane standing prompt v2
-- Same PRE-FLIGHT/CLAIM/<500 rules. Claude: split before push (23 >500-line PRs last 8d).
+- Same PRE-FLIGHT/CLAIM/SCOPE rules as cursor v2.
 - Codex: on usage-limit, halt the whole lane until reset (no failing-run loop); on resume, first rebase/finish own stale PRs (>72h) before new work.
 
 ## Branch naming

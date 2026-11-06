@@ -209,7 +209,7 @@ def test_fleet_pinned_jobs_force_local_runner_when_hosted_queue_enabled() -> Non
         for job_id, job in jobs.items()
         if job_id != "pick-runner" and "needs.pick-runner.outputs.runner" in str(job.get("runs-on", ""))
     }
-    assert routed_jobs >= {"push-hygiene", "pr-size-gate"}
+    assert routed_jobs >= {"push-hygiene", "pr-size-advisory"}
     assert routed_jobs.isdisjoint(MERGE_QUEUE_FLEET_PINNED_JOBS)
 
 

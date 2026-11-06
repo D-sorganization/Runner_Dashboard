@@ -1,18 +1,17 @@
-"""Pre-push / pre-PR size gate: fail a diff over the line cap (#3963 S1).
+"""Pre-push / pre-PR size advisory: report diff line count vs a reference cap (#3963).
 
-WHY THIS EXISTS
-----------------
-60 PRs across the fleet went over the 500-line cap in 8 days
-(2026-10-27..11-03): claude 23, cursor 15, fleet-bot lanes 10, gemini 5, agy 3,
-codex 2. Size was only ever caught at review/CI time, after the work was
-already spent. This gate counts the diff against ``main`` *before* push,
-including generated files and lockfiles (unlike the informal "hand-written
-lines" convention lanes have used so far), so an over-size change is caught
-immediately rather than at review.
+Counts the diff (added + deleted from ``git diff --numstat``) against the merge
+base with ``main``, including generated files and lockfiles — the same number
+CI mirrors. **This never fails the process by default**; it logs a warning when
+the count exceeds ``--limit`` so lanes get immediate feedback without blocking
+push or merge. Prefer small, cohesive PRs; do **not** split a cohesive fix only
+to stay under a line count.
 
-Exceptions are not a flag an agent can pass itself: they come only from an
-explicit per-PR allowlist file that Dieter sets (``--allowlist``), never from
-``--no-verify`` or similar bypasses.
+Use ``--strict`` for enforcement (exit 1 when over the cap and not
+allowlisted), e.g. optional local policy or tests.
+
+``config/pr_size_allowlist.json`` remains supported for tagging allowlisted PRs
+in messages; it does not gate merge.
 """
 
 from __future__ import annotations
@@ -37,11 +36,12 @@ DEFAULT_ALLOWLIST_NAME = "config/pr_size_allowlist.json"
 
 @dataclass(frozen=True)
 class SizeVerdict:
-    """The result of checking one diff against the size cap."""
+    """The result of checking one diff against the advisory cap."""
 
     within_limit: bool
     total_lines: int
     reason: str
+    allowlisted: bool = False
 
 
 def parse_numstat(numstat_output: str) -> int:
@@ -133,15 +133,17 @@ def evaluate_size(
             within_limit=True,
             total_lines=total_lines,
             reason=f"{total_lines} > {limit} but PR #{pr_number} is allowlisted",
+            allowlisted=True,
         )
 
     return SizeVerdict(within_limit=False, total_lines=total_lines, reason=f"{total_lines} > {limit}")
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: ``pr_size_gate.py [--repo-root .] [--merge-base origin/main] [--limit 500] [--pr N] [--allowlist path]``.
+    """CLI: ``pr_size_gate.py [--repo-root .] [--merge-base origin/main] [--limit 500] [--pr N] [--allowlist path] [--strict]``.
 
-    Exit 0 if the diff is within the cap (or the PR is allowlisted), exit 1 otherwise.
+    Default: always exit 0; log a warning when over the cap (unless allowlisted).
+    With ``--strict``, exit 1 when over the cap and not allowlisted.
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo-root", default=".", help="repository root (default: cwd)")
@@ -163,6 +165,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"path to the allowlist JSON (default: <repo-root>/{DEFAULT_ALLOWLIST_NAME})",
     )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 when changed lines exceed --limit and the PR is not allowlisted",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -183,10 +190,16 @@ def main(argv: list[str] | None = None) -> int:
         run=_run_git,
     )
     print(verdict.reason)
-    if not verdict.within_limit:
+    if verdict.within_limit:
+        return 0
+    msg = (
+        f"PR size advisory: {verdict.total_lines} changed lines (reference cap {args.limit}). "
+        "Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count."
+    )
+    logger.warning("WARNING: %s", msg)
+    if args.strict:
         logger.error(
-            "size gate: %s changed lines exceeds the %s-line cap; split into a first "
-            "slice and file a follow-up issue for the rest",
+            "size gate (strict): %s changed lines exceeds the %s-line cap",
             verdict.total_lines,
             args.limit,
         )

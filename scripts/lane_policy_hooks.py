@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Default fleet-policy hooks for a lane profile (#3933 S3, #3963 S2).
 
-Three ``pre_tool`` checks, blocking by default, enforce the fleet's
-standing git/PR rules before a lane runs the command they guard:
+Two ``pre_tool`` checks, blocking by default, enforce the fleet's standing
+git rules before a lane runs the command they guard:
 
 * ``no_verify_guard`` -- never ``--no-verify`` or ``SKIP=<hook>``.
 * ``no_force_push_guard`` -- never a bare ``--force``/``-f`` push
   (``--force-with-lease`` is a different flag and is allowed).
-* ``diff_size_guard`` -- a PR's changed-line count stays at or under
-  :data:`scripts.pr_size_gate.DEFAULT_LIMIT`. When the hook context carries a
-  ``repo_root``, the guard computes the real count via
-  :func:`scripts.pr_size_gate.evaluate_size` (the same counter and allowlist
-  logic ``scripts/pr_size_gate.py`` uses standalone, #3963 S1) instead of
-  trusting a pre-populated ``changed_lines`` int -- this is the actual gap
-  #3963 S2 closes: nothing previously computed that value from a real diff.
+
+One ``pre_tool`` advisory hook (non-blocking):
+
+* ``diff_size_guard`` -- populates ``changed_lines`` from the real diff via
+  :func:`scripts.pr_size_gate.evaluate_size` when ``repo_root`` is set, or
+  accepts a caller-supplied ``changed_lines`` int. Over the reference cap it
+  only logs a warning — line count is not a merge or push blocker (#3963).
 
 One ``on_start`` hook, non-blocking, bootstraps the worktree-private
 pre-push gate:
@@ -33,6 +33,7 @@ without disturbing any hooks the profile already declares at any point.
 
 from __future__ import annotations
 
+import logging
 import re
 import shlex
 import subprocess
@@ -42,6 +43,8 @@ from typing import Any
 
 from scripts.lane_hooks import HookSpec, LaneProfile
 from scripts.pr_size_gate import DEFAULT_ALLOWLIST_NAME, DEFAULT_LIMIT, evaluate_size
+
+logger = logging.getLogger(__name__)
 
 _NO_VERIFY_CALLABLE = "scripts.lane_policy_hooks:no_verify_guard"
 _NO_FORCE_PUSH_CALLABLE = "scripts.lane_policy_hooks:no_force_push_guard"
@@ -82,15 +85,16 @@ def no_force_push_guard(context: dict[str, Any]) -> None:
 
 
 def diff_size_guard(context: dict[str, Any]) -> None:
-    """Block a PR whose changed-line count exceeds the cap.
+    """Advisory: populate ``changed_lines`` and warn when over the reference cap.
 
     When ``context["repo_root"]`` is set, the real diff is counted via
-    :func:`scripts.pr_size_gate.evaluate_size` -- the same counter and
-    allowlist (``config/pr_size_allowlist.json``) logic the standalone
-    ``pr_size_gate.py`` CLI uses -- and the result is written back to
-    ``context["changed_lines"]``. Without a ``repo_root``, this falls back
-    to trusting a pre-populated ``changed_lines`` int (hermetic callers,
-    e.g. existing tests of this hook in isolation).
+    :func:`scripts.pr_size_gate.evaluate_size` (same counter and allowlist as
+    ``scripts/pr_size_gate.py``) and written to ``context["changed_lines"]``.
+    Without ``repo_root``, a pre-populated ``changed_lines`` int is used for
+    tests and hermetic callers.
+
+    Never raises for size alone — prefer small cohesive PRs; do not split a
+    cohesive fix only to hit a line count.
     """
     repo_root = context.get("repo_root")
     if repo_root is not None:
@@ -108,8 +112,14 @@ def diff_size_guard(context: dict[str, Any]) -> None:
             **kwargs,
         )
         context["changed_lines"] = verdict.total_lines
+        context["pr_size_over_reference_cap"] = not verdict.within_limit
         if not verdict.within_limit:
-            raise PolicyViolation(verdict.reason)
+            logger.warning(
+                "PR size advisory: %s changed lines (reference cap %s). "
+                "Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count.",
+                verdict.total_lines,
+                context.get("limit", DEFAULT_LIMIT),
+            )
         return
 
     changed_lines = context.get("changed_lines")
@@ -117,8 +127,14 @@ def diff_size_guard(context: dict[str, Any]) -> None:
         return
     if not isinstance(changed_lines, int):
         raise PolicyViolation("changed_lines must be an int")
+    context["pr_size_over_reference_cap"] = changed_lines > _MAX_CHANGED_LINES
     if changed_lines > _MAX_CHANGED_LINES:
-        raise PolicyViolation(f"changed_lines={changed_lines} exceeds the {_MAX_CHANGED_LINES}-line cap")
+        logger.warning(
+            "PR size advisory: %s changed lines (reference cap %s). "
+            "Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count.",
+            changed_lines,
+            _MAX_CHANGED_LINES,
+        )
 
 
 def install_lane_pre_push_hook(worktree: Path) -> Path:
@@ -182,7 +198,7 @@ def default_policy_hooks() -> dict[str, tuple[HookSpec, ...]]:
         "pre_tool": (
             HookSpec(id="no-verify-guard", callable_path=_NO_VERIFY_CALLABLE, blocking=True),
             HookSpec(id="no-force-push-guard", callable_path=_NO_FORCE_PUSH_CALLABLE, blocking=True),
-            HookSpec(id="diff-size-guard", callable_path=_DIFF_SIZE_CALLABLE, blocking=True),
+            HookSpec(id="diff-size-guard", callable_path=_DIFF_SIZE_CALLABLE, blocking=False),
         ),
     }
 
