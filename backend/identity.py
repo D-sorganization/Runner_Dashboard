@@ -506,15 +506,17 @@ LOOPBACK_SCOPES = frozenset(
 )
 
 # Operator preset scopes (whitespace-separated to keep this module under the cap).
-_OPERATOR_PRESET_SCOPES: tuple[str, ...] = (
-    "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
-    "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute "
-    "assessments.dispatch code-requests.manage feature-requests.manage system.control "
-    "coordination.write priorities.write proposals.write "
-    "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.write staff.approve staff.admin "
-    "staff.audit.read staff.github_credential staff.dispatcher.ledger.write "
-    "fleet.maintain fleet.read memory.read memory.write activity.read activity.write github.app_token"
-).split()
+_OPERATOR_PRESET_SCOPES: tuple[str, ...] = tuple(
+    (
+        "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
+        "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute "
+        "assessments.dispatch code-requests.manage feature-requests.manage system.control "
+        "coordination.write priorities.write proposals.write "
+        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.write staff.approve staff.admin "
+        "staff.audit.read staff.github_credential staff.dispatcher.ledger.write "
+        "fleet.maintain fleet.read memory.read memory.write activity.read activity.write github.app_token"
+    ).split()
+)
 
 # Barb lanes: same hub agent surface as `operator` except owner-tap approval (`staff.approve`).
 BARB_ROLE_SCOPES: tuple[str, ...] = tuple(sorted(set(_OPERATOR_PRESET_SCOPES) - {"staff.approve"}))
