@@ -65,6 +65,8 @@ def classify_adapter_output(provider: str, text: str) -> AdapterFailureHint | No
         return _classify_antigravity(lower, text)
     if pid == "cursor-agent":
         return _classify_cursor_agent(lower, text)
+    if pid == "grok":
+        return _classify_grok(lower, text)
     return None
 
 
@@ -103,6 +105,15 @@ def _classify_antigravity(lower: str, text: str) -> AdapterFailureHint | None:
 
 
 def _classify_cursor_agent(lower: str, text: str) -> AdapterFailureHint | None:
+    if "usage limit" in lower or "usage-limit" in lower or "quota" in lower:
+        return AdapterFailureHint("quota_exhausted", text.strip()[:300])
+    if "rate limit" in lower or "429" in lower:
+        return AdapterFailureHint("rate_limited", text.strip()[:300])
+    return None
+
+
+def _classify_grok(lower: str, text: str) -> AdapterFailureHint | None:
+    """Parity with :func:`_classify_cursor_agent` for the standalone Grok CLI (#4131)."""
     if "usage limit" in lower or "usage-limit" in lower or "quota" in lower:
         return AdapterFailureHint("quota_exhausted", text.strip()[:300])
     if "rate limit" in lower or "429" in lower:
