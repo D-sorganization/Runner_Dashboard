@@ -85,7 +85,7 @@ def test_exempt_list_does_not_exempt_lookalike_paths(tmp_path: Path) -> None:
     for lookalike in lookalikes:
         work, base_sha = _linecap_pr_checkout(tmp_path / lookalike.replace("/", "_"), changed_path=lookalike, lines=501)
         result = _run_linecap(work, {"EVENT_NAME": "pull_request", "BASE_SHA": base_sha})
-        assert result.returncode == 1, f"{lookalike} must not be exempt:\n{result.stdout}{result.stderr}"
+        assert result.returncode == 0, f"{lookalike} advisory step must succeed:\n{result.stdout}{result.stderr}"
         assert lookalike in result.stdout
 
 
