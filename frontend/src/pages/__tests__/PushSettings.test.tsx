@@ -185,6 +185,8 @@ describe("PushSettings", () => {
     const subscribeButton = await screen.findByRole("button", { name: /subscribe/i });
     expect(subscribeButton).toBeDisabled();
     openVapidGate();
+    // Await the real condition: the button enables once the VAPID key has loaded.
+    await waitFor(() => expect(subscribeButton).toBeEnabled());
     await act(async () => {
       fireEvent.click(subscribeButton);
     });
