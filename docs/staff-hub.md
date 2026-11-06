@@ -552,16 +552,16 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 
 ## Provider Options (#1252)
 
-| Provider        | Launch (unattended; never a permission bypass, #1586)                                         | Models                                                                 |
-| --------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `claude`        | `claude -p --permission-mode dontAsk --permission-prompts none --allowedTools <list>`         | Claude seat (`CLAUDE_CONFIG_DIR` service copy)                         |
-| `codex`         | `codex exec --sandbox workspace-write --add-dir <git common dir> --json` (0.156+)             | ChatGPT seat                                                           |
-| `antigravity`   | `agy --print … --mode plan --model <id> --add-dir <wt>` (no permission bypass, #1586)         | Google sign-in; default `gemini-3.8-flash-high`                        |
-| `cursor-agent`  | `cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt>`      | Cursor subscription, incl. Grok (`grok-4.7-*`)                         |
-| `grok`          | `grok --no-auto-update -w <wt>` (never a bypass flag, #1586; allow/deny per policy)           | Standalone Grok CLI (SuperGrok plan; distinct from Cursor-hosted Grok) |
-| `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`              | Any Ollama model; default `glm-5.3-flash:cloud`                        |
-| `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`) | Any Ollama model; default `glm-5.3-flash:cloud`                        |
-| `gemini`        | `gemini -p --approval-mode auto_edit --policy <generated> --output-format stream-json`        | Google                                                                 |
+| Provider        | Launch (unattended; never a permission bypass, #1586)                                                            | Models                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `claude`        | `claude -p --permission-mode dontAsk --permission-prompts none --allowedTools <list>`                            | Claude seat (`CLAUDE_CONFIG_DIR` service copy)                         |
+| `codex`         | `codex exec --sandbox workspace-write --add-dir <git common dir> --json` (0.156+)                                | ChatGPT seat                                                           |
+| `antigravity`   | `agy --print … --mode plan --model <id> --add-dir <wt>` (no permission bypass, #1586)                            | Google sign-in; default `gemini-3.8-flash-high`                        |
+| `cursor-agent`  | `cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt>`                         | Cursor subscription, incl. Grok (`grok-4.7-*`)                         |
+| `grok`          | `grok -p … --output-format stream-json --allow … --deny … --no-auto-update -w <wt>` (never a bypass flag, #1586) | Standalone Grok CLI (SuperGrok plan; distinct from Cursor-hosted Grok) |
+| `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`                                 | Any Ollama model; default `glm-5.3-flash:cloud`                        |
+| `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`)                    | Any Ollama model; default `glm-5.3-flash:cloud`                        |
+| `gemini`        | `gemini -p --approval-mode auto_edit --policy <generated> --output-format stream-json`                           | Google                                                                 |
 
 Unattended runs use one shared shell allow-list and deny-list (`UNATTENDED_SHELL_ALLOW` /
 `UNATTENDED_SHELL_DENY` in `backend/staff/adapters.py`), rendered as Claude `Bash(<prefix>:*)` tool rules

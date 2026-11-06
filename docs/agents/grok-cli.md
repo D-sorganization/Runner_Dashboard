@@ -11,7 +11,7 @@ The Grok CLI is the standalone terminal coding tool from xAI. In the Runner Dash
 - **Provider Key:** `grok_cli` (canonical ID in `backend/agent_remediation/provider_registry.py`; aliases `grok`, `grok-cli`)
 - **Executable:** `grok`
 - **Execution Mode:** Local subprocess execution (`local_exec`) on fleet nodes (hub-a, node-a, node-b).
-- **Unattended Execution:** Launches with `--no-auto-update -w <workdir>` alongside policy allow/deny tool configurations.
+- **Unattended Execution:** Launches with `-p <prompt> --output-format stream-json --allow <allow> --deny <deny> --no-auto-update -w <workdir> --model <model>`.
 - **Safety & Permissions (#1586):** Unattended runs enforce strict allow/deny boundaries. Fleet adapters **never** pass permission bypass flags such as `--yolo` or `--always-approve`.
 - **Chat Mode:** Grok CLI does not currently expose a confirmed read-only inspection flag; read-only chat turns raise `ChatReadOnlyUnsupportedError` rather than risk uncontained writes.
 - **Failover Chain:** Grok CLI is opt-in per role via `providers:` in `staff/roles/*.yml`. It is excluded from the default failover chain (`config/provider_failover.json`) pending auth health monitoring (#4132) and usage tracking (#4133).
