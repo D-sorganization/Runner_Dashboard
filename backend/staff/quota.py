@@ -12,8 +12,9 @@ Two CLIs publish those windows locally at no cost:
   (``used_percent``, ``window_minutes``, ``resets_at``) to its session logs
   under ``~/.codex/sessions/YYYY/MM/DD/*.jsonl``.
 
-Gemini, Antigravity and Cursor expose no quota query, so their windows are
-unknown. This module parses those sources into :class:`QuotaSnapshot` values,
+Gemini, Antigravity, Cursor and Grok expose no quota query, so their windows are
+unknown (Grok stays Usage-Tracker-reported-only, matching Cursor and Antigravity).
+This module parses those sources into :class:`QuotaSnapshot` values,
 keeps the newest snapshot per plan account in a small JSON store next to the
 scheduler state, and answers "how full is this provider's plan right now".
 It never calls a CLI and never costs quota.
@@ -44,6 +45,9 @@ BILLING: dict[str, str] = {
     "antigravity": "subscription",
     "gemini": "subscription",
     "cursor-agent": "subscription",
+    "grok": "subscription",
+    "grok_cli": "subscription",
+    "grok-cli": "subscription",
     "ollama": "local",
     "claude-ollama": "local",
 }

@@ -56,6 +56,8 @@ LOGIN_COMMANDS: dict[str, str] = {
     "antigravity": "agy",
     "gemini": "gemini login",
     "grok": "grok login --device-auth",
+    "grok_cli": "grok login --device-auth",
+    "grok-cli": "grok login --device-auth",
     "ollama": "systemctl --user start ollama",
     "claude-ollama": "systemctl --user start ollama",
 }
