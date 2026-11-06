@@ -7,7 +7,11 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+from bash_host import find_bash
+
 _ROOT = Path(__file__).resolve().parents[2]
+BASH = find_bash()
 
 
 def _lane_fixture(tmp_path: Path, exit_code: int) -> tuple[Path, Path, Path, Path]:
@@ -33,6 +37,7 @@ def _lane_fixture(tmp_path: Path, exit_code: int) -> tuple[Path, Path, Path, Pat
     return worker_dir / "backlog-push-lane.sh", log_path, prompt, pidfile
 
 
+@pytest.mark.skipif(BASH is None, reason="POSIX bash required")
 def test_lane_records_success_exit_and_exits_zero(tmp_path: Path) -> None:
     lane_sh, log_path, prompt, pidfile = _lane_fixture(tmp_path, 0)
     env = os.environ.copy()
@@ -42,7 +47,7 @@ def test_lane_records_success_exit_and_exits_zero(tmp_path: Path) -> None:
     env["RUNNER_DASHBOARD_ROOT"] = str(tmp_path / "rd")
     env["BARB_BACKLOG_PUSH_GH_REFRESH_S"] = "1"
     proc = subprocess.run(
-        ["bash", str(lane_sh), "sess", str(log_path), str(prompt), str(pidfile)],
+        [BASH, str(lane_sh), "sess", str(log_path), str(prompt), str(pidfile)],
         env=env,
         capture_output=True,
         text=True,
@@ -54,6 +59,7 @@ def test_lane_records_success_exit_and_exits_zero(tmp_path: Path) -> None:
     assert exitfile.read_text(encoding="utf-8").strip() == "0"
 
 
+@pytest.mark.skipif(BASH is None, reason="POSIX bash required")
 def test_lane_records_failure_exit_37(tmp_path: Path) -> None:
     lane_sh, log_path, prompt, pidfile = _lane_fixture(tmp_path, 37)
     env = os.environ.copy()
@@ -63,7 +69,7 @@ def test_lane_records_failure_exit_37(tmp_path: Path) -> None:
     env["RUNNER_DASHBOARD_ROOT"] = str(tmp_path / "rd")
     env["BARB_BACKLOG_PUSH_GH_REFRESH_S"] = "1"
     proc = subprocess.run(
-        ["bash", str(lane_sh), "sess", str(log_path), str(prompt), str(pidfile)],
+        [BASH, str(lane_sh), "sess", str(log_path), str(prompt), str(pidfile)],
         env=env,
         capture_output=True,
         text=True,
