@@ -25,6 +25,7 @@ from fleet_autoconfig import (
     derive_pool_topology,
 )  # issue #942, #1169 — registry-driven pool topology & federation
 from fleet_backup_drill import emit_restore_drill_failure_alert
+from fleet_backup_pilot_status import read_fleet_backup_pilot_status
 from fleet_events import (  # issue #863 — record runner/disk transitions
     FleetEventPoller,
     nodes_from_fleet_status,
@@ -269,6 +270,7 @@ async def _collect_fleet_status(*, exclude_pools: bool) -> dict[str, Any]:
     local_metrics["runner_control"] = get_runner_control_health()
     local_metrics["deployment"] = get_deployment_info(VERSION, DEPLOYMENT_FILE)
     local_metrics["auto_deploy"] = read_auto_deploy_fleet_status()
+    local_metrics["fleet_backup_pilot"] = read_fleet_backup_pilot_status()
     local_metrics["_role"] = "hub" if MACHINE_ROLE == "hub" else "node"
     local_res_reason = resource_offline_reason(local_metrics)
     if local_res_reason:

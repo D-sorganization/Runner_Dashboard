@@ -34,6 +34,18 @@ def test_pass_refuses_to_run_without_a_bot_token(tmp_path: Path) -> None:
     assert result.returncode == 3 and "refusing personal auth fallback" in result.stderr
 
 
+def test_installer_backlog_push_flags_and_default_off() -> None:
+    text = INSTALL.read_text(encoding="utf-8")
+    assert "--enable-backlog-push" in text and "--disable-backlog-push" in text
+    assert "RELAY_BACKLOG_PUSH_ENABLED=${BACKLOG_PUSH}" in text
+    assert 'BACKLOG_PUSH="${RELAY_BACKLOG_PUSH_ENABLED:-0}"' in text
+    assert "barb_backlog_push_relay.py" in PASS.read_text(encoding="utf-8")
+    lane = SCRIPT_DIR / "backlog-push-lane.sh"
+    spawn = SCRIPT_DIR / "backlog-push-spawn.py"
+    assert lane.is_file() and spawn.is_file()
+    assert "unset GH_TOKEN" in lane.read_text(encoding="utf-8")
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="checks the non-root refusal")
 def test_installer_needs_root(tmp_path: Path) -> None:
     result = _bash(INSTALL, home=tmp_path)
