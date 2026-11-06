@@ -110,16 +110,91 @@ def _git_in_worktree(worktree: Path, *args: str, timeout: int = 30) -> subproces
     )
 
 
-def _worktree_safe_for_force_removal(worktree: Path) -> bool:
-    """True when the worktree has no tracked changes vs HEAD (untracked/submodule noise allowed).
+def _posix_rel(p: str) -> str:
+    return p.replace("\\", "/").strip()
 
-    Used to decide whether ``git worktree remove --force`` is safe after a normal remove
-    fails (e.g. submodule checkouts or untracked build output). Local edits to tracked
-    files or index/HEAD divergence preserves the tree.
-    """
+
+def _path_under_prefix(rel: str, prefix: str) -> bool:
+    rel_n, pre_n = _posix_rel(rel), _posix_rel(prefix)
+    if not pre_n:
+        return False
+    return rel_n == pre_n or rel_n.startswith(pre_n + "/")
+
+
+def _gitmodules_submodule_paths(worktree: Path) -> frozenset[str]:
+    """Paths declared in ``.gitmodules`` (forward slashes), empty when missing or unparseable."""
+    gm = worktree / ".gitmodules"
+    if not gm.is_file():
+        return frozenset()
+    paths: set[str] = set()
+    try:
+        text = gm.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return frozenset()
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.lower().startswith("path"):
+            continue
+        if "=" not in line:
+            continue
+        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+        if val:
+            paths.add(_posix_rel(val))
+    return frozenset(paths)
+
+
+def _safe_force_untracked_allow_prefixes(worktree: Path) -> frozenset[str]:
+    """Prefixes where untracked/ignored debris alone may be removed with ``--force`` (#4142 follow-up)."""
+    allow = {".staff", ".gemini"}
+    allow.update(_gitmodules_submodule_paths(worktree))
+    return frozenset(allow)
+
+
+def _untracked_paths_for_safe_force_scan(worktree: Path) -> list[str]:
+    """List relative paths that are untracked or ignored-from-standard (both matter for evidence)."""
+    out: list[str] = []
+    for extra in (
+        ("ls-files", "-z", "--others", "--exclude-standard"),
+        ("ls-files", "-z", "--others", "-i", "--exclude-standard"),
+    ):
+        res = _git_in_worktree(worktree, *extra, timeout=60)
+        if res.returncode != 0:
+            return [f"<git ls-files failed: {res.stderr.strip() or res.stdout}>"]
+        if not res.stdout:
+            continue
+        # NUL-separated; tolerate trailing NUL
+        for part in res.stdout.split("\0"):
+            rel = part.strip()
+            if rel:
+                out.append(_posix_rel(rel))
+    return out
+
+
+def _untracked_outside_safe_force_allowlist(worktree: Path) -> bool:
+    """True when any untracked/ignored path lies outside submodule paths and staff transcript dirs."""
+    prefixes = _safe_force_untracked_allow_prefixes(worktree)
+    for rel in _untracked_paths_for_safe_force_scan(worktree):
+        if rel.startswith("<git "):
+            return True  # refuse force when git state is unreadable
+        if not any(_path_under_prefix(rel, p) for p in prefixes):
+            return True
+    return False
+
+
+def _worktree_tracked_clean_vs_head(worktree: Path) -> bool:
+    """True when index and tracked tree match HEAD (submodule pointers unchanged vs HEAD)."""
     diff_files = _git_in_worktree(worktree, "diff-files", "--quiet")
     diff_index = _git_in_worktree(worktree, "diff-index", "--quiet", "HEAD", "--")
     return diff_files.returncode == 0 and diff_index.returncode == 0
+
+
+def _eligible_for_safe_force_removal(worktree: Path) -> bool:
+    """``git worktree remove --force`` only when tracked clean and no non-disposable untracked paths."""
+    if not _worktree_tracked_clean_vs_head(worktree):
+        return False
+    if _untracked_outside_safe_force_allowlist(worktree):
+        return False
+    return True
 
 
 def _stderr_suggests_safe_force(stderr: str) -> bool:
@@ -142,7 +217,7 @@ def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[boo
         return True, result
     if (
         result.returncode != 0
-        and _worktree_safe_for_force_removal(worktree)
+        and _eligible_for_safe_force_removal(worktree)
         and _stderr_suggests_safe_force(result.stderr)
     ):
         forced = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)

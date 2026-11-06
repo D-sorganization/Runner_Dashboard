@@ -1,4 +1,4 @@
 ---
 issue: 2538
-summary: "Staff worktree cleanup: safe git worktree remove --force for submodule or untracked debris when the tree matches HEAD; staff hub defers new worktrees under the same runner-schedule resource_floor (40 GB) with prune retry — plus proactive fleet disk/worktree self-healing before 90% cordon, WSL host-volume pressure, peer-pool reachability"
+summary: "Staff force worktree remove only when tracked-clean and untracked paths are confined to .gitmodules submodule dirs or .staff/.gemini; staff disk-floor admission probes scheduler parity without writing or clearing RUNNER_DISK_FLOOR_LATCH — plus proactive fleet disk/worktree self-healing before 90% cordon, WSL host-volume pressure, peer-pool reachability"
 ---
