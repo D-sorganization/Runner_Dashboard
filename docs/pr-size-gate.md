@@ -21,16 +21,22 @@ enforcement points below call the exact same script, so they always agree:
    runs on every `pull_request` event. It checks out full history, then runs:
 
    ```
-   python scripts/pr_size_gate.py --merge-base origin/main --pr "$PR_NUMBER"
+   python scripts/pr_size_gate.py --merge-base origin/main \
+     --merge-base-ref "$PR_BASE_SHA" --pr "$PR_NUMBER"
    ```
 
-   using the real PR number from `github.event.pull_request.number`. If the
-   local hook was ever skipped, bypassed, or simply not installed in a given
-   worktree, this job still catches an oversize diff before merge.
+   where `PR_BASE_SHA` is `github.event.pull_request.base.sha` (the tip of the
+   PR's base branch at event time). For PRs targeting `main`, the effective
+   range is the same triple-dot diff as the local hook; for stacked PRs
+   (base branch not `main`), the count is **incremental**: from
+   `git merge-base(PR_BASE, HEAD)` to `HEAD`, not the cumulative diff from
+   `main`. If the local hook was ever skipped, bypassed, or simply not
+   installed in a given worktree, this job still catches an oversize **slice**
+   before merge.
 
-Both call sites compute the identical number for the identical commit range,
-so "the CI mirror reports the same number as the local hook" by construction
-rather than by convention — there is exactly one counting implementation.
+The implementation is still one script; for default `main`-targeting branches,
+the CI number matches the local hook. Stacked PRs use `--merge-base-ref` in CI
+only so each layer is gated on its own delta.
 
 ## The allowlist is not a flag an agent can pass itself
 
