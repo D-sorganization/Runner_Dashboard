@@ -239,7 +239,7 @@ def test_canonical_oglaptop_schedule_is_bounded() -> None:
     assert schedule["enabled"] is True
     assert schedule["timezone"] == "America/Los_Angeles"
     assert schedule["default_count"] == 4
-    assert schedule["max_count"] == 8
+    assert schedule["max_count"] == 6
     counts = {item["name"]: item["runners"] for item in schedule["schedules"]}
     assert counts == {"weekday-day": 4, "weekend-day": 4, "overnight": 4}
 
