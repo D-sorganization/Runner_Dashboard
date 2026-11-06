@@ -191,7 +191,12 @@ def test_antigravity_permissions_merge_settings_and_git_exclude(tmp_path, monkey
 @pytest.mark.unit
 def test_every_chat_argv_stays_free_of_bypass_flags() -> None:
     for pid, adapter in ADAPTERS.items():
-        argv = adapter.chat_argv("hi", "/tmp/wt")
+        try:
+            argv = adapter.chat_argv("hi", "/tmp/wt")
+        except adapters_mod.ChatReadOnlyUnsupportedError:
+            # Providers with no known read-only chat mode refuse the turn
+            # closed rather than guess a flag; nothing to check here.
+            continue
         assert not PERMISSION_BYPASS_FLAGS & set(argv), pid
 
 
