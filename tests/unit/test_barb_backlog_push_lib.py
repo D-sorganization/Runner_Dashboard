@@ -75,6 +75,10 @@ def test_build_launch_plan_never_includes_issue_body() -> None:
     joined = "\n".join(p["prompt"] for p in plan)
     assert "DROP TABLE" not in joined and "Runner_Dashboard" in joined
     assert "Sidekick packaging" in joined
+    assert "Desk hub or Runner_Dashboard" in joined
+    assert "gh pr merge" in joined and "automerge_guard.py" in joined
+    assert "merge unless" not in joined.lower()
+    assert "ghp_" not in joined and "github_pat_" not in joined
 
 
 def test_hub_resource_disk_hold(monkeypatch: pytest.MonkeyPatch) -> None:
