@@ -74,42 +74,84 @@ def _active_sessions(active: dict[str, Any]) -> list[str]:
 
 def _worker_exit_code(log_dir: Path, session: str) -> int | None:
     path = log_dir / f"{session}.exit"
-    if not path.is_file():
-        return None
-    try:
-        return int(path.read_text(encoding="utf-8").strip())
-    except ValueError:
-        return None
+    if path.is_file():
+        try:
+            return int(path.read_text(encoding="utf-8").strip())
+        except ValueError:
+            pass
+    rcpt = log_dir / f"{session}.receipt"
+    if rcpt.is_file():
+        try:
+            data = json.loads(rcpt.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and "exit_code" in data:
+                return int(data["exit_code"])
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def _evaluate_active_outcome(
+    active: dict[str, Any],
+) -> tuple[bool, str, str | None, dict[str, int | None]]:
+    """Inspect active push processes and exit evidence.
+
+    Returns:
+        (ready, outcome, detail, exit_codes)
+        - ready: False if any tracked process is still running.
+        - outcome: 'completed', 'failed', or 'unknown'.
+        - detail: human-readable failure/unknown summary (None if clean completed).
+        - exit_codes: map of session -> exit code (or None).
+    """
+    log_dir_s = active.get("log_dir")
+    base = Path(str(log_dir_s)) if log_dir_s else None
+    sessions = _active_sessions(active)
+
+    if base is not None:
+        for session in sessions:
+            pidfile = base / f"{session}.pid"
+            if pidfile.is_file():
+                try:
+                    pid = int(pidfile.read_text(encoding="utf-8").strip())
+                except ValueError:
+                    pid = 0
+                if _pid_alive(pid):
+                    return False, "running", None, {}
+
+    pids = active.get("pids") if isinstance(active.get("pids"), dict) else {}
+    if any(_pid_alive(int(p)) for p in pids.values() if isinstance(p, int)):
+        return False, "running", None, {}
+
+    if base is None or not sessions:
+        return True, "unknown", "processes terminated without recorded session evidence", {}
+
+    exit_codes: dict[str, int | None] = {}
+    for session in sessions:
+        exit_codes[session] = _worker_exit_code(base, session)
+
+    missing = [s for s, c in exit_codes.items() if c is None]
+    failed = [s for s, c in exit_codes.items() if c is not None and c != 0]
+
+    if failed:
+        parts = [f"{s} exited with status {exit_codes[s]}" for s in failed]
+        if missing:
+            parts.extend(f"{s} exited without recording exit status" for s in missing)
+        return True, "failed", "; ".join(parts), exit_codes
+
+    if missing:
+        parts = [f"{s} exited without recording exit status" for s in missing]
+        return True, "unknown", "; ".join(parts), exit_codes
+
+    return True, "completed", None, exit_codes
 
 
 def _push_completion(active: dict[str, Any]) -> tuple[bool, str | None]:
     """Return (ready_to_finalize, failure_detail). Not ready while a worker pid is alive."""
-    log_dir_s = active.get("log_dir")
-    if not log_dir_s:
-        if _push_processes_alive(active):
-            return False, None
+    ready, outcome, detail, _ = _evaluate_active_outcome(active)
+    if not ready:
+        return False, None
+    if outcome == "completed":
         return True, None
-    log_dir = Path(str(log_dir_s))
-    failures: list[str] = []
-    for session in _active_sessions(active):
-        pidfile = log_dir / f"{session}.pid"
-        if pidfile.is_file():
-            try:
-                pid = int(pidfile.read_text(encoding="utf-8").strip())
-            except ValueError:
-                pid = 0
-            if _pid_alive(pid):
-                return False, None
-        code = _worker_exit_code(log_dir, session)
-        if code is None:
-            failures.append(f"{session} exited without recording exit status")
-        elif code != 0:
-            failures.append(f"{session} exited with status {code}")
-    if failures:
-        return True, "; ".join(failures)
-    if not _active_sessions(active):
-        return not _push_processes_alive(active), None
-    return True, None
+    return True, detail
 
 
 def _push_processes_alive(active: dict[str, Any]) -> bool:
@@ -219,27 +261,33 @@ class BacklogPushRelay:
                 f"Supervisor session: `{active.get('supervisor_session')}`.\n"
                 f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
             )
-            self._finalize(number, summary, timed_out=True)
+            self._finalize(number, summary, timed_out=True, outcome="timeout")
             return
-        ready, failure = _push_completion(active)
+        ready, outcome, detail, exit_codes = _evaluate_active_outcome(active)
         if not ready:
             return
         if self.dry_run:
-            logger.info("[dry-run] #%s: would finalize (workers finished)", number)
+            logger.info("[dry-run] #%s: would finalize (workers finished, outcome=%s)", number, outcome)
             return
-        if failure:
-            summary = (
-                f"Backlog push finished with errors ({failure}).\n"
-                f"Supervisor session: `{active.get('supervisor_session')}`.\n"
-                f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
-            )
-        else:
+        if outcome == "completed":
             summary = (
                 "Backlog push finished (all lane processes exited cleanly).\n"
                 f"Supervisor session: `{active.get('supervisor_session')}`.\n"
                 f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
             )
-        self._finalize(number, summary, timed_out=False)
+        elif outcome == "failed":
+            summary = (
+                f"Backlog push finished with errors ({detail}).\n"
+                f"Supervisor session: `{active.get('supervisor_session')}`.\n"
+                f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
+            )
+        else:
+            summary = (
+                f"Backlog push finished with unknown outcome ({detail}).\n"
+                f"Supervisor session: `{active.get('supervisor_session')}`.\n"
+                f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
+            )
+        self._finalize(number, summary, timed_out=False, outcome=outcome, exit_codes=exit_codes)
 
     def _consider(self, issue: dict[str, Any]) -> None:
         number = int(issue["number"])
@@ -328,14 +376,46 @@ class BacklogPushRelay:
             raise RuntimeError("backlog-push spawn failed")
         return json.loads(proc.stdout or "{}")
 
-    def _finalize(self, number: int, summary: str, *, timed_out: bool) -> None:
+    def _finalize(
+        self,
+        number: int,
+        summary: str,
+        *,
+        timed_out: bool,
+        outcome: str = "completed",
+        exit_codes: dict[str, int | None] | None = None,
+    ) -> None:
         if self.dry_run:
             return
         active = self.state.get("active") or {}
         if timed_out:
             _terminate_from_active(active)
+        log_dir_s = active.get("log_dir")
+        if log_dir_s:
+            try:
+                receipt_path = Path(str(log_dir_s)) / "outcome_receipt.json"
+                tmp_receipt = receipt_path.with_suffix(".tmp")
+                receipt_data = {
+                    "issue": number,
+                    "outcome": outcome,
+                    "exit_codes": exit_codes if exit_codes is not None else {},
+                    "finalized_at": self.now_fn().isoformat(),
+                    "supervisor_session": active.get("supervisor_session"),
+                    "lane_sessions": active.get("lane_sessions") or [],
+                }
+                tmp_receipt.write_text(json.dumps(receipt_data, indent=2, sort_keys=True), encoding="utf-8")
+                tmp_receipt.replace(receipt_path)
+            except OSError as exc:
+                logger.warning("failed to write outcome receipt: %s", exc)
         self.state["active"] = None
-        self._mark(number, {"status": "done"}, summary, DONE)
+        entry: dict[str, Any] = {
+            "status": "done",
+            "outcome": outcome,
+            "exit_codes": exit_codes if exit_codes is not None else {},
+            "supervisor_session": active.get("supervisor_session"),
+            "lane_sessions": active.get("lane_sessions") or [],
+        }
+        self._mark(number, entry, summary, DONE)
         self.counts["done"] += 1
 
     def _skip(self, number: int, why: str) -> None:

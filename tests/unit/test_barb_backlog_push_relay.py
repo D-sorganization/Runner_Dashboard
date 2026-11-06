@@ -137,6 +137,8 @@ def test_worker_failure_exit_finalizes_with_error_summary(tmp_path: Path) -> Non
     counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
     assert counts["done"] == 1
     assert state["active"] is None
+    assert state["processed"]["7"]["outcome"] == "failed"
+    assert state["processed"]["7"]["exit_codes"] == {session: 37}
     comments = [w for w in gh.writes if w[0] == "comment"]
     assert comments and "status 37" in comments[-1][2]
 
@@ -161,6 +163,8 @@ def test_missing_exit_file_is_unknown_outcome_not_success(tmp_path: Path) -> Non
     gh = FakeGitHub([])
     relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
     assert state["active"] is None
+    assert state["processed"]["7"]["outcome"] == "unknown"
+    assert state["processed"]["7"]["exit_codes"] == {session: None}
     comments = [w for w in gh.writes if w[0] == "comment"]
     assert comments and "without recording exit status" in comments[-1][2]
 
@@ -336,3 +340,129 @@ def test_real_expiry_signals_only_owned_processes_and_clears_active(
     assert signalled_pids == [4300]
     assert 9999 not in signalled_pids and 9998 not in signalled_groups
     assert any("wall-clock timeout" in w[2] for w in gh.writes if w[0] == "comment")
+
+
+def test_clean_exit_records_completed_outcome_and_receipt(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    session = "barb-bpush-7-sup"
+    (log_dir / f"{session}.pid").write_text("1000", encoding="utf-8")
+    (log_dir / f"{session}.exit").write_text("0", encoding="utf-8")
+    state = {
+        "processed": {"7": {"status": "running"}},
+        "push_starts": {TODAY: 1},
+        "active": {
+            "issue": 7,
+            "deadline_at": (NOW + timedelta(hours=2)).isoformat(),
+            "supervisor_session": session,
+            "lane_sessions": [],
+            "pids": {"supervisor": 1000},
+            "log_dir": str(log_dir),
+        },
+    }
+    gh = FakeGitHub([])
+    counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
+    assert counts["done"] == 1
+    assert state["active"] is None
+    entry = state["processed"]["7"]
+    assert entry["status"] == "done"
+    assert entry["outcome"] == "completed"
+    assert entry["exit_codes"] == {session: 0}
+    receipt = log_dir / "outcome_receipt.json"
+    assert receipt.is_file()
+    receipt_data = json.loads(receipt.read_text(encoding="utf-8"))
+    assert receipt_data["outcome"] == "completed"
+    assert receipt_data["exit_codes"] == {session: 0}
+
+
+def test_pid_disappearance_without_evidence_is_unknown_not_completed(tmp_path: Path) -> None:
+    # No log_dir or empty sessions: PID disappearance alone is NOT completed
+    state = {
+        "processed": {"7": {"status": "running"}},
+        "push_starts": {TODAY: 1},
+        "active": {
+            "issue": 7,
+            "deadline_at": (NOW + timedelta(hours=2)).isoformat(),
+            "supervisor_session": None,
+            "lane_sessions": [],
+            "pids": {"supervisor": 1000},
+            "log_dir": None,
+        },
+    }
+    gh = FakeGitHub([])
+    counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
+    assert counts["done"] == 1
+    assert state["active"] is None
+    entry = state["processed"]["7"]
+    assert entry["outcome"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("exit_val", "expected_outcome", "expected_summary_part"),
+    [
+        ("0", "completed", "all lane processes exited cleanly"),
+        ("37", "failed", "status 37"),
+        (None, "unknown", "without recording exit status"),
+    ],
+)
+def test_recovery_across_restarts_distinguishes_outcome(
+    tmp_path: Path,
+    exit_val: str | None,
+    expected_outcome: str,
+    expected_summary_part: str,
+) -> None:
+    """#4104: across relay restart, loaded active state resolves correctly from exit evidence."""
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    session = "barb-bpush-8-sup"
+    (log_dir / f"{session}.pid").write_text("2000", encoding="utf-8")
+    if exit_val is not None:
+        (log_dir / f"{session}.exit").write_text(exit_val, encoding="utf-8")
+
+    state_path = tmp_path / "state.json"
+    saved_state = {
+        "processed": {"8": {"status": "running", "supervisor_session": session}},
+        "push_starts": {TODAY: 1},
+        "active": {
+            "issue": 8,
+            "started_at": (NOW - timedelta(minutes=10)).isoformat(),
+            "deadline_at": (NOW + timedelta(hours=1)).isoformat(),
+            "supervisor_session": session,
+            "lane_sessions": [],
+            "pids": {"supervisor": 2000},
+            "log_dir": str(log_dir),
+            "duration_min": 60,
+        },
+    }
+    relay.save_state(state_path, saved_state)
+
+    # Simulate fresh relay process startup loading state from disk
+    loaded_state = relay.load_state(state_path)
+    gh = FakeGitHub([])
+    c = lib.BacklogPushConfig(
+        True, "http://hub.test", "tok", frozenset({BOT}), 2, state_path, "D-sorganization/barbara"
+    )
+    pusher = relay.BacklogPushRelay(c, gh, loaded_state, today=TODAY, now_fn=lambda: NOW)
+    counts = pusher.run()
+
+    assert counts["done"] == 1
+    assert loaded_state["active"] is None
+    entry = loaded_state["processed"]["8"]
+    assert entry["status"] == "done"
+    assert entry["outcome"] == expected_outcome
+    expected_code = int(exit_val) if exit_val is not None else None
+    assert entry["exit_codes"] == {session: expected_code}
+
+    receipt_file = log_dir / "outcome_receipt.json"
+    assert receipt_file.is_file()
+    rcpt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    assert rcpt["outcome"] == expected_outcome
+    assert rcpt["exit_codes"] == {session: expected_code}
+
+    # State file on disk must reflect finalized state
+    disk_state = relay.load_state(state_path)
+    assert disk_state["active"] is None
+    assert disk_state["processed"]["8"]["outcome"] == expected_outcome
+
+    comments = [w for w in gh.writes if w[0] == "comment"]
+    assert comments and expected_summary_part in comments[-1][2]
