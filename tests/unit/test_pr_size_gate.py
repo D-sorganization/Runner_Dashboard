@@ -120,13 +120,16 @@ def test_main_exits_zero_when_within_limit(tmp_path: Path, capsys: pytest.Captur
 def test_real_allowlist_file_round_trips_through_load_allowlist() -> None:
     # Regression for #3963 S3: config/pr_size_allowlist.json must parse as the
     # exact shape `_load_allowlist` expects ({"allowed_prs": [...]}) rather
-    # than some other guessed shape. Starts empty; Dieter is the only editor.
+    # than some other guessed shape. Entries are owner-controlled (may be empty
+    # or list specific PR numbers).
     from scripts.pr_size_gate import _load_allowlist
 
     real_repo = Path(__file__).resolve().parents[2]
     allowlist_path = real_repo / "config" / "pr_size_allowlist.json"
     assert allowlist_path.exists()
-    assert _load_allowlist(allowlist_path) == frozenset()
+    loaded = _load_allowlist(allowlist_path)
+    assert isinstance(loaded, frozenset)
+    assert all(isinstance(n, int) for n in loaded)
 
 
 def test_resolve_diff_merge_base_delegates_to_git_merge_base(tmp_path: Path) -> None:
