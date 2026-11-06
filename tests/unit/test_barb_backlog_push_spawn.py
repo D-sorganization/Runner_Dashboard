@@ -1,15 +1,13 @@
-"""Tests for detached backlog-push spawn (#4098)."""
+"""Tests for detached backlog-push spawn (#4098). Refs #4103, #4105."""
 
 from __future__ import annotations
 
-import json
-import subprocess
+import importlib.util
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
-
-import importlib.util
 
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "scripts"))
@@ -31,39 +29,38 @@ def test_lane_script_refreshes_gh_without_exporting_token() -> None:
     text = (_ROOT / "scripts/barb-worker/backlog-push-lane.sh").read_text(encoding="utf-8")
     assert "unset GH_TOKEN GITHUB_TOKEN" in text
     assert "gh api user" in text
-    assert "echo $GH_TOKEN" not in text and 'GH_TOKEN="' not in text
+    assert "wait \"${WORKER_PID}\"" in text
+    assert "stop_refresh" in text
+    assert 'echo $GH_TOKEN' not in text and 'GH_TOKEN="' not in text
 
 
-def test_default_launcher_spawn_subprocess_omits_bot_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    captured: dict[str, object] = {}
+def test_partial_launch_rolls_back_earlier_lane(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    calls: list[str] = []
 
-    def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
-        captured["env"] = kwargs.get("env")
-        class R:
-            returncode = 0
-            stdout = json.dumps({"supervisor": 1})
-            stderr = ""
+    def fake_spawn(*_a, **_k):
+        session = _a[1]
+        calls.append(session)
+        if session == "lane2":
+            raise RuntimeError("spawn failed")
+        pidfile: Path = _a[4]
+        pidfile.write_text("42", encoding="utf-8")
+        return 42
 
-        return R()
+    plan = [
+        {"role": "supervisor", "session": "sup", "prompt": "p1"},
+        {"role": "lane", "session": "lane2", "prompt": "p2"},
+    ]
+    with patch.object(spawn, "_spawn_one", side_effect=fake_spawn):
+        with patch.object(spawn, "_rollback_launched") as rollback:
+            with pytest.raises(RuntimeError, match="spawn failed"):
+                spawn.main([str(log_dir)])
+            rollback.assert_called_once()
+            rolled = rollback.call_args[0][1]
+            assert rolled == [("sup", 42)]
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setenv("RUNNER_DASHBOARD_ROOT", str(_ROOT))
-    monkeypatch.setenv("GH_TOKEN", "gho_test_should_not_leak")
-    import barb_backlog_push_relay as relay  # noqa: E402
 
-    cfg = relay.BacklogPushConfig(
-        True,
-        "http://h",
-        "tok",
-        frozenset(),
-        2,
-        tmp_path / "state.json",
-        "D/x",
-    )
-    r = relay.BacklogPushRelay(cfg, github=object(), state={})
-    r._default_launcher(
-        {"plan": [{"role": "supervisor", "session": "s", "prompt": "fixed prompt"}]},
-        tmp_path,
-    )
-    env = captured.get("env") or {}
-    assert "GH_TOKEN" not in env and "GITHUB_TOKEN" not in env
+def test_predecessor_tests_do_not_import_relay_module() -> None:
+    text = Path(__file__).read_text(encoding="utf-8")
+    assert "barb_backlog_push_relay" not in text

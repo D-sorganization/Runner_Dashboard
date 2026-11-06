@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -22,6 +23,17 @@ def _lane_env() -> dict[str, str]:
     env.pop("GH_TOKEN", None)
     env.pop("GITHUB_TOKEN", None)
     return env
+
+
+def _rollback_launched(log_dir: Path, launched: list[tuple[str, int]]) -> None:
+    """Stop only workers recorded for this spawn attempt (#4103)."""
+    for session, pid in reversed(launched):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+        (log_dir / f"{session}.pid").unlink(missing_ok=True)
+        (log_dir / f"{session}.exit").unlink(missing_ok=True)
 
 
 def _spawn_one(
@@ -84,21 +96,32 @@ def main(argv: list[str] | None = None) -> int:
     plan: list[dict[str, Any]] = json.load(sys.stdin)
     env = _lane_env()
     out: dict[str, int] = {}
+    launched: list[tuple[str, int]] = []
     lane_n = 0
-    for entry in plan:
-        role = str(entry["role"])
-        session = str(entry["session"])
-        prompt_path = log_dir / f"{session}.prompt"
-        prompt_path.write_text(str(entry["prompt"]), encoding="utf-8")
-        log_path = log_dir / f"{session}.log"
-        log_path.touch()
-        pidfile = log_dir / f"{session}.pid"
-        pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
-        if role == "supervisor":
-            out["supervisor"] = pid
-        else:
-            lane_n += 1
-            out[f"lane{lane_n}"] = pid
+    try:
+        for entry in plan:
+            role = str(entry["role"])
+            session = str(entry["session"])
+            prompt_path = log_dir / f"{session}.prompt"
+            prompt_path.write_text(str(entry["prompt"]), encoding="utf-8")
+            log_path = log_dir / f"{session}.log"
+            log_path.touch()
+            pidfile = log_dir / f"{session}.pid"
+            pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
+            launched.append((session, pid))
+            if role == "supervisor":
+                out["supervisor"] = pid
+            else:
+                lane_n += 1
+                out[f"lane{lane_n}"] = pid
+    except Exception:
+        _rollback_launched(log_dir, launched)
+        raise
+    manifest = log_dir / "launch_manifest.json"
+    manifest.write_text(
+        json.dumps({"sessions": [s for s, _ in launched], "pids": out}, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
     sys.stdout.write(json.dumps(out))
     return 0
 

@@ -7,6 +7,7 @@ SESSION="${1:?session}"
 LOG_PATH="${2:?log}"
 PROMPT_PATH="${3:?prompt}"
 PIDFILE="${4:?pidfile}"
+EXITFILE="${PIDFILE%.pid}.exit"
 
 ROOT="${RUNNER_DASHBOARD_ROOT:-/opt/Runner_Dashboard}"
 # shellcheck source=scripts/barb-worker/with-fleet-env.sh
@@ -23,7 +24,11 @@ REFRESH_S="${BARB_BACKLOG_PUSH_GH_REFRESH_S:-2700}"
     done
 ) &
 REFRESH_PID=$!
-trap 'kill "${REFRESH_PID}" 2>/dev/null || true' EXIT
+
+stop_refresh() {
+    kill "${REFRESH_PID}" 2>/dev/null || true
+    wait "${REFRESH_PID}" 2>/dev/null || true
+}
 
 cd "${ROOT}"
 exec >>"${LOG_PATH}" 2>&1
@@ -31,5 +36,11 @@ echo "$(date -Is) backlog-push lane start session=${SESSION}"
 
 CLAUDE=(claude -p --output-format stream-json --verbose --permission-mode dontAsk --permission-prompts none)
 "${CLAUDE[@]}" <"${PROMPT_PATH}" &
-echo $! >"${PIDFILE}"
-wait
+WORKER_PID=$!
+echo "${WORKER_PID}" >"${PIDFILE}"
+
+WORKER_STATUS=0
+wait "${WORKER_PID}" || WORKER_STATUS=$?
+stop_refresh
+echo "${WORKER_STATUS}" >"${EXITFILE}"
+exit "${WORKER_STATUS}"
