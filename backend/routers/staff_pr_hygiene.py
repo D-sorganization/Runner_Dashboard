@@ -33,7 +33,7 @@ from typing import Any
 
 import gh_client
 from fastapi import APIRouter, Depends, HTTPException
-from identity import Principal, require_scope
+from identity import Principal, require_any_scope
 from pydantic import BaseModel, Field
 from staff.audit import record_audit
 from staff.maintenance_github import repo_full
@@ -61,7 +61,8 @@ log = logging.getLogger("dashboard.staff.pr_hygiene")
 router = APIRouter(tags=["staff-pr-hygiene"])
 
 MAX_ITEMS = 20
-_STAFF_ADMIN = require_scope("staff.admin")
+# Barbs use staff.write (barb preset) for batch hygiene; operators keep staff.admin.
+_PR_HYGIENE_AUTH = require_any_scope("staff.admin", "staff.write")
 
 #: GitHub's "close/closes/closed" keyword only (this repo's documented PR-body
 #: convention, per AGENTS.md); "fix(es/ed)"/"resolve(s/d)" are out of scope.
@@ -140,7 +141,7 @@ async def _collect_plans(items: list[PrHygieneItem], plan_one: Any) -> list[dict
 @router.post("/pr-hygiene")
 async def pr_hygiene(
     body: PrHygieneRequest,
-    caller: Principal = Depends(_STAFF_ADMIN),
+    caller: Principal = Depends(_PR_HYGIENE_AUTH),
 ) -> dict[str, Any]:
     """Batch, deterministic PR hygiene: rerun each target's own failed workflow runs.
 
@@ -227,7 +228,7 @@ def _without_body(plan: dict[str, Any]) -> dict[str, Any]:
 @router.post("/pr-hygiene/closes-refs")
 async def pr_hygiene_closes_refs(
     body: PrHygieneRequest,
-    caller: Principal = Depends(_STAFF_ADMIN),
+    caller: Principal = Depends(_PR_HYGIENE_AUTH),
 ) -> dict[str, Any]:
     """Batch, deterministic fix for a ``Closes #N`` that wrongly targets an epic tracker.
 
@@ -287,7 +288,7 @@ async def _apply_one_rearm(plan: dict[str, Any]) -> dict[str, Any]:
 @router.post("/pr-hygiene/rearm")
 async def pr_hygiene_rearm(
     body: PrHygieneRequest,
-    caller: Principal = Depends(_STAFF_ADMIN),
+    caller: Principal = Depends(_PR_HYGIENE_AUTH),
 ) -> dict[str, Any]:
     """Batch re-arm of an unarmed, unheld PR via the fleet's sanctioned ``automerge_guard`` seam.
 

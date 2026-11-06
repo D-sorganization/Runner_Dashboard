@@ -29,7 +29,14 @@ pytestmark = pytest.mark.integration
 
 _MEM = ["memory.read", "memory.write", "memory.shared.summarize"]
 _TOKENS = {
-    "barb": Principal(id="agent-grok", type="bot", name="Barb", roles=["bot"], scopes=_MEM, assistant_kind="grokbot"),
+    "barb": Principal(
+        id="agent-grok",
+        type="bot",
+        name="Barb",
+        roles=["bot", "barb"],
+        scopes=_MEM,
+        assistant_kind="grokbot",
+    ),
     "plain": Principal(id="agent-plain", type="bot", name="Plain", roles=["bot"], scopes=_MEM),
 }
 _MEMORY = {"entry_type": "session_digest", "source_product": "grokbot", "body": {"summary": "x", "open_items": []}}

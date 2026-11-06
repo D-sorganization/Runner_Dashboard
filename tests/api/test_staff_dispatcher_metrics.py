@@ -124,6 +124,8 @@ def test_write_only_ledger_scope_cannot_read_metrics(client: TestClient) -> None
 @pytest.mark.unit
 def test_run_origin_uses_authenticated_principal_type_and_identity() -> None:
     assert dispatcher_origin("principal:agent-grok", "bot") == "grok"
+    assert dispatcher_origin("principal:agent-codex-hands", "bot") == "grok"
+    assert dispatcher_origin("principal:grok-barb", "bot") == "grok"
     assert dispatcher_origin("principal:operator", "human") == "console"
     assert dispatcher_origin("principal:unknown-agent", "bot") == "other"
 

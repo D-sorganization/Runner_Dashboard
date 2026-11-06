@@ -139,9 +139,14 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
             manager.principals[agent_id] = Principal(**fields)
             log.info("agent principal provisioned from defaults: %s", agent_id)
             continue
-        merged_roles = (
-            ["checkin-only"] if "checkin-only" in fields["roles"] else _union_list(existing.roles, fields["roles"])
-        )
+        merged_roles: list[str]
+        if "checkin-only" in fields["roles"]:
+            merged_roles = ["checkin-only"]
+        else:
+            merged_roles = _union_list(existing.roles, fields["roles"])
+            # Preserve explicit ordering from defaults when both bot and barb are present (parity role).
+            if "barb" in fields["roles"] and "barb" in merged_roles and "bot" in merged_roles:
+                merged_roles = ["bot", "barb", *[r for r in merged_roles if r not in ("bot", "barb")]]
         update: dict[str, Any] = {
             "name": fields["name"] if fields["name"] else existing.name,
             "roles": merged_roles,

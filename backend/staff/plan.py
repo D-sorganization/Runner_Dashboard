@@ -47,6 +47,8 @@ class RunRequest:
     requested_skill: str | None = None
     execution_mode: str = "local"
     dispatch_origin: str = ""
+    # Barb lane dispatch: skip per-role repo allowlist when planning (#4117).
+    barb_bypass_role_repos: bool = False
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):

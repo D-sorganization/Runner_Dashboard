@@ -8,6 +8,8 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from staff.barb_lease_fence import BARB_ID_SUFFIXES, BARB_SEAT_IDS, is_barb_seat
+
 
 class DispatcherRateLimitError(RuntimeError):
     """The dispatcher fallback ledger exceeded its per-principal write rate."""
@@ -15,8 +17,14 @@ class DispatcherRateLimitError(RuntimeError):
 
 def dispatcher_origin(principal: str, principal_type: str = "") -> str:
     """Classify provenance from authenticated identity/type, never request fields."""
+    from identity import identity_manager  # noqa: PLC0415 — avoid import cycle with staff.store
+
     normalized = principal.removeprefix("principal:")
-    if normalized == "agent-grok":
+    prin = identity_manager.get_principal(normalized)
+    if prin is not None and is_barb_seat(prin):
+        # Legacy bucket name ``grok``: all Barb lane principals share this metrics origin (#3064).
+        return "grok"
+    if normalized in BARB_SEAT_IDS or any(normalized.endswith(suffix) for suffix in BARB_ID_SUFFIXES):
         return "grok"
     if normalized == "scheduler":
         return "schedule"

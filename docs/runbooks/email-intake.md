@@ -68,10 +68,10 @@ On spoke nodes (e.g. node-c) with a **user** unit: `systemctl --user restart run
 2. Update `MAIL_INTAKE_IMAP_*` and the password file on the hub.
 3. Restart the dashboard service (system unit on hub, user unit on spokes).
 
-## 5. Barb (agent-grok) — read and approve proposals
+## 5. Barb — read and approve proposals (any Barb lane principal)
 
 ```bash
-export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-grok.token)"
+export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-grok.token)"  # or another Barb lane token, e.g. agent-codex-hands
 BASE=http://127.0.0.1:8321
 
 curl -sS -H "Authorization: Bearer $FLEET_API_TOKEN" \
@@ -87,8 +87,9 @@ curl -sS -X POST -H "Authorization: Bearer $FLEET_API_TOKEN" \
   "$BASE/api/v1/proposals/ip_XXXXXXXXXXXX/decide" | jq .
 ```
 
-`owner_approval_ref` is **required** when the caller is `agent-grok`. Operators with
-`staff.approve` may approve without it.
+`owner_approval_ref` is **optional** audit text (e.g. owner thread id) when approving. Callers
+with `staff.approve` use the same field the same way.
+
 
 ## 6. Health
 

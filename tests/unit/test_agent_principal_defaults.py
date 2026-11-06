@@ -36,7 +36,7 @@ def test_merge_applies_fleet_read_to_agent_grok(tmp_path: Path, monkeypatch: pyt
     merge_agent_principal_defaults(mgr)
 
     prin = mgr.principals["agent-grok"]
-    assert prin.roles == ["bot"]
+    assert prin.roles == ["bot", "barb"]
     assert principal_has_scope(prin, "fleet.read")
     assert mgr.verify_token("svc_test_grok_ingest") is prin
 
