@@ -3086,7 +3086,7 @@ Response shape (`schema_version` `1.0.0`):
 (`antigravity-cli`, probe `agy`, `local_exec` / `dashboard_local`, auth `local`),
 `cursor_agent` (`cursor-agent`, same modes; its curated `models` include Grok
 entries so Grok can be used as a worker seat through the Cursor subscription —
-the standalone Grok Build CLI is not used because it requires SuperGrok) and
+the standalone Grok Build CLI is registered separately as `grok_cli` for SuperGrok plans, #4130, #4134), and
 `maxwell` (`maxwell-daemon`, optional `remote_session`, experimental, not
 editable; the daemon has been dormant since 2026-06). `jules_cli` / `jules_api`
 remain in the table with `enabled: false` (Jules workflows retired fleet-wide,
