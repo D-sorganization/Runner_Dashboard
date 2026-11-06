@@ -100,10 +100,62 @@ def _pid_is_running(pid: int) -> bool:
     return psutil.pid_exists(pid)
 
 
+def _git_in_worktree(worktree: Path, *args: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603
+        ["git", "-C", str(worktree), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _worktree_safe_for_force_removal(worktree: Path) -> bool:
+    """True when the worktree has no tracked changes vs HEAD (untracked/submodule noise allowed).
+
+    Used to decide whether ``git worktree remove --force`` is safe after a normal remove
+    fails (e.g. submodule checkouts or untracked build output). Local edits to tracked
+    files or index/HEAD divergence preserves the tree.
+    """
+    diff_files = _git_in_worktree(worktree, "diff-files", "--quiet")
+    diff_index = _git_in_worktree(worktree, "diff-index", "--quiet", "HEAD", "--")
+    return diff_files.returncode == 0 and diff_index.returncode == 0
+
+
+def _stderr_suggests_safe_force(stderr: str) -> bool:
+    """Heuristic: git refused removal due to extra paths, not necessarily dirty tracked state."""
+    lower = stderr.lower()
+    needles = (
+        "modified or untracked files",
+        "untracked files",
+        "contains modified or untracked files",
+        "cannot remove worktree",
+    )
+    return any(n in lower for n in needles)
+
+
+def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[bool, subprocess.CompletedProcess[str]]:
+    """Run ``git worktree remove`` from ``checkout`` when provided, else from ``worktree``."""
+    git_cwd = checkout if checkout is not None else worktree
+    result = _git_out(git_cwd, "worktree", "remove", str(worktree), timeout=60)
+    if result.returncode == 0 and not worktree.exists():
+        return True, result
+    if (
+        result.returncode != 0
+        and _worktree_safe_for_force_removal(worktree)
+        and _stderr_suggests_safe_force(result.stderr)
+    ):
+        forced = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
+        _git_out(git_cwd, "worktree", "prune")
+        if forced.returncode == 0 and not worktree.exists():
+            return True, forced
+    return False, result
+
+
 def remove_worktree_checked(
     worktree: Path, checkout: Path | None, branch: str, preserved_transcript: Path | None = None
 ) -> bool:
-    """Never force Git removal or recursively erase a refused/unknown checkout."""
+    """Remove a finished staff worktree; may use ``--force`` only when safe (#submodule leak)."""
     from staff import workspace  # noqa: PLC0415
 
     try:
@@ -120,8 +172,8 @@ def remove_worktree_checked(
                 or not _same_content(source, preserved_transcript)
             ):
                 return False
-            result = _git_out(checkout or worktree, "worktree", "remove", str(worktree), timeout=60)
-            if result.returncode != 0 or worktree.exists():
+            ok, _result = _try_remove_git_worktree(worktree, checkout)
+            if not ok:
                 return False
         else:
             worktree.rmdir()  # Only empty non-Git scratch directories are disposable.
