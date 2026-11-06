@@ -163,3 +163,18 @@ def test_bad_request_rejected_once_and_failure_is_isolated(tmp_path: Path) -> No
     counts = run(c, gh, FakeHub())
     assert (counts["errors"], counts["rejected"], counts["started"]) == (1, 1, 1)
     assert run(c, gh, FakeHub())["rejected"] == 0
+
+
+def test_panel_gone_from_hub_goes_to_owner_and_stops_polling(tmp_path: Path) -> None:
+    c, gh = cfg(tmp_path), FakeGitHub([issue()])
+    relay.save_state(c.state_path, {"processed": {"42": {"status": "started", "thread": "th_1"}}, "starts": {}})
+
+    class GoneHub(FakeHub):
+        def __call__(self, method: str, url: str, token: str, body: dict[str, Any] | None) -> dict[str, Any]:
+            self.calls.append(method)
+            raise relay.HubError(404)
+
+    hub = GoneHub()
+    assert run(c, gh, hub)["needs_owner"] == 1 and ("label", 42, relay.NEEDS_OWNER) in gh.writes
+    run(c, gh, hub)
+    assert hub.calls == ["GET"]  # settled once; never polled again and never restarted
