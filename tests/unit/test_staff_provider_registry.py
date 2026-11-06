@@ -85,3 +85,31 @@ def test_anthropic_api_adapter_reports_installed_once_a_key_is_configured(
     assert adapter.installed() is True
     assert adapter.executable == "claude"
     assert adapter.build_command("do it", "/tmp/wt", model=None)[0] == "claude"
+
+
+def test_grok_cli_is_registered_as_its_own_provider() -> None:
+    """#4130: the standalone Grok CLI gets a canonical row, distinct from the
+    Cursor-hosted Grok models under ``cursor_agent``."""
+    registry_ids = {entry.dashboard_id for entry in PROVIDER_REGISTRY}
+    assert "grok_cli" in registry_ids
+
+    entry = by_dashboard_id()["grok_cli"]
+    assert entry.conductor_id == "grok-cli"
+    assert entry.availability_probe == ("grok",)
+    # Ships inert: no staff launch adapter exists yet (session spawn parity
+    # lands in the sibling issue that depends on this registry row).
+    assert entry.enabled is False
+
+
+def test_grok_aliases_resolve_to_the_standalone_grok_cli_row() -> None:
+    assert canonical_provider_id("grok") == "grok_cli"
+    assert canonical_provider_id("grok-cli") == "grok_cli"
+
+
+def test_grok_cli_is_distinct_from_cursor_hosted_grok_models() -> None:
+    """Cursor Agent still reaches Grok models through the Cursor subscription;
+    that is a separate row/path from the standalone ``grok_cli`` CLI."""
+    cursor_entry = by_dashboard_id()["cursor_agent"]
+    grok_entry = by_dashboard_id()["grok_cli"]
+    assert grok_entry.dashboard_id not in cursor_entry.models
+    assert any(model.startswith("grok-") for model in cursor_entry.models)
