@@ -133,8 +133,8 @@ def test_starts_with_mock_launcher_and_finishes(tmp_path: Path, monkeypatch: pyt
         launched.append(payload)
         return {"supervisor": 1000, "lane1": 1001, "lane2": 1002}
 
-    monkeypatch.setattr(bpush, "hub_resource_refusal", lambda *_a, **_k: None)
-    monkeypatch.setattr(bpush, "_pid_alive", lambda _pid: False)
+    monkeypatch.setattr(relay, "hub_resource_refusal", lambda *_a, **_k: None)
+    monkeypatch.setattr(relay, "_pid_alive", lambda _pid: False)
 
     gh = FakeGitHub([issue()])
     state = {"processed": {}, "push_starts": {}, "active": None}
@@ -161,7 +161,7 @@ def test_starts_with_mock_launcher_and_finishes(tmp_path: Path, monkeypatch: pyt
 
 
 def test_resource_gate_refuses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bpush, "hub_resource_refusal", lambda *_a, **_k: "Desk hub io_pressure 40.0%>=35%")
+    monkeypatch.setattr(relay, "hub_resource_refusal", lambda *_a, **_k: "Desk hub io_pressure 40.0%>=35%")
     gh = FakeGitHub([issue()])
     state = {"processed": {}, "push_starts": {}, "active": None}
     counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
@@ -170,10 +170,10 @@ def test_resource_gate_refuses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_dry_run_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(bpush, "hub_resource_refusal", lambda *_a, **_k: None)
+    monkeypatch.setattr(relay, "hub_resource_refusal", lambda *_a, **_k: None)
     gh = FakeGitHub([issue()])
     state = {"processed": {}, "push_starts": {}, "active": None}
-    bpush.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, dry_run=True, now_fn=lambda: NOW).run()
+    relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, dry_run=True, now_fn=lambda: NOW).run()
     assert gh.writes == [] and state["active"] is None
 
 
