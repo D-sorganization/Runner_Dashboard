@@ -33,7 +33,7 @@ from typing import Any
 
 import gh_client
 from fastapi import APIRouter, Depends, HTTPException
-from identity import Principal, require_any_scope, require_scope
+from identity import Principal, require_any_scope
 from pydantic import BaseModel, Field
 from staff.audit import record_audit
 from staff.maintenance_github import repo_full

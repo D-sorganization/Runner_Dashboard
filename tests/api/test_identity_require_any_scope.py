@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 from identity import Principal, principal_has_scope, require_any_scope
@@ -12,7 +14,7 @@ _any_hygiene = require_any_scope("staff.admin", "staff.write")
 
 
 @app.get("/x")
-async def _x(caller: Principal = Depends(_any_hygiene)) -> dict[str, str]:
+async def _x(caller: Annotated[Principal, Depends(_any_hygiene)]) -> dict[str, str]:
     return {"id": caller.id}
 
 
