@@ -82,6 +82,31 @@ def count_changed_lines(
     return parse_numstat(result.stdout)
 
 
+def resolve_diff_merge_base(
+    repo_root: Path,
+    merge_base: str,
+    merge_base_ref: str | None,
+    run: CommandRunner = _run_git,
+) -> str:
+    """Ref to diff against for size counting.
+
+    Default ``merge_base`` matches the local pre-push hook: the fork point with
+    ``origin/main`` (triple-dot semantics in :func:`count_changed_lines`).
+
+    In CI, stacked PRs target another head branch; pass ``merge_base_ref`` as
+    the PR base SHA so we use ``git merge-base(PR_BASE, HEAD)`` — the first
+    parent chain anchors incremental size on the stack instead of cumulating
+    against ``main``.
+    """
+    if merge_base_ref is None:
+        return merge_base
+    result = run(["git", "merge-base", merge_base_ref, "HEAD"], repo_root)
+    sha = result.stdout.strip()
+    if not sha:
+        raise RuntimeError("git merge-base returned empty output")
+    return sha
+
+
 def _load_allowlist(allowlist_path: Path) -> frozenset[int]:
     if not allowlist_path.exists():
         return frozenset()
@@ -121,6 +146,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo-root", default=".", help="repository root (default: cwd)")
     parser.add_argument("--merge-base", default="origin/main")
+    parser.add_argument(
+        "--merge-base-ref",
+        default=None,
+        metavar="SHA",
+        help=(
+            "PR base commit (e.g. github.event.pull_request.base.sha); when set, "
+            "count the diff from merge-base(SHA, HEAD) to HEAD instead of using "
+            "--merge-base alone (stacks vs main-only PRs)"
+        ),
+    )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--pr", type=int, default=None, help="PR number, for allowlist lookup")
     parser.add_argument(
@@ -135,9 +170,13 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(args.repo_root)
     allowlist_path = Path(args.allowlist) if args.allowlist else repo_root / DEFAULT_ALLOWLIST_NAME
 
+    diff_base = resolve_diff_merge_base(
+        repo_root, args.merge_base, args.merge_base_ref, run=_run_git
+    )
+
     verdict = evaluate_size(
         repo_root,
-        merge_base=args.merge_base,
+        merge_base=diff_base,
         limit=args.limit,
         pr_number=args.pr,
         allowlist_path=allowlist_path,
