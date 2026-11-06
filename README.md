@@ -113,7 +113,7 @@ of this stack, not a replacement for it.
 - **Scheduled Workflows Tab** — Cron schedule inventory with manual dispatch
 - **Runner Plan Tab** — Autoscaler configuration and schedule-based scaling
 - **Local Apps Tab** — Health monitoring for registered local processes
-- **Remediation Tab** — AI agent dispatch (Jules, GAAI, Claude, Codex) with
+- **Remediation Tab** — AI agent dispatch (Jules, Claude, Codex) with
   plan history
 - **Workflows Tab** — Browse and manually dispatch any org workflow
 - **Credentials Tab** — Read-only secrets/variables inventory for audit
