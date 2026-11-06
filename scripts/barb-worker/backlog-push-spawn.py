@@ -25,15 +25,88 @@ def _lane_env() -> dict[str, str]:
     return env
 
 
+def _is_active_process(pid: int) -> bool:
+    """Return True if pid is positive and currently alive."""
+    if pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _write_lane_receipt(log_dir: Path, session: str, role: str, pid: int, status: str = "active") -> Path:
+    """Durable per-lane ownership receipt written immediately upon launch (#4103)."""
+    receipt_path = log_dir / f"{session}.receipt.json"
+    data = {
+        "session": session,
+        "role": role,
+        "pid": pid,
+        "status": status,
+        "updated_at": time.time(),
+    }
+    receipt_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    return receipt_path
+
+
+def _update_partial_manifest(log_dir: Path, launched: list[tuple[str, int]], pids: dict[str, int]) -> Path:
+    """Update recoverable partial-active record as lanes launch (#4103)."""
+    partial_path = log_dir / "partial_active.json"
+    data = {
+        "sessions": [s for s, _ in launched],
+        "pids": pids,
+        "updated_at": time.time(),
+    }
+    partial_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    return partial_path
+
+
 def _rollback_launched(log_dir: Path, launched: list[tuple[str, int]]) -> None:
     """Stop only workers recorded for this spawn attempt (#4103)."""
+    cleanup_failures: dict[str, dict[str, Any]] = {}
     for session, pid in reversed(launched):
+        if pid <= 1:
+            # Never target PID 0, 1, or negative
+            continue
+        killed = False
         try:
             os.kill(pid, signal.SIGTERM)
-        except OSError:
-            pass
-        (log_dir / f"{session}.pid").unlink(missing_ok=True)
-        (log_dir / f"{session}.exit").unlink(missing_ok=True)
+            killed = True
+        except OSError as exc:
+            import errno
+
+            if getattr(exc, "errno", None) == errno.ESRCH:
+                killed = True
+            else:
+                cleanup_failures[session] = {
+                    "pid": pid,
+                    "error": str(exc),
+                    "timestamp": time.time(),
+                }
+        receipt_path = log_dir / f"{session}.receipt.json"
+        if killed:
+            if receipt_path.is_file():
+                try:
+                    rec = json.loads(receipt_path.read_text(encoding="utf-8"))
+                    rec["status"] = "rolled_back"
+                    rec["rolled_back_at"] = time.time()
+                    receipt_path.write_text(json.dumps(rec, indent=2, sort_keys=True), encoding="utf-8")
+                except Exception:
+                    pass
+            (log_dir / f"{session}.pid").unlink(missing_ok=True)
+            (log_dir / f"{session}.exit").unlink(missing_ok=True)
+
+    if cleanup_failures:
+        evidence = log_dir / "recovery_evidence.json"
+        evidence.write_text(
+            json.dumps(
+                {"cleanup_failures": cleanup_failures, "timestamp": time.time()},
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
 
 
 def _spawn_one(
@@ -68,7 +141,15 @@ def _spawn_one(
         )
     else:
         subprocess.Popen(
-            ["setsid", "bash", str(lane_sh), session, str(log_path), str(prompt_path), str(pidfile)],
+            [
+                "setsid",
+                "bash",
+                str(lane_sh),
+                session,
+                str(log_path),
+                str(prompt_path),
+                str(pidfile),
+            ],
             env=env,
             start_new_session=True,
             stdout=subprocess.DEVNULL,
@@ -107,13 +188,31 @@ def main(argv: list[str] | None = None) -> int:
             log_path = log_dir / f"{session}.log"
             log_path.touch()
             pidfile = log_dir / f"{session}.pid"
-            pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
+
+            # Check if this session is already running from a prior attempt / recovery
+            existing_pid: int | None = None
+            if pidfile.is_file() and pidfile.stat().st_size > 0:
+                try:
+                    candidate = int(pidfile.read_text(encoding="utf-8").strip())
+                    if _is_active_process(candidate):
+                        existing_pid = candidate
+                except (ValueError, OSError):
+                    pass
+
+            if existing_pid is not None:
+                pid = existing_pid
+                _write_lane_receipt(log_dir, session, role, pid, status="recovered")
+            else:
+                pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
+                _write_lane_receipt(log_dir, session, role, pid, status="active")
+
             launched.append((session, pid))
             if role == "supervisor":
                 out["supervisor"] = pid
             else:
                 lane_n += 1
                 out[f"lane{lane_n}"] = pid
+            _update_partial_manifest(log_dir, launched, out)
     except Exception:
         _rollback_launched(log_dir, launched)
         raise
