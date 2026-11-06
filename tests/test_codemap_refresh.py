@@ -6,7 +6,14 @@ import json
 import subprocess
 from pathlib import Path
 
-from scripts.codemap_refresh import build_report, refresh, render_repo_map
+import pytest
+
+from scripts.codemap_refresh import (
+    CodemapRefreshError,
+    build_report,
+    refresh,
+    render_repo_map,
+)
 
 
 def test_render_repo_map_lists_entrypoints(tmp_path: Path) -> None:
@@ -29,6 +36,41 @@ def test_architecture_marked_stale_after_backend_change(tmp_path: Path) -> None:
     _git(repo, "add", "backend/server.py")
     _git(repo, "-c", "user.name=Test", "-c", "user.email=t@example.invalid", "commit", "-qm", "drift")
     assert "architecture" in build_report(repo)["stale_sections"]
+
+
+def test_architecture_fresh_when_docs_catch_up_in_a_later_commit(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    refresh(repo)
+    (repo / "backend" / "server.py").write_text("# changed\n", encoding="utf-8")
+    _commit(repo, "backend/server.py", "drift")
+    assert "architecture" in build_report(repo)["stale_sections"]
+    (repo / "docs/architecture/C4.md").write_text("# Architecture v2\n", encoding="utf-8")
+    _commit(repo, "docs/architecture/C4.md", "docs catch up")
+    assert "architecture" not in build_report(repo)["stale_sections"]
+
+
+def test_architecture_stale_again_when_code_changes_after_the_docs(tmp_path: Path) -> None:
+    repo = _seed_repo(tmp_path)
+    (repo / "docs/architecture/C4.md").write_text("# Architecture v2\n", encoding="utf-8")
+    _commit(repo, "docs/architecture/C4.md", "docs")
+    (repo / "backend" / "server.py").write_text("# changed again\n", encoding="utf-8")
+    _commit(repo, "backend/server.py", "code after docs")
+    assert "architecture" in build_report(repo)["stale_sections"]
+
+
+def test_refresh_refuses_a_repository_without_the_runner_dashboard_anchors(
+    tmp_path: Path,
+) -> None:
+    other = tmp_path / "other"
+    other.mkdir()
+    _git(other, "init", "-q")
+    with pytest.raises(CodemapRefreshError, match="backend/server.py"):
+        refresh(other)
+
+
+def _commit(root: Path, path: str, message: str) -> None:
+    _git(root, "add", path)
+    _git(root, "-c", "user.name=Test", "-c", "user.email=t@example.invalid", "commit", "-qm", message)
 
 
 def _seed_repo(tmp_path: Path) -> Path:
