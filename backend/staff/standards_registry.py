@@ -78,7 +78,7 @@ _BUILTIN = FleetStandards(
         "(pr_lifecycle: arm_and_exit) unless the dispatch carries an explicit pr_restrictions override "
         "(draft_only/no_arm/no_merge -> draft_no_arm), in which case the operator PR boundary below "
         "governs; no human-approval gates; never request human reviewers.\n"
-        "- PRs stay under 500 lines (deletion-only PRs may exceed 500); no stacked PRs.\n"
+        "- Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count; no stacked PRs.\n"
         "- never merge, never force-push, never touch other worktrees or host configuration.\n"
         "- never take an issue or PR labelled claim:local or under another agent's live lease; "
         "skip if an open pull request already references it.\n"

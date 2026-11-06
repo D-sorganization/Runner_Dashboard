@@ -1,4 +1,4 @@
-"""Pre-push 500-line size gate, counting generated files + lockfiles (#3963 S1)."""
+"""PR size advisory script: changed-line count incl. generated files + lockfiles (#3963)."""
 
 from __future__ import annotations
 
@@ -163,7 +163,7 @@ def test_resolve_diff_merge_base_skips_merge_when_ref_none(tmp_path: Path) -> No
     assert calls == []
 
 
-def test_main_exits_one_when_over_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_exits_zero_advisory_when_over_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from scripts import pr_size_gate
 
     def fake_run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -172,5 +172,26 @@ def test_main_exits_one_when_over_limit(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(pr_size_gate, "_run_git", fake_run)
     exit_code = pr_size_gate.main(
         ["--repo-root", str(tmp_path), "--merge-base", "origin/main", "--limit", "500"]
+    )
+    assert exit_code == 0
+
+
+def test_main_exits_one_strict_when_over_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import pr_size_gate
+
+    def fake_run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout="900\t0\tbig.py\n", stderr="")
+
+    monkeypatch.setattr(pr_size_gate, "_run_git", fake_run)
+    exit_code = pr_size_gate.main(
+        [
+            "--repo-root",
+            str(tmp_path),
+            "--merge-base",
+            "origin/main",
+            "--limit",
+            "500",
+            "--strict",
+        ]
     )
     assert exit_code == 1

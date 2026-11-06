@@ -12,8 +12,8 @@ module (no ``print()``, per this repo's conventions).
 
 The schema is documented at ``docs/lanes/schema/lane-profile.schema.json``.
 S1 (#3933) shipped the separate spec-card templates/validator; S3 adds the
-default policy hooks (no ``--no-verify``, no force-push, the 500-line
-check) on top of this runner.
+default policy hooks (no ``--no-verify``, no bare force-push; a non-blocking
+PR size advisory) on top of this runner.
 """
 
 from __future__ import annotations

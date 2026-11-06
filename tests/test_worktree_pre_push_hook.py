@@ -128,7 +128,7 @@ def test_pre_push_rejects_ruff_failures(tmp_path: Path, source: str, expected: s
     assert expected in result.stdout + result.stderr
 
 
-def test_pre_push_rejects_diff_at_500_lines(tmp_path: Path) -> None:
+def test_pre_push_advises_on_large_diff(tmp_path: Path) -> None:
     _, checkout = _repository(tmp_path)
     worktree = tmp_path / "worktrees" / "codex-2279-hook"
     add_worktree(checkout, worktree, "codex/2279-hook")
@@ -138,5 +138,5 @@ def test_pre_push_rejects_diff_at_500_lines(tmp_path: Path) -> None:
     _commit(worktree)
 
     result = _push(worktree)
-    assert result.returncode != 0
-    assert "500" in result.stdout + result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "advisory" in (result.stdout + result.stderr).lower() or "500" in result.stdout + result.stderr

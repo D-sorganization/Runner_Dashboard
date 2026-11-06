@@ -1,24 +1,22 @@
-# PR size gate (#3963)
+# PR size advisory (#3963)
 
-Every pull request against this repository is capped at 500 changed lines,
-counted the same way everywhere it is enforced: `git diff --numstat` between
-the diff's merge-base with `origin/main` and `HEAD`, summing added + deleted
-lines across every changed file. That total includes generated files and
-lockfiles — there is no "hand-written lines only" carve-out in the
-enforcement itself (lanes may still track hand-written line counts
-informally when deciding how to slice work, but the gate counts everything).
+`scripts/pr_size_gate.py` computes one number for a branch: **changed lines** in
+the PR slice, using `git diff --numstat` between the merge base and `HEAD`,
+summing added + deleted across every changed file. That total includes generated
+files and lockfiles.
 
-## What counts the number
+The fleet **prefers small, cohesive PRs**. Line count is a **standard**, not a
+hard gate: CI, pre-push hooks, and lane policy hooks **warn** when the count
+exceeds the reference cap (default 500). They do **not** block push or merge.
+Do **not** split a cohesive fix only to stay under a line count.
 
-`scripts/pr_size_gate.py` is the single source of truth for the count. Both
-enforcement points below call the exact same script, so they always agree:
+## Where the count runs
 
 1. **Local pre-push hook.** Installed into each lane's worktree by
-   `scripts/lane_policy_hooks.py` during bootstrap. It runs
-   `pr_size_gate.py` before `git push` and refuses the push if the diff is
-   over the cap and not allowlisted.
-2. **CI mirror.** The `pr-size-gate` job in `.github/workflows/ci-standard.yml`
-   runs on every `pull_request` event. It checks out full history, then:
+   `scripts/lane_policy_hooks.py`. It runs `pr_size_gate.py` before `git push`
+   and logs a warning when over the reference cap.
+2. **CI mirror.** The `pr-size-advisory` job in `.github/workflows/ci-standard.yml`
+   runs on every `pull_request`. It checks out full history, then:
 
    - **PRs targeting `main`:** run
      `python scripts/pr_size_gate.py --merge-base origin/main --pr "$PR_NUMBER"`.
@@ -32,38 +30,29 @@ enforcement points below call the exact same script, so they always agree:
      `git merge-base(PR_BASE, HEAD)` to `HEAD`, not the cumulative diff from
      `main`.
 
-   If the local hook was ever skipped, bypassed, or simply not installed in a
-   given worktree, this job still catches an oversize diff before merge.
+   The job exits successfully in all cases; when over the cap it emits a
+   workflow warning and applies the `size:large` label (best-effort).
 
-The implementation is still one script; for `main`-targeting branches, the CI
-number matches the local hook. Stacked PRs use `--merge-base-ref` in CI only
-for incremental slices.
+Strict enforcement (exit 1 when over the cap and not allowlisted) is **opt-in**:
+`python scripts/pr_size_gate.py --strict …`.
 
-## The allowlist is not a flag an agent can pass itself
+## Allowlist (`config/pr_size_allowlist.json`)
 
-`scripts/pr_size_gate.py` accepts a `--pr` number and an `--allowlist` path
-(default `config/pr_size_allowlist.json`) so a specific, already-reviewed PR
-can be let through despite being over the cap. The allowlist file is:
+The file shape is unchanged:
 
 ```json
 { "allowed_prs": [] }
 ```
 
-a flat JSON list of PR numbers under `allowed_prs`. Agents must never:
+Dieter may list PR numbers there for bookkeeping or messaging. It does **not**
+control merge — merge is gated by required checks only.
 
-- add their own PR number to this file,
-- pass `--limit` with an inflated value to `pr_size_gate.py`,
-- bypass the local hook with `git push --no-verify`,
-- bypass the CI job with `SKIP=` or by disabling the step.
+Agents must still not add their own PR numbers without owner approval, use
+`--strict` to bypass advisory intent, or use `git push --no-verify` to skip
+fleet hygiene hooks for unrelated reasons.
 
-The allowlist is edited only by Dieter, by hand, after he has decided a
-specific oversize PR is worth the exception (for example, a deletion-only
-change or an already-reviewed large migration). If a change is genuinely
-over the cap, the correct move is to split it into a first slice under the
-cap and file a follow-up issue for the rest — exactly what `pr_size_gate.py`
-prints when it fails:
+## Per-file line cap (ci-health-check)
 
-```
-size gate: NNN changed lines exceeds the 500-line cap; split into a first
-slice and file a follow-up issue for the rest
-```
+The `Verify no source file exceeds 500 lines` step in `ci-health-check` is a
+**soft** guideline: it prints `::notice` when a changed source file exceeds 500
+lines and does not fail the job.

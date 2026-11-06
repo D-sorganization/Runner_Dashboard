@@ -45,6 +45,7 @@ python scripts/automerge_guard.py D-sorganization/Runner_Dashboard <pr> --arm
 - **Engineering Principles (Mandatory).** TDD, Design by Contract (`backend/dispatch_contract.py`), DRY, Law of Demeter, orthogonality, reversible deploys. Deploy/auto-release fixes require a failing regression test in the `#2116` deploy smoke suite (`tests/deploy/`, `tests/test_main_ci_release_wait.py`) first. ([Guide](docs/agents/repository-guide.md#engineering-principles-mandatory))
 - **Dispatch & Claims.** Check pickability and `judgement:design`/`judgement:contested` before starting ([Guide](docs/agents/repository-guide.md#issue-taxonomy-and-dispatch)). Run `python -m scripts.check_agent_claim --repo Runner_Dashboard --issue <N>` and `python -m scripts.post_agent_lease` first. **Job board:** pick unassigned work from `GET /api/coordination/jobs` and claim with `POST /api/coordination/claims` (see `docs/coordination-api.md`).
 - **Lane Rules v2.** All lanes (cursor, agy, gemini, claude, codex) follow [lane-rules-v2](docs/agents/lane-rules-v2.md): claim-before-code, open-PR cap 5, usage-limit stop, lane branch prefix.
+- **PR size (this repo).** Prefer small, cohesive PRs. Changed-line counts and per-file size in CI are **advisory** (warnings and optional labels), not merge blockers. Do not split a cohesive fix only to stay under a line count. `python scripts/pr_size_gate.py --strict` is opt-in enforcement for local checks only.
 - **Closing Issues & Secrets.** Follow closure evidence ([Guide](docs/agents/repository-guide.md#closing-issues-non-negotiable-rule)) and secret hygiene ([Guide](docs/agents/repository-guide.md#safety-security-critical)).
 
 ## Fleet Core Rules (Synced)
@@ -64,7 +65,7 @@ Each block below is rendered from `fleet-rules/` by
 3. **If CI goes red, Runner Dashboard dispatches the fix (RD-1).** Do not revive the original session.
 4. **A follow-up hours later goes in a new session with a one-paragraph brief.**
 5. **Don't switch models mid-session (it throws away the prompt cache).**
-6. **PR size and stacking.** Every PR must stay under 500 changed lines. Target `main` directly; never stack PRs. Deletion-only PRs may exceed 500 lines.
+6. **PR size and stacking.** Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count. Target `main` directly; never stack PRs. (Fleet-wide wording may still mention numeric caps; Runner_Dashboard treats diff size as advisory in CI and hooks.)
 7. **Issue closure evidence.** Include `Closes #<issue>` on a real newline in PR descriptions (never literal `\n`). Never run `gh issue close` unless citing a verified merged PR `#<num>` in `--comment` or after applying an exempt label (`duplicate`, `wontfix`, `invalid`, `not-planned`, `roadmap`).
 
 <!-- END FLEET-MANAGED: pr-lifecycle -->

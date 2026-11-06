@@ -468,11 +468,10 @@ jobs:
               | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')
           fi
           if [ -n "$OVER" ]; then
-            echo "::error::Files exceeding 500-line soft cap found:"
+            echo "::notice::Advisory: changed source files over 500 lines (prefer smaller modules; do not split a cohesive fix only for line count):"
             echo "$OVER"
-            exit 1
           fi
-          echo "All source files â‰¤ 500 lines."
+          echo "Per-file line advisory complete (non-blocking)."
       - name: Bootstrap environment
         if: needs.changes.outputs.run_python_tests == 'true'
         run: |
@@ -702,13 +701,13 @@ jobs:
               --progress-spinner=off "${IGNORE_FLAGS[@]}"
           fi
 
-  pr-size-gate:
-    name: PR size gate (CI mirror, #3963 S3)
-    # Server-side mirror of the local pre-push hook (scripts/pr_size_gate.py):
-    # the hook is bypassable with --no-verify or a skipped install, so this
-    # job re-runs the exact same script against the exact same inputs
-    # (merge-base vs. origin/main, PR number for allowlist lookup) so a
-    # locally-bypassed oversize diff still fails CI.
+  pr-size-advisory:
+    name: PR size advisory (CI mirror, #3963)
+    # Non-blocking mirror of scripts/pr_size_gate.py: warns and labels when the
+    # changed-line count exceeds the reference cap; never fails merge.
+    permissions:
+      contents: read
+      pull-requests: write
     needs: [pick-runner, pr-guard, push-hygiene]
     if: >-
       always() && !cancelled() &&
@@ -738,18 +737,40 @@ jobs:
       # For PRs targeting main, use `origin/main...HEAD` only. Passing the
       # frozen `pull_request.base.sha` for main would count every commit landed
       # on main after the PR event snapshot — not the PR's actual diff (#4097).
-      - name: Run the 500-line size gate (main vs stacked PR base)
+      - name: Report changed-line count (advisory)
         env:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ "${PR_BASE_REF}" = "main" ]; then
-            python scripts/pr_size_gate.py --merge-base origin/main --pr "${PR_NUMBER}"
+            REASON=$(python scripts/pr_size_gate.py --merge-base origin/main --pr "${PR_NUMBER}")
           else
-            python scripts/pr_size_gate.py --merge-base origin/main \
-              --merge-base-ref "${PR_BASE_SHA}" --pr "${PR_NUMBER}"
+            REASON=$(python scripts/pr_size_gate.py --merge-base origin/main \
+              --merge-base-ref "${PR_BASE_SHA}" --pr "${PR_NUMBER}")
           fi
+          echo "${REASON}"
+          echo "::notice::PR size (changed lines, advisory): ${REASON}"
+          REASON="${REASON}" python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          reason = os.environ.get("REASON", "").strip()
+          if "allowlisted" in reason:
+              sys.exit(0)
+          if not re.match(r"^[0-9]+ > [0-9]+$", reason):
+              sys.exit(0)
+          print("::warning::Changed-line count exceeds reference cap — advisory only; merge is not blocked.")
+          repo = os.environ["GITHUB_REPOSITORY"]
+          pr = os.environ["PR_NUMBER"]
+          subprocess.run(
+              ["gh", "pr", "edit", pr, "--repo", repo, "--add-label", "size:large"],
+              check=False,
+          )
+          PY
 
   security-scan:
     needs: [pick-runner, changes, ci-health-check, pr-guard, push-hygiene]
