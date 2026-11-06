@@ -14,12 +14,12 @@ The hub receives mail via your provider’s IMAP settings for that mailbox. For 
 `@example.com`, `@work.example.com`, etc. Ensure **example.com** publishes correct SPF, DKIM, and
 DMARC if anyone sends From `@work.example.com`.
 
-| Type | Name | Purpose |
-| --- | --- | --- |
-| MX | `example.com` | Provider MX for the mailbox host (if receiving at root) |
-| TXT | `example.com` | SPF for example.com senders |
-| TXT | provider DKIM selector | DKIM for work.example.com |
-| TXT | `_dmarc.example.com` | DMARC policy for example.com |
+| Type | Name                   | Purpose                                                 |
+| ---- | ---------------------- | ------------------------------------------------------- |
+| MX   | `example.com`          | Provider MX for the mailbox host (if receiving at root) |
+| TXT  | `example.com`          | SPF for example.com senders                             |
+| TXT  | provider DKIM selector | DKIM for work.example.com                               |
+| TXT  | `_dmarc.example.com`   | DMARC policy for example.com                            |
 
 DMARC must pass on the **receiving host**; the hub checks `Authentication-Results` for
 `dmarc=pass` aligned with the `From` domain.
@@ -89,7 +89,6 @@ curl -sS -X POST -H "Authorization: Bearer $FLEET_API_TOKEN" \
 
 `owner_approval_ref` is **optional** audit text (e.g. owner thread id) when approving. Callers
 with `staff.approve` use the same field the same way.
-
 
 ## 6. Health
 

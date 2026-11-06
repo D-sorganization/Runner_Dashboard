@@ -1,21 +1,21 @@
 # Barb lane principals (#3647)
 
 Every Barb is a full peer (owner decision 2026-10-31). Each lane authenticates as its **own**
-principal from `config/agent_principals.yml` with `roles: [bot, barb]`. The shared ``barb`` preset in
+principal from `config/agent_principals.yml` with `roles: [bot, barb]`. The shared `barb` preset in
 `backend/identity.py` (`SCOPE_PRESETS["barb"]`) is the single source for Barb capabilities, so scopes
 cannot drift between lanes. The generic `agent-claude`, `agent-codex`,
 `agent-gemini` and `agent-cursor` principals stay narrow and must not be used by a Barb lane.
 
-| Lane | Principal | Where the lane reads its token |
-| --- | --- | --- |
-| rd-barb watchdog (hub) | `rd-barb` | `FLEET_API_TOKEN` in `~/.config/runner-dashboard/rd-barb.env` |
-| Grok Barb | `agent-grok` | `FLEET_API_TOKEN` (Grok Bot box) |
-| Grok Barb on barb-worker VM | `agent-grok-vm` | `FLEET_API_TOKEN` for the `barb-grok` user |
-| Duet Barb | `agent-duet` | `FLEET_API_TOKEN` for the `barb-duet` user |
+| Lane                                         | Principal           | Where the lane reads its token                                                                 |
+| -------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------- |
+| rd-barb watchdog (hub)                       | `rd-barb`           | `FLEET_API_TOKEN` in `~/.config/runner-dashboard/rd-barb.env`                                  |
+| Grok Barb                                    | `agent-grok`        | `FLEET_API_TOKEN` (Grok Bot box)                                                               |
+| Grok Barb on barb-worker VM                  | `agent-grok-vm`     | `FLEET_API_TOKEN` for the `barb-grok` user                                                     |
+| Duet Barb                                    | `agent-duet`        | `FLEET_API_TOKEN` for the `barb-duet` user                                                     |
 | Claude Barb (`/barb`, `claude_barb_hook.py`) | `agent-claude-barb` | `FLEET_API_TOKEN`, else `RD_THREADS_TOKEN_FILE`, else `~/.config/runner-dashboard/fleet-token` |
-| Codex Barb (`codex-rd-barb`) | `agent-codex-barb` | same lookup as above |
-| Cursor Barb (`cursor_barb_hook.py`) | `agent-cursor-barb` | same lookup as above |
-| Antigravity Barb (`agy_barb_hook.py`) | `agent-agy-barb` | same lookup as above |
+| Codex Barb (`codex-rd-barb`)                 | `agent-codex-barb`  | same lookup as above                                                                           |
+| Cursor Barb (`cursor_barb_hook.py`)          | `agent-cursor-barb` | same lookup as above                                                                           |
+| Antigravity Barb (`agy_barb_hook.py`)        | `agent-agy-barb`    | same lookup as above                                                                           |
 
 `scripts/barb_cli.py` and `clients/fleet/fleet_client.py` read `FLEET_API_TOKEN` first; `barb_cli`
 falls back to `RD_THREADS_TOKEN_FILE` or `~/.config/runner-dashboard/fleet-token`. Put each lane's token

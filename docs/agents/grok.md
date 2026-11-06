@@ -47,22 +47,24 @@ below. A dispatch refusal never grants permission to bypass a hold.
 
    Until then, use the approved Barb proposal path below. Do not treat a missing
    CLI subcommand as proof that the hub is unavailable.
+
 3. Wait without polling: use `staff_thread_wait` with a long timeout, or consume
    the terminal run-card when the notifier (#3052) is available. A wait timeout
    alone is not a failed run. Keep stream/transcript reads out of Grok's context.
 4. Fall back only for one of these named reasons:
 
-   | Reason | Required evidence |
-   | --- | --- |
-   | `hub_unreachable` | two probes fail to reach the configured hub service |
-   | `run_failed_twice` | the run terminally failed twice; a pending run does not qualify |
-   | `no_provider` | RD reports no provider available |
-   | `small_task` | the task takes less than about 5 minutes and run-cards are not live |
+   | Reason             | Required evidence                                                   |
+   | ------------------ | ------------------------------------------------------------------- |
+   | `hub_unreachable`  | two probes fail to reach the configured hub service                 |
+   | `run_failed_twice` | the run terminally failed twice; a pending run does not qualify     |
+   | `no_provider`      | RD reports no provider available                                    |
+   | `small_task`       | the task takes less than about 5 minutes and run-cards are not live |
 
    Never fall back while a live RD lease for the same key exists. If lease status
    cannot be verified, wait or escalate through Barb. Use a local subscription CLI
    on a fleet machine first (claude, codex, agy or cursor); use Grok itself last.
    A `held` or `rejected` response is a refusal, not a reason to try another hub.
+
 5. Every fallback writes a ledger/check-in record with its reason and task
    identity. Use `fleetctl checkin` (`python3 clients/fleet/fleetctl.py checkin {started,claimed,pushed,pr_opened,blocked,done} --repo <repo>`,
    shared bounded offline spool from #2874/#2875) and the dispatch
@@ -73,12 +75,12 @@ below. A dispatch refusal never grants permission to bypass a hold.
 
 These gates apply to RD dispatch and every fallback:
 
-| Hold | Required behavior |
-| --- | --- |
-| #2657 | No RD deploy or release while the hold remains active |
-| Sidekick packaging | Keep packaging work held |
-| Assessment Board | Preserve the Assessment Board gate |
-| C3 | Preserve the C3 gate |
+| Hold               | Required behavior                                     |
+| ------------------ | ----------------------------------------------------- |
+| #2657              | No RD deploy or release while the hold remains active |
+| Sidekick packaging | Keep packaging work held                              |
+| Assessment Board   | Preserve the Assessment Board gate                    |
+| C3                 | Preserve the C3 gate                                  |
 
 Keep Gasification_Model private/work content out of public issues, comments,
 digests and Pages. Use authenticated private records for sensitive context; never
