@@ -67,9 +67,9 @@ def librarian_role_data() -> dict[str, Any]:
             "expires_at), opens one weekly Repository_Management PR promoting accepted lessons into "
             "fleet-rules/, and publishes a weekly gap report on stale context packs, AGENTS.md "
             "version lag, lessons nearing expiry, and unavailable Layer 4 library sources. Answers "
-            "on-request citation queries with exact ids and canonical filenames. Interim: reports to "
-            "barb until the first Board meeting is recorded in docs/board-meetings/pathway-log.md "
-            "(RM#1766 Phase 0); then reverts to board-secretary."
+            "on-request citation queries with exact ids and canonical filenames. Reports to the Board "
+            "with Barb as the operator front door; coordinates with board-secretary on meeting "
+            "cadence, fleet-rules promotion, and board-facing gap reports."
         ),
         "providers": ["claude"],
         "model": "default",
