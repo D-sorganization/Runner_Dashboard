@@ -1220,6 +1220,12 @@ async def get_system_metrics_snapshot(
             "io_pressure": get_io_pressure_snapshot(),
             "host_recovery": _get_host_recovery_diagnostics(),
         }
+        try:
+            from fleet_backup_pilot_status import read_fleet_backup_pilot_status
+
+            metrics["fleet_backup_pilot"] = read_fleet_backup_pilot_status()
+        except Exception:  # noqa: BLE001 - telemetry must not fail the snapshot
+            metrics["fleet_backup_pilot"] = {"enabled": False, "pilot": "node-b"}
 
         return metrics
 
