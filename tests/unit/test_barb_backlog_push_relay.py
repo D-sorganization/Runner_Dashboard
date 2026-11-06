@@ -93,9 +93,7 @@ def test_starts_with_mock_launcher_and_finishes(tmp_path: Path, monkeypatch: pyt
     assert state["active"] is None
 
 
-def test_dry_run_expired_active_does_not_terminate_or_clear(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_dry_run_expired_active_does_not_terminate_or_clear(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     terminated: list[dict[str, Any]] = []
     monkeypatch.setattr(relay, "_terminate_from_active", lambda active: terminated.append(active))
     state = {
@@ -111,9 +109,7 @@ def test_dry_run_expired_active_does_not_terminate_or_clear(
         },
     }
     gh = FakeGitHub([])
-    counts = relay.BacklogPushRelay(
-        cfg(tmp_path), gh, state, today=TODAY, dry_run=True, now_fn=lambda: NOW
-    ).run()
+    counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, dry_run=True, now_fn=lambda: NOW).run()
     assert counts["done"] == 0
     assert state["active"] is not None
     assert terminated == []
@@ -189,6 +185,7 @@ def test_default_launcher_spawn_subprocess_omits_bot_token(monkeypatch: pytest.M
 
     def fake_run(cmd, **kwargs):  # type: ignore[no-untyped-def]
         captured.update(kwargs.get("env", {}))
+
         class R:
             returncode = 0
             stdout = "{}"
@@ -223,7 +220,9 @@ def test_dry_run_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     sys.platform == "win32",
     reason="relay liveness probe os.kill(pid, 0) is CTRL_C_EVENT on Windows; relay deploys on POSIX only",
 )
-def test_active_push_not_finalized_while_detached_process_alive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_active_push_not_finalized_while_detached_process_alive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sleeper = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(600)"],
         start_new_session=True,
