@@ -276,6 +276,8 @@ unit_active() {
 RUNNER_BUSY_LOCK_DIR="${RUNNER_BUSY_LOCK_DIR:-/var/run/runner-busy}"
 RUNNER_BUSY_LOCK_MAX_AGE_SECONDS="${RUNNER_BUSY_LOCK_MAX_AGE_SECONDS:-86400}"
 RUNNER_PICKUP_DIR_MAX_AGE_SECONDS="${RUNNER_PICKUP_DIR_MAX_AGE_SECONDS:-30}"
+# Safe stop uses runner-scheduler freeze/recheck (#4046); same contract as CT-NVMe recovery.
+RUNNER_SCHEDULER="${RUNNER_SCHEDULER:-/usr/local/bin/runner-scheduler}"
 
 runner_busy_via_pickup_dir() {
     # Mirror of backend/runner_autoscaler.py::_runner_busy_via_pickup_dir.
@@ -392,6 +394,16 @@ runner_busy() {
     ps -eo args= | grep -F "${runner_dir}/bin/Runner.Worker" | grep -v 'grep -F' >/dev/null 2>&1
 }
 
+stop_runner_unit_safely() {
+    # Issue #4046: freeze/recheck stop — same contract as deploy/runner-scheduler.py.
+    local unit="$1"
+    if [[ ! -x "$RUNNER_SCHEDULER" ]]; then
+        log "skip $unit: ${RUNNER_SCHEDULER} missing; cannot safe-stop (#4046)"
+        return 2
+    fi
+    run "$RUNNER_SCHEDULER" --apply --stop-unit "$unit"
+}
+
 list_runner_units() {
     systemctl list-unit-files --type=service --no-legend \
         | awk '$1 ~ /^actions\.runner\..*\.service$/ {print $1}' \
@@ -491,14 +503,15 @@ cleanup_runners() {
         stop_rc=0
         if unit_active "$unit"; then
             was_active=1
-            run systemctl stop "$unit" || stop_rc=$?
+            stop_runner_unit_safely "$unit" || stop_rc=$?
             if (( stop_rc != 0 )); then
-                # Increment the metric for #663's textfile-collector path.
+                if (( stop_rc == 2 )); then
+                    log "skip $unit: safe stop unavailable; will retry after runner-scheduler is installed"
+                    continue
+                fi
+                # Deferred (busy after freeze) or scheduler stop failed — retry next pass.
                 CLEANUP_STOP_FAILURES=$((CLEANUP_STOP_FAILURES + 1))
-                # If a job was assigned in the brief window between runner_busy()
-                # and systemctl stop, the stop is racy. Skip cleanup for this
-                # runner this pass; the next pass will catch it once idle.
-                log "skip $unit: systemctl stop failed (rc=$stop_rc), likely raced with job pickup; will retry next pass"
+                log "skip $unit: safe stop deferred or failed (rc=$stop_rc); will retry next pass"
                 if ! unit_active "$unit"; then
                     run systemctl start "$unit" || log "warn $unit: restart after failed stop also failed"
                 fi

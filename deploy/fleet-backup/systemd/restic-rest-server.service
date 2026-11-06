@@ -1,0 +1,22 @@
+[Unit]
+Description=restic REST backup hub (append-only, Tailscale bind)
+Documentation=https://github.com/D-sorganization/Runner_Dashboard/blob/main/docs/runbooks/fleet-restic-backup.md
+After=network-online.target tailscaled.service
+Wants=network-online.target
+Requires=tailscaled.service
+
+[Service]
+Type=simple
+EnvironmentFile=-@ENV_FILE@
+ExecStart=@RUN_SCRIPT@
+Restart=on-failure
+RestartSec=10
+# Data directory is created by the run script; restrict service hardening where compatible.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/restic-rest-server
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

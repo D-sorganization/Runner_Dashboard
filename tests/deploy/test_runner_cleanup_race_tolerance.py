@@ -43,27 +43,10 @@ class TestRaceTolerantStop:
     """Issue #653: systemctl stop must not abort the loop on non-zero exit."""
 
     def test_stop_tolerates_failure_via_or_assignment(self, script_text: str) -> None:
-        """The stop call must use ``|| stop_rc=$?`` to avoid tripping ``set -e``.
-
-        ``systemctl stop`` returns exit 1 when a job races with the stop and
-        systemd cancels the stop job (log: "Job for ... canceled"). Under
-        ``set -Eeuo pipefail``, an unguarded non-zero exit immediately aborts
-        the script — skipping all remaining runners.
-
-        The correct pattern is:
-            run systemctl stop "$unit" || stop_rc=$?
-
-        This captures the failure and lets the loop continue, logging the skip
-        and moving on to runner-2 through runner-N.
-        """
-        # Both patterns that correctly tolerate failure are acceptable.
-        has_or_capture = "|| stop_rc=$?" in script_text
-        has_or_true = "|| true" in script_text  # weaker but acceptable
-        assert has_or_capture or has_or_true, (
-            "runner-cleanup.sh: systemctl stop must tolerate non-zero exit "
-            "(use '|| stop_rc=$?' or '|| true') to avoid aborting the loop "
-            "when a job races with the stop. See issue #653."
-        )
+        """Cleanup must use runner-scheduler safe stop (#4046), not bare systemctl stop."""
+        assert "stop_runner_unit_safely" in script_text
+        assert "--stop-unit" in script_text
+        assert "RUNNER_SCHEDULER" in script_text
 
     def test_stop_failure_is_handled_not_ignored(self, script_text: str) -> None:
         """The stop failure path must log and skip the runner, not silently continue."""

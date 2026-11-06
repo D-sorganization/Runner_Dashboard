@@ -1,30 +1,17 @@
 """Canonical provider registry table — the ONE source of truth (issue #810).
 
-Before this module, provider identity and metadata were duplicated across at
-least three hand-maintained lists:
+Collapses three formerly duplicated lists (``agent_remediation.providers.PROVIDERS``,
+the Conductor adapters' ``ProviderMeta``, and the remediation router's
+``_PROVIDERS_WITH_MODEL_SELECTION`` set) into one list of :class:`ProviderEntry`
+records. Each entry pairs the dashboard ``dashboard_id`` (underscore) with the
+Conductor ``conductor_id`` (hyphen) and carries the *static* metadata shared by
+both the dashboard UI and the Conductor orchestrator.
 
-1. ``agent_remediation.providers.PROVIDERS`` (dashboard underscore ids),
-2. the Conductor adapters' ``ProviderMeta`` (hyphen ids, auth/resource/cost),
-3. the ad-hoc ``_PROVIDERS_WITH_MODEL_SELECTION`` set in the remediation router.
-
-This table collapses them into a single list of :class:`ProviderEntry` records.
-Each entry pairs the dashboard ``dashboard_id`` (underscore) with the Conductor
-``conductor_id`` (hyphen) and carries the *static* metadata shared by both the
-dashboard UI and the Conductor orchestrator: label, execution/dispatch modes,
-auth mode, resource class, capabilities, baseline cost, concurrency, and the
-curated model list.
-
-DRY direction (documented): this table is the source; ``providers.py`` derives
-its ``PROVIDERS`` dict and ``AgentProvider`` instances *from* this table by
-projecting each entry onto the legacy shape. There is exactly one
-hand-maintained list.
-
-Design by Contract: :func:`validate_registry` asserts the table's invariants
-(unique ids, allowed auth/resource/capability values) at import time so a
-malformed edit fails loudly rather than silently shipping a bad contract.
-
-Law of Demeter: entries are flat, frozen dataclasses; consumers read scalar
-fields and flat tuples directly and never traverse nested structure.
+DRY: this table is the source; ``providers.py`` derives its ``PROVIDERS`` dict
+and ``AgentProvider`` instances *from* this table. Design by Contract:
+:func:`validate_registry` asserts the table's invariants at import time so a
+malformed edit fails loudly. Law of Demeter: entries are flat, frozen
+dataclasses; consumers read scalar fields and flat tuples directly.
 """
 
 from __future__ import annotations
@@ -66,6 +53,14 @@ class ProviderEntry:
         enabled: Whether the provider may be selected for dispatch (#1193).
             Retired providers stay in the table for back-compat (their ids,
             routes and history remain resolvable) but are never planned.
+        cloud_mutation_allowed: Whether this provider's *cloud* dispatch path
+            (``staff.cloud_dispatch``) may mutate — open PRs, push branches,
+            trigger workflows. Defaults to ``True``; hard-gated to ``False``
+            when the cloud lane cannot satisfy identity/ingress requirements
+            (#4081: Cursor cloud agents, ADR-0007 — the fleet-gh wrapper is
+            local-only, so a Cursor cloud session cannot authenticate as the
+            fleet bot). Enforced at the dispatch boundary; independent of
+            ``enabled``.
         notes: Free-form operator notes.
     """
 
@@ -89,6 +84,7 @@ class ProviderEntry:
     remote: bool = False
     experimental: bool = False
     enabled: bool = True
+    cloud_mutation_allowed: bool = True
     notes: str = ""
 
     @property
@@ -373,10 +369,13 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         credential_id="cursor_agent",
         setup_hint="Install Cursor CLI (cursor-agent) on the node, then `cursor-agent login`",
         editable=True,
+        cloud_mutation_allowed=False,
         notes=(
             "Uses `cursor-agent -p` for headless branch-local remediation. Grok models are "
             "reached through the Cursor subscription; the Grok Build CLI is not used because "
-            "it requires SuperGrok."
+            "it requires SuperGrok. Cloud dispatch is hard-gated non-mutating (#4081, ADR-0007): "
+            "a Cursor cloud agent cannot reach the local fleet-gh wrapper, so it cannot "
+            "authenticate as the fleet bot for a mutating action."
         ),
     ),
 )
@@ -451,6 +450,7 @@ def validate_registry(entries: tuple[ProviderEntry, ...] = PROVIDER_REGISTRY) ->
         assert e.cost_per_task >= 0.0, f"{e.dashboard_id}: negative cost"
         assert e.max_concurrency >= 1, f"{e.dashboard_id}: max_concurrency < 1"
         assert isinstance(e.enabled, bool), f"{e.dashboard_id}: enabled must be bool"
+        assert isinstance(e.cloud_mutation_allowed, bool), f"{e.dashboard_id}: cloud_mutation_allowed must be bool"
         if e.execution_mode == "local_exec":
             assert e.availability_probe, f"{e.dashboard_id}: local_exec provider needs an availability_probe"
         for cap in e.capabilities:
@@ -467,6 +467,23 @@ def selectable_entries(
 ) -> tuple[ProviderEntry, ...]:
     """Providers the dashboard UI may offer in pickers (``enabled`` rows only)."""
     return tuple(e for e in entries if e.enabled)
+
+
+def cloud_mutation_allowed(provider_id: str) -> bool:
+    """Whether the registry permits mutating cloud dispatch for ``provider_id`` (#4081).
+
+    Resolves aliases via :func:`canonical_provider_id` first. A provider id
+    with no registry row returns ``True`` (there is no row to consult here);
+    callers that need a closed-world provider list already enforce that via
+    :func:`canonical_provider_id` raising ``KeyError``. A registered row with
+    ``cloud_mutation_allowed=False`` (e.g. Cursor cloud agents, ADR-0007)
+    returns ``False`` regardless of ``enabled``.
+    """
+    try:
+        canonical_id = canonical_provider_id(provider_id)
+    except KeyError:
+        return True
+    return by_dashboard_id()[canonical_id].cloud_mutation_allowed
 
 
 def selectable_conductor_ids(

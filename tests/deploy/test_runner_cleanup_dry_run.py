@@ -135,6 +135,7 @@ def test_runner_preview_preserves_restart_marker(tmp_path: Path, dry_run: str) -
                 f'service_workdir() {{ echo "{as_bash_path(runner)}"; }}',
                 "unit_active() { return 0; }",
                 "runner_busy() { return 1; }",
+                'stop_runner_unit_safely() { run systemctl stop "$1"; }',
                 "systemctl() { return 0; }",
                 "cleanup_runner_workdir() { :; }",
                 "cleanup_runner_diag() { :; }",

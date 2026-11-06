@@ -27,6 +27,7 @@ from typing import Final, Literal, Protocol, runtime_checkable
 
 from readiness_budget import bounded_checks, subprocess_output
 from runner_busy_lock import RunnerBusyLockProbe
+from runner_hooks_probe import RunnerHooksProbe
 
 log = logging.getLogger("dashboard.readiness")
 COMPONENT_BUDGET_S = 2.0
@@ -386,6 +387,7 @@ _DEFAULT_PROBES: list[Probe] = [
     RunnerHealthProbe(),
     RunnerPipCacheProbe(),
     RunnerBusyLockProbe(),
+    RunnerHooksProbe(),
 ]
 
 

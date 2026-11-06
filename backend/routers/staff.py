@@ -102,6 +102,8 @@ class RunBody(BaseModel):
         description="Explicit skill package name; must exist in the registry or dispatch is rejected.",
     )
     execution_mode: Literal["local", "cloud"] = "local"
+    # Operator PR boundary (RM#2712): outranks the default arm_and_exit lifecycle.
+    pr_restrictions: list[Literal["draft_only", "no_arm", "no_merge"]] = Field(default_factory=list, max_length=3)
 
     @field_validator("repo")
     @classmethod

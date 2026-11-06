@@ -460,6 +460,12 @@ def _recover_entry(run_id: str) -> tuple[str, int, str] | None:
     return None
 
 
+def applied_label_entry(run_id: str) -> tuple[str, int, str] | None:
+    with _applied_lock:
+        entry = _applied.get(run_id)
+    return entry if entry is not None else _recover_entry(run_id)
+
+
 def release_claim(
     run_id: str,
     status: str,
