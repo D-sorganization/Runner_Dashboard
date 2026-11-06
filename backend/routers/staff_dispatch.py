@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import Request
 from identity import Principal
 from staff import fleet as staff_fleet
-from staff.barb_lease_fence import claim_for_write
+from staff.barb_lease_fence import EPOCH_HEADER, SCOPE_HEADER, claim_for_write
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.dispatcher_metrics import dispatcher_origin
 
@@ -103,8 +103,16 @@ async def run_dispatch(
             scopes=list(caller.scopes),
             assistant_kind="grokbot" if authenticated_origin == "grok" else (caller.assistant_kind or ""),
         )
+    headers = request.headers
+    barb_declared = bool((headers.get(SCOPE_HEADER) or "").strip() or (headers.get(EPOCH_HEADER) or "").strip())
+    # #4025: Hub path uses HUB_FLEET_TOKEN + signed OBO (no Barb lease headers on the wire).
+    # Do not treat the OBO principal as an unclaimed Barb seat for fence purposes unless the
+    # request explicitly declares X-Barb-Scope + X-Barb-Lease-Epoch (#2734 / #3279).
+    claim_principal = fence_principal
+    if fleet_bearer and obo and on_behalf_of and not is_peer and not barb_declared:
+        claim_principal = caller
     return await dispatch_staff_run(
         cmd,
         caller,
-        barb_claim=claim_for_write(request.headers, fence_principal, surface="staff.dispatch"),
+        barb_claim=claim_for_write(headers, claim_principal, surface="staff.dispatch"),
     )
