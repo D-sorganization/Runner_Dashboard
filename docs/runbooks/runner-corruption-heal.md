@@ -79,6 +79,7 @@ autoscaler race fix land fleet-wide.
 ## Related
 
 - Cleanup script: [`deploy/runner-cleanup.sh`](../../deploy/runner-cleanup.sh)
+- **Busy-check/stop interlock (#4046):** [CT-NVMe recovery interlock](./ct-nvme-recovery-interlock.md)
 - Cleanup strict-mode fix: [#660](https://github.com/D-sorganization/Runner_Dashboard/pull/660)
 - Original corruption report: [#651](https://github.com/D-sorganization/Runner_Dashboard/issues/651)
 - Autoscaler context: [#640](https://github.com/D-sorganization/Runner_Dashboard/issues/640)

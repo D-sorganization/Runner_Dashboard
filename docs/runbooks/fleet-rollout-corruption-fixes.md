@@ -15,6 +15,9 @@ to every machine in the fleet.
 
 These should all merge in any order. The rollout below assumes all four are on `main`.
 
+For recovery stops that must not interrupt in-flight jobs (CT-NVMe and nightly cleanup),
+see [CT-NVMe recovery interlock](./ct-nvme-recovery-interlock.md) ([#4046](https://github.com/D-sorganization/Runner_Dashboard/issues/4046)).
+
 ## Fleet inventory
 
 As of 2026-05-18 the fleet is:
