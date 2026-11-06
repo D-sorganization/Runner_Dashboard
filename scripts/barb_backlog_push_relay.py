@@ -67,51 +67,6 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def _active_sessions(active: dict[str, Any]) -> list[str]:
-    sessions = [active.get("supervisor_session"), *(active.get("lane_sessions") or [])]
-    return [str(s) for s in sessions if s]
-
-
-def _worker_exit_code(log_dir: Path, session: str) -> int | None:
-    path = log_dir / f"{session}.exit"
-    if not path.is_file():
-        return None
-    try:
-        return int(path.read_text(encoding="utf-8").strip())
-    except ValueError:
-        return None
-
-
-def _push_completion(active: dict[str, Any]) -> tuple[bool, str | None]:
-    """Return (ready_to_finalize, failure_detail). Not ready while a worker pid is alive."""
-    log_dir_s = active.get("log_dir")
-    if not log_dir_s:
-        if _push_processes_alive(active):
-            return False, None
-        return True, None
-    log_dir = Path(str(log_dir_s))
-    failures: list[str] = []
-    for session in _active_sessions(active):
-        pidfile = log_dir / f"{session}.pid"
-        if pidfile.is_file():
-            try:
-                pid = int(pidfile.read_text(encoding="utf-8").strip())
-            except ValueError:
-                pid = 0
-            if _pid_alive(pid):
-                return False, None
-        code = _worker_exit_code(log_dir, session)
-        if code is None:
-            failures.append(f"{session} exited without recording exit status")
-        elif code != 0:
-            failures.append(f"{session} exited with status {code}")
-    if failures:
-        return True, "; ".join(failures)
-    if not _active_sessions(active):
-        return not _push_processes_alive(active), None
-    return True, None
-
-
 def _push_processes_alive(active: dict[str, Any]) -> bool:
     """True if any tracked backlog-push lane pidfile or stored pid is still running."""
     log_dir = active.get("log_dir")
@@ -209,37 +164,16 @@ class BacklogPushRelay:
             return
         number = int(active["issue"])
         deadline = datetime.fromisoformat(str(active["deadline_at"]))
+        alive = _push_processes_alive(active)
         now = self.now_fn()
-        if now >= deadline:
-            if self.dry_run:
-                logger.info("[dry-run] #%s: would finalize (timeout)", number)
-                return
+        if now >= deadline or not alive:
+            reason = "wall-clock timeout reached" if now >= deadline else "all lane processes exited"
             summary = (
-                "Backlog push finished (wall-clock timeout reached).\n"
+                f"Backlog push finished ({reason}).\n"
                 f"Supervisor session: `{active.get('supervisor_session')}`.\n"
                 f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
             )
-            self._finalize(number, summary, timed_out=True)
-            return
-        ready, failure = _push_completion(active)
-        if not ready:
-            return
-        if self.dry_run:
-            logger.info("[dry-run] #%s: would finalize (workers finished)", number)
-            return
-        if failure:
-            summary = (
-                f"Backlog push finished with errors ({failure}).\n"
-                f"Supervisor session: `{active.get('supervisor_session')}`.\n"
-                f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
-            )
-        else:
-            summary = (
-                "Backlog push finished (all lane processes exited cleanly).\n"
-                f"Supervisor session: `{active.get('supervisor_session')}`.\n"
-                f"Lane sessions: {', '.join(f'`{s}`' for s in active.get('lane_sessions') or [])}."
-            )
-        self._finalize(number, summary, timed_out=False)
+            self._finalize(number, summary, timed_out=now >= deadline)
 
     def _consider(self, issue: dict[str, Any]) -> None:
         number = int(issue["number"])
@@ -283,11 +217,7 @@ class BacklogPushRelay:
             return
         log_dir = self.cfg.state_path.parent / "backlog-push-logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            pids = self.launcher({"plan": plan}, log_dir)
-        except RuntimeError as exc:
-            self._refuse(number, str(exc))
-            return
+        pids = self.launcher({"plan": plan}, log_dir)
         started_at = self.now_fn()
         deadline = started_at + timedelta(minutes=int(params["duration_min"]))
         self.state["push_starts"][self.today] = self.state["push_starts"].get(self.today, 0) + 1
@@ -329,8 +259,6 @@ class BacklogPushRelay:
         return json.loads(proc.stdout or "{}")
 
     def _finalize(self, number: int, summary: str, *, timed_out: bool) -> None:
-        if self.dry_run:
-            return
         active = self.state.get("active") or {}
         if timed_out:
             _terminate_from_active(active)
