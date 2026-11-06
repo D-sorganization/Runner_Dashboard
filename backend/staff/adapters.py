@@ -33,6 +33,7 @@ from staff.adapter_policies import (
     claude_read_only_run_tools,
     claude_unattended_tools,
     gemini_policy_toml,
+    grok_unattended_flags,
 )
 from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
 from staff.lesson_evidence import has_supported_assistant_answer
@@ -338,6 +339,22 @@ _UNATTENDED_CODEX = (
     "--skip-git-repo-check",
     "--json",
 )
+_GROK_ALLOW, _GROK_DENY = grok_unattended_flags()
+_UNATTENDED_GROK = (
+    "-p",
+    "{prompt}",
+    "--output-format",
+    "stream-json",
+    "--allow",
+    _GROK_ALLOW,
+    "--deny",
+    _GROK_DENY,
+    "--no-auto-update",
+    "-w",
+    "{workdir}",
+    "--model",
+    "{model}",
+)
 
 ADAPTERS: dict[ProviderId, ProviderAdapter] = {
     "claude": ProviderAdapter(
@@ -438,6 +455,23 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "Cursor subscription; Grok models (grok-4.7-*, cursor-grok-4.6-*) are reached here, no separate xAI plan. "
             "Commands run inside Cursor's sandbox instead of --force (#1586); --trust only answers the "
             "workspace-trust prompt for the run's own worktree."
+        ),
+    ),
+    "grok": ProviderAdapter(
+        provider_id="grok",
+        label="Grok CLI",
+        executable="grok",
+        argv=_UNATTENDED_GROK,
+        json_lines=True,
+        notes=(
+            "Standalone Grok Build CLI registry row `grok_cli` (#4130), distinct from the "
+            "Cursor-hosted Grok models under `cursor-agent`. Launch flags (`--allow`/`--deny`/"
+            "`--no-auto-update`/`-w`) are a best-effort mapping from published Grok docs, not "
+            "yet verified against a real `grok` binary — never `--yolo`/`--always-approve` "
+            "(permission bypass, #1586). Has no confirmed read-only chat flag yet, so chat "
+            "turns raise ChatReadOnlyUnsupportedError rather than guess one; not in the "
+            "default failover chain (config/provider_failover.json) until auth health (#4132) "
+            "and usage tracking (#4133) land — opt in per role via `providers:` meanwhile."
         ),
     ),
     "ollama": ProviderAdapter(

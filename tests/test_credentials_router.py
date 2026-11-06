@@ -33,6 +33,7 @@ from routers.credentials import (  # noqa: E402
     _probe_codex_cli,
     _probe_gemini_cli,
     _probe_github_cli,
+    _probe_grok_cli,
     _probe_jules_api,
     _probe_jules_cli,
     _probe_linear_workspaces,
@@ -214,6 +215,39 @@ def test_probe_codex_cli_login_file_counts_as_authenticated(monkeypatch: pytest.
     assert probe["usable"] is True
     assert probe["status"] == "ready"
     assert probe["detail"] == "Ready (codex login)"
+    assert probe["key_status"] == "oauth"
+
+
+def test_probe_grok_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(credentials, "_find_binary", lambda name: "/usr/bin/grok" if name == "grok" else None)
+    monkeypatch.setenv("GROK_HOME", str(tmp_path / "no-login"))
+    probe = _probe_grok_cli()
+    assert probe["id"] == "grok_cli"
+    assert probe["installed"] is True
+    assert probe["authenticated"] is False
+    assert probe["usable"] is False
+    assert probe["status"] == "missing_key"
+    assert probe["detail"] == "not signed in: run `grok login`"
+
+    monkeypatch.setattr(credentials, "_find_binary", lambda name: None)
+    probe_not_installed = _probe_grok_cli()
+    assert probe_not_installed["installed"] is False
+    assert probe_not_installed["usable"] is False
+    assert probe_not_installed["status"] == "not_installed"
+
+
+def test_probe_grok_cli_login_file_counts_as_authenticated(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(credentials, "_find_binary", lambda name: "/usr/bin/grok" if name == "grok" else None)
+    grok_home = tmp_path / ".grok"
+    grok_home.mkdir()
+    (grok_home / "auth.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("GROK_HOME", str(grok_home))
+
+    probe = _probe_grok_cli()
+    assert probe["authenticated"] is True
+    assert probe["usable"] is True
+    assert probe["status"] == "ready"
+    assert probe["detail"] == "Ready (grok login)"
     assert probe["key_status"] == "oauth"
 
 
@@ -438,6 +472,7 @@ async def test_collect_all_probes(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "cline" in probe_ids
     assert "gemini_cli" in probe_ids
     assert "ollama" in probe_ids
+    assert "grok_cli" in probe_ids
     assert "anthropic_api" in probe_ids
 
 

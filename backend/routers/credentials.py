@@ -370,6 +370,33 @@ def _probe_codex_cli() -> dict[str, Any]:
     }
 
 
+def _probe_grok_cli() -> dict[str, Any]:
+    """Probe standalone Grok CLI presence and subscription login (#4132)."""
+    grok_binary = _find_binary("grok")
+    grok_login = _cli_login_file_present("GROK_HOME", ".grok", "auth.json")
+    authenticated = grok_login
+    if grok_login:
+        auth_detail = "Ready (grok login)"
+    else:
+        auth_detail = "not signed in: run `grok login`"
+    return {
+        "id": "grok_cli",
+        "label": "Grok CLI",
+        "icon": "xai",
+        "installed": grok_binary is not None,
+        "authenticated": authenticated,
+        "reachable": grok_binary is not None and authenticated,
+        "usable": grok_binary is not None and authenticated,
+        "binary_found": grok_binary is not None,
+        "key_status": "oauth" if grok_login else "missing",
+        "status": ("ready" if (grok_binary and authenticated) else ("missing_key" if grok_binary else "not_installed")),
+        "detail": (auth_detail if grok_binary else "grok not found on PATH"),
+        "config_source": "system" if grok_binary else "unavailable",
+        "docs_url": "https://docs.x.ai/build/overview",
+        "setup_hint": "Install the Grok CLI (grok), then `grok login` (or `grok login --device-auth` headless)",
+    }
+
+
 def _claude_login_file_present() -> bool:
     from staff.cli_oauth_session import resolve_claude_config_dir  # noqa: PLC0415
 
@@ -661,6 +688,7 @@ async def _collect_all_probes() -> list[dict[str, Any]]:
         _probe_gemini_cli(),
         _probe_ollama(),
         _probe_antigravity_cli(),
+        _probe_grok_cli(),
     ]
     probes.extend(linear_probes)
     return probes

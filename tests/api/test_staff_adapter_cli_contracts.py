@@ -92,6 +92,26 @@ def test_build_command_omits_schema_flags_by_default() -> None:
 
 
 @pytest.mark.unit
+def test_grok_unattended_argv_never_bypasses_permissions() -> None:
+    # #4131: the standalone Grok CLI gets an allow/deny shell list, never --yolo/--always-approve.
+    argv = adapters_mod.ADAPTERS["grok"].build_command("do it", "/tmp/wt", model="grok-4-fast")
+    assert argv[0] == "grok"
+    assert "--yolo" not in argv
+    assert "--always-approve" not in argv
+    assert "--allow" in argv and argv[argv.index("--allow") + 1]
+    assert "--deny" in argv and argv[argv.index("--deny") + 1]
+    assert argv[argv.index("-w") + 1] == "/tmp/wt"
+    assert argv[argv.index("--model") + 1] == "grok-4-fast"
+
+
+@pytest.mark.unit
+def test_grok_chat_turns_are_refused_not_guessed() -> None:
+    # No confirmed Grok read-only chat flag yet (#4131); fail closed instead of guessing one.
+    with pytest.raises(adapters_mod.ChatReadOnlyUnsupportedError):
+        adapters_mod.ADAPTERS["grok"].chat_argv("hi", "/tmp/wt")
+
+
+@pytest.mark.unit
 def test_antigravity_build_command_ignores_output_schema() -> None:
     # Only claude- and codex-style adapters know a native schema flag; others no-op (#3619).
     schema = {"type": "object", "properties": {"summary": {"type": "string"}}, "required": ["summary"]}
