@@ -116,9 +116,10 @@ _CLAUDE_MODELS = (
 )
 _CODEX_MODELS = ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra", "gpt-5-codex", "gpt-5", "o4-mini")
 _GEMINI_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
-# Cursor Agent routes to several vendors under one Cursor subscription. The
-# Grok entries are how Grok is used as a worker seat (#1193): the standalone
-# Grok Build CLI needs a SuperGrok plan the fleet does not hold.
+# Cursor Agent routes to several vendors under one Cursor subscription. Grok
+# models here are reached through that Cursor subscription (no SuperGrok
+# plan needed) and are a distinct path from the standalone Grok CLI row
+# (``grok_cli`` below), which does need a SuperGrok plan.
 _CURSOR_AGENT_MODELS = (
     "auto",
     "composer-2.5",
@@ -371,11 +372,35 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         editable=True,
         cloud_mutation_allowed=False,
         notes=(
-            "Uses `cursor-agent -p` for headless branch-local remediation. Grok models are "
-            "reached through the Cursor subscription; the Grok Build CLI is not used because "
-            "it requires SuperGrok. Cloud dispatch is hard-gated non-mutating (#4081, ADR-0007): "
-            "a Cursor cloud agent cannot reach the local fleet-gh wrapper, so it cannot "
-            "authenticate as the fleet bot for a mutating action."
+            "Uses `cursor-agent -p` for headless branch-local remediation. Grok models here "
+            "are reached through the Cursor subscription (no SuperGrok plan needed); the "
+            "standalone Grok CLI is a separate row (`grok_cli`). Cloud dispatch is hard-gated "
+            "non-mutating (#4081, ADR-0007): a Cursor cloud agent cannot reach the local "
+            "fleet-gh wrapper, so it cannot authenticate as the fleet bot for a mutating action."
+        ),
+    ),
+    ProviderEntry(
+        dashboard_id="grok_cli",
+        conductor_id="grok-cli",
+        label="Grok CLI",
+        execution_mode="local_exec",
+        dispatch_mode="future",
+        auth_mode="local",
+        resource="runner",
+        capabilities=("code_edit", "ci_fix", "test_fix", "refactor", "doc"),
+        cost_per_task=0.0,
+        max_concurrency=1,
+        availability_probe=("grok",),
+        credential_id="grok_cli",
+        setup_hint="Install the standalone Grok CLI (`grok`), then sign in (requires a SuperGrok plan)",
+        editable=False,
+        enabled=False,
+        notes=(
+            "Issue #4130: registry row for the standalone Grok Build CLI, distinct from the "
+            "Cursor-hosted Grok models (`cursor_agent`, no SuperGrok needed) and from the Grok "
+            "Bot assistant (`docs/agents/grok.md`, `agent-grok` principal). Ships inert — no "
+            "staff launch adapter exists yet; session spawn (#4131), auth health (#4132), usage "
+            "tracking (#4133) and docs (#4134) land in the sibling issues."
         ),
     ),
 )
@@ -394,6 +419,8 @@ PROVIDER_ID_COMPATIBILITY: dict[str, str] = {
     "agy": "antigravity",
     "anthropic-api": "anthropic_api",
     "cursor-agent": "cursor_agent",
+    "grok": "grok_cli",
+    "grok-cli": "grok_cli",
     "ollama-local": "ollama",
     "claude-ollama": "ollama",
     "claude_ollama": "ollama",
