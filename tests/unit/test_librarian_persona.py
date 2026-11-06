@@ -34,6 +34,13 @@ def test_librarian_yaml_passes_schema_validation_and_loads_into_roster(tmp_path:
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["window"] is None
     assert spec_raw["reports_to"] == "barb" and spec_raw["surface"] == "dashboard"
+    assert spec_raw["holds"] == []
+    instructions = spec_raw["instructions"]
+    assert "Interim:" not in instructions
+    assert "first Board meeting" not in instructions
+    assert "pathway-log.md" not in instructions
+    assert "Reports to the Board" in instructions
+    assert "board-secretary" in instructions
     assert spec_raw["providers"] == ["claude"]
     assert "retry" not in spec_raw
     clear_roles_cache()
