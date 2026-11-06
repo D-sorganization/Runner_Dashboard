@@ -195,6 +195,7 @@ def _init_git_repo(root: Path) -> None:
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
 
 
+@pytest.mark.requires_posix
 def test_install_lane_pre_push_hook_writes_executable_hook(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
