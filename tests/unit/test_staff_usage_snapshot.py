@@ -84,6 +84,49 @@ def test_snapshot_contract_accepts_fixture() -> None:
 
 
 @pytest.mark.unit
+def test_snapshot_supports_grok_provider_payload(tmp_path: Path) -> None:
+    grok_fixture = {
+        "schema_version": "provider-availability.v1",
+        "checked_at": "2026-10-26T17:20:00Z",
+        "providers": [
+            {
+                "provider": "grok",
+                "label": "Grok CLI",
+                "status": "ok",
+                "quota_used_pct": 42.5,
+                "quota_limit": 100,
+                "reset_at": None,
+                "near_limit_flag": False,
+                "rate_limits": {
+                    "readings": [
+                        {
+                            "machine": "desk-x9",
+                            "observed_at": "2026-10-26T17:19:00Z",
+                            "used_percent": 42.5,
+                            "resets_at": None,
+                            "source": "usage-tracker",
+                        }
+                    ]
+                },
+            }
+        ],
+    }
+    snapshot = snap_mod.validate_payload(grok_fixture, now=NOW)
+    store = snap_mod.UsageSnapshotStore(tmp_path / "snap.json")
+    store.record(snapshot)
+    v = snap_mod.view(NOW, store=store)
+    assert not v["snapshot_stale"]
+    assert len(v["providers"]) == 1
+    p = v["providers"][0]
+    assert p["provider"] == "grok"
+    assert p["label"] == "Grok CLI"
+    assert p["quota_used_pct"] == 42.5
+    assert len(p["machines"]) == 1
+    assert p["machines"][0]["machine"] == "desk-x9"
+    assert p["machines"][0]["used_percent"] == 42.5
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("mutation", "field"),
     [

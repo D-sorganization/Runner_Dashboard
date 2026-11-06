@@ -65,6 +65,8 @@ def classify_adapter_output(provider: str, text: str) -> AdapterFailureHint | No
         return _classify_antigravity(lower, text)
     if pid == "cursor-agent":
         return _classify_cursor_agent(lower, text)
+    if pid in ("grok", "grok_cli", "grok-cli"):
+        return _classify_grok(lower, text)
     return None
 
 
@@ -106,6 +108,25 @@ def _classify_cursor_agent(lower: str, text: str) -> AdapterFailureHint | None:
     if "usage limit" in lower or "usage-limit" in lower or "quota" in lower:
         return AdapterFailureHint("quota_exhausted", text.strip()[:300])
     if "rate limit" in lower or "429" in lower:
+        return AdapterFailureHint("rate_limited", text.strip()[:300])
+    return None
+
+
+def _classify_grok(lower: str, text: str) -> AdapterFailureHint | None:
+    """Failure classification for standalone Grok CLI (#4131, #4133)."""
+    if "at capacity" in lower or "overloaded" in lower or "server busy" in lower:
+        return AdapterFailureHint("provider_capacity", text.strip()[:300])
+    if (
+        "usage limit" in lower
+        or "usage-limit" in lower
+        or "quota" in lower
+        or "credits" in lower
+        or "credit limit" in lower
+        or "plan limit" in lower
+        or "billing hard limit" in lower
+    ):
+        return AdapterFailureHint("quota_exhausted", text.strip()[:300])
+    if "rate limit" in lower or "too many requests" in lower or "429" in lower:
         return AdapterFailureHint("rate_limited", text.strip()[:300])
     return None
 

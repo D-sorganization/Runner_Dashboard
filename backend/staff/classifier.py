@@ -55,6 +55,9 @@ LOGIN_COMMANDS: dict[str, str] = {
     "cursor-agent": "cursor-agent login",
     "antigravity": "agy",
     "gemini": "gemini login",
+    "grok": "grok login",
+    "grok_cli": "grok login",
+    "grok-cli": "grok login",
     "ollama": "systemctl --user start ollama",
     "claude-ollama": "systemctl --user start ollama",
 }
