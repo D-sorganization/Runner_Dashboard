@@ -2185,7 +2185,7 @@ single browser-based interface backed by a local FastAPI server.
 
 - Real-time monitoring of all self-hosted runners and their systemd services
 - Workflow run history, queue management, and cancellation/rerun controls
-- AI agent dispatch (Jules, GAAI, Claude, Codex, Maxwell) via remediation API
+- AI agent dispatch (Jules, Claude, Codex, Maxwell) via remediation API
 - Multi-node fleet hardware and system metrics
 - Scheduled workflow inventory and manual dispatch
 - Local application process health monitoring
@@ -2246,7 +2246,7 @@ the fleet runner CLI version does not support that flag consistently.
 
 | Module                    | Responsibility                                                                                                                                                                                                            |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent_remediation.py`    | AI agent dispatch plans, GAAI/Claude/Codex invocation                                                                                                                                                                     |
+| `agent_remediation.py`    | AI agent dispatch plans, Claude/Codex invocation                                                                                                                                                                          |
 | `dispatch_contract.py`    | Type contracts for workflow dispatch payloads                                                                                                                                                                             |
 | `machine_registry.py`     | Multi-node fleet registry (load, merge with live data)                                                                                                                                                                    |
 | `scheduled_workflows.py`  | Inventory of scheduled workflow definitions                                                                                                                                                                               |
@@ -2718,7 +2718,7 @@ Health status of local registered applications (processes, services defined in
 AI agent dispatch control panel organised into three sub-tabs:
 
 - **Automations** (default) â€” configures and dispatches remediation plans to
-  Jules, GAAI, Claude, or Codex agents. Shows dispatch history and plan
+  Jules, Claude, or Codex agents. Shows dispatch history and plan
   preview. Supports per-repo agent routing, loop-guard configuration, and
   provider fallback chain escalation.
 - **PRs** â€” multi-select table of open pull requests fetched from
@@ -2993,7 +2993,7 @@ env var.
 | PUT    | `/api/agent-remediation/config`         | Update remediation configuration                                            |
 | GET    | `/api/agent-remediation/workflows`      | Health of this repo's `agent-*.yml` workflows                               |
 | POST   | `/api/agent-remediation/plan`           | Generate a remediation plan                                                 |
-| POST   | `/api/agent-remediation/dispatch`       | Dispatch a remediation plan (GAAI/Claude/Codex)                             |
+| POST   | `/api/agent-remediation/dispatch`       | Dispatch a remediation plan (Claude/Codex)                                  |
 | POST   | `/api/agent-remediation/dispatch-jules` | Retired (HTTP 410 Gone); successor `/api/v1/staff/requests` (SC-G5-6 #1503) |
 | GET    | `/api/agent-remediation/history`        | Remediation dispatch history                                                |
 
@@ -3345,24 +3345,24 @@ The `/api/agent-launcher/*` routes (Cline Launcher scheduler, #920) were retired
 
 ### 5.1 Environment Variables
 
-| Variable                          | Default                                                  | Description                                                                         |
-| --------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `GITHUB_TOKEN`                    | (required)                                               | GitHub PAT or App token with org runner/workflow scopes                             |
-| `GITHUB_ORG`                      | `D-sorganization` for fleet API calls; required for OAuth sign-in | GitHub organization whose members may sign in                                      |
-| `DASHBOARD_PORT`                  | `8321`                                                   | HTTP port the server listens on                                                     |
-| `DISPLAY_NAME`                    | `hostname`                                               | Display name shown in the UI header                                                 |
-| `NUM_RUNNERS`                     | `12`                                                     | Target number of self-hosted runners                                                |
-| `MAX_RUNNERS`                     | `NUM_RUNNERS`                                            | Hard cap on runner count                                                            |
-| `RUNNER_DASHBOARD_REPO_ROOT`      | Parent of backend dir                                    | Repo root for relative path resolution                                              |
-| `DASHBOARD_DISK_WARN_PERCENT`     | `85`                                                     | Disk usage % threshold for warning state                                            |
-| `DASHBOARD_DISK_CRITICAL_PERCENT` | `92`                                                     | Disk usage % threshold for critical state                                           |
-| `DASHBOARD_DISK_MIN_FREE_GB`      | `25`                                                     | Minimum free disk GB threshold                                                      |
-| `RUNNER_ALIASES`                  | ``                                                       | Comma-separated runner name aliases                                                 |
-| `RUNNER_SCHEDULE_CONFIG`          | `~/.config/runner-dashboard/runner-schedule.json`        | Path to schedule config                                                             |
-| `RUNNER_SCHEDULER_BIN`            | `/usr/local/bin/runner-scheduler`                        | Runner scheduler binary path                                                        |
-| `RUNNER_SCHEDULER_SERVICE`        | `runner-scheduler.service`                               | Scheduler systemd service name                                                      |
-| `RUN_JOB_ENRICHMENT_LIMIT`        | `50`                                                     | Max runs to enrich with job data                                                    |
-| `LOG_FILTER_PATHS`                | `/api/scheduled-workflows,/api/heavy-tests,/api/reports` | Comma-separated path prefixes sampled at 1/10 in request logs; errors always logged |
+| Variable                          | Default                                                           | Description                                                                         |
+| --------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `GITHUB_TOKEN`                    | (required)                                                        | GitHub PAT or App token with org runner/workflow scopes                             |
+| `GITHUB_ORG`                      | `D-sorganization` for fleet API calls; required for OAuth sign-in | GitHub organization whose members may sign in                                       |
+| `DASHBOARD_PORT`                  | `8321`                                                            | HTTP port the server listens on                                                     |
+| `DISPLAY_NAME`                    | `hostname`                                                        | Display name shown in the UI header                                                 |
+| `NUM_RUNNERS`                     | `12`                                                              | Target number of self-hosted runners                                                |
+| `MAX_RUNNERS`                     | `NUM_RUNNERS`                                                     | Hard cap on runner count                                                            |
+| `RUNNER_DASHBOARD_REPO_ROOT`      | Parent of backend dir                                             | Repo root for relative path resolution                                              |
+| `DASHBOARD_DISK_WARN_PERCENT`     | `85`                                                              | Disk usage % threshold for warning state                                            |
+| `DASHBOARD_DISK_CRITICAL_PERCENT` | `92`                                                              | Disk usage % threshold for critical state                                           |
+| `DASHBOARD_DISK_MIN_FREE_GB`      | `25`                                                              | Minimum free disk GB threshold                                                      |
+| `RUNNER_ALIASES`                  | ``                                                                | Comma-separated runner name aliases                                                 |
+| `RUNNER_SCHEDULE_CONFIG`          | `~/.config/runner-dashboard/runner-schedule.json`                 | Path to schedule config                                                             |
+| `RUNNER_SCHEDULER_BIN`            | `/usr/local/bin/runner-scheduler`                                 | Runner scheduler binary path                                                        |
+| `RUNNER_SCHEDULER_SERVICE`        | `runner-scheduler.service`                                        | Scheduler systemd service name                                                      |
+| `RUN_JOB_ENRICHMENT_LIMIT`        | `50`                                                              | Max runs to enrich with job data                                                    |
+| `LOG_FILTER_PATHS`                | `/api/scheduled-workflows,/api/heavy-tests,/api/reports`          | Comma-separated path prefixes sampled at 1/10 in request logs; errors always logged |
 
 ### 5.2 machine_registry.yml
 
