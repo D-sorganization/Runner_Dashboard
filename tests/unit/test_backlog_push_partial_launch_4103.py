@@ -161,7 +161,7 @@ def test_pid_reuse_rejection_prevents_adopting_unrelated_process(tmp_path: Path)
         return 707
 
     def fake_cmd(pid: int):
-        return ["/usr/sbin/sshd", "-D"] if pid == 606 else ["bash", "lane.sh", "sup-reuse"]
+        return ["/usr/sbin/sshd", "-D"] if pid == 606 else ["/bin/bash", "lane.sh", "sup-reuse"]
 
     def fake_kill(pid: int, sig: int):
         if sig == 0 and pid in (606, 707):
