@@ -88,8 +88,12 @@ async def run_dispatch(
     # A request that declares Barb authority is fenced on its lease epoch (#2734, #3543);
     # when a peer forwards on behalf of another principal, evaluate the fence against the
     # original caller identity so Barb-authority forwards cannot bypass the lease fence.
+    #
+    # Hub fleet bearer + signed OBO (#4025): the bearer proves the hub vouched for the header;
+    # the effective *run* identity is the OBO principal, but the transport is still fleet-peer,
+    # so the Barb unclaimed-write fence must not treat the OBO id as the Barb seat (#3064).
     fence_principal = caller
-    if obo and on_behalf_of:
+    if obo and on_behalf_of and not (fleet_bearer and obo):
         raw_id = on_behalf_of.removeprefix("principal:").removeprefix("user:")
         fence_principal = Principal(
             id=raw_id,
