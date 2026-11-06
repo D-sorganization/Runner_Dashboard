@@ -24,5 +24,10 @@
   "3824": ["type:docs", "complexity:routine", "effort:s", "judgement:objective", "medium", "tier:cli"],
   "3825": ["type:docs", "complexity:routine", "effort:s", "judgement:objective", "medium", "tier:cli"],
   "3846": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"],
-  "3852": ["type:feat", "complexity:routine", "effort:s", "judgement:objective", "medium", "tier:cli"]
+  "3852": ["type:feat", "complexity:routine", "effort:s", "judgement:objective", "medium", "tier:cli"],
+  "3856": ["type:task", "complexity:routine", "effort:s", "judgement:objective", "medium", "tier:cli"],
+  "3867": ["type:task", "complexity:complex", "effort:m", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3868": ["type:task", "complexity:deep", "effort:l", "judgement:design", "panel-review", "medium", "tier:strong"],
+  "3869": ["type:chore", "complexity:complex", "effort:m", "judgement:objective", "medium", "tier:cli"],
+  "3883": ["type:bug", "complexity:routine", "effort:s", "judgement:objective", "high", "tier:cli"]
 }

@@ -50,7 +50,7 @@ def _skills_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_resolve_injects_versions() -> None:
     bundle = resolve_dispatch_bundle(role="night-watch", repo="AffineDrift")
-    assert bundle.standards_version == "1.0.0"
+    assert bundle.standards_version == "1.1.0"
     assert bundle.skill_pin.startswith("fleet-staff-unattended@1.0.0+")
     assert "TDD" in bundle.standards_block
     assert "unattended" in bundle.skill_block.lower()
@@ -94,7 +94,7 @@ def test_proceeds_without_skill_when_registry_empty(monkeypatch: pytest.MonkeyPa
     bundle = resolve_dispatch_bundle(role="unknown-role", repo="AffineDrift")
     assert bundle.skill_pin == ""
     assert bundle.skill_block == ""
-    assert bundle.standards_version == "1.0.0"
+    assert bundle.standards_version == "1.1.0"
 
 
 def test_rejects_unknown_explicit_skill() -> None:

@@ -114,3 +114,29 @@ def test_run_body_carries_only_known_restrictions() -> None:
     assert RunBody().pr_restrictions == []
     with pytest.raises(ValidationError):
         RunBody(pr_restrictions=["allow_arm"])
+
+
+@pytest.mark.unit
+def test_builtin_standards_defer_to_pr_restrictions_override() -> None:
+    """The standards text itself must not contradict the fence (#4090, follow-up to RM#2712/#4088)."""
+    from staff.standards_registry import _BUILTIN
+
+    body = _BUILTIN.body
+    assert "pr_restrictions" in body
+    assert FENCED_LIFECYCLE in body
+    assert "unless" in body.lower()
+
+
+@pytest.mark.unit
+def test_runtime_plan_fenced_prompt_standards_text_has_no_unconditional_arm_line(
+    tmp_path: Path, staff_cli_installed
+) -> None:
+    """A fenced prompt's standards block must defer to the fence, not assert an unconditional arm."""
+    staff_cli_installed("claude")
+    plan = _runner(tmp_path).plan(
+        RunRequest(role="issue-remediator", prompt="fix it", repo="Repository_Management", pr_restrictions=("no_arm",))
+    )
+    standards_section = plan.prompt.split("OPERATOR PR BOUNDARY")[0]
+    assert "pr_restrictions" in standards_section
+    assert "unless" in standards_section.lower()
+    assert plan.prompt.endswith(resolve_pr_lifecycle("arm_and_exit", ("no_arm",)).prompt_block)

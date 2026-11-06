@@ -183,3 +183,46 @@ def test_stale_pack_refreshes_to_new_repository_revision(tmp_path: Path) -> None
     _commit(repo, "refresh")
     preload_panel_context({"Runner_Dashboard": repo}, "panel", knowledge_dir=tmp_path)
     assert KnowledgePack.open(output).info().commits != old
+
+
+@pytest.mark.unit
+def test_scoped_panel_does_not_replace_the_shared_multi_repo_index(tmp_path: Path) -> None:
+    """#4110: a one-repository panel request must not rebuild the shared index
+
+    with only that repository, which would silently drop the other
+    repository's passages from the persisted pack.
+    """
+    from knowledge_pack.pack import KnowledgePack
+
+    repo_a = _repo(tmp_path / "Runner_Dashboard")
+    repo_b = _repo(tmp_path / "Tools")
+    knowledge_dir = tmp_path / "knowledge"
+    pack_path = knowledge_dir / "cartographer.sqlite"
+    build_cartographer_pack({"Runner_Dashboard": repo_a, "Tools": repo_b}, pack_path)
+    before = KnowledgePack.open(pack_path).info()
+    assert set(before.commits) == {"Runner_Dashboard", "Tools"}
+
+    context = preload_panel_context(
+        {"Runner_Dashboard": repo_a},
+        "panel API contract and read-only expert invariants",
+        knowledge_dir=knowledge_dir,
+    )
+
+    after = KnowledgePack.open(pack_path).info()
+    assert after.commits == before.commits
+    assert after.built_at == before.built_at
+    assert {hit.repo for hit in KnowledgePack.open(pack_path).search("public staff panel", k=100)} == {
+        "Runner_Dashboard",
+        "Tools",
+    }
+    assert "docs/architecture/C4.md" in context
+
+    other_scoped = preload_panel_context(
+        {"Tools": repo_b},
+        "panel API contract and read-only expert invariants",
+        knowledge_dir=knowledge_dir,
+    )
+    assert "docs/architecture/C4.md" in other_scoped
+    final = KnowledgePack.open(pack_path).info()
+    assert final.commits == before.commits
+    assert final.built_at == before.built_at

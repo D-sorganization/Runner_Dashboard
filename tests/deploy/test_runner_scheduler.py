@@ -1170,6 +1170,71 @@ def test_validate_config_rejects_bad_resource_floor() -> None:
             runner_scheduler.validate_config(_floor_config(bad))  # type: ignore[arg-type]
 
 
+READMIT_FLOOR = {**FLOOR, "readmit_disk_free_gb": 45}
+
+
+def _latch_env(monkeypatch, tmp_path: Path, free: list) -> Path:
+    """Disk probe returns successive values from ``free``; the latch lives in tmp_path."""
+    _floor_env(monkeypatch, tmp_path)
+    latch = tmp_path / "disk-floor.json"
+    monkeypatch.setattr(runner_scheduler, "DISK_FLOOR_LATCH_PATH", latch)
+    values = iter(free)
+    monkeypatch.setattr(runner_scheduler, "disk_free_gb", lambda _path: next(values))
+    return latch
+
+
+def test_disk_floor_latches_on_breach_and_holds_until_readmit(monkeypatch, tmp_path: Path) -> None:
+    latch = _latch_env(monkeypatch, tmp_path, [38.0, 42.0, 44.9, 45.0, 42.0])
+    config = _floor_config(READMIT_FLOOR)
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1  # 38 < 40: shed + latch
+    assert latch.exists()
+    desired, reason = runner_scheduler.effective_capacity(config, None)  # 42: between, still held
+    assert desired == 1 and "disk_free=42.0GB<45 (readmit)" in reason
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1  # 44.9: still held
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # 45: readmitted
+    assert not latch.exists()
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # 42 unlatched: fine
+
+
+def test_disk_floor_unreadable_probe_keeps_latch(monkeypatch, tmp_path: Path) -> None:
+    latch = _latch_env(monkeypatch, tmp_path, [30.0, None, 41.0])
+    config = _floor_config(READMIT_FLOOR)
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # unreadable: no breach
+    assert latch.exists()  # ...but the latch is neither set nor cleared by an unreadable probe
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1  # 41 < 45 while latched
+
+
+def test_disk_floor_without_readmit_key_never_latches(monkeypatch, tmp_path: Path) -> None:
+    latch = _latch_env(monkeypatch, tmp_path, [30.0, 41.0])
+    config = _floor_config()
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # legacy: first tick back
+    assert not latch.exists()
+
+
+def test_validate_config_rejects_readmit_below_min() -> None:
+    import pytest
+
+    for bad in ({**FLOOR, "readmit_disk_free_gb": 30}, {**FLOOR, "readmit_disk_free_gb": -1}):
+        with pytest.raises(ValueError):
+            runner_scheduler.validate_config(_floor_config(bad))
+    runner_scheduler.validate_config(_floor_config(READMIT_FLOOR))
+
+
+def test_resource_floor_lowers_capacity_only_through_busy_safe_drain() -> None:
+    """The floor returns a target count; jobs leave via drain_surplus, which skips busy runners."""
+    source = SCHEDULER_PATH.read_text(encoding="utf-8")
+    floor_body = source.split("def apply_resource_floor", 1)[1].split("\ndef ", 1)[0]
+    assert "systemctl" not in floor_body and "stop_unit" not in floor_body
+
+
+def test_oglaptop_schedule_readmits_above_its_floor() -> None:
+    config = json.loads((REPO_ROOT / "config" / "runner-schedule-oglaptop.json").read_text(encoding="utf-8"))
+    floor = config["resource_floor"]
+    assert floor["readmit_disk_free_gb"] >= floor["min_disk_free_gb"] + 5
+
+
 def test_oglaptop_schedule_carries_conservative_resource_floor() -> None:
     config = json.loads((REPO_ROOT / "config" / "runner-schedule-oglaptop.json").read_text(encoding="utf-8"))
     runner_scheduler.validate_config(config)
@@ -1289,3 +1354,21 @@ def test_failed_stop_keeps_children_alive(monkeypatch, tmp_path: Path) -> None:
     assert runner_scheduler.stop_runner_safely(unit) is False
     assert signals == []
     assert _thaws(commands) == [unit.unit]
+
+
+def test_stop_unit_cli_defers_when_worker_appears_after_freeze(monkeypatch, tmp_path: Path) -> None:
+    """#4046: --stop-unit exits non-zero when freeze/recheck sees a live job lock."""
+    unit_name = "actions.runner.test-org-pool-2.service"
+    workdir = tmp_path / "runner-2"
+    workdir.mkdir()
+    unit = runner_scheduler.RunnerUnit(num=2, unit=unit_name, workdir=workdir, active=True, busy=False)
+    monkeypatch.setattr(runner_scheduler, "lookup_unit", lambda _name, **_kw: unit)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: True)
+    monkeypatch.setattr(
+        runner_scheduler.sys,
+        "argv",
+        ["runner-scheduler", "--apply", "--stop-unit", unit_name],
+    )
+
+    assert runner_scheduler.main() == 1

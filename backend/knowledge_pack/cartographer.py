@@ -217,11 +217,13 @@ def _select_passages(
     if topic_only:
         # A chat answer should prioritize its question. Three matches leave room
         # for full citation locators on hosts with long node names.
-        return pack.search(topic, k=3)
+        return [passage for passage in pack.search(topic, k=3) if passage.repo in repos]
     selected: list[Passage] = []
     seen: set[tuple[str, str, str]] = set()
 
     def add(passage: Passage) -> None:
+        if passage.repo not in repos:
+            return
         key = (passage.repo, passage.source, passage.anchor)
         if key not in seen:
             seen.add(key)
@@ -326,9 +328,24 @@ def preload_panel_context(
             if pack_path.is_file():
                 try:
                     pack = KnowledgePack.open(pack_path)
-                    if pack.is_stale(clean) or pack.info().commits != {
-                        name: head_commit(root) for name, root in clean.items()
-                    }:
+                    existing_commits = pack.info().commits
+                    current_heads = {name: head_commit(root) for name, root in clean.items()}
+                    extra_repos = set(existing_commits) - set(clean)
+                    if extra_repos:
+                        # This request is scoped to a subset of an index that also
+                        # covers other repositories. Rebuilding with only `clean`
+                        # would silently drop those repositories (#4110), so reuse
+                        # the existing pack when it is current for this scope and
+                        # otherwise degrade without touching the shared index.
+                        if any(existing_commits.get(name) != head for name, head in current_heads.items()):
+                            log.warning(
+                                "Cartographer pack is stale for %s but also covers %s; "
+                                "skipping rebuild to avoid dropping the other repositories",
+                                sorted(clean),
+                                sorted(extra_repos),
+                            )
+                            return ""
+                    elif pack.is_stale(clean) or existing_commits != current_heads:
                         pack = None
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Cartographer pack cannot be reused: %s", exc)

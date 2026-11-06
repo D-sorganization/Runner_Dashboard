@@ -338,6 +338,7 @@ A shared machine can also define an optional `resource_floor` block (#2000):
 "resource_floor": {
   "disk_path": "/mnt/c",
   "min_disk_free_gb": 40,
+  "readmit_disk_free_gb": 45,
   "min_mem_available_gb": 6,
   "max_memory_pressure_avg60": 20,
   "runners": 1
@@ -351,6 +352,14 @@ the state `reason` names the floor that was breached. Surplus runners leave
 through the busy-safe drain. Capacity returns on the first tick after the host
 recovers. A probe that cannot be read is not treated as a breach. node-b uses
 this block so it stays usable for interactive coding sessions.
+
+With `readmit_disk_free_gb` set (it must be at least `min_disk_free_gb`), the disk
+floor has hysteresis (#4086). A breach writes a latch at
+`/var/lib/runner-scheduler/disk-floor.json`, and the floor holds until free space
+reaches the readmit mark, so capacity does not flap while free space hovers at the
+minimum. An unreadable probe neither sets nor clears the latch. Without the key the
+disk floor readmits on the first healthy tick, as before. node-b sheds below
+40 GB free on C: and readmits at 45 GB.
 
 The scheduler treats a runner as busy when any of these independent signals is
 present:

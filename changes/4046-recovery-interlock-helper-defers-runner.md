@@ -1,4 +1,4 @@
 ---
 issue: 4046
-summary: "Recovery interlock helper defers runner stop when busy lock is live"
+summary: "Wire runner cleanup and host checks to freeze/recheck safe stop; runner-hooks readyz/deploy-check"
 ---
