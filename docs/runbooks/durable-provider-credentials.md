@@ -43,6 +43,14 @@ There is **no** documented Antigravity subscription path that avoids periodic Go
 
 If used as a provider, follow that CLI's **subscription / Google account** sign-in only. Do not configure API-key billing for unattended staff runs.
 
+## Grok CLI (`grok`)
+
+**Subscription only (SuperGrok plan):** authenticate the CLI using `grok login` (device or browser flow) under the service user. Credentials and session tokens are stored in `~/.grok`.
+
+- Strictly adhere to fleet policy: **no pay-per-use API keys (`XAI_API_KEY`)** are permitted for staff dispatch.
+- Ensure the systemd service drop-in permits reading and writing to `~/.grok` via `ReadWritePaths=%h/.grok`.
+- Distinct from Cursor-hosted Grok (`cursor-agent`), which runs through Cursor's own subscription seat without requiring a separate SuperGrok plan.
+
 ## Verification
 
 - Per-node: `GET /api/staff/board?local=1` → `provider_auth`.

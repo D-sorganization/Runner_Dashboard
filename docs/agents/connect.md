@@ -14,14 +14,15 @@ Dedicated setup guides with least-privilege token minting, verification steps, a
 - [**Claude Code & Claude Cowork Guide**](claude.md) — MCP configuration (`claude mcp add` & `claude_desktop_config.json`), token scopes, and talking to Barb.
 - [**Codex CLI Guide**](codex.md) — `~/.codex/config.toml` MCP configuration, least-privilege token minting, and work-item tracking.
 - [**Antigravity (agy) Guide**](antigravity.md) — Antigravity CLI headless execution, model selection, and fallback dispatch.
-- [**Grok Bot Guide**](grok.md) — Local-exec `curl` recipes against `/api/v1/staff`, active Barb/Orchestrator roles, and remote-access notes (cloud-hosted clients are unsupported, ADR 0007).
+- [**Grok Bot Guide**](grok.md) — Local-exec `curl` recipes against `/api/v1/staff`, active Barb/Orchestrator roles, and remote-access notes (distinct from the Grok CLI provider in [grok-cli.md](grok-cli.md); cloud-hosted clients are unsupported, ADR 0007).
+- [**Grok CLI Guide**](grok-cli.md) — Standalone Grok CLI installation, SuperGrok authentication, headless execution, and staff provider configuration (distinct from Grok Bot).
 - [**Codex hands (Dots)**](codex-hands.md) — Computer-control executor principal `agent-codex-hands`, memory read/write, dispatch without hold/directive writes.
 
-| Client         | Use it from                             | Entry point                     |
-| -------------- | --------------------------------------- | ------------------------------- |
-| MCP server     | Claude Code, Codex CLI, Gemini CLI      | `clients/fleet/fleet_mcp.py`    |
-| CLI            | Grok Bot local exec, shell scripts, you | `clients/fleet/fleetctl.py`     |
-| Python library | Staff runs, other Python tooling        | `clients/fleet/fleet_client.py` |
+| Client         | Use it from                                       | Entry point                     |
+| -------------- | ------------------------------------------------- | ------------------------------- |
+| MCP server     | Claude Code, Codex CLI, Gemini CLI                | `clients/fleet/fleet_mcp.py`    |
+| CLI            | Grok Bot local exec, Grok CLI, shell scripts, you | `clients/fleet/fleetctl.py`     |
+| Python library | Staff runs, other Python tooling                  | `clients/fleet/fleet_client.py` |
 
 In the examples below, `/path/Runner_Dashboard` is a checkout of this repository on the
 agent's machine. Nothing needs to be installed.
@@ -321,17 +322,17 @@ revoked without affecting the other agents.
 
 ### Least-Privilege Scopes (SC-F1)
 
-| Scope                | Endpoints / Capability                                                                            | Default Bearers                                            |
-| :------------------- | :------------------------------------------------------------------------------------------------ | :--------------------------------------------------------- |
+| Scope                | Endpoints / Capability                                                                            | Default Bearers                                                                                                 |
+| :------------------- | :------------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------- |
 | `fleet.read`         | `GET /api/priorities*`, `GET /api/coordination/*`, `GET /api/fleet/status`, fleet inventory reads | `viewer`, `operator`, `fleet-peer`, `agent-grok`, `agent-codex`, `agent-claude`, `agent-gemini` (repo defaults) |
-| `staff.read`         | `/api/v1/staff/roster`, `/threads`, `/runs`, `/work-items`, `/proposals`                          | `viewer`, `bot`, `operator`                                |
-| `staff.chat`         | `/api/v1/staff/threads` (open, send, wait)                                                        | `bot`, `operator`, `fleet-peer`                            |
-| `staff.dispatch`     | `/api/v1/staff/{role}/run`                                                                        | `bot`, `operator`, `fleet-peer`                            |
-| `staff.cancel`       | `/api/v1/staff/runs/{id}/cancel`                                                                  | `bot`, `operator`, `fleet-peer`                            |
-| `coordination.write` | `/api/coordination/presence`, `/messages`, `/claims`                                              | `bot`, `operator`                                          |
-| `staff.approve`      | `/api/v1/staff/proposals/{id}/decide`                                                             | `operator`, `admin`                                        |
-| `staff.holds.write`  | `/api/staff/holds`                                                                                | `operator`, `admin`                                        |
-| `staff.admin`        | `/api/staff/usage/export`                                                                         | `admin`                                                    |
+| `staff.read`         | `/api/v1/staff/roster`, `/threads`, `/runs`, `/work-items`, `/proposals`                          | `viewer`, `bot`, `operator`                                                                                     |
+| `staff.chat`         | `/api/v1/staff/threads` (open, send, wait)                                                        | `bot`, `operator`, `fleet-peer`                                                                                 |
+| `staff.dispatch`     | `/api/v1/staff/{role}/run`                                                                        | `bot`, `operator`, `fleet-peer`                                                                                 |
+| `staff.cancel`       | `/api/v1/staff/runs/{id}/cancel`                                                                  | `bot`, `operator`, `fleet-peer`                                                                                 |
+| `coordination.write` | `/api/coordination/presence`, `/messages`, `/claims`                                              | `bot`, `operator`                                                                                               |
+| `staff.approve`      | `/api/v1/staff/proposals/{id}/decide`                                                             | `operator`, `admin`                                                                                             |
+| `staff.holds.write`  | `/api/staff/holds`                                                                                | `operator`, `admin`                                                                                             |
+| `staff.admin`        | `/api/staff/usage/export`                                                                         | `admin`                                                                                                         |
 
 ## Troubleshooting Table (SC-F3 Error Codes)
 
@@ -383,5 +384,3 @@ degrading gracefully when the hub is unreachable (bounded offline spool with bac
 ```bash
 python3 clients/fleet/fleetctl.py checkin {started,claimed,pushed,pr_opened,blocked,done} --repo <repo> [--issue N] [--branch B] [--pr P]
 ```
-
-
