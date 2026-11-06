@@ -24,7 +24,7 @@ _EVENING_HOUR = 20
 _EXPIRING_HOURS = 48.0
 _KEEPALIVE_INTERVAL_SECONDS = 4 * 3600
 _STALE_REFRESH_DAYS = float(os.environ.get("STAFF_PROVIDER_AUTH_STALE_DAYS", "7"))
-_PROBE_PROVIDERS = ("claude", "antigravity", "codex")
+_PROBE_PROVIDERS = ("claude", "antigravity", "codex", "grok")
 
 _cache: dict[str, Any] = {"checked_at": None, "providers": {}, "machine": ""}
 

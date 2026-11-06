@@ -160,6 +160,14 @@ def test_clean_run_still_succeeds(tmp_path: Path) -> None:
             "cursor-agent login",
         ),
         (
+            "grok",
+            1,
+            "Error: not authenticated. Run grok login --device-auth",
+            "auth_expired",
+            False,
+            "grok login --device-auth",
+        ),
+        (
             "claude",
             127,
             "/bin/bash: claude: command not found",
