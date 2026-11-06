@@ -16,7 +16,7 @@ from identity import Principal, format_caller
 from staff import claim_guard, consolidation, resource_admission
 from staff import fleet as staff_fleet
 from staff.audit import AuditError, record_audit
-from staff.barb_lease_fence import BarbClaim, barb_write_fence
+from staff.barb_lease_fence import BarbClaim, barb_write_fence, is_barb_seat
 from staff.budget import BudgetGuard
 from staff.rate_limit import check_rate_limit
 from staff.runner import RunRequest, StaffRunner, get_runner
@@ -350,6 +350,7 @@ async def dispatch_staff_run(
         requested_skill=cmd.requested_skill,
         execution_mode=cmd.execution_mode or "local",
         dispatch_origin=cmd.dispatch_origin,
+        barb_bypass_role_repos=is_barb_seat(caller),
     )
     try:
         plan = runner.plan(req)

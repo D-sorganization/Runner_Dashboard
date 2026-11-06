@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, format_caller, principal_has_scope, require_scope
 from pydantic import BaseModel, Field
 from staff.barb_continuity import classify_task_surface, get_barb_continuity_store
-from staff.barb_lease_fence import barb_write_fence, claim_for_write
+from staff.barb_lease_fence import barb_write_fence, claim_for_write, is_barb_seat
 from staff.barb_runtime import barb_status
 from staff.runner import get_runner
 
@@ -183,9 +183,10 @@ async def post_barb_lease_checkout(
 ) -> dict[str, Any]:
     holder = bind_holder(_caller, req.holder)
     if req.takeover:
-        if not principal_has_scope(_caller, "staff.admin"):
+        if not (principal_has_scope(_caller, "staff.admin") or is_barb_seat(_caller)):
             raise HTTPException(
-                status_code=403, detail={"error": "takeover_requires_operator", "required_scope": "staff.admin"}
+                status_code=403,
+                detail={"error": "takeover_requires_barb_or_operator", "required_scope": "staff.admin or Barb seat"},
             )
         if not req.reason.strip():
             raise HTTPException(status_code=422, detail={"error": "takeover_reason_required"})

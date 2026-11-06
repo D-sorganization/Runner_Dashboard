@@ -505,18 +505,27 @@ LOOPBACK_SCOPES = frozenset(
     ).split()
 )
 
-SCOPE_PRESETS = {
-    "admin": ["*"],
-    # Whitespace-separated to keep this module under the 500-line cap.
-    "operator": (
+# Operator preset scopes (whitespace-separated to keep this module under the cap).
+_OPERATOR_PRESET_SCOPES: tuple[str, ...] = tuple(
+    (
         "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "
-        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin "
-        "fleet.maintain fleet.read activity.read activity.write"
-    ).split(),
+        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.write staff.approve staff.admin "
+        "staff.audit.read staff.github_credential staff.dispatcher.ledger.write "
+        "fleet.maintain fleet.read memory.read memory.write activity.read activity.write github.app_token"
+    ).split()
+)
+
+# Barb lanes: same hub agent surface as `operator` except owner-tap approval (`staff.approve`).
+BARB_ROLE_SCOPES: tuple[str, ...] = tuple(sorted(set(_OPERATOR_PRESET_SCOPES) - {"staff.approve"}))
+
+SCOPE_PRESETS = {
+    "admin": ["*"],
+    "operator": list(_OPERATOR_PRESET_SCOPES),
     "viewer": ["assistant.chat", "staff.read", "fleet.read"],
+    "barb": list(BARB_ROLE_SCOPES),
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
     "bot": (
         "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write proposals.write "
@@ -660,6 +669,73 @@ def require_scope(required_scope: str):
         )
 
     return checker
+
+
+@functools.cache
+def _require_any_scope_impl(scopes: tuple[str, ...]):
+    """Like ``require_scope`` but succeeds when the principal has any listed scope."""
+
+    def checker(
+        request: Request,
+        header_token: str | None = Depends(auth_header),
+        cookie_token: str | None = Depends(auth_cookie),
+    ) -> Principal:
+        overrides = getattr(request.app, "dependency_overrides", {})
+        if require_principal in overrides:
+            override_fn = overrides[require_principal]
+            prin = override_fn() if callable(override_fn) else override_fn
+            if isinstance(prin, Principal):
+                if any(principal_has_scope(prin, s) for s in scopes):
+                    return prin
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "Authorization failed",
+                        "required_scopes": list(scopes),
+                        "principal": prin.id,
+                    },
+                )
+        if require_orchestrator_peer in overrides:
+            return Principal(
+                id="test-orchestrator",
+                type="bot",
+                name="Test Orchestrator",
+                roles=["admin"],
+            )
+        if require_fleet_peer in overrides:
+            return Principal(id="test-peer", type="bot", name="Test Peer", roles=["fleet-peer"])
+
+        prin = _resolve_principal_optional(request, header_token)
+        hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+        if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
+            if hmac.compare_digest(header_token[7:], hub_token):
+                prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+        if prin is None:
+            _reject_unauthenticated_bearer(header_token)
+        if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
+            prin = _loopback_principal()
+
+        if prin is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if any(principal_has_scope(prin, s) for s in scopes):
+            return prin
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Authorization failed",
+                "required_scopes": list(scopes),
+                "principal": prin.id,
+            },
+        )
+
+    return checker
+
+
+def require_any_scope(*scopes: str):
+    """Dependency factory: principal must have one of ``scopes`` (OR)."""
+    if not scopes:
+        raise ValueError("require_any_scope needs at least one scope")
+    return _require_any_scope_impl(tuple(scopes))
 
 
 def _principal_may_read_fleet(principal: Principal) -> bool:

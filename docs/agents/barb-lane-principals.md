@@ -1,7 +1,9 @@
 # Barb lane principals (#3647)
 
 Every Barb is a full peer (owner decision 2026-10-31). Each lane authenticates as its **own**
-principal from `config/agent_principals.yml`. The generic `agent-claude`, `agent-codex`,
+principal from `config/agent_principals.yml` with `roles: [bot, barb]`. The shared ``barb`` preset in
+`backend/identity.py` (`SCOPE_PRESETS["barb"]`) is the single source for Barb capabilities, so scopes
+cannot drift between lanes. The generic `agent-claude`, `agent-codex`,
 `agent-gemini` and `agent-cursor` principals stay narrow and must not be used by a Barb lane.
 
 | Lane | Principal | Where the lane reads its token |

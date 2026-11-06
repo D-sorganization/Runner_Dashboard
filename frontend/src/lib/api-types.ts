@@ -10026,7 +10026,7 @@ export interface components {
             execute_dispatch: boolean;
             /**
              * Owner Approval Ref
-             * @description Required when agent-grok approves; names Dieter's explicit approval.
+             * @description Optional audit reference when approving (e.g. owner thread id).
              * @default
              */
             owner_approval_ref: string;

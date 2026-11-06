@@ -6,23 +6,8 @@ from pathlib import Path
 
 import pytest
 from agent_principal_defaults import merge_agent_principal_defaults
-from identity import IdentityManager, principal_has_scope
+from identity import BARB_ROLE_SCOPES, IdentityManager, principal_has_scope
 
-
-BARB_SCOPES = (
-    "fleet.read",
-    "memory.read",
-    "memory.write",
-    "staff.read",
-    "staff.dispatch",
-    "priorities.write",
-    "staff.holds.write",
-    "staff.chat",
-    "staff.cancel",
-    "coordination.write",
-    "proposals.write",
-    "assessments.dispatch",
-)
 
 BARB_GITHUB_APP_TOKEN = "github.app_token"
 
@@ -49,9 +34,11 @@ def test_worker_vm_principals_least_privilege(
 
     prin = mgr.principals[pid]
     assert prin.assistant_kind == kind
-    for scope in BARB_SCOPES:
+    assert prin.roles[:2] == ["bot", "barb"]
+    for scope in BARB_ROLE_SCOPES:
         assert principal_has_scope(prin, scope)
     # Every VM worker Barb (grok, duet, dots/codex-hands) needs hub-minted gh/clone access.
     assert principal_has_scope(prin, BARB_GITHUB_APP_TOKEN)
-    for scope in ("admin", "staff.admin", "operator"):
+    assert principal_has_scope(prin, "staff.admin")
+    for scope in ("admin", "operator"):
         assert not principal_has_scope(prin, scope)
