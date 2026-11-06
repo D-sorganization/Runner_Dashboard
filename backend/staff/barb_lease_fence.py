@@ -52,7 +52,21 @@ MODE_ENV = "DASHBOARD_BARB_FENCE_MODE"
 FenceMode = Literal["off", "warn", "enforce"]
 _MODES: tuple[FenceMode, ...] = ("off", "warn", "enforce")
 DEFAULT_MODE: FenceMode = "enforce"
-BARB_SEAT_IDS = frozenset({"barb", "agent-grok"})
+BARB_SEAT_IDS = frozenset(
+    {
+        "barb",
+        "agent-grok",
+        "agent-grok-vm",
+        "agent-duet",
+        "agent-codex-hands",
+        "rd-barb",
+        "agent-claude-barb",
+        "agent-codex-barb",
+        "agent-cursor-barb",
+        "agent-agy-barb",
+    }
+)
+BARB_ID_SUFFIXES: frozenset[str] = frozenset(("-barb", "-grok", "-hands"))
 
 
 @dataclass(frozen=True)
@@ -111,7 +125,14 @@ def is_barb_seat(principal: Principal | None) -> bool:
     if principal is None:
         return False
     marks = set(principal.roles) | set(principal.scopes)
-    return principal.assistant_kind == "grokbot" or principal.id in BARB_SEAT_IDS or "barb" in marks
+    if "barb" in marks:
+        return True
+    if principal.id in BARB_SEAT_IDS:
+        return True
+    if principal.assistant_kind == "grokbot":
+        return True
+    pid = principal.id
+    return any(pid.endswith(suffix) for suffix in BARB_ID_SUFFIXES)
 
 
 def fence_mode() -> FenceMode:

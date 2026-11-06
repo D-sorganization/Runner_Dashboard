@@ -18,6 +18,8 @@ pytestmark = pytest.mark.integration
 _TOKENS = {
     "alpha": Principal(id="agent-alpha", type="bot", name="Alpha", roles=["bot"]),
     "beta": Principal(id="agent-beta", type="bot", name="Beta", roles=["bot"]),
+    "dots": Principal(id="agent-codex-hands", type="bot", name="Dots Barb", roles=["bot", "barb"]),
+    "grok": Principal(id="agent-grok", type="bot", name="Grok Barb", roles=["bot", "barb"], assistant_kind="grokbot"),
     "oper": Principal(id="op-1", type="human", name="Operator", roles=["operator"]),
 }
 
@@ -75,6 +77,16 @@ def test_holder_defaults_to_caller_and_spoof_rejected(client: TestClient) -> Non
     assert spoof.status_code == 403
     suffixed = _checkout(client, "beta", holder="agent-beta:seat2", scope="barb:ci-shepherd")
     assert suffixed.status_code == 200
+
+
+def test_front_door_checkout_not_blocked_by_dispatch_coordinator_lease(client: TestClient) -> None:
+    """Coordinator and front-door scopes are independent: one Barb's ``barb:dispatch-coordinator`` lease
+    must not block another Barb principal from checking out ``barb:front-door``."""
+    disp_grok = _checkout(client, "grok", scope="barb:dispatch-coordinator")
+    assert disp_grok.status_code == 200, disp_grok.text
+    fd_dots = _checkout(client, "dots", scope="barb:front-door")
+    assert fd_dots.status_code == 200, fd_dots.text
+    assert fd_dots.json()["lease"]["holder"] == "agent-codex-hands"
 
 
 def test_cannot_release_or_renew_other_lease(client: TestClient) -> None:

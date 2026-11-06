@@ -49,6 +49,7 @@ def test_worker_vm_principals_least_privilege(
 
     prin = mgr.principals[pid]
     assert prin.assistant_kind == kind
+    assert prin.roles[:2] == ["bot", "barb"]
     for scope in BARB_SCOPES:
         assert principal_has_scope(prin, scope)
     # Every VM worker Barb (grok, duet, dots/codex-hands) needs hub-minted gh/clone access.

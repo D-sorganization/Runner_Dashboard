@@ -95,11 +95,11 @@ export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-grok
 export FLEET_AGENT="grok"
 ```
 
-A principal `agent-grok` must exist in the identity store with the `bot` role. On hub
-deploys, `config/agent_principals.yml` merges repo defaults at startup: `agent-grok`
-gets `roles: [bot]` plus explicit `fleet.read` and `memory.read` / `memory.write`
-(shared conversation context) while **not** receiving `priorities.write` or
-`staff.holds.write`. Place the bearer in
+A principal `agent-grok` must exist in the identity store with `roles: [bot, barb]`. On hub
+deploys, `config/agent_principals.yml` merges repo defaults at startup: the `barb` role
+preset (see `identity.SCOPE_PRESETS['barb']`) grants the full Barb capability set for
+`agent-grok` and every other Barb lane principal (including `agent-codex-hands` for Dots on
+the barb-worker VM). Place the bearer in
 `~/.config/runner-dashboard/agent-tokens/agent-grok.token`; the dashboard ingests
 that file on restart (in addition to `tokens.yml` entries from the admin mint API).
 Never commit token contents or logs.

@@ -505,6 +505,14 @@ LOOPBACK_SCOPES = frozenset(
     ).split()
 )
 
+# Full Barb lane capability (Grok, Dots, rd-barb, CLI Barbs): single scope set for parity tests.
+BARB_ROLE_SCOPES: tuple[str, ...] = tuple(
+    (
+        "fleet.read memory.read memory.write staff.read staff.dispatch priorities.write staff.holds.write "
+        "staff.chat staff.cancel coordination.write proposals.write assessments.dispatch github.app_token"
+    ).split()
+)
+
 SCOPE_PRESETS = {
     "admin": ["*"],
     # Whitespace-separated to keep this module under the 500-line cap.
@@ -517,6 +525,9 @@ SCOPE_PRESETS = {
         "fleet.maintain fleet.read activity.read activity.write"
     ).split(),
     "viewer": ["assistant.chat", "staff.read", "fleet.read"],
+    # Full Barb lane capability: principals add roles: [bot, barb] in config/agent_principals.yml;
+    # narrow assistants stay on role bot only.
+    "barb": list(BARB_ROLE_SCOPES),
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
     "bot": (
         "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write proposals.write "

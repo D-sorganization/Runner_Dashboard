@@ -9,6 +9,8 @@ Role file: `staff/roles/rd-barb.yml` in Repository_Management (loaded through
 
 ## Who does what
 
+**Hub identity:** the long-running lane uses principal **`rd-barb`**. Dots Barb on the barb-worker VM uses **`agent-codex-hands`** (see [barb-lane-principals.md](barb-lane-principals.md) and [barb-worker-vm.md](barb-worker-vm.md)). Both are Barb lane principals with the same `barb` role scope set as `agent-grok`.
+
 | rd-barb (RD, any subscription CLI)                                                   | Grok Barb (Grok Bot app)                 |
 | ------------------------------------------------------------------------------------ | ---------------------------------------- |
 | Merge-queue pre-flight on RD/RM/GM/UD                                                | Talking to Dieter, question cards        |
