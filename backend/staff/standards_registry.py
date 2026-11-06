@@ -67,7 +67,7 @@ _RESULT_CONTRACT = (
 )
 
 _BUILTIN = FleetStandards(
-    version="1.0.0",
+    version="1.1.0",
     name="fleet-standards",
     body=(
         "Mandatory fleet coding standards (cannot be omitted; extend only with dispatch-specific notes):\n"
@@ -75,7 +75,9 @@ _BUILTIN = FleetStandards(
         "one source of truth.\n"
         "- work only inside this worktree; commit with Conventional Commits; push once.\n"
         "- open ready PRs only (never drafts); arm auto-merge via automerge_guard and end session "
-        "(pr_lifecycle: arm_and_exit); no human-approval gates; never request human reviewers.\n"
+        "(pr_lifecycle: arm_and_exit) unless the dispatch carries an explicit pr_restrictions override "
+        "(draft_only/no_arm/no_merge -> draft_no_arm), in which case the operator PR boundary below "
+        "governs; no human-approval gates; never request human reviewers.\n"
         "- PRs stay under 500 lines (deletion-only PRs may exceed 500); no stacked PRs.\n"
         "- never merge, never force-push, never touch other worktrees or host configuration.\n"
         "- never take an issue or PR labelled claim:local or under another agent's live lease; "
