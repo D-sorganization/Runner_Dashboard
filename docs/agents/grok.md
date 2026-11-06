@@ -1,5 +1,8 @@
 # Grok Bot Connection Guide
 
+> [!NOTE]
+> This guide is for **Grok Bot** as an assistant front door (intake and routing via `curl`/`fleetctl`). For the standalone **Grok CLI** coding agent provider (`grok_cli`), see the [Grok CLI Connection & Provider Guide](grok-cli.md).
+
 This guide details how **Grok Bot** connects to the Runner Dashboard staff hub via local execution (`curl` and `fleetctl.py`), interacts with staff front door **Barb** (the Orchestrator role is retired and folded into Barb per Repository_Management#1733), and prepares for the remote connector path.
 
 ---

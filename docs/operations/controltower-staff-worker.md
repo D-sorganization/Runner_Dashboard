@@ -9,7 +9,7 @@ The initial probe of node-a recorded:
 
 - Dashboard version: `4.10.0` at commit `f510c4c` (pre-dating #1250, #1253, #1256, and #1262).
 - WSL GitHub CLI: `/usr/bin/gh` installed but not authenticated.
-- Runtimes & CLIs: no Node or Linux provider CLIs (`claude`, `codex`, `agy`, `cursor-agent`) installed in WSL.
+- Runtimes & CLIs: no Node or Linux provider CLIs (`claude`, `codex`, `agy`, `cursor-agent`, `grok`) installed in WSL.
 - Repositories: no `~/staff-repos` or `staff.gitconfig`.
 - Roles source: pointed to frozen `~/staff-bundle/rm/roles`.
 - Sync timer & lingering: no `runner-dashboard-rm-sync.timer` installed; systemd user lingering disabled.
@@ -95,6 +95,8 @@ Paths starting with `~` refer to `/home/fleet-operator` in the **`node-a-Runner`
     `/mnt/c/Users/diete/AppData/Local/Microsoft/WinGet/Packages/Google.AntigravityCLI_Microsoft.Winget.Source_8wekyb3d8bbwe/agy.exe`
   - **Cursor Agent**:
     Install `cursor-agent` into `~/.local/bin/cursor-agent` (`curl -fsS https://cursor.com/install -o /tmp/ci.sh && bash /tmp/ci.sh`).
+  - **Grok CLI**:
+    Install `grok` into `~/.local/bin/grok` (`curl -fsSL https://x.ai/cli/install.sh | bash`).
 
 - [ ] **2.4 [Owner] Authenticate provider subscriptions in WSL.**
       The agent opens each command in a visible window; the owner signs in. The agent never types credentials or codes.
@@ -102,6 +104,7 @@ Paths starting with `~` refer to `/home/fleet-operator` in the **`node-a-Runner`
   - **Codex**: `codex login --device-auth` (ChatGPT seat).
   - **Antigravity**: `cd ~ && agy`, open the printed URL, sign in with Google, paste the code back, then `/exit`.
   - **Cursor**: `cursor-agent login`.
+  - **Grok**: `grok login` (device-auth / browser flow for SuperGrok subscription).
 
 ---
 
@@ -245,6 +248,7 @@ Paths starting with `~` refer to `/home/fleet-operator` in the **`node-a-Runner`
   - `codex`
   - `antigravity`
   - `cursor-agent`
+  - `grok` (when SuperGrok subscription seat is configured)
   - `ollama` (via Codex)
   - `claude-ollama`
     Confirm all six reach status `succeeded` with exit code 0 and `STAFF_RESULT: ok`. Each run can take several minutes; the script waits up to 15 minutes per provider.
