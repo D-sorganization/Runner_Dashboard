@@ -358,7 +358,7 @@ floor has hysteresis (#4086). A breach writes a latch at
 `/var/lib/runner-scheduler/disk-floor.json`, and the floor holds until free space
 reaches the readmit mark, so capacity does not flap while free space hovers at the
 minimum. An unreadable probe neither sets nor clears the latch. Without the key the
-disk floor readmits on the first healthy tick, as before. OGLaptop sheds below
+disk floor readmits on the first healthy tick, as before. node-b sheds below
 40 GB free on C: and readmits at 45 GB.
 
 The scheduler treats a runner as busy when any of these independent signals is
