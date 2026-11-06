@@ -18,25 +18,26 @@ enforcement points below call the exact same script, so they always agree:
    `pr_size_gate.py` before `git push` and refuses the push if the diff is
    over the cap and not allowlisted.
 2. **CI mirror.** The `pr-size-gate` job in `.github/workflows/ci-standard.yml`
-   runs on every `pull_request` event. It checks out full history, then runs:
+   runs on every `pull_request` event. It checks out full history, then:
 
-   ```
-   python scripts/pr_size_gate.py --merge-base origin/main \
-     --merge-base-ref "$PR_BASE_SHA" --pr "$PR_NUMBER"
-   ```
+   - **PRs targeting `main`:** run
+     `python scripts/pr_size_gate.py --merge-base origin/main --pr "$PR_NUMBER"`.
+     The merge-base is recomputed against the runner's `origin/main` after
+     fetch (same as the pre-push hook). Do **not** pass the frozen
+     `pull_request.base.sha` here: that snapshot can lag behind `main` and would
+     incorrectly count commits merged to `main` after the event.
+   - **Stacked PRs** (base ref is not `main`): run with
+     `--merge-base-ref "$PR_BASE_SHA"` where `PR_BASE_SHA` is
+     `github.event.pull_request.base.sha`. The count is **incremental**: from
+     `git merge-base(PR_BASE, HEAD)` to `HEAD`, not the cumulative diff from
+     `main`.
 
-   where `PR_BASE_SHA` is `github.event.pull_request.base.sha` (the tip of the
-   PR's base branch at event time). For PRs targeting `main`, the effective
-   range is the same triple-dot diff as the local hook; for stacked PRs
-   (base branch not `main`), the count is **incremental**: from
-   `git merge-base(PR_BASE, HEAD)` to `HEAD`, not the cumulative diff from
-   `main`. If the local hook was ever skipped, bypassed, or simply not
-   installed in a given worktree, this job still catches an oversize **slice**
-   before merge.
+   If the local hook was ever skipped, bypassed, or simply not installed in a
+   given worktree, this job still catches an oversize diff before merge.
 
-The implementation is still one script; for default `main`-targeting branches,
-the CI number matches the local hook. Stacked PRs use `--merge-base-ref` in CI
-only so each layer is gated on its own delta.
+The implementation is still one script; for `main`-targeting branches, the CI
+number matches the local hook. Stacked PRs use `--merge-base-ref` in CI only
+for incremental slices.
 
 ## The allowlist is not a flag an agent can pass itself
 

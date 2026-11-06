@@ -735,12 +735,21 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
-      - name: Run the 500-line size gate (merge-base vs PR base or main)
+      # For PRs targeting main, use `origin/main...HEAD` only. Passing the
+      # frozen `pull_request.base.sha` for main would count every commit landed
+      # on main after the PR event snapshot — not the PR's actual diff (#4097).
+      - name: Run the 500-line size gate (main vs stacked PR base)
         env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: >-
-          python scripts/pr_size_gate.py --merge-base origin/main
-          --merge-base-ref "${PR_BASE_SHA}" --pr "${PR_NUMBER}"
+        run: |
+          set -euo pipefail
+          if [ "${PR_BASE_REF}" = "main" ]; then
+            python scripts/pr_size_gate.py --merge-base origin/main --pr "${PR_NUMBER}"
+          else
+            python scripts/pr_size_gate.py --merge-base origin/main \
+              --merge-base-ref "${PR_BASE_SHA}" --pr "${PR_NUMBER}"
+          fi
 
   security-scan:
     needs: [pick-runner, changes, ci-health-check, pr-guard, push-hygiene]

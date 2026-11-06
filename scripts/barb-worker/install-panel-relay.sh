@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# install-panel-relay.sh — run the barbara panel relay every few minutes as one lane user (#3711).
-# Run as root on barb-worker: sudo bash install-panel-relay.sh [--user barb-duet] [--disable]
+# install-panel-relay.sh — barbara panel + optional backlog-push relay timer on barb-worker (#3711).
+# Run as root: sudo bash install-panel-relay.sh [--user barb-duet] [--disable] [--enable-backlog-push|--disable-backlog-push]
 set -Eeuo pipefail
 
 LANE_USER="barb-duet"
@@ -9,6 +9,8 @@ RD_ROOT="${BARB_RUNNER_DASHBOARD_ROOT:-/opt/Runner_Dashboard}"
 INTERVAL="${BARB_PANEL_RELAY_INTERVAL:-2min}"
 AUTHORS="${BARB_PANEL_RELAY_AUTHORS:-dieterolson,d-sorgclaudeagent[bot],d-sorgcodexagent[bot],codex-scheduled-tasks[bot]}"
 CAP="${BARB_PANEL_RELAY_DAILY_CAP:-3}"
+PUSH_CAP="${BARB_BACKLOG_PUSH_DAILY_CAP:-2}"
+BACKLOG_PUSH="${RELAY_BACKLOG_PUSH_ENABLED:-0}"
 UNIT="barb-panel-relay"
 
 die() { echo "install-panel-relay: $*" >&2; exit 2; }
@@ -18,6 +20,8 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --user) LANE_USER="${2:?--user needs a name}"; shift 2 ;;
         --disable) ACTION="disable"; shift ;;
+        --enable-backlog-push) BACKLOG_PUSH=1; shift ;;
+        --disable-backlog-push) BACKLOG_PUSH=0; shift ;;
         -h|--help) sed -n '2,3p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
@@ -26,6 +30,7 @@ done
 [[ "${EUID}" -eq 0 ]] || die "run as root (sudo)"
 id "${LANE_USER}" >/dev/null 2>&1 || die "no such user ${LANE_USER}"
 [[ -f "${RD_ROOT}/scripts/barb_panel_relay.py" ]] || die "missing ${RD_ROOT}/scripts/barb_panel_relay.py (pull first)"
+[[ -f "${RD_ROOT}/scripts/barb_backlog_push_relay.py" ]] || die "missing ${RD_ROOT}/scripts/barb_backlog_push_relay.py (pull first)"
 
 HOME_DIR="/home/${LANE_USER}"
 UNIT_DIR="${HOME_DIR}/.config/systemd/user"
@@ -48,11 +53,13 @@ cat >"${UNIT_DIR}/${UNIT}.env" <<ENV
 BARB_PANEL_RELAY_ENABLED=1
 BARB_PANEL_RELAY_AUTHORS=${AUTHORS}
 BARB_PANEL_RELAY_DAILY_CAP=${CAP}
+RELAY_BACKLOG_PUSH_ENABLED=${BACKLOG_PUSH}
+BARB_BACKLOG_PUSH_DAILY_CAP=${PUSH_CAP}
 RUNNER_DASHBOARD_ROOT=${RD_ROOT}
 ENV
 cat >"${UNIT_DIR}/${UNIT}.service" <<UNITFILE
 [Unit]
-Description=Barbara panel relay, one pass (${LANE_USER})
+Description=Barbara panel + backlog-push relay, one pass (${LANE_USER})
 After=network-online.target
 
 [Service]
@@ -64,7 +71,7 @@ TimeoutStartSec=10min
 UNITFILE
 cat >"${UNIT_DIR}/${UNIT}.timer" <<TIMER
 [Unit]
-Description=Barbara panel relay every ${INTERVAL} (${LANE_USER})
+Description=Barbara relay every ${INTERVAL} (${LANE_USER})
 
 [Timer]
 OnBootSec=2min
@@ -83,4 +90,4 @@ as_lane systemctl --user daemon-reload
 as_lane systemctl --user enable --now "${UNIT}.timer"
 as_lane systemctl --user start "${UNIT}.service" || say "first pass failed; see the log below"
 as_lane journalctl --user -u "${UNIT}.service" -n 20 --no-pager || true
-say "${LANE_USER}: relay on, every ${INTERVAL}, cap ${CAP}/day. Turn off: sudo bash $0 --disable"
+say "${LANE_USER}: panel relay on (cap ${CAP}/day), backlog-push=${BACKLOG_PUSH} (cap ${PUSH_CAP}/day). Turn off: sudo bash $0 --disable"
