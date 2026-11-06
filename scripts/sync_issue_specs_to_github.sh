@@ -22,11 +22,13 @@ apply_labels() {
   bash "$ROOT/scripts/apply_rd_issue_labels.sh"
 }
 
-post_body 3700 "$ROOT/docs/agents/issue-specs/github-bodies/github-issue-3700-body.md"
-post_body 3702 "$ROOT/docs/agents/issue-specs/github-bodies/github-issue-3702-body.md"
+post_body 3700 "$ROOT/docs/agents/issue-specs/3700-george-persona-port.md"
+post_body 3702 "$ROOT/docs/agents/issue-specs/3702-linus-persona-port.md"
 comment_body 3704 "$ROOT/docs/agents/issue-specs/3704-cutover-tracking.md"
-for n in 3822 3823 3852 3856 3883; do
-  post_body "$n" "$ROOT/docs/agents/issue-specs/github-bodies/github-issue-${n}-body.md"
-done
+post_body 3822 "$ROOT/docs/agents/issue-specs/3822-missed-run-alert.md"
+post_body 3823 "$ROOT/docs/agents/issue-specs/3823-agent-bus-reaper-readyz.md"
+post_body 3852 "$ROOT/docs/agents/issue-specs/3852-desk-role-self-test.md"
+post_body 3856 "$ROOT/docs/agents/issue-specs/3856-coordination-job-releases.md"
+post_body 3883 "$ROOT/docs/agents/issue-specs/3883-staff-console-mobile-drawer-focus.md"
 apply_labels
 echo "Done. Verify pickable CLI issues: gh issue list --repo $REPO --label tier:cli --label judgement:objective --state open"

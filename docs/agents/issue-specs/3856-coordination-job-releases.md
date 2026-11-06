@@ -1,3 +1,5 @@
+# #3856 — Read-only coordination job release history
+
 Slice toward blocked #2785.
 
 ## Problem
@@ -19,9 +21,9 @@ Job-board claim/release history lives in the activity log but is not exposed rea
 
 ## Acceptance criteria
 
-- [ ] GET returns JSON list with repo, issue, agent, reason, timestamp fields aligned to log schema.
-- [ ] Read-only; no mutation endpoints in this slice.
-- [ ] PR &lt;500 lines, TDD; `Closes #3856`.
+1. GET returns JSON list with repo, issue, agent, reason, timestamp fields aligned to log schema.
+2. Read-only; no mutation endpoints in this slice.
+3. PR under 500 lines, TDD; `Closes #3856`.
 
 ## Test plan (TDD)
 
@@ -31,4 +33,4 @@ Job-board claim/release history lives in the activity log but is not exposed rea
 
 ## PR split
 
-Single PR (&lt;500 lines).
+Single PR (under 500 lines).

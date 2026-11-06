@@ -1,3 +1,5 @@
+# #3883 — Staff Console mobile drawer focus (child of #3861)
+
 Parent: #3861 (keep open for separate thread-region diagnostics).
 
 ## Problem
@@ -17,9 +19,9 @@ Staff Console focus tests fail on mobile drawer scenarios: hidden focus candidat
 
 ## Acceptance criteria
 
-- [ ] Previously failing focus tests pass locally (`npm test`).
-- [ ] No regression on desktop drawer focus tests.
-- [ ] PR &lt;500 lines, TDD; `Closes #3883`.
+1. Previously failing focus tests pass locally (`npm test`).
+2. No regression on desktop drawer focus tests.
+3. PR under 500 lines, TDD; `Closes #3883`.
 
 ## Test plan (TDD)
 
@@ -29,4 +31,4 @@ Staff Console focus tests fail on mobile drawer scenarios: hidden focus candidat
 
 ## PR split
 
-Single PR (&lt;500 lines).
+Single PR (under 500 lines).
