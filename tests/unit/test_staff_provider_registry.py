@@ -24,6 +24,7 @@ def test_staff_ids_resolve_to_canonical_registry_entries() -> None:
         "cursor-agent": "cursor_agent",
         "ollama": "ollama",
         "claude-ollama": "ollama",
+        "grok": "grok_cli",
     }
     assert all(canonical_provider_id(provider_id) in registry_ids for provider_id in ADAPTERS)
     for provider_id, adapter in ADAPTERS.items():

@@ -20,6 +20,8 @@ from staff.classifier import classify_run_failure
             "quota_exhausted",
         ),
         ("cursor-agent", "Usage limit reached for this account.", "quota_exhausted"),
+        ("grok", "You have hit your usage limit for the Grok CLI.", "quota_exhausted"),
+        ("grok", "Error 429: rate limit exceeded, retry later.", "rate_limited"),
     ],
 )
 def test_adapter_classification_fixtures(provider: str, text: str, expected: str) -> None:
