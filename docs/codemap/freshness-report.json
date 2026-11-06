@@ -1,0 +1,50 @@
+{
+  "commit_sha": "29291a394a539e1b4c3d8e3b32366901b23ce940",
+  "generated_at": "2026-11-06T01:37:56Z",
+  "refresh_command": "python scripts/codemap_refresh.py",
+  "report_path": "docs/codemap/freshness-report.json",
+  "repository": "Runner_Dashboard",
+  "sections": {
+    "architecture": {
+      "doc_commit": "eb24d718dbba08b8443dbdcf7c196f900518318e",
+      "doc_paths": [
+        "docs/architecture/"
+      ],
+      "source_commit": "85dc08209ba7022c490c2a7720076432da83e165",
+      "source_paths": [
+        "backend/server.py",
+        "backend/routers/",
+        "backend/identity.py"
+      ]
+    },
+    "codemap-index": {
+      "doc_commit": "29291a394a539e1b4c3d8e3b32366901b23ce940",
+      "doc_paths": [
+        "docs/codemap.md",
+        "docs/codemap/freshness-report.json"
+      ],
+      "source_commit": "29291a394a539e1b4c3d8e3b32366901b23ce940",
+      "source_paths": [
+        "docs/codemap/"
+      ]
+    },
+    "repo-map": {
+      "doc_commit": "29291a394a539e1b4c3d8e3b32366901b23ce940",
+      "doc_paths": [
+        "docs/codemap/repo-map.md"
+      ],
+      "source_commit": "29291a394a539e1b4c3d8e3b32366901b23ce940",
+      "source_paths": [
+        "backend/",
+        "frontend/",
+        "scripts/",
+        "clients/",
+        "start-dashboard.sh",
+        "stop-dashboard.sh"
+      ]
+    }
+  },
+  "stale_sections": [
+    "architecture"
+  ]
+}

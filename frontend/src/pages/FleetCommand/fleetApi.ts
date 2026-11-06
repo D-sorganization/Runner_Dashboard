@@ -191,6 +191,7 @@ export function useResource<T extends object>(
     setError(null);
     load(controller.signal)
       .then((payload) => {
+        if (controller.signal.aborted) return;
         const avail = payload as Availability;
         setUnavailable(avail.available === false ? avail.reason || NOT_AVAILABLE : null);
         setData(payload);

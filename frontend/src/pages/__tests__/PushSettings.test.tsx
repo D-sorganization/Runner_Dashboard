@@ -146,7 +146,16 @@ describe("PushSettings", () => {
 
   it("sends X-Requested-With CSRF header when subscribing from the PWA", async () => {
     const fetchSpy = makeVapidFetch(200, "dGVzdC12YXBpZC1rZXk");
-    global.fetch = fetchSpy;
+    // Hold the VAPID response so the Subscribe button is still disabled when the
+    // test first finds it: this is what a loaded CI runner does by chance (#4108).
+    let openVapidGate: () => void = () => {};
+    const vapidGate = new Promise<void>((resolve) => {
+      openVapidGate = resolve;
+    });
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("vapid")) await vapidGate;
+      return fetchSpy(url, init);
+    }) as unknown as typeof fetch;
     Object.defineProperty(window, "PushManager", {
       configurable: true,
       value: function PushManager() {},
@@ -174,6 +183,10 @@ describe("PushSettings", () => {
 
     render(<PushSettings />);
     const subscribeButton = await screen.findByRole("button", { name: /subscribe/i });
+    expect(subscribeButton).toBeDisabled();
+    openVapidGate();
+    // Await the real condition: the button enables once the VAPID key has loaded.
+    await waitFor(() => expect(subscribeButton).toBeEnabled());
     await act(async () => {
       fireEvent.click(subscribeButton);
     });

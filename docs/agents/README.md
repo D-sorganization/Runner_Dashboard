@@ -34,4 +34,5 @@ Repo defaults: `config/agent_principals.yml` (`assistant_profile` + per-agent `k
 - [Codex CLI (MCP)](codex.md)
 - [Claude](claude.md)
 - [Claude planner seat and Barb channel (proposed)](claude-planner.md)
+- [Persistent messenger agents (proposed)](messenger-agents.md)
 - [Connect index](connect.md)

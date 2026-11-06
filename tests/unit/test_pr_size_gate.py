@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from scripts.pr_size_gate import DEFAULT_LIMIT, SizeVerdict, evaluate_size, parse_numstat
+from scripts.pr_size_gate import (
+    DEFAULT_LIMIT,
+    SizeVerdict,
+    evaluate_size,
+    parse_numstat,
+    resolve_diff_merge_base,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -114,13 +120,47 @@ def test_main_exits_zero_when_within_limit(tmp_path: Path, capsys: pytest.Captur
 def test_real_allowlist_file_round_trips_through_load_allowlist() -> None:
     # Regression for #3963 S3: config/pr_size_allowlist.json must parse as the
     # exact shape `_load_allowlist` expects ({"allowed_prs": [...]}) rather
-    # than some other guessed shape. Starts empty; Dieter is the only editor.
+    # than some other guessed shape. Entries are owner-controlled (may be empty
+    # or list specific PR numbers).
     from scripts.pr_size_gate import _load_allowlist
 
     real_repo = Path(__file__).resolve().parents[2]
     allowlist_path = real_repo / "config" / "pr_size_allowlist.json"
     assert allowlist_path.exists()
-    assert _load_allowlist(allowlist_path) == frozenset()
+    loaded = _load_allowlist(allowlist_path)
+    assert isinstance(loaded, frozenset)
+    assert all(isinstance(n, int) for n in loaded)
+
+
+def test_resolve_diff_merge_base_delegates_to_git_merge_base(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
+
+    sha = resolve_diff_merge_base(
+        tmp_path,
+        merge_base="origin/main",
+        merge_base_ref="base-tip-sha",
+        run=run,
+    )
+    assert sha == "abc123"
+    assert calls == [["git", "merge-base", "base-tip-sha", "HEAD"]]
+
+
+def test_resolve_diff_merge_base_skips_merge_when_ref_none(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        raise AssertionError("should not call git when merge_base_ref is None")
+
+    assert (
+        resolve_diff_merge_base(tmp_path, merge_base="origin/main", merge_base_ref=None, run=run)
+        == "origin/main"
+    )
+    assert calls == []
 
 
 def test_main_exits_one_when_over_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

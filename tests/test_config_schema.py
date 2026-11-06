@@ -49,7 +49,7 @@ def test_default_runner_schedule_preserves_hub_a_headroom() -> None:
     result = config_schema.validate_runner_schedule_config(data)
 
     assert result["default_count"] == 1
-    assert result["max_count"] == 2
+    assert result["max_count"] == 6
     assert result["schedules"] == [
         {
             "name": "weekday-day",

@@ -273,6 +273,29 @@ describe("FleetCommandPage — job board", () => {
     expect(screen.queryByTestId("job-row-Tools-11")).not.toBeInTheDocument();
   });
 
+  it("ignores a stale unfiltered jobs fetch after the repo filter refetch", async () => {
+    let releaseInitial: () => void = () => {};
+    const initialGate = new Promise<void>((resolve) => {
+      releaseInitial = resolve;
+    });
+    const fetchMock = stubFetch(jobsReply);
+    const baseFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, opts?: RequestInit) => {
+      const bareJobs = url === "/api/coordination/jobs";
+      const allJobs = bareJobs || (url.startsWith("/api/coordination/jobs?") && !url.includes("repo="));
+      if (allJobs) {
+        await initialGate;
+      }
+      return baseFetch(url, opts);
+    });
+    render(<FleetCommandPage />);
+    openSection("Claims");
+    fireEvent.change(screen.getByLabelText("Filter jobs by repo"), { target: { value: "Tools" } });
+    await waitFor(() => expect(screen.queryByTestId("job-row-Games-5")).not.toBeInTheDocument());
+    releaseInitial();
+    await waitFor(() => expect(screen.queryByTestId("job-row-Games-5")).not.toBeInTheDocument());
+  });
+
   it("shows degraded banner when unavailable or incomplete", async () => {
     stubFetch((url) => {
       if (url === "/api/coordination/jobs" || url.startsWith("/api/coordination/jobs?")) {

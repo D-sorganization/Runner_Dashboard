@@ -75,8 +75,10 @@ def cartographer_role_data() -> dict[str, Any]:
             "Runner_Dashboard. Incorporates existing repo mapping guidelines; suggests "
             "improvements; keeps docs pointing at the maps. Source of truth is in-repo map "
             "artifacts plus RM docs, never bot-only memory. Does not implement product features "
-            "or steal leases. Runs with Night Watch; reports map freshness to "
-            "Orchestrator/Board."
+            "or steal leases. After each sweep run `python scripts/codemap_refresh.py` from the "
+            "repo root, commit updated `docs/codemap/` artifacts and `docs/codemap/freshness-report.json`, "
+            "and open a PR when `stale_sections` is non-empty. Runs with Night Watch; reports map "
+            "freshness to Orchestrator/Board."
         ),
         "providers": ["claude", "codex", "antigravity"],
         "model": "default",

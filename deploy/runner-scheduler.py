@@ -52,6 +52,8 @@ STOP_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_STOP_TIMEOUT_SECONDS", "120"
 # Maintenance hold (#1929 item 3): while this flag exists every tick targets 0
 # runners, so a drain is not undone by the next scheduled start.
 MAINTENANCE_PATH = Path(os.environ.get("RUNNER_MAINTENANCE_FLAG", "/var/lib/runner-scheduler/maintenance.json"))
+# Set while the disk floor is breached and not yet readmitted (#4086): the hysteresis memory between ticks.
+DISK_FLOOR_LATCH_PATH = Path(os.environ.get("RUNNER_DISK_FLOOR_LATCH", "/var/lib/runner-scheduler/disk-floor.json"))
 MAINTENANCE_DRAIN_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_MAINTENANCE_DRAIN_TIMEOUT_SECONDS", "3600"))
 PROC_ROOT = Path("/proc")
 CGROUP_ROOT = Path(os.environ.get("RUNNER_CGROUP_ROOT", "/sys/fs/cgroup"))
@@ -111,6 +113,7 @@ def validate_config(config: dict) -> None:
 
 RESOURCE_FLOOR_NUMERIC_KEYS = (
     "min_disk_free_gb",
+    "readmit_disk_free_gb",
     "min_mem_available_gb",
     "max_memory_pressure_avg60",
     "runners",
@@ -131,6 +134,8 @@ def validate_resource_floor(floor: object) -> None:
             raise ValueError(f"resource_floor.{key} must be a nonnegative number")
     if "disk_path" in floor and not isinstance(floor["disk_path"], str):
         raise ValueError("resource_floor.disk_path must be a string")
+    if "readmit_disk_free_gb" in floor and floor["readmit_disk_free_gb"] < floor.get("min_disk_free_gb", 0):
+        raise ValueError("resource_floor.readmit_disk_free_gb must be >= min_disk_free_gb")
 
 
 def load_config() -> dict:
@@ -348,6 +353,32 @@ def runner_num(unit: str, workdir: Path | None) -> int | None:
     if match:
         return int(match.group(1))
     return None
+
+
+def lookup_unit(unit_name: str, *, cleanup_stale: bool = False) -> RunnerUnit | None:
+    """Resolve a single systemd unit without RUNNER_ROOT filtering (#4046)."""
+    workdir = unit_workdir(unit_name)
+    if workdir is None:
+        return None
+    num = runner_num(unit_name, workdir)
+    if num is None:
+        num = 0
+    return RunnerUnit(
+        num=num,
+        unit=unit_name,
+        workdir=workdir,
+        active=unit_active(unit_name),
+        busy=runner_busy(workdir, unit=unit_name, cleanup_stale=cleanup_stale),
+    )
+
+
+def stop_unit_by_name(unit_name: str) -> bool:
+    """Stop one runner unit using the freeze/recheck contract (#4046)."""
+    unit = lookup_unit(unit_name, cleanup_stale=True)
+    if unit is None:
+        log.error("cannot resolve runner unit %s", unit_name)
+        return False
+    return stop_runner_safely(unit)
 
 
 def list_units(*, cleanup_stale: bool = False) -> list[RunnerUnit]:
@@ -624,13 +655,44 @@ def pressure_avg60(resource: str) -> float | None:
     return None
 
 
+def disk_floor_breach(floor: dict) -> str | None:
+    """Disk-floor breach with optional readmit hysteresis (#4086).
+
+    Below ``min_disk_free_gb`` the floor latches; with ``readmit_disk_free_gb`` set
+    it stays breached until free space reaches that higher mark, so capacity does
+    not flap while free space hovers at the minimum. An unreadable probe neither
+    breaches nor touches the latch.
+    """
+    free = disk_free_gb(str(floor.get("disk_path", "/")))
+    if free is None:
+        return None
+    minimum = floor["min_disk_free_gb"]
+    readmit = floor.get("readmit_disk_free_gb")
+    if free < minimum:
+        if readmit is not None and not DISK_FLOOR_LATCH_PATH.exists():
+            try:
+                DISK_FLOOR_LATCH_PATH.parent.mkdir(parents=True, exist_ok=True)
+                DISK_FLOOR_LATCH_PATH.write_text(
+                    json.dumps({"since": datetime.now(UTC).isoformat(), "free_gb": round(free, 1)}) + "\n",
+                    encoding="utf-8",
+                )
+            except OSError as exc:  # the breach still applies this tick; only hysteresis is lost
+                log.warning("disk-floor latch not written (%s): %s", DISK_FLOOR_LATCH_PATH, exc)
+        return f"disk_free={free:.1f}GB<{minimum}"
+    if readmit is not None and DISK_FLOOR_LATCH_PATH.exists():
+        if free < readmit:
+            return f"disk_free={free:.1f}GB<{readmit} (readmit)"
+        DISK_FLOOR_LATCH_PATH.unlink(missing_ok=True)
+    return None
+
+
 def resource_floor_breaches(floor: dict) -> list[str]:
     """Breached host-resource floors; an unreadable probe never counts as a breach."""
     breaches: list[str] = []
     if "min_disk_free_gb" in floor:
-        free = disk_free_gb(str(floor.get("disk_path", "/")))
-        if free is not None and free < floor["min_disk_free_gb"]:
-            breaches.append(f"disk_free={free:.1f}GB<{floor['min_disk_free_gb']}")
+        disk_breach = disk_floor_breach(floor)
+        if disk_breach:
+            breaches.append(disk_breach)
     if "min_mem_available_gb" in floor:
         available = mem_available_gb()
         if available is not None and available < floor["min_mem_available_gb"]:
@@ -747,11 +809,27 @@ def main() -> int:
     parser.add_argument("--reboot", action="store_true", help="with --drain: reboot once fully drained")
     parser.add_argument("--resume", action="store_true", help="clear the maintenance hold")
     parser.add_argument("--drain-timeout", type=float, default=MAINTENANCE_DRAIN_TIMEOUT_SECONDS)
+    parser.add_argument(
+        "--stop-unit",
+        metavar="UNIT",
+        help="freeze/recheck stop for one actions.runner.* unit (#4046)",
+    )
     args = parser.parse_args()
     if args.reboot and not args.drain:
         parser.error("--reboot requires --drain")
     if args.drain and args.resume:
         parser.error("--drain and --resume are mutually exclusive")
+    if args.stop_unit:
+        if args.drain or args.resume or args.target is not None:
+            parser.error("--stop-unit cannot be combined with schedule overrides")
+        unit = lookup_unit(args.stop_unit, cleanup_stale=not args.dry_run)
+        if unit is None:
+            log.error("unknown unit %s", args.stop_unit)
+            return 2
+        if args.dry_run or not args.apply:
+            sys.stdout.write(f"would stop {unit.unit} safely busy={unit.busy}\n")
+            return 0
+        return 0 if stop_unit_by_name(args.stop_unit) else 1
 
     config = load_config()
     dry_run = args.dry_run or not args.apply

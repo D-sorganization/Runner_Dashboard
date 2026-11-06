@@ -735,8 +735,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.11"
-      - name: Run the 500-line size gate against origin/main
-        run: python scripts/pr_size_gate.py --merge-base origin/main --pr "${PR_NUMBER}"
+      - name: Run the 500-line size gate (merge-base vs PR base or main)
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: >-
+          python scripts/pr_size_gate.py --merge-base origin/main
+          --merge-base-ref "${PR_BASE_SHA}" --pr "${PR_NUMBER}"
 
   security-scan:
     needs: [pick-runner, changes, ci-health-check, pr-guard, push-hygiene]
