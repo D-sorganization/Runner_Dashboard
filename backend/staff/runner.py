@@ -26,6 +26,7 @@ from staff.lessons import file_proposed_lessons, select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
+from staff.runner_ops import StaffRunPreparationError
 from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
@@ -215,6 +216,8 @@ class StaffRunner:
                         return  # blocked; status already recorded
                     lease_note = note
                 self._execute(rec, plan, workdir, lease_note, pre_pr_entrypoint=pre_pr_entrypoint)
+            except StaffRunPreparationError:
+                return  # status and failure_class already recorded (e.g. disk floor)
             except Exception as exc:  # noqa: BLE001
                 crashed = True
                 log.exception("staff run %s crashed", rec.id)

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 from staff import workspace
+from staff import worktree_hygiene as worktree_hygiene_mod
 
 
 @pytest.mark.parametrize("failure", ["status", "revision", "empty-count", "prefix-note"])
@@ -33,15 +35,51 @@ def test_git_refusal_preserves_worktree_and_metadata(monkeypatch, tmp_path):
 
     def refuse(argv, **kwargs):
         calls.append(argv)
+        if "diff-files" in argv or "diff-index" in argv:
+            # Uncertain/dirty tree: never eligible for force removal
+            return subprocess.CompletedProcess(argv, 1, "", "")
         return subprocess.CompletedProcess(argv, 128, "", "locked or dirty")
 
     monkeypatch.setattr(workspace, "staff_worktrees_root", lambda: root)
-    monkeypatch.setattr(workspace.subprocess, "run", refuse)
+    monkeypatch.setattr(worktree_hygiene_mod.subprocess, "run", refuse)
     monkeypatch.setattr(workspace, "prune_worktree_branch", lambda *args: pytest.fail("pruned after refusal"))
     workspace.remove_worktree(tree, checkout=tmp_path)
     assert (tree / "sentinel").read_bytes() == b"unpublished evidence"
     assert (tree / ".git").is_file()
     assert calls and all("--force" not in argv for argv in calls)
+
+
+def test_submodule_debris_worktree_removed_with_safe_force(monkeypatch, tmp_path):
+    """Normal remove fails on submodule/untracked paths; force succeeds when the tree is clean vs HEAD."""
+    root = tmp_path / "runs"
+    tree = root / "Tools-run-xyz"
+    tree.mkdir(parents=True)
+    (tree / ".git").write_text("gitdir: synthetic-fixture\n")
+    calls = []
+
+    def run_git(argv, **kwargs):
+        calls.append(argv)
+        cmd = " ".join(argv)
+        if "worktree remove" in cmd and "--force" not in cmd:
+            return subprocess.CompletedProcess(
+                argv, 1, "", "fatal: cannot remove worktree: contains modified or untracked files"
+            )
+        if "worktree remove" in cmd and "--force" in cmd:
+            shutil.rmtree(tree, ignore_errors=True)
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if "worktree prune" in cmd:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if "diff-files" in cmd or "diff-index" in cmd:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(argv, 1, "", "unexpected argv")
+
+    monkeypatch.setattr(workspace, "staff_worktrees_root", lambda: root)
+    monkeypatch.setattr(worktree_hygiene_mod.subprocess, "run", run_git)
+    monkeypatch.setattr(workspace, "prune_worktree_branch", lambda *args: None)
+    monkeypatch.setattr(worktree_hygiene_mod.cli_projects, "remove_worktree_project", lambda *args: None)
+
+    assert workspace.remove_worktree(tree, checkout=tmp_path) is True
+    assert any("--force" in argv for argv in calls)
 
 
 def test_non_git_nonempty_directory_is_not_recursively_removed(tmp_path):

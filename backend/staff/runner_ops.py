@@ -19,6 +19,7 @@ from staff import quota as quota_mod
 from staff.adapters import ProviderAdapter
 from staff.anthropic_api_budget import PROVIDER_ID as ANTHROPIC_API_PROVIDER_ID
 from staff.cloud_dispatch import scrub_api_key_env
+from staff.disk_floor_shared import staff_disk_floor_breach_reason
 from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
@@ -45,6 +46,11 @@ from staff.store import RunRecord, RunStore, _now
 from staff.tokens import mint_run_token
 
 log = logging.getLogger("dashboard.staff.runner_ops")
+
+
+class StaffRunPreparationError(RuntimeError):
+    """Raised when a run is already marked failed with classification (do not overwrite in _worker)."""
+
 
 _GITHUB_AUTH_REMEDIATION = (
     "On the fleet hub (hub-a), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
@@ -109,6 +115,25 @@ def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
     if checkout is None:
         store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
         checkout = workspace.clone_repo(plan.repo)
+    breach = staff_disk_floor_breach_reason()
+    if breach:
+        stats = workspace.sweep_stale_worktrees(store)
+        if any(stats.values()):
+            store.append_event(rec.id, "worktree", f"disk floor breached ({breach}); prune attempt {stats}")
+        breach = staff_disk_floor_breach_reason()
+    if breach:
+        detail = f"runner schedule disk floor breached: {breach}; free space before creating a worktree"
+        store.update_run(
+            rec.id,
+            status="failed",
+            failure_class="workspace_error",
+            retryable=True,
+            remediation="Free disk space until the runner-scheduler resource_floor readmits, then retry.",
+            error=detail,
+            ended_at=_now(),
+        )
+        store.append_event(rec.id, "error", detail)
+        raise StaffRunPreparationError(detail)
     worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
     workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
     store.update_run(rec.id, workdir=str(worktree))
