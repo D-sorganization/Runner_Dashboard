@@ -55,9 +55,9 @@ LOGIN_COMMANDS: dict[str, str] = {
     "cursor-agent": "cursor-agent login",
     "antigravity": "agy",
     "gemini": "gemini login",
-    "grok": "grok login",
-    "grok_cli": "grok login",
-    "grok-cli": "grok login",
+    "grok": "grok login --device-auth",
+    "grok_cli": "grok login --device-auth",
+    "grok-cli": "grok login --device-auth",
     "ollama": "systemctl --user start ollama",
     "claude-ollama": "systemctl --user start ollama",
 }
@@ -312,6 +312,7 @@ def classify_run_failure(
         "auth error",
         "invalid api key",
         "cursor-agent login",
+        "grok login",
         "authentication failed",
     )
     if any(pat in lower for pat in auth_patterns):

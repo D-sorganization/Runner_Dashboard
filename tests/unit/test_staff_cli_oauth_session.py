@@ -15,6 +15,7 @@ from staff.cli_oauth_session import (
     claude_oauth_session_alive,
     invalidate_oauth_probe_cache,
     oauth_expired_in_file,
+    oauth_expiry_epoch_for_provider,
     oauth_has_refresh_token_for_provider,
     oauth_last_refresh_epoch_for_provider,
     provider_oauth_session_alive,
@@ -140,6 +141,48 @@ def test_claude_probe_treats_auth_expired_message_as_dead(tmp_path: Path, monkey
 
 def test_provider_oauth_session_alive_unknown_provider_is_ok() -> None:
     assert provider_oauth_session_alive("ollama") == (True, "")
+
+
+def test_grok_oauth_session_alive_no_auth_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROK_HOME", str(tmp_path / "no-login"))
+    monkeypatch.delenv("STAFF_E2E_HERMETIC", raising=False)
+    alive, detail = provider_oauth_session_alive("grok")
+    assert alive is False
+    assert detail == "no Grok auth.json"
+
+
+def test_grok_oauth_session_alive_with_auth_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    grok_home = tmp_path / ".grok"
+    grok_home.mkdir()
+    (grok_home / "auth.json").write_text(json.dumps({"expiresAt": int((time.time() + 3600) * 1000)}), encoding="utf-8")
+    monkeypatch.setenv("GROK_HOME", str(grok_home))
+    monkeypatch.delenv("STAFF_E2E_HERMETIC", raising=False)
+    alive, _detail = provider_oauth_session_alive("grok")
+    assert alive is True
+
+
+def test_grok_oauth_session_alive_expired_without_refresh_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    grok_home = tmp_path / ".grok"
+    grok_home.mkdir()
+    (grok_home / "auth.json").write_text(json.dumps({"expiresAt": int((time.time() - 3600) * 1000)}), encoding="utf-8")
+    monkeypatch.setenv("GROK_HOME", str(grok_home))
+    monkeypatch.delenv("STAFF_E2E_HERMETIC", raising=False)
+    alive, detail = provider_oauth_session_alive("grok")
+    assert alive is False
+    assert detail == "Grok OAuth token expired (auth.json)"
+
+
+def test_grok_oauth_expiry_epoch_reads_auth_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    grok_home = tmp_path / ".grok"
+    grok_home.mkdir()
+    expiry = int((time.time() + 7200) * 1000)
+    (grok_home / "auth.json").write_text(json.dumps({"expiresAt": expiry}), encoding="utf-8")
+    monkeypatch.setenv("GROK_HOME", str(grok_home))
+    epoch = oauth_expiry_epoch_for_provider("grok")
+    assert epoch is not None
+    assert abs(epoch - expiry / 1000.0) < 1.0
 
 
 def test_claude_setup_token_env_counts_as_alive_without_credentials_file(

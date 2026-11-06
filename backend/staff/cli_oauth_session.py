@@ -60,6 +60,12 @@ def resolve_antigravity_home() -> Path:
     return Path(configured).expanduser() if configured else Path.home() / ".gemini"
 
 
+def resolve_grok_home() -> Path:
+    """Config dir for the Grok CLI seat (``grok login`` writes ``auth.json`` here)."""
+    configured = os.environ.get("GROK_HOME", "").strip()
+    return Path(configured).expanduser() if configured else Path.home() / ".grok"
+
+
 def _expiry_epoch_from_value(raw: Any) -> float | None:
     if raw is None:
         return None
@@ -329,6 +335,9 @@ def _credential_json_paths(provider_or_credential_id: str) -> list[Path]:
         home = Path(os.environ.get("CODEX_HOME") or "~/.codex").expanduser()
         auth = home / "auth.json"
         return [auth] if auth.is_file() else []
+    if provider_or_credential_id == "grok":
+        auth = resolve_grok_home() / "auth.json"
+        return [auth] if auth.is_file() else []
     return []
 
 
@@ -392,6 +401,14 @@ def oauth_expiry_epoch_for_provider(provider_or_credential_id: str) -> float | N
             except (OSError, json.JSONDecodeError):
                 return None
             return _find_expiry_epoch(data)
+    if provider_or_credential_id == "grok":
+        auth = resolve_grok_home() / "auth.json"
+        if auth.is_file():
+            try:
+                data = json.loads(auth.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            return _find_expiry_epoch(data)
     return None
 
 
@@ -407,5 +424,13 @@ def provider_oauth_session_alive(provider_or_credential_id: str) -> tuple[bool, 
                 return False, "no Codex auth.json"
             if oauth_expired_in_file(home / "auth.json"):
                 return False, "Codex OAuth token expired (auth.json)"
+        elif provider_or_credential_id == "grok":
+            if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
+                return True, ""
+            auth = resolve_grok_home() / "auth.json"
+            if not auth.is_file():
+                return False, "no Grok auth.json"
+            if oauth_expired_in_file(auth) and not _has_refresh_token(auth):
+                return False, "Grok OAuth token expired (auth.json)"
         return True, ""
     return checker()
