@@ -5,12 +5,15 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
-from bash_host import find_bash
 
 _ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT / "tests" / "deploy"))
+from bash_host import find_bash  # noqa: E402
+
 BASH = find_bash()
 
 
