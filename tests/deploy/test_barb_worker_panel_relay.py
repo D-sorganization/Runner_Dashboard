@@ -3,23 +3,25 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from bash_host import BASH, SKIP_REASON, as_bash_path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_DIR = ROOT / "scripts" / "barb-worker"
 PASS = SCRIPT_DIR / "panel-relay-pass.sh"
 INSTALL = SCRIPT_DIR / "install-panel-relay.sh"
 
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash required")
+pytestmark = pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 
 
 def _bash(script: Path, *args: str, home: Path) -> subprocess.CompletedProcess[str]:
     env = {"PATH": os.environ["PATH"], "HOME": str(home), "RUNNER_DASHBOARD_ROOT": str(ROOT)}
-    return subprocess.run(["bash", str(script), *args], env=env, capture_output=True, text=True, timeout=60)
+    assert BASH is not None
+    argv = [BASH, as_bash_path(script), *args]
+    return subprocess.run(argv, env=env, capture_output=True, text=True, timeout=60)
 
 
 def test_scripts_exist_and_are_executable() -> None:
