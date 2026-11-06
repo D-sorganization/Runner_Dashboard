@@ -219,6 +219,10 @@ def test_dry_run_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     assert gh.writes == [] and state["active"] is None
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="relay liveness probe os.kill(pid, 0) is CTRL_C_EVENT on Windows; relay deploys on POSIX only",
+)
 def test_active_push_not_finalized_while_detached_process_alive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sleeper = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(600)"],
