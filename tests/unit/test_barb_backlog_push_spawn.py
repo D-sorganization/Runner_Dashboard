@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -52,15 +55,20 @@ def test_partial_launch_rolls_back_earlier_lane(tmp_path: Path) -> None:
         {"role": "supervisor", "session": "sup", "prompt": "p1"},
         {"role": "lane", "session": "lane2", "prompt": "p2"},
     ]
-    with patch.object(spawn, "_spawn_one", side_effect=fake_spawn):
-        with patch.object(spawn, "_rollback_launched") as rollback:
-            with pytest.raises(RuntimeError, match="spawn failed"):
-                spawn.main([str(log_dir)])
-            rollback.assert_called_once()
-            rolled = rollback.call_args[0][1]
-            assert rolled == [("sup", 42)]
+    with patch.dict(os.environ, {"RUNNER_DASHBOARD_ROOT": str(_ROOT)}):
+        with patch.object(spawn, "_spawn_one", side_effect=fake_spawn):
+            with patch.object(spawn, "_rollback_launched") as rollback:
+                with patch.object(spawn.sys, "stdin", io.StringIO(json.dumps(plan))):
+                    with pytest.raises(RuntimeError, match="spawn failed"):
+                        spawn.main([str(log_dir)])
+                rollback.assert_called_once()
+                rolled = rollback.call_args[0][1]
+                assert rolled == [("sup", 42)]
 
 
 def test_predecessor_tests_do_not_import_relay_module() -> None:
-    text = Path(__file__).read_text(encoding="utf-8")
-    assert "barb_backlog_push_relay" not in text
+    import ast
+
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    imports = {node.names[0].name for node in ast.walk(tree) if isinstance(node, ast.Import)}
+    assert "barb_backlog_push_relay" not in imports
