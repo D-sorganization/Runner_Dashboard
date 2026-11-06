@@ -34,8 +34,15 @@ def disk_free_gb(path: str) -> float | None:
         return None
 
 
-def disk_floor_breach(floor: dict[str, Any], *, latch_path: Path | None = None) -> str | None:
-    """Disk-floor breach with optional readmit hysteresis (matches runner-scheduler)."""
+def disk_floor_breach(
+    floor: dict[str, Any], *, latch_path: Path | None = None, manage_latch: bool = True
+) -> str | None:
+    """Disk-floor breach with optional readmit hysteresis (matches runner-scheduler).
+
+    When ``manage_latch`` is False, hysteresis reads apply but the latch file is never
+    written or deleted — used by the staff hub so admission probes do not pause the
+    runner scheduler (#4142 follow-up).
+    """
     latch = latch_path if latch_path is not None else DISK_FLOOR_LATCH_PATH
     disk_path = str(floor.get("disk_path", "/"))
     free = disk_free_gb(disk_path)
@@ -45,7 +52,7 @@ def disk_floor_breach(floor: dict[str, Any], *, latch_path: Path | None = None) 
     readmit = floor.get("readmit_disk_free_gb")
     readmit_f = float(readmit) if readmit is not None else None
     if free < minimum:
-        if readmit_f is not None and not latch.exists():
+        if manage_latch and readmit_f is not None and not latch.exists():
             try:
                 latch.parent.mkdir(parents=True, exist_ok=True)
                 latch.write_text(
@@ -58,7 +65,8 @@ def disk_floor_breach(floor: dict[str, Any], *, latch_path: Path | None = None) 
     if readmit_f is not None and latch.exists():
         if free < readmit_f:
             return f"disk_free={free:.1f}GB<{readmit_f} (readmit)"
-        latch.unlink(missing_ok=True)
+        if manage_latch:
+            latch.unlink(missing_ok=True)
     return None
 
 
@@ -79,4 +87,4 @@ def staff_disk_floor_breach_reason(*, config_path: Path | None = None, latch_pat
     floor = payload.get("resource_floor")
     if not isinstance(floor, dict) or "min_disk_free_gb" not in floor:
         return None
-    return disk_floor_breach(floor, latch_path=latch_path)
+    return disk_floor_breach(floor, latch_path=latch_path, manage_latch=False)
