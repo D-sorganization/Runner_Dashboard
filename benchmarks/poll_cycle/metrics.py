@@ -4,16 +4,30 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import subprocess
 import time
 from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 LOOP_TICK_S = 0.005
 MS_PER_S = 1000
+
+
+def _spawn_counter_executable_basename(args: Any) -> str:
+    """First argv executable basename, skipping ``env`` wrappers (matches ``tests/conftest``)."""
+    if isinstance(args, (list, tuple)):
+        command = list(args)
+    else:
+        command = str(args).split()
+    if not command:
+        return ""
+    executable_index = 1 if command and os.path.basename(os.fspath(command[0])).lower() == "env" else 0
+    if len(command) <= executable_index:
+        return ""
+    return os.path.basename(os.fspath(command[executable_index])).lower().removesuffix(".exe")
 
 
 class LagMonitor:
@@ -67,7 +81,7 @@ class SpawnCounter:
         counter = self
 
         def counting_init(popen: Any, args: Any, *a: Any, **kw: Any) -> None:
-            counter.by_name[Path(str(args[0] if isinstance(args, (list, tuple)) else args).split()[0]).name] += 1
+            counter.by_name[_spawn_counter_executable_basename(args)] += 1
             original(popen, args, *a, **kw)
 
         self.popen_cls.__init__ = counting_init
