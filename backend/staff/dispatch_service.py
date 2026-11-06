@@ -63,6 +63,7 @@ class DispatchCommand:
     operation_id: str = ""
     # PR lifecycle & subscription policy (#1845 / RD-0)
     pr_lifecycle: str = "arm_and_exit"
+    pr_restrictions: tuple[str, ...] = ()  # operator draft/no-arm fence (RM#2712)
     auto_fix: bool = False
     operator_opt_in: bool = False
     wakeups_count: int = 0
@@ -342,6 +343,7 @@ async def dispatch_staff_run(
         consolidation=decision,
         origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
         pr_lifecycle=cmd.pr_lifecycle,
+        pr_restrictions=cmd.pr_restrictions,
         head_ref=cmd.head_ref,
         task_type=cmd.task_type,
         standards_extra=cmd.standards_extra,

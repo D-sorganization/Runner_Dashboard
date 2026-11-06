@@ -30,6 +30,7 @@ def compose_prompt(
     reads_repo_instructions: bool = True,
     repo_lessons_result: Any | None = None,
     prompt_token_cap: int | None = None,
+    lifecycle_fence: str = "",
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
 
@@ -193,6 +194,9 @@ def compose_prompt(
         parts.append(get_chat_contract_text(contract_rel))
     else:
         parts.append(dashboard_api_note())
+        if lifecycle_fence:
+            # Operator PR boundary closes the prompt so it outranks the standards above (RM#2712).
+            parts.append(lifecycle_fence)
 
     if prompt_token_cap is not None and not chat_turn:
         if prompt_token_cap <= 0:

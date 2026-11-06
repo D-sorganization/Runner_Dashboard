@@ -83,6 +83,7 @@ async def run_dispatch(
         claim_override_reason=body.claim_override_reason,
         execution_mode=getattr(body, "execution_mode", "local") or "local",
         dispatch_origin=authenticated_origin,
+        pr_restrictions=tuple(body.pr_restrictions),
     )
     # A request that declares Barb authority is fenced on its lease epoch (#2734, #3543);
     # when a peer forwards on behalf of another principal, evaluate the fence against the

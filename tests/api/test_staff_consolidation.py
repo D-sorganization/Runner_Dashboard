@@ -412,3 +412,26 @@ def test_dispatch_dry_run_and_submit_report_the_decision(
         "/api/staff/pr-remediator/run", json={"provider": "fake", "prompt": "x", "dry_run": True}, headers=_XHR
     )
     assert resp.json()["plan"]["consolidation"] is None
+
+
+# ── operator PR boundary through the dispatch route (RM#2712) ────────────
+@pytest.mark.unit
+def test_dispatch_dry_run_consumes_operator_pr_boundary(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff.lifecycle_fence import FENCED_LIFECYCLE  # noqa: PLC0415
+
+    monkeypatch.setattr(consolidation, "decide", lambda role, repo: None)
+    body = {"provider": "fake", "repo": "UpstreamDrift", "prompt": "fix", "dry_run": True}
+    fenced = client.post(
+        "/api/staff/pr-remediator/run", json={**body, "pr_restrictions": ["draft_only", "no_arm"]}, headers=_XHR
+    )
+    assert fenced.status_code == 200, fenced.text
+    plan = fenced.json()["plan"]
+    assert plan["pr_lifecycle"] == FENCED_LIFECYCLE
+    assert plan["prompt"].rstrip().endswith("report the blocker in the STAFF_RESULT line.")
+    assert "OPERATOR PR BOUNDARY" in plan["prompt"]
+
+    ordinary = client.post("/api/staff/pr-remediator/run", json=body, headers=_XHR).json()["plan"]
+    assert ordinary["pr_lifecycle"] == "arm_and_exit" and "OPERATOR PR BOUNDARY" not in ordinary["prompt"]
+
+    rejected = client.post("/api/staff/pr-remediator/run", json={**body, "pr_restrictions": ["arm"]}, headers=_XHR)
+    assert rejected.status_code == 422
