@@ -47,3 +47,5 @@ It runs a dry run as `barb-duet` first and stops if that fails. It then installs
 ## Cloud agent alternative (no Barbara issue)
 
 Use `fleetctl panel-start --request '<json>'` from a tailnet host with `staff.chat` scope (#3711 slice 1).
+
+See also [/backlog-push relay](backlog-push-relay-format.md) for supervised fleet backlog pushes via label `relay:backlog-push` (off by default on barb-worker).
