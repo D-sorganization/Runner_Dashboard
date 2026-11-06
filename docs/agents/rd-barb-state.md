@@ -75,4 +75,4 @@ Caps: 2 armed per lane in RD, 4 elsewhere. Back off when a repo's `merge_group` 
 | RD #4076/#4077 (rd-barb freshness pass) — #4077 MERGED | 2026-11-05 00:19 | state re-check |
 | RD #3884 (docs: desk lane issue specs, CLI label manifest, GitHub sync script) — MERGED; was runner-state row at 01:06 PT | 2026-11-06 07:19 | PR merged |
 | RD #4051 (docs(rd-barb) 19:31 PT freshness #4049) — MERGED | 2026-11-06 09:05 | PR merged |
-| RD #4018 (feat(deploy): OGLaptop fleet backup pilot restic client #4015) — MERGED | 2026-11-06 09:17 | PR merged |
+| RD #4018 (feat(deploy): fleet backup pilot restic client #4015) — MERGED | 2026-11-06 09:17 | PR merged |
