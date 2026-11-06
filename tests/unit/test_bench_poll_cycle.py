@@ -19,6 +19,7 @@ from benchmarks.poll_cycle.metrics import (
     format_table,
 )
 from benchmarks.poll_cycle.stub_github import N_REPOS, StubGitHub, respond
+from tests.real_subprocess_popen import REAL_SUBPROCESS_POPEN
 
 pytestmark = pytest.mark.unit
 
@@ -45,7 +46,7 @@ async def test_lag_monitor_records_a_blocked_loop() -> None:
 
 def test_spawn_counter_separates_gh_from_other(tmp_path: Path) -> None:
     fake = install_fake_gh(tmp_path / "bin", Path(__file__).resolve().parents[2], 0)
-    counter = SpawnCounter()
+    counter = SpawnCounter(REAL_SUBPROCESS_POPEN)
     original = counter.popen_cls.__init__
     with counter.installed():
         subprocess.run([str(fake), "auth", "status"], capture_output=True, check=False)
