@@ -40,6 +40,10 @@ def test_installer_backlog_push_flags_and_default_off() -> None:
     assert "RELAY_BACKLOG_PUSH_ENABLED=${BACKLOG_PUSH}" in text
     assert 'BACKLOG_PUSH="${RELAY_BACKLOG_PUSH_ENABLED:-0}"' in text
     assert "barb_backlog_push_relay.py" in PASS.read_text(encoding="utf-8")
+    lane = SCRIPT_DIR / "backlog-push-lane.sh"
+    spawn = SCRIPT_DIR / "backlog-push-spawn.py"
+    assert lane.is_file() and spawn.is_file()
+    assert "unset GH_TOKEN" in lane.read_text(encoding="utf-8")
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="checks the non-root refusal")

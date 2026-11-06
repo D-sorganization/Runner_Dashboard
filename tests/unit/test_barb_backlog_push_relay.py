@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -100,3 +101,33 @@ def test_dry_run_writes_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     state = {"processed": {}, "push_starts": {}, "active": None}
     relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, dry_run=True, now_fn=lambda: NOW).run()
     assert gh.writes == [] and state["active"] is None
+
+
+def test_active_push_not_finalized_while_detached_process_alive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sleeper = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(600)"],
+        start_new_session=True,
+    )
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    session = "barb-bpush-7-test-sup"
+    (log_dir / f"{session}.pid").write_text(str(sleeper.pid), encoding="utf-8")
+
+    state = {
+        "processed": {"7": {"status": "running"}},
+        "push_starts": {TODAY: 1},
+        "active": {
+            "issue": 7,
+            "deadline_at": (NOW + timedelta(hours=2)).isoformat(),
+            "supervisor_session": session,
+            "lane_sessions": [],
+            "pids": {"supervisor": sleeper.pid},
+            "log_dir": str(log_dir),
+        },
+    }
+    gh = FakeGitHub([])
+    counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
+    assert counts["done"] == 0 and state["active"] is not None
+    assert sleeper.poll() is None
+    sleeper.kill()
+    sleeper.wait(timeout=5)

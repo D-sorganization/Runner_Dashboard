@@ -67,6 +67,26 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _push_processes_alive(active: dict[str, Any]) -> bool:
+    """True if any tracked backlog-push lane pidfile or stored pid is still running."""
+    log_dir = active.get("log_dir")
+    sessions = [active.get("supervisor_session"), *(active.get("lane_sessions") or [])]
+    if log_dir:
+        base = Path(str(log_dir))
+        for session in sessions:
+            if not session:
+                continue
+            pidfile = base / f"{session}.pid"
+            if pidfile.is_file():
+                try:
+                    if _pid_alive(int(pidfile.read_text(encoding="utf-8").strip())):
+                        return True
+                except ValueError:
+                    continue
+    pids = active.get("pids") if isinstance(active.get("pids"), dict) else {}
+    return any(_pid_alive(int(p)) for p in pids.values() if isinstance(p, int))
+
+
 def _terminate_tree(pids: Mapping[str, Any]) -> None:
     for key in ("supervisor", *tuple(f"lane{i}" for i in range(1, 9))):
         pid = pids.get(key)
@@ -78,6 +98,29 @@ def _terminate_tree(pids: Mapping[str, Any]) -> None:
                     os.kill(pid, signal.SIGTERM)
                 except OSError:
                     pass
+
+
+def _terminate_from_active(active: dict[str, Any]) -> None:
+    pids = active.get("pids") if isinstance(active.get("pids"), dict) else {}
+    _terminate_tree(pids)
+    log_dir = active.get("log_dir")
+    if not log_dir:
+        return
+    base = Path(str(log_dir))
+    for session in [active.get("supervisor_session"), *(active.get("lane_sessions") or [])]:
+        if not session:
+            continue
+        pidfile = base / f"{session}.pid"
+        if not pidfile.is_file():
+            continue
+        try:
+            pid = int(pidfile.read_text(encoding="utf-8").strip())
+        except ValueError:
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
 
 
 class BacklogPushRelay:
@@ -121,8 +164,7 @@ class BacklogPushRelay:
             return
         number = int(active["issue"])
         deadline = datetime.fromisoformat(str(active["deadline_at"]))
-        pids = active.get("pids") if isinstance(active.get("pids"), dict) else {}
-        alive = any(_pid_alive(int(p)) for p in pids.values() if isinstance(p, int))
+        alive = _push_processes_alive(active)
         now = self.now_fn()
         if now >= deadline or not alive:
             reason = "wall-clock timeout reached" if now >= deadline else "all lane processes exited"
@@ -186,6 +228,7 @@ class BacklogPushRelay:
             "supervisor_session": supervisor,
             "lane_sessions": lane_sessions,
             "pids": pids,
+            "log_dir": str(log_dir),
             "duration_min": int(params["duration_min"]),
         }
         note = (
@@ -198,35 +241,27 @@ class BacklogPushRelay:
         self.counts["started"] += 1
 
     def _default_launcher(self, payload: dict[str, Any], log_dir: Path) -> dict[str, int]:
-        pids: dict[str, int] = {}
-        for entry in payload["plan"]:
-            role = str(entry["role"])
-            session = str(entry["session"])
-            log_path = log_dir / f"{session}.log"
-            cmd = claude_argv()
-            with log_path.open("ab") as log_file:
-                proc = subprocess.Popen(
-                    cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                    env={**os.environ, "FLEET_AGENT_SESSION": "1"},
-                    start_new_session=True,
-                )
-                assert proc.stdin is not None
-                proc.stdin.write(str(entry["prompt"]))
-                proc.stdin.close()
-            if role == "supervisor":
-                pids["supervisor"] = int(proc.pid)
-            else:
-                pids[f"lane{sum(1 for k in pids if k.startswith('lane')) + 1}"] = int(proc.pid)
-        return pids
+        root = Path(os.environ.get("RUNNER_DASHBOARD_ROOT", "/opt/Runner_Dashboard"))
+        spawn_py = root / "scripts/barb-worker/backlog-push-spawn.py"
+        env = {k: v for k, v in os.environ.items() if k not in ("GH_TOKEN", "GITHUB_TOKEN")}
+        proc = subprocess.run(
+            [sys.executable, str(spawn_py), str(log_dir)],
+            input=json.dumps(payload["plan"]),
+            text=True,
+            capture_output=True,
+            env=env,
+            timeout=120,
+            check=False,
+        )
+        if proc.returncode != 0:
+            logger.error("backlog-push spawn failed: %s", (proc.stderr or proc.stdout or "").strip())
+            raise RuntimeError("backlog-push spawn failed")
+        return json.loads(proc.stdout or "{}")
 
     def _finalize(self, number: int, summary: str, *, timed_out: bool) -> None:
         active = self.state.get("active") or {}
         if timed_out:
-            _terminate_tree(active.get("pids") if isinstance(active.get("pids"), dict) else {})
+            _terminate_from_active(active)
         self.state["active"] = None
         self._mark(number, {"status": "done"}, summary, DONE)
         self.counts["done"] += 1
