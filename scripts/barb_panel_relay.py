@@ -224,7 +224,14 @@ class PanelRelay:
         return self.hub(method, f"{self.cfg.hub_url}{PANELS}{path}", self.cfg.token, body)
 
     def _report_if_done(self, key: str, entry: dict[str, Any]) -> None:
-        digest = self._call("GET", f"/{entry['thread']}/digest")
+        try:
+            digest = self._call("GET", f"/{entry['thread']}/digest")
+        except HubError as exc:
+            if exc.status != 404:
+                raise
+            gone = f"Panel `{entry['thread']}` is no longer on the hub (HTTP 404), so I've stopped waiting for it."
+            self._settle(int(key), {**entry, "status": "needs_owner"}, gone)
+            return
         status = digest.get("status")
         if status not in TERMINAL_STATUSES:
             if status != "running":
