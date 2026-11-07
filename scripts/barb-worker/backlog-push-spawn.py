@@ -79,17 +79,25 @@ def _get_process_ppid(pid: int) -> int | None:
         return None
 
 
+_SHELL_INTERPRETER_NAMES = {"bash", "sh", "dash", "zsh"}
+
+
 def _verify_process_identity(pid: int, session: str) -> bool:
-    """Verify that an alive process is this session's lane worker (#4103, hardened #4150).
+    """Verify that an alive process is this session's lane worker (#4103, hardened #4150, #4151).
 
     The recorded pid is the worker launched by ``backlog-push-lane.sh`` (the
     ``claude`` child itself), whose own argv never carries the entrypoint name
     or session token. Identity instead comes from its parent process — the
-    lane script invocation ``bash backlog-push-lane.sh SESSION ...`` — which
-    does. An unreadable parent cmdline or a mere substring hit there (a
-    prefix-colliding session name, or a log/prompt path that happens to
-    contain the session string) is not adoptable: require the lane entrypoint
-    and an exact session token in the parent's argv.
+    lane script invocation ``bash backlog-push-lane.sh SESSION ...`` (the
+    script itself reads ``SESSION="${1:?session}"``) — which does.
+
+    Checking for the entrypoint name and the session token independently
+    anywhere in argv is not enough: ``tail backlog-push-lane.sh lane-a`` or
+    ``echo lane-a backlog-push-lane.sh`` both contain both strings without
+    being the lane invocation at all. Require the actual invocation shape:
+    the entrypoint at argv[0] (direct exec) or argv[1] preceded by a shell
+    interpreter at argv[0], with the session token as the very next
+    positional argument — mirroring the script's own ``$1`` read.
     """
     if not _is_active_process(pid):
         return False
@@ -97,11 +105,20 @@ def _verify_process_identity(pid: int, session: str) -> bool:
     if ppid is None:
         return False
     cmdline = _get_process_cmdline(ppid)
-    if cmdline is None:
+    if not cmdline:
         return False
-    has_entrypoint = any(Path(token).name == _LANE_ENTRYPOINT for token in cmdline)
-    has_exact_session = any(token == session for token in cmdline)
-    return has_entrypoint and has_exact_session
+    if Path(cmdline[0]).name == _LANE_ENTRYPOINT:
+        entry_idx = 0
+    elif (
+        Path(cmdline[0]).name in _SHELL_INTERPRETER_NAMES
+        and len(cmdline) > 1
+        and Path(cmdline[1]).name == _LANE_ENTRYPOINT
+    ):
+        entry_idx = 1
+    else:
+        return False
+    session_idx = entry_idx + 1
+    return session_idx < len(cmdline) and cmdline[session_idx] == session
 
 
 def _record_recovery_evidence(

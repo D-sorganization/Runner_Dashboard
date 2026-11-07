@@ -111,3 +111,25 @@ def test_exact_session_without_entrypoint_rejected() -> None:
 def test_dead_process_rejected_before_ppid_lookup() -> None:
     with patch("os.kill", side_effect=ProcessLookupError):
         assert spawn._verify_process_identity(_PID, "sup-reuse") is False
+
+
+def test_entrypoint_and_session_present_but_not_the_invocation_rejected() -> None:
+    """Entrypoint name and exact session token both present in argv, but not as
+    the actual ``<shell> backlog-push-lane.sh SESSION`` invocation shape (#4151)."""
+    cases = [
+        ["tail", "backlog-push-lane.sh", "lane-a"],
+        ["python", "unrelated.py", "--note", "/tmp/backlog-push-lane.sh", "lane-a"],
+        ["echo", "lane-a", "backlog-push-lane.sh"],
+    ]
+    for cmdline in cases:
+        ppid_patch, cmdline_patch = _with_parent(_PPID, cmdline)
+        with _alive(_PID), ppid_patch, cmdline_patch:
+            assert spawn._verify_process_identity(_PID, "lane-a") is False, cmdline
+
+
+def test_direct_exec_entrypoint_at_argv0_matches() -> None:
+    """A shebang-exec'd invocation where argv[0] is the entrypoint itself is adoptable."""
+    cmdline = ["backlog-push-lane.sh", "sup-reuse", "/tmp/x.log", "/tmp/x.prompt", "/tmp/x.pid"]
+    ppid_patch, cmdline_patch = _with_parent(_PPID, cmdline)
+    with _alive(_PID), ppid_patch, cmdline_patch:
+        assert spawn._verify_process_identity(_PID, "sup-reuse") is True
