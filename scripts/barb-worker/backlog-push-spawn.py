@@ -58,6 +58,14 @@ def _get_process_cmdline(pid: int) -> list[str] | None:
 
 _LANE_ENTRYPOINT = "backlog-push-lane.sh"
 
+# The one path this process actually spawns lanes from (see main()'s own
+# `root` resolution below). A same-named script under a different directory
+# is not this lane's launcher, so identity must bind to the full trusted
+# path, not just the basename (#4151 round 3).
+_TRUSTED_LANE_SCRIPT = (
+    Path(os.environ.get("RUNNER_DASHBOARD_ROOT", "/opt/Runner_Dashboard")) / "scripts/barb-worker/backlog-push-lane.sh"
+)
+
 
 def _get_process_ppid(pid: int) -> int | None:
     """Return the parent pid for pid if available, else None."""
@@ -98,6 +106,11 @@ def _verify_process_identity(pid: int, session: str) -> bool:
     the entrypoint at argv[0] (direct exec) or argv[1] preceded by a shell
     interpreter at argv[0], with the session token as the very next
     positional argument — mirroring the script's own ``$1`` read.
+
+    Matching by basename alone would also accept a same-named script under
+    an unrelated directory (e.g. ``/tmp/foreign/backlog-push-lane.sh``), so
+    the entrypoint argument must equal this process's own trusted launch
+    path (``_TRUSTED_LANE_SCRIPT``), not merely share its filename.
     """
     if not _is_active_process(pid):
         return False
@@ -107,12 +120,12 @@ def _verify_process_identity(pid: int, session: str) -> bool:
     cmdline = _get_process_cmdline(ppid)
     if not cmdline:
         return False
-    if Path(cmdline[0]).name == _LANE_ENTRYPOINT:
+    if Path(cmdline[0]) == _TRUSTED_LANE_SCRIPT:
         entry_idx = 0
     elif (
         Path(cmdline[0]).name in _SHELL_INTERPRETER_NAMES
         and len(cmdline) > 1
-        and Path(cmdline[1]).name == _LANE_ENTRYPOINT
+        and Path(cmdline[1]) == _TRUSTED_LANE_SCRIPT
     ):
         entry_idx = 1
     else:

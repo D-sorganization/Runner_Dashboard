@@ -90,7 +90,14 @@ def test_real_worker_cmdline_without_session_still_matches_via_parent() -> None:
     """The actual recorded pid is the `claude` child, whose own argv never has the
     session token or entrypoint — identity must still resolve through its parent."""
     worker_cmdline = ["claude", "-p", "--output-format", "stream-json", "--verbose"]
-    parent_cmdline = ["/bin/bash", "backlog-push-lane.sh", "sup-reuse", "/tmp/x.log", "/tmp/x.prompt", "/tmp/x.pid"]
+    parent_cmdline = [
+        "/bin/bash",
+        "/opt/Runner_Dashboard/scripts/barb-worker/backlog-push-lane.sh",
+        "sup-reuse",
+        "/tmp/x.log",
+        "/tmp/x.prompt",
+        "/tmp/x.pid",
+    ]
     by_pid = {_PID: worker_cmdline, _PPID: parent_cmdline}
     with (
         _alive(_PID),
@@ -129,7 +136,22 @@ def test_entrypoint_and_session_present_but_not_the_invocation_rejected() -> Non
 
 def test_direct_exec_entrypoint_at_argv0_matches() -> None:
     """A shebang-exec'd invocation where argv[0] is the entrypoint itself is adoptable."""
-    cmdline = ["backlog-push-lane.sh", "sup-reuse", "/tmp/x.log", "/tmp/x.prompt", "/tmp/x.pid"]
+    cmdline = [
+        "/opt/Runner_Dashboard/scripts/barb-worker/backlog-push-lane.sh",
+        "sup-reuse",
+        "/tmp/x.log",
+        "/tmp/x.prompt",
+        "/tmp/x.pid",
+    ]
     ppid_patch, cmdline_patch = _with_parent(_PPID, cmdline)
     with _alive(_PID), ppid_patch, cmdline_patch:
         assert spawn._verify_process_identity(_PID, "sup-reuse") is True
+
+
+def test_foreign_path_same_basename_rejected() -> None:
+    """A same-named script under an untrusted directory is not this lane's launcher,
+    even though its basename matches the entrypoint exactly (#4151 round 3)."""
+    cmdline = ["/bin/bash", "/tmp/foreign/backlog-push-lane.sh", "lane-a"]
+    ppid_patch, cmdline_patch = _with_parent(_PPID, cmdline)
+    with _alive(_PID), ppid_patch, cmdline_patch:
+        assert spawn._verify_process_identity(_PID, "lane-a") is False
