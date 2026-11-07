@@ -479,17 +479,20 @@ async def library_search(
 @router.post("/verify")
 async def library_verify_route(
     request: Request,
-    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+    _principal: Principal = Depends(require_library_reader),  # noqa: B008
 ) -> dict[str, Any]:
     return await verify_library_request(request, _principal, _db())
 
 
 @router.get("/verify")
 def library_verify_citation_route(
+    request: Request,
     cite: str = Query(..., min_length=1, max_length=500),
-    _principal: Principal = Depends(require_library_peer),  # noqa: B008
+    _principal: Principal = Depends(require_library_reader),  # noqa: B008
 ) -> dict[str, Any]:
-    result = verify_content(_db(), cite)
+    shared_only = requires_shared_content(_principal)
+    run_id = requested_run_id(request, _principal)
+    result = verify_content(_db(), cite, run_id=run_id, shared_only=shared_only)
     if not result["citations"]:
         raise HTTPException(status_code=422, detail="cite must contain a canonical library citation")
     return result
