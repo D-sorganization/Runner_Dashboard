@@ -38,6 +38,7 @@ OWNER = Principal(
     id="o", type="human", name="O", roles=["owner", "admin"], scopes=["staff.read", "staff.approve", "owner"]
 )
 NO_DISPATCH_SCOPE = Principal(id="n", type="human", name="N", roles=["x"], scopes=["staff.approve"])
+BARB = Principal(id="rd-barb", type="bot", name="Barb", roles=["bot", "barb"], scopes=[])
 
 
 @pytest.fixture(autouse=True)
@@ -192,3 +193,23 @@ def test_execute_with_reviewed_hash_runs() -> None:
     assert res is not None
     after = store.get_proposal(prop.id)
     assert after is not None and after.state != "proposed"
+
+
+# -- Barb approval authority (#4148) -------------------------------------------------
+
+
+def test_barb_principal_approves_and_executes_medium_proposal() -> None:
+    prop = _proposal(action="staff.dispatch", risk="medium")
+    store = get_conversation_store()
+    h = stored_params_hash(store, prop.id)
+    res = execute_proposal(prop.id, approver=BARB, store=store, approve=True, params_hash=h)
+    assert res is not None
+    after = store.get_proposal(prop.id)
+    assert after is not None and after.state != "proposed"
+
+
+@pytest.mark.parametrize("risk", ["high", "critical", "owner-only"])
+def test_barb_principal_cannot_approve_owner_gated_risk(risk: str) -> None:
+    prop = _proposal(action="staff.hold", risk=risk)
+    verdict = evaluate_approval_authority(None, prop, BARB, include_state=False)
+    assert not verdict.allowed and verdict.code == "owner_required"
