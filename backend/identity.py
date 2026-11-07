@@ -518,8 +518,10 @@ _OPERATOR_PRESET_SCOPES: tuple[str, ...] = tuple(
     ).split()
 )
 
-# Barb lanes: same hub agent surface as `operator` except owner-tap approval (`staff.approve`).
-BARB_ROLE_SCOPES: tuple[str, ...] = tuple(sorted(set(_OPERATOR_PRESET_SCOPES) - {"staff.approve"}))
+# Barb lanes: same hub agent surface as `operator`, including owner-tap approval (`staff.approve`,
+# #4148) so a Barb can approve another Barb's MEDIUM proposals. HIGH/CRITICAL/OWNER_ONLY actions
+# still require the owner (OWNER_APPROVED_RISKS in approval_authority.py).
+BARB_ROLE_SCOPES: tuple[str, ...] = tuple(sorted(_OPERATOR_PRESET_SCOPES))
 
 SCOPE_PRESETS = {
     "admin": ["*"],

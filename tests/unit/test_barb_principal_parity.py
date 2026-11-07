@@ -55,7 +55,7 @@ def test_barb_principals_match_agent_grok_scopes(tmp_path: Path, monkeypatch: py
         prin = mgr.principals[pid]
         assert prin.roles[:2] == ["bot", "barb"], pid
         assert _barb_capability_set(mgr, pid) == ref, pid
-    assert "staff.approve" not in ref
+    assert "staff.approve" in ref
     assert "staff.write" in ref
 
 
@@ -73,8 +73,9 @@ def test_barb_principals_never_gain_admin_scopes(tmp_path: Path, monkeypatch: py
         assert not principal_has_scope(prin, scope)
 
 
-# Reviewed Barb capability set (RD #4117). Pinned so a change to the operator preset cannot widen
-# every Barb seat without a deliberate edit here; widening it is an owner decision, not a lane one.
+# Reviewed Barb capability set (RD #4117, widened to add staff.approve by RD #4148). Pinned so a
+# change to the operator preset cannot widen every Barb seat without a deliberate edit here;
+# widening it is an owner decision, not a lane one.
 REVIEWED_BARB_ROLE_SCOPES = frozenset(
     {
         "activity.read",
@@ -98,6 +99,7 @@ REVIEWED_BARB_ROLE_SCOPES = frozenset(
         "remediation.dispatch",
         "runners.control",
         "staff.admin",
+        "staff.approve",
         "staff.audit.read",
         "staff.cancel",
         "staff.chat",
