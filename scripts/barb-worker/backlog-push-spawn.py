@@ -56,12 +56,24 @@ def _get_process_cmdline(pid: int) -> list[str] | None:
         return None
 
 
+_LANE_ENTRYPOINT = "backlog-push-lane.sh"
+
+
 def _verify_process_identity(pid: int, session: str) -> bool:
-    """Verify that an alive process actually belongs to session (#4103)."""
+    """Verify that an alive process is this session's lane worker (#4103, hardened #4150).
+
+    An unreadable cmdline or a mere substring hit (a prefix-colliding session
+    name, or a log/prompt path that happens to contain the session string) is
+    not adoptable: require the lane entrypoint and an exact session token.
+    """
     if not _is_active_process(pid):
         return False
     cmdline = _get_process_cmdline(pid)
-    return True if cmdline is None else any(session in token for token in cmdline)
+    if cmdline is None:
+        return False
+    has_entrypoint = any(Path(token).name == _LANE_ENTRYPOINT for token in cmdline)
+    has_exact_session = any(token == session for token in cmdline)
+    return has_entrypoint and has_exact_session
 
 
 def _record_recovery_evidence(
