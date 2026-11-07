@@ -88,6 +88,7 @@ def test_retry_recovers_already_running_lane_without_relaunch(tmp_path: Path) ->
         patch.dict(os.environ, {"RUNNER_DASHBOARD_ROOT": str(_ROOT)}),
         patch.object(spawn, "_spawn_one", side_effect=fake_spawn),
         patch.object(spawn, "_verify_process_identity", side_effect=lambda p, s: p == 202 and s == "sup1"),
+        patch.object(spawn, "_candidate_matches_worker_shape", side_effect=lambda p: p == 202),
         patch.object(spawn.sys, "stdin", io.StringIO(json.dumps(plan))),
         patch.object(spawn.sys, "stdout", io.StringIO()) as out,
     ):
@@ -207,6 +208,7 @@ def test_rollback_preserves_recovered_workers_on_subsequent_failure(tmp_path: Pa
         patch.dict(os.environ, {"RUNNER_DASHBOARD_ROOT": str(_ROOT)}),
         patch.object(spawn, "_spawn_one", side_effect=fake_spawn),
         patch.object(spawn, "_verify_process_identity", side_effect=lambda p, s: p == 808 and s == "sup-rec"),
+        patch.object(spawn, "_candidate_matches_worker_shape", side_effect=lambda p: p == 808),
         patch("os.kill", side_effect=_make_kill(alive, kill_log)),
         patch.object(spawn.sys, "stdin", io.StringIO(json.dumps(plan))),
     ):
