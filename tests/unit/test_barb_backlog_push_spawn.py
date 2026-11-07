@@ -99,9 +99,7 @@ def test_predecessor_tests_do_not_import_relay_module() -> None:
     assert detected == forbidden, f"Historical code imports must be detected: {detected}"
 
 
-def test_spawn_runs_cleanly_with_relay_module_blocked(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_spawn_runs_cleanly_with_relay_module_blocked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Predecessor-only spawn runs cleanly when relay is poisoned/absent in sys.modules (#4105)."""
     monkeypatch.setitem(sys.modules, "barb_backlog_push_relay", None)
     monkeypatch.setitem(sys.modules, "scripts.barb_backlog_push_relay", None)
@@ -161,7 +159,17 @@ def test_spawn_runs_cleanly_with_relay_module_blocked(
     rollback_dir = tmp_path / "rollback_logs"
     rollback_dir.mkdir()
     signalled_pids: list[int] = []
-    with patch.object(spawn_isolated.os, "kill", lambda pid, sig: signalled_pids.append(pid)):
+    alive = {9101: True}
+
+    def fake_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if not alive.get(pid, False):
+                raise ProcessLookupError
+            return
+        signalled_pids.append(pid)
+        alive[pid] = False
+
+    with patch.object(spawn_isolated.os, "kill", fake_kill):
         (rollback_dir / "sup-iso.pid").write_text("9101", encoding="utf-8")
         spawn_isolated._rollback_launched(rollback_dir, [("sup-iso", 9101)])
         assert signalled_pids == [9101]

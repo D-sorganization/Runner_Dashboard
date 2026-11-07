@@ -7,6 +7,7 @@ Never prints tokens. Unsets GH_TOKEN/GITHUB_TOKEN so lanes use the hub fleet gh 
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import shutil
@@ -17,6 +18,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+_SIGKILL = getattr(signal, "SIGKILL", 9)
+
 
 def _lane_env() -> dict[str, str]:
     env = dict(os.environ)
@@ -25,15 +28,150 @@ def _lane_env() -> dict[str, str]:
     return env
 
 
-def _rollback_launched(log_dir: Path, launched: list[tuple[str, int]]) -> None:
-    """Stop only workers recorded for this spawn attempt (#4103)."""
-    for session, pid in reversed(launched):
+def _is_active_process(pid: int) -> bool:
+    """Return True if pid is positive and currently alive."""
+    if pid <= 1:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def _get_process_cmdline(pid: int) -> list[str] | None:
+    """Return command-line argument list for pid if available, else None."""
+    proc_cmd = Path(f"/proc/{pid}/cmdline")
+    if proc_cmd.is_file():
         try:
-            os.kill(pid, signal.SIGTERM)
+            raw = proc_cmd.read_bytes()
+            return [p.decode("utf-8", errors="replace") for p in raw.split(b"\x00") if p]
         except OSError:
+            return None
+    try:
+        import psutil  # type: ignore[import-untyped]
+
+        return list(psutil.Process(pid).cmdline())
+    except Exception:
+        return None
+
+
+def _verify_process_identity(pid: int, session: str) -> bool:
+    """Verify that an alive process actually belongs to session (#4103)."""
+    if not _is_active_process(pid):
+        return False
+    cmdline = _get_process_cmdline(pid)
+    return True if cmdline is None else any(session in token for token in cmdline)
+
+
+def _record_recovery_evidence(
+    log_dir: Path,
+    key: str,
+    details: dict[str, Any],
+    cleanup_failures: dict[str, dict[str, Any]] | None = None,
+) -> None:
+    """Retain reconstructible recovery evidence in recovery_evidence.json (#4103)."""
+    evidence_path = log_dir / "recovery_evidence.json"
+    data: dict[str, Any] = {"records": {}, "updated_at": time.time()}
+    if evidence_path.is_file():
+        try:
+            loaded = json.loads(evidence_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
             pass
-        (log_dir / f"{session}.pid").unlink(missing_ok=True)
-        (log_dir / f"{session}.exit").unlink(missing_ok=True)
+    data.setdefault("records", {})[key] = details
+    if cleanup_failures:
+        data.setdefault("cleanup_failures", {}).update(cleanup_failures)
+    data["timestamp"] = data["updated_at"] = time.time()
+    try:
+        evidence_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _write_lane_receipt(log_dir: Path, session: str, role: str, pid: int, status: str = "active") -> Path:
+    """Durable per-lane ownership receipt written immediately upon launch (#4103)."""
+    receipt_path = log_dir / f"{session}.receipt.json"
+    data = {"session": session, "role": role, "pid": pid, "status": status, "updated_at": time.time()}
+    try:
+        receipt_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    except OSError as exc:
+        _record_recovery_evidence(
+            log_dir,
+            f"receipt_failure_{session}",
+            {"session": session, "role": role, "pid": pid, "status": status, "error": str(exc)},
+        )
+        raise
+    return receipt_path
+
+
+def _update_partial_manifest(log_dir: Path, launched: list[tuple[str, int]], pids: dict[str, int]) -> Path:
+    """Update recoverable partial-active record as lanes launch (#4103)."""
+    partial_path = log_dir / "partial_active.json"
+    data = {"sessions": [s for s, _ in launched], "pids": pids, "updated_at": time.time()}
+    partial_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    return partial_path
+
+
+def _rollback_launched(log_dir: Path, newly_spawned: list[tuple[str, int]]) -> None:
+    """Stop only workers newly created in this spawn attempt (#4103)."""
+    cleanup_failures: dict[str, dict[str, Any]] = {}
+    for session, pid in reversed(newly_spawned):
+        if pid <= 1:
+            continue
+        receipt_path = log_dir / f"{session}.receipt.json"
+        exited = not _is_active_process(pid)
+        if not exited:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError as exc:
+                if getattr(exc, "errno", None) == errno.ESRCH:
+                    exited = True
+            for _ in range(10):
+                if exited or not _is_active_process(pid):
+                    exited = True
+                    break
+                time.sleep(0.05)
+            if not exited:
+                try:
+                    os.kill(pid, _SIGKILL)
+                except OSError as exc:
+                    if getattr(exc, "errno", None) == errno.ESRCH:
+                        exited = True
+                for _ in range(5):
+                    if exited or not _is_active_process(pid):
+                        exited = True
+                        break
+                    time.sleep(0.05)
+
+        if exited:
+            if receipt_path.is_file():
+                try:
+                    rec = json.loads(receipt_path.read_text(encoding="utf-8"))
+                    rec.update({"status": "rolled_back", "rolled_back_at": time.time()})
+                    receipt_path.write_text(json.dumps(rec, indent=2, sort_keys=True), encoding="utf-8")
+                except Exception:
+                    pass
+            (log_dir / f"{session}.pid").unlink(missing_ok=True)
+            (log_dir / f"{session}.exit").unlink(missing_ok=True)
+        else:
+            if receipt_path.is_file():
+                try:
+                    rec = json.loads(receipt_path.read_text(encoding="utf-8"))
+                    rec.update({"status": "termination_pending", "pending_at": time.time()})
+                    receipt_path.write_text(json.dumps(rec, indent=2, sort_keys=True), encoding="utf-8")
+                except Exception:
+                    pass
+            cleanup_failures[session] = {
+                "pid": pid,
+                "status": "termination_pending",
+                "error": "process alive after SIGTERM and SIGKILL attempts",
+                "timestamp": time.time(),
+            }
+
+    if cleanup_failures:
+        _record_recovery_evidence(log_dir, "rollback_failures", {"timestamp": time.time()}, cleanup_failures)
 
 
 def _spawn_one(
@@ -96,7 +234,8 @@ def main(argv: list[str] | None = None) -> int:
     plan: list[dict[str, Any]] = json.load(sys.stdin)
     env = _lane_env()
     out: dict[str, int] = {}
-    launched: list[tuple[str, int]] = []
+    newly_spawned: list[tuple[str, int]] = []
+    recovered: list[tuple[str, int]] = []
     lane_n = 0
     try:
         for entry in plan:
@@ -107,19 +246,37 @@ def main(argv: list[str] | None = None) -> int:
             log_path = log_dir / f"{session}.log"
             log_path.touch()
             pidfile = log_dir / f"{session}.pid"
-            pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
-            launched.append((session, pid))
+
+            existing_pid: int | None = None
+            if pidfile.is_file() and pidfile.stat().st_size > 0:
+                try:
+                    candidate = int(pidfile.read_text(encoding="utf-8").strip())
+                    if _verify_process_identity(candidate, session):
+                        existing_pid = candidate
+                except (ValueError, OSError):
+                    pass
+
+            if existing_pid is not None:
+                pid = existing_pid
+                recovered.append((session, pid))
+                _write_lane_receipt(log_dir, session, role, pid, status="recovered")
+            else:
+                pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
+                newly_spawned.append((session, pid))
+                _write_lane_receipt(log_dir, session, role, pid, status="active")
+
             if role == "supervisor":
                 out["supervisor"] = pid
             else:
                 lane_n += 1
                 out[f"lane{lane_n}"] = pid
+            _update_partial_manifest(log_dir, recovered + newly_spawned, out)
     except Exception:
-        _rollback_launched(log_dir, launched)
+        _rollback_launched(log_dir, newly_spawned)
         raise
     manifest = log_dir / "launch_manifest.json"
     manifest.write_text(
-        json.dumps({"sessions": [s for s, _ in launched], "pids": out}, indent=2, sort_keys=True),
+        json.dumps({"sessions": [s for s, _ in (recovered + newly_spawned)], "pids": out}, indent=2, sort_keys=True),
         encoding="utf-8",
     )
     sys.stdout.write(json.dumps(out))
