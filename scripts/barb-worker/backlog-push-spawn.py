@@ -134,6 +134,31 @@ def _verify_process_identity(pid: int, session: str) -> bool:
     return session_idx < len(cmdline) and cmdline[session_idx] == session
 
 
+_WORKER_ARGV0_BASENAMES = {"claude"}
+
+
+def _candidate_matches_worker_shape(pid: int) -> bool:
+    """Return True if pid's own cmdline looks like the launched worker (#4152).
+
+    ``_verify_process_identity`` only checks the *parent's* invocation shape;
+    it never looks at the candidate pid's own argv. A pid reused by an
+    unrelated process would still be adopted as long as its (still-alive,
+    still-matching) parent invocation lingers. The actual worker is always
+    launched as ``claude -p ...`` (backlog-push-lane.sh's ``CLAUDE`` array),
+    so require the candidate's own argv[0] basename to match that directly.
+    """
+    cmdline = _get_process_cmdline(pid)
+    if not cmdline:
+        return False
+    return Path(cmdline[0]).name in _WORKER_ARGV0_BASENAMES
+
+
+def _recoverable_pid(pid: int, session: str) -> bool:
+    """Combine parent-invocation identity (#4150/#4151) with the candidate's
+    own process shape (#4152) before a recorded pid is adopted as recovered."""
+    return _verify_process_identity(pid, session) and _candidate_matches_worker_shape(pid)
+
+
 def _record_recovery_evidence(
     log_dir: Path,
     key: str,
@@ -158,6 +183,28 @@ def _record_recovery_evidence(
         evidence_path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     except OSError:
         pass
+
+
+def _retain_rejected_candidate(log_dir: Path, session: str, pid: int) -> None:
+    """Preserve a rejected recovery candidate's pid/receipt before it is
+    overwritten by the newly launched worker's own receipt (#4152)."""
+    receipt_path = log_dir / f"{session}.receipt.json"
+    prior_receipt: Any = None
+    if receipt_path.is_file():
+        try:
+            prior_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        except Exception:
+            prior_receipt = None
+    _record_recovery_evidence(
+        log_dir,
+        f"rejected_candidate_{session}",
+        {
+            "session": session,
+            "rejected_pid": pid,
+            "prior_receipt": prior_receipt,
+            "rejected_at": time.time(),
+        },
+    )
 
 
 def _write_lane_receipt(log_dir: Path, session: str, role: str, pid: int, status: str = "active") -> Path:
@@ -318,11 +365,14 @@ def main(argv: list[str] | None = None) -> int:
             pidfile = log_dir / f"{session}.pid"
 
             existing_pid: int | None = None
+            rejected_candidate_pid: int | None = None
             if pidfile.is_file() and pidfile.stat().st_size > 0:
                 try:
                     candidate = int(pidfile.read_text(encoding="utf-8").strip())
-                    if _verify_process_identity(candidate, session):
+                    if _recoverable_pid(candidate, session):
                         existing_pid = candidate
+                    else:
+                        rejected_candidate_pid = candidate
                 except (ValueError, OSError):
                     pass
 
@@ -331,6 +381,8 @@ def main(argv: list[str] | None = None) -> int:
                 recovered.append((session, pid))
                 _write_lane_receipt(log_dir, session, role, pid, status="recovered")
             else:
+                if rejected_candidate_pid is not None:
+                    _retain_rejected_candidate(log_dir, session, rejected_candidate_pid)
                 pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
                 newly_spawned.append((session, pid))
                 _write_lane_receipt(log_dir, session, role, pid, status="active")
