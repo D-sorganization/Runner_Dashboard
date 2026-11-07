@@ -59,16 +59,44 @@ def _get_process_cmdline(pid: int) -> list[str] | None:
 _LANE_ENTRYPOINT = "backlog-push-lane.sh"
 
 
+def _get_process_ppid(pid: int) -> int | None:
+    """Return the parent pid for pid if available, else None."""
+    proc_stat = Path(f"/proc/{pid}/stat")
+    if proc_stat.is_file():
+        try:
+            raw = proc_stat.read_text(encoding="utf-8", errors="replace")
+            # Format: "pid (comm) state ppid ...". comm can itself contain
+            # ")" or whitespace, so split on the last ")" rather than token 1.
+            after_comm = raw.rsplit(")", 1)[-1].split()
+            return int(after_comm[1])
+        except (OSError, IndexError, ValueError):
+            return None
+    try:
+        import psutil  # type: ignore[import-untyped]
+
+        return psutil.Process(pid).ppid()
+    except Exception:
+        return None
+
+
 def _verify_process_identity(pid: int, session: str) -> bool:
     """Verify that an alive process is this session's lane worker (#4103, hardened #4150).
 
-    An unreadable cmdline or a mere substring hit (a prefix-colliding session
-    name, or a log/prompt path that happens to contain the session string) is
-    not adoptable: require the lane entrypoint and an exact session token.
+    The recorded pid is the worker launched by ``backlog-push-lane.sh`` (the
+    ``claude`` child itself), whose own argv never carries the entrypoint name
+    or session token. Identity instead comes from its parent process — the
+    lane script invocation ``bash backlog-push-lane.sh SESSION ...`` — which
+    does. An unreadable parent cmdline or a mere substring hit there (a
+    prefix-colliding session name, or a log/prompt path that happens to
+    contain the session string) is not adoptable: require the lane entrypoint
+    and an exact session token in the parent's argv.
     """
     if not _is_active_process(pid):
         return False
-    cmdline = _get_process_cmdline(pid)
+    ppid = _get_process_ppid(pid)
+    if ppid is None:
+        return False
+    cmdline = _get_process_cmdline(ppid)
     if cmdline is None:
         return False
     has_entrypoint = any(Path(token).name == _LANE_ENTRYPOINT for token in cmdline)
