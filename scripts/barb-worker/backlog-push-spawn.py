@@ -56,12 +56,82 @@ def _get_process_cmdline(pid: int) -> list[str] | None:
         return None
 
 
+_LANE_ENTRYPOINT = "backlog-push-lane.sh"
+
+# The one path this process actually spawns lanes from (see main()'s own
+# `root` resolution below). A same-named script under a different directory
+# is not this lane's launcher, so identity must bind to the full trusted
+# path, not just the basename (#4151 round 3).
+_TRUSTED_LANE_SCRIPT = (
+    Path(os.environ.get("RUNNER_DASHBOARD_ROOT", "/opt/Runner_Dashboard")) / "scripts/barb-worker/backlog-push-lane.sh"
+)
+
+
+def _get_process_ppid(pid: int) -> int | None:
+    """Return the parent pid for pid if available, else None."""
+    proc_stat = Path(f"/proc/{pid}/stat")
+    if proc_stat.is_file():
+        try:
+            raw = proc_stat.read_text(encoding="utf-8", errors="replace")
+            # Format: "pid (comm) state ppid ...". comm can itself contain
+            # ")" or whitespace, so split on the last ")" rather than token 1.
+            after_comm = raw.rsplit(")", 1)[-1].split()
+            return int(after_comm[1])
+        except (OSError, IndexError, ValueError):
+            return None
+    try:
+        import psutil  # type: ignore[import-untyped]
+
+        return psutil.Process(pid).ppid()
+    except Exception:
+        return None
+
+
+_SHELL_INTERPRETER_NAMES = {"bash", "sh", "dash", "zsh"}
+
+
 def _verify_process_identity(pid: int, session: str) -> bool:
-    """Verify that an alive process actually belongs to session (#4103)."""
+    """Verify that an alive process is this session's lane worker (#4103, hardened #4150, #4151).
+
+    The recorded pid is the worker launched by ``backlog-push-lane.sh`` (the
+    ``claude`` child itself), whose own argv never carries the entrypoint name
+    or session token. Identity instead comes from its parent process — the
+    lane script invocation ``bash backlog-push-lane.sh SESSION ...`` (the
+    script itself reads ``SESSION="${1:?session}"``) — which does.
+
+    Checking for the entrypoint name and the session token independently
+    anywhere in argv is not enough: ``tail backlog-push-lane.sh lane-a`` or
+    ``echo lane-a backlog-push-lane.sh`` both contain both strings without
+    being the lane invocation at all. Require the actual invocation shape:
+    the entrypoint at argv[0] (direct exec) or argv[1] preceded by a shell
+    interpreter at argv[0], with the session token as the very next
+    positional argument — mirroring the script's own ``$1`` read.
+
+    Matching by basename alone would also accept a same-named script under
+    an unrelated directory (e.g. ``/tmp/foreign/backlog-push-lane.sh``), so
+    the entrypoint argument must equal this process's own trusted launch
+    path (``_TRUSTED_LANE_SCRIPT``), not merely share its filename.
+    """
     if not _is_active_process(pid):
         return False
-    cmdline = _get_process_cmdline(pid)
-    return True if cmdline is None else any(session in token for token in cmdline)
+    ppid = _get_process_ppid(pid)
+    if ppid is None:
+        return False
+    cmdline = _get_process_cmdline(ppid)
+    if not cmdline:
+        return False
+    if Path(cmdline[0]) == _TRUSTED_LANE_SCRIPT:
+        entry_idx = 0
+    elif (
+        Path(cmdline[0]).name in _SHELL_INTERPRETER_NAMES
+        and len(cmdline) > 1
+        and Path(cmdline[1]) == _TRUSTED_LANE_SCRIPT
+    ):
+        entry_idx = 1
+    else:
+        return False
+    session_idx = entry_idx + 1
+    return session_idx < len(cmdline) and cmdline[session_idx] == session
 
 
 def _record_recovery_evidence(
