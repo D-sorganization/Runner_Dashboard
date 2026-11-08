@@ -89,6 +89,9 @@ class RunPlan:
     work_item_id: str = ""
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
+    # Operator PR restrictions behind ``pr_lifecycle`` (RM#2712); re-resolved at execute time
+    # so the fence is re-derived (not just stored text) and still fails closed (#4156).
+    pr_restrictions: tuple[str, ...] = ()
     head_ref: str = ""
     model_tier: str = ""
     skill_pin: str = ""
