@@ -15,22 +15,22 @@ Seeded from Barb's state-file structure. Only rd-barb writes here; everyone else
 | item                                                 | owner   | source     | check                                                                           | verified_at (PT) | ttl |
 | ---------------------------------------------------- | ------- | ---------- | ------------------------------------------------------------------------------- | ---------------- | --- |
 | **— Holds and gates —**                              |         |            |                                                                                 |                  |     |
-| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-08 01:00 (OPEN) | 1h  |
-| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-08 01:00 | 1h  |
-| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-08 01:00 | 1h  |
-| GM #5540/#5535 MERGED (hosted PDF passed). Hold condition satisfied — lifting it is Dieter's call, not recorded here | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest,state` | UNVERIFIED 2026-11-08 01:00 (GM repo 404 to fleet App via REST and GraphQL; was 200 at 00:10) | 1h  |
+| RD deploy/release HOLD                               | Dieter  | RD #2657   | `gh issue view 2657 -R D-sorganization/Runner_Dashboard --json state`           | 2026-11-08 02:00 (OPEN) | 1h  |
+| #2658 disarmed                                       | Dieter  | RD #2658   | `gh pr view 2658 --json autoMergeRequest` is null                               | 2026-11-08 02:00 | 1h  |
+| #2880 auto-merge off                                 | Dieter  | RD #2880   | `gh pr view 2880 --json autoMergeRequest` is null                               | 2026-11-08 02:00 | 1h  |
+| GM #5540/#5535 MERGED (hosted PDF passed). Hold condition satisfied — lifting it is Dieter's call, not recorded here | Dieter  | GM #5540   | `gh pr view 5540 -R D-sorganization/Gasification_Model --json autoMergeRequest,state` | 2026-11-08 02:00 (GM repo reachable again, 200; autoMergeRequest null, state MERGED) | 1h  |
 | **— Red mains —**                                    |         |            |                                                                                 |                  |     |
 | **— Runner state —**                                 |         |            |                                                                                 |                  |     |
-| Private minutes under 45,000 of 50,000 (RD is public; its CI doesn't count) | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED 2026-11-08 01:00 (org billing API 403 to fleet App) | 1h  |
-| RD #3794 still draft (superseded by merged #3993) — not this lane's claim; past 72h open | rd-barb | 01:00 pass | `gh pr view 3794 --json state,isDraft,mergeStateStatus`                         | 2026-11-08 01:00 | 1h |
-| RD merge_group queue: 0 queued runs at 01:00 PT (under the 6 back-off) | rd-barb | 01:00 pass | `gh api "repos/D-sorganization/Runner_Dashboard/actions/runs?event=merge_group&status=queued"` total_count | 2026-11-08 01:00 | 1h |
-| RD open PRs: 4 total (#2658, #2852, #2880, #3794), none armed — all held or draft, no PR-crush candidates | rd-barb | 01:00 pass | `gh pr list -R D-sorganization/Runner_Dashboard --state open` | 2026-11-08 01:00 | 1h |
+| Private minutes under 45,000 of 50,000 (RD is public; its CI doesn't count) | rd-barb | burn guard | billing usage for the month                                                     | UNVERIFIED 2026-11-08 02:00 (org billing API 403 to fleet App) | 1h  |
+| RD #3794 still draft (superseded by merged #3993) — not this lane's claim; past 72h open | rd-barb | 02:00 pass | `gh pr view 3794 --json state,isDraft,mergeStateStatus`                         | 2026-11-08 02:00 | 1h |
+| RD merge_group queue: 0 queued runs at 02:00 PT (under the 6 back-off) | rd-barb | 02:00 pass | `gh api "repos/D-sorganization/Runner_Dashboard/actions/runs?event=merge_group&status=queued"` total_count | 2026-11-08 02:00 | 1h |
+| RD open PRs: 4 total (#2658, #2852, #2880, #3794), none armed — all held or draft, no PR-crush candidates | rd-barb | 02:00 pass | `gh pr list -R D-sorganization/Runner_Dashboard --state open` | 2026-11-08 02:00 | 1h |
 | **— Watching —**                                     |         |            |                                                                                 |                  |     |
-| RD #2658 open >72h (cursor/rd-deploy-release-hold-307b), held by RD #2657 — no claim-gate action, hold not lifted | rd-barb | 72h-open-PR watch | `gh pr view 2658 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-08 01:00 | 24h |
-| RD #2852 open >72h (cursor/topology-sanitize-deploy-hold-a43e) — held, not touched per lane rules | rd-barb | 72h-open-PR watch | `gh pr view 2852 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-08 01:00 | 24h |
-| RD #2880 open >72h (cursor/rd-fast-checks-runner-fc21) — auto-merge off per hold above | rd-barb | 72h-open-PR watch | `gh pr view 2880 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-08 01:00 | 24h |
+| RD #2658 open >72h (cursor/rd-deploy-release-hold-307b), held by RD #2657 — no claim-gate action, hold not lifted | rd-barb | 72h-open-PR watch | `gh pr view 2658 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-08 02:00 | 24h |
+| RD #2852 open >72h (cursor/topology-sanitize-deploy-hold-a43e) — held, not touched per lane rules | rd-barb | 72h-open-PR watch | `gh pr view 2852 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-08 02:00 | 24h |
+| RD #2880 open >72h (cursor/rd-fast-checks-runner-fc21) — auto-merge off per hold above | rd-barb | 72h-open-PR watch | `gh pr view 2880 -R D-sorganization/Runner_Dashboard --json createdAt` | 2026-11-08 02:00 | 24h |
 | **— Reminders —**                                    |         |            |                                                                                 |                  |     |
-| 72h rule: RD #3794 (draft, codex lane) past 72h open — needs a CI diagnosis or iterate-or-close note from its owning lane | rd-barb | 72h-open-PR watch | `gh pr view <n> -R D-sorganization/Runner_Dashboard --json createdAt,state` | 2026-11-08 01:00 | 24h |
+| 72h rule: RD #3794 (draft, codex lane) past 72h open — needs a CI diagnosis or iterate-or-close note from its owning lane | rd-barb | 72h-open-PR watch | `gh pr view <n> -R D-sorganization/Runner_Dashboard --json createdAt,state` | 2026-11-08 02:00 | 24h |
 
 ## PR-crush lanes
 
@@ -77,3 +77,4 @@ Caps: 2 armed per lane in RD, 4 elsewhere. Back off when a repo's `merge_group` 
 | RD #4018 (feat(deploy): fleet backup pilot restic client #4015) — MERGED | 2026-11-06 09:17 | PR merged |
 | RD #4127 (agy lane, spawn partial-launch recovery) — now CLOSED (not merged); was open/BLOCKED runner-state row at 11:42 PT 2026-11-06 | 2026-11-08 00:10 | state re-check |
 | RD #4061 (#4059 duplicate, `cursor/4061-rd-barb-freshness-fb36`) — now CLOSED; was open/CONFLICTING watch row left per no-close rule at 11:42 PT 2026-11-06 | 2026-11-08 00:10 | state re-check |
+| GM repo reachable again (200) at 02:00 PT; GM #5540 confirmed MERGED, autoMergeRequest null — was UNVERIFIED (404) row at 01:00 PT | 2026-11-08 02:00 | state re-check |
