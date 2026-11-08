@@ -218,7 +218,9 @@ def _stale_mirror_rows(candidates: list[Path], best: Path, *, valid: set[Path]) 
             log.warning("skipping mirror audit for unreadable copy %s: %s", path, exc)
             stale.append({"path": str(path), "reason": "unreadable"})
             continue
-        if copy_bytes == best_bytes and copy_mtime >= best_mtime:
+        # Byte-identical copies are in sync even when mtime lags: DrvFs (/mnt/c) truncates
+        # mtimes to whole seconds, so a fresh mirror can read a fraction older than its source.
+        if copy_bytes == best_bytes:
             continue
         reason = "content_drift"
         if copy_mtime < best_mtime:

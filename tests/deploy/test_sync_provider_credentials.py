@@ -213,6 +213,26 @@ def test_audit_flags_stale_claude_mirror(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_audit_ignores_subsecond_mtime_truncation_on_identical_copy(tmp_path: Path) -> None:
+    """DrvFs (/mnt/c) keeps whole-second mtimes; a byte-identical mirror is in sync, not stale."""
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    payload = json.dumps({"claudeAiOauth": {"refreshToken": "r-same", "accessToken": "a-same", "expiresAt": 3000}})
+    hub = wsl_home / ".config" / "runner-dashboard" / "claude" / ".credentials.json"
+    win_claude = win_home / ".claude" / ".credentials.json"
+    for path in (hub, win_claude):
+        path.parent.mkdir(parents=True)
+        path.write_text(payload, encoding="utf-8")
+    os.utime(hub, (1_000_000.887, 1_000_000.887))
+    os.utime(win_claude, (1_000_000.0, 1_000_000.0))
+
+    audit = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[win_home])
+
+    assert audit["providers"]["claude"]["stale_copies"] == []
+    assert audit["providers"]["claude"]["ok"] is True
+
+
+@pytest.mark.unit
 def test_audit_ok_after_sync(tmp_path: Path) -> None:
     wsl_home = tmp_path / "wsl_home"
     wsl_home.mkdir()
