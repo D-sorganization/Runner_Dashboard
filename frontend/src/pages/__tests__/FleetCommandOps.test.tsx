@@ -262,12 +262,22 @@ describe("FleetCommandPage — job board", () => {
   }
 
   it("renders jobs and filters by repo and priority", async () => {
-    stubFetch(jobsReply);
+    const fetchMock = stubFetch(jobsReply);
+    const baseFetch = fetchMock.getMockImplementation()!;
+    // Slow jobs reply, as on a loaded CI runner: the panel frame and its repo
+    // <select> render before the jobs (and so the repo options) arrive.
+    fetchMock.mockImplementation(async (url: string, opts?: RequestInit) => {
+      if (url.startsWith("/api/coordination/jobs")) await new Promise((r) => setTimeout(r, 50));
+      return baseFetch(url, opts);
+    });
     render(<FleetCommandPage />);
     openSection("Claims");
-    await waitFor(() => expect(screen.getByTestId("fleet-job-board")).toBeInTheDocument());
+    // Wait for rows, not the frame: repo options come from the jobs data, and
+    // choosing "Tools" before it exists leaves the select on "All repos".
+    await waitFor(() => expect(screen.getByTestId("job-row-Games-5")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Filter jobs by repo"), { target: { value: "Tools" } });
     await waitFor(() => expect(screen.queryByTestId("job-row-Games-5")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("job-row-Tools-10")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Filter jobs by priority"), { target: { value: "high" } });
     expect(screen.getByTestId("job-row-Tools-10")).toBeInTheDocument();
     expect(screen.queryByTestId("job-row-Tools-11")).not.toBeInTheDocument();
