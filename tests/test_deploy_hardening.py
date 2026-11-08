@@ -25,6 +25,7 @@ _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u3"
 _PCRE2_DEBIAN_SECURITY_VERSION = "10.46-1~deb13u3"
 _CURL_DEBIAN_SECURITY_VERSION = "8.14.1-2+deb13u7"
 _EXPAT_DEBIAN_SECURITY_VERSION = "2.9.0-1~deb13u1"
+_ZLIB_DEBIAN_SECURITY_VERSION = "1:1.3.dfsg+really1.3.1-1+deb13u1"
 
 # ── Issue #391: new hardening directives ─────────────────────────────────────
 # These must appear in both the .service template files AND in the setup.sh
@@ -164,6 +165,13 @@ def test_dockerfile_pins_expat_security_version() -> None:
     content = _read(_DOCKERFILE)
     assert f"libexpat1='{_EXPAT_DEBIAN_SECURITY_VERSION}'" in content
     assert "libexpat1='2.8.3-1'" not in content
+
+
+def test_dockerfile_pins_zlib_security_version() -> None:
+    """Image must install Debian's fixed zlib1g (closes CVE-2026-76844, CVE-2026-85091)."""
+    content = _read(_DOCKERFILE)
+    assert f"zlib1g='{_ZLIB_DEBIAN_SECURITY_VERSION}'" in content
+    assert "zlib1g='1:1.3.dfsg+really1.3.1-1+b1'" not in content
 
 
 def test_uv_lock_urllib3_meets_security_baseline() -> None:
