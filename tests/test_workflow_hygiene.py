@@ -706,6 +706,20 @@ def test_ci_secrets_gitleaks_pr_range_and_full_history() -> None:
     assert "gitleaks (PR commit range)" in text
 
 
+def test_ci_secrets_gitleaks_download_retries_transient_errors() -> None:
+    """A single upstream 504 on the release download must not turn main red.
+
+    Main run 42466970725 failed at `curl: (22) ... error: 504` before gitleaks
+    ran. Retrying keeps the gate fail-closed: the SHA-256 check still rejects
+    anything but the pinned archive.
+    """
+    text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
+    download = next(line for line in text.splitlines() if "curl " in line and "gitleaks.tgz" in line)
+    assert "--retry " in download
+    assert "--retry-all-errors" in download
+    assert 'if [ "$actual" != "$GITLEAKS_SHA256" ]' in text
+
+
 def test_required_typecheck_job_always_reports_context() -> None:
     """TypeScript typecheck (tsc) is required on main; the job must not be SKIPPED."""
     workflow = _load_workflow(_WORKFLOWS_DIR / "frontend-tests.yml")
