@@ -213,6 +213,34 @@ def test_audit_flags_stale_claude_mirror(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_audit_ignores_subsecond_mtime_truncation_on_identical_copy(tmp_path: Path) -> None:
+    """DrvFs (/mnt/c) mirrors store whole-second mtimes, so a byte-identical copy can read
+    up to 1s older than its source. A byte-identical copy is in sync regardless of mtime."""
+    wsl_home = tmp_path / "wsl_home"
+    win_home = tmp_path / "win_home"
+    wsl_home.mkdir()
+    win_home.mkdir()
+
+    content = json.dumps({"claudeAiOauth": {"refreshToken": "r-same", "accessToken": "a-same", "expiresAt": 2000}})
+    win_claude = win_home / ".claude" / ".credentials.json"
+    win_claude.parent.mkdir(parents=True)
+    win_claude.write_text(content, encoding="utf-8")
+    wsl_claude = wsl_home / ".claude" / ".credentials.json"
+    wsl_claude.parent.mkdir(parents=True)
+    wsl_claude.write_text(content, encoding="utf-8")
+
+    # win_claude (the sync source) has a fractional mtime; wsl_claude (the DrvFs-style copy)
+    # has its mtime truncated to the whole second below it, even though bytes are identical.
+    os.utime(win_claude, (1_794_121_411.887, 1_794_121_411.887))
+    os.utime(wsl_claude, (1_794_121_411.0, 1_794_121_411.0))
+
+    audit = sync_mod.audit_credential_mirrors(wsl_home=wsl_home, win_homes=[win_home])
+    claude = audit["providers"]["claude"]
+    assert claude["ok"] is True
+    assert claude["stale_copies"] == []
+
+
+@pytest.mark.unit
 def test_audit_ok_after_sync(tmp_path: Path) -> None:
     wsl_home = tmp_path / "wsl_home"
     wsl_home.mkdir()
