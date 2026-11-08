@@ -252,13 +252,9 @@ class StaffRunner:
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
         prompt = lifecycle_fence.compose_fenced(  # re-derive + assert the RM#2712 fence (#4156)
-            workspace.compose_prompt,
             plan,
             role,
-            repo=plan.repo,
-            target_ref=plan.target_ref,
             operator_prompt=plan.operator_prompt,
-            branch=plan.branch,
             lease_note=lease_note,
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
