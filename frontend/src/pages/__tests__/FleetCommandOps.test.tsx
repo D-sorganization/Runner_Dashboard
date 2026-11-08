@@ -262,10 +262,17 @@ describe("FleetCommandPage — job board", () => {
   }
 
   it("renders jobs and filters by repo and priority", async () => {
-    stubFetch(jobsReply);
+    const fetchMock = stubFetch(jobsReply);
+    const baseFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, opts?: RequestInit) => {
+      const bareJobs = url === "/api/coordination/jobs";
+      const allJobs = bareJobs || (url.startsWith("/api/coordination/jobs?") && !url.includes("repo="));
+      if (allJobs) await new Promise((resolve) => setTimeout(resolve, 50));
+      return baseFetch(url, opts);
+    });
     render(<FleetCommandPage />);
     openSection("Claims");
-    await waitFor(() => expect(screen.getByTestId("fleet-job-board")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("job-row-Games-5")).toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Filter jobs by repo"), { target: { value: "Tools" } });
     await waitFor(() => expect(screen.queryByTestId("job-row-Games-5")).not.toBeInTheDocument());
     fireEvent.change(screen.getByLabelText("Filter jobs by priority"), { target: { value: "high" } });
