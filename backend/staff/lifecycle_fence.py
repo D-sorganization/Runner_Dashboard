@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
+
+from staff import workspace
 
 PR_RESTRICTIONS = frozenset({"draft_only", "no_arm", "no_merge"})
 FENCED_LIFECYCLE = "draft_no_arm"
@@ -58,3 +61,23 @@ def assert_fence_consumed(decision: LifecycleDecision, prompt: str) -> None:
     """Fail closed unless a fenced decision's block is the final section of the launched prompt."""
     if decision.fenced and not prompt.rstrip().endswith(decision.prompt_block):
         raise LifecycleContractError("operator PR boundary was not consumed as the final prompt section")
+
+
+def compose_fenced(plan: Any, role: Any, **kwargs: Any) -> str:
+    """Re-derive a plan's fence and compose+assert ``workspace.compose_prompt`` in one call (#4156).
+
+    A plan's ``pr_lifecycle``/``pr_restrictions`` are re-resolved here rather than trusted from
+    ``plan.prompt`` text, so a prompt recomposed after admission (e.g. to splice in a lease note)
+    still carries -- and fails closed on -- the operator's draft/no-arm/no-merge boundary.
+    """
+    decision = resolve_pr_lifecycle(plan.pr_lifecycle, plan.pr_restrictions)
+    prompt = workspace.compose_prompt(
+        role,
+        repo=plan.repo,
+        target_ref=plan.target_ref,
+        branch=plan.branch,
+        lifecycle_fence=decision.prompt_block,
+        **kwargs,
+    )
+    assert_fence_consumed(decision, prompt)
+    return prompt

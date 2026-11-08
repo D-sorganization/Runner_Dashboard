@@ -110,6 +110,7 @@ def build_run_plan(
         consolidation=dict(req.consolidation) if req.consolidation else None,
         focus=focus,
         pr_lifecycle=lifecycle.pr_lifecycle,
+        pr_restrictions=lifecycle.restrictions,
         head_ref=req.head_ref,
         skill_pin=bundle.skill_pin,
         standards_version=bundle.standards_version,

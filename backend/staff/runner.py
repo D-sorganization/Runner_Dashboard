@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from coordination.cursor_dispatch_lease import cursor_finalize_on_publish, cursor_pre_launch_or_block
-from staff import claim_guard, consolidation, review, runner_planning, verification, workspace
+from staff import claim_guard, consolidation, lifecycle_fence, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import runner_ops as ops
@@ -251,12 +251,10 @@ class StaffRunner:
         store = self.store
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
-        prompt = workspace.compose_prompt(
+        prompt = lifecycle_fence.compose_fenced(  # re-derive + assert the RM#2712 fence (#4156)
+            plan,
             role,
-            repo=plan.repo,
-            target_ref=plan.target_ref,
             operator_prompt=plan.operator_prompt,
-            branch=plan.branch,
             lease_note=lease_note,
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
