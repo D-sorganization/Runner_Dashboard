@@ -10,7 +10,9 @@ Verifies that:
 
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -30,6 +32,7 @@ def _presence_comment(
     issue: int | None = 3550,
     branch: str = "fix/3550",
     expires: str = "2099-01-01T00:00:00+00:00",
+    author: str = "d-sorggeminiagent[bot]",
 ) -> dict[str, Any]:
     envelope = {
         "version": 1,
@@ -45,11 +48,11 @@ def _presence_comment(
         "expires": expires,
     }
     body = f"<!-- agent-msg v1 id=msg-{comment_id} kind=presence -->\n```json agent-msg\n{json.dumps(envelope)}\n```"
-    return {"id": comment_id, "body": body}
+    return {"id": comment_id, "body": body, "user": {"login": author}}
 
 
-def _noise_comment(comment_id: int) -> dict[str, Any]:
-    return {"id": comment_id, "body": f"status note #{comment_id}"}
+def _noise_comment(comment_id: int, author: str = "d-sorggeminiagent[bot]") -> dict[str, Any]:
+    return {"id": comment_id, "body": f"status note #{comment_id}", "user": {"login": author}}
 
 
 _PAGE_LIMIT_WARNING = (
@@ -273,7 +276,13 @@ def test_check_agent_claim_incomplete_over_1000_comments_fails_closed(
         )
 
 
-def _release_comment(comment_id: int, *, session: str, repo: str) -> dict[str, Any]:
+def _release_comment(
+    comment_id: int,
+    *,
+    session: str,
+    repo: str,
+    author: str = "d-sorggeminiagent[bot]",
+) -> dict[str, Any]:
     envelope = {
         "version": 1,
         "id": f"msg-{comment_id}",
@@ -283,7 +292,7 @@ def _release_comment(comment_id: int, *, session: str, repo: str) -> dict[str, A
         "at": "2026-10-29T12:00:00+00:00",
     }
     body = f"<!-- agent-msg v1 id=msg-{comment_id} kind=release -->\n```json agent-msg\n{json.dumps(envelope)}\n```"
-    return {"id": comment_id, "body": body}
+    return {"id": comment_id, "body": body, "user": {"login": author}}
 
 
 @pytest.mark.unit
@@ -311,3 +320,99 @@ def test_paginate_board_comments_enforces_first_owner_binding_and_separates_hist
     assert "Rejected identity change for live-s" in res_contested["active_conflicts"]
     assert "Rejected identity change for live-s" in res_contested["replay_warnings"]
     assert [s["session"] for s in res_contested["sessions"]] == ["live-s"]
+
+
+def _env_dict(cid: int, sess: str, **kw: Any) -> dict[str, Any]:
+    return {
+        "version": 1,
+        "id": f"msg-{cid}",
+        "kind": kw.get("kind", "presence"),
+        "agent": "codex",
+        "session": sess,
+        "repo": kw.get("repo", "Runner_Dashboard"),
+        "at": "2026-10-29T12:00:00+00:00",
+        "expires": kw.get("expires", "2099-01-01T00:00:00+00:00"),
+        **kw.get("extra", {}),
+    }
+
+
+@pytest.mark.unit
+def test_quoted_prose_comment_is_ignored_as_non_coordination() -> None:
+    bj = json.dumps(_env_dict(1, "s-q"))
+    prose = {"id": 1, "body": f"Note:\n<!-- agent-message v1 -->\n```json\n{bj}\n```\nIgnore.", "user": {"login": "r"}}
+    assert paginate_board_comments(lambda p, n: [prose])["sessions"] == []
+    cj = json.dumps(_env_dict(2, "s-c"))
+    body = f"<!-- agent-message v1 -->\n```json\n{cj}\n```\n<!-- fleet-CTA-footer -->\nx"
+    canon = {"id": 2, "body": body, "user": {"login": "b"}}
+    res = paginate_board_comments(lambda p, n: [canon])
+    assert res["complete"] is True and [s["session"] for s in res["sessions"]] == ["s-c"]
+
+
+@pytest.mark.unit
+def test_strict_author_binding_and_cross_author_spoofing() -> None:
+    anon_body = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(1, 's-anon'))}\n```"
+    res_anon = paginate_board_comments(lambda p, n: [{"id": 1, "body": anon_body, "user": {}}])
+    assert not res_anon["complete"] and any(
+        "without verified GitHub user.login" in w for w in res_anon["read_warnings"]
+    )
+
+    c1 = _presence_comment(10, session="s-spoof", repo="Runner_Dashboard", author="userA")
+    c2 = _release_comment(11, session="s-spoof", repo="Runner_Dashboard", author="userB")
+    res_sp = paginate_board_comments(lambda p, n: [c1, c2])
+    assert not res_sp["complete"] and "Rejected identity change for s-spoof" in res_sp["active_conflicts"]
+
+
+@pytest.mark.unit
+def test_malformed_coordination_block_and_invalid_expires_fail_closed() -> None:
+    bad_j = {"id": 1, "body": "<!-- agent-message v1 -->\n```json\n{broken\n```", "user": {"login": "u"}}
+    assert not paginate_board_comments(lambda p, n: [bad_j])["complete"]
+
+    no_exp_b = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(2, 's-ne', expires=''))}\n```"
+    assert not paginate_board_comments(lambda p, n: [{"id": 2, "body": no_exp_b, "user": {"login": "u"}}])["complete"]
+
+    bad_r_b = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(3, 's-nr', repo=''))}\n```"
+    assert not paginate_board_comments(lambda p, n: [{"id": 3, "body": bad_r_b, "user": {"login": "u"}}])["complete"]
+
+    dup = _presence_comment(4, session="s-dup", author="u")
+    assert len(paginate_board_comments(lambda p, n: [dup, dict(dup, id=5)])["sessions"]) == 1
+
+
+@pytest.mark.unit
+def test_parse_read_preserves_pre_pagination_diagnostics_and_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: [_presence_comment(1, session="pag-s")])
+    raw_dict = {
+        "available": True,
+        "complete": False,
+        "comment_limit_exceeded": True,
+        "read_warnings": ["pre-rw"],
+        "replay_warnings": ["pre-rep"],
+        "active_conflicts": ["pre-act"],
+        "sessions": [{"session": "trunc-s", "repo": "RD"}],
+    }
+    raw = ScriptResult(0, json.dumps(raw_dict), "")
+    p = board_mod._parse_read(raw)
+    assert "pre-rw" in p["read_warnings"] and "pre-rep" in p["replay_warnings"] and "pre-act" in p["active_conflicts"]
+    assert p["comment_limit_exceeded"] is False and [s["session"] for s in p["sessions"]] == ["pag-s"]
+
+    conflict_page = [
+        _presence_comment(10, session="live-s", author="u1"),
+        _release_comment(11, session="live-s", author="u2", repo="Runner_Dashboard"),
+    ]
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: conflict_page)
+    p_conf = board_mod._parse_read(raw)
+    assert not p_conf["comment_limit_exceeded"] and not p_conf["complete"] and len(p_conf["sessions"]) == 1
+
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: (_ for _ in ()).throw(RuntimeError("fail")))
+    assert board_mod._parse_read(raw)["comment_limit_exceeded"] is True
+
+
+@pytest.mark.unit
+def test_coordination_files_and_functions_size_caps() -> None:
+    for name in ("board.py", "board_pagination.py"):
+        p = Path(f"backend/coordination/{name}")
+        assert p.exists() and len(p.read_text(encoding="utf-8").splitlines()) < 400
+        tree = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                length = (node.end_lineno or node.lineno) - node.lineno + 1
+                assert length <= 50, f"{name}:{node.name} exceeds 50 lines ({length})"
