@@ -271,3 +271,43 @@ def test_check_agent_claim_incomplete_over_1000_comments_fails_closed(
             session="codex-1",
             intent="must be denied",
         )
+
+
+def _release_comment(comment_id: int, *, session: str, repo: str) -> dict[str, Any]:
+    envelope = {
+        "version": 1,
+        "id": f"msg-{comment_id}",
+        "kind": "release",
+        "session": session,
+        "repo": repo,
+        "at": "2026-10-29T12:00:00+00:00",
+    }
+    body = f"<!-- agent-msg v1 id=msg-{comment_id} kind=release -->\n```json agent-msg\n{json.dumps(envelope)}\n```"
+    return {"id": comment_id, "body": body}
+
+
+@pytest.mark.unit
+def test_paginate_board_comments_enforces_first_owner_binding_and_separates_historical_vs_active_conflicts() -> None:
+    # 1. Expired session with cross-repo event: historical warning only, complete=True
+    comments_hist = [
+        _presence_comment(1, session="expired-s", repo="Tools", expires="2020-01-01T00:00:00+00:00"),
+        _release_comment(2, session="expired-s", repo="Runner_Dashboard"),
+        _presence_comment(3, session="clean-s", repo="Tools", expires="2099-01-01T00:00:00+00:00"),
+    ]
+    res_hist = paginate_board_comments(lambda page, per_page: comments_hist)
+    assert res_hist["complete"] is True
+    assert res_hist["degraded_history"] is True
+    assert "Rejected identity change for expired-s" in res_hist["replay_warnings"]
+    assert res_hist["active_conflicts"] == []
+    assert [s["session"] for s in res_hist["sessions"]] == ["clean-s"]
+
+    # 2. Live session with contested identity takeover: active conflict, complete=False
+    comments_contested = [
+        _presence_comment(10, session="live-s", repo="Runner_Dashboard", expires="2099-01-01T00:00:00+00:00"),
+        _release_comment(11, session="live-s", repo="Tools"),
+    ]
+    res_contested = paginate_board_comments(lambda page, per_page: comments_contested)
+    assert res_contested["complete"] is False
+    assert "Rejected identity change for live-s" in res_contested["active_conflicts"]
+    assert "Rejected identity change for live-s" in res_contested["replay_warnings"]
+    assert [s["session"] for s in res_contested["sessions"]] == ["live-s"]

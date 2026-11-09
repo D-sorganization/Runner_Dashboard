@@ -416,3 +416,75 @@ def test_claim_release_expiry_and_conflict_feed_the_activity_log_only_on_authori
     assert cev.payload["challenger_principal"] == "agent-codex"
     assert cev.payload["session"] == "codex-99"
     assert cev.payload["fencing_token_id"].startswith("ftk_")
+
+
+@pytest.mark.unit
+def test_sessions_complete_with_degraded_history_when_warnings_are_historical_only(
+    rm: FakeRM, client: TestClient
+) -> None:
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": True,
+            "degraded_history": True,
+            "read_warnings": [],
+            "replay_warnings": ["Rejected identity change for expired-session"],
+            "active_conflicts": [],
+            "sessions": [session("s1", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["Rejected identity change for expired-session"],
+        },
+    )
+    body = client.get("/api/coordination/sessions").json()
+    assert body["available"] is True
+    assert body["complete"] is True
+    assert body["degraded_history"] is True
+    assert body["read_warnings"] == []
+    assert body["replay_warnings"] == ["Rejected identity change for expired-session"]
+    assert body["active_conflicts"] == []
+    assert "Rejected identity change for expired-session" in body["warnings"]
+    assert [s["session"] for s in body["sessions"]] == ["s1"]
+
+
+@pytest.mark.unit
+def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: FakeRM, client: TestClient) -> None:
+    # Sub-case A: classified live active_conflicts even when complete in raw payload is True
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": False,
+            "complete": True,
+            "degraded_history": True,
+            "read_warnings": [],
+            "replay_warnings": ["Rejected identity change for live-s1"],
+            "active_conflicts": ["Rejected identity change for live-s1"],
+            "sessions": [session("live-s1", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["Rejected identity change for live-s1"],
+        },
+    )
+    body = client.get("/api/coordination/sessions").json()
+    assert body["available"] is True
+    assert body["complete"] is False
+    assert body["active_conflicts"] == ["Rejected identity change for live-s1"]
+    with pytest.raises(board_mod.RMScriptError):
+        board_mod.has_live_session("missing-s", "Tools")
+
+    # Sub-case B: legacy/unclassified payload (missing structured lists) with non-empty warnings
+    board_mod.reset_cache()
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "complete": True,
+            "sessions": [session("s1", "Tools")],
+            "warnings": ["unclassified warning"],
+        },
+    )
+    body_b = client.get("/api/coordination/sessions").json()
+    assert body_b["available"] is True
+    assert body_b["complete"] is False
+    assert "unclassified warning" in body_b["read_warnings"]
+    assert "unclassified warning" in body_b["warnings"]

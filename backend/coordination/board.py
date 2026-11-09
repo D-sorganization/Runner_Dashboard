@@ -47,6 +47,7 @@ DEFAULT_GUIDANCE = "Coordination unavailable; retain leases and inspect active P
 BoardPageFetcher = Callable[[int, int], list[dict[str, Any]]]
 board_page_fetcher: BoardPageFetcher | None = None
 _FENCED_AGENT_MSG = re.compile(r"```json\s+agent-msg\s*\n(.*?)\n```", re.DOTALL)
+_CANONICAL_AGENT_MSG = re.compile(r"<!--\s*agent-message\s+v1\s*-->\s*\n```json\s*\n(.*?)\n```", re.DOTALL)
 
 _clock = time.monotonic  # cache ages; tests replace it with a fake clock
 _real_clock = time.monotonic  # wall time for join timeouts, never faked
@@ -187,6 +188,10 @@ def _unavailable(reason: str) -> dict[str, Any]:
         "available": False,
         "reason": reason,
         "complete": False,
+        "degraded_history": False,
+        "read_warnings": [],
+        "replay_warnings": [],
+        "active_conflicts": [],
         "sessions": [],
         "messages": [],
         "conflicts": [],
@@ -214,6 +219,10 @@ def paginate_board_comments(
     """Paginate RM#2376 comments across all pages (>1,000 comments) and replay presence."""
     ref_now = now or datetime.now(UTC)
     active: dict[str, dict[str, Any]] = {}
+    owners: dict[str, tuple[str, str]] = {}
+    replay_warnings: list[str] = []
+    rejected_by_session: dict[str, list[str]] = {}
+    live_conflicts: list[str] = []
     warnings: list[str] = []
     complete = True
     total_comments = 0
@@ -231,7 +240,7 @@ def paginate_board_comments(
         total_comments += len(batch)
         for comment in batch:
             body = str(comment.get("body") or "") if isinstance(comment, dict) else ""
-            match = _FENCED_AGENT_MSG.search(body)
+            match = _FENCED_AGENT_MSG.search(body) or _CANONICAL_AGENT_MSG.search(body)
             if not match:
                 continue
             try:
@@ -242,34 +251,66 @@ def paginate_board_comments(
                 continue
             kind = str(env.get("kind") or "")
             sess = str(env.get("session") or "")
-            if not sess:
+            repo = str(env.get("repo") or "")
+            author = str((comment.get("user") or {}).get("login") or env.get("author") or "local")
+            if not sess or not kind:
                 continue
-            if kind == "release":
-                active.pop(sess, None)
-            elif kind == "presence":
+            unexpired_presence = False
+            if kind == "presence":
                 exp_raw = str(env.get("expires") or "")
+                unexpired_presence = True
                 if exp_raw:
                     try:
                         if datetime.fromisoformat(exp_raw.replace("Z", "+00:00")) <= ref_now:
-                            active.pop(sess, None)
-                            continue
+                            unexpired_presence = False
                     except ValueError:
                         pass
+            owner = (repo, author)
+            if sess in owners and owners[sess] != owner:
+                w = f"Rejected identity change for {sess}"
+                replay_warnings.append(w)
+                rejected_by_session.setdefault(sess, []).append(w)
+                if kind == "presence" and unexpired_presence:
+                    live_conflicts.append(w)
+                continue
+            if kind == "presence":
+                owners[sess] = owner
+                if not unexpired_presence:
+                    active.pop(sess, None)
+                    continue
                 active[sess] = _session(env)
+            elif sess not in owners:
+                w = f"Rejected unregistered sender {sess}"
+                replay_warnings.append(w)
+                rejected_by_session.setdefault(sess, []).append(w)
+                continue
+            elif kind == "release":
+                active.pop(sess, None)
         if len(batch) < per_page:
             break
     else:
         complete = False
         warnings.append(f"Board page limit ({max_pages} pages) reached; view is incomplete")
+    for sess in active:
+        if sess in rejected_by_session:
+            live_conflicts.extend(rejected_by_session[sess])
+    active_conflicts = list(dict.fromkeys(live_conflicts))
+    read_warnings = list(warnings)
+    all_warnings = list(dict.fromkeys([*read_warnings, *replay_warnings]))
+    is_complete = complete and not read_warnings and not active_conflicts
     return {
         "available": True,
-        "complete": complete,
+        "complete": is_complete,
+        "degraded_history": bool(replay_warnings),
+        "read_warnings": read_warnings,
+        "replay_warnings": replay_warnings,
+        "active_conflicts": active_conflicts,
         "comment_limit_exceeded": not complete and total_comments >= BOARD_COMMENT_LIMIT,
         "comment_count": total_comments,
         "sessions": list(active.values()),
         "messages": [],
         "conflicts": [],
-        "warnings": warnings,
+        "warnings": all_warnings,
     }
 
 
@@ -289,20 +330,50 @@ def _parse_read(res: ScriptResult) -> dict[str, Any]:
         return {
             "available": True,
             "complete": False,
+            "degraded_history": paginated["degraded_history"],
+            "read_warnings": paginated["read_warnings"],
+            "replay_warnings": paginated["replay_warnings"],
+            "active_conflicts": paginated["active_conflicts"],
             "comment_limit_exceeded": True,
             "sessions": [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)],
             "messages": list(data.get("messages") or []),
             "conflicts": list(data.get("conflicts") or []),
             "warnings": list(dict.fromkeys([*(str(w) for w in data.get("warnings") or []), *paginated["warnings"]])),
         }
+    has_structured_warnings = (
+        isinstance(data.get("read_warnings"), list)
+        and isinstance(data.get("replay_warnings"), list)
+        and isinstance(data.get("active_conflicts"), list)
+    )
+    raw_warnings = [str(w) for w in data.get("warnings") or []]
+    if has_structured_warnings:
+        read_warnings = [str(w) for w in data["read_warnings"]]
+        replay_warnings = [str(w) for w in data["replay_warnings"]]
+        active_conflicts = [str(w) for w in data["active_conflicts"]]
+    else:
+        # Do not default missing read_warnings/active_conflicts to empty when warnings exist
+        read_warnings = list(raw_warnings)
+        replay_warnings = []
+        active_conflicts = []
+    is_complete = (
+        bool(data.get("complete", False))
+        and not limit_hit
+        and not read_warnings
+        and not active_conflicts
+        and (data.get("ok", True) is True)
+    )
     return {
         "available": True,
-        "complete": bool(data.get("complete", False)) and not limit_hit,
+        "complete": is_complete,
+        "degraded_history": bool(data.get("degraded_history", bool(replay_warnings))),
+        "read_warnings": read_warnings,
+        "replay_warnings": replay_warnings,
+        "active_conflicts": active_conflicts,
         "comment_limit_exceeded": limit_hit,
         "sessions": [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)],
         "messages": list(data.get("messages") or []),
         "conflicts": list(data.get("conflicts") or []),
-        "warnings": [str(w) for w in data.get("warnings") or []],
+        "warnings": list(dict.fromkeys([*read_warnings, *replay_warnings, *raw_warnings])),
     }
 
 
@@ -340,15 +411,23 @@ def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
     for part in ok:
         for s in part["sessions"]:
             seen.setdefault((str(s.get("session")), str(s.get("repo"))), s)
-    warnings = [w for p in ok for w in p["warnings"]]
-    warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
+    read_warnings = [w for p in ok for w in p.get("read_warnings", [])]
+    read_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
+    replay_warnings = [w for p in ok for w in p.get("replay_warnings", [])]
+    active_conflicts = [w for p in ok for w in p.get("active_conflicts", [])]
+    all_warnings = [w for p in ok for w in p["warnings"]]
+    all_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
     return {
         "available": True,
         "complete": all(p["complete"] for p in parts),
+        "degraded_history": any(p.get("degraded_history", False) for p in parts),
+        "read_warnings": list(dict.fromkeys(read_warnings)),
+        "replay_warnings": list(dict.fromkeys(replay_warnings)),
+        "active_conflicts": list(dict.fromkeys(active_conflicts)),
         "sessions": list(seen.values()),
         "messages": [],
         "conflicts": [],
-        "warnings": list(dict.fromkeys(warnings)),
+        "warnings": list(dict.fromkeys(all_warnings)),
     }
 
 
@@ -394,7 +473,18 @@ def read_inbox(session: str, repo: str) -> dict[str, Any]:
         return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"))
 
     data = _cached(f"inbox:{repo.casefold()}:{session}", load)
-    keys = ("available", "reason", "complete", "messages", "conflicts", "warnings")
+    keys = (
+        "available",
+        "reason",
+        "complete",
+        "degraded_history",
+        "read_warnings",
+        "replay_warnings",
+        "active_conflicts",
+        "messages",
+        "conflicts",
+        "warnings",
+    )
     return {k: data[k] for k in keys if k in data}
 
 
