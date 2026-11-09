@@ -180,6 +180,53 @@ def test_jobs_claim_fail_open_502(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.mark.unit
+def test_jobs_claim_post_write_check_unavailable_is_not_success(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#4222: a post-write ``check_agent_claim`` that fails open must never report a successful claim."""
+    from coordination import jobs as jobs_mod
+    from coordination.board import RMScriptError
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(58))
+    rm.respond("post_agent_lease", lease_result())
+    posted = {"n": 0}
+    real_post_lease = claims_mod.post_lease
+
+    def post_lease(*a: Any, **k: Any) -> dict[str, Any]:
+        posted["n"] += 1
+        return real_post_lease(*a, **k)
+
+    def check(repo: str, issue: int) -> dict[str, Any]:
+        if posted["n"] == 0:
+            return {"available": True, "held": False, "agent": "", "session": "", "reason": ""}
+        return {"available": False, "reason": "error:Timeout", "held": None}
+
+    monkeypatch.setattr(claims_mod, "post_lease", post_lease)
+    monkeypatch.setattr(claims_mod, "check", check)
+
+    with pytest.raises(RMScriptError):
+        jobs_mod.claim_job("Tools", 58, agent="codex", session="codex-58", intent="ship")
+    assert jobs_mod._current_fence("Tools", 58) == 0
+
+
+@pytest.mark.unit
+def test_jobs_claim_post_write_check_unheld_is_not_success(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#4222: a verified-unheld post-write read means the lease never stuck; no claim, no fence, no activity."""
+    from coordination import jobs as jobs_mod
+    from coordination.board import RMScriptError
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(59))
+    rm.respond("post_agent_lease", lease_result())
+    monkeypatch.setattr(
+        claims_mod,
+        "check",
+        lambda repo, issue: {"available": True, "held": False, "agent": "", "session": "", "reason": ""},
+    )
+
+    with pytest.raises(RMScriptError):
+        jobs_mod.claim_job("Tools", 59, agent="codex", session="codex-59", intent="ship")
+    assert jobs_mod._current_fence("Tools", 59) == 0
+
+
+@pytest.mark.unit
 def test_jobs_concurrent_claim_one_wins(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
     from coordination import jobs as jobs_mod
     from coordination.jobs import JobIneligibleError
@@ -243,21 +290,47 @@ def _ttl_fetch(number: int) -> Any:
 
 
 def _post_claim(client: TestClient, rm: FakeRM, monkeypatch: pytest.MonkeyPatch, number: int) -> dict[str, Any]:
+    """Claim ``number`` for ``codex-<number>``, modelling a real post-write read: unheld, then held by us.
+
+    Only patches ``claims_mod.check`` for the claim call itself (via a scoped ``MonkeyPatch``), so callers
+    are free to drive later reads (sweep, re-list) through ``rm.respond("check_agent_claim", ...)`` as before.
+    """
     monkeypatch.setattr(claims_mod, "evidence_fetch", _ttl_fetch(number))
-    rm.respond("check_agent_claim", claim_status(False))
     rm.respond("post_agent_lease", lease_result())
-    resp = client.post(
-        "/api/coordination/jobs/claim",
-        json={
-            "session": f"codex-{number}",
-            "repo": "Tools",
-            "issue": number,
+    posted = {"n": 0}
+    real_post_lease = claims_mod.post_lease
+
+    def post_lease(*a: Any, **k: Any) -> dict[str, Any]:
+        posted["n"] += 1
+        return real_post_lease(*a, **k)
+
+    def check(repo: str, issue: int) -> dict[str, Any]:
+        if posted["n"] == 0:
+            return {"available": True, "held": False, "agent": "", "session": "", "reason": ""}
+        return {
+            "available": True,
+            "held": True,
             "agent": "codex",
-            "intent": "ship",
-            "ttl_hours": 0.1,
-        },
-        headers=_BOT,
-    )
+            "session": f"codex-{number}",
+            "reason": "active lease",
+            "expires_at": None,
+        }
+
+    with pytest.MonkeyPatch.context() as claim_mp:
+        claim_mp.setattr(claims_mod, "post_lease", post_lease)
+        claim_mp.setattr(claims_mod, "check", check)
+        resp = client.post(
+            "/api/coordination/jobs/claim",
+            json={
+                "session": f"codex-{number}",
+                "repo": "Tools",
+                "issue": number,
+                "agent": "codex",
+                "intent": "ship",
+                "ttl_hours": 0.1,
+            },
+            headers=_BOT,
+        )
     assert resp.status_code == 200, resp.text
     return resp.json()
 
