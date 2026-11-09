@@ -104,25 +104,26 @@ def prepare_cloud_workdir(store: RunStore, rec: RunRecord) -> Path:
     return workdir
 
 
-def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
-    """Resolve clone/worktree for ``rec``; persists ``workdir`` on the run row."""
-    if not plan.repo:
-        workdir = workspace.staff_worktrees_root() / rec.id
-        workdir.mkdir(parents=True, exist_ok=True)
-        store.update_run(rec.id, workdir=str(workdir))
-        return workdir
-    checkout = workspace.find_repo_checkout(plan.repo)
-    if checkout is None:
-        store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
-        checkout = workspace.clone_repo(plan.repo)
+def _ensure_disk_floor_admitted(
+    store: RunStore,
+    rec: RunRecord,
+    *,
+    stage: str,
+    allow_sweep: bool = True,
+) -> bool:
+    """Enforce ``resource_floor`` before ``stage``; returns whether a sweep ran."""
+    if not stage.strip():
+        raise ValueError("stage must be non-empty")
+    swept = False
     breach = staff_disk_floor_breach_reason()
-    if breach:
+    if breach and allow_sweep:
+        swept = True
         stats = workspace.sweep_stale_worktrees(store)
         if any(stats.values()):
             store.append_event(rec.id, "worktree", f"disk floor breached ({breach}); prune attempt {stats}")
         breach = staff_disk_floor_breach_reason()
     if breach:
-        detail = f"runner schedule disk floor breached: {breach}; free space before creating a worktree"
+        detail = f"runner schedule disk floor breached: {breach}; free space before {stage}"
         store.update_run(
             rec.id,
             status="failed",
@@ -134,6 +135,28 @@ def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
         )
         store.append_event(rec.id, "error", detail)
         raise StaffRunPreparationError(detail)
+    return swept
+
+
+def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
+    """Resolve clone/worktree for ``rec``; persists ``workdir`` on the run row."""
+    if not plan.repo:
+        workdir = workspace.staff_worktrees_root() / rec.id
+        workdir.mkdir(parents=True, exist_ok=True)
+        store.update_run(rec.id, workdir=str(workdir))
+        return workdir
+    checkout = workspace.find_repo_checkout(plan.repo)
+    swept = False
+    if checkout is None:
+        swept = _ensure_disk_floor_admitted(store, rec, stage=f"cloning {plan.repo}")
+        store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
+        checkout = workspace.clone_repo(plan.repo)
+    _ensure_disk_floor_admitted(
+        store,
+        rec,
+        stage="creating a worktree",
+        allow_sweep=not swept,
+    )
     worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
     workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
     store.update_run(rec.id, workdir=str(worktree))
