@@ -125,6 +125,31 @@ def test_the_cost_guard_needs_confirmation(client: TestClient, monkeypatch: pyte
 
 
 @pytest.mark.unit
+def test_an_unverified_subscription_policy_rejects_before_any_thread_is_created(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#4223: the panel thread is never created when the opt-in policy's seat check fails."""
+    monkeypatch.setattr(
+        staff_panels,
+        "verify_panel_subscriptions",
+        lambda _body: [{"seat": "Brook", "provider": "claude", "reason": "no Claude auth.json"}],
+    )
+    res = client.post("/api/v1/staff/panels", json={**BODY, "require_verified_subscription": True})
+    assert res.status_code == 403, res.text
+    err = res.json()
+    detail = err.get("error") or err.get("detail") or {}
+    assert detail["code"] == "subscription_unverified"
+    assert "Brook" in detail["message"] and "claude" in detail["message"]
+    assert get_conversation_store().list_threads() == []
+
+
+@pytest.mark.unit
+def test_the_subscription_policy_is_opt_in_and_does_not_affect_ordinary_panels(client: TestClient) -> None:
+    res = client.post("/api/v1/staff/panels", json=BODY)
+    assert res.status_code == 202, res.text
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "patch",
     [{"experts": BODY["experts"][:2]}, {"rounds": 9}, {"topic": ""}, {"mode": "shouting"}, {"extra": 1}],

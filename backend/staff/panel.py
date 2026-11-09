@@ -45,7 +45,8 @@ from staff.panel_prompts import (
     parse_stance,
 )
 from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_scratch
-from staff.seat_fallback import run_turn_with_fallback
+from staff.panel_subscription_policy import check_provider_subscription
+from staff.seat_fallback import FallbackStep, run_turn_with_fallback
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.panel")
@@ -150,23 +151,39 @@ async def _speak(
     meta: dict[str, Any],
     runner: TurnRunner,
     timeout: float,
+    *,
+    strict_subscription: bool = False,
 ) -> dict[str, Any]:
-    """Run one turn into its own message and return the turn record (status ok/error/timeout)."""
+    """Run one turn into its own message and return the turn record (status ok/error/timeout).
+
+    ``strict_subscription`` (#4223) pins this turn to ``speaker``'s own provider and model --
+    no fallback step ever substitutes a different one -- and rechecks that provider's
+    subscription authentication immediately before the turn is attempted; an unverified or
+    disabled provider fails this turn closed without ever invoking ``runner``.
+    """
     placeholder = store.add_message(
         thread_id, author_kind="role", author=speaker.name, body_md="", meta=meta, delivery="streaming"
     )
     await _publish(store, placeholder.id)
-    try:
-        outcome = await asyncio.wait_for(
-            run_turn_with_fallback(speaker, prompt, thread_id, placeholder.id, runner),
-            timeout=timeout,
-        )
-        status, text, error = ("ok", outcome.text, None) if outcome.ok else ("error", "", outcome.error or "failed")
-    except TimeoutError:
-        status, text, error = "timeout", "", f"no reply within {timeout:.0f} s"
-    except Exception as exc:  # noqa: BLE001 — one seat failing must not end the panel
-        log.warning("panel turn by %s failed: %s", speaker.name, exc)
-        status, text, error = "error", "", str(exc)
+    status: str
+    text: str
+    error: str | None
+    policy_failure = check_provider_subscription(speaker.provider) if strict_subscription else None
+    if policy_failure is not None and not policy_failure.ok:
+        status, text, error = "error", "", f"subscription policy: {policy_failure.reason}"
+    else:
+        steps = (FallbackStep(speaker.provider, speaker.model),) if strict_subscription else None
+        try:
+            outcome = await asyncio.wait_for(
+                run_turn_with_fallback(speaker, prompt, thread_id, placeholder.id, runner, steps=steps),
+                timeout=timeout,
+            )
+            status, text, error = ("ok", outcome.text, None) if outcome.ok else ("error", "", outcome.error or "failed")
+        except TimeoutError:
+            status, text, error = "timeout", "", f"no reply within {timeout:.0f} s"
+        except Exception as exc:  # noqa: BLE001 — one seat failing must not end the panel
+            log.warning("panel turn by %s failed: %s", speaker.name, exc)
+            status, text, error = "error", "", str(exc)
     stance, position = parse_stance(text) if status == "ok" else (None, None)
     final_meta = {**meta, "panel_status": status, "panel_stance": stance, "panel_position": position}
     if error:
@@ -266,7 +283,16 @@ async def run_panel(
                 speaker = _speaker(expert)
                 prompt = build_turn_prompt(request, speaker, round_no, turns, codebase_context, grounded_repos)
                 meta = {"is_panel_turn": True, "panel_round": round_no, "panel_expert": speaker.name}
-                record = await _speak(store, thread_id, speaker, prompt, meta, run, turn_timeout)
+                record = await _speak(
+                    store,
+                    thread_id,
+                    speaker,
+                    prompt,
+                    meta,
+                    run,
+                    turn_timeout,
+                    strict_subscription=request.require_verified_subscription,
+                )
                 record.update(round=round_no, expert=speaker.name)
                 turns.append(record)
                 round_turns.append(record)
@@ -283,7 +309,16 @@ async def run_panel(
         )
         prompt = build_synthesis_prompt(request, turns, rounds_used, consensus, codebase_context, tally)
         meta = {"is_panel_synthesis": True, "panel_expert": MODERATOR_NAME}
-        synthesis = await _speak(store, thread_id, moderator, prompt, meta, run, turn_timeout)
+        synthesis = await _speak(
+            store,
+            thread_id,
+            moderator,
+            prompt,
+            meta,
+            run,
+            turn_timeout,
+            strict_subscription=request.require_verified_subscription,
+        )
         synthesis_ok = synthesis["status"] == "ok"
         expert_ok = any(t.get("status") == "ok" for t in turns)
         seat_errors = sum(1 for t in turns if t.get("status") != "ok")

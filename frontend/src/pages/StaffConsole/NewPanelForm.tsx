@@ -163,6 +163,7 @@ export function NewPanelForm({ onCreated, onCancel }: NewPanelFormProps) {
       preload_codebase: true,
       ground_repos: true,
       moderator_provider: providers[0] || "claude",
+      require_verified_subscription: false,
       experts: experts.map((e) => ({
         name: e.name.trim(),
         perspective: e.perspective.trim(),
