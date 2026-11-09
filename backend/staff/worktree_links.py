@@ -21,6 +21,7 @@ def _link_kind(path: Path) -> str:
 
 
 def _check_ancestors(path: Path) -> None:
+    path = path.absolute()
     for candidate in reversed((path, *path.parents)):
         if kind := _link_kind(candidate):
             raise OSError(f"{kind} at worktree or ancestor {candidate}")
@@ -66,7 +67,7 @@ def unlink_worktree_links(path: Path) -> None:
         if (
             os.name == "nt"
             and kind == "Windows reparse point"
-            and candidate.lstat().st_file_attributes & stat.FILE_ATTRIBUTE_DIRECTORY
+            and getattr(candidate.lstat(), "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_DIRECTORY
         ):
             candidate.rmdir()
         else:
