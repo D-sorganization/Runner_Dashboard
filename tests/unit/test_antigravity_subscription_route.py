@@ -69,7 +69,8 @@ def test_collect_snapshot_detects_api_key_settings_without_leaking_secrets(
     cli = home / "antigravity-cli"
     cli.mkdir(parents=True)
     (cli / "jetski_state.pbtxt").write_text("marker", encoding="utf-8")
-    (home / "settings.json").write_text(json.dumps({"apiKey": "sk-secret"}), encoding="utf-8")
+    fixture_key = "fixture-non-secret-placeholder"  # pragma: allowlist secret
+    (home / "settings.json").write_text(json.dumps({"apiKey": fixture_key}), encoding="utf-8")
     monkeypatch.setattr(route, "resolve_antigravity_home", lambda: home)
     monkeypatch.setattr(route, "antigravity_oauth_session_alive", lambda: (True, ""))
     snap = route.collect_antigravity_route_snapshot()
