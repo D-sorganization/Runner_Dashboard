@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import provider_switch
+from staff.antigravity_subscription_route import verify_antigravity_subscription_route_for_panel
 from staff.cli_oauth_session import provider_oauth_session_alive
 from staff.panel_models import MODERATOR_NAME, PanelCreateRequest
 
@@ -36,6 +37,9 @@ def check_provider_subscription(provider: str) -> SubscriptionCheck:
     """
     if provider_switch.is_disabled(provider):
         return SubscriptionCheck(provider, False, provider_switch.DISABLED_DETAIL)
+    if provider == "antigravity":
+        route = verify_antigravity_subscription_route_for_panel()
+        return SubscriptionCheck(provider, route.ok, route.reason)
     alive, detail = provider_oauth_session_alive(provider)
     return SubscriptionCheck(provider, alive, "" if alive else (detail or "subscription session not verified"))
 

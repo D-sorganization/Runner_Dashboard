@@ -61,11 +61,17 @@ def test_panel_seats_lists_every_expert_then_the_moderator() -> None:
 @pytest.mark.unit
 def test_verify_panel_subscriptions_names_only_the_failing_seats(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("STAFF_DISABLED_PROVIDERS", raising=False)
+    from staff.antigravity_subscription_route import AntigravityRouteVerdict
 
     def fake_alive(provider: str) -> tuple[bool, str]:
         return (provider != "codex", "" if provider != "codex" else "no Codex auth.json")
 
     monkeypatch.setattr(policy, "provider_oauth_session_alive", fake_alive)
+    monkeypatch.setattr(
+        policy,
+        "verify_antigravity_subscription_route_for_panel",
+        lambda: AntigravityRouteVerdict(True, ""),
+    )
     failures = policy.verify_panel_subscriptions(_request())
     assert failures == [{"seat": "Brook", "provider": "codex", "reason": "no Codex auth.json"}]
 
@@ -73,5 +79,12 @@ def test_verify_panel_subscriptions_names_only_the_failing_seats(monkeypatch: py
 @pytest.mark.unit
 def test_verify_panel_subscriptions_is_empty_when_every_seat_is_verified(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("STAFF_DISABLED_PROVIDERS", raising=False)
+    from staff.antigravity_subscription_route import AntigravityRouteVerdict
+
     monkeypatch.setattr(policy, "provider_oauth_session_alive", lambda _p: (True, ""))
+    monkeypatch.setattr(
+        policy,
+        "verify_antigravity_subscription_route_for_panel",
+        lambda: AntigravityRouteVerdict(True, ""),
+    )
     assert policy.verify_panel_subscriptions(_request()) == []
