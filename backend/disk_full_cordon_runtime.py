@@ -131,9 +131,10 @@ def _run_cleanup_commands(
         except (OSError, subprocess.TimeoutExpired) as exc:
             log.warning("disk-full cordon: cleanup %s failed: %s", command.description, exc)
     try:
+        from staff.store import get_run_store  # noqa: PLC0415
         from staff.worktree_hygiene import sweep_stale_worktrees  # noqa: PLC0415
 
-        sweep_stale_worktrees()
+        sweep_stale_worktrees(get_run_store())
     except Exception as exc:  # noqa: BLE001
         log.debug("disk-full cordon: stale worktree sweep skipped: %s", exc)
 
