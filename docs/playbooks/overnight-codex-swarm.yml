@@ -1,0 +1,40 @@
+schema_version: 1
+playbook_id: overnight-codex-swarm
+version: "1.0.0"
+title: Overnight Codex Swarm
+summary: >
+  Run a bounded set of unattended Codex lanes overnight against a shared
+  backlog, each lane working one issue at a time and reporting at
+  checkpoints rather than live.
+manual_anchors:
+  - claim-before-touching
+  - no-holds-bypass
+  - reporting-cadence
+directive_refs:
+  - fleet-standards
+role_refs:
+  - barb
+  - codex-worker
+parameters:
+  - name: max_lanes
+    param_type: integer
+    required: true
+    default: 4
+    description: Upper bound on concurrently running overnight lanes.
+  - name: mode
+    param_type: enum
+    required: false
+    default: standard
+    choices: [standard, drain]
+    description: "standard: take any unclaimed backlog item; drain: only finish lanes' already-open PRs."
+  - name: backlog_label
+    param_type: string
+    required: true
+    description: Issue label identifying the backlog this swarm run should pull from.
+steps:
+  - "Phase 1 (Spin-up): start at most max_lanes lane sessions, each reading the manual before touching an issue."
+  - "Phase 2 (Claim): each lane checks for an existing claim, then acquires its own lease via manual#claim-before-touching before writing anything."
+  - "Phase 3 (Work): each lane finishes its one claimed issue as a single non-draft PR, never stacking a second PR on an unmerged one."
+  - "Phase 4 (Checkpoint): each lane records a report checkpoint after its PR opens, merges, or blocks, then picks the next unclaimed backlog item under backlog_label."
+  - "Phase 5 (Drain): when mode is drain, lanes stop claiming new issues and only push fixes to their already-open PRs until each one merges or is explicitly released."
+  - "Phase 6 (Wind-down): a lane that hits a hold releases its claim and reports the hold instead of working around it."
