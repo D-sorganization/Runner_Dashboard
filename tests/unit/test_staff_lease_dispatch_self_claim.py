@@ -215,6 +215,35 @@ def test_acquire_block_diagnostics_skip_cleanly_on_non_numeric_issue(
     assert [item.kind for item in page.items] == []
 
 
+def test_acquire_continues_when_rm_reports_no_active_lease_for_own_label(
+    rm_root: FakeRM, store: RunStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#4216 regression: RM's bare-label reason "(no active lease)" is not a foreign hold.
+
+    ``check_agent_claim`` reports ``held=True`` with ``reason="claim label
+    claim:issue-remediator (no active lease)"`` whenever a pre-applied dispatch
+    label exists but nobody has posted a lease comment. The substring "active
+    lease" previously matched ``_HOLD_BLOCKERS`` even though the full phrase
+    says the opposite (*no* active lease), so the worker treated its own label
+    as a foreign hold and blocked itself.
+    """
+    role_agent = "issue-remediator"
+    claim_guard._applied[RUN_ID] = (f"D-sorganization/{REPO}", int(ISSUE), f"claim:{role_agent}")
+    rm_root.respond(
+        "check_agent_claim",
+        claim_status(True, role_agent, f"claim label claim:{role_agent} (no active lease)"),
+    )
+    rm_root.respond("post_agent_lease", lease_result(agent=role_agent))
+    rm_root.respond("agent_communicate:register", {"ok": True})
+
+    _seed_run(store)
+    note = lease_mod.acquire(store, RUN_ID, repo=REPO, issue=ISSUE, agent=role_agent, branch="cursor/4063-fix")
+    assert note is not None
+    rec = store.get_run(RUN_ID)
+    assert rec is not None and rec.status != "blocked" and rec.failure_class != "lease_blocked"
+    assert "post_agent_lease" in [name for name, _ in rm_root.calls()]
+
+
 def test_is_own_dispatch_claim_hold_unit() -> None:
     check: dict[str, Any] = {
         "held": True,
@@ -226,4 +255,17 @@ def test_is_own_dispatch_claim_hold_unit() -> None:
     foreign = {**claim_status(True, "codex", "active lease"), "session": "codex-1"}
     assert not dispatch_self_claim.is_own_dispatch_claim_hold(
         "run-x", foreign, agent="antigravity", session="staff-run-x"
+    )
+
+
+def test_is_own_dispatch_claim_hold_not_confused_by_no_active_lease_negation() -> None:
+    """#4216: "(no active lease)" must not match the "active lease" blocker substring."""
+    claim_guard._applied["run-y"] = ("D-sorganization/Runner_Dashboard", 2, "claim:issue-remediator")
+    own_bare_label: dict[str, Any] = {
+        "held": True,
+        "agent": "issue-remediator",
+        "reason": "claim label claim:issue-remediator (no active lease)",
+    }
+    assert dispatch_self_claim.is_own_dispatch_claim_hold(
+        "run-y", own_bare_label, agent="antigravity", session="staff-run-y"
     )
