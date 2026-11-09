@@ -338,20 +338,20 @@ def _env_dict(cid: int, sess: str, **kw: Any) -> dict[str, Any]:
 
 @pytest.mark.unit
 def test_quoted_prose_comment_is_ignored_as_non_coordination() -> None:
-    bj = json.dumps(_env_dict(1, "s-q"))
-    prose = {"id": 1, "body": f"Note:\n<!-- agent-message v1 -->\n```json\n{bj}\n```\nIgnore.", "user": {"login": "r"}}
-    assert paginate_board_comments(lambda p, n: [prose])["sessions"] == []
-    cj = json.dumps(_env_dict(2, "s-c"))
-    body = f"<!-- agent-message v1 -->\n```json\n{cj}\n```\n<!-- fleet-CTA-footer -->\nx"
-    canon = {"id": 2, "body": body, "user": {"login": "b"}}
-    res = paginate_board_comments(lambda p, n: [canon])
+    p_body = f"Note:\n<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(1, 's-q'))}\n```\nIgnore."
+    assert paginate_board_comments(lambda p, n: [{"id": 1, "body": p_body, "user": {"login": "r"}}])["sessions"] == []
+    c_body = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(2, 's-c'))}\n```\n<!-- fleet-CTA-footer -->\nx"
+    res = paginate_board_comments(lambda p, n: [{"id": 2, "body": c_body, "user": {"login": "b"}}])
     assert res["complete"] is True and [s["session"] for s in res["sessions"]] == ["s-c"]
+    for b in ("<!-- note: prose -->\nx", "<!-- agent-lease v1 -->\ny"):
+        r = paginate_board_comments(lambda p, n, b=b: [{"id": 3, "body": b, "user": {"login": "r"}}])
+        assert r["sessions"] == [] and not r["read_warnings"]
 
 
 @pytest.mark.unit
 def test_strict_author_binding_and_cross_author_spoofing() -> None:
-    anon_body = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(1, 's-anon'))}\n```"
-    res_anon = paginate_board_comments(lambda p, n: [{"id": 1, "body": anon_body, "user": {}}])
+    anon_b = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(1, 's-anon'))}\n```"
+    res_anon = paginate_board_comments(lambda p, n: [{"id": 1, "body": anon_b, "user": {}}])
     assert not res_anon["complete"] and any(
         "without verified GitHub user.login" in w for w in res_anon["read_warnings"]
     )
@@ -364,14 +364,14 @@ def test_strict_author_binding_and_cross_author_spoofing() -> None:
 
 @pytest.mark.unit
 def test_malformed_coordination_block_and_invalid_expires_fail_closed() -> None:
-    bad_j = {"id": 1, "body": "<!-- agent-message v1 -->\n```json\n{broken\n```", "user": {"login": "u"}}
-    assert not paginate_board_comments(lambda p, n: [bad_j])["complete"]
-
-    no_exp_b = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(2, 's-ne', expires=''))}\n```"
-    assert not paginate_board_comments(lambda p, n: [{"id": 2, "body": no_exp_b, "user": {"login": "u"}}])["complete"]
-
-    bad_r_b = f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(3, 's-nr', repo=''))}\n```"
-    assert not paginate_board_comments(lambda p, n: [{"id": 3, "body": bad_r_b, "user": {"login": "u"}}])["complete"]
+    bad_b = [
+        "<!-- agent-message v1 -->\n```json\n{broken\n```",
+        f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(2, 's-ne', expires=''))}\n```",
+        f"<!-- agent-message v1 -->\n```json\n{json.dumps(_env_dict(3, 's-nr', repo=''))}\n```",
+    ]
+    for i, b in enumerate(bad_b, 1):
+        c = [{"id": i, "body": b, "user": {"login": "u"}}]
+        assert not paginate_board_comments(lambda p, n, c=c: c)["complete"]
 
     dup = _presence_comment(4, session="s-dup", author="u")
     assert len(paginate_board_comments(lambda p, n: [dup, dict(dup, id=5)])["sessions"]) == 1
@@ -379,31 +379,50 @@ def test_malformed_coordination_block_and_invalid_expires_fail_closed() -> None:
 
 @pytest.mark.unit
 def test_parse_read_preserves_pre_pagination_diagnostics_and_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: [_presence_comment(1, session="pag-s")])
-    raw_dict = {
+    limit_w = "Board page limit reached inside the read window; the retrieved view is incomplete"
+    d_lim = {
         "available": True,
         "complete": False,
         "comment_limit_exceeded": True,
-        "read_warnings": ["pre-rw"],
+        "read_warnings": [limit_w],
+        "replay_warnings": ["Rejected identity change for old-expired"],
+        "active_conflicts": [],
+        "warnings": [limit_w, "Rejected identity change for old-expired"],
+        "sessions": [{"session": "trunc-s", "repo": "RD"}],
+    }
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: [_presence_comment(1, session="pag-s")])
+    p = board_mod._parse_read(ScriptResult(0, json.dumps(d_lim), ""))
+    assert p["complete"] is True and p["degraded_history"] is True and not p["comment_limit_exceeded"]
+    assert p["read_warnings"] == [] and p["active_conflicts"] == []
+    assert [s["session"] for s in p["sessions"]] == ["pag-s"]
+    assert "Rejected identity change for old-expired" in p["replay_warnings"]
+
+    monkeypatch.setattr(board_mod, "cached_board_state", lambda: p)
+    monkeypatch.setattr(claims_mod, "run_module", lambda *a, **kw: ScriptResult(0, json.dumps({"held": False}), ""))
+    chk = claims_mod.check("Runner_Dashboard", 9999)
+    assert chk["available"] is True and chk["held"] is False
+
+    d_rw = {
+        "available": True,
+        "complete": False,
+        "comment_limit_exceeded": True,
+        "read_warnings": ["pre-rw", limit_w],
         "replay_warnings": ["pre-rep"],
         "active_conflicts": ["pre-act"],
         "sessions": [{"session": "trunc-s", "repo": "RD"}],
     }
-    raw = ScriptResult(0, json.dumps(raw_dict), "")
-    p = board_mod._parse_read(raw)
-    assert "pre-rw" in p["read_warnings"] and "pre-rep" in p["replay_warnings"] and "pre-act" in p["active_conflicts"]
-    assert p["comment_limit_exceeded"] is False and [s["session"] for s in p["sessions"]] == ["pag-s"]
+    p_rw = board_mod._parse_read(ScriptResult(0, json.dumps(d_rw), ""))
+    assert "pre-rw" in p_rw["read_warnings"] and "pre-rep" in p_rw["replay_warnings"]
+    assert "pre-act" in p_rw["active_conflicts"] and not p_rw["complete"] and not p_rw["comment_limit_exceeded"]
 
-    conflict_page = [
-        _presence_comment(10, session="live-s", author="u1"),
-        _release_comment(11, session="live-s", author="u2", repo="Runner_Dashboard"),
-    ]
-    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: conflict_page)
-    p_conf = board_mod._parse_read(raw)
+    c_page = [_presence_comment(10, session="live-s", author="u1")]
+    c_page.append(_release_comment(11, session="live-s", author="u2", repo="Runner_Dashboard"))
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: c_page)
+    p_conf = board_mod._parse_read(ScriptResult(0, json.dumps(d_lim), ""))
     assert not p_conf["comment_limit_exceeded"] and not p_conf["complete"] and len(p_conf["sessions"]) == 1
 
     monkeypatch.setattr(board_mod, "board_page_fetcher", lambda p, n: (_ for _ in ()).throw(RuntimeError("fail")))
-    assert board_mod._parse_read(raw)["comment_limit_exceeded"] is True
+    assert board_mod._parse_read(ScriptResult(0, json.dumps(d_lim), ""))["comment_limit_exceeded"] is True
 
 
 @pytest.mark.unit
@@ -411,8 +430,7 @@ def test_coordination_files_and_functions_size_caps() -> None:
     for name in ("board.py", "board_pagination.py"):
         p = Path(f"backend/coordination/{name}")
         assert p.exists() and len(p.read_text(encoding="utf-8").splitlines()) < 400
-        tree = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
-        for node in ast.walk(tree):
+        for node in ast.walk(ast.parse(p.read_text(encoding="utf-8"), filename=str(p))):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 length = (node.end_lineno or node.lineno) - node.lineno + 1
                 assert length <= 50, f"{name}:{node.name} exceeds 50 lines ({length})"

@@ -28,11 +28,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from coordination.board_pagination import (
-    _merge_paginated,
-    _session,
-    paginate_board_comments,
-)
+from coordination.board_pagination import _merge_paginated, _session, paginate_board_comments
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.roles import load_roles
 
