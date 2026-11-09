@@ -24,3 +24,4 @@
 /.github/workflows/ @D-sorganization/maintainers
 /docs/adr/ @D-sorganization/maintainers
 /SPEC.md @D-sorganization/maintainers
+/docs/playbooks/manual.yml @D-sorganization/maintainers

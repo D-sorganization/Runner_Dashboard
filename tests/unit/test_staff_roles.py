@@ -257,6 +257,19 @@ def test_library_read_requires_literal_true() -> None:
 
 
 @pytest.mark.unit
+def test_parse_role_does_not_retain_top_level_scopes_for_run_tokens() -> None:
+    """RM#2393: arbitrary top-level ``scopes`` in role YAML are not part of RoleSpec or run-token minting."""
+    role_dict = dict(_VALID_ROLE_DICT)
+    role_dict["scopes"] = ["admin", "owner", "proposals.write"]
+    role_dict["permissions"] = dict(_VALID_ROLE_DICT["permissions"])
+    role_dict["permissions"]["library_read"] = True
+    spec = roles_mod.parse_role(role_dict, source_path="/path/scout.yml")
+    dumped = spec.to_dict()
+    assert "scopes" not in dumped
+    assert spec.library_read is True
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(("level", "ok"), [("owner", True), ("confirm", False), ("auto", False)])
 def test_vhdx_compaction_default_approval_is_owner(level: str, ok: bool) -> None:
     """#1332: a role may not approve a disk-compaction request below owner level."""
