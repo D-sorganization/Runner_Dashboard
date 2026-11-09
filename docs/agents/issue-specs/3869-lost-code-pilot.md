@@ -26,7 +26,7 @@ After #3867 ledger and #3868 harness land, schedule a **weekly** pilot on `D-sor
 
 - [ ] Weekly slot fires in dry-run on staging (test).
 - [ ] Pilot limited to Tools (test/config).
-- [ ] PR &lt;500 lines; `Closes #3869`.
+- [ ] Cohesive PR (~500 lines advisory); `Closes #3869`.
 
 ## Labels
 

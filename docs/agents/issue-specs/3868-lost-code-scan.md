@@ -21,7 +21,7 @@ Depends on #3867 ledger merged.
 
 - [ ] Scan writes ledger rows only; no direct issue filing.
 - [ ] Tier 1 runs with no external API keys (test).
-- [ ] PR &lt;500 lines, TDD; `Closes #3868`.
+- [ ] Cohesive PR (~500 lines advisory), TDD; `Closes #3868`.
 
 ## PR split
 

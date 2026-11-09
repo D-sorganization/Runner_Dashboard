@@ -31,4 +31,4 @@ Staff Console focus tests fail on mobile drawer scenarios: hidden focus candidat
 
 ## PR split
 
-Single PR (under 500 lines).
+Single cohesive PR (line count advisory).

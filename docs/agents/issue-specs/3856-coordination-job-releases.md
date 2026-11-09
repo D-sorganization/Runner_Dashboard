@@ -33,4 +33,4 @@ Job-board claim/release history lives in the activity log but is not exposed rea
 
 ## PR split
 
-Single PR (under 500 lines).
+Single cohesive PR (line count advisory).
