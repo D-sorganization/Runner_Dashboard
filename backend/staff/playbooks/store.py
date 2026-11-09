@@ -21,6 +21,7 @@ from staff.playbooks.schema import (
 
 PLAYBOOKS_DIR_ENV = "STAFF_PLAYBOOKS_DIR"
 _SIBLING_RELATIVE = ("Repository_Management", "staff", "playbooks")
+_LOCAL_RELATIVE = ("docs", "playbooks")
 _MANUAL_FILENAMES = ("manual.yml", "manual.yaml")
 
 _CACHE_LOCK = threading.Lock()
@@ -31,16 +32,28 @@ _CACHE_ERRORS: dict[str, str] = {}
 
 
 def playbooks_dir() -> Path | None:
-    """Resolve the playbooks directory. Returns None when nothing is found."""
+    """Resolve the playbooks directory. Returns None when nothing is found.
+
+    Resolution order: operator override, then a sibling Repository_Management
+    checkout (the fleet-wide canonical source, mirroring ``staff/roles.py``),
+    then this repo's own ``docs/playbooks/`` (#3487) so a node with no RM
+    checkout still serves the reviewed seed manual/playbooks instead of an
+    empty catalog.
+    """
     override = os.environ.get(PLAYBOOKS_DIR_ENV)
     if override:
         p = Path(override).expanduser()
         return p if p.is_dir() else None
     here = Path(__file__).resolve()
-    for parent in (here.parents[2], here.parents[3]) if len(here.parents) > 3 else (here.parents[2],):
+    parents = (here.parents[2], here.parents[3]) if len(here.parents) > 3 else (here.parents[2],)
+    for parent in parents:
         for candidate in (parent.parent.joinpath(*_SIBLING_RELATIVE), parent.joinpath(*_SIBLING_RELATIVE)):
             if candidate.is_dir():
                 return candidate
+    if len(here.parents) > 3:
+        local = here.parents[3].joinpath(*_LOCAL_RELATIVE)
+        if local.is_dir():
+            return local
     return None
 
 
