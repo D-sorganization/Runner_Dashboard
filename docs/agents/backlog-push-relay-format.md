@@ -34,7 +34,7 @@ Include exactly one fenced JSON block tagged `backlog-push-request`:
 - Author and last editor must match `BARB_PANEL_RELAY_AUTHORS` (same allowlist as panel relay).
 - At most `BARB_BACKLOG_PUSH_DAILY_CAP` starts per UTC day (default **2**). **Single-flight:** while a push is active, no second push starts.
 - Skipped when the Desk hub reports `io_pressure` ≥ **35%** or a **disk-pressure / host-volume hold** on `GET /api/system` (if reachable); the issue gets a refusal comment with the reason.
-- Prompts include: PRs under 500 lines; **never merge directly** — arm auto-merge only via `python scripts/automerge_guard.py D-sorganization/<Repo> <pr> --arm` when the exact head is green (no `--admin`); **Desk hub / Runner_Dashboard** standing hold (no deploy/restart/reconfig without Dieter); Sidekick packaging and Assessment Board flood holds.
+- Prompts include: prefer small cohesive PRs (~500 changed lines advisory, not a gate); **never merge directly** — arm auto-merge only via `python scripts/automerge_guard.py D-sorganization/<Repo> <pr> --arm` when the exact head is green (no `--admin`); **Desk hub / Runner_Dashboard** standing hold (no deploy/restart/reconfig without Dieter); Sidekick packaging and Assessment Board flood holds.
 - Lanes run via `backlog-push-spawn.py` in a **detached** user scope (`systemd-run --user --scope` or `setsid`), not as children of the panel-relay oneshot. **GitHub:** lanes use the hub fleet `gh` wrapper (re-mints App token per invocation; periodic `gh api` refresh in `backlog-push-lane.sh`); never embed tokens in prompts or logs.
 
 ## Outcome labels

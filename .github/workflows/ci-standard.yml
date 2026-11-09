@@ -391,7 +391,7 @@ jobs:
             exit 1
           fi
           echo "ruff/mypy parity ok: ruff=$ruff_pc mypy=$mypy_pc"
-      - name: Verify no source file exceeds 500 lines
+      - name: Advisory per-file line count (changed sources, reference 500)
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -458,7 +458,7 @@ jobs:
               | { grep -E '\.(py|ts|tsx|js)$' || true; } \
               | { grep -vxF -f <(printf '%s\n' "$EXEMPT_PATHS") || true; })
             if [ -z "$FILES" ]; then
-              echo "No changed source files require line-cap enforcement."
+              echo "No changed source files in per-file line advisory scope."
               exit 0
             fi
             OVER=$(printf '%s\n' "$FILES" | xargs -r wc -l | grep -vE ' total$' | awk '$1 > 500 {print $1, $2}')

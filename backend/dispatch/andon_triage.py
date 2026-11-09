@@ -183,7 +183,7 @@ def _default_acceptance_criteria(record: AndonRecord) -> list[str]:
             f"Reproduce and fix the root cause for andon #{record.issue_number} "
             f"(fingerprint `{record.fingerprint}`) with a failing test first (TDD)."
         ),
-        "All required CI checks pass on the fix PR with diff under 500 changed lines.",
+        "All required CI checks pass on the fix PR (prefer a cohesive diff; ~500 changed lines is advisory, not a gate).",
     ]
 
 

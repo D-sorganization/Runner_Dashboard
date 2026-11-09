@@ -2,13 +2,14 @@
 
 Counts the diff (added + deleted from ``git diff --numstat``) against the merge
 base with ``main``, including generated files and lockfiles — the same number
-CI mirrors. **This never fails the process by default**; it logs a warning when
-the count exceeds ``--limit`` so lanes get immediate feedback without blocking
-push or merge. Prefer small, cohesive PRs; do **not** split a cohesive fix only
-to stay under a line count.
+CI mirrors. **Never fails the process by default** (Dieter standing order
+2026-11-06: small PRs are a coding standard, not a merge gate). When the count
+exceeds ``--limit`` we log a visible warning so lanes get feedback without
+blocking push or merge. Prefer small, cohesive PRs; do **not** split a cohesive
+fix only to stay under a line count.
 
-Use ``--strict`` for enforcement (exit 1 when over the cap and not
-allowlisted), e.g. optional local policy or tests.
+``--strict`` is retained only for backward compatibility and is **advisory-only**
+(it does not change the exit code).
 
 ``config/pr_size_allowlist.json`` remains supported for tagging allowlisted PRs
 in messages; it does not gate merge.
@@ -32,6 +33,15 @@ CommandRunner = Callable[[Sequence[str], Path], subprocess.CompletedProcess[str]
 
 DEFAULT_LIMIT = 500
 DEFAULT_ALLOWLIST_NAME = "config/pr_size_allowlist.json"
+_ADVISORY_PREFIX = "PR size advisory"
+
+
+def advisory_warning_message(total_lines: int, limit: int) -> str:
+    """Human-readable advisory (also suitable for CI ``::warning::`` lines)."""
+    return (
+        f"{_ADVISORY_PREFIX}: {total_lines} changed lines (reference cap {limit}). "
+        "Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count."
+    )
 
 
 @dataclass(frozen=True)
@@ -139,12 +149,16 @@ def evaluate_size(
     return SizeVerdict(within_limit=False, total_lines=total_lines, reason=f"{total_lines} > {limit}")
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI: ``pr_size_gate.py [--repo-root .] [--merge-base origin/main] [--limit 500] [--pr N] [--allowlist path] [--strict]``.
+def _emit_advisory(verdict: SizeVerdict, *, limit: int, strict_requested: bool) -> None:
+    if strict_requested:
+        logger.warning("NOTE: --strict is deprecated; PR size checks are advisory-only (2026-11-06 fleet standard).")
+    msg = advisory_warning_message(verdict.total_lines, limit)
+    logger.warning("WARNING: %s", msg)
+    print(f"::warning::{msg}", file=sys.stderr)
 
-    Default: always exit 0; log a warning when over the cap (unless allowlisted).
-    With ``--strict``, exit 1 when over the cap and not allowlisted.
-    """
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point; always exits 0 unless git/IO errors propagate as exceptions."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo-root", default=".", help="repository root (default: cwd)")
     parser.add_argument("--merge-base", default="origin/main")
@@ -168,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--strict",
         action="store_true",
-        help="exit 1 when changed lines exceed --limit and the PR is not allowlisted",
+        help="deprecated; does not fail the process — advisory warning only",
     )
     args = parser.parse_args(argv)
 
@@ -192,18 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     print(verdict.reason)
     if verdict.within_limit:
         return 0
-    msg = (
-        f"PR size advisory: {verdict.total_lines} changed lines (reference cap {args.limit}). "
-        "Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count."
-    )
-    logger.warning("WARNING: %s", msg)
-    if args.strict:
-        logger.error(
-            "size gate (strict): %s changed lines exceeds the %s-line cap",
-            verdict.total_lines,
-            args.limit,
-        )
-        return 1
+    _emit_advisory(verdict, limit=args.limit, strict_requested=args.strict)
     return 0
 
 

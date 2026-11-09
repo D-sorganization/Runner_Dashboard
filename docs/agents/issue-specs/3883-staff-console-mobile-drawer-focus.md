@@ -21,7 +21,7 @@ Staff Console focus tests fail on mobile drawer scenarios: hidden focus candidat
 
 1. Previously failing focus tests pass locally (`npm test`).
 2. No regression on desktop drawer focus tests.
-3. PR under 500 lines, TDD; `Closes #3883`.
+3. Prefer cohesive PRs (~500 changed lines advisory), TDD; `Closes #3883`.
 
 ## Test plan (TDD)
 
