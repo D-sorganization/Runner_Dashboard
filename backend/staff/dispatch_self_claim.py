@@ -21,6 +21,20 @@ def expected_staff_session(run_id: str) -> str:
     return f"staff-{run_id}"
 
 
+def _hold_blocker_present(reason_l: str) -> bool:
+    """True when ``reason_l`` asserts a blocker, not its negation (e.g. RM's "no active lease")."""
+    for marker in _HOLD_BLOCKERS:
+        start = 0
+        while True:
+            idx = reason_l.find(marker, start)
+            if idx == -1:
+                break
+            if not reason_l[:idx].rstrip().endswith("no"):
+                return True
+            start = idx + len(marker)
+    return False
+
+
 def is_own_dispatch_claim_hold(
     run_id: str,
     check: dict[str, Any],
@@ -43,7 +57,7 @@ def is_own_dispatch_claim_hold(
     if check_session == session:
         return True
     reason_l = str(check.get("reason") or "").lower()
-    if any(marker in reason_l for marker in _HOLD_BLOCKERS):
+    if _hold_blocker_present(reason_l):
         return False
     check_agent = str(check.get("agent") or "")
     label_agent = label.removeprefix("claim:")
