@@ -67,7 +67,7 @@ def unlink_worktree_links(path: Path) -> None:
         if (
             os.name == "nt"
             and kind == "Windows reparse point"
-            and getattr(candidate.lstat(), "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_DIRECTORY
+            and getattr(candidate.lstat(), "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
         ):
             candidate.rmdir()
         else:
