@@ -35,6 +35,7 @@ from staff.panel import (
 )
 from staff.panel_models import MAX_ACTIVE_PANELS, PanelCreateRequest, enabled_panel_providers, preset_view
 from staff.panel_refs import fetch_refs_facts
+from staff.panel_subscription_policy import verify_panel_subscriptions
 from staff.rate_limit import check_rate_limit
 
 log = logging.getLogger("dashboard.staff.panels_router")
@@ -65,6 +66,18 @@ async def create_panel(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"code": "panel_limit", "message": f"{MAX_ACTIVE_PANELS} panels are already running"},
         )
+    if body.require_verified_subscription:
+        failures = verify_panel_subscriptions(body)
+        if failures:
+            seats = ", ".join(f"{f['seat']} ({f['provider']})" for f in failures)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "subscription_unverified",
+                    "message": f"subscription not verified for: {seats}",
+                    "seats": failures,
+                },
+            )
     if body.refs:
         try:
             facts = await fetch_refs_facts(body.refs)

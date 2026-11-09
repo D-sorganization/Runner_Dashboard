@@ -4047,6 +4047,11 @@
             ],
             "title": "Repos"
           },
+          "require_verified_subscription": {
+            "default": false,
+            "title": "Require Verified Subscription",
+            "type": "boolean"
+          },
           "rounds": {
             "default": 3,
             "maximum": 6.0,

@@ -115,6 +115,9 @@ class PanelCreateRequest(BaseModel):
     ground_repos: bool = True
     # ``repo#n``: RD fetches each issue/PR's own facts and prepends them to the topic (#3313).
     refs: list[str] | None = Field(default=None, min_length=1, max_length=4)
+    # Opt-in (#4223): every seat's provider must be independently verified before the panel starts
+    # and again before each turn, and no seat ever substitutes a different provider or model.
+    require_verified_subscription: bool = False
 
     @field_validator("repos")
     @classmethod

@@ -10922,6 +10922,11 @@ export interface components {
             /** Repos */
             repos?: string[] | null;
             /**
+             * Require Verified Subscription
+             * @default false
+             */
+            require_verified_subscription: boolean;
+            /**
              * Rounds
              * @default 3
              */
@@ -11844,6 +11849,8 @@ export interface components {
             origin_node?: string | null;
             /** Pr */
             pr?: number | null;
+            /** Pr Restrictions */
+            pr_restrictions?: ("draft_only" | "no_arm" | "no_merge")[];
             /**
              * Prompt
              * @default
