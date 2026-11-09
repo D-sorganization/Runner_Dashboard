@@ -726,6 +726,12 @@ curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Be
 
 `backend/staff/panel_models.py` (`PANEL_PRESETS`) is the source of truth for the seats; the Staff Console's new-panel form prefills them when the preset is picked. A finished panel appends a Barb turnover note (scope `panel`); a turnover failure is logged and never fails the panel. Add `repos` for read-only grounding (above).
 
+`require_verified_subscription=true` is a separate opt-in policy. It rejects providers without an
+independently verifiable subscription path, including API providers, Cursor and Antigravity. Thus the
+default fleet-decision preset cannot pass this policy until Antigravity has a verified subscription
+checker. Claude and Codex also fail closed when their credential or endpoint configuration is ambiguous.
+Ordinary panels retain their configured provider and fallback behavior.
+
 ```bash
 curl -sS http://localhost:8321/api/v1/staff/panels/presets -H "Authorization: Bearer $DASHBOARD_TOKEN" | jq '.presets[] | select(.id == "fleet-decision")'
 ```
