@@ -16,6 +16,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
+from dispatch_effort import normalize_dispatch_kind
+
 _ISSUED_AT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 
 
@@ -41,12 +43,6 @@ class ReservationDecision:
     reason: str
     caller_task_kind: str | None = None
     caller_force: bool | None = None
-
-
-def normalize_dispatch_kind(dispatch_kind: str) -> str:
-    if not isinstance(dispatch_kind, str):
-        raise TypeError("dispatch_kind must be a string")
-    return dispatch_kind.strip().lower()
 
 
 def classify_dashboard_work(
@@ -117,24 +113,26 @@ def enforce_reservation_boundary(
         caller_task_kind=caller_task_kind,
         caller_force=caller_force,
     )
-    audit_kwargs = {"caller_task_kind": caller_task_kind, "caller_force": caller_force}
     if not _freshness_evidence_present(freshness_evidence):
         return ReservationDecision(
             allowed=False,
             work_kind=work_kind,
             reason="reservation_freshness_evidence_absent",
-            **audit_kwargs,
+            caller_task_kind=caller_task_kind,
+            caller_force=caller_force,
         )
     if not activation_enabled:
         return ReservationDecision(
             allowed=False,
             work_kind=work_kind,
             reason="feature_admission_boundary_not_activated",
-            **audit_kwargs,
+            caller_task_kind=caller_task_kind,
+            caller_force=caller_force,
         )
     return ReservationDecision(
         allowed=False,
         work_kind=work_kind,
         reason="feature_admission_boundary_not_activated",
-        **audit_kwargs,
+        caller_task_kind=caller_task_kind,
+        caller_force=caller_force,
     )
