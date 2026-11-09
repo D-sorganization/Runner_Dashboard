@@ -209,7 +209,7 @@ def test_sweep_stale_worktrees_removes_clean_preserves_unpushed_and_skips_active
             return SimpleNamespace(workdir=str(clean_wt), status="succeeded", pid=None, failure_class="", **updated)
 
     stats = workspace.sweep_stale_worktrees(_DummyStore())
-    assert stats == {"removed": 1, "preserved_unpushed": 1, "skipped_active": 1}
+    assert stats == {"removed": 1, "preserved_unpushed": 1, "skipped_active": 1, "preserved_links": 0}
     assert not clean_wt.exists()
     assert (tmp_path / "transcripts" / "run-clean1.log").is_file()
     assert dirty_wt.exists()

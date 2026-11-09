@@ -10,13 +10,13 @@ import hashlib
 import logging
 import os
 import shutil
-import stat
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from staff import cli_projects
+from staff.worktree_links import link_refusal_reason, refuse_worktree_links
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
@@ -76,22 +76,7 @@ def _path_key(path: Path | str) -> str:
 
 
 def _has_links(path: Path) -> bool:
-    def linked(candidate: Path) -> bool:
-        return candidate.is_symlink() or bool(
-            getattr(candidate.lstat(), "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        )
-
-    if any(linked(candidate) for candidate in (path, *path.parents)):
-        return True
-    pending = [path]
-    while pending:
-        with os.scandir(pending.pop()) as entries:
-            for entry in entries:
-                if linked(Path(entry.path)):
-                    return True
-                if entry.is_dir(follow_symlinks=False):
-                    pending.append(Path(entry.path))
-    return False
+    return link_refusal_reason(path) is not None
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -235,7 +220,7 @@ def remove_worktree_checked(
 
     try:
         root = workspace.staff_worktrees_root()
-        if _has_links(worktree):
+        if refuse_worktree_links(worktree):
             return False
         if (worktree / ".git").exists():
             if _path_key(worktree.parent) != _path_key(root):
@@ -285,7 +270,7 @@ def _cleanup_finished_worktree(store: Any, rec_id: str, workdir: Path, repo: str
             if not _has_links(workdir / ".staff"):
                 persist_run_transcript(store, rec_id, workdir)
             return False  # Owned cloud/scratch runs retain logging without becoming cleanup candidates.
-        if _has_links(workdir):
+        if refuse_worktree_links(workdir, store, rec_id):
             return False
         if workspace.worktree_has_unpushed_commits(workdir):
             store.append_event(rec_id, "worktree", f"unpushed worktree preserved at {workdir}")
@@ -423,9 +408,9 @@ def sweep_stale_worktrees(
 
     wt_root = workspace.staff_worktrees_root()
     if not wt_root.is_dir():
-        return {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0}
+        return {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0, "preserved_links": 0}
 
-    empty = {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0}
+    empty = {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0, "preserved_links": 0}
     try:
         active_norm = {_path_key(p) for p in (active_workdirs or set()) if p}
         active_norm.update(_path_key(rec.workdir) for rec in store.active_runs() if rec.workdir)
@@ -436,6 +421,7 @@ def sweep_stale_worktrees(
     removed = 0
     preserved_unpushed = 0
     skipped_active = 0
+    preserved_links = 0
     for child in sorted(wt_root.iterdir()):
         if not child.is_dir() or child.name.startswith(".") or child.name == "_scratch":
             continue
@@ -446,15 +432,17 @@ def sweep_stale_worktrees(
             continue
         if "-run-" not in child.name:
             continue
-        try:
-            if _has_links(child):
-                continue
-        except OSError as exc:
-            log.warning("worktree inspection preserved %s: %s", child, exc)
+        repo_prefix, suffix = child.name.rsplit("-run-", 1)
+        if refuse_worktree_links(child, store, "run-" + suffix):
+            preserved_links += 1
             continue
         if workspace.worktree_has_unpushed_commits(child):
             preserved_unpushed += 1
             continue
-        repo_prefix, suffix = child.name.rsplit("-run-", 1)
         removed += int(_cleanup_finished_worktree(store, "run-" + suffix, child, repo_prefix))
-    return {"removed": removed, "preserved_unpushed": preserved_unpushed, "skipped_active": skipped_active}
+    return {
+        "removed": removed,
+        "preserved_unpushed": preserved_unpushed,
+        "skipped_active": skipped_active,
+        "preserved_links": preserved_links,
+    }
