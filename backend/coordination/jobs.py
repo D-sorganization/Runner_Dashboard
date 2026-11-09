@@ -333,7 +333,10 @@ def claim_job(
             raise claims_mod.AgingPrBlockedError(aging_block)
         posted = claims_mod.post_lease(repo, issue, agent, session, intent, ttl_hours=ttl_hours)
         after = claims_mod.check(repo, issue)
-        if after.get("held") and (after.get("agent"), after.get("session")) != (agent, session):
+        if not after["available"]:
+            raise RMScriptError(f"check_agent_claim unavailable after post_agent_lease: {after['reason']}")
+        owned = bool(after["held"]) and claims_mod._is_own(after, agent, session)
+        if after["held"] and not owned:
             try:
                 claims_mod.release(
                     repo,
@@ -357,6 +360,11 @@ def claim_job(
             )
             # fmt: on
             raise claims_mod.ClaimHeldError(after)
+        if not owned:
+            raise RMScriptError(
+                f"check_agent_claim could not verify the posted lease for {repo}#{issue} "
+                f"(held={after['held']!r}); treating the claim as unverified, not successful"
+            )
         fence = _mint_fence(repo, issue)
         lease = posted["result"]
         receipt = str(lease.get("receipt") or "")
