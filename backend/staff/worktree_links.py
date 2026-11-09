@@ -10,72 +10,76 @@ from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
-_GAAI_LINKS = frozenset({".gaai/agents", ".gaai/workflows", ".gaai/contexts"})
 
 
 def _link_kind(path: Path) -> str:
-    attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    metadata = path.lstat()
+    attributes = getattr(metadata, "st_file_attributes", 0)
     if attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
         return "Windows reparse point"
-    return "symlink" if path.is_symlink() else ""
+    return "symlink" if stat.S_ISLNK(metadata.st_mode) or path.is_symlink() else ""
 
 
-def _tracked_gaai_link(path: Path, relative: str) -> bool:
-    """Require identical symlink entries in HEAD/index and an unchanged link value."""
-    outputs = []
-    for args in (("ls-tree", "-z", "HEAD", "--", relative), ("ls-files", "--stage", "-z", "--", relative)):
-        result = subprocess.run(  # noqa: S603
-            ["git", "-C", str(path), *args], capture_output=True, text=True, check=False, timeout=30
-        )
-        if result.returncode:
-            return False
-        entries = result.stdout.rstrip("\0").split("\0")
-        if len(entries) != 1 or "\t" not in entries[0]:
-            return False
-        metadata, name = entries[0].split("\t", 1)
-        fields = metadata.split()
-        if name != relative or len(fields) != 3 or fields[0] != "120000":
-            return False
-        outputs.append(fields)
-    if outputs[0][1] != "blob" or outputs[1][2] != "0" or outputs[0][2] != outputs[1][1]:
-        return False
-    blob = subprocess.run(  # noqa: S603
-        ["git", "-C", str(path), "cat-file", "blob", outputs[0][2]],
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
-    return blob.returncode == 0 and blob.stdout == os.fsencode(os.readlink(path / relative))
-
-
-def link_refusal_reason(path: Path, *, allow_tracked_gaai: bool = False) -> str | None:
-    """Pre: inspect ancestors first. Post: only verified GAAI symlinks may pass."""
+def _check_ancestors(path: Path) -> None:
     for candidate in reversed((path, *path.parents)):
         if kind := _link_kind(candidate):
-            return f"{kind} at worktree or ancestor {candidate}"
-    allowed = []
+            raise OSError(f"{kind} at worktree or ancestor {candidate}")
+
+
+def _tree_links(path: Path) -> list[tuple[Path, str, str]]:
+    """Inspect without following links; finish inspection before any mutation."""
+    _check_ancestors(path)
+    links = []
     pending = [path]
     while pending:
-        with os.scandir(pending.pop()) as entries:
+        directory = pending.pop()
+        _check_ancestors(directory)
+        with os.scandir(directory) as entries:
             for entry in entries:
                 candidate = Path(entry.path)
                 if kind := _link_kind(candidate):
-                    relative = candidate.relative_to(path).as_posix()
-                    if kind != "symlink" or not allow_tracked_gaai or relative not in _GAAI_LINKS:
-                        return f"unsafe {kind} at {candidate}"
-                    allowed.append(relative)
+                    links.append((candidate, kind, os.readlink(candidate)))
                 elif entry.is_dir(follow_symlinks=False):
                     pending.append(candidate)
-    for relative in allowed:
-        if not _tracked_gaai_link(path, relative):
-            return f"symlink is not an unchanged tracked GAAI entry: {path / relative}"
+    return links
+
+
+def link_refusal_reason(path: Path, *, allow_in_tree: bool = False) -> str | None:
+    """Pre: root/ancestors are real directories. Post: inspection never follows links."""
+    links = _tree_links(path)
+    if links and not allow_in_tree:
+        candidate, kind, _target = links[0]
+        return f"unsafe {kind} at {candidate}"
     return None
+
+
+def unlink_worktree_links(path: Path) -> None:
+    """Pre: all preservation checks passed. Post: unlink entries only, never targets.
+
+    A directory reparse point on Windows needs rmdir, which removes the junction
+    itself. Never recurse into it. Inspection/readlink failures abort removal.
+    """
+    for candidate, kind, target in _tree_links(path):
+        _check_ancestors(candidate.parent)
+        if _link_kind(candidate) != kind or os.readlink(candidate) != target:
+            raise OSError(f"link changed during inspection: {candidate}")
+        if (
+            os.name == "nt"
+            and kind == "Windows reparse point"
+            and candidate.lstat().st_file_attributes & stat.FILE_ATTRIBUTE_DIRECTORY
+        ):
+            candidate.rmdir()
+        else:
+            candidate.unlink()
+        log.info("unlinked %s %s -> %s (target untouched)", kind, candidate.relative_to(path).as_posix(), target)
+    if reason := link_refusal_reason(path):
+        raise OSError(reason)
 
 
 def refuse_worktree_links(path: Path, store: Any = None, run_id: str = "") -> bool:
     """Log every unsafe/uncertain link refusal and record it when a run is known."""
     try:
-        reason = link_refusal_reason(path, allow_tracked_gaai=True)
+        reason = link_refusal_reason(path, allow_in_tree=True)
     except (OSError, subprocess.SubprocessError) as exc:
         reason = f"link inspection failed: {exc}"
     if reason is None:
