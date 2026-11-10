@@ -43,5 +43,6 @@ when a changed source file exceeds 500 lines and does not fail the job.
 ## Outside this repository
 
 RM **fleet context gate** failures citing `pr_size_exceeded` are enforced in
-**Repository_Management** (not Runner_Dashboard). See the PR body for paths to
-update fleet-wide; this repo mirrors advisory behavior only.
+**Repository_Management** (not Runner_Dashboard); fleet alignment is tracked as
+[Repository_Management#2822](https://github.com/D-sorganization/Repository_Management/issues/2822).
+This repo mirrors advisory behavior only.
