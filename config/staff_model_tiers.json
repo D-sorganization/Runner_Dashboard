@@ -3,22 +3,37 @@
   "tier_order": ["routine", "standard", "complex"],
   "models_by_tier": {
     "routine": {
+      "anthropic-api": "opus-5",
       "claude": "haiku",
+      "claude-ollama": "llama3.2",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash",
-      "cursor-agent": "composer-2.5"
+      "cursor-agent": "composer-2.5",
+      "gemini": "gemini-2.5-flash",
+      "grok": "grok-4.7-high",
+      "ollama": "llama3.2"
     },
     "standard": {
+      "anthropic-api": "opus-5",
       "claude": "sonnet",
+      "claude-ollama": "llama3.2",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash-high",
-      "cursor-agent": "composer-2.5"
+      "cursor-agent": "composer-2.5",
+      "gemini": "gemini-2.5-pro",
+      "grok": "grok-4.7-high",
+      "ollama": "llama3.2"
     },
     "complex": {
+      "anthropic-api": "opus-5",
       "claude": "opus",
+      "claude-ollama": "llama3.2",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash-high",
-      "cursor-agent": "grok-4.7-high"
+      "cursor-agent": "grok-4.7-high",
+      "gemini": "gemini-2.5-pro",
+      "grok": "grok-4.7-high",
+      "ollama": "llama3.2"
     }
   }
 }
