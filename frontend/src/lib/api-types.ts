@@ -10289,10 +10289,6 @@ export interface components {
         ExecutorTier: "ollama" | "cli" | "strong";
         /** FleetRunTokenRequest */
         FleetRunTokenRequest: {
-            /** Repositories */
-            repositories: string[];
-            /** Role */
-            role: string;
             /** Run Id */
             run_id: string;
         };
@@ -11907,8 +11903,6 @@ export interface components {
         };
         /** RunJwtRequest */
         RunJwtRequest: {
-            /** Principal Id */
-            principal_id: string;
             /** Run Id */
             run_id: string;
         };
