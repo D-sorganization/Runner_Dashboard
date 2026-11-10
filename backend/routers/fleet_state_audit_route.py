@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from cache_utils import cache_get, cache_set
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from identity import require_fleet_peer
 from staff.fleet_state_audit import default_cache_path, run_audit
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/fleet", tags=["fleet-state-audit"])
 
@@ -67,14 +70,40 @@ async def get_fleet_state_audit(
         audit_write_cache = write_cache
         cache_target = default_cache_path(state_path)
 
-        report = await anyio.to_thread.run_sync(
-            lambda: run_audit(
-                state_path,
-                live=live,
-                previous_path=cache_target,
-                write_cache=audit_write_cache,
+        try:
+            report = await anyio.to_thread.run_sync(
+                lambda: run_audit(
+                    state_path,
+                    live=live,
+                    previous_path=cache_target,
+                    write_cache=audit_write_cache,
+                )
             )
-        )
+        except Exception:
+            log.exception("fleet state audit failed; returning static-only degraded report")
+            report = await anyio.to_thread.run_sync(
+                lambda: run_audit(
+                    state_path,
+                    live=False,
+                    previous_path=cache_target,
+                    write_cache=False,
+                )
+            )
+            if live:
+                report = dict(report)
+                report["live_degraded"] = True
+                report.setdefault("live", []).append(
+                    {
+                        "item": "live_checks",
+                        "ok": False,
+                        "problems": ["live_checks_unavailable"],
+                        "checks": {"live": {"inconclusive": True}},
+                    }
+                )
+                tally = dict(report.get("tally") or {})
+                tally["live_failures"] = int(tally.get("live_failures", 0)) + 1
+                tally["live_checked"] = int(tally.get("live_checked", 0)) + 1
+                report["tally"] = tally
         if live:
             cache_set(key, report)
     etag = _etag(report)

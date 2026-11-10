@@ -215,18 +215,34 @@ async def _noop_red_main(*_a: Any) -> dict[str, Any]:
     return {"red_main": False, "conclusion": "success", "inconclusive": False}
 
 
+def _inconclusive_live_row(row: StateRow) -> dict[str, Any]:
+    return {
+        "item": _row_key(row),
+        "ok": False,
+        "problems": ["live_lookup_inconclusive"],
+        "checks": {"live": {"inconclusive": True}},
+    }
+
+
 async def live_check_row(
     row: StateRow,
     *,
     fetch_pr: FetchPr,
     fetch_red_main: FetchRedMain,
 ) -> dict[str, Any]:
+    import gh_client  # noqa: PLC0415
+
     problems: list[str] = []
     checks: dict[str, Any] = {}
     pr_refs = extract_pr_refs(row)
     if pr_refs:
         for full, number in pr_refs:
-            pr = await fetch_pr(full, number)
+            try:
+                pr = await fetch_pr(full, number)
+            except gh_client.GhClientError:
+                problems.append("live_lookup_inconclusive")
+                checks[f"pr/{number}"] = {"repo": full, "inconclusive": True}
+                continue
             armed = pr.get("auto_merge") is not None
             checks[f"pr/{number}"] = {
                 "repo": full,
@@ -239,12 +255,17 @@ async def live_check_row(
                 problems.append("auto_merge_armed")
     if _needs_red_main(row.check, row.section):
         target = repo_full(pr_refs[0][0].split("/", 1)[1]) if pr_refs else repo_full(DEFAULT_REPO)
-        rm = await fetch_red_main(target)
-        checks["red_main"] = rm
-        if rm.get("inconclusive"):
-            problems.append("red_main_inconclusive")
-        elif rm.get("red_main"):
-            problems.append("red_main")
+        try:
+            rm = await fetch_red_main(target)
+        except gh_client.GhClientError:
+            problems.append("live_lookup_inconclusive")
+            checks["red_main"] = {"inconclusive": True}
+        else:
+            checks["red_main"] = rm
+            if rm.get("inconclusive"):
+                problems.append("red_main_inconclusive")
+            elif rm.get("red_main"):
+                problems.append("red_main")
     ok = not problems
     return {"item": _row_key(row), "ok": ok, "problems": problems, "checks": checks}
 
@@ -308,9 +329,18 @@ async def live_check_all(rows: Sequence[StateRow], **overrides: Any) -> list[dic
     for row in rows:
         if not (extract_pr_refs(row) or _needs_red_main(row.check, row.section) or _needs_queue(row.check)):
             continue
-        live = await live_check_row(row, fetch_pr=fp, fetch_red_main=fr)
+        try:
+            live = await live_check_row(row, fetch_pr=fp, fetch_red_main=fr)
+        except gh_client.GhClientError:
+            out.append(_inconclusive_live_row(row))
+            continue
         if _needs_queue(row.check) and extract_pr_refs(row):
-            live.setdefault("checks", {})["merge_queue"] = await fq(extract_pr_refs(row)[0][0])
+            try:
+                live.setdefault("checks", {})["merge_queue"] = await fq(extract_pr_refs(row)[0][0])
+            except gh_client.GhClientError:
+                live["ok"] = False
+                live.setdefault("problems", []).append("live_lookup_inconclusive")
+                live.setdefault("checks", {})["merge_queue"] = {"inconclusive": True}
         out.append(live)
     return out
 
