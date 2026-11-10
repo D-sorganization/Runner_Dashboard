@@ -6,18 +6,47 @@ import logging
 import os
 import stat
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+_real_os = os
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
 
+def _platform_os() -> Any:
+    import sys
+
+    return getattr(sys.modules[__name__], "os", _real_os)
+
+
+def _is_windows() -> bool:
+    return getattr(_platform_os(), "name", _real_os.name) == "nt"
+
+
+_O_DIRECTORY = getattr(_real_os, "O_DIRECTORY", 0)
+_O_NOFOLLOW = getattr(_real_os, "O_NOFOLLOW", 0)
+_OPEN_DIR_FLAGS = _real_os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW
+_FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+_FILE_ATTRIBUTE_DIRECTORY = getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
+
+
+def _link_kind_from_stat(st: os.stat_result) -> str:
+    attributes = getattr(st, "st_file_attributes", 0)
+    if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+        return "Windows reparse point"
+    if stat.S_ISLNK(st.st_mode):
+        return "symlink"
+    return ""
+
+
 def _link_kind(path: Path) -> str:
     metadata = path.lstat()
-    attributes = getattr(metadata, "st_file_attributes", 0)
-    if attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-        return "Windows reparse point"
-    return "symlink" if stat.S_ISLNK(metadata.st_mode) or path.is_symlink() else ""
+    kind = _link_kind_from_stat(metadata)
+    if kind:
+        return kind
+    return "symlink" if path.is_symlink() else ""
 
 
 def _check_ancestors(path: Path) -> None:
@@ -27,22 +56,139 @@ def _check_ancestors(path: Path) -> None:
             raise OSError(f"{kind} at worktree or ancestor {candidate}")
 
 
-def _tree_links(path: Path) -> list[tuple[Path, str, str]]:
-    """Inspect without following links; finish inspection before any mutation."""
-    _check_ancestors(path)
-    links = []
-    pending = [path]
-    while pending:
-        directory = pending.pop()
-        _check_ancestors(directory)
-        with os.scandir(directory) as entries:
+@dataclass(frozen=True)
+class _CollectedLink:
+    parent_fd: int | None
+    parent: Path | None
+    name: str
+    kind: str
+    target: str
+    rel_posix: str
+    identity: tuple[int, int]
+
+
+class _FdGuard:
+    def __init__(self) -> None:
+        self._fds: list[int] = []
+
+    def register(self, fd: int) -> int:
+        self._fds.append(fd)
+        return fd
+
+    def close_all(self) -> None:
+        for fd in reversed(self._fds):
+            try:
+                _real_os.close(fd)
+            except OSError:
+                pass
+
+
+def _stat_entry(link: _CollectedLink) -> os.stat_result:
+    if link.parent_fd is not None:
+        return _real_os.stat(link.name, dir_fd=link.parent_fd, follow_symlinks=False)
+    assert link.parent is not None
+    return (link.parent / link.name).lstat()
+
+
+def _readlink_at(name: str, *, parent_fd: int | None, parent: Path | None, abs_path: Path | None = None) -> str:
+    if parent_fd is not None:
+        try:
+            return _real_os.readlink(name, dir_fd=parent_fd)
+        except TypeError:
+            if abs_path is not None:
+                return _real_os.readlink(abs_path)
+    assert parent is not None
+    return _real_os.readlink(parent / name)
+
+
+def _readlink_for_link(link: _CollectedLink, root: Path | None = None) -> str:
+    abs_path = (root / link.rel_posix) if root is not None else None
+    return _readlink_at(
+        link.name,
+        parent_fd=link.parent_fd,
+        parent=link.parent,
+        abs_path=abs_path,
+    )
+
+
+def _collect_links_at_fd(
+    parent_fd: int, rel_prefix: str, guard: _FdGuard, links: list[_CollectedLink], *, root: Path
+) -> None:
+    stack: list[tuple[int, str]] = [(parent_fd, rel_prefix)]
+    while stack:
+        dir_fd, rel = stack.pop()
+        with _real_os.scandir(dir_fd) as entries:
             for entry in entries:
-                candidate = Path(entry.path)
+                name = entry.name
+                st = _real_os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+                child_rel = f"{rel}/{name}" if rel else name
+                if kind := _link_kind_from_stat(st):
+                    target = _readlink_at(name, parent_fd=dir_fd, parent=None, abs_path=root / child_rel)
+                    links.append(
+                        _CollectedLink(
+                            parent_fd=dir_fd,
+                            parent=None,
+                            name=name,
+                            kind=kind,
+                            target=target,
+                            rel_posix=child_rel,
+                            identity=(st.st_dev, st.st_ino),
+                        )
+                    )
+                elif stat.S_ISDIR(st.st_mode):
+                    child_fd = guard.register(_real_os.open(name, _OPEN_DIR_FLAGS, dir_fd=dir_fd))
+                    stack.append((child_fd, child_rel))
+
+
+def _collect_links_at_path(directory: Path, rel_prefix: str, links: list[_CollectedLink]) -> None:
+    _check_ancestors(directory)
+    pending: list[tuple[Path, str]] = [(directory, rel_prefix)]
+    while pending:
+        current, rel = pending.pop()
+        _check_ancestors(current)
+        with _platform_os().scandir(current) as entries:
+            for entry in entries:
+                name = entry.name
+                candidate = current / name
+                identity = entry.stat(follow_symlinks=False)
+                child_rel = f"{rel}/{name}" if rel else name
                 if kind := _link_kind(candidate):
-                    links.append((candidate, kind, os.readlink(candidate)))
+                    target = _real_os.readlink(candidate)
+                    links.append(
+                        _CollectedLink(
+                            parent_fd=None,
+                            parent=current,
+                            name=name,
+                            kind=kind,
+                            target=target,
+                            rel_posix=child_rel,
+                            identity=(identity.st_dev, identity.st_ino),
+                        )
+                    )
                 elif entry.is_dir(follow_symlinks=False):
-                    pending.append(candidate)
-    return links
+                    pending.append((current / name, child_rel))
+
+
+def _collect_tree_links(path: Path, *, guard: _FdGuard | None = None) -> list[_CollectedLink]:
+    _check_ancestors(path)
+    if _is_windows():
+        windows_links: list[_CollectedLink] = []
+        _collect_links_at_path(path, "", windows_links)
+        return windows_links
+    own_guard = guard is None
+    active_guard = guard or _FdGuard()
+    unix_links: list[_CollectedLink] = []
+    try:
+        root_fd = active_guard.register(_real_os.open(path, _OPEN_DIR_FLAGS))
+        _collect_links_at_fd(root_fd, "", active_guard, unix_links, root=path)
+        return unix_links
+    finally:
+        if own_guard:
+            active_guard.close_all()
+
+
+def _tree_links(path: Path) -> list[tuple[Path, str, str]]:
+    return [(path / link.rel_posix, link.kind, link.target) for link in _collect_tree_links(path)]
 
 
 def link_refusal_reason(path: Path, *, allow_in_tree: bool = False) -> str | None:
@@ -54,25 +200,77 @@ def link_refusal_reason(path: Path, *, allow_in_tree: bool = False) -> str | Non
     return None
 
 
+def _verify_link_unchanged(link: _CollectedLink, *, root: Path | None = None) -> None:
+    if link.parent is not None:
+        candidate = link.parent / link.name
+        kind = _link_kind(candidate)
+        identity_st = _real_os.stat(candidate, follow_symlinks=False)
+        identity = (identity_st.st_dev, identity_st.st_ino)
+    else:
+        st = _stat_entry(link)
+        kind = _link_kind_from_stat(st)
+        identity = (st.st_dev, st.st_ino)
+    if kind != link.kind or identity != link.identity:
+        raise OSError(f"link changed during inspection: {link.rel_posix}")
+    if _readlink_for_link(link, root=root) != link.target:
+        raise OSError(f"link changed during inspection: {link.rel_posix}")
+
+
+def _remove_link_entry(link: _CollectedLink, *, root: Path | None = None) -> None:
+    _verify_link_unchanged(link, root=root)
+    if link.parent_fd is not None:
+        st = _stat_entry(link)
+        if (
+            _is_windows()
+            and link.kind == "Windows reparse point"
+            and getattr(st, "st_file_attributes", 0) & _FILE_ATTRIBUTE_DIRECTORY
+        ):
+            _real_os.rmdir(link.name, dir_fd=link.parent_fd)
+        else:
+            _real_os.unlink(link.name, dir_fd=link.parent_fd)
+    else:
+        assert link.parent is not None
+        candidate = link.parent / link.name
+        identity_st = _real_os.stat(candidate, follow_symlinks=False)
+        if (identity_st.st_dev, identity_st.st_ino) != link.identity:
+            raise OSError(f"link changed during inspection: {link.rel_posix}")
+        kind = _link_kind(candidate)
+        st = candidate.lstat()
+        if kind != link.kind:
+            raise OSError(f"link changed during inspection: {link.rel_posix}")
+        if kind == "Windows reparse point":
+            if getattr(st, "st_file_attributes", 0) & _FILE_ATTRIBUTE_DIRECTORY:
+                candidate.rmdir()
+            else:
+                raise OSError(f"refuse to delete reparse point: {link.rel_posix}")
+        else:
+            candidate.unlink()
+    log.info(
+        "unlinked %s %s -> %s (target untouched)",
+        link.kind,
+        link.rel_posix,
+        link.target,
+    )
+
+
 def unlink_worktree_links(path: Path) -> None:
     """Pre: all preservation checks passed. Post: unlink entries only, never targets.
 
     A directory reparse point on Windows needs rmdir, which removes the junction
     itself. Never recurse into it. Inspection/readlink failures abort removal.
     """
-    for candidate, kind, target in _tree_links(path):
-        _check_ancestors(candidate.parent)
-        if _link_kind(candidate) != kind or os.readlink(candidate) != target:
-            raise OSError(f"link changed during inspection: {candidate}")
-        if (
-            os.name == "nt"
-            and kind == "Windows reparse point"
-            and getattr(candidate.lstat(), "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
-        ):
-            candidate.rmdir()
-        else:
-            candidate.unlink()
-        log.info("unlinked %s %s -> %s (target untouched)", kind, candidate.relative_to(path).as_posix(), target)
+    if _is_windows():
+        links = _collect_tree_links(path)
+        for link in links:
+            _remove_link_entry(link, root=path)
+    else:
+        guard = _FdGuard()
+        try:
+            links = _collect_tree_links(path, guard=guard)
+            for link in links:
+                _remove_link_entry(link, root=path)
+        finally:
+            guard.close_all()
     if reason := link_refusal_reason(path):
         raise OSError(reason)
 
