@@ -6,8 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from staff.skills.contract import SkillDetail, semver_sort_key
-from staff.skills.contract import SkillSummary
+from staff.skills.contract import SkillDetail, SkillSummary, semver_sort_key
 from staff.skills.registry import get_skill, list_skills, repo_matches_skill, role_match_rank, role_matches_skill
 from staff.standards_registry import (
     ESTIMATOR_VERSION,
