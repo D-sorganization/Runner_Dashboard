@@ -28,7 +28,12 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from coordination.board_pagination import _merge_paginated, _session, paginate_board_comments
+from coordination.board_pagination import (
+    _is_replay_warning,
+    _merge_paginated,
+    default_board_page_fetcher,
+    paginate_board_comments,
+)
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.roles import load_roles
 
@@ -43,7 +48,7 @@ SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "paths", "goals",
 DEFAULT_GUIDANCE = "Coordination unavailable; retain leases and inspect active PRs before editing."
 
 BoardPageFetcher = Callable[[int, int], list[dict[str, Any]]]
-board_page_fetcher: BoardPageFetcher | None = None
+board_page_fetcher: BoardPageFetcher | None = default_board_page_fetcher
 
 _clock = time.monotonic  # cache ages; tests replace it with a fake clock
 _real_clock = time.monotonic  # wall time for join timeouts, never faked
@@ -84,7 +89,7 @@ def reset_cache() -> None:
         _refreshing.clear()
         _key_locks.clear()
         _all_repos_supported = None
-        board_page_fetcher = None
+        board_page_fetcher = default_board_page_fetcher
         _generation += 1
 
 
@@ -205,14 +210,13 @@ def _comment_limit_reached(data: dict[str, Any]) -> bool:
     return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in warnings)
 
 
-def _parse_read(res: ScriptResult) -> dict[str, Any]:
+def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, Any]:
     data = res.json()
     if data is None or data.get("error") or "sessions" not in data:
         return _unavailable(res.failure())
     limit_hit = _comment_limit_reached(data)
     if limit_hit and board_page_fetcher is not None:
-        paginated = paginate_board_comments(board_page_fetcher)
-        return _merge_paginated(data, paginated)
+        return _merge_paginated(data, paginate_board_comments(board_page_fetcher, session=session))
     has_structured_warnings = (
         isinstance(data.get("read_warnings"), list)
         and isinstance(data.get("replay_warnings"), list)
@@ -225,15 +229,16 @@ def _parse_read(res: ScriptResult) -> dict[str, Any]:
         active_conflicts = [str(w) for w in data["active_conflicts"]]
     else:
         # Do not default missing read_warnings/active_conflicts to empty when warnings exist
-        read_warnings = list(raw_warnings)
-        replay_warnings = []
-        active_conflicts = []
+        live = {str(s.get("session")) for s in data.get("sessions") or [] if isinstance(s, dict)}
+        read_warnings = [w for w in raw_warnings if _is_replay_warning(w) is None]
+        replay_warnings = [w for w in raw_warnings if _is_replay_warning(w) is not None]
+        active_conflicts = [w for w in raw_warnings if _is_replay_warning(w) in live]
     is_complete = (
         bool(data.get("complete", False))
         and not limit_hit
         and not read_warnings
         and not active_conflicts
-        and (data.get("ok", True) is True)
+        and (data.get("ok", True) is True or (not has_structured_warnings and bool(replay_warnings)))
     )
     return {
         "available": True,
@@ -248,6 +253,10 @@ def _parse_read(res: ScriptResult) -> dict[str, Any]:
         "conflicts": list(data.get("conflicts") or []),
         "warnings": list(dict.fromkeys([*read_warnings, *replay_warnings, *raw_warnings])),
     }
+
+
+def _session(raw: dict[str, Any]) -> dict[str, Any]:
+    return {**{k: raw.get(k) for k in SESSION_KEYS}, "source": "board"}
 
 
 def _unsupported(res: ScriptResult) -> bool:
@@ -339,7 +348,7 @@ def read_inbox(session: str, repo: str) -> dict[str, Any]:
     """Messages and path/goal conflicts addressed to ``session``."""
 
     def load() -> dict[str, Any]:
-        return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"))
+        return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"), session=session)
 
     data = _cached(f"inbox:{repo.casefold()}:{session}", load)
     keys = (
