@@ -863,6 +863,10 @@ from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
 
+from routers import fleet_state_audit_route as _fleet_state_audit_router  # noqa: E402
+
+app.include_router(_fleet_state_audit_router.router)  # Barb state audit (#3640)
+
 from routers import fleet_productivity_pull as _fleet_productivity_pull_router  # noqa: E402
 
 app.include_router(_fleet_productivity_pull_router.router)  # 5 PM productivity pull (issue #3641)
