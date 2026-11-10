@@ -48,6 +48,7 @@ jobs:
           GH_TOKEN: ${{ steps.general-token.outputs.token }}
           GITHUB_TOKEN: ${{ steps.general-token.outputs.token }}
           RUNNER_DASHBOARD_URL: ${{ secrets.RUNNER_DASHBOARD_URL }}
+          HUB_FLEET_TOKEN: ${{ secrets.HUB_FLEET_TOKEN }}
           MERGE_SHEPHERD_HUB_HOLDS: required
           MERGE_SHEPHERD_LIVE: ${{ vars.MERGE_SHEPHERD_LIVE }}
           INPUT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || '' }}

@@ -22,7 +22,8 @@ def test_main_exits_nonzero_and_skips_graphql_when_hub_holds_unavailable(
 ) -> None:
     monkeypatch.setenv("MERGE_SHEPHERD_HUB_HOLDS", "required")
     monkeypatch.delenv("RUNNER_DASHBOARD_URL", raising=False)
-    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", "github-app-token")
 
     def _should_not_run(*_a: object, **_k: object) -> None:
         raise AssertionError("graphql must not run when holds are unavailable")
@@ -34,3 +35,9 @@ def test_main_exits_nonzero_and_skips_graphql_when_hub_holds_unavailable(
     assert payload["armed"] == []
     assert payload["status"] == "holds_unavailable"
     assert str(payload["holds_unavailable"]).startswith("holds_unavailable:")
+
+
+def test_hub_fleet_token_does_not_fall_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", "github-app-only")
+    assert msp.hub_fleet_token_for_holds() == ""

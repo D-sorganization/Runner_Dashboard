@@ -235,6 +235,24 @@ def test_hub_holds_unavailable_modes(mode, url, token, fetch, expect_err):
     assert err == expect_err
 
 
+def test_hub_holds_succeed_with_fleet_token() -> None:
+    fetched: list[tuple[str, str]] = []
+
+    def _fetch(url: str, token: str) -> list[dict[str, str]]:
+        fetched.append((url, token))
+        return [{"active": True, "kind": "schedule", "applies_to": ["*"], "text": "ok"}]
+
+    holds, err = resolve_hub_holds_policy(
+        mode="required",
+        dashboard_url="https://hub.example",
+        token="fleet-bearer-secret",
+        fetch_holds=_fetch,
+    )
+    assert err is None
+    assert len(holds) == 1
+    assert fetched == [("https://hub.example", "fleet-bearer-secret")]
+
+
 def test_run_pass_is_dry_when_not_live():
     def fake_graphql(owner: str, name: str):
         return {

@@ -83,8 +83,13 @@ def _fetch_hub_holds(url: str, token: str) -> list[dict[str, Any]]:
     return [dict(h) for h in holds if isinstance(h, dict)]
 
 
+def hub_fleet_token_for_holds() -> str:
+    """Hub ``GET /api/v1/staff/holds`` accepts the fleet bearer, not a GitHub App token."""
+    return os.environ.get("HUB_FLEET_TOKEN", "").strip()
+
+
 def _resolve_hub_holds() -> tuple[list[dict[str, Any]], str | None]:
-    token = os.environ.get("HUB_FLEET_TOKEN", "").strip() or os.environ.get("GH_TOKEN", "").strip()
+    token = hub_fleet_token_for_holds()
     return resolve_hub_holds_policy(
         mode=os.environ.get("MERGE_SHEPHERD_HUB_HOLDS", "required"),
         dashboard_url=os.environ.get("RUNNER_DASHBOARD_URL", ""),
