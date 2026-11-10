@@ -41,3 +41,47 @@ def test_hub_fleet_token_does_not_fall_back_to_gh_token(monkeypatch: pytest.Monk
     monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
     monkeypatch.setenv("GH_TOKEN", "github-app-only")
     assert msp.hub_fleet_token_for_holds() == ""
+
+
+def test_fetch_hub_holds_rejects_mixed_valid_and_malformed_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urllib.request
+
+    payload = {
+        "holds": [
+            {"active": True, "kind": "schedule", "applies_to": ["repo:Runner_Dashboard"], "text": "hold PR #1"},
+            "not-a-hold-dict",
+        ]
+    }
+
+    class _Resp:
+        def getcode(self) -> int:
+            return 200
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode()
+
+        def __enter__(self) -> _Resp:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *_a, **_k: _Resp())
+    with pytest.raises(OSError, match="hold_row_not_object"):
+        msp._fetch_hub_holds("https://hub.example", "fleet-token")
+
+
+def test_resolve_hub_holds_fail_closed_on_malformed_hold_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _bad_fetch(_url: str, _token: str) -> list[dict[str, str]]:
+        raise OSError("unparseable:hold_row_not_object")
+
+    from coordination.merge_shepherd_pass import resolve_hub_holds_policy
+
+    holds, err = resolve_hub_holds_policy(
+        mode="required",
+        dashboard_url="https://hub.example",
+        token="fleet-token",
+        fetch_holds=_bad_fetch,
+    )
+    assert holds == []
+    assert err == "holds_unavailable:unreachable:unparseable:hold_row_not_object"

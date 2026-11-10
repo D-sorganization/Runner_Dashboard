@@ -80,7 +80,12 @@ def _fetch_hub_holds(url: str, token: str) -> list[dict[str, Any]]:
         raise OSError("unparseable:missing_holds_key")
     if not isinstance(holds, list):
         raise OSError("unparseable:holds_not_list")
-    return [dict(h) for h in holds if isinstance(h, dict)]
+    rows: list[dict[str, Any]] = []
+    for h in holds:
+        if not isinstance(h, dict):
+            raise OSError("unparseable:hold_row_not_object")
+        rows.append(dict(h))
+    return rows
 
 
 def hub_fleet_token_for_holds() -> str:
