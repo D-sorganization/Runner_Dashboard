@@ -20,7 +20,7 @@ if str(_BACKEND) not in sys.path:
 from coordination.merge_shepherd_pass import (  # noqa: E402
     OPEN_PRS_QUERY,
     PassConfig,
-    PassSummary,
+    holds_gate_failed_payload,
     resolve_hub_holds_policy,
     resolve_live_arming,
     run_merge_shepherd_pass,
@@ -64,17 +64,29 @@ def _fetch_hub_holds(url: str, token: str) -> list[dict[str, Any]]:
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310
-            body = json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, json.JSONDecodeError) as exc:
-        raise OSError(str(exc)) from exc
-    holds = body.get("holds") if isinstance(body, dict) else None
-    return [dict(h) for h in holds] if isinstance(holds, list) else []
+            code = resp.getcode()
+            if code and code >= 400:
+                raise OSError(f"http_{code}")
+            raw = resp.read().decode("utf-8")
+            body = json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        raise OSError(f"http_{exc.code}") from exc
+    except (urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+        raise OSError(f"unparseable:{exc}") from exc
+    if not isinstance(body, dict):
+        raise OSError("unparseable:not_object")
+    holds = body.get("holds")
+    if holds is None:
+        raise OSError("unparseable:missing_holds_key")
+    if not isinstance(holds, list):
+        raise OSError("unparseable:holds_not_list")
+    return [dict(h) for h in holds if isinstance(h, dict)]
 
 
 def _resolve_hub_holds() -> tuple[list[dict[str, Any]], str | None]:
     token = os.environ.get("HUB_FLEET_TOKEN", "").strip() or os.environ.get("GH_TOKEN", "").strip()
     return resolve_hub_holds_policy(
-        mode=os.environ.get("MERGE_SHEPHERD_HUB_HOLDS", "off"),
+        mode=os.environ.get("MERGE_SHEPHERD_HUB_HOLDS", "required"),
         dashboard_url=os.environ.get("RUNNER_DASHBOARD_URL", ""),
         token=token,
         fetch_holds=_fetch_hub_holds,
@@ -125,6 +137,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         merge_shepherd_live=os.environ.get("MERGE_SHEPHERD_LIVE", ""),
         input_dry_run=os.environ.get("INPUT_DRY_RUN", ""),
         cli_dry_run=bool(args.dry_run),
+        github_event_name=os.environ.get("GITHUB_EVENT_NAME", ""),
     )
 
     config = PassConfig(
@@ -134,10 +147,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     holds, hold_error = _resolve_hub_holds()
     if hold_error:
-        payload = summary_to_json(PassSummary(errors=[hold_error]))
-        payload["live"] = live
-        payload["executed"] = []
-        payload["holds_source"] = "hub_required_failed"
+        payload = holds_gate_failed_payload(live=live, reason=hold_error)
         _write_step_summary(payload)
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))

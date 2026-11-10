@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import pytest
+
 from coordination.merge_shepherd_pass import (
     PassConfig,
+    holds_gate_failed_payload,
     hub_hold_blocks_pr,
     load_skip_list,
     plan_repo_pass,
@@ -33,12 +36,44 @@ def test_hub_holds_fail_closed_when_required_but_unreachable():
         token="tok",
         fetch_holds=_boom,
     )
-    assert holds == [] and err and err.startswith("hub_holds_unreachable")
+    assert holds == [] and err and err.startswith("holds_unavailable:")
+
+
+def test_holds_gate_failed_payload_has_no_armed_rows():
+    payload = holds_gate_failed_payload(live=True, reason="holds_unavailable:not_configured")
+    assert payload["armed"] == []
+    assert payload["holds_unavailable"] == "holds_unavailable:not_configured"
+    assert payload["status"] == "holds_unavailable"
 
 
 def test_resolve_live_arming_scheduled_respects_live_var():
-    assert resolve_live_arming(merge_shepherd_live="true", input_dry_run="", cli_dry_run=False) is True
-    assert resolve_live_arming(merge_shepherd_live="true", input_dry_run="true", cli_dry_run=False) is False
+    assert (
+        resolve_live_arming(
+            merge_shepherd_live="true",
+            input_dry_run="true",
+            cli_dry_run=False,
+            github_event_name="schedule",
+        )
+        is True
+    )
+    assert (
+        resolve_live_arming(
+            merge_shepherd_live="true",
+            input_dry_run="true",
+            cli_dry_run=False,
+            github_event_name="workflow_dispatch",
+        )
+        is False
+    )
+    assert (
+        resolve_live_arming(
+            merge_shepherd_live="true",
+            input_dry_run="false",
+            cli_dry_run=False,
+            github_event_name="workflow_dispatch",
+        )
+        is True
+    )
 
 
 def test_pre_filter_blocks_hold_labels():
@@ -162,6 +197,42 @@ def test_plan_repo_skips_without_approval_unless_docs_only():
     elig = {a.pr_number: a.eligibility for a in actions}
     assert elig.get(200) == "reviewed"
     assert elig.get(201) == "docs_tests_only"
+
+
+def test_plan_repo_never_arms_when_hub_hold_names_pr():
+    holds = [
+        {
+            "active": True,
+            "kind": "schedule",
+            "applies_to": ["repo:Runner_Dashboard"],
+            "text": "C3 HOLD — block PR #500",
+        }
+    ]
+    node = _open_pr_node(500)
+    actions, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=holds,
+        armed_count=0,
+        queue_depth=0,
+        live=True,
+    )
+    assert actions == []
+    assert any(s.get("pr") == 500 and s.get("reason") == "hub_hold" for s in skips)
+
+
+@pytest.mark.parametrize(
+    "mode,url,token,fetch,expect_err",
+    [
+        ("required", "", "tok", None, "holds_unavailable:not_configured"),
+        ("required", "https://hub", "", None, "holds_unavailable:not_configured"),
+    ],
+)
+def test_hub_holds_unavailable_modes(mode, url, token, fetch, expect_err):
+    holds, err = resolve_hub_holds_policy(mode=mode, dashboard_url=url, token=token, fetch_holds=fetch)
+    assert holds == []
+    assert err == expect_err
 
 
 def test_run_pass_is_dry_when_not_live():

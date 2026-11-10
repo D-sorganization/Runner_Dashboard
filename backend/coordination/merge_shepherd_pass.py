@@ -164,6 +164,9 @@ def label_blocks_shepherd(node: Mapping[str, Any]) -> str:
     return ""
 
 
+HOLDS_UNAVAILABLE_PREFIX = "holds_unavailable"
+
+
 def resolve_hub_holds_policy(
     *,
     mode: str,
@@ -171,7 +174,7 @@ def resolve_hub_holds_policy(
     token: str,
     fetch_holds: Callable[[str, str], list[dict[str, Any]]] | None = None,
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """Optional hub schedule holds; fail closed when mode is ``required`` but unavailable."""
+    """Hub schedule holds are required in production; fail closed when unavailable."""
     normalized = mode.strip().lower()
     if normalized in {"", "off", "false", "0"}:
         return [], None
@@ -179,26 +182,46 @@ def resolve_hub_holds_policy(
     auth = token.strip()
     if not url or not auth:
         if normalized == "required":
-            return [], "hub_holds_required_but_not_configured"
+            return [], f"{HOLDS_UNAVAILABLE_PREFIX}:not_configured"
         return [], None
     if fetch_holds is None:
-        return [], "hub_holds_fetcher_missing"
+        return [], f"{HOLDS_UNAVAILABLE_PREFIX}:fetcher_missing"
     try:
         holds = fetch_holds(url, auth)
     except OSError as exc:
         if normalized == "required":
-            return [], f"hub_holds_unreachable:{exc}"
+            return [], f"{HOLDS_UNAVAILABLE_PREFIX}:unreachable:{exc}"
         return [], None
     return holds, None
 
 
-def resolve_live_arming(*, merge_shepherd_live: str, input_dry_run: str, cli_dry_run: bool) -> bool:
-    """Scheduled runs leave INPUT_DRY_RUN empty so vars.MERGE_SHEPHERD_LIVE can enable live arms."""
+def resolve_live_arming(
+    *,
+    merge_shepherd_live: str,
+    input_dry_run: str,
+    cli_dry_run: bool,
+    github_event_name: str = "",
+) -> bool:
+    """Scheduled runs ignore workflow_dispatch dry_run defaults so MERGE_SHEPHERD_LIVE can arm."""
     if cli_dry_run:
         return False
-    if input_dry_run.strip().lower() in {"true", "1", "yes"}:
+    dry_input = input_dry_run
+    if github_event_name and github_event_name != "workflow_dispatch":
+        dry_input = ""
+    if dry_input.strip().lower() in {"true", "1", "yes"}:
         return False
     return merge_shepherd_live.strip().lower() == "true"
+
+
+def holds_gate_failed_payload(*, live: bool, reason: str) -> dict[str, Any]:
+    summary = PassSummary(errors=[reason])
+    payload = summary_to_json(summary)
+    payload["live"] = live
+    payload["armed"] = []
+    payload["executed"] = []
+    payload["holds_unavailable"] = reason
+    payload["status"] = "holds_unavailable"
+    return payload
 
 
 def _pr_file_metadata(node: Mapping[str, Any]) -> tuple[tuple[str, ...], int, int, bool]:

@@ -1,7 +1,7 @@
-# Hosted runners cannot reach the tailnet hub. Holds are enforced from GitHub (PR labels
-# hold / do-not-merge / needs-dieter), config/merge_shepherd_skip.json, and standard merge
-# gates. Optional hub schedule holds need MERGE_SHEPHERD_HUB_HOLDS=required plus
-# RUNNER_DASHBOARD_URL; the pass fails closed when that source is configured but unreachable.
+# Merge shepherd arms fleet PRs via automerge_guard. Runs on the self-hosted fleet
+# (tailnet) so it can reach RUNNER_DASHBOARD_URL for hub schedule holds — the sole
+# source of truth. GitHub hold labels and merge_shepherd_skip.json are additional
+# guards only. When hub holds cannot be loaded, the pass fails closed (no arming).
 name: Merge shepherd
 
 on:
@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   shepherd:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, d-sorg-fleet]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,6 +47,8 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.general-token.outputs.token }}
           GITHUB_TOKEN: ${{ steps.general-token.outputs.token }}
+          RUNNER_DASHBOARD_URL: ${{ secrets.RUNNER_DASHBOARD_URL }}
+          MERGE_SHEPHERD_HUB_HOLDS: required
           MERGE_SHEPHERD_LIVE: ${{ vars.MERGE_SHEPHERD_LIVE }}
           INPUT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || '' }}
           PYTHONPATH: backend

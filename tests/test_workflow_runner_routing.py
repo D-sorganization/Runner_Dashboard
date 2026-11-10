@@ -57,7 +57,6 @@ _UNCLASSIFIED: dict[str, str] = {
     "main-ci-auto-release.yml": "Hosted ubuntu-latest for go-public release automation (#3303 part 5).",
     "release.yml": "Hosted ubuntu-latest for go-public supply-chain release pipeline (#3303 part 6).",
     "priority-expedite-guard.yml": "Hosted ubuntu-latest for go-public expedite guard (#3303 part 7).",
-    "merge-shepherd.yml": "Hosted ubuntu-latest cron merge shepherd; fleet App token with org-wide repo scope (#Bob merge-rate).",
 }
 
 
