@@ -576,7 +576,15 @@ def _gh(responses: dict[str, Any]) -> Callable[..., subprocess.CompletedProcess[
 
 def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
     calls: list[list[str]] = []
-    pulls = [{"number": 21, "state": "closed", "merged_at": "2026-09-25T10:00:00Z", "head": {"sha": "abc"}}]
+    pulls = [
+        {
+            "number": 21,
+            "state": "closed",
+            "merged_at": "2026-09-25T10:00:00Z",
+            "head": {"sha": "abc"},
+            "auto_merge": {"merge_method": "squash"},
+        }
+    ]
     checks = {"check_runs": [_check(), _check(conclusion="failure")]}
     runner = _gh({"/pulls?": pulls, "/commits/abc/check-runs": checks})
 
@@ -594,7 +602,13 @@ def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
 def test_gh_probe_gets_a_pr_by_number_with_its_head_ci() -> None:
     """The Code Request acceptance check (#1605) looks a child's PR up by number."""
     calls: list[list[str]] = []
-    pull = {"number": 7, "state": "closed", "merged_at": "2026-09-26T10:00:00Z", "head": {"sha": "def"}}
+    pull = {
+        "number": 7,
+        "state": "closed",
+        "merged_at": "2026-09-26T10:00:00Z",
+        "head": {"sha": "def"},
+        "auto_merge": {"merge_method": "squash"},
+    }
     runner = _gh({"/pulls/7": pull, "/commits/def/check-runs": {"check_runs": [_check()]}})
 
     def recording(argv: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
