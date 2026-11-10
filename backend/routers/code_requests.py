@@ -13,8 +13,9 @@ from pathlib import Path
 import config_schema
 from code_requests.builtin_templates import load_builtin_templates, merge_with_builtins
 from code_requests.dispatch_service import (
+    CODE_REQUEST_CACHE_PATH,
+    DISPATCH_HISTORY_PATH,
     HISTORY_LOCK,
-    HISTORY_PATH,
     PROMPT_NOTES_PATH,
     CodeDispatch,
     run_code_dispatch,
@@ -45,7 +46,7 @@ router = APIRouter(tags=["code_requests"])
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 
-_CODE_REQUESTS_PATH = HISTORY_PATH
+_CODE_REQUESTS_PATH = CODE_REQUEST_CACHE_PATH
 _LEGACY_FEATURE_REQUESTS_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json"
 _MIGRATED_MARKER_PATH = Path.home() / "actions-runners" / "dashboard" / "feature_requests.json.migrated"
 
@@ -393,7 +394,7 @@ async def dispatch_code_request(
         principal=principal.id,
         profile_store=_get_profile_store(),
         prompt_notes_path=_PROMPT_NOTES_PATH,
-        history_path=_active_storage_path(),
+        history_path=DISPATCH_HISTORY_PATH,
         run_cmd_fn=run_cmd,
     )
     code, stderr, resolved = outcome.code, outcome.stderr, outcome.resolved
