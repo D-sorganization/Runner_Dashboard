@@ -9,9 +9,10 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 DEFAULT_HOST_CAPS: dict[str, int] = {
     "deskcomputer": 6,
@@ -19,9 +20,7 @@ DEFAULT_HOST_CAPS: dict[str, int] = {
     "controltower": 8,
 }
 
-TARGET_OVERRIDE_PATH = Path(
-    os.environ.get("RUNNER_TARGET_OVERRIDE", "/var/lib/runner-scheduler/target-override.json")
-)
+TARGET_OVERRIDE_PATH = Path(os.environ.get("RUNNER_TARGET_OVERRIDE", "/var/lib/runner-scheduler/target-override.json"))
 
 
 def _normalize_host_token(value: str) -> str:

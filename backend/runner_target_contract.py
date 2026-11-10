@@ -6,9 +6,10 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from machine_registry import build_machine_registry_index, load_machine_registry
 
@@ -20,9 +21,7 @@ DEFAULT_HOST_CAPS: dict[str, int] = {
     "controltower": 8,
 }
 
-TARGET_OVERRIDE_PATH = Path(
-    os.environ.get("RUNNER_TARGET_OVERRIDE", "/var/lib/runner-scheduler/target-override.json")
-)
+TARGET_OVERRIDE_PATH = Path(os.environ.get("RUNNER_TARGET_OVERRIDE", "/var/lib/runner-scheduler/target-override.json"))
 
 
 def _normalize_host_token(value: str) -> str:
