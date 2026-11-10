@@ -62,6 +62,9 @@ class FakeGh:
         force_pushes: Sequence[str] = (),
         force_push_fails: bool = False,
         merge_returncode: int = 0,
+        issue_comments: Sequence[dict[str, str]] | None = None,
+        commit_messages: Sequence[str] = (),
+        disarm_on_delete: bool = True,
     ) -> None:
         self.pull = {
             "draft": draft,
@@ -85,6 +88,9 @@ class FakeGh:
         self.force_pushes = list(force_pushes)
         self.force_push_fails = force_push_fails
         self.merge_returncode = merge_returncode
+        self.issue_comments = list(issue_comments or ())
+        self.commit_messages = list(commit_messages)
+        self.disarm_on_delete = disarm_on_delete
         self.calls: list[list[str]] = []
 
     def __call__(self, cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
@@ -110,6 +116,13 @@ class FakeGh:
             return _completed(self.committer_date)
         if "/files" in joined:
             return _completed("\n".join(self.removed))
+        if "/issues/" in joined and "/comments" in joined:
+            return _completed(json.dumps(self.issue_comments))
+        if "/pulls/" in joined and "/commits" in joined:
+            payload = [{"commit": {"message": message}} for message in self.commit_messages]
+            return _completed(json.dumps(payload))
+        if "/ccr/auto_merge" in joined:
+            return _completed(returncode=0 if self.disarm_on_delete else 1, stderr="disarm failed")
         if "/pulls/" in joined:
             return _completed(json.dumps(self.pull))
         raise AssertionError(f"unexpected gh call: {joined}")
@@ -1121,6 +1134,92 @@ def test_stalled_pr_enqueue_failure_is_reported_not_retried() -> None:
 # function budget on this vendored file, and a malformed payload must stay
 # inside the fail-closed path rather than crash.
 # --------------------------------------------------------------------------
+
+
+def _independent_fix_needed_comment(sha: str = HEAD_SHA) -> dict[str, str]:
+    return {
+        "body": (
+            "### Independent Exact-Head Acceptance Review (`seat` / `antigravity-Brick`) — "
+            f"Verdict: `FIX-NEEDED @{sha}`\n\n"
+            f"**Verdict:** **`FIX-NEEDED @{sha}`**"
+        ),
+        "created_at": "2026-11-10T07:31:36Z",
+    }
+
+
+def _independent_pass_comment(sha: str = HEAD_SHA) -> dict[str, str]:
+    return {
+        "body": (
+            "### Independent Exact-Head Acceptance Review (`seat` / `antigravity-Brick`) — "
+            f"Verdict: `PASS @{sha}`"
+        ),
+        "created_at": "2026-11-10T08:00:00Z",
+    }
+
+
+def test_independent_fix_needed_at_head_holds_arm_and_merge() -> None:
+    fake = CleanGh(
+        labels=["agent-model:agy-desk-001"],
+        issue_comments=[_independent_fix_needed_comment()],
+    )
+    verdict = automerge_guard.evaluate_hold("o/r", 7, runner=fake)
+    assert verdict.held
+    assert "FIX-NEEDED" in verdict.describe()
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.armed is False and result.merged is False
+
+
+def test_independent_pass_at_head_allows_clean_direct_merge() -> None:
+    fake = CleanGh(
+        labels=["agent-model:agy-desk-001"],
+        issue_comments=[_independent_pass_comment()],
+        )
+    assert automerge_guard.evaluate_hold("o/r", 7, runner=fake).held is False
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is True
+    assert any("/merge" in " ".join(call) for call in fake.direct_calls)
+
+
+def test_stale_fix_needed_does_not_block_clean_merge_when_pass_at_head() -> None:
+    other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    fake = CleanGh(
+        labels=["agent-model:agy-desk-001"],
+        issue_comments=[
+            _independent_fix_needed_comment(other),
+            _independent_pass_comment(HEAD_SHA),
+        ],
+        )
+    assert automerge_guard.evaluate_hold("o/r", 7, runner=fake).held is False
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is True
+
+
+def test_merge_path_disarms_when_fix_needed_arrives_before_direct_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = CleanGh(queue=False, labels=["agent-model:agy-desk-001"])
+    real_eval = automerge_guard.evaluate_hold
+    calls = {"n": 0}
+
+    def flaky_eval(repo: str, pr: int, *, runner: object | None = None, **kwargs: object) -> automerge_guard.HoldVerdict:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return automerge_guard.HoldVerdict(
+                False,
+                head_sha=HEAD_SHA,
+                base_ref="main",
+                node_id="PR_node7",
+                head_ref="feat/x",
+                head_in_base_repo=True,
+            )
+        return real_eval(repo, pr, runner=fake)
+
+    fake.issue_comments = [_independent_fix_needed_comment()]
+    monkeypatch.setattr(automerge_guard, "evaluate_hold", flaky_eval)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert "refused" in result.detail
+    assert any("DELETE" in call and "/ccr/auto_merge" in " ".join(call) for call in fake.calls)
 
 
 def test_malformed_head_field_yields_a_verdict_not_a_crash() -> None:

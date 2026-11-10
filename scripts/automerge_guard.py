@@ -396,6 +396,62 @@ def _disarm_reasons(run: CommandRunner, repo: str, pr: int, sha: str) -> list[st
     return []
 
 
+def _repo_root_on_path() -> None:
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+
+def _issue_comments(run: CommandRunner, repo: str, pr: int) -> list[dict[str, Any]]:
+    payload = _gh_json(run, ["api", f"repos/{repo}/issues/{pr}/comments?per_page=100", "--paginate"])
+    if not isinstance(payload, list):
+        raise RuntimeError(f"unreadable issue comments for {repo}#{pr}")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _commit_messages(run: CommandRunner, repo: str, pr: int) -> list[str]:
+    payload = _gh_json(run, ["api", f"repos/{repo}/pulls/{pr}/commits?per_page=100", "--paginate"])
+    if not isinstance(payload, list):
+        raise RuntimeError(f"unreadable commits for {repo}#{pr}")
+    rows: list[str] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        commit = item.get("commit")
+        if isinstance(commit, dict):
+            rows.append(str(commit.get("message") or ""))
+    return rows
+
+
+def _independent_review_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
+    """Signal 5: independent exact-head FIX-NEEDED at the current head."""
+    _repo_root_on_path()
+    from shared_scripts.independent_exact_head_review import (  # noqa: PLC0415
+        author_model_from_commit_messages,
+        author_model_from_labels,
+        independent_review_hold_reason,
+        parse_issue_comments,
+    )
+
+    try:
+        comments = _issue_comments(run, repo, pr)
+        messages = _commit_messages(run, repo, pr)
+    except (RuntimeError, json.JSONDecodeError, OSError):
+        return ["independent exact-head review state is unreadable"]
+    author_model = author_model_from_labels(pull.labels) or author_model_from_commit_messages(messages)
+    reviews = parse_issue_comments(comments)
+    return independent_review_hold_reason(reviews, head_sha=pull.head_sha, author_model=author_model)
+
+
+def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> None:
+    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
+    if proc.returncode == 0:
+        logger.warning("Disarmed auto-merge on %s#%s before a blocked merge.", repo, pr)
+        return
+    err = proc.stderr.strip() or proc.stdout.strip()
+    logger.warning("Could not disarm auto-merge on %s#%s: %s", repo, pr, err)
+
+
 def _deletion_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
     """Signal 4: the diff deletes tracked files with no acknowledgement."""
     removed = _gh_lines(
@@ -443,6 +499,7 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
     3. auto-merge disabled by a non-bot account more recently than the head
        commit — a reviewer said no and nobody has pushed since
     4. the diff deletes tracked files with no acknowledgement
+    5. an independent exact-head review is ``FIX-NEEDED`` at the current head
 
     Fails closed: any error computing the verdict returns ``held=True``.
     """
@@ -458,6 +515,7 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
             reasons.append("PR is a draft (mark ready first)")
         reasons += _disarm_reasons(run, repo, pr, pull.head_sha)
         reasons += _deletion_reasons(run, repo, pr, pull)
+        reasons += _independent_review_reasons(run, repo, pr, pull)
     except (RuntimeError, json.JSONDecodeError, OSError) as exc:
         # Fail closed. An unknown state is not a licence to arm.
         return HoldVerdict(True, (), error=str(exc))
@@ -570,6 +628,10 @@ def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, r
     )
     if not (verdict.node_id and verdict.head_sha):
         return ArmResult(False, verdict, hint)
+    hold = evaluate_hold(repo, pr, runner=run)
+    if hold.held:
+        _disarm_auto_merge(repo, pr, run)
+        return ArmResult(False, hold, f"enqueue refused: {hold.describe()}")
     proc = run(
         [
             "gh",
@@ -611,6 +673,10 @@ def _merge_clean_pr(
     """
     if not sha:
         return ArmResult(False, verdict, "PR was already clean but the verified head SHA is unknown")
+    hold = evaluate_hold(repo, pr, runner=run)
+    if hold.held:
+        _disarm_auto_merge(repo, pr, run)
+        return ArmResult(False, hold, f"merge refused: {hold.describe()}")
     proc = run(
         [
             "gh",
