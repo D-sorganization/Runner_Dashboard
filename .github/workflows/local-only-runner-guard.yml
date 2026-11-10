@@ -68,6 +68,7 @@ jobs:
               "issue-taxonomy-backfill.yml",
               "labels-sync.yml",
               "lockfile-upgrade.yml",
+              "merge-shepherd.yml",
               "main-ci-auto-release.yml",
               "release.yml",
               "priority-expedite-guard.yml",
