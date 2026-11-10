@@ -594,7 +594,7 @@ def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
 
     pr = v.GhCliPrProbe(org="D-sorganization", run=recording).find("Runner_Dashboard", "staff/x y")
 
-    assert pr == v.PullRequest(21, "merged", "red")
+    assert pr == v.PullRequest(21, "merged", "red", auto_merge_armed=True)
     assert "/repos/D-sorganization/Runner_Dashboard/pulls?head=D-sorganization:staff%2Fx%20y&state=all" in calls[0][2]
     assert len(calls) == 2  # one scoped lookup plus the head's check runs; never a sweep
 
@@ -615,7 +615,9 @@ def test_gh_probe_gets_a_pr_by_number_with_its_head_ci() -> None:
         calls.append(argv)
         return runner(argv, **kw)
 
-    assert v.GhCliPrProbe(org="o", run=recording).get("r", 7) == v.PullRequest(7, "merged", "green")
+    assert v.GhCliPrProbe(org="o", run=recording).get("r", 7) == v.PullRequest(
+        7, "merged", "green", auto_merge_armed=True
+    )
     assert [c[2] for c in calls] == ["/repos/o/r/pulls/7", "/repos/o/r/commits/def/check-runs?per_page=100"]
 
 
