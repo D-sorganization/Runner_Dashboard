@@ -493,6 +493,7 @@ FLEET_PEER_SCOPES = frozenset(
         "staff.chat",
         "fleet.maintain",
         "fleet.read",
+        "fleet.run_credential.mint",
         "memory.read",
         "activity.read",
     }
