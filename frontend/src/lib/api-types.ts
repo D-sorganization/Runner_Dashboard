@@ -6041,6 +6041,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fleet/state-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fleet State Audit
+         * @description Run or return a cached Barb state audit report.
+         */
+        get: operations["get_fleet_state_audit_api_v1_fleet_state_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/browse": {
         parameters: {
             query?: never;
@@ -22685,6 +22705,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_fleet_state_audit_api_v1_fleet_state_audit_get: {
+        parameters: {
+            query?: {
+                path?: string;
+                live?: boolean;
+                write_cache?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

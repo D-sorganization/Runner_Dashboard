@@ -23464,6 +23464,77 @@
         "tags": ["fleet-productivity"]
       }
     },
+    "/api/v1/fleet/state-audit": {
+      "get": {
+        "description": "Run or return a cached Barb state audit report.",
+        "operationId": "get_fleet_state_audit_api_v1_fleet_state_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "default": "docs/agents/rd-barb-state.md",
+              "maxLength": 300,
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "live",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Live",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "write_cache",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Write Cache",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Get Fleet State Audit Api V1 Fleet State Audit Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet State Audit",
+        "tags": ["fleet-state-audit"]
+      }
+    },
     "/api/v1/library/browse": {
       "get": {
         "operationId": "library_browse_route_api_v1_library_browse_get",
