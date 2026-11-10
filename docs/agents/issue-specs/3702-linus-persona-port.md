@@ -67,7 +67,7 @@ Keep `blocked`, `judgement:design`, and `panel-review` until the ruling; then `j
 3. **Red:** shadow + fallback tests copied from `test_research_scout_persona.py` / bob drill pattern.
 4. **Green:** implement until `pytest tests/unit/test_linus_persona.py -q` passes.
 
-## Suggested PR split (<500 lines each)
+## Suggested PR split (advisory ~500 lines each (not a gate))
 
 | PR | Content | Closes |
 | --- | --- | --- |

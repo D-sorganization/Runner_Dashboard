@@ -1,6 +1,9 @@
-"""Fleet-wide open-PR line-cap scan (RD#3643): pure parsing/scoring, shared by the
-CLI and API callers that each fetch one batched GraphQL response (AGENTS.md:
-"no loops over repositories with gh")."""
+"""Fleet-wide open-PR line-count scan (RD#3643): advisory reporting only.
+
+Pure parsing/scoring, shared by the CLI and API callers that each fetch one
+batched GraphQL response (AGENTS.md: "no loops over repositories with gh").
+Over-cap PRs are listed for visibility; they are not merge blockers (2026-11-06).
+"""
 
 from __future__ import annotations
 

@@ -22,7 +22,7 @@ Lost Code Finder needs a durable **evidence ledger** contract before scans write
 ## Acceptance criteria
 
 - [ ] Schema rejects incomplete rows; UNKNOWN requires explicit indirection checklist (test).
-- [ ] PR &lt;500 lines, TDD; `Closes #3867`.
+- [ ] Cohesive PR (~500 lines advisory), TDD; `Closes #3867`.
 
 ## Test plan (TDD)
 
