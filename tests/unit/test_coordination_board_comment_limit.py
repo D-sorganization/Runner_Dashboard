@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,15 @@ import pytest
 from coordination import board as board_mod
 from coordination import claims as claims_mod
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError, paginate_board_comments
+from coordination.board_pagination import (
+    MAX_EVENT_BYTES,
+    _merge_paginated,
+    _paginate_pages,
+    _parse_comment_envelope,
+    board_config,
+)
 from coordination.claims import ClaimHeldError
+from coordination.gh_cli import gh_api_json
 from coordination.rm_scripts import ScriptResult
 
 
@@ -361,6 +370,158 @@ def test_pagination_wiring_conflicts_and_validation(monkeypatch: pytest.MonkeyPa
     assert not paginate_board_comments(lambda p, n: [{"id": 1, "body": "<!-- agent-message v1 -->\n```json\n{}\n```", "user": {}}])["complete"]  # noqa: E501  # fmt: skip
 
     for name in ("board.py", "board_pagination.py"):
-        pth = Path(f"backend/coordination/{name}")
+        pth = Path(__file__).resolve().parents[2] / "backend" / "coordination" / name
         assert pth.exists() and len(pth.read_text(encoding="utf-8").splitlines()) < 380
         assert all((n.end_lineno or n.lineno) - n.lineno + 1 <= 45 for n in ast.walk(ast.parse(pth.read_text(encoding="utf-8"), filename=str(pth))) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))  # noqa: E501  # fmt: skip
+
+
+@pytest.mark.unit
+def test_merge_paginated_falsy_fallback_handling() -> None:
+    data = {
+        "messages": [{"id": "stale_m", "text": "stale"}],
+        "conflicts": [{"session": "stale_s"}],
+        "comment_count": 500,
+    }
+    pag = {
+        "pages_complete": True,
+        "complete": True,
+        "messages": [],
+        "conflicts": [],
+        "sessions": [],
+    }
+    merged = _merge_paginated(data, pag)
+    assert merged["messages"] == []
+    assert merged["conflicts"] == []
+
+    pag_undone = {"pages_complete": False, "complete": False, "messages": [], "conflicts": []}
+    merged_undone = _merge_paginated(data, pag_undone)
+    assert len(merged_undone["messages"]) == 1
+    assert len(merged_undone["conflicts"]) == 1
+
+
+@pytest.mark.unit
+def test_apply_event_midstream_conflict_not_poisoned_if_released() -> None:
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    exp_str = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    p1 = {"version": 1, "id": "p1", "kind": "presence", "agent": "claude", "session": "s1", "repo": "Runner_Dashboard", "issue": 100, "branch": "feat", "paths": ["src/a.py"], "goals": {"task": "fix"}, "at": at_str, "expires": exp_str}  # noqa: E501  # fmt: skip
+    spoof_msg = {"version": 1, "id": "m1", "kind": "message", "session": "s1", "repo": "Runner_Dashboard", "recipient": "*", "text": "spoof", "at": at_str}  # noqa: E501  # fmt: skip
+    rel = {"version": 1, "id": "r1", "kind": "release", "session": "s1", "repo": "Runner_Dashboard", "at": at_str}
+    comments = [
+        {"id": 1, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(p1)}\n```"},
+        {
+            "id": 2,
+            "user": {"login": "attacker"},
+            "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(spoof_msg)}\n```",
+        },  # noqa: E501
+        {"id": 3, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(rel)}\n```"},
+    ]
+    res = paginate_board_comments(lambda p, n: comments if p == 1 else [], now=now)
+    assert res["complete"] is True
+    assert res["active_conflicts"] == []
+    assert "Rejected identity change for s1" in res["replay_warnings"]
+    assert res["degraded_history"] is True
+
+
+@pytest.mark.unit
+def test_board_config_and_page_zero_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cfg = tmp_path / "config" / "agent_communication.json"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text("not json", encoding="utf-8")
+    monkeypatch.setattr("coordination.board_pagination.rm_root", lambda: tmp_path)
+    with pytest.raises(RuntimeError, match="Invalid agent_communication.json"):
+        board_config()
+
+    cfg.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="Invalid agent_communication.json"):
+        board_config()
+
+    from coordination.board_pagination import default_board_page_fetcher
+
+    monkeypatch.setattr("coordination.board_pagination.board_config", lambda: ("repo", 1, 3, [100]))
+    monkeypatch.setattr(
+        "coordination.board_pagination.gh_api_json",
+        lambda p: (_ for _ in ()).throw(RuntimeError("predecessor fetch failed")),
+    )  # noqa: E501
+    st: dict[str, Any] = {
+        "active": {},
+        "owners": {},
+        "messages": [],
+        "acks": set(),
+        "replay_w": [],
+        "live_c": [],
+        "read_w": [],
+        "rejected": {},
+    }  # noqa: E501
+    done, total = _paginate_pages(default_board_page_fetcher, 100, 100, datetime.now(UTC), st)
+    assert done is False
+    assert any("page 0: predecessor fetch failed" in w for w in st["read_w"])
+
+    monkeypatch.setattr("coordination.board_pagination.gh_api_json", lambda p: "not a list")
+    st2: dict[str, Any] = {
+        "active": {},
+        "owners": {},
+        "messages": [],
+        "acks": set(),
+        "replay_w": [],
+        "live_c": [],
+        "read_w": [],
+        "rejected": {},
+    }  # noqa: E501
+    done2, total2 = _paginate_pages(default_board_page_fetcher, 100, 100, datetime.now(UTC), st2)
+    assert done2 is False
+    assert any("page 0" in w for w in st2["read_w"])
+
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **kw: subprocess.CompletedProcess(a[0], 0, stdout="   \n", stderr="")
+    )  # noqa: E501
+    with pytest.raises(RuntimeError, match="returned empty stdout"):
+        gh_api_json("/repos/test")
+
+
+@pytest.mark.unit
+def test_envelope_framing_and_goals_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    exp_str = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    base_env = {"version": 1, "id": "p1", "kind": "presence", "agent": "claude", "session": "s1", "repo": "Runner_Dashboard", "issue": 100, "branch": "feat", "paths": ["src/a.py"], "goals": {"task": "fix"}, "at": at_str, "expires": exp_str}  # noqa: E501  # fmt: skip
+
+    raw_ws = "   <!-- agent-message v1 -->\n```json\n" + json.dumps(base_env) + "\n```"
+    c_ws = {"id": 1, "user": {"login": "u"}, "body": raw_ws}
+    env, author, err = _parse_comment_envelope(c_ws)
+    assert env is None and author == "u" and err == "Malformed coordination envelope"
+
+    big_raw = "<!-- agent-message v1 -->\n```json\n" + json.dumps(base_env) + (" " * (MAX_EVENT_BYTES + 10)) + "\n```"
+    c_big = {"id": 2, "user": {"login": "u"}, "body": big_raw}
+    env, author, err = _parse_comment_envelope(c_big)
+    assert env is None and author == "u" and err == "Malformed coordination envelope"
+
+    no_goals = {**base_env, "goals": None}
+    raw_ng = "<!-- agent-message v1 -->\n```json\n" + json.dumps(no_goals) + "\n```"
+    c_ng = {"id": 3, "user": {"login": "u"}, "body": raw_ng}
+    env, author, err = _parse_comment_envelope(c_ng)
+    assert env is None and err is not None and "Goals must map bounded keys to bounded outcomes" in err
+
+    junk_body = "<!-- agent-message v1 -->\n```json\n" + json.dumps(base_env) + "\n```\n---\n_Generated by [Claude Code](https://claude.ai/code)_\nextra trailing content"  # noqa: E501  # fmt: skip
+    c_junk = {"id": 4, "user": {"login": "u"}, "body": junk_body}
+    env, author, err = _parse_comment_envelope(c_junk)
+    assert env is None and author == "u" and err == "Malformed coordination envelope"
+
+    from coordination import claims
+
+    monkeypatch.setattr(
+        "coordination.claims.board_config", lambda: ("D-sorganization/Repository_Management", 9999, 3, [])
+    )  # noqa: E501
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": False,
+            "comment_limit_exceeded": True,
+            "warnings": ["RM #9999 comment limit exceeded"],
+        },
+    )
+    res = claims._board_claim_override("Tools", 1)
+    assert res is not None
+    assert "RM #9999" in res["reason"]

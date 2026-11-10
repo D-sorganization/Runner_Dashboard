@@ -6,6 +6,8 @@ import json
 import subprocess  # noqa: S404
 from typing import Any
 
+from coordination.rm_scripts import _rm_env
+
 GH_TIMEOUT_SECONDS = 20
 
 
@@ -16,7 +18,11 @@ def gh_api_json(path: str) -> Any:
         text=True,
         timeout=GH_TIMEOUT_SECONDS,
         check=False,
+        env=_rm_env(),
     )
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout or f"gh api {path} failed").strip()[:300])
-    return json.loads(proc.stdout) if proc.stdout.strip() else {}
+    out = proc.stdout.strip()
+    if not out:
+        raise RuntimeError(f"gh api {path} returned empty stdout")
+    return json.loads(out)

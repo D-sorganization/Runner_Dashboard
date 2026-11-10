@@ -18,6 +18,7 @@ RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 from collections.abc import Callable, Iterator, Sequence
@@ -26,11 +27,13 @@ from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
-from coordination.board import BOARD_COMMENT_LIMIT, BOARD_ISSUE, RMScriptError
+from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError
+from coordination.board_pagination import board_config
 from coordination.gh_cli import gh_api_json
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.claim_guard import closing_pr_for, full_repo
+from staff.workspace import rm_root
 
 FAIL_OPEN_PREFIX = "error:"
 _BRANCH_FOR_ISSUE = re.compile(r"(?:^|/)(\d+)(?:-|$)")
@@ -161,8 +164,15 @@ def _check_incomplete(data: dict[str, Any]) -> str | None:
 
 def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
     state = board_mod.cached_board_state()
-    if state is None and board_mod.board_page_fetcher not in (None, board_mod.default_board_page_fetcher):
-        state = board_mod.read_sessions(repo)
+    if state is None and board_mod.board_page_fetcher is not None:
+        root, keys = rm_root(), {"agent_communicate", "agent_communicate:list"}
+        skip_fake = (
+            root
+            and (resp := root / "responses.json").is_file()
+            and not any(k in keys for k in json.loads(resp.read_text(encoding="utf-8")))
+        )  # noqa: E501
+        if not skip_fake:
+            state = board_mod.read_sessions(repo)
     if state is None:
         return None
     if not state.get("available"):
@@ -170,7 +180,8 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
             "available": False,
             "reason": str(state.get("reason") or "coordination board unavailable"),
             "held": None,
-        }
+        }  # noqa: E501
+    b_iss = getattr(board_mod, "BOARD_ISSUE", None) or board_config()[1]
     for sess in state.get("sessions") or []:
         if str(sess.get("repo") or "").casefold() == repo.casefold() and sess.get("issue") == issue:
             return {
@@ -178,13 +189,13 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
                 "held": True,
                 "agent": str(sess.get("agent") or ""),
                 "session": str(sess.get("session") or ""),
-                "reason": f"active board presence on RM #{BOARD_ISSUE}",
+                "reason": f"active board presence on RM #{b_iss}",
                 "expires_at": sess.get("expires") or None,
             }
     if state.get("comment_limit_exceeded") or (
         not state.get("complete", True) and board_mod._comment_limit_reached(state)
-    ):
-        detail = "; ".join(state.get("warnings") or [f"RM #{BOARD_ISSUE} comment limit exceeded"])
+    ):  # noqa: E501
+        detail = "; ".join(state.get("warnings") or [f"RM #{b_iss} comment limit exceeded"])
         return {"available": False, "reason": f"coordination board incomplete ({detail})", "held": None}
     return None
 
