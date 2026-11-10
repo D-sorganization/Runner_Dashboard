@@ -821,6 +821,11 @@ def _import_arm_cap_module() -> Any:
     return arm_cap
 
 
+def _current_head_sha(repo: str, pr: int, run: CommandRunner) -> str:
+    proc = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".head.sha"])
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 def _arm_cli(
     repo: str,
     pr: int,
@@ -830,8 +835,16 @@ def _arm_cli(
     arm_tier: str,
     dispatch_kind: str,
     repo_root: str,
+    match_head_commit: str = "",
+    runner: CommandRunner | None = None,
 ) -> int:
     """Run ``--arm`` with optional WIP-cap reservation (RD-CI-005)."""
+    run = runner or _default_runner
+    if match_head_commit:
+        head = _current_head_sha(repo, pr, run)
+        if not head or head != match_head_commit.strip():
+            _emit(f"NOT armed {repo}#{pr}: head moved (expected {match_head_commit}, saw {head or 'unknown'})")
+            return 1
     cap_token: str | None = None
     arm_cap = _import_arm_cap_module()
     if arm_cap is not None:
@@ -922,6 +935,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="",
         help="repository root for config/dispatch_limits.json (default: cwd)",
     )
+    parser.add_argument(
+        "--match-head-commit",
+        default="",
+        help="refuse to arm unless the PR head SHA matches (merge shepherd pin)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -938,6 +956,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             arm_tier=args.arm_tier,
             dispatch_kind=args.dispatch_kind,
             repo_root=args.repo_root,
+            match_head_commit=args.match_head_commit,
         )
 
     verdict = evaluate_hold(args.repo, args.pr)

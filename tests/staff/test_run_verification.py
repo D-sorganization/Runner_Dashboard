@@ -172,6 +172,23 @@ def test_no_commit_remediation_action_on_open_target_pr_is_not_applicable(summar
     assert v.deliverable_failure_updates(rec, verdict, opens_pr=True) == {}
 
 
+def test_open_target_pr_armed_without_commits_is_not_applicable() -> None:
+    rec = _rec(
+        role="pr-remediator",
+        repo="Runner_Dashboard",
+        target_kind="pr",
+        target_ref="4230",
+        branch="staff/pr-remediator-4230-abc",
+    )
+    open_pr = v.PullRequest(4230, "open", "green", auto_merge_armed=True)
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=open_pr)
+
+    verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: armed auto-merge")
+
+    assert verdict.verification == "not_applicable"
+    assert "auto-merge armed" in verdict.detail
+
+
 def test_no_commit_action_claim_without_matching_result_text_still_fails() -> None:
     """An unconfirmed claim (no recognized action marker) keeps the existing no_change/failed behavior."""
     rec = _rec(

@@ -243,6 +243,15 @@ def evaluate(
                     target_pr,
                     ARTIFACT_PR_OPEN,
                 )
+            if remote_ahead_by == 0 and target.state == "open" and (
+                target.auto_merge_armed or target.in_merge_queue
+            ):
+                return Verdict(
+                    "not_applicable",
+                    f"PR #{target_pr} is still open with auto-merge armed or queued; no commits pushed",
+                    target_pr,
+                    ARTIFACT_PR_OPEN,
+                )
             if remote_ahead_by > 0:
                 pr = target
     verdict = decide(
