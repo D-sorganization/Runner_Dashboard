@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 import staff.panel_subscription_policy as policy
+from staff.antigravity_subscription_route import AntigravityRouteVerdict
 from staff.panel_models import MODERATOR_NAME, PanelCreateRequest
 
 EXPERTS = [
@@ -21,9 +22,7 @@ EXPERTS = [
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "provider", ["anthropic-api", "deepseek-api", "cursor-agent", "antigravity", "unknown-provider"]
-)
+@pytest.mark.parametrize("provider", ["anthropic-api", "deepseek-api", "cursor-agent", "unknown-provider"])
 def test_unverified_providers_fail_closed_without_probing(provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(policy, "provider_oauth_session_alive", lambda _p: pytest.fail("unexpected probe"))
     assert not policy.check_provider_subscription(provider).ok
@@ -160,8 +159,12 @@ def test_verify_panel_subscriptions_names_only_the_failing_seats(monkeypatch: py
         return (provider != "codex", "" if provider != "codex" else "no Codex auth.json")
 
     monkeypatch.setattr(policy, "provider_oauth_session_alive", fake_alive)
-    experts = [dict(e, provider="claude") if e["provider"] == "antigravity" else e for e in EXPERTS]
-    failures = policy.verify_panel_subscriptions(_request(experts=experts))
+    monkeypatch.setattr(
+        policy,
+        "verify_antigravity_subscription_route_for_panel",
+        lambda: AntigravityRouteVerdict(True, ""),
+    )
+    failures = policy.verify_panel_subscriptions(_request())
     assert failures == [{"seat": "Brook", "provider": "codex", "reason": "no Codex auth.json"}]
 
 
@@ -171,5 +174,9 @@ def test_verify_panel_subscriptions_is_empty_when_every_seat_is_verified(monkeyp
     monkeypatch.setattr(policy, "_codex_subscription_auth", lambda: True)
     monkeypatch.setattr(policy, "_claude_subscription_config", lambda: True)
     monkeypatch.setattr(policy, "provider_oauth_session_alive", lambda _p: (True, ""))
-    experts = [dict(e, provider="claude") if e["provider"] == "antigravity" else e for e in EXPERTS]
-    assert policy.verify_panel_subscriptions(_request(experts=experts)) == []
+    monkeypatch.setattr(
+        policy,
+        "verify_antigravity_subscription_route_for_panel",
+        lambda: AntigravityRouteVerdict(True, ""),
+    )
+    assert policy.verify_panel_subscriptions(_request()) == []

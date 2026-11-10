@@ -21,6 +21,7 @@ from pathlib import Path
 
 import provider_switch
 from security import safe_subprocess_env
+from staff.antigravity_subscription_route import verify_antigravity_subscription_route_for_panel
 from staff.cli_oauth_session import provider_oauth_session_alive, resolve_claude_config_dir
 from staff.panel_models import MODERATOR_NAME, PanelCreateRequest
 
@@ -109,6 +110,9 @@ def check_provider_subscription(provider: str) -> SubscriptionCheck:
     """
     if provider_switch.is_disabled(provider):
         return SubscriptionCheck(provider, False, provider_switch.DISABLED_DETAIL)
+    if provider == "antigravity":
+        route = verify_antigravity_subscription_route_for_panel()
+        return SubscriptionCheck(provider, route.ok, route.reason)
     if provider not in _SUBSCRIPTION_OVERRIDES:
         return SubscriptionCheck(provider, False, "provider has no verified subscription authentication path")
     if any(os.environ.get(name, "").strip() for name in _SUBSCRIPTION_OVERRIDES[provider]):
