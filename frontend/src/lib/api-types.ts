@@ -8033,6 +8033,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/review/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Review Metrics
+         * @description Queue depth, verdict mix, provider availability and 429s for the review flow.
+         *
+         *     Deferred by design: review latency p50/p90 and reviewer disagreement rate need
+         *     the per-head-SHA verdict contract from #4249, which does not exist yet.
+         */
+        get: operations["read_review_metrics_api_v1_staff_review_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/roles": {
         parameters: {
             query?: never;
@@ -26556,6 +26579,39 @@ export interface operations {
         parameters: {
             query?: {
                 retention_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_review_metrics_api_v1_staff_review_metrics_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
             };
             header?: never;
             path?: never;
