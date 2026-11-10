@@ -18,7 +18,10 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS
+from staff.failover_dispatch import append_chain_attempt, parse_chain_log
+from staff.retry_admission import automatic_retry_admission
 from staff.retry_policy import (
+    DEFAULT_FALLBACK_CHAIN_CAP,
     NON_RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
     RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
     compute_backoff,
@@ -67,6 +70,13 @@ def handle_post_execution_retry(
         return False
 
     if latest.status != "failed" or rec.id in runner._cancel_flags:
+        return False
+
+    allowed, admission_reason = automatic_retry_admission(runner, latest)
+    if not allowed:
+        blocked_root = latest.retry_of or latest.id
+        store.append_event(blocked_root, "retry_blocked", admission_reason)
+        log.info("retry blocked for %s: %s", latest.id, admission_reason)
         return False
 
     role = runner.roles().get(plan.role)
@@ -168,6 +178,13 @@ def handle_post_execution_retry(
 
     # 3. Legacy fallback_providers / providers order
     if is_retryable_class(latest.failure_class):
+        root_rec = store.get_run(root_id) or latest
+        chain = parse_chain_log(getattr(root_rec, "provider_chain", ""))
+        chain_attempts = len(chain)
+        if chain_attempts >= DEFAULT_FALLBACK_CHAIN_CAP:
+            store.append_event(root_id, "fallback", f"fallback chain cap ({DEFAULT_FALLBACK_CHAIN_CAP}) reached")
+            return False
+        visited = frozenset(str(e.get("provider") or "") for e in chain if e.get("provider"))
         fallback = next_fallback_provider(
             role,
             plan.provider,
@@ -175,6 +192,7 @@ def handle_post_execution_retry(
                 can_run_unattended(runner._adapters, pid)
                 and (not role.code_read_only or pid in READ_ONLY_RUN_PROVIDERS)
             ),
+            visited=visited,
         )
         if fallback:
             can_run, _ = guard.can_run(role)
@@ -228,7 +246,15 @@ def handle_post_execution_retry(
                     "fallback",
                     f"retries exhausted on {plan.provider}; falling back to {fallback}",
                 )
-                _schedule(runner, fallback_rec, fallback_plan, 0.0)
+                append_chain_attempt(
+                    store,
+                    root_id,
+                    provider=plan.provider,
+                    model=plan.model,
+                    outcome=latest.failure_class or "failed",
+                )
+                delay = compute_backoff(max(1, chain_attempts + 1))
+                _schedule(runner, fallback_rec, fallback_plan, delay)
                 return True
 
     return False
@@ -358,15 +384,9 @@ def launch_retry(
     ok, reason = should_retry(gated, role, budget_guard=BudgetGuard(store))
     if not ok:
         return RetryDecision(False, reason=reason)
-    hold = holds.blocking(role.name, latest.repo)
-    if hold is not None:
-        return RetryDecision(False, reason=f"hold: {hold.text}")
-
-    from staff.exclusions import ExclusionsList  # noqa: PLC0415
-
-    excluded = ExclusionsList().blocking(latest.repo) if latest.repo else None
-    if excluded is not None:
-        return RetryDecision(False, reason=f"excluded: {excluded.owner}: {excluded.reason}")
+    ok_admission, admission_reason = automatic_retry_admission(runner, latest, holds=holds)
+    if not ok_admission:
+        return RetryDecision(False, reason=admission_reason)
 
     root_id = latest.retry_of or latest.id
     attempt = latest.attempt + 1
