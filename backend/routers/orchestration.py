@@ -38,6 +38,7 @@ from fastapi.responses import JSONResponse
 from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 from machine_registry import load_machine_registry
 from routers import fleet_maintenance_routes as _maintenance_routes
+from routers import fleet_target_routes as _target_routes
 from routers import orchestration_audit_routes as _audit_routes
 from routers import orchestration_node_routes as _node_routes
 from routers import orchestration_schedule_routes as _schedule_routes
@@ -56,6 +57,7 @@ router = APIRouter(tags=["orchestration"])
 router.include_router(_audit_routes.router)
 router.include_router(_schedule_routes.router)
 router.include_router(_maintenance_routes.router)
+router.include_router(_target_routes.router)
 router.include_router(_node_routes.router)
 
 

@@ -1623,6 +1623,9 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
     env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
     env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
     env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
+    from runner_target_contract import TARGET_OVERRIDE_PATH  # noqa: PLC0415
+
+    env["RUNNER_TARGET_OVERRIDE"] = str(TARGET_OVERRIDE_PATH)
     try:
         result = subprocess.run(
             [sys.executable, RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
@@ -1649,6 +1652,11 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
             "config": config,
         }
     state["available"] = True
+    from runner_target_contract import load_target_override  # noqa: PLC0415
+
+    override = load_target_override()
+    if override:
+        state["target_override"] = override
     return state
 
 
