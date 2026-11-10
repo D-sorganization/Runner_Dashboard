@@ -23506,9 +23506,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Fleet State Audit Api V1 Fleet State Audit Get",
-                  "type": "object"
+                  "title": "Response Get Fleet State Audit Api V1 Fleet State Audit Get"
                 }
               }
             },
