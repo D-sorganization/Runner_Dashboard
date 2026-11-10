@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from staff.skills.contract import SkillDetail, semver_sort_key
-from staff.skills.registry import get_skill, list_skills, repo_matches_skill
+from staff.skills.contract import SkillSummary
+from staff.skills.registry import get_skill, list_skills, repo_matches_skill, role_match_rank, role_matches_skill
 from staff.standards_registry import (
     ESTIMATOR_VERSION,
     FleetStandards,
@@ -76,8 +77,21 @@ def match_skills_for_dispatch(role: str, repo: str, task_type: str = "") -> list
     return [
         s
         for s in rows
-        if role in s.roles and repo_matches_skill(s.repos, repo) and _task_matches(s.task_types, task_type)
+        if role_matches_skill(s.roles, role)
+        and repo_matches_skill(s.repos, repo)
+        and _task_matches(s.task_types, task_type)
     ]
+
+
+def _best_skill_for_role(matches: list[SkillSummary], role: str) -> SkillSummary:
+    """Pick one skill: best role match, then highest semver within the same name."""
+    by_name: dict[str, SkillSummary] = {}
+    for summary in matches:
+        prev = by_name.get(summary.name)
+        if prev is None or semver_sort_key(summary.version) > semver_sort_key(prev.version):
+            by_name[summary.name] = summary
+    candidates = list(by_name.values())
+    return min(candidates, key=lambda s: (-role_match_rank(s.roles, role), s.name))
 
 
 def _standards_block(standards: FleetStandards, standards_extra: str) -> str:
@@ -162,7 +176,7 @@ def resolve_dispatch_bundle(
 
     matches = match_skills_for_dispatch(role_key, repo_key, task_key)
     if matches:
-        best = max(matches, key=lambda s: semver_sort_key(s.version))
+        best = _best_skill_for_role(matches, role_key)
         detail = get_skill(best.name, version=best.version)
         if detail is None:
             raise DispatchContractError(f"skill {best.name}@{best.version} is indexed but unreadable")
