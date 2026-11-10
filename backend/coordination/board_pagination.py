@@ -24,17 +24,11 @@ def _session(raw: dict[str, Any]) -> dict[str, Any]:
     return {**{k: raw.get(k) for k in SESSION_KEYS}, "source": "board"}
 
 
-def _valid_path(p: Any) -> bool:
-    return isinstance(p, str) and 0 < len(p.strip()) <= 300 and not any(c in p for c in "\\:*?[]") and not any(x in {"", ".", ".."} for x in p.split("/"))  # noqa: E501  # fmt: skip
-
-
 def _validate_presence(env: dict[str, Any], at_dt: datetime) -> str | None:
     iss, br, pths, g, ag = env.get("issue"), env.get("branch"), env.get("paths"), env.get("goals"), env.get("agent")
-    if not isinstance(ag, str) or not ag.strip():
-        return "Presence requires agent identifier"
-    if type(iss) is not int or iss <= 0 or not isinstance(br, str) or not (0 < len(br.strip()) <= 250):
-        return "Positive integer issue number and bounded branch string required"
-    if not isinstance(pths, list) or len(pths) > 64 or not all(_valid_path(p) for p in pths):
+    if not isinstance(ag, str) or not ag.strip() or type(iss) is not int or iss <= 0 or not isinstance(br, str) or not (0 < len(br.strip()) <= 250):  # noqa: E501  # fmt: skip
+        return "Invalid presence agent, issue, or branch"
+    if not isinstance(pths, list) or len(pths) > 64 or not all(isinstance(p, str) and 0 < len(p.strip()) <= 300 and not any(c in p for c in "\\:*?[]") and not any(x in {"", ".", ".."} for x in p.split("/")) for p in pths):  # noqa: E501  # fmt: skip
         return "Paths must be a bounded list of normalized relative paths"
     if g is not None and (not isinstance(g, dict) or len(g) > 64 or not all(isinstance(k, str) and _ID.fullmatch(k) and isinstance(v, str) and 0 < len(v.strip()) <= 250 for k, v in g.items())):  # noqa: E501  # fmt: skip
         return "Goals must map bounded keys to bounded outcomes"

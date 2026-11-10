@@ -31,6 +31,7 @@ from typing import Any
 from coordination.board_pagination import (
     _is_replay_warning,
     _merge_paginated,
+    _session,
     default_board_page_fetcher,
     paginate_board_comments,
 )
@@ -253,10 +254,6 @@ def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, A
         "conflicts": list(data.get("conflicts") or []),
         "warnings": list(dict.fromkeys([*read_warnings, *replay_warnings, *raw_warnings])),
     }
-
-
-def _session(raw: dict[str, Any]) -> dict[str, Any]:
-    return {**{k: raw.get(k) for k in SESSION_KEYS}, "source": "board"}
 
 
 def _unsupported(res: ScriptResult) -> bool:
