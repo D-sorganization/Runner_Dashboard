@@ -34,7 +34,8 @@ def default_host_cap(host: str | None) -> int:
 
 
 def host_runner_cap(host: str) -> int:
-    """Per-host cap from registry ``runners.max`` when present, else panel defaults (#4307)."""
+    """Effective cap is ``min(registry runners.max, hard panel cap)`` (#4308 / #4307)."""
+    hard_cap = default_host_cap(host)
     token = _normalize_host_token(host)
     try:
         index = build_machine_registry_index(load_machine_registry())
@@ -44,10 +45,10 @@ def host_runner_cap(host: str) -> int:
             if isinstance(runners, dict):
                 maximum = runners.get("max")
                 if isinstance(maximum, int) and maximum >= 0:
-                    return maximum
+                    return min(maximum, hard_cap)
     except Exception as exc:  # noqa: BLE001 - cap lookup is advisory
         log.debug("host cap registry lookup failed for %s: %s", host, exc)
-    return default_host_cap(host)
+    return hard_cap
 
 
 def clamp_runners(requested: int, host: str | None, cap: int | None = None) -> int:

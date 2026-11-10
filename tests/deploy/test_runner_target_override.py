@@ -42,6 +42,39 @@ def test_effective_capacity_uses_persisted_override(tmp_path: Path, monkeypatch)
     assert "target-override" in reason
 
 
+def test_effective_capacity_reverts_to_schedule_after_expiry(tmp_path: Path, monkeypatch) -> None:
+    rs = _load_scheduler()
+    override = tmp_path / "target-override.json"
+    contract = rs.target_contract
+    monkeypatch.setattr(contract, "TARGET_OVERRIDE_PATH", override)
+    start = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    expiry = start + timedelta(minutes=30)
+    contract.write_target_override(
+        runners=2,
+        reason="pytest",
+        actor="pytest",
+        before=6,
+        until=expiry.isoformat(),
+        path=override,
+        created_at=start,
+    )
+    config = {
+        "enabled": True,
+        "timezone": "UTC",
+        "default_count": 5,
+        "max_count": 6,
+        "schedules": [],
+    }
+    monkeypatch.setenv("RUNNER_SCHEDULER_NOW", start.isoformat())
+    assert rs.effective_capacity(config, None)[0] == 2
+    after = expiry + timedelta(seconds=1)
+    monkeypatch.setenv("RUNNER_SCHEDULER_NOW", after.isoformat())
+    desired, reason = rs.effective_capacity(config, None)
+    assert desired == 5
+    assert reason == "default"
+    assert contract.load_target_override(now=after) is None
+
+
 def test_busy_runner_not_stopped_on_scale_down(monkeypatch, tmp_path: Path) -> None:
     rs = _load_scheduler()
     completed = rs.subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")

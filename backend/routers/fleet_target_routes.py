@@ -124,6 +124,44 @@ def _audit_entry(
     }
 
 
+def _scheduled_desired_from_scheduler() -> int:
+    """Runner count the schedule would apply with no target override file."""
+    scheduler_bin, config, state, runner_root = _schedule.scheduler_paths()
+    snap_getter = _schedule._get_runner_capacity_snapshot  # type: ignore[attr-defined]
+    if snap_getter is not None and not target_contract.load_target_override():
+        snapshot = snap_getter()
+        desired = ((snapshot or {}).get("state") or {}).get("desired")
+        if isinstance(desired, int):
+            return desired
+    if not Path(scheduler_bin).exists():
+        return 0
+    env = safe_subprocess_env()
+    env["RUNNER_ROOT"] = str(runner_root)
+    env["RUNNER_SCHEDULE_CONFIG"] = str(config)
+    env["RUNNER_SCHEDULER_STATE"] = str(state)
+    env["RUNNER_TARGET_OVERRIDE"] = str(Path(os.environ.get("TMPDIR", "/tmp")) / "missing-target-override.json")
+    try:
+        result = subprocess.run(
+            [scheduler_bin, "--dry-run", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+            env=env,
+            shell=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    if result.returncode != 0:
+        return 0
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return 0
+    desired = payload.get("desired")
+    return int(desired) if isinstance(desired, int) else 0
+
+
 async def _apply_scheduler() -> dict[str, Any]:
     scheduler_bin, config, state, runner_root = _schedule.scheduler_paths()
     if not Path(scheduler_bin).exists():
@@ -159,14 +197,17 @@ async def _apply_scheduler() -> dict[str, Any]:
 async def _apply_target_local(payload: dict[str, Any], principal: Principal) -> dict[str, Any]:
     cap = target_contract.host_runner_cap(payload["host"])
     before_record = target_contract.load_target_override()
-    before = int(before_record["runners"]) if before_record else None
+    if before_record:
+        before = int(before_record["runners"])
+    else:
+        before = await asyncio.to_thread(_scheduled_desired_from_scheduler)
     clamped = target_contract.clamp_runners(payload["runners"], payload["host"], cap)
     until_store = target_contract.format_until_for_storage(payload.get("until"))
     record = target_contract.write_target_override(
         runners=clamped,
         reason=payload["reason"],
         actor=principal.id,
-        before=before if before is not None else clamped,
+        before=before,
         until=until_store,
     )
     apply_state: dict[str, Any] | None = None
@@ -179,7 +220,7 @@ async def _apply_target_local(payload: dict[str, Any], principal: Principal) -> 
         "runners": clamped,
         "target_override": record,
         "apply_state": apply_state,
-        "before": before,
+        "before": record["before"],
     }
 
 

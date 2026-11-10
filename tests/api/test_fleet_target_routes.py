@@ -56,6 +56,23 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     return TestClient(app)
 
 
+def test_fleet_target_first_override_records_scheduled_before(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        routes,
+        "_scheduled_desired_from_scheduler",
+        lambda: 5,
+    )
+    response = client.post(
+        URL,
+        json={"host": "DeskComputer", "runners": 3, "apply": False},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["target_override"]["before"] == 5
+
+
 def test_fleet_target_clamps_and_persists(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.post(
         URL,
