@@ -50,19 +50,29 @@ def test_hub_hold_blocks_named_pr():
     assert hub_hold_blocks_pr(repo="D-sorganization/Runner_Dashboard", pr_number=999, holds=holds) == ""
 
 
+def _open_pr_node(number: int, *, review: str = "APPROVED", paths: list[str] | None = None) -> dict:
+    file_paths = paths or ["docs/agents/x.md"]
+    return {
+        "number": number,
+        "title": f"pr {number}",
+        "isDraft": False,
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "reviewDecision": review,
+        "headRefOid": f"sha{number}",
+        "additions": 12,
+        "deletions": 3,
+        "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
+        "labels": {"nodes": []},
+        "files": {
+            "pageInfo": {"hasNextPage": False},
+            "nodes": [{"path": p} for p in file_paths],
+        },
+    }
+
+
 def test_plan_repo_backoffs_when_queue_deep():
-    nodes = [
-        {
-            "number": 10,
-            "title": "feat",
-            "isDraft": False,
-            "mergeable": "MERGEABLE",
-            "mergeStateStatus": "CLEAN",
-            "headRefOid": "sha",
-            "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
-            "labels": {"nodes": []},
-        }
-    ]
+    nodes = [_open_pr_node(10)]
     actions, skips, backoff = plan_repo_pass(
         "D-sorganization/Runner_Dashboard",
         nodes,
@@ -74,19 +84,6 @@ def test_plan_repo_backoffs_when_queue_deep():
     )
     assert backoff is True
     assert actions == []
-
-
-def _open_pr_node(number: int) -> dict:
-    return {
-        "number": number,
-        "title": f"pr {number}",
-        "isDraft": False,
-        "mergeable": "MERGEABLE",
-        "mergeStateStatus": "CLEAN",
-        "headRefOid": f"sha{number}",
-        "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
-        "labels": {"nodes": []},
-    }
 
 
 def test_plan_repo_caps_rd_arms_at_two():
@@ -102,6 +99,37 @@ def test_plan_repo_caps_rd_arms_at_two():
     )
     assert not backoff
     assert len(actions) == 2
+
+
+def test_plan_repo_skips_without_approval_unless_docs_only():
+    approved, docs_only, mixed = (
+        _open_pr_node(200, review="APPROVED"),
+        _open_pr_node(201, review="REVIEW_REQUIRED", paths=["changes/4245.md"]),
+        _open_pr_node(202, review="REVIEW_REQUIRED", paths=["docs/a.md", "backend/x.py"]),
+    )
+    _, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [approved, docs_only, mixed],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    reasons = {(s["pr"], s["reason"]) for s in skips}
+    assert (202, "no_approval:mixed_paths:backend/x.py") in reasons
+    actions, _, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [approved, docs_only],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    elig = {a.pr_number: a.eligibility for a in actions}
+    assert elig.get(200) == "reviewed"
+    assert elig.get(201) == "docs_tests_only"
 
 
 def test_run_pass_is_dry_when_not_live():

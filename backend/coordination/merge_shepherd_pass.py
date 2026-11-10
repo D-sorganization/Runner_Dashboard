@@ -17,6 +17,8 @@ from coordination.merge_shepherd import (
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
+from coordination.merge_shepherd_low_risk import arm_eligibility_reason
+from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
 
 log = logging.getLogger(__name__)
 
@@ -57,7 +59,13 @@ query($owner: String!, $name: String!) {
         mergeStateStatus
         reviewDecision
         headRefOid
+        additions
+        deletions
         labels(first: 30) { nodes { name } }
+        files(first: 100) {
+          pageInfo { hasNextPage }
+          nodes { path }
+        }
         autoMergeRequest { enabledAt }
         mergeQueueEntry { position }
         commits(last: 1) {
@@ -86,6 +94,7 @@ class PassConfig:
     dry_run: bool = True
     repo_root: Path = field(default_factory=Path.cwd)
     skip_path: Path | None = None
+    low_risk_line_cap: int = field(default_factory=default_low_risk_line_cap)
 
 
 @dataclass(frozen=True)
@@ -96,6 +105,7 @@ class PassAction:
     strategy: str
     dry_run: bool
     detail: str
+    eligibility: str = ""
 
 
 @dataclass
@@ -143,6 +153,17 @@ def _checks_state(node: Mapping[str, Any]) -> str:
 def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
     labels = (node.get("labels") or {}).get("nodes") or []
     return tuple(str(n.get("name") or "") for n in labels if isinstance(n, Mapping) and n.get("name"))
+
+
+def _pr_file_metadata(node: Mapping[str, Any]) -> tuple[tuple[str, ...], int, int, bool]:
+    files_block = node.get("files") if isinstance(node.get("files"), Mapping) else {}
+    file_nodes = (files_block.get("nodes") or []) if isinstance(files_block, Mapping) else []
+    paths = tuple(str(n.get("path") or "") for n in file_nodes if isinstance(n, Mapping) and n.get("path"))
+    page_info = files_block.get("pageInfo") if isinstance(files_block, Mapping) else {}
+    has_next = bool((page_info or {}).get("hasNextPage")) if isinstance(page_info, Mapping) else False
+    additions = int(node.get("additions") or 0)
+    deletions = int(node.get("deletions") or 0)
+    return paths, additions, deletions, not has_next
 
 
 def graphql_nodes(payload: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], int, int]:
@@ -263,13 +284,16 @@ def plan_repo_pass(
     armed_count: int,
     queue_depth: int,
     live: bool,
+    line_cap: int | None = None,
 ) -> tuple[list[PassAction], list[dict[str, Any]], bool]:
     """Plan arm actions for one repo. Returns actions, skip audit rows, backoff flag."""
     if armed_count + queue_depth > QUEUE_BACKOFF_THRESHOLD:
         return [], [], True
+    effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
     is_drained = False
     candidates: list[PRCandidate] = []
     skip_rows: list[dict[str, Any]] = []
+    eligibility_by_pr: dict[int, str] = {}
     for node in nodes:
         if node.get("isDraft"):
             continue
@@ -277,6 +301,28 @@ def plan_repo_pass(
         if pre:
             skip_rows.append({"repo": repo, "pr": int(node["number"]), "reason": pre})
             continue
+        paths, additions, deletions, files_complete = _pr_file_metadata(node)
+        eligibility, eligibility_detail = arm_eligibility_reason(
+            review_decision=str(node.get("reviewDecision") or ""),
+            file_paths=paths,
+            additions=additions,
+            deletions=deletions,
+            line_cap=effective_line_cap,
+            labels=_label_names(node),
+            checks_state=_checks_state(node),
+            files_complete=files_complete,
+        )
+        number = int(node["number"])
+        if eligibility == "no_approval":
+            skip_rows.append(
+                {
+                    "repo": repo,
+                    "pr": number,
+                    "reason": f"no_approval:{eligibility_detail}",
+                }
+            )
+            continue
+        eligibility_by_pr[number] = eligibility
         candidates.append(node_to_candidate(repo, node, is_drained=is_drained))
     decisions = [normalize_pass_decision(d) for d in rank_candidates_for_shepherding(candidates)]
     cap = _repo_arm_cap(repo)
@@ -310,6 +356,7 @@ def plan_repo_pass(
                 strategy=strategy,
                 dry_run=not live,
                 detail=decision.detail,
+                eligibility=eligibility_by_pr.get(decision.pr_number, ""),
             )
         )
     return actions, skip_rows, False
@@ -342,6 +389,7 @@ def run_merge_shepherd_pass(
             armed_count=armed_count,
             queue_depth=queue_depth,
             live=config.live and not config.dry_run,
+            line_cap=config.low_risk_line_cap,
         )
         repo_row = {
             "repo": full,
@@ -365,6 +413,7 @@ def run_merge_shepherd_pass(
                     "strategy": act.strategy,
                     "dry_run": act.dry_run,
                     "detail": act.detail,
+                    "eligibility": act.eligibility,
                 }
             )
     return summary
