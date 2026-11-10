@@ -110,6 +110,36 @@ def test_relay_card_cross_run_is_403(relay_env: dict[str, Any]) -> None:
     assert resp.status_code == 403
 
 
+def test_relay_card_fleet_peer_wrong_node_is_403(relay_env: dict[str, Any]) -> None:
+    """A fleet peer cannot relay a valid run unless the payload node matches the executing machine."""
+    fleet = Principal(id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"])
+    app = relay_env["app"]
+    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
+    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: fleet
+    client = TestClient(app, raise_server_exceptions=False)
+    body = {**_relay_body(relay_env["run"].id), "node": "other-node"}
+    resp = client.post(
+        f"/api/v1/staff/threads/{relay_env['thread'].id}/relay-card",
+        json=body,
+        headers={**_XHR, "X-Fleet-Node": "other-node"},
+    )
+    assert resp.status_code == 403
+
+
+def test_relay_card_fleet_peer_executing_node_is_200(relay_env: dict[str, Any]) -> None:
+    fleet = Principal(id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"])
+    app = relay_env["app"]
+    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
+    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: fleet
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post(
+        f"/api/v1/staff/threads/{relay_env['thread'].id}/relay-card",
+        json=_relay_body(relay_env["run"].id),
+        headers={**_XHR, "X-Fleet-Node": "nodeB"},
+    )
+    assert resp.status_code == 200
+
+
 def test_relay_card_owner_is_200(relay_env: dict[str, Any]) -> None:
     run = relay_env["run"]
     token = mint_run_token(run.role, run.id, (), ttl_seconds=600.0)

@@ -18,7 +18,19 @@ def _lease_principal_id_for_run(rec: RunRecord) -> str:
     return f"agent-{adapter.lease_agent}"
 
 
-def assert_relay_run_card_authorized(*, thread_id: str, run_id: str, caller: Principal) -> RunRecord:
+def _relaying_node(*, relay_node: str, fleet_node: str | None) -> str:
+    """Node identity asserted by the relay payload and/or fleet transport header."""
+    return (fleet_node or relay_node or "").strip()
+
+
+def assert_relay_run_card_authorized(
+    *,
+    thread_id: str,
+    run_id: str,
+    caller: Principal,
+    relay_node: str = "",
+    fleet_node: str | None = None,
+) -> RunRecord:
     """Post: ``run_id`` belongs to ``thread_id`` and ``caller`` may relay for that run."""
     from staff.runner import get_runner  # noqa: PLC0415
 
@@ -31,6 +43,9 @@ def assert_relay_run_card_authorized(*, thread_id: str, run_id: str, caller: Pri
         raise HTTPException(status_code=403, detail="relay not authorized for this run")
     lease_principal = _lease_principal_id_for_run(rec)
     if caller.id == "fleet-peer" or "fleet-peer" in caller.roles:
+        node = _relaying_node(relay_node=relay_node, fleet_node=fleet_node)
+        if not node or node != (rec.machine or "").strip():
+            raise HTTPException(status_code=403, detail="relay not authorized for this run")
         return rec
     if is_active_run_principal(run_id=rec.id, role=rec.role, principal_id=caller.id):
         return rec
