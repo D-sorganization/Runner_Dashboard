@@ -244,21 +244,11 @@ def try_declarative_fallback(
         adapter=runner._adapters[target],
     )
     argv = runner._adapters[target].build_command(plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role))
-    fallback_plan = RunPlan(
-        role=plan.role,
+    fallback_plan = plan.derive(
         provider=target,
         model=fallback_model,
-        repo=plan.repo,
-        target_kind=plan.target_kind,
-        target_ref=plan.target_ref,
-        operator_prompt=plan.operator_prompt,
-        prompt=plan.prompt,
         argv=argv,
         branch=next_branch,
-        lease_ritual=plan.lease_ritual,
-        consolidation=plan.consolidation,
-        focus=plan.focus,
-        head_ref=plan.head_ref,
     )
     fallback_rec = RunRecord(
         id=attempt_id,

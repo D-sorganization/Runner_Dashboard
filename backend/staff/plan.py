@@ -6,7 +6,7 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from staff import consolidation
@@ -117,6 +117,10 @@ class RunPlan:
     @property
     def issue_number(self) -> str:
         return self.target_ref.lstrip("#") if self.target_kind == "issue" else ""
+
+    def derive(self, **overrides: Any) -> RunPlan:
+        """Copy this plan, applying only the fields that change on retry/failover (#4259)."""
+        return replace(self, **overrides)
 
     def to_dict(self) -> dict[str, Any]:
         return {
