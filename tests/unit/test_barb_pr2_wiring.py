@@ -27,6 +27,7 @@ from staff.store import RunRecord, RunStore
 from staff.thread_bus import ThreadEventBus
 
 PRINCIPAL = Principal(id="u", type="human", name="U", roles=["admin"], scopes=["staff.read"])
+FLEET_RELAY = Principal(id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"])
 EPOCH = 3
 
 
@@ -48,13 +49,22 @@ def _run(thread_id: str, run_id: str = "run-1", machine: str = "worker") -> RunR
 @pytest.fixture
 def authority_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
     """An authority app (real store + routes) reachable through a switchable in-process network."""
+    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "staff_runs.sqlite3"))
+    from staff import runner as runner_mod
+    from staff import store as store_mod
+    from staff.runner import get_runner
+
+    store_mod.reset_store()
+    runner_mod.reset_runner()
     store = ConversationStore(tmp_path / "authority.sqlite3")
     thread = store.create_thread(title="t", kind="direct", role="librarian", created_by="user:d")
+    get_runner().store.create_run(_run(thread.id, "r1"))
     monkeypatch.setattr(staff_threads, "_get_store_or_503", lambda: store)
     monkeypatch.setattr(staff_threads, "get_thread_bus", lambda: ThreadEventBus())
     app = FastAPI()
     app.include_router(threads_router, prefix="/api/v1/staff")
     app.dependency_overrides[require_fleet_peer] = lambda: "peer"
+    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: FLEET_RELAY
     client = TestClient(app)
     monkeypatch.setenv("BARB_AUTHORITY_NODE", "CT")
     monkeypatch.setenv("BARB_AUTHORITY_URL", "http://ct:8321")
@@ -157,6 +167,9 @@ def replica(authority_env: dict[str, Any], tmp_path: Path, monkeypatch: pytest.M
     runs = RunStore(tmp_path / "runs.sqlite3")
     tid = authority_env["thread"].id
     runs.create_run(_run(tid))
+    from staff.runner import get_runner
+
+    get_runner().store.create_run(_run(tid, "run-1"))
     _become_replica(authority_env)
     monkeypatch.setattr(barb_runtime, "get_conversation_store", lambda: worker)
     monkeypatch.setattr(barb_runtime, "get_store", lambda: runs)

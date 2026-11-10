@@ -20,6 +20,7 @@ from staff.run_link import (
     relay_run_card_to_origin,
     run_card_id,
 )
+from staff.runner import get_runner
 from staff.store import RunRecord
 from staff.thread_bus import ThreadEventBus
 
@@ -28,7 +29,7 @@ PEER_PRINCIPAL = Principal(
     type="peer",
     name="Node B",
     roles=["fleet-peer"],
-    scopes=["staff.read", "staff.chat", "staff.write"],
+    scopes=["staff.read", "staff.chat", "staff.write", "staff.relay.write"],
 )
 
 
@@ -50,6 +51,7 @@ def node_a_env(tmp_path: Path) -> dict[str, Any]:
     app.dependency_overrides[require_fleet_peer] = lambda: "fleet-peer"
     app.dependency_overrides[require_scope("staff.chat")] = lambda: PEER_PRINCIPAL
     app.dependency_overrides[require_scope("staff.read")] = lambda: PEER_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: PEER_PRINCIPAL
 
     # Override get_conversation_store and get_thread_bus for the test app
     from routers import staff_threads
@@ -99,7 +101,9 @@ def test_two_node_forwarded_run_relays_cards_to_origin(
         prompt="Analyze data",
         origin_node="nodeA",
         thread_id=node_a_thread.id,
+        status="running",
     )
+    get_runner().store.create_run(run)
 
     # Execute run lifecycle on Node B
     handle_run_status_change(run, "queued", relay_fn=fake_relay_post)
@@ -144,7 +148,9 @@ def test_relay_card_idempotency_duplicate_delivery(node_a_env: dict[str, Any], m
         prompt="Audit",
         origin_node="nodeA",
         thread_id=node_a_thread.id,
+        status="running",
     )
+    get_runner().store.create_run(run)
 
     # Send 3 identical 'running' events
     handle_run_status_change(run, "running", relay_fn=fake_relay_post)
@@ -181,7 +187,9 @@ def test_relay_card_out_of_order_protection(node_a_env: dict[str, Any], monkeypa
         prompt="Audit",
         origin_node="nodeA",
         thread_id=node_a_thread.id,
+        status="running",
     )
+    get_runner().store.create_run(run)
 
     # First succeeds
     handle_run_status_change(run, "succeeded", summary="Done first", relay_fn=fake_relay_post)

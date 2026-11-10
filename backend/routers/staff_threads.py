@@ -38,6 +38,7 @@ from staff.conversations import ConversationsUnavailableError, get_conversation_
 from staff.loop_guard import enforce_loop_guard_or_raise, principal_author_kind
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
+from staff.relay_card_policy import assert_relay_run_card_authorized
 from staff.request_cards import request_message_card
 from staff.thread_bus import get_thread_bus
 from staff.thread_helpers import (
@@ -406,6 +407,7 @@ async def relay_thread_run_card(
     thread_id: str,
     body: RelayRunCardRequest,
     _peer: str = Depends(require_fleet_peer),
+    caller: Principal = Depends(require_scope("staff.relay.write")),
 ) -> dict[str, Any] | JSONResponse:
     """Relay run-card state from an executing node back to origin (issue #1488)."""
     store = _get_store_or_503()
@@ -417,6 +419,7 @@ async def relay_thread_run_card(
                 "message": f"Thread {thread_id} not found",
             },
         )
+    assert_relay_run_card_authorized(thread_id=thread_id, run_id=body.run_id, caller=caller)
     return ingest_relayed_card(store, get_thread_bus(), thread_id, body)
 
 

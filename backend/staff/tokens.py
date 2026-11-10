@@ -90,7 +90,7 @@ def mint_run_token(
     if ttl_seconds <= 0:
         raise ValueError("ttl_seconds must be positive")
 
-    scope_set = set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential"}
+    scope_set = set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential", "staff.relay.write"}
     if library_read is True:
         scope_set.add("library.read")
     scopes = sorted(scope_set)
