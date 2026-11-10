@@ -35,14 +35,16 @@ async def get_fleet_state_audit(
     live: bool = Query(default=True),
     write_cache: bool = Query(default=False),
     _peer: str = Depends(require_fleet_peer),
-) -> dict[str, Any]:
+) -> Any:
     """Run or return a cached Barb state audit report."""
     state_path = Path(path)
     if not state_path.is_file():
         state_path = DEFAULT_STATE_PATH
     key = _cache_key(state_path, live, write_cache)
-    report = cache_get(key, CACHE_TTL_S) if live else None
-    if report is None:
+    cached = cache_get(key, CACHE_TTL_S) if live else None
+    if isinstance(cached, dict):
+        report = cached
+    else:
         import anyio
 
         report = await anyio.to_thread.run_sync(
@@ -58,5 +60,5 @@ async def get_fleet_state_audit(
     etag = _etag(report)
     response.headers["ETag"] = etag
     if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag})  # type: ignore[return-value]
+        return Response(status_code=304, headers={"ETag": etag})
     return report
