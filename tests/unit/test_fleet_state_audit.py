@@ -57,3 +57,15 @@ async def test_live_auto_merge_expectation() -> None:
 
     bad = await fsa.live_check_row(row, fetch_pr=armed, fetch_red_main=fsa._noop_red_main)
     assert bad["ok"] is False
+
+
+@pytest.mark.asyncio
+async def test_live_red_main_inconclusive_is_not_ok() -> None:
+    row = fsa.parse_state_table(SAMPLE)[3]
+
+    async def inconclusive(_repo: str) -> dict:
+        return {"red_main": False, "inconclusive": True, "conclusion": "cancelled"}
+
+    result = await fsa.live_check_row(row, fetch_pr=fsa._noop_pr, fetch_red_main=inconclusive)
+    assert result["ok"] is False
+    assert "red_main_inconclusive" in result["problems"]

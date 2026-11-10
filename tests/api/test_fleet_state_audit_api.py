@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,21 +41,38 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         app.dependency_overrides.pop(require_fleet_peer, None)
 
 
-def test_state_audit_endpoint_returns_report(client: TestClient, state_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_state_audit_rejects_noncanonical_path(client: TestClient) -> None:
+    resp = client.get("/api/v1/fleet/state-audit", params={"path": "backend/server.py"})
+    assert resp.status_code == 400
+
+
+def test_state_audit_endpoint_returns_report(
+    client: TestClient, state_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sample = {"path": str(state_file), "live_enabled": False, "tally": {"rows": 1}}
+    monkeypatch.setattr(
+        "routers.fleet_state_audit_route.resolve_canonical_state_path",
+        lambda _path: state_file,
+    )
     monkeypatch.setattr("routers.fleet_state_audit_route.run_audit", lambda *a, **k: sample)
-    resp = client.get("/api/v1/fleet/state-audit", params={"path": str(state_file), "live": "false"})
+    resp = client.get("/api/v1/fleet/state-audit", params={"live": "false"})
     assert resp.status_code == 200
     assert resp.json()["tally"]["rows"] == 1
 
 
-def test_state_audit_supports_cache_headers(client: TestClient, state_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_state_audit_supports_cache_headers(
+    client: TestClient, state_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "routers.fleet_state_audit_route.resolve_canonical_state_path",
+        lambda _path: state_file,
+    )
     monkeypatch.setattr(
         "routers.fleet_state_audit_route.run_audit",
         lambda *a, **k: {"path": str(state_file), "live_enabled": True, "tally": {"rows": 0}},
     )
-    first = client.get("/api/v1/fleet/state-audit", params={"path": str(state_file)})
+    first = client.get("/api/v1/fleet/state-audit")
     etag = first.headers.get("etag")
     assert etag
-    second = client.get("/api/v1/fleet/state-audit", params={"path": str(state_file)}, headers={"If-None-Match": etag})
+    second = client.get("/api/v1/fleet/state-audit", headers={"If-None-Match": etag})
     assert second.status_code == 304

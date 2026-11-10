@@ -212,7 +212,7 @@ async def _noop_pr(*_a: Any) -> dict[str, Any]:
 
 
 async def _noop_red_main(*_a: Any) -> dict[str, Any]:
-    return {"red_main": False, "conclusion": "success"}
+    return {"red_main": False, "conclusion": "success", "inconclusive": False}
 
 
 async def live_check_row(
@@ -241,7 +241,9 @@ async def live_check_row(
         target = repo_full(pr_refs[0][0].split("/", 1)[1]) if pr_refs else repo_full(DEFAULT_REPO)
         rm = await fetch_red_main(target)
         checks["red_main"] = rm
-        if rm.get("red_main"):
+        if rm.get("inconclusive"):
+            problems.append("red_main_inconclusive")
+        elif rm.get("red_main"):
             problems.append("red_main")
     ok = not problems
     return {"item": _row_key(row), "ok": ok, "problems": problems, "checks": checks}
@@ -260,7 +262,39 @@ async def live_check_all(rows: Sequence[StateRow], **overrides: Any) -> list[dic
         runs = await gh_client.get(f"/repos/{full}/actions/runs?branch={branch}&event=push&status=completed&per_page=1")
         latest = (runs.get("workflow_runs") or [{}])[0] if isinstance(runs, dict) else {}
         conclusion = latest.get("conclusion")
-        return {"red_main": conclusion == "failure", "conclusion": conclusion, "branch": branch}
+        status = latest.get("status")
+        run_id = latest.get("id")
+        if not run_id:
+            return {
+                "red_main": False,
+                "inconclusive": True,
+                "conclusion": None,
+                "status": status,
+                "branch": branch,
+            }
+        if conclusion == "failure":
+            return {
+                "red_main": True,
+                "inconclusive": False,
+                "conclusion": conclusion,
+                "status": status,
+                "branch": branch,
+            }
+        if conclusion == "success":
+            return {
+                "red_main": False,
+                "inconclusive": False,
+                "conclusion": conclusion,
+                "status": status,
+                "branch": branch,
+            }
+        return {
+            "red_main": False,
+            "inconclusive": True,
+            "conclusion": conclusion,
+            "status": status,
+            "branch": branch,
+        }
 
     async def fetch_queue_meta(full: str) -> dict[str, Any]:
         runs = await gh_client.get(f"/repos/{full}/actions/runs?event=merge_group&per_page=30")
