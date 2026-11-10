@@ -21,16 +21,20 @@ or ``{available: False, reason}``. Writes raise ``RMScriptError``.
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
 from typing import Any
 
+from coordination.board_pagination import (
+    _is_replay_warning,
+    _merge_paginated,
+    _session,
+    default_board_page_fetcher,
+    paginate_board_comments,
+)
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.roles import load_roles
 
@@ -45,9 +49,7 @@ SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "paths", "goals",
 DEFAULT_GUIDANCE = "Coordination unavailable; retain leases and inspect active PRs before editing."
 
 BoardPageFetcher = Callable[[int, int], list[dict[str, Any]]]
-board_page_fetcher: BoardPageFetcher | None = None
-_FENCED_AGENT_MSG = re.compile(r"```json\s+agent-msg\s*\n(.*?)\n```", re.DOTALL)
-_CANONICAL_AGENT_MSG = re.compile(r"<!--\s*agent-message\s+v1\s*-->\s*\n```json\s*\n(.*?)\n```", re.DOTALL)
+board_page_fetcher: BoardPageFetcher | None = default_board_page_fetcher
 
 _clock = time.monotonic  # cache ages; tests replace it with a fake clock
 _real_clock = time.monotonic  # wall time for join timeouts, never faked
@@ -88,7 +90,7 @@ def reset_cache() -> None:
         _refreshing.clear()
         _key_locks.clear()
         _all_repos_supported = None
-        board_page_fetcher = None
+        board_page_fetcher = default_board_page_fetcher
         _generation += 1
 
 
@@ -209,137 +211,13 @@ def _comment_limit_reached(data: dict[str, Any]) -> bool:
     return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in warnings)
 
 
-def paginate_board_comments(
-    fetch_page: BoardPageFetcher,
-    *,
-    per_page: int = BOARD_PAGE_SIZE,
-    max_pages: int = BOARD_MAX_PAGES,
-    now: datetime | None = None,
-) -> dict[str, Any]:
-    """Paginate RM#2376 comments across all pages (>1,000 comments) and replay presence."""
-    ref_now = now or datetime.now(UTC)
-    active: dict[str, dict[str, Any]] = {}
-    owners: dict[str, tuple[str, str]] = {}
-    replay_warnings: list[str] = []
-    rejected_by_session: dict[str, list[str]] = {}
-    live_conflicts: list[str] = []
-    warnings: list[str] = []
-    complete = True
-    total_comments = 0
-    for page in range(1, max(1, max_pages) + 1):
-        try:
-            batch = fetch_page(page, per_page)
-        except Exception as exc:  # noqa: BLE001
-            complete = False
-            warnings.append(f"Board comment pagination failed on page {page}: {exc}")
-            break
-        if not isinstance(batch, list):
-            complete = False
-            warnings.append(f"Board comment page {page} returned invalid payload")
-            break
-        total_comments += len(batch)
-        for comment in batch:
-            body = str(comment.get("body") or "") if isinstance(comment, dict) else ""
-            match = _FENCED_AGENT_MSG.search(body) or _CANONICAL_AGENT_MSG.search(body)
-            if not match:
-                continue
-            try:
-                env = json.loads(match.group(1))
-            except ValueError:
-                continue
-            if not isinstance(env, dict):
-                continue
-            kind = str(env.get("kind") or "")
-            sess = str(env.get("session") or "")
-            repo = str(env.get("repo") or "")
-            author = str((comment.get("user") or {}).get("login") or env.get("author") or "local")
-            if not sess or not kind:
-                continue
-            unexpired_presence = False
-            if kind == "presence":
-                exp_raw = str(env.get("expires") or "")
-                unexpired_presence = True
-                if exp_raw:
-                    try:
-                        if datetime.fromisoformat(exp_raw.replace("Z", "+00:00")) <= ref_now:
-                            unexpired_presence = False
-                    except ValueError:
-                        pass
-            owner = (repo, author)
-            if sess in owners and owners[sess] != owner:
-                w = f"Rejected identity change for {sess}"
-                replay_warnings.append(w)
-                rejected_by_session.setdefault(sess, []).append(w)
-                if kind == "presence" and unexpired_presence:
-                    live_conflicts.append(w)
-                continue
-            if kind == "presence":
-                owners[sess] = owner
-                if not unexpired_presence:
-                    active.pop(sess, None)
-                    continue
-                active[sess] = _session(env)
-            elif sess not in owners:
-                w = f"Rejected unregistered sender {sess}"
-                replay_warnings.append(w)
-                rejected_by_session.setdefault(sess, []).append(w)
-                continue
-            elif kind == "release":
-                active.pop(sess, None)
-        if len(batch) < per_page:
-            break
-    else:
-        complete = False
-        warnings.append(f"Board page limit ({max_pages} pages) reached; view is incomplete")
-    for sess in active:
-        if sess in rejected_by_session:
-            live_conflicts.extend(rejected_by_session[sess])
-    active_conflicts = list(dict.fromkeys(live_conflicts))
-    read_warnings = list(warnings)
-    all_warnings = list(dict.fromkeys([*read_warnings, *replay_warnings]))
-    is_complete = complete and not read_warnings and not active_conflicts
-    return {
-        "available": True,
-        "complete": is_complete,
-        "degraded_history": bool(replay_warnings),
-        "read_warnings": read_warnings,
-        "replay_warnings": replay_warnings,
-        "active_conflicts": active_conflicts,
-        "comment_limit_exceeded": not complete and total_comments >= BOARD_COMMENT_LIMIT,
-        "comment_count": total_comments,
-        "sessions": list(active.values()),
-        "messages": [],
-        "conflicts": [],
-        "warnings": all_warnings,
-    }
-
-
-def _parse_read(res: ScriptResult) -> dict[str, Any]:
+def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, Any]:
     data = res.json()
     if data is None or data.get("error") or "sessions" not in data:
         return _unavailable(res.failure())
     limit_hit = _comment_limit_reached(data)
     if limit_hit and board_page_fetcher is not None:
-        paginated = paginate_board_comments(board_page_fetcher)
-        if paginated["complete"]:
-            return {
-                **paginated,
-                "messages": list(data.get("messages") or []),
-                "conflicts": list(data.get("conflicts") or []),
-            }
-        return {
-            "available": True,
-            "complete": False,
-            "degraded_history": paginated["degraded_history"],
-            "read_warnings": paginated["read_warnings"],
-            "replay_warnings": paginated["replay_warnings"],
-            "active_conflicts": paginated["active_conflicts"],
-            "comment_limit_exceeded": True,
-            "sessions": [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)],
-            "messages": list(data.get("messages") or []),
-            "conflicts": list(data.get("conflicts") or []),
-            "warnings": list(dict.fromkeys([*(str(w) for w in data.get("warnings") or []), *paginated["warnings"]])),
-        }
+        return _merge_paginated(data, paginate_board_comments(board_page_fetcher, session=session))
     has_structured_warnings = (
         isinstance(data.get("read_warnings"), list)
         and isinstance(data.get("replay_warnings"), list)
@@ -352,15 +230,16 @@ def _parse_read(res: ScriptResult) -> dict[str, Any]:
         active_conflicts = [str(w) for w in data["active_conflicts"]]
     else:
         # Do not default missing read_warnings/active_conflicts to empty when warnings exist
-        read_warnings = list(raw_warnings)
-        replay_warnings = []
-        active_conflicts = []
+        live = {str(s.get("session")) for s in data.get("sessions") or [] if isinstance(s, dict)}
+        read_warnings = [w for w in raw_warnings if _is_replay_warning(w) is None]
+        replay_warnings = [w for w in raw_warnings if _is_replay_warning(w) is not None]
+        active_conflicts = [w for w in raw_warnings if _is_replay_warning(w) in live]
     is_complete = (
         bool(data.get("complete", False))
         and not limit_hit
         and not read_warnings
         and not active_conflicts
-        and (data.get("ok", True) is True)
+        and (data.get("ok", True) is True or (not has_structured_warnings and bool(replay_warnings)))
     )
     return {
         "available": True,
@@ -375,10 +254,6 @@ def _parse_read(res: ScriptResult) -> dict[str, Any]:
         "conflicts": list(data.get("conflicts") or []),
         "warnings": list(dict.fromkeys([*read_warnings, *replay_warnings, *raw_warnings])),
     }
-
-
-def _session(raw: dict[str, Any]) -> dict[str, Any]:
-    return {**{k: raw.get(k) for k in SESSION_KEYS}, "source": "board"}
 
 
 def _unsupported(res: ScriptResult) -> bool:
@@ -470,7 +345,7 @@ def read_inbox(session: str, repo: str) -> dict[str, Any]:
     """Messages and path/goal conflicts addressed to ``session``."""
 
     def load() -> dict[str, Any]:
-        return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"))
+        return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"), session=session)
 
     data = _cached(f"inbox:{repo.casefold()}:{session}", load)
     keys = (

@@ -161,7 +161,7 @@ def _check_incomplete(data: dict[str, Any]) -> str | None:
 
 def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
     state = board_mod.cached_board_state()
-    if state is None and board_mod.board_page_fetcher is not None:
+    if state is None and board_mod.board_page_fetcher not in (None, board_mod.default_board_page_fetcher):
         state = board_mod.read_sessions(repo)
     if state is None:
         return None
