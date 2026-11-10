@@ -31,6 +31,10 @@ _OPEN_DIR_FLAGS = _real_os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW
 _FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 _FILE_ATTRIBUTE_DIRECTORY = getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
 
+# Windows: path-string walks are best-effort. Ancestor checks and in-tree junction
+# removal re-verify st_dev/st_ino before delete; without dir_fd on NT, TOCTOU is
+# narrowed but not eliminated the way the POSIX fd-relative walk does.
+
 
 def _link_kind_from_stat(st: os.stat_result) -> str:
     attributes = getattr(st, "st_file_attributes", 0)
@@ -67,22 +71,6 @@ class _CollectedLink:
     identity: tuple[int, int]
 
 
-class _FdGuard:
-    def __init__(self) -> None:
-        self._fds: list[int] = []
-
-    def register(self, fd: int) -> int:
-        self._fds.append(fd)
-        return fd
-
-    def close_all(self) -> None:
-        for fd in reversed(self._fds):
-            try:
-                _real_os.close(fd)
-            except OSError:
-                pass
-
-
 def _stat_entry(link: _CollectedLink) -> os.stat_result:
     if link.parent_fd is not None:
         return _real_os.stat(link.name, dir_fd=link.parent_fd, follow_symlinks=False)
@@ -111,36 +99,8 @@ def _readlink_for_link(link: _CollectedLink, root: Path | None = None) -> str:
     )
 
 
-def _collect_links_at_fd(
-    parent_fd: int, rel_prefix: str, guard: _FdGuard, links: list[_CollectedLink], *, root: Path
-) -> None:
-    stack: list[tuple[int, str]] = [(parent_fd, rel_prefix)]
-    while stack:
-        dir_fd, rel = stack.pop()
-        with _real_os.scandir(dir_fd) as entries:
-            for entry in entries:
-                name = entry.name
-                st = _real_os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
-                child_rel = f"{rel}/{name}" if rel else name
-                if kind := _link_kind_from_stat(st):
-                    target = _readlink_at(name, parent_fd=dir_fd, parent=None, abs_path=root / child_rel)
-                    links.append(
-                        _CollectedLink(
-                            parent_fd=dir_fd,
-                            parent=None,
-                            name=name,
-                            kind=kind,
-                            target=target,
-                            rel_posix=child_rel,
-                            identity=(st.st_dev, st.st_ino),
-                        )
-                    )
-                elif stat.S_ISDIR(st.st_mode):
-                    child_fd = guard.register(_real_os.open(name, _OPEN_DIR_FLAGS, dir_fd=dir_fd))
-                    stack.append((child_fd, child_rel))
-
-
 def _collect_links_at_path(directory: Path, rel_prefix: str, links: list[_CollectedLink]) -> None:
+    """Path-only tree scan: no retained dir fds (safe for huge .venv / node_modules trees)."""
     _check_ancestors(directory)
     pending: list[tuple[Path, str]] = [(directory, rel_prefix)]
     while pending:
@@ -169,22 +129,11 @@ def _collect_links_at_path(directory: Path, rel_prefix: str, links: list[_Collec
                     pending.append((current / name, child_rel))
 
 
-def _collect_tree_links(path: Path, *, guard: _FdGuard | None = None) -> list[_CollectedLink]:
+def _collect_tree_links(path: Path) -> list[_CollectedLink]:
     _check_ancestors(path)
-    if _is_windows():
-        windows_links: list[_CollectedLink] = []
-        _collect_links_at_path(path, "", windows_links)
-        return windows_links
-    own_guard = guard is None
-    active_guard = guard or _FdGuard()
-    unix_links: list[_CollectedLink] = []
-    try:
-        root_fd = active_guard.register(_real_os.open(path, _OPEN_DIR_FLAGS))
-        _collect_links_at_fd(root_fd, "", active_guard, unix_links, root=path)
-        return unix_links
-    finally:
-        if own_guard:
-            active_guard.close_all()
+    collected: list[_CollectedLink] = []
+    _collect_links_at_path(path, "", collected)
+    return collected
 
 
 def _tree_links(path: Path) -> list[tuple[Path, str, str]]:
@@ -253,6 +202,44 @@ def _remove_link_entry(link: _CollectedLink, *, root: Path | None = None) -> Non
     )
 
 
+def _unlink_links_at_fd(parent_fd: int, root: Path, rel_prefix: str) -> None:
+    """Depth-first unlink: at most one open fd per tree level (no EMFILE on wide trees)."""
+    subdirs: list[tuple[str, str]] = []
+    with _real_os.scandir(parent_fd) as entries:
+        for entry in entries:
+            name = entry.name
+            st = _real_os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            child_rel = f"{rel_prefix}/{name}" if rel_prefix else name
+            if kind := _link_kind_from_stat(st):
+                link = _CollectedLink(
+                    parent_fd=parent_fd,
+                    parent=None,
+                    name=name,
+                    kind=kind,
+                    target=_readlink_at(name, parent_fd=parent_fd, parent=None, abs_path=root / child_rel),
+                    rel_posix=child_rel,
+                    identity=(st.st_dev, st.st_ino),
+                )
+                _remove_link_entry(link, root=root)
+            elif stat.S_ISDIR(st.st_mode):
+                subdirs.append((name, child_rel))
+    for name, child_rel in subdirs:
+        child_fd = _real_os.open(name, _OPEN_DIR_FLAGS, dir_fd=parent_fd)
+        try:
+            _unlink_links_at_fd(child_fd, root, child_rel)
+        finally:
+            _real_os.close(child_fd)
+
+
+def _unlink_tree_links_unix(path: Path) -> None:
+    _check_ancestors(path)
+    root_fd = _real_os.open(path, _OPEN_DIR_FLAGS)
+    try:
+        _unlink_links_at_fd(root_fd, path, "")
+    finally:
+        _real_os.close(root_fd)
+
+
 def unlink_worktree_links(path: Path) -> None:
     """Pre: all preservation checks passed. Post: unlink entries only, never targets.
 
@@ -260,17 +247,10 @@ def unlink_worktree_links(path: Path) -> None:
     itself. Never recurse into it. Inspection/readlink failures abort removal.
     """
     if _is_windows():
-        links = _collect_tree_links(path)
-        for link in links:
+        for link in _collect_tree_links(path):
             _remove_link_entry(link, root=path)
     else:
-        guard = _FdGuard()
-        try:
-            links = _collect_tree_links(path, guard=guard)
-            for link in links:
-                _remove_link_entry(link, root=path)
-        finally:
-            guard.close_all()
+        _unlink_tree_links_unix(path)
     if reason := link_refusal_reason(path):
         raise OSError(reason)
 
