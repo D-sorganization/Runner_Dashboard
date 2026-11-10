@@ -171,7 +171,6 @@ def try_chain_failover(
     retries_exhausted: bool,
 ) -> bool:
     """Schedule the next provider in the fleet failover chain when appropriate."""
-    from staff.plan import RunPlan  # noqa: PLC0415
     from staff.retry import _claim, _provenance, _schedule, attempt_run_id  # noqa: PLC0415
     from staff.store import RunRecord  # noqa: PLC0415
 

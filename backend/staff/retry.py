@@ -76,7 +76,6 @@ def handle_post_execution_retry(
     from staff.budget import BudgetGuard
     from staff.failover_dispatch import try_chain_failover
     from staff.provider_fallback import try_declarative_fallback
-    from staff.runner import RunPlan
     from staff.store import RunRecord
 
     guard = BudgetGuard(store)

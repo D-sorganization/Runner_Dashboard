@@ -206,7 +206,6 @@ def try_declarative_fallback(
     read_only_kwargs: Any,
 ) -> bool:
     """Schedule a declarative fallback attempt when rules match (#2021)."""
-    from staff.plan import RunPlan  # noqa: PLC0415
     from staff.store import RunRecord  # noqa: PLC0415
 
     rules = getattr(role, "provider_fallbacks", ())
