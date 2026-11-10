@@ -11,7 +11,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from staff.failover_dispatch import try_chain_failover
-from staff.plan import RunPlan
+from types import SimpleNamespace
+
+from staff.plan import RunPlan, derive_run_plan
 from staff.provider_cooldown import reset_provider_cooldowns
 from staff.provider_failover_config import reset_failover_config_cache
 from staff.retry import handle_post_execution_retry
@@ -58,6 +60,26 @@ def _full_plan(**overrides: object) -> RunPlan:
 def _reset_failover_cache() -> None:
     reset_provider_cooldowns()
     reset_failover_config_cache()
+
+
+def test_derive_run_plan_accepts_simple_namespace() -> None:
+    stub = SimpleNamespace(
+        role="worker",
+        provider="codex",
+        model="gpt-6-luna",
+        repo="",
+        target_kind="prompt",
+        target_ref="",
+        operator_prompt="",
+        prompt="do work",
+        branch="staff/worker-task",
+        lease_ritual=False,
+        pr_restrictions=("draft_only", "no_arm"),
+        pr_lifecycle="draft_no_arm",
+    )
+    derived = derive_run_plan(stub, provider="claude", branch="staff/worker-task-retry-2", argv=["claude"])
+    assert derived.provider == "claude"
+    assert derived.pr_restrictions == ("draft_only", "no_arm")
 
 
 def test_derive_defaults_copy_every_field() -> None:

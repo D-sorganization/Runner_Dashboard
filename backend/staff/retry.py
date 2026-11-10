@@ -113,7 +113,9 @@ def handle_post_execution_retry(
         next_attempt = latest.attempt + 1
         attempt_id = attempt_run_id(root_id, next_attempt)
         next_branch = f"{plan.branch}-retry-{next_attempt}"
-        attempt_plan = plan.derive(branch=next_branch)
+        from staff.plan import derive_run_plan  # noqa: PLC0415
+
+        attempt_plan = derive_run_plan(plan, branch=next_branch)
         attempt_rec = RunRecord(
             id=attempt_id,
             role=plan.role,
@@ -169,7 +171,8 @@ def handle_post_execution_retry(
                 argv = runner._adapters[fallback].build_command(
                     plan.prompt, "<workdir>", plan.model, **read_only_kwargs(role)
                 )
-                fallback_plan = plan.derive(
+                fallback_plan = derive_run_plan(
+                    plan,
                     provider=fallback,
                     argv=argv,
                     branch=next_branch,

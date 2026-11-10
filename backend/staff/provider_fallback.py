@@ -243,7 +243,10 @@ def try_declarative_fallback(
         adapter=runner._adapters[target],
     )
     argv = runner._adapters[target].build_command(plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role))
-    fallback_plan = plan.derive(
+    from staff.plan import derive_run_plan  # noqa: PLC0415
+
+    fallback_plan = derive_run_plan(
+        plan,
         provider=target,
         model=fallback_model,
         argv=argv,

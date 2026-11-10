@@ -6,8 +6,9 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import MISSING, dataclass, field, fields, replace
 from typing import Any
+from unittest.mock import MagicMock, Mock
 
 from staff import consolidation
 from staff.model_tiers import validate_role_tier
@@ -120,7 +121,40 @@ class RunPlan:
 
     def derive(self, **overrides: Any) -> RunPlan:
         """Copy this plan, applying only the fields that change on retry/failover (#4259)."""
-        return replace(self, **overrides)
+        return derive_run_plan(self, **overrides)
+
+
+def _run_plan_field_default(fld: Any) -> Any:
+    if fld.default is not MISSING:
+        return fld.default
+    if fld.default_factory is not MISSING:
+        return fld.default_factory()
+    msg = f"RunPlan field {fld.name!r} has no default"
+    raise TypeError(msg)
+
+
+def _is_unset_mock(value: object) -> bool:
+    return isinstance(value, (MagicMock, Mock))
+
+
+def derive_run_plan(plan: object, **overrides: Any) -> RunPlan:
+    """Derive a :class:`RunPlan` from a plan or any legacy plan-shaped caller object (#4259)."""
+    if isinstance(plan, RunPlan):
+        return replace(plan, **overrides)
+    values: dict[str, Any] = {}
+    for fld in fields(RunPlan):
+        if fld.name in overrides:
+            continue
+        if hasattr(plan, fld.name):
+            val = getattr(plan, fld.name)
+            values[fld.name] = _run_plan_field_default(fld) if _is_unset_mock(val) else val
+        else:
+            values[fld.name] = _run_plan_field_default(fld)
+    values.update(overrides)
+    argv = values.get("argv")
+    if not isinstance(argv, list):
+        values["argv"] = list(argv or [])
+    return RunPlan(**values)
 
     def to_dict(self) -> dict[str, Any]:
         return {

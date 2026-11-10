@@ -243,7 +243,10 @@ def try_chain_failover(
     argv = runner._adapters[next_step.provider].build_command(
         plan.prompt, "<workdir>", target_model, **read_only_kwargs(role)
     )
-    fallback_plan = plan.derive(
+    from staff.plan import derive_run_plan  # noqa: PLC0415
+
+    fallback_plan = derive_run_plan(
+        plan,
         provider=next_step.provider,
         model=target_model,
         model_tier=resolved_tier,
