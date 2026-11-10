@@ -76,18 +76,21 @@ def test_plan_repo_backoffs_when_queue_deep():
     assert actions == []
 
 
-def test_plan_repo_caps_rd_arms_at_two():
-    mk = lambda n: {
-        "number": n,
-        "title": f"pr {n}",
+def _open_pr_node(number: int) -> dict:
+    return {
+        "number": number,
+        "title": f"pr {number}",
         "isDraft": False,
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",
-        "headRefOid": f"sha{n}",
+        "headRefOid": f"sha{number}",
         "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
         "labels": {"nodes": []},
     }
-    nodes = [mk(i) for i in (100, 101, 103)]
+
+
+def test_plan_repo_caps_rd_arms_at_two():
+    nodes = [_open_pr_node(i) for i in (100, 101, 103)]
     actions, _, backoff = plan_repo_pass(
         "D-sorganization/Runner_Dashboard",
         nodes,
