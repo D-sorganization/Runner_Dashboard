@@ -150,10 +150,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         github_event_name=os.environ.get("GITHUB_EVENT_NAME", ""),
     )
 
+    def _hold_reason(repo: str, pr: int) -> str:
+        try:
+            if _SCRIPT_DIR not in sys.path:
+                sys.path.insert(0, _SCRIPT_DIR)
+            import automerge_guard  # noqa: PLC0415
+
+            verdict = automerge_guard.evaluate_hold(repo, pr)
+            return verdict.describe() if verdict.held else ""
+        except Exception as exc:  # noqa: BLE001 — fail closed at arm if hold checks break
+            return f"hold_check_failed:{exc}"
+
+    _SCRIPT_DIR = str(Path(__file__).resolve().parent)
+
+    def _review_store(repo_root: Path):
+        from staff.store import RunStore  # noqa: PLC0415
+
+        candidates = (
+            repo_root / "data" / "staff_runs.sqlite3",
+            repo_root / "staff_runs.sqlite3",
+        )
+        for path in candidates:
+            if path.is_file():
+                return RunStore(path=path)
+        return None
+
     config = PassConfig(
         live=live,
         dry_run=not live,
         repo_root=args.repo_root.resolve(),
+        hold_reason=_hold_reason,
+        review_store=_review_store(args.repo_root.resolve()),
     )
     holds, hold_error = _resolve_hub_holds()
     if hold_error:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from coordination.merge_shepherd_exact_head import HeadReviewPass
 from coordination.merge_shepherd_pass import (
     PassConfig,
     holds_gate_failed_payload,
@@ -15,6 +16,15 @@ from coordination.merge_shepherd_pass import (
     resolve_live_arming,
     run_merge_shepherd_pass,
 )
+
+
+def _review_pass(pr: int, head: str) -> HeadReviewPass:
+    return HeadReviewPass(
+        pr=pr,
+        head_sha=head,
+        verdict="approve",
+        recorded_at="2026-11-10T12:00:00+00:00",
+    )
 
 
 def test_load_skip_list_seeds(tmp_path):
@@ -148,6 +158,7 @@ def test_plan_repo_backoffs_when_queue_deep():
         armed_count=4,
         queue_depth=3,
         live=False,
+        review_passes=[_review_pass(10, "sha10")],
     )
     assert backoff is True
     assert actions == []
@@ -163,6 +174,11 @@ def test_plan_repo_caps_rd_arms_at_two():
         armed_count=0,
         queue_depth=0,
         live=False,
+        review_passes=[
+            _review_pass(100, "sha100"),
+            _review_pass(101, "sha101"),
+            _review_pass(103, "sha103"),
+        ],
     )
     assert not backoff
     assert len(actions) == 2
@@ -193,10 +209,42 @@ def test_plan_repo_skips_without_approval_unless_docs_only():
         armed_count=0,
         queue_depth=0,
         live=False,
+        review_passes=[_review_pass(200, "sha200")],
     )
     elig = {a.pr_number: a.eligibility for a in actions}
     assert elig.get(200) == "reviewed"
     assert elig.get(201) == "docs_tests_only"
+
+
+def test_plan_repo_skips_approved_without_exact_head_pass() -> None:
+    node = _open_pr_node(300, review="APPROVED", paths=["backend/server.py"])
+    _, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+        review_passes=[],
+    )
+    assert (300, "no_approval:missing_pass_at_head") in {(s["pr"], s["reason"]) for s in skips}
+
+
+def test_plan_repo_honours_merge_hold_callback() -> None:
+    node = _open_pr_node(400, review="REVIEW_REQUIRED", paths=["docs/readme.md"])
+    holds = lambda _repo, pr: "reviewer disabled auto-merge" if pr == 400 else ""
+    _, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+        hold_reason=holds,
+    )
+    assert any(s.get("pr") == 400 and s.get("reason", "").startswith("merge_hold:") for s in skips)
 
 
 def test_plan_repo_never_arms_when_hub_hold_names_pr():
