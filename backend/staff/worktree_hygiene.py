@@ -16,7 +16,14 @@ from pathlib import Path
 from typing import Any
 
 from staff import cli_projects
-from staff.worktree_links import link_refusal_reason, refuse_worktree_links, unlink_worktree_links
+from staff.worktree_links import (
+    _link_kind,
+    link_refusal_reason,
+    refuse_worktree_links,
+    unlink_worktree_links,
+)
+
+_TRACKED_GAAI_LINKS = frozenset({".gaai/agents", ".gaai/workflows", ".gaai/contexts"})
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
@@ -155,15 +162,43 @@ def _untracked_paths_for_safe_force_scan(worktree: Path) -> list[str]:
     return out
 
 
+def _rel_touches_disposable_in_tree_link(worktree: Path, rel: str) -> bool:
+    """True when ``rel`` names a link entry or a path under an in-tree link (incl. Windows junctions)."""
+    parts = rel.replace("\\", "/").split("/")
+    for end in range(1, len(parts) + 1):
+        try:
+            if _link_kind(worktree.joinpath(*parts[:end])):
+                return True
+        except OSError:
+            return False
+    return False
+
+
 def _untracked_outside_safe_force_allowlist(worktree: Path) -> bool:
     """True when any untracked/ignored path lies outside submodule paths and staff transcript dirs."""
     prefixes = _safe_force_untracked_allow_prefixes(worktree)
     for rel in _untracked_paths_for_safe_force_scan(worktree):
         if rel.startswith("<git "):
             return True  # refuse force when git state is unreadable
-        if not any(_path_under_prefix(rel, p) for p in prefixes) and not (worktree / rel).is_symlink():
+        if not any(_path_under_prefix(rel, p) for p in prefixes) and not _rel_touches_disposable_in_tree_link(
+            worktree, rel
+        ):
             return True
     return False
+
+
+def _restore_tracked_gaai_symlinks(worktree: Path) -> None:
+    """Re-checkout tracked GAAI symlinks after a failed remove so the next sweep stays idempotent."""
+    missing = [rel for rel in _TRACKED_GAAI_LINKS if not (worktree / rel).exists()]
+    if not missing:
+        return
+    tracked: list[str] = []
+    for rel in missing:
+        known = _git_in_worktree(worktree, "ls-files", "--error-unmatch", "--", rel)
+        if known.returncode == 0:
+            tracked.append(rel)
+    if tracked:
+        _git_in_worktree(worktree, "checkout", "HEAD", "--", *tracked)
 
 
 def _worktree_tracked_clean_vs_head(worktree: Path) -> bool:
@@ -215,6 +250,8 @@ def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[boo
         unlink_worktree_links(worktree)
         result = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
         _git_out(git_cwd, "worktree", "prune")
+        if result.returncode != 0 or worktree.exists():
+            _restore_tracked_gaai_symlinks(worktree)
         return result.returncode == 0 and not worktree.exists(), result
     result = _git_out(git_cwd, "worktree", "remove", str(worktree), timeout=60)
     if result.returncode == 0 and not worktree.exists():

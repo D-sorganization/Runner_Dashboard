@@ -276,3 +276,58 @@ def test_in_tree_windows_reparse_entry_is_removed_without_descent(linked_tree, m
     assert not junction.exists()
     assert (c.outside / "sentinel").read_text() == "keep external evidence"
     assert "Windows reparse point junction" in caplog.text
+
+
+def test_transient_force_remove_restores_tracked_gaai_symlinks(linked_tree, monkeypatch):
+    c = linked_tree
+    agents = c.tree / ".gaai" / "agents"
+    assert agents.is_symlink()
+
+    original_out = hygiene._git_out
+
+    def fake_git_out(cwd, *args, **kwargs):
+        if args[:3] == ("worktree", "remove", "--force"):
+            return subprocess.CompletedProcess(list(args), 128, "", "index.lock")
+        return original_out(cwd, *args, **kwargs)
+
+    monkeypatch.setattr(hygiene, "_git_out", fake_git_out)
+    monkeypatch.setattr(
+        hygiene,
+        "_registered_worktree_unlocked",
+        lambda _checkout, _wt: True,
+    )
+
+    ok, _ = hygiene._try_remove_git_worktree(c.tree, c.repo)
+    assert not ok
+    assert c.tree.exists()
+    assert agents.is_symlink()
+
+
+def test_untracked_junction_path_is_not_blocking_force_allowlist(tmp_path, monkeypatch):
+    from staff import worktree_links
+
+    root = tmp_path / "wt"
+    root.mkdir()
+    junction = root / "junction"
+    junction.mkdir()
+    rel = "junction/inner.txt"
+    (root / "junction" / "inner.txt").write_text("x")
+
+    monkeypatch.setattr(
+        hygiene,
+        "_untracked_paths_for_safe_force_scan",
+        lambda _wt: [rel],
+    )
+    monkeypatch.setattr(hygiene, "_safe_force_untracked_allow_prefixes", lambda _wt: frozenset())
+
+    original = worktree_links._link_kind
+
+    def kind(path, *args, **kwargs):
+        if path == junction:
+            return "Windows reparse point"
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(hygiene, "_link_kind", kind)
+    monkeypatch.setattr(Path, "is_symlink", lambda _p: False)
+
+    assert not hygiene._untracked_outside_safe_force_allowlist(root)
