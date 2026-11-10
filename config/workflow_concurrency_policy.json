@@ -8,7 +8,8 @@
     "release.yml": "Release publishing must not be interrupted after versioning and tag orchestration begin.",
     "main-ci-auto-release.yml": "Per-SHA release packaging runs npm ci, wheelhouse build, and gh release create; the publish job (job-level group main-ci-auto-release-publish) must never be cancelled mid-upload; only the wait-only gate job is cancellable.",
     "ci-slo-check.yml": "Read-only SLO snapshot and stall alarm must finish GitHub API reads; cancel-in-progress would discard partial metrics without reducing queue load.",
-    "recurring-scan.yml": "Cursor read-scan-push to bot/recurring-scan-state must finish; cancel mid-run risks a corrupt cursor or a lost heartbeat."
+    "recurring-scan.yml": "Cursor read-scan-push to bot/recurring-scan-state must finish; cancel mid-run risks a corrupt cursor or a lost heartbeat.",
+    "merge-shepherd.yml": "At most one shepherd pass per repo; overlapping cron ticks must not cancel an in-flight arm batch."
   },
   "pr_concurrency_singleton_allowlist": {
     "Agent-Redundant-PR-Closer.yml": "Duplicate PR arbitration intentionally runs as one repo-wide singleton to compare all open PRs."

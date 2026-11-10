@@ -14,7 +14,6 @@ from coordination.merge_shepherd import (
     PRCandidate,
     ShepherdAction,
     ShepherdDecision,
-    evaluate_pr_shepherd_eligibility,
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
@@ -218,7 +217,12 @@ def node_to_candidate(repo: str, node: Mapping[str, Any], *, is_drained: bool) -
     elif merge_state == "DIRTY":
         mergeable = "CONFLICTING"
     checks = _checks_state(node)
-    checks_status = "SUCCESS" if checks == "SUCCESS" else ("PENDING" if checks in {"EXPECTED", "PENDING"} else "FAILURE")
+    if checks == "SUCCESS":
+        checks_status = "SUCCESS"
+    elif checks in {"EXPECTED", "PENDING"}:
+        checks_status = "PENDING"
+    else:
+        checks_status = "FAILURE"
     is_queued = (node.get("mergeQueueEntry") or {}).get("position") is not None
     auto_merge = node.get("autoMergeRequest") is not None
     return PRCandidate(
