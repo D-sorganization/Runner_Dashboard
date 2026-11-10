@@ -17,6 +17,11 @@ from typing import Any
 import barb_backlog_push_lib as lib
 import barb_panel_relay as panel
 
+try:
+    import psutil  # type: ignore[import-untyped]
+except ImportError:
+    psutil = None
+
 logger = logging.getLogger("barb_backlog_push_relay")
 
 REQUEST_LABEL = lib.REQUEST_LABEL
@@ -55,6 +60,74 @@ def load_state(path: Path) -> dict[str, Any]:
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
     panel.save_state(path, state)
+
+
+def _get_process_start_time_ticks(pid: int) -> int | None:
+    """Get the process start time in clock ticks since boot. Returns None if unavailable."""
+    if pid <= 0:
+        return None
+    proc_stat = Path(f"/proc/{pid}/stat")
+    if proc_stat.is_file():
+        try:
+            raw = proc_stat.read_text(encoding="utf-8", errors="replace")
+            fields = raw.rsplit(")", 1)[-1].split()
+            return int(fields[19])
+        except (OSError, IndexError, ValueError):
+            pass
+    return None
+
+
+def _pid_identity_matches(pid: int, recorded_start_time_ticks: int | None, recorded_session: str | None) -> bool:
+    """Verify that a pid matches the recorded process identity (start_time_ticks and session).
+
+    Returns True only if:
+    - The process is alive (os.kill(pid, 0) succeeds)
+    - The start time (in clock ticks) matches the recorded value (if recorded)
+    - The session token is provided (legacy pid files without session are treated as not matching)
+
+    This prevents signalling an unrelated process that reused a recycled PID after reboot.
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+
+    if recorded_session is None:
+        return False
+
+    if recorded_start_time_ticks is not None:
+        current_start_time_ticks = _get_process_start_time_ticks(pid)
+        if current_start_time_ticks is None or current_start_time_ticks != recorded_start_time_ticks:
+            return False
+
+    return True
+
+
+def _read_pid_record(pidfile: Path) -> tuple[int, int | None, str | None]:
+    """Read a pid file and extract pid, start_time_ticks, and session token.
+
+    Supports both legacy format (plain text pid) and enhanced format (JSON).
+    Legacy format is assumed to have no identity information.
+    """
+    if not pidfile.is_file():
+        return 0, None, None
+    try:
+        content = pidfile.read_text(encoding="utf-8").strip()
+        if content.startswith("{"):
+            data = json.loads(content)
+            pid = int(data.get("pid", 0))
+            start_time_ticks = data.get("start_time")
+            if start_time_ticks is not None:
+                start_time_ticks = int(start_time_ticks)
+            session = data.get("session")
+            return pid, start_time_ticks, session
+        else:
+            pid = int(content)
+            return pid, None, None
+    except (ValueError, OSError, json.JSONDecodeError):
+        return 0, None, None
 
 
 def _pid_alive(pid: int) -> bool:
@@ -110,12 +183,12 @@ def _evaluate_active_outcome(
         for session in sessions:
             pidfile = base / f"{session}.pid"
             if pidfile.is_file():
-                try:
-                    pid = int(pidfile.read_text(encoding="utf-8").strip())
-                except ValueError:
-                    pid = 0
-                if _pid_alive(pid):
+                pid, start_time, recorded_session = _read_pid_record(pidfile)
+                if pid > 0 and _pid_identity_matches(pid, start_time, recorded_session or session):
                     return False, "running", None, {}
+                elif pid > 0 and _pid_alive(pid):
+                    logger.warning("session %s: pidfile points to unrelated pid %d; marking lane lost", session, pid)
+                    pidfile.unlink(missing_ok=True)
 
     pids = active.get("pids") if isinstance(active.get("pids"), dict) else {}
     if any(_pid_alive(int(p)) for p in pids.values() if isinstance(p, int)):
@@ -165,11 +238,9 @@ def _push_processes_alive(active: dict[str, Any]) -> bool:
                 continue
             pidfile = base / f"{session}.pid"
             if pidfile.is_file():
-                try:
-                    if _pid_alive(int(pidfile.read_text(encoding="utf-8").strip())):
-                        return True
-                except ValueError:
-                    continue
+                pid, start_time, recorded_session = _read_pid_record(pidfile)
+                if pid > 0 and _pid_identity_matches(pid, start_time, recorded_session or session):
+                    return True
     pids = active.get("pids") if isinstance(active.get("pids"), dict) else {}
     return any(_pid_alive(int(p)) for p in pids.values() if isinstance(p, int))
 
@@ -200,9 +271,17 @@ def _terminate_from_active(active: dict[str, Any]) -> None:
         pidfile = base / f"{session}.pid"
         if not pidfile.is_file():
             continue
-        try:
-            pid = int(pidfile.read_text(encoding="utf-8").strip())
-        except ValueError:
+        pid, start_time, recorded_session = _read_pid_record(pidfile)
+        if pid <= 0:
+            continue
+        if not _pid_identity_matches(pid, start_time, recorded_session or session):
+            if _pid_alive(pid):
+                logger.warning(
+                    "session %s: pidfile points to unrelated pid %d; skipping signal and removing pidfile",
+                    session,
+                    pid,
+                )
+            pidfile.unlink(missing_ok=True)
             continue
         try:
             os.kill(pid, signal.SIGTERM)
