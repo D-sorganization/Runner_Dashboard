@@ -782,3 +782,4 @@ def test_ci_nightly_fails_on_empty_selection_and_verifies_executed_cases() -> No
     assert "continuing successfully" not in content
     assert "--junitxml=nightly-junit.xml" in content
     assert "python scripts/ci/check_junit_executed.py nightly-junit.xml" in content
+    assert "workflow_failure_andon.py" in content

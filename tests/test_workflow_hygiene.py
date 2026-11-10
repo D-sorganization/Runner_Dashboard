@@ -974,6 +974,27 @@ def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
     assert "not slow" in run, "the PR tier runs the fast subset"
 
 
+def test_merge_group_shards_collect_coverage_and_floor_job_enforces() -> None:
+    """merge_group shards must instrument coverage; a follow-up job enforces fail_under (#4299)."""
+    run = _ci_step("tests", name="Run Python tests")["run"]
+    assert 'elif [ "$SHARDS" -gt 1 ]' in run
+    shard_section = run.split('elif [ "$SHARDS" -gt 1 ]', 1)[1].split("else", 1)[0]
+    assert "--cov=backend" in shard_section
+    assert "merge_group" not in shard_section or "coverage instrumented" in shard_section
+    floor = _ci_jobs()["coverage-floor"]
+    assert "merge_group" in str(floor.get("if", ""))
+    assert "enforce_coverage_floor.py" in str(floor)
+
+
+def test_ci_standard_files_andon_on_main_path_failures_only() -> None:
+    data = _load_workflow(_CI_STANDARD)
+    alert = data["jobs"]["ci-failure-alert"]
+    alert_if = str(alert.get("if", ""))
+    assert "failure()" in alert_if
+    assert "pull_request" not in alert_if
+    assert "workflow_failure_andon.py" in str(alert)
+
+
 @pytest.mark.parametrize("job_id", ["quality-gate", "tests-required"])
 def test_required_aggregates_report_on_every_event(job_id: str) -> None:
     from scripts.check_required_checks_drift import check_job_fails_closed

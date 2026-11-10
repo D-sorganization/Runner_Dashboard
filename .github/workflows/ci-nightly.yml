@@ -61,3 +61,31 @@ jobs:
       - name: Verify integration cases executed
         if: ${{ !cancelled() }}
         run: python scripts/ci/check_junit_executed.py nightly-junit.xml
+
+  ci-failure-alert:
+    name: CI failure alert
+    needs: [integration]
+    if: failure() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: |
+            scripts/ci
+            shared_scripts
+            backend/andon
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: File Andon alert for red nightly CI
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: python scripts/ci/workflow_failure_andon.py
