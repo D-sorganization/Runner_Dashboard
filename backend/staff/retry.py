@@ -18,6 +18,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS
+from staff.provider_fallback import ProviderFallbackTarget, resolve_fallback_target_model
 from staff.retry_policy import (
     NON_RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
     RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
@@ -182,13 +183,20 @@ def handle_post_execution_retry(
                 next_attempt = latest.attempt + 1
                 attempt_id = attempt_run_id(root_id, next_attempt)
                 next_branch = f"{plan.branch}-fallback-{next_attempt}"
+                fallback_model = resolve_fallback_target_model(
+                    target=ProviderFallbackTarget(fallback, None),
+                    role=role,
+                    source_provider=plan.provider,
+                    target_provider=fallback,
+                    adapter=runner._adapters[fallback],
+                )
                 argv = runner._adapters[fallback].build_command(
-                    plan.prompt, "<workdir>", plan.model, **read_only_kwargs(role)
+                    plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role)
                 )
                 fallback_plan = RunPlan(
                     role=plan.role,
                     provider=fallback,
-                    model=plan.model,
+                    model=fallback_model,
                     repo=plan.repo,
                     target_kind=plan.target_kind,
                     target_ref=plan.target_ref,
@@ -205,7 +213,7 @@ def handle_post_execution_retry(
                     id=attempt_id,
                     role=plan.role,
                     provider=fallback,
-                    model=plan.model,
+                    model=fallback_model,
                     machine=runner.machine,
                     repo=plan.repo,
                     target_kind=plan.target_kind,

@@ -36,6 +36,7 @@ import quota_enforcement
 from dispatch_contract import DispatchAccess
 from dispatch_effort import EXPAND_EPIC_CHILDREN, Effort, normalize_dispatch_kind, resolve_effort
 from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+from dispatch_queue_link import log_dequeued
 from dispatch_routing import (
     ModelRoutingDecision,
     dispatch_queue_manager,
@@ -591,6 +592,7 @@ async def dispatch_to_issues(
     # ── Pickability pre-filter & premise check (RD-2 / #1847) ─────────────────
     pre_rejected: list[dict[str, Any]] = []
     filtered_targets: list[tuple[str, int]] = []
+    overlap_sessions: dict[tuple[str, int], str] = {}
     for repo, num in targets:
         if not req.force:
             not_pickable = _check_issue_pickable(repo, num)
@@ -694,6 +696,8 @@ async def dispatch_to_issues(
                     principal=req.principal,
                 )
                 continue
+            if attempt.session is not None:
+                overlap_sessions[(repo, num)] = attempt.session.session_id
         filtered_targets.append((repo, num))
 
     # ── Resolve model routing and effort (RD-3 #1848, USE-1 #1865) ────────────
@@ -731,6 +735,11 @@ async def dispatch_to_issues(
     accepted_count = 0
 
     for (repo, num), (env_id, fp, reason) in zip(filtered_targets, results, strict=True):
+        session_id = overlap_sessions.get((repo, num))
+        if session_id:
+            outcome = "dispatch_failed" if reason else "dispatch_accepted"
+            dequeued = dispatch_queue_manager.release_session(session_id, outcome=outcome)
+            log_dequeued(dequeued)
         if reason:
             rejected.append({"repository": repo, "number": num, "reason": reason})
         else:

@@ -475,7 +475,7 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             assert "haiku" in entry["model"].lower()
             assert "dictated_fix" in entry["routing_reason"]
 
-            # Second dispatch: overlapping path on same repo -> queued!
+            # Second sequential dispatch on same repo is admitted after the first releases its session.
             req2 = IssueDispatchRequest(
                 selection=DispatchSelection(
                     mode="single",
@@ -488,9 +488,8 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             )
             res2 = await _dispatch_issues(req2)
             assert isinstance(res2, BulkDispatchResponse)
-            assert res2.accepted == 0
-            assert len(res2.rejected) == 1
-            assert "queued_overlapping_paths" in res2.rejected[0]["reason"]
+            assert res2.accepted == 1
+            assert res2.rejected == []
     finally:
         adr._ISSUE_DISPATCH_HISTORY_PATH = original
 

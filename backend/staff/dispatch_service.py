@@ -243,6 +243,8 @@ async def dispatch_staff_run(
 
     claim_info = await claim_guard.enforce_claim_guard(cmd, caller)
 
+    overlap_session_id: str | None = None
+
     if not cmd.dry_run and not cmd.skip_premise_check and (cmd.issue or cmd.prompt):
         from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
         from dispatch_routing import dispatch_queue_manager, extract_declared_paths, resolve_model_routing
@@ -270,8 +272,16 @@ async def dispatch_staff_run(
 
         if cmd.repo:
             paths = extract_declared_paths(cmd.prompt)
-            can_run, blocker = dispatch_queue_manager.can_dispatch(cmd.repo, paths)
-            if not can_run:
+            attempt = dispatch_queue_manager.try_dispatch(
+                repository=cmd.repo,
+                number=cmd.issue,
+                prompt=cmd.prompt,
+                labels=(),
+                declared_paths=paths,
+                requested_model=cmd.model or "",
+            )
+            if not attempt.dispatched:
+                blocker = attempt.queued_item.blocking_session_id if attempt.queued_item else ""
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -280,6 +290,8 @@ async def dispatch_staff_run(
                         "message": "waiting for active session PR to merge or close",
                     },
                 )
+            if attempt.session is not None:
+                overlap_session_id = attempt.session.session_id
 
     runner = get_runner()
     spec = runner.roles().get(cmd.role)
@@ -442,10 +454,25 @@ async def dispatch_staff_run(
         ) from exc
     # Barb-authored dispatch: the lease check and the run admission share one critical section, so a
     # takeover cannot land between them (#2734). ``admit`` is synchronous; never await inside the fence.
-    with barb_write_fence(
-        barb_claim, surface=cmd.surface, target=f"role:{plan.role}", principal=format_caller(caller), audit=audit_ctx
-    ):
-        rec, plan, created = runner.admit(req, run_id=run_id)
+    try:
+        with barb_write_fence(
+            barb_claim,
+            surface=cmd.surface,
+            target=f"role:{plan.role}",
+            principal=format_caller(caller),
+            audit=audit_ctx,
+        ):
+            rec, plan, created = runner.admit(req, run_id=run_id)
+    except Exception:
+        if overlap_session_id:
+            from dispatch_routing import dispatch_queue_manager as _dqm  # noqa: PLC0415
+
+            _dqm.release_session(overlap_session_id, outcome="admission_failed")
+        raise
+    if overlap_session_id and created:
+        from dispatch_queue_link import bind_run_session  # noqa: PLC0415
+
+        bind_run_session(rec.id, overlap_session_id)
     auth_skipped = getattr(plan, "provider_auth_skipped", None)
     if created and auth_skipped:
         from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
@@ -469,6 +496,9 @@ async def dispatch_staff_run(
         try:
             runner.launch(rec, plan)
         except Exception as exc:
+            from dispatch_queue_link import release_run_session  # noqa: PLC0415
+
+            release_run_session(rec.id, outcome="launch_failed")
             _record_launch_failure(runner, rec.id, exc, audit_ctx)
             raise HTTPException(
                 status_code=503,
