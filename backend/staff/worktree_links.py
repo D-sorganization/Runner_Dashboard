@@ -6,76 +6,259 @@ import logging
 import os
 import stat
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+_real_os = os
+
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
-_GAAI_LINKS = frozenset({".gaai/agents", ".gaai/workflows", ".gaai/contexts"})
+
+
+def _platform_os() -> Any:
+    import sys
+
+    return getattr(sys.modules[__name__], "os", _real_os)
+
+
+def _is_windows() -> bool:
+    return getattr(_platform_os(), "name", _real_os.name) == "nt"
+
+
+_O_DIRECTORY = getattr(_real_os, "O_DIRECTORY", 0)
+_O_NOFOLLOW = getattr(_real_os, "O_NOFOLLOW", 0)
+_OPEN_DIR_FLAGS = _real_os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW
+_FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+_FILE_ATTRIBUTE_DIRECTORY = getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
+
+# Windows: path-string walks are best-effort. Ancestor checks and in-tree junction
+# removal re-verify st_dev/st_ino before delete; without dir_fd on NT, TOCTOU is
+# narrowed but not eliminated the way the POSIX fd-relative walk does.
+
+
+def _link_kind_from_stat(st: os.stat_result) -> str:
+    attributes = getattr(st, "st_file_attributes", 0)
+    if attributes & _FILE_ATTRIBUTE_REPARSE_POINT:
+        return "Windows reparse point"
+    if stat.S_ISLNK(st.st_mode):
+        return "symlink"
+    return ""
 
 
 def _link_kind(path: Path) -> str:
-    attributes = getattr(path.lstat(), "st_file_attributes", 0)
-    if attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
-        return "Windows reparse point"
+    metadata = path.lstat()
+    kind = _link_kind_from_stat(metadata)
+    if kind:
+        return kind
     return "symlink" if path.is_symlink() else ""
 
 
-def _tracked_gaai_link(path: Path, relative: str) -> bool:
-    """Require identical symlink entries in HEAD/index and an unchanged link value."""
-    outputs = []
-    for args in (("ls-tree", "-z", "HEAD", "--", relative), ("ls-files", "--stage", "-z", "--", relative)):
-        result = subprocess.run(  # noqa: S603
-            ["git", "-C", str(path), *args], capture_output=True, text=True, check=False, timeout=30
-        )
-        if result.returncode:
-            return False
-        entries = result.stdout.rstrip("\0").split("\0")
-        if len(entries) != 1 or "\t" not in entries[0]:
-            return False
-        metadata, name = entries[0].split("\t", 1)
-        fields = metadata.split()
-        if name != relative or len(fields) != 3 or fields[0] != "120000":
-            return False
-        outputs.append(fields)
-    if outputs[0][1] != "blob" or outputs[1][2] != "0" or outputs[0][2] != outputs[1][1]:
-        return False
-    blob = subprocess.run(  # noqa: S603
-        ["git", "-C", str(path), "cat-file", "blob", outputs[0][2]],
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
-    return blob.returncode == 0 and blob.stdout == os.fsencode(os.readlink(path / relative))
-
-
-def link_refusal_reason(path: Path, *, allow_tracked_gaai: bool = False) -> str | None:
-    """Pre: inspect ancestors first. Post: only verified GAAI symlinks may pass."""
+def _check_ancestors(path: Path) -> None:
+    path = path.absolute()
     for candidate in reversed((path, *path.parents)):
         if kind := _link_kind(candidate):
-            return f"{kind} at worktree or ancestor {candidate}"
-    allowed = []
-    pending = [path]
+            raise OSError(f"{kind} at worktree or ancestor {candidate}")
+
+
+@dataclass(frozen=True)
+class _CollectedLink:
+    parent_fd: int | None
+    parent: Path | None
+    name: str
+    kind: str
+    target: str
+    rel_posix: str
+    identity: tuple[int, int]
+
+
+def _stat_entry(link: _CollectedLink) -> os.stat_result:
+    if link.parent_fd is not None:
+        return _real_os.stat(link.name, dir_fd=link.parent_fd, follow_symlinks=False)
+    assert link.parent is not None
+    return (link.parent / link.name).lstat()
+
+
+def _readlink_at(name: str, *, parent_fd: int | None, parent: Path | None, abs_path: Path | None = None) -> str:
+    if parent_fd is not None:
+        try:
+            return _real_os.readlink(name, dir_fd=parent_fd)
+        except TypeError:
+            if abs_path is not None:
+                return _real_os.readlink(abs_path)
+    assert parent is not None
+    return _real_os.readlink(parent / name)
+
+
+def _readlink_for_link(link: _CollectedLink, root: Path | None = None) -> str:
+    abs_path = (root / link.rel_posix) if root is not None else None
+    return _readlink_at(
+        link.name,
+        parent_fd=link.parent_fd,
+        parent=link.parent,
+        abs_path=abs_path,
+    )
+
+
+def _collect_links_at_path(directory: Path, rel_prefix: str, links: list[_CollectedLink]) -> None:
+    """Path-only tree scan: no retained dir fds (safe for huge .venv / node_modules trees)."""
+    _check_ancestors(directory)
+    pending: list[tuple[Path, str]] = [(directory, rel_prefix)]
     while pending:
-        with os.scandir(pending.pop()) as entries:
+        current, rel = pending.pop()
+        _check_ancestors(current)
+        with _platform_os().scandir(current) as entries:
             for entry in entries:
-                candidate = Path(entry.path)
+                name = entry.name
+                candidate = current / name
+                identity = entry.stat(follow_symlinks=False)
+                child_rel = f"{rel}/{name}" if rel else name
                 if kind := _link_kind(candidate):
-                    relative = candidate.relative_to(path).as_posix()
-                    if kind != "symlink" or not allow_tracked_gaai or relative not in _GAAI_LINKS:
-                        return f"unsafe {kind} at {candidate}"
-                    allowed.append(relative)
+                    target = _real_os.readlink(candidate)
+                    links.append(
+                        _CollectedLink(
+                            parent_fd=None,
+                            parent=current,
+                            name=name,
+                            kind=kind,
+                            target=target,
+                            rel_posix=child_rel,
+                            identity=(identity.st_dev, identity.st_ino),
+                        )
+                    )
                 elif entry.is_dir(follow_symlinks=False):
-                    pending.append(candidate)
-    for relative in allowed:
-        if not _tracked_gaai_link(path, relative):
-            return f"symlink is not an unchanged tracked GAAI entry: {path / relative}"
+                    pending.append((current / name, child_rel))
+
+
+def _collect_tree_links(path: Path) -> list[_CollectedLink]:
+    _check_ancestors(path)
+    collected: list[_CollectedLink] = []
+    _collect_links_at_path(path, "", collected)
+    return collected
+
+
+def _tree_links(path: Path) -> list[tuple[Path, str, str]]:
+    return [(path / link.rel_posix, link.kind, link.target) for link in _collect_tree_links(path)]
+
+
+def link_refusal_reason(path: Path, *, allow_in_tree: bool = False) -> str | None:
+    """Pre: root/ancestors are real directories. Post: inspection never follows links."""
+    links = _tree_links(path)
+    if links and not allow_in_tree:
+        candidate, kind, _target = links[0]
+        return f"unsafe {kind} at {candidate}"
     return None
+
+
+def _verify_link_unchanged(link: _CollectedLink, *, root: Path | None = None) -> None:
+    if link.parent is not None:
+        candidate = link.parent / link.name
+        kind = _link_kind(candidate)
+        identity_st = _real_os.stat(candidate, follow_symlinks=False)
+        identity = (identity_st.st_dev, identity_st.st_ino)
+    else:
+        st = _stat_entry(link)
+        kind = _link_kind_from_stat(st)
+        identity = (st.st_dev, st.st_ino)
+    if kind != link.kind or identity != link.identity:
+        raise OSError(f"link changed during inspection: {link.rel_posix}")
+    if _readlink_for_link(link, root=root) != link.target:
+        raise OSError(f"link changed during inspection: {link.rel_posix}")
+
+
+def _remove_link_entry(link: _CollectedLink, *, root: Path | None = None) -> None:
+    _verify_link_unchanged(link, root=root)
+    if link.parent_fd is not None:
+        st = _stat_entry(link)
+        if (
+            _is_windows()
+            and link.kind == "Windows reparse point"
+            and getattr(st, "st_file_attributes", 0) & _FILE_ATTRIBUTE_DIRECTORY
+        ):
+            _real_os.rmdir(link.name, dir_fd=link.parent_fd)
+        else:
+            _real_os.unlink(link.name, dir_fd=link.parent_fd)
+    else:
+        assert link.parent is not None
+        candidate = link.parent / link.name
+        identity_st = _real_os.stat(candidate, follow_symlinks=False)
+        if (identity_st.st_dev, identity_st.st_ino) != link.identity:
+            raise OSError(f"link changed during inspection: {link.rel_posix}")
+        kind = _link_kind(candidate)
+        st = candidate.lstat()
+        if kind != link.kind:
+            raise OSError(f"link changed during inspection: {link.rel_posix}")
+        if kind == "Windows reparse point":
+            if getattr(st, "st_file_attributes", 0) & _FILE_ATTRIBUTE_DIRECTORY:
+                candidate.rmdir()
+            else:
+                raise OSError(f"refuse to delete reparse point: {link.rel_posix}")
+        else:
+            candidate.unlink()
+    log.info(
+        "unlinked %s %s -> %s (target untouched)",
+        link.kind,
+        link.rel_posix,
+        link.target,
+    )
+
+
+def _unlink_links_at_fd(parent_fd: int, root: Path, rel_prefix: str) -> None:
+    """Depth-first unlink: at most one open fd per tree level (no EMFILE on wide trees)."""
+    subdirs: list[tuple[str, str]] = []
+    with _real_os.scandir(parent_fd) as entries:
+        for entry in entries:
+            name = entry.name
+            st = _real_os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            child_rel = f"{rel_prefix}/{name}" if rel_prefix else name
+            if kind := _link_kind_from_stat(st):
+                link = _CollectedLink(
+                    parent_fd=parent_fd,
+                    parent=None,
+                    name=name,
+                    kind=kind,
+                    target=_readlink_at(name, parent_fd=parent_fd, parent=None, abs_path=root / child_rel),
+                    rel_posix=child_rel,
+                    identity=(st.st_dev, st.st_ino),
+                )
+                _remove_link_entry(link, root=root)
+            elif stat.S_ISDIR(st.st_mode):
+                subdirs.append((name, child_rel))
+    for name, child_rel in subdirs:
+        child_fd = _real_os.open(name, _OPEN_DIR_FLAGS, dir_fd=parent_fd)
+        try:
+            _unlink_links_at_fd(child_fd, root, child_rel)
+        finally:
+            _real_os.close(child_fd)
+
+
+def _unlink_tree_links_unix(path: Path) -> None:
+    _check_ancestors(path)
+    root_fd = _real_os.open(path, _OPEN_DIR_FLAGS)
+    try:
+        _unlink_links_at_fd(root_fd, path, "")
+    finally:
+        _real_os.close(root_fd)
+
+
+def unlink_worktree_links(path: Path) -> None:
+    """Pre: all preservation checks passed. Post: unlink entries only, never targets.
+
+    A directory reparse point on Windows needs rmdir, which removes the junction
+    itself. Never recurse into it. Inspection/readlink failures abort removal.
+    """
+    if _is_windows():
+        for link in _collect_tree_links(path):
+            _remove_link_entry(link, root=path)
+    else:
+        _unlink_tree_links_unix(path)
+    if reason := link_refusal_reason(path):
+        raise OSError(reason)
 
 
 def refuse_worktree_links(path: Path, store: Any = None, run_id: str = "") -> bool:
     """Log every unsafe/uncertain link refusal and record it when a run is known."""
     try:
-        reason = link_refusal_reason(path, allow_tracked_gaai=True)
+        reason = link_refusal_reason(path, allow_in_tree=True)
     except (OSError, subprocess.SubprocessError) as exc:
         reason = f"link inspection failed: {exc}"
     if reason is None:
