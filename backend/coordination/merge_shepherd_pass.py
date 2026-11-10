@@ -132,7 +132,7 @@ def _repo_arm_cap(repo: str) -> int:
 
 
 def _checks_state(node: Mapping[str, Any]) -> str:
-    commits = ((node.get("commits") or {}).get("nodes") or [])
+    commits = (node.get("commits") or {}).get("nodes") or []
     if not commits:
         return "UNKNOWN"
     commit = commits[0].get("commit") if isinstance(commits[0], Mapping) else {}
@@ -141,7 +141,7 @@ def _checks_state(node: Mapping[str, Any]) -> str:
 
 
 def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
-    labels = ((node.get("labels") or {}).get("nodes") or [])
+    labels = (node.get("labels") or {}).get("nodes") or []
     return tuple(str(n.get("name") or "") for n in labels if isinstance(n, Mapping) and n.get("name"))
 
 
