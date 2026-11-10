@@ -35,6 +35,7 @@ RD_REPO = f"{ORG}/Runner_Dashboard"
 QUEUE_BACKOFF_THRESHOLD = 6
 ARM_CAP_RD = 2
 ARM_CAP_DEFAULT = 4
+SHEPHERD_HOLD_LABELS = frozenset({"hold", "do-not-merge", "needs-dieter", "dnm"})
 _PR_REF = re.compile(r"\b(?:PR\s*#|#)(\d+)\b", re.IGNORECASE)
 
 OPEN_PRS_QUERY = """
@@ -155,6 +156,51 @@ def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(str(n.get("name") or "") for n in labels if isinstance(n, Mapping) and n.get("name"))
 
 
+def label_blocks_shepherd(node: Mapping[str, Any]) -> str:
+    for name in _label_names(node):
+        normalized = name.strip().casefold()
+        if normalized in SHEPHERD_HOLD_LABELS:
+            return f"label_{normalized.replace('-', '_')}"
+    return ""
+
+
+def resolve_hub_holds_policy(
+    *,
+    mode: str,
+    dashboard_url: str,
+    token: str,
+    fetch_holds: Callable[[str, str], list[dict[str, Any]]] | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Optional hub schedule holds; fail closed when mode is ``required`` but unavailable."""
+    normalized = mode.strip().lower()
+    if normalized in {"", "off", "false", "0"}:
+        return [], None
+    url = dashboard_url.strip().rstrip("/")
+    auth = token.strip()
+    if not url or not auth:
+        if normalized == "required":
+            return [], "hub_holds_required_but_not_configured"
+        return [], None
+    if fetch_holds is None:
+        return [], "hub_holds_fetcher_missing"
+    try:
+        holds = fetch_holds(url, auth)
+    except OSError as exc:
+        if normalized == "required":
+            return [], f"hub_holds_unreachable:{exc}"
+        return [], None
+    return holds, None
+
+
+def resolve_live_arming(*, merge_shepherd_live: str, input_dry_run: str, cli_dry_run: bool) -> bool:
+    """Scheduled runs leave INPUT_DRY_RUN empty so vars.MERGE_SHEPHERD_LIVE can enable live arms."""
+    if cli_dry_run:
+        return False
+    if input_dry_run.strip().lower() in {"true", "1", "yes"}:
+        return False
+    return merge_shepherd_live.strip().lower() == "true"
+
+
 def _pr_file_metadata(node: Mapping[str, Any]) -> tuple[tuple[str, ...], int, int, bool]:
     files_block = node.get("files") if isinstance(node.get("files"), Mapping) else {}
     file_nodes = (files_block.get("nodes") or []) if isinstance(files_block, Mapping) else []
@@ -213,6 +259,9 @@ def pre_filter_skip_reason(
     number = int(node.get("number") or 0)
     if (repo, number) in skip_list:
         return "config_skip"
+    label_hold = label_blocks_shepherd(node)
+    if label_hold:
+        return label_hold
     if str(node.get("reviewDecision") or "").upper() == "CHANGES_REQUESTED":
         return "changes_requested"
     merge_state = str(node.get("mergeStateStatus") or "").upper()

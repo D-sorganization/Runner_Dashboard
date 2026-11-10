@@ -8,6 +8,8 @@ from coordination.merge_shepherd_pass import (
     load_skip_list,
     plan_repo_pass,
     pre_filter_skip_reason,
+    resolve_hub_holds_policy,
+    resolve_live_arming,
     run_merge_shepherd_pass,
 )
 
@@ -19,6 +21,36 @@ def test_load_skip_list_seeds(tmp_path):
         encoding="utf-8",
     )
     assert load_skip_list(path) == {("D-sorganization/Runner_Dashboard", 2658)}
+
+
+def test_hub_holds_fail_closed_when_required_but_unreachable():
+    def _boom(_url: str, _token: str) -> list:
+        raise OSError("timeout")
+
+    holds, err = resolve_hub_holds_policy(
+        mode="required",
+        dashboard_url="https://hub.example",
+        token="tok",
+        fetch_holds=_boom,
+    )
+    assert holds == [] and err and err.startswith("hub_holds_unreachable")
+
+
+def test_resolve_live_arming_scheduled_respects_live_var():
+    assert resolve_live_arming(merge_shepherd_live="true", input_dry_run="", cli_dry_run=False) is True
+    assert resolve_live_arming(merge_shepherd_live="true", input_dry_run="true", cli_dry_run=False) is False
+
+
+def test_pre_filter_blocks_hold_labels():
+    node = {
+        "number": 2,
+        "mergeStateStatus": "CLEAN",
+        "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
+        "labels": {"nodes": [{"name": "needs-dieter"}]},
+    }
+    assert pre_filter_skip_reason(node, repo="D-sorganization/Runner_Dashboard", skip_list=frozenset(), holds=()) == (
+        "label_needs_dieter"
+    )
 
 
 def test_pre_filter_changes_requested_and_dirty():

@@ -1,3 +1,7 @@
+# Hosted runners cannot reach the tailnet hub. Holds are enforced from GitHub (PR labels
+# hold / do-not-merge / needs-dieter), config/merge_shepherd_skip.json, and standard merge
+# gates. Optional hub schedule holds need MERGE_SHEPHERD_HUB_HOLDS=required plus
+# RUNNER_DASHBOARD_URL; the pass fails closed when that source is configured but unreachable.
 name: Merge shepherd
 
 on:
@@ -44,7 +48,7 @@ jobs:
           GH_TOKEN: ${{ steps.general-token.outputs.token }}
           GITHUB_TOKEN: ${{ steps.general-token.outputs.token }}
           MERGE_SHEPHERD_LIVE: ${{ vars.MERGE_SHEPHERD_LIVE }}
-          INPUT_DRY_RUN: ${{ inputs.dry_run || 'true' }}
+          INPUT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || '' }}
           PYTHONPATH: backend
         run: |
           set -euo pipefail
