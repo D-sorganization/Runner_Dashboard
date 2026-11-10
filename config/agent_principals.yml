@@ -108,6 +108,12 @@ agents:
     roles:
       - bot
       - barb
+  - id: openbot-barb
+    kind: other
+    name: OpenBot Barb (DeskComputer OpenBot lane, #4254)
+    roles:
+      - bot
+      - barb
   - id: email-intake
     name: Verified email intake
     roles:

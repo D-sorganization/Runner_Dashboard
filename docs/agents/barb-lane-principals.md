@@ -16,6 +16,7 @@ cannot drift between lanes. The generic `agent-claude`, `agent-codex`,
 | Codex Barb (`codex-rd-barb`)                 | `agent-codex-barb`  | same lookup as above                                                                           |
 | Cursor Barb (`cursor_barb_hook.py`)          | `agent-cursor-barb` | same lookup as above                                                                           |
 | Antigravity Barb (`agy_barb_hook.py`)        | `agent-agy-barb`    | same lookup as above                                                                           |
+| OpenBot Barb (DeskComputer, #4254)           | `openbot-barb`      | `~/.config/runner-dashboard/agent-tokens/openbot-barb.token` on DeskComputer (WSL), mode 600   |
 
 `scripts/barb_cli.py` and `clients/fleet/fleet_client.py` read `FLEET_API_TOKEN` first; `barb_cli`
 falls back to `RD_THREADS_TOKEN_FILE` or `~/.config/runner-dashboard/fleet-token`. Put each lane's token
