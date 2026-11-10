@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from host_health import build_host_health_gauge
+from datetime import UTC, datetime
+
+from host_health import _active_schedule_window, build_host_health_gauge
 
 
 def test_build_host_health_gauge_red_when_cpu_hot() -> None:
@@ -19,6 +21,30 @@ def test_build_host_health_gauge_red_when_cpu_hot() -> None:
     assert gauge["level"] == "red"
     assert gauge["suggested_action"] is not None
     assert "lower target" in gauge["suggested_action"]
+
+
+def test_overnight_schedule_window_active_after_midnight_on_start_day() -> None:
+    capacity = {
+        "schedule": {
+            "timezone": "UTC",
+            "default_count": 1,
+            "schedules": [
+                {
+                    "name": "overnight",
+                    "days": ["mon"],
+                    "start": "22:00",
+                    "end": "06:00",
+                    "runners": 4,
+                }
+            ],
+        },
+        "state": {},
+    }
+    # Tuesday 03:00 UTC: still inside Monday night's window.
+    window = _active_schedule_window(capacity, at=datetime(2026, 11, 10, 3, 0, tzinfo=UTC))
+    assert window is not None
+    assert window["name"] == "overnight"
+    assert window["runners"] == 4
 
 
 def test_stub_metrics_provider_falls_back_to_system() -> None:

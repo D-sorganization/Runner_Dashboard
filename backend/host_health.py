@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -33,7 +33,26 @@ def _metric_percent(system: dict[str, Any], key: str, nested: str | None = None)
     return None
 
 
-def _active_schedule_window(capacity: dict[str, Any]) -> dict[str, Any] | None:
+def _parse_hhmm(value: str) -> time:
+    hour, minute = value.split(":", 1)
+    return time(int(hour), int(minute))
+
+
+def _schedule_entry_active(entry: dict[str, Any], now: datetime) -> bool:
+    """Match runner-scheduler overnight semantics (start-day keyed past midnight)."""
+    days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+    start = _parse_hhmm(str(entry.get("start") or "00:00"))
+    end = _parse_hhmm(str(entry.get("end") or "23:59"))
+    entry_days = set(entry.get("days") or [])
+    today = days[now.weekday()]
+    yesterday = days[(now.weekday() - 1) % 7]
+    current = now.time().replace(second=0, microsecond=0)
+    if start <= end:
+        return today in entry_days and start <= current < end
+    return (today in entry_days and current >= start) or (yesterday in entry_days and current < end)
+
+
+def _active_schedule_window(capacity: dict[str, Any], *, at: datetime | None = None) -> dict[str, Any] | None:
     schedule = capacity.get("schedule") if isinstance(capacity, dict) else None
     state = capacity.get("state") if isinstance(capacity, dict) else None
     reason = (state or {}).get("reason") if isinstance(state, dict) else None
@@ -44,24 +63,14 @@ def _active_schedule_window(capacity: dict[str, Any]) -> dict[str, Any] | None:
         tz = ZoneInfo(tz_name)
     except Exception:  # noqa: BLE001
         tz = ZoneInfo("UTC")
-    now = datetime.now(tz)
-    days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
-    today = days[now.weekday()]
-    current = now.strftime("%H:%M")
+    now = at.astimezone(tz) if at is not None else datetime.now(tz)
     active: dict[str, Any] | None = None
     for entry in schedule.get("schedules") or []:
         if not isinstance(entry, dict):
             continue
-        entry_days = entry.get("days") or []
-        if today not in entry_days:
-            continue
-        start = str(entry.get("start") or "00:00")
-        end = str(entry.get("end") or "23:59")
-        if start <= end:
-            if start <= current < end:
-                active = entry
-        elif current >= start or current < end:
+        if _schedule_entry_active(entry, now):
             active = entry
+            break
     if not active and reason and not str(reason).startswith("manual-target"):
         return {"name": reason, "start": "-", "end": "-", "runners": (state or {}).get("desired")}
     if not active:
