@@ -1,0 +1,11 @@
+{
+    "skip_prs": [
+        {"repo": "D-sorganization/Runner_Dashboard", "number": 2658},
+        {"repo": "D-sorganization/Runner_Dashboard", "number": 2852},
+        {"repo": "D-sorganization/Runner_Dashboard", "number": 2880},
+        {"repo": "D-sorganization/Repository_Management", "number": 2796},
+        {"repo": "D-sorganization/Repository_Management", "number": 2574},
+        {"repo": "D-sorganization/AffineDrift", "number": 5562},
+        {"repo": "D-sorganization/UpstreamDrift", "number": 14574}
+    ]
+}

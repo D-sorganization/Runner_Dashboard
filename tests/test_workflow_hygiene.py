@@ -68,6 +68,9 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
         "Cursor read-scan-push to bot/recurring-scan-state must finish; cancel mid-run risks a corrupt "
         "cursor or a lost heartbeat."
     ),
+    "merge-shepherd.yml": (
+        "At most one shepherd pass per repo; overlapping cron ticks must not cancel an in-flight arm batch."
+    ),
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
@@ -79,6 +82,7 @@ _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
     "issue-taxonomy-backfill.yml": "Backfill is an explicit singleton maintenance workflow.",
     "taxonomy-rollout.yml": "Taxonomy rollout is a singleton governance workflow.",
     "util-queued-job-reaper.yml": "Queue reaper is a singleton maintenance workflow with a max-cancel cap.",
+    "merge-shepherd.yml": "Scheduled merge shepherd; singleton per repository.",
 }
 
 

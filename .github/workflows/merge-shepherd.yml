@@ -1,0 +1,58 @@
+# Merge shepherd arms fleet PRs via automerge_guard. Runs on the self-hosted fleet
+# (tailnet) so it can reach RUNNER_DASHBOARD_URL for hub schedule holds — the sole
+# source of truth. GitHub hold labels and merge_shepherd_skip.json are additional
+# guards only. When hub holds cannot be loaded, the pass fails closed (no arming).
+name: Merge shepherd
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "When true, never arm (regardless of MERGE_SHEPHERD_LIVE)"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: merge-shepherd-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  shepherd:
+    runs-on: [self-hosted, Linux, X64, d-sorg-fleet]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Mint fleet general-agent token
+        id: general-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.FLEET_GENERAL_AGENT_APP_ID }}
+          private-key: ${{ secrets.FLEET_GENERAL_AGENT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+      - name: Merge shepherd pass
+        env:
+          GH_TOKEN: ${{ steps.general-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.general-token.outputs.token }}
+          RUNNER_DASHBOARD_URL: ${{ secrets.RUNNER_DASHBOARD_URL }}
+          HUB_FLEET_TOKEN: ${{ secrets.HUB_FLEET_TOKEN }}
+          MERGE_SHEPHERD_HUB_HOLDS: required
+          MERGE_SHEPHERD_LIVE: ${{ vars.MERGE_SHEPHERD_LIVE }}
+          INPUT_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || '' }}
+          PYTHONPATH: backend
+        run: |
+          set -euo pipefail
+          python3 scripts/merge_shepherd_pass.py --repo-root "$GITHUB_WORKSPACE" --json
