@@ -174,9 +174,7 @@ def independent_review_hold_reason(
         fix_at_head = [
             row
             for row in reviews
-            if row.verdict == "FIX-NEEDED"
-            and row.reviewer_model
-            and head_sha_matches(row.head_sha, head_sha)
+            if row.verdict == "FIX-NEEDED" and row.reviewer_model and head_sha_matches(row.head_sha, head_sha)
         ]
         if fix_at_head:
             return [f"independent exact-head review is FIX-NEEDED at {head_sha}"]
