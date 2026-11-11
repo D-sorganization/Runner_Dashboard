@@ -14712,6 +14712,57 @@
         "tags": ["orchestration", "orchestration"]
       }
     },
+    "/api/fleet/hosts/{host}/health": {
+      "get": {
+        "description": "Return green/amber/red health gauge and capacity context for one host.",
+        "operationId": "get_host_health_api_fleet_hosts__host__health_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "host",
+            "required": true,
+            "schema": {
+              "title": "Host",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Host Health Api Fleet Hosts  Host  Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Host Health",
+        "tags": ["orchestration", "fleet"]
+      }
+    },
     "/api/fleet/identity": {
       "get": {
         "description": "Return local node identity resolved against the machine registry.",
