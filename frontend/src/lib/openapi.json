@@ -1048,6 +1048,11 @@
       "CIFixDispatchRequest": {
         "description": "Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).",
         "properties": {
+          "allow_strong_escalation": {
+            "default": false,
+            "title": "Allow Strong Escalation",
+            "type": "boolean"
+          },
           "attempt_number": {
             "anyOf": [
               {
@@ -1124,6 +1129,12 @@
             "default": false,
             "title": "From Queue",
             "type": "boolean"
+          },
+          "head_sha": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Head Sha",
+            "type": "string"
           },
           "kind": {
             "default": "ci_failure",
