@@ -110,9 +110,7 @@ def _runs_for_issue(store: RunStore, repo: str, issue: int, *, scan_limit: int =
     matches = [
         run
         for run in store.list_runs(limit=scan_limit, logical_only=False)
-        if run.repo == repo
-        and run.target_kind == "issue"
-        and run.target_ref.lstrip("#") == wanted
+        if run.repo == repo and run.target_kind == "issue" and run.target_ref.lstrip("#") == wanted
     ]
     return sorted(matches, key=lambda r: r.created_at)
 
