@@ -995,6 +995,17 @@ def test_ci_standard_files_andon_on_main_path_failures_only() -> None:
     assert "workflow_failure_andon.py" in str(alert)
 
 
+def test_ci_failure_alert_checks_out_main_for_trusted_andon_script() -> None:
+    """Issue write must not run Andon filing code from a PR/merge_group checkout."""
+    for filename in ("ci-standard.yml", "ci-nightly.yml"):
+        data = _load_workflow(_WORKFLOWS_DIR / filename)
+        alert = data["jobs"]["ci-failure-alert"]
+        perms = alert.get("permissions") or {}
+        assert perms.get("issues") == "write", filename
+        checkout = next(s for s in alert["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert (checkout.get("with") or {}).get("ref") == "main", filename
+
+
 @pytest.mark.parametrize("job_id", ["quality-gate", "tests-required"])
 def test_required_aggregates_report_on_every_event(job_id: str) -> None:
     from scripts.check_required_checks_drift import check_job_fails_closed

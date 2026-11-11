@@ -35,8 +35,12 @@ def enforce(root: Path, pyproject: Path) -> tuple[int, str]:
     if len(data_files) == 1:
         cov = coverage.Coverage(data_file=str(data_files[0]), config_file=str(pyproject))
     else:
+        # coverage.combine data_paths are directories to scan for parallel data files
+        # (``.coverage.*``), not individual file paths (#4299 / Codex review).
+        if target.is_file():
+            target.unlink()
         cov = coverage.Coverage(data_file=str(target), config_file=str(pyproject))
-        cov.combine(data_paths=[str(p) for p in data_files], strict=True)
+        cov.combine(data_paths=[str(root)], strict=True)
     cov.load()
     total = cov.report()
     floor = load_fail_under(pyproject)

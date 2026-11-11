@@ -21,6 +21,40 @@ def test_load_fail_under_reads_pyproject(repo_root: Path) -> None:
     assert load_fail_under(repo_root / "pyproject.toml") >= 60
 
 
+def test_enforce_combines_parallel_shards_via_directory_scan(
+    tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Shard artifacts can include a stale ``.coverage`` plus ``.coverage.*`` siblings."""
+    coverage = pytest.importorskip("coverage")
+    monkeypatch.chdir(tmp_path)
+    module = Path("backend/covered.py")
+    module.parent.mkdir(parents=True)
+    module.write_text("a = 1\nb = 2\n", encoding="utf-8")
+    lines = {str(module.resolve()): [1, 2]}
+
+    for suffix in ("", ".shard1", ".shard2"):
+        data = coverage.CoverageData(basename=str(tmp_path / f".coverage{suffix}"))
+        data.add_lines(lines)
+        data.write()
+
+    assert len(discover_data_files(tmp_path)) >= 3
+
+    seen_paths: list[list[str]] = []
+    original_combine = coverage.Coverage.combine
+
+    def recording_combine(self, data_paths=None, strict=False, keep=False):
+        if data_paths is not None:
+            seen_paths.append(list(data_paths))
+        return original_combine(self, data_paths=data_paths, strict=strict, keep=keep)
+
+    monkeypatch.setattr(coverage.Coverage, "combine", recording_combine)
+
+    code, message = enforce(tmp_path, repo_root / "pyproject.toml")
+    assert code == 0
+    assert "meets fail_under" in message
+    assert seen_paths == [[str(tmp_path.resolve())]]
+
+
 def test_enforce_passes_when_combined_total_meets_floor(
     tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
