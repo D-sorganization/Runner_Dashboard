@@ -399,6 +399,40 @@ class StaffRunner:
                     status, failure_class = "failed", "invalid_output"
                     error = review_verdict.error or "Malformed review verdict line"
                     remediation = "Review completed with a malformed STAFF_RESULT line."
+                elif status == "succeeded":
+                    from staff.independent_exact_head_verdict import (  # noqa: PLC0415
+                        VerdictPostError,
+                        parse_independent_exact_head_staff_result,
+                        publish_independent_exact_head_verdict,
+                    )
+
+                    transcript_text = (
+                        transcript.read_text(encoding="utf-8", errors="replace") if transcript.is_file() else ""
+                    )
+                    indep = parse_independent_exact_head_staff_result(
+                        "\n".join(part for part in (result_line, transcript_text) if part)
+                    )
+                    if indep is not None:
+                        reviewer_model = plan.model or plan.provider
+                        try:
+                            publish_independent_exact_head_verdict(
+                                repo=plan.repo or rec.repo,
+                                pr_number=indep.pr_number,
+                                verdict=indep.verdict,
+                                head_sha=indep.head_sha,
+                                reviewer_model=str(reviewer_model or ""),
+                            )
+                        except VerdictPostError as exc:
+                            status, failure_class = "failed", "provider_error"
+                            retryable = False
+                            error = str(exc)
+                            remediation = (
+                                "Independent exact-head verdict comment could not be posted with the "
+                                "Runner Dashboard GitHub App identity; check hub GITHUB_APP_* and issues write."
+                            )
+                            if exc.http_status == 403:
+                                remediation += " (HTTP 403 — wrong App identity or missing permission.)"
+                            store.append_event(rec.id, "error", error)
 
             workspace.persist_run_transcript(store, rec.id, workdir)
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
