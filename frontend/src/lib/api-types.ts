@@ -2582,6 +2582,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fleet Target
+         * @description Set an expiring runner-count override for a fleet host.
+         */
+        post: operations["fleet_target_api_fleet_target_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/github/app-token": {
         parameters: {
             query?: never;
@@ -10346,6 +10366,38 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * FleetTargetSetRequest
+         * @description POST /api/fleet/target body (DbC: typed payload, no unknown fields).
+         */
+        FleetTargetSetRequest: {
+            /**
+             * Apply
+             * @description Run runner-scheduler --apply after saving override.
+             * @default true
+             */
+            apply: boolean;
+            /**
+             * Host
+             * @description Fleet host or alias.
+             */
+            host: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Runners
+             * @description Requested runner count (clamped to host cap).
+             */
+            runners: number;
+            /**
+             * Until
+             * @description ISO-8601 timestamp or HH:MM expiry.
+             */
+            until?: string | null;
+        };
         /** FrictionCreate */
         FrictionCreate: {
             /**
@@ -17626,6 +17678,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fleet_target_api_fleet_target_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTargetSetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
