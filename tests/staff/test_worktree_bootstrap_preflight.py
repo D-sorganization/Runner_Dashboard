@@ -583,6 +583,39 @@ def test_clean_stale_git_locks_clears_main_module_lock_when_git_active_only_on_w
 
 
 @pytest.mark.unit
+def test_main_modules_lock_scoped_to_main_when_checkout_path_contains_worktrees_component(
+    tmp_path: Path,
+) -> None:
+    """Regression: main at ``.../worktrees/UpstreamDrift/.git/modules`` is not a linked worktree modules lock."""
+    main_repo = tmp_path / "worktrees" / "UpstreamDrift"
+    main_modules = main_repo / ".git" / "modules" / "vendor" / "ud-tools"
+    main_modules.mkdir(parents=True)
+    module_lock = main_modules / "index.lock"
+    module_lock.write_text("lock", encoding="utf-8")
+
+    wt_path = tmp_path / "staff-wt"
+    wt_path.mkdir()
+    wt_gitdir = main_repo / ".git" / "worktrees" / "staff-wt"
+    wt_gitdir.mkdir(parents=True)
+    (wt_path / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {wt_path}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    removed = runner_ops.clean_stale_git_locks(
+        wt_path,
+        run=fake_run,
+        main_root=main_repo,
+        is_git_process_active=lambda p: p == wt_path,
+    )
+
+    assert module_lock in removed
+    assert not module_lock.exists()
+
+
+@pytest.mark.unit
 def test_clean_stale_git_locks_clears_per_worktree_modules_index_lock_when_main_git_busy(
     tmp_path: Path,
 ) -> None:
