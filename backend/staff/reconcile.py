@@ -19,6 +19,7 @@ import logging
 import os
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,96 @@ def terminate_pid(pid: int | None) -> None:
     if pid is None or pid <= 0:
         return
     terminate_process_group(pid, grace_period=2.0)
+
+
+def _parse_run_ts(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def pid_belongs_to_run(rec: RunRecord, pid: int) -> bool:
+    """Return whether ``pid`` likely still owns this staff run (D-04, #4256)."""
+    if pid <= 0:
+        return False
+    if psutil is None:
+        return True
+    try:
+        if not psutil.pid_exists(pid):
+            return True
+        proc = psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return True
+    started = _parse_run_ts(rec.started_at)
+    if started is not None:
+        create = datetime.fromtimestamp(proc.create_time(), tz=UTC)
+        if create < started - timedelta(seconds=5):
+            return False
+        # Child was spawned at or after the recorded start: same incarnation.
+        return True
+    cmdline = " ".join(proc.cmdline())
+    if rec.workdir and rec.workdir in cmdline:
+        return True
+    if rec.id in cmdline:
+        return True
+    provider = (rec.provider or "").strip().lower()
+    if provider and provider in cmdline.lower():
+        return True
+    return False
+
+
+def terminate_pid_for_run(rec: RunRecord) -> None:
+    """Terminate the run child only when PID identity checks pass (#4256 D-04)."""
+    pid = rec.pid
+    if pid is None or pid <= 0:
+        return
+    if not pid_belongs_to_run(rec, pid):
+        log.warning(
+            "Skipping terminate for run %s: PID %d failed identity check",
+            rec.id,
+            pid,
+        )
+        return
+    terminate_pid(pid)
+
+
+def rearm_pending_retries(runner: StaffRunner) -> list[str]:
+    """Re-schedule queued backoff retries after a dashboard restart (#4256 D-01)."""
+    from staff.retry import _schedule, retry_plan
+
+    store = runner.store
+    now = datetime.now(UTC)
+    rearmed: list[str] = []
+    for rec in store.get_pending_retries(machine=runner.machine):
+        role = runner.roles().get(rec.role)
+        if role is None:
+            msg = f"pending retry orphaned: role {rec.role} unavailable after restart"
+            store.update_run(
+                rec.id,
+                status="failed",
+                failure_class="orphaned",
+                retryable=False,
+                error=msg,
+                ended_at=_now(),
+            )
+            store.append_event(rec.id, "reconcile", msg)
+            continue
+        plan = retry_plan(runner, rec, role)
+        due = _parse_run_ts(rec.next_attempt_at)
+        delay = 0.0 if due is None else max(0.0, (due - now).total_seconds())
+        _schedule(runner, rec, plan, delay)
+        store.append_event(
+            rec.retry_of or rec.id,
+            "reconcile",
+            f"re-armed pending retry after restart (delay={delay:.1f}s)",
+        )
+        rearmed.append(rec.id)
+    if rearmed:
+        log.info("Re-armed %d pending staff retries after restart: %s", len(rearmed), rearmed)
+    return rearmed
 
 
 def _release_lease_with_retry(
@@ -336,7 +427,7 @@ def reconcile_orphaned_runs(
 
         # 1. Terminate child PID if present
         if rec.pid is not None:
-            terminate_pid(rec.pid)
+            terminate_pid_for_run(rec)
 
         # 2. Preserve recovery evidence without inspecting an orphan's Git or linked paths.
         preserved_path: str | None = None
@@ -396,6 +487,11 @@ def reconcile_orphaned_runs(
         workspace.sweep_stale_worktrees(store)
     except Exception as exc:  # noqa: BLE001
         log.warning("Failed to sweep stale worktrees: %s", exc, exc_info=True)
+
+    try:
+        rearm_pending_retries(runner)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Failed to re-arm pending staff retries after restart: %s", exc, exc_info=True)
 
     if reconciled_ids:
         log.info("Reconciled %d orphaned staff runs: %s", len(reconciled_ids), reconciled_ids)
