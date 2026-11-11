@@ -245,22 +245,41 @@ def _push_processes_alive(active: dict[str, Any]) -> bool:
     return any(_pid_alive(int(p)) for p in pids.values() if isinstance(p, int))
 
 
-def _terminate_tree(pids: Mapping[str, Any]) -> None:
-    for key in ("supervisor", *tuple(f"lane{i}" for i in range(1, 9))):
+def _terminate_tree(pids: Mapping[str, Any], active: dict[str, Any] | None = None) -> None:
+    log_dir = Path(str(active["log_dir"])) if active and active.get("log_dir") else None
+    supervisor_session = str(active.get("supervisor_session") or "") if active else ""
+    lane_sessions = [str(s) for s in (active.get("lane_sessions") or []) if s] if active else []
+    lane_keys = tuple(f"lane{i}" for i in range(1, 9))
+
+    for key in ("supervisor", *lane_keys):
         pid = pids.get(key)
-        if isinstance(pid, int) and pid > 0:
+        if not isinstance(pid, int) or pid <= 0:
+            continue
+        if key == "supervisor":
+            session = supervisor_session or None
+        elif key in lane_keys:
+            idx = lane_keys.index(key)
+            session = lane_sessions[idx] if idx < len(lane_sessions) else None
+        else:
+            session = None
+        if log_dir and session:
+            pidfile = log_dir / f"{session}.pid"
+            if pidfile.is_file():
+                file_pid, start_time, recorded_session = _read_pid_record(pidfile)
+                if file_pid == pid and not _pid_identity_matches(pid, start_time, recorded_session or session):
+                    continue
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except OSError:
             try:
-                os.killpg(os.getpgid(pid), signal.SIGTERM)
+                os.kill(pid, signal.SIGTERM)
             except OSError:
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                except OSError:
-                    pass
+                pass
 
 
 def _terminate_from_active(active: dict[str, Any]) -> None:
     pids = active.get("pids") if isinstance(active.get("pids"), dict) else {}
-    _terminate_tree(pids)
+    _terminate_tree(pids, active)
     log_dir = active.get("log_dir")
     if not log_dir:
         return

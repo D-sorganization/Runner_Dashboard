@@ -316,7 +316,11 @@ def test_real_expiry_signals_only_owned_processes_and_clears_active(
     signalled_pids: list[int] = []
     monkeypatch.setattr(relay.os, "getpgid", lambda pid: pid + 100000, raising=False)
     monkeypatch.setattr(relay.os, "killpg", lambda pgid, sig: signalled_groups.append(pgid - 100000), raising=False)
-    monkeypatch.setattr(relay.os, "kill", lambda pid, sig: signalled_pids.append(pid))
+    monkeypatch.setattr(
+        relay.os,
+        "kill",
+        lambda pid, sig: signalled_pids.append(pid) if sig == signal.SIGTERM else None,
+    )
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     (log_dir / "sup.pid").write_text("4300", encoding="utf-8")
@@ -517,8 +521,8 @@ def test_unrelated_live_process_in_pidfile_is_not_alive_and_never_signalled(tmp_
     original_kill = relay.os.kill
 
     def mock_kill(pid: int, sig: int) -> None:
-        signalled_pids.append(pid)
         if sig == signal.SIGTERM:
+            signalled_pids.append(pid)
             raise OSError("not signalling test process")
         original_kill(pid, sig)
 
