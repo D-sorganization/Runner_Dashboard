@@ -77,7 +77,9 @@ def _graphql(owner: str, name: str, *, runner=_default_runner) -> Mapping[str, A
         return data
     pages: list[Mapping[str, Any]] = [armed_block]
     has_next, cursor = armed_pull_requests_has_next_page(armed_block)
-    while has_next and cursor:
+    while has_next:
+        if not cursor:
+            raise OSError("armed_pull_requests_pagination_incomplete:missing_end_cursor")
         page_data = _graphql_query(
             ARMED_PULL_REQUESTS_PAGE_QUERY,
             owner,
@@ -86,13 +88,13 @@ def _graphql(owner: str, name: str, *, runner=_default_runner) -> Mapping[str, A
             runner=runner,
         )
         if not isinstance(page_data, Mapping):
-            break
+            raise OSError("armed_pull_requests_pagination_incomplete:invalid_page_payload")
         next_repo = page_data.get("repository")
         if not isinstance(next_repo, Mapping):
-            break
+            raise OSError("armed_pull_requests_pagination_incomplete:missing_repository")
         next_block = next_repo.get("armedPullRequests")
         if not isinstance(next_block, Mapping):
-            break
+            raise OSError("armed_pull_requests_pagination_incomplete:missing_armed_pull_requests")
         pages.append(next_block)
         has_next, cursor = armed_pull_requests_has_next_page(next_block)
     stitched = stitch_armed_pull_request_pages(pages)
