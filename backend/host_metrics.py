@@ -12,7 +12,7 @@ class HostMetricsProvider(Protocol):
 
 
 class StubHostMetricsProvider:
-    """Fallback when cache reader is unavailable (should not happen in production)."""
+    """Fallback when the cache reader cannot be imported."""
 
     def read_cached(self, host: str) -> dict[str, Any] | None:  # noqa: ARG002
         return None

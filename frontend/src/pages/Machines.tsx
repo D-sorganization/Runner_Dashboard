@@ -35,6 +35,7 @@ import {
   type StorageDevice,
 } from "../lib/fleetMachines";
 import { legacyFetch } from "../lib/api";
+import { HostHealthGauge } from "./HostHealthGauge";
 
 const h = React.createElement;
 
@@ -649,6 +650,11 @@ export function MachineCard(p: any): React.ReactElement {
         ),
       ),
     ),
+    h(HostHealthGauge, {
+      health:
+        (sys.host_health as import("./HostHealthGauge").HostHealthGaugeData | undefined) ||
+        undefined,
+    }),
 
     // Runners summary
     h(
