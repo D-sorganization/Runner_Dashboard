@@ -106,9 +106,10 @@ def _become_replica(env: dict[str, Any]) -> None:
 @pytest.mark.unit
 def test_ingest_applies_once_and_dedupes_a_replay(authority_env: dict[str, Any]) -> None:
     c, tid, store = authority_env["client"], authority_env["thread"].id, authority_env["store"]
-    body = {"run_id": "r1", "role": "librarian", "status": "succeeded", "version": 2, "epoch": EPOCH}
-    first = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body)
-    again = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body)
+    body = {"run_id": "r1", "role": "librarian", "status": "succeeded", "node": "worker", "version": 2, "epoch": EPOCH}
+    headers = {"X-Fleet-Node": "worker"}
+    first = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body, headers=headers)
+    again = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body, headers=headers)
     assert first.status_code == again.status_code == 200
     assert len(store.list_messages(tid)) == 1
 
@@ -116,19 +117,23 @@ def test_ingest_applies_once_and_dedupes_a_replay(authority_env: dict[str, Any])
 @pytest.mark.unit
 def test_ingest_refuses_a_stale_epoch_and_a_stale_version(authority_env: dict[str, Any]) -> None:
     c, tid, store = authority_env["client"], authority_env["thread"].id, authority_env["store"]
+    relay_hdr = {"X-Fleet-Node": "worker"}
     old = c.post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "running", "version": 1, "epoch": EPOCH - 1},
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 1, "epoch": EPOCH - 1},
+        headers=relay_hdr,
     )
     assert old.status_code == 409 and old.json()["code"] == "stale_authority_epoch"
     assert store.list_messages(tid) == []
     c.post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "succeeded", "version": 5, "epoch": EPOCH},
+        json={"run_id": "r1", "role": "x", "status": "succeeded", "node": "worker", "version": 5, "epoch": EPOCH},
+        headers=relay_hdr,
     )
     late = c.post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "running", "version": 3, "epoch": EPOCH},
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 3, "epoch": EPOCH},
+        headers=relay_hdr,
     )
     assert late.status_code == 409 and late.json()["code"] == "stale_version"
     assert store.get_message(run_card_id("r1")).meta["status"] == "succeeded"  # type: ignore[union-attr]
@@ -140,7 +145,8 @@ def test_a_replica_refuses_to_ingest(authority_env: dict[str, Any]) -> None:
     tid = authority_env["thread"].id
     resp = authority_env["client"].post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "running", "version": 1, "epoch": EPOCH},
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 1, "epoch": EPOCH},
+        headers={"X-Fleet-Node": "worker"},
     )
     assert resp.status_code == 503 and resp.json()["code"] == "not_authority"
     assert authority_env["store"].list_messages(tid) == []
@@ -155,7 +161,9 @@ def test_legacy_unversioned_relay_still_works_without_authority(
     barb_runtime.reset_authority_config()
     tid = authority_env["thread"].id
     resp = authority_env["client"].post(
-        f"/api/v1/staff/threads/{tid}/relay-card", json={"run_id": "r1", "role": "x", "status": "running"}
+        f"/api/v1/staff/threads/{tid}/relay-card",
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker"},
+        headers={"X-Fleet-Node": "worker"},
     )
     assert resp.status_code == 200 and len(authority_env["store"].list_messages(tid)) == 1
 

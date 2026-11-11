@@ -27498,7 +27498,9 @@ export interface operations {
     relay_thread_run_card_api_v1_staff_threads__thread_id__relay_card_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Fleet-Node"?: string | null;
+            };
             path: {
                 thread_id: string;
             };
