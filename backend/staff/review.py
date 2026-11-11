@@ -425,3 +425,122 @@ def auto_review_if_eligible(
         return False
     log.info("auto-review: queued %s for PR #%s on %s with %s", run.id, pr_number, repo, params["provider"])
     return True
+
+
+@dataclass(frozen=True)
+class CodeReviewerRunOutcome:
+    status: str
+    failure_class: str
+    retryable: bool
+    error: str
+    remediation: str
+    error_event: str = ""
+
+
+def finalize_code_reviewer_run(
+    *,
+    status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    result_line: str,
+    same_provider: bool,
+    transcript: Path,
+    repo: str,
+    reviewer_model: str,
+) -> CodeReviewerRunOutcome:
+    """Parse review output and post independent exact-head verdicts (#4323)."""
+    review_verdict = parse_review_verdict(result_line, same_provider=same_provider)
+    if review_verdict.status == "needs_input":
+        return CodeReviewerRunOutcome(
+            status="needs_input",
+            failure_class="needs_input",
+            retryable=retryable,
+            error=error,
+            remediation="Review completed without emitting a STAFF_RESULT verdict line.",
+        )
+    if review_verdict.status == "failed":
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="invalid_output",
+            retryable=retryable,
+            error=review_verdict.error or "Malformed review verdict line",
+            remediation="Review completed with a malformed STAFF_RESULT line.",
+        )
+    if status != "succeeded":
+        return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
+
+    from staff.independent_exact_head_verdict import (  # noqa: PLC0415
+        VerdictPostError,
+        parse_independent_exact_head_staff_result,
+        publish_independent_exact_head_verdict,
+    )
+
+    transcript_text = transcript.read_text(encoding="utf-8", errors="replace") if transcript.is_file() else ""
+    indep = parse_independent_exact_head_staff_result(
+        "\n".join(part for part in (result_line, transcript_text) if part)
+    )
+    if indep is None:
+        return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
+    try:
+        publish_independent_exact_head_verdict(
+            repo=repo,
+            pr_number=indep.pr_number,
+            verdict=indep.verdict,
+            head_sha=indep.head_sha,
+            reviewer_model=reviewer_model,
+        )
+    except VerdictPostError as exc:
+        msg = str(exc)
+        rem = (
+            "Independent exact-head verdict comment could not be posted with the "
+            "Runner Dashboard GitHub App identity; check hub GITHUB_APP_* and issues write."
+        )
+        if exc.http_status == 403:
+            rem += " (HTTP 403 — wrong App identity or missing permission.)"
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="provider_error",
+            retryable=False,
+            error=msg,
+            remediation=rem,
+            error_event=msg,
+        )
+    return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
+
+
+def maybe_finalize_code_reviewer_run(
+    *,
+    role: str,
+    rc: int,
+    store: Any,
+    run_id: str,
+    status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    result_line: str,
+    same_provider: bool,
+    transcript: Path,
+    repo: str,
+    reviewer_model: str,
+) -> tuple[str, str, bool, str, str]:
+    if role != "code-reviewer" or rc != 0:
+        return status, failure_class, retryable, error, remediation
+    out = finalize_code_reviewer_run(
+        status=status,
+        failure_class=failure_class,
+        retryable=retryable,
+        error=error,
+        remediation=remediation,
+        result_line=result_line,
+        same_provider=same_provider,
+        transcript=transcript,
+        repo=repo,
+        reviewer_model=reviewer_model,
+    )
+    if out.error_event:
+        store.append_event(run_id, "error", out.error_event)
+    return out.status, out.failure_class, out.retryable, out.error, out.remediation
