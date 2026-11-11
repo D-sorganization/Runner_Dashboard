@@ -726,12 +726,29 @@ async def dispatch_to_issues(
         )
         for repo, num in filtered_targets
     ]
-    try:
-        results = await asyncio.gather(*tasks)
-    except BaseException:
-        for overlap_sid in overlap_sessions.values():
-            dispatch_queue_manager.release_session(overlap_sid, outcome="dispatch_failed")
-        raise
+    settled = await asyncio.gather(*tasks, return_exceptions=True)
+    first_exc: BaseException | None = None
+    for item in settled:
+        if isinstance(item, BaseException) and first_exc is None:
+            first_exc = item
+
+    if first_exc is not None:
+        for (repo, num), item in zip(filtered_targets, settled, strict=True):
+            session_id = overlap_sessions.get((repo, num))
+            if not session_id:
+                continue
+            if isinstance(item, BaseException):
+                outcome = "dispatch_failed"
+            else:
+                _env_id, _fp, reason = item
+                outcome = "dispatch_failed" if reason else "dispatch_accepted"
+            dequeued = dispatch_queue_manager.release_session(session_id, outcome=outcome)
+            log_dequeued(dequeued)
+        raise first_exc
+
+    results: list[tuple[str | None, str | None, str | None]] = [
+        item for item in settled if not isinstance(item, BaseException)
+    ]
 
     # ── Collate ───────────────────────────────────────────────────────────────
     envelope_ids: list[str] = []
