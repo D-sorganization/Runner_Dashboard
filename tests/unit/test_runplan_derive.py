@@ -14,6 +14,7 @@ from staff.failover_dispatch import try_chain_failover
 from staff.plan import RunPlan, derive_run_plan
 from staff.provider_cooldown import reset_provider_cooldowns
 from staff.provider_failover_config import reset_failover_config_cache
+from staff.provider_fallback import ProviderFallbackRule, ProviderFallbackTarget
 from staff.retry import handle_post_execution_retry
 from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
@@ -239,3 +240,148 @@ def test_chain_failover_keeps_pr_restrictions(tmp_path: Path, monkeypatch: pytes
     assert len(scheduled) == 1
     assert scheduled[0].pr_restrictions == plan.pr_restrictions
     assert scheduled[0].pr_lifecycle == plan.pr_lifecycle
+
+
+def _fallback_runner(
+    tmp_path: Path,
+    *,
+    role: RoleSpec,
+    adapters: dict[str, MagicMock],
+) -> MagicMock:
+    runner = MagicMock()
+    runner.store = RunStore(path=tmp_path / "runs.sqlite3")
+    runner.machine = "test"
+    runner.roles.return_value = {"worker": role}
+    runner._cancel_flags = set()
+    runner._adapters = adapters
+    return runner
+
+
+def test_declarative_provider_fallback_keeps_pr_restrictions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Declarative fallback must copy pr_* via derive_run_plan, not Plan defaults (#4259)."""
+    plan = _full_plan()
+    role = RoleSpec(
+        name="worker",
+        title="Worker",
+        providers=("codex", "claude"),
+        max_attempts=3,
+        provider_fallbacks=(
+            ProviderFallbackRule(
+                when=("provider_capacity",),
+                from_provider="codex",
+                target=ProviderFallbackTarget(provider="claude", model=None),
+            ),
+        ),
+    )
+    runner = _fallback_runner(
+        tmp_path,
+        role=role,
+        adapters={
+            "codex": MagicMock(
+                installed=lambda: True,
+                unattended=True,
+                build_command=lambda *a, **k: ["codex"],
+            ),
+            "claude": MagicMock(
+                installed=lambda: True,
+                unattended=True,
+                build_command=lambda *a, **k: ["claude"],
+            ),
+        },
+    )
+    root = RunRecord(
+        id="run-root",
+        role=plan.role,
+        provider=plan.provider,
+        model=plan.model,
+        machine="test",
+        repo=plan.repo,
+        target_kind=plan.target_kind,
+        target_ref=plan.target_ref,
+        prompt=plan.prompt,
+        status="failed",
+        failure_class="provider_capacity",
+        attempt=1,
+        max_attempts=3,
+        branch=plan.branch,
+    )
+    runner.store.create_run(root)
+    scheduled: list[RunPlan] = []
+
+    def capture_schedule(_runner: object, _rec: RunRecord, attempt_plan: RunPlan, _delay: float) -> None:
+        scheduled.append(attempt_plan)
+
+    monkeypatch.setattr("staff.retry._schedule", capture_schedule)
+    latest = runner.store.get_run("run-root")
+    assert latest is not None
+    assert handle_post_execution_retry(runner, latest, plan) is True
+    assert len(scheduled) == 1
+    attempt_plan = scheduled[0]
+    assert attempt_plan.provider == "claude"
+    assert attempt_plan.pr_restrictions == ("draft_only", "no_arm")
+    assert attempt_plan.pr_lifecycle == "draft_no_arm"
+
+
+def test_legacy_provider_fallback_keeps_pr_restrictions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy fallback_providers path must copy pr_* via derive_run_plan (#4259)."""
+    plan = _full_plan()
+    role = RoleSpec(
+        name="worker",
+        title="Worker",
+        providers=("codex", "claude"),
+        fallback_providers=("claude",),
+        max_attempts=1,
+    )
+    runner = _fallback_runner(
+        tmp_path,
+        role=role,
+        adapters={
+            "codex": MagicMock(
+                installed=lambda: True,
+                unattended=True,
+                build_command=lambda *a, **k: ["codex"],
+            ),
+            "claude": MagicMock(
+                installed=lambda: True,
+                unattended=True,
+                build_command=lambda *a, **k: ["claude"],
+            ),
+        },
+    )
+    root = RunRecord(
+        id="run-root",
+        role=plan.role,
+        provider=plan.provider,
+        model=plan.model,
+        machine="test",
+        repo=plan.repo,
+        target_kind=plan.target_kind,
+        target_ref=plan.target_ref,
+        prompt=plan.prompt,
+        status="failed",
+        failure_class="rate_limited",
+        attempt=1,
+        max_attempts=1,
+        branch=plan.branch,
+    )
+    runner.store.create_run(root)
+    scheduled: list[RunPlan] = []
+
+    def capture_schedule(_runner: object, _rec: RunRecord, attempt_plan: RunPlan, _delay: float) -> None:
+        scheduled.append(attempt_plan)
+
+    monkeypatch.setattr("staff.retry._schedule", capture_schedule)
+    latest = runner.store.get_run("run-root")
+    assert latest is not None
+    assert handle_post_execution_retry(runner, latest, plan) is True
+    assert len(scheduled) == 1
+    attempt_plan = scheduled[0]
+    assert attempt_plan.provider == "claude"
+    assert attempt_plan.pr_restrictions == ("draft_only", "no_arm")
+    assert attempt_plan.pr_lifecycle == "draft_no_arm"
