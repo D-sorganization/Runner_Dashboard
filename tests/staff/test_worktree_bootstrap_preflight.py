@@ -12,6 +12,19 @@ def _cp(argv: list[str], code: int, stdout: str = "", stderr: str = "") -> subpr
     return subprocess.CompletedProcess(argv, code, stdout=stdout, stderr=stderr)
 
 
+_STUB_VERIFY_GATES = (
+    "import argparse\n"
+    "if __name__ == '__main__':\n"
+    "    argparse.ArgumentParser().parse_args()\n"
+)
+
+_STUB_PRE_PR = (
+    "import argparse\n"
+    "if __name__ == '__main__':\n"
+    "    argparse.ArgumentParser().parse_args()\n"
+)
+
+
 @pytest.mark.unit
 def test_bootstrap_preflight_initializes_submodules_installs_pytest_and_resolves_repo_entrypoint(
     tmp_path: Path,
@@ -21,12 +34,14 @@ def test_bootstrap_preflight_initializes_submodules_installs_pytest_and_resolves
         encoding="utf-8",
     )
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts" / "verify_merge_gates.py").write_text("# marker\n", encoding="utf-8")
+    (tmp_path / "scripts" / "verify_merge_gates.py").write_text(_STUB_VERIFY_GATES, encoding="utf-8")
 
     calls: list[list[str]] = []
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(command)
+        if "--help" in command:
+            return _cp(command, 0, "usage\n")
         if command[:2] == ["git", "--version"]:
             return _cp(command, 0, "git version 2.47.1\n")
         if command[:3] == ["git", "submodule", "status"]:
@@ -72,12 +87,14 @@ def test_bootstrap_preflight_skips_submodule_update_when_already_populated(tmp_p
         encoding="utf-8",
     )
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts" / "verify_merge_gates.py").write_text("# marker\n", encoding="utf-8")
+    (tmp_path / "scripts" / "verify_merge_gates.py").write_text(_STUB_VERIFY_GATES, encoding="utf-8")
 
     calls: list[list[str]] = []
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(command)
+        if "--help" in command:
+            return _cp(command, 0, "usage\n")
         if command[:2] == ["git", "--version"]:
             return _cp(command, 0, "git version 2.47.1\n")
         if command[:3] == ["git", "submodule", "status"]:
@@ -110,12 +127,14 @@ def test_bootstrap_preflight_reuses_main_checkout_reference_when_available(tmp_p
         encoding="utf-8",
     )
     (worktree / "scripts").mkdir()
-    (worktree / "scripts" / "verify_merge_gates.py").write_text("# marker\n", encoding="utf-8")
+    (worktree / "scripts" / "verify_merge_gates.py").write_text(_STUB_VERIFY_GATES, encoding="utf-8")
 
     calls: list[list[str]] = []
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         calls.append(command)
+        if "--help" in command:
+            return _cp(command, 0, "usage\n")
         if command[:2] == ["git", "--version"]:
             return _cp(command, 0, "git version 2.47.1\n")
         if command[:3] == ["git", "submodule", "status"]:
@@ -229,7 +248,7 @@ def test_bootstrap_preflight_catches_submodule_timeout_and_retries_once(tmp_path
 @pytest.mark.unit
 def test_bootstrap_preflight_fails_when_python_is_below_311(tmp_path: Path) -> None:
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts" / "verify_merge_gates.py").write_text("# marker\n", encoding="utf-8")
+    (tmp_path / "scripts" / "verify_merge_gates.py").write_text(_STUB_VERIFY_GATES, encoding="utf-8")
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if command[:3] == ["python3", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
@@ -421,9 +440,11 @@ def test_bootstrap_preflight_cleans_stale_locks_before_submodule_status(tmp_path
         encoding="utf-8",
     )
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts" / "verify_merge_gates.py").write_text("# marker\n", encoding="utf-8")
+    (tmp_path / "scripts" / "verify_merge_gates.py").write_text(_STUB_VERIFY_GATES, encoding="utf-8")
 
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "--help" in command:
+            return _cp(command, 0, "usage\n")
         if command[:2] == ["git", "--version"]:
             return _cp(command, 0, "git version 2.47.1\n")
         if command[:3] == ["git", "submodule", "status"]:
@@ -524,3 +545,146 @@ def test_clean_stale_git_locks_handles_linked_worktree_and_main_checkout(tmp_pat
     assert len(removed) == 2
     assert not (real_wt_gitdir / "index.lock").exists()
     assert not (main_modules / "index.lock").exists()
+
+
+@pytest.mark.unit
+def test_clean_stale_git_locks_clears_main_module_lock_when_git_active_only_on_worktree(
+    tmp_path: Path,
+) -> None:
+    main_repo = tmp_path / "UpstreamDrift"
+    main_modules = main_repo / ".git" / "modules" / "vendor" / "ud-tools"
+    main_modules.mkdir(parents=True)
+    module_lock = main_modules / "index.lock"
+    module_lock.write_text("lock", encoding="utf-8")
+
+    wt_path = tmp_path / "staff-wt"
+    wt_path.mkdir()
+    wt_gitdir = main_repo / ".git" / "worktrees" / "staff-wt"
+    wt_gitdir.mkdir(parents=True)
+    (wt_path / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {wt_path}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    def active_only_worktree(repo_path: Path) -> bool:
+        return repo_path == wt_path
+
+    removed = runner_ops.clean_stale_git_locks(
+        wt_path,
+        run=fake_run,
+        main_root=main_repo,
+        is_git_process_active=active_only_worktree,
+    )
+
+    assert module_lock in removed
+    assert not module_lock.exists()
+
+
+@pytest.mark.unit
+def test_resolve_pre_pr_entrypoint_falls_back_when_module_import_missing(tmp_path: Path) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "__init__.py").write_text("", encoding="utf-8")
+    (scripts / "pre_pr.py").write_text(_STUB_PRE_PR, encoding="utf-8")
+
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[:4] == ["python3.11", "-m", "scripts.pre_pr", "--help"]:
+            return _cp(command, 1, stderr="No module named scripts.pre_pr\n")
+        if command[:4] == ["python3.11", "scripts/pre_pr.py", "--help"]:
+            return _cp(command, 0, "usage\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    resolved = runner_ops.resolve_repo_pre_pr_entrypoint(
+        tmp_path, python_executable="python3.11", run=fake_run
+    )
+
+    assert resolved == "python3.11 scripts/pre_pr.py"
+    assert any(cmd[:3] == ["python3.11", "-m", "scripts.pre_pr"] for cmd in calls)
+
+
+@pytest.mark.unit
+def test_bootstrap_preflight_pre_pr_missing_is_non_retryable_environment_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "staff.runner_ops_worktree_bootstrap.role_requires_pre_pr_entrypoint",
+        lambda _role: True,
+    )
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
+            return _cp(command, 0, "3.11\n")
+        if command[:3] == ["python3.11", "-m", "pytest"] and "--version" in command:
+            return _cp(command, 0, "pytest 8.4.0")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = runner_ops.run_worktree_bootstrap_preflight(
+        tmp_path,
+        role="issue-remediator",
+        run=fake_run,
+        which=lambda name: "python3.11" if name == "python3.11" else None,
+    )
+
+    assert result.ok is False
+    assert result.failure_class == "environment_error"
+    assert result.retryable is False
+    assert "shared_scripts" in result.remediation
+
+
+@pytest.mark.unit
+def test_bootstrap_preflight_optional_pre_pr_for_non_open_pr_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "staff.runner_ops_worktree_bootstrap.role_requires_pre_pr_entrypoint",
+        lambda role: role == "issue-remediator",
+    )
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
+            return _cp(command, 0, "3.11\n")
+        if command[:3] == ["python3.11", "-m", "pytest"] and "--version" in command:
+            return _cp(command, 0, "pytest 8.4.0")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = runner_ops.run_worktree_bootstrap_preflight(
+        tmp_path,
+        role="code-reviewer",
+        run=fake_run,
+        which=lambda name: "python3.11" if name == "python3.11" else None,
+    )
+
+    assert result.ok is True
+    assert result.pre_pr_entrypoint == ""
+    assert "optional" in result.pre_pr_advisory
+    assert "code-reviewer" in result.pre_pr_advisory
+
+
+@pytest.mark.unit
+def test_role_requires_pre_pr_entrypoint_honors_open_pr_and_code_read_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from staff.role_spec import RoleSpec
+
+    roster = {
+        "code-reviewer": RoleSpec(name="code-reviewer", title="CR", permissions={"open_pr": False, "lease": False}),
+        "issue-remediator": RoleSpec(
+            name="issue-remediator", title="IR", permissions={"open_pr": True, "push_branch": True}
+        ),
+        "research-scout": RoleSpec(
+            name="research-scout", title="RS", permissions={"open_pr": False, "code_read_only": True}
+        ),
+    }
+    monkeypatch.setattr("staff.roles.load_roles", lambda: roster)
+
+    from staff.runner_ops_worktree_bootstrap import role_requires_pre_pr_entrypoint
+
+    assert role_requires_pre_pr_entrypoint("code-reviewer") is False
+    assert role_requires_pre_pr_entrypoint("issue-remediator") is True
+    assert role_requires_pre_pr_entrypoint("research-scout") is False
+    assert role_requires_pre_pr_entrypoint("unknown-role") is True
