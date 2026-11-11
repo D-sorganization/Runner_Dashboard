@@ -41,6 +41,8 @@ class Price:
 # the same row. Order inside a provider does not matter.
 PRICE_TABLE: dict[str, dict[str, Price]] = {
     "claude": {
+        "fable-5.2": Price(8.0, 40.0),
+        "fable-5-2": Price(8.0, 40.0),
         "fable-5.1": Price(10.0, 50.0),
         "fable-5-1": Price(10.0, 50.0),
         "fable-5": Price(10.0, 50.0),
