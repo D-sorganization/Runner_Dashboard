@@ -1,0 +1,22 @@
+{
+  "owner": "D-sorganization",
+  "repo": "Runner_Dashboard",
+  "issue": {
+    "number": 104,
+    "state": "open",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/104"
+  },
+  "pull_request": {
+    "number": 52,
+    "state": "open",
+    "draft": false,
+    "head_sha": "fed333",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/52"
+  },
+  "auto_merge": { "enabled": true },
+  "reviews": {
+    "head_sha": "fed333",
+    "review_requested": true,
+    "reviews": []
+  }
+}
