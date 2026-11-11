@@ -728,7 +728,7 @@ def test_cursor_authored_pr_dispatches_cursor_cloud_handoff(
                 "state": "open",
                 "draft": False,
                 "auto_merge": {"merge_method": "squash"},
-                "head": {"ref": "cursor/fix-red-ci", "sha": "abc1234567890"},
+                "head": {"ref": "cursor/fix-red-ci", "sha": "cccccccccccccccccccccccccccccccccccccccc"},
                 "base": {"ref": "main"},
             },
             "/repos/D-sorganization/Runner_Dashboard/actions/runs/555/jobs": {"jobs": []},
@@ -745,7 +745,10 @@ def test_cursor_authored_pr_dispatches_cursor_cloud_handoff(
     resp = _post(
         client,
         "workflow_run",
-        _workflow_run(head_branch="cursor/fix-red-ci", head_sha="abc1234567890"),
+        _workflow_run(
+            head_branch="cursor/fix-red-ci",
+            head_sha="cccccccccccccccccccccccccccccccccccccccc",
+        ),
     )
     data = resp.json()
     assert data["accepted"] is True
