@@ -142,6 +142,24 @@ def test_launch_primary_keeps_explicit_model() -> None:
     assert (model, tier) == ("gpt-6-luna", "routine")
 
 
+def test_claude_fable_5_2_allowed_for_staff_dispatch() -> None:
+    """Claude Code v2.1.321+ accepts claude-fable-5-2; staff must not 422 it (#4327)."""
+    role = RoleSpec(name="r", title="R", providers=("claude",), tier="routine")
+    model, tier = resolve_launch_model(
+        req=RunRequest(role="r", provider="claude", model="claude-fable-5-2"),
+        role=role,
+        provider="claude",
+        adapter=adapters_mod.ADAPTERS["claude"],
+        step=None,
+        active_tier=role_base_tier(role),
+    )
+    assert (model, tier) == ("claude-fable-5-2", "routine")
+    from staff.model_tiers import validate_role_model
+
+    assert validate_role_model("claude", "claude-fable-5-2") == []
+    assert validate_role_model("claude", "claude-fable-5-1") == []
+
+
 def test_codex_gpt_6_1_terra_allowed_for_staff_dispatch() -> None:
     """Codex CLI 0.164+ accepts gpt-6.1-terra; staff must not 422 it (#3532)."""
     role = RoleSpec(name="r", title="R", providers=("codex",), tier="routine")

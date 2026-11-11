@@ -106,6 +106,7 @@ OLLAMA_TAGS_ENDPOINT = f"{OLLAMA_BASE_URL}/api/tags"
 # ``_PROVIDERS_WITH_MODEL_SELECTION`` set in the remediation router).
 _CLAUDE_MODELS = (
     "claude-opus-5-5",
+    "claude-fable-5-2",
     "claude-fable-5-1",
     "opus",
     "sonnet",

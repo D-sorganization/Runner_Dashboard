@@ -18,6 +18,7 @@ _AUTHOR = "agy-desk-001"
 _REVIEWER = "antigravity-Brick-20261107-brick001"
 _HEAD = "cccccccccccccccccccccccccccccccccccccccc"
 _OLD_HEAD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+_AGENT_LABELS = ("agent:cursor",)
 
 
 def _independent_comment(
@@ -68,7 +69,7 @@ def test_missing_verdict_at_head_fails_closed_for_agent_prs() -> None:
         [],
         head_sha=_HEAD,
         author_model=_AUTHOR,
-        labels=["agent:cursor"],
+        labels=_AGENT_LABELS,
     )
     assert reasons and "no independent exact-head verdict" in reasons[0]
 
@@ -76,6 +77,34 @@ def test_missing_verdict_at_head_fails_closed_for_agent_prs() -> None:
 def test_gate_inactive_without_agent_or_reviews() -> None:
     assert not independent_review_gate_active([], author_model="", labels=())
     assert independent_review_hold_reason([], head_sha=_HEAD, author_model="", labels=()) == []
+
+
+def test_inactive_gate_skips_signal5_without_head_sha() -> None:
+    """Skipping Signal 5 when the gate is inactive does not bypass agent-PR gating elsewhere."""
+    assert independent_review_hold_reason([], head_sha="", author_model="", labels=()) == []
+
+
+def test_active_gate_holds_when_head_sha_unknown() -> None:
+    reasons = independent_review_hold_reason(
+        [],
+        head_sha="",
+        author_model=_AUTHOR,
+        labels=_AGENT_LABELS,
+    )
+    assert reasons and "head SHA is unknown" in reasons[0]
+
+
+def test_active_gate_blocks_when_only_untrusted_verdict_comments() -> None:
+    """Untrusted fleet-bot verdict comments do not satisfy an active gate (#4323)."""
+    reviews = parse_issue_comments([_independent_comment("PASS", _HEAD, login="d-sorggeneralagent[bot]")])
+    assert reviews == []
+    reasons = independent_review_hold_reason(
+        reviews,
+        head_sha=_HEAD,
+        author_model=_AUTHOR,
+        labels=_AGENT_LABELS,
+    )
+    assert reasons and "no independent exact-head verdict" in reasons[0]
 
 
 def test_same_model_review_is_never_accepted() -> None:
