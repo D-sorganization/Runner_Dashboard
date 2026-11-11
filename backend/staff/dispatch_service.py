@@ -178,7 +178,15 @@ async def _forward(
             raise HTTPException(status_code=422, detail=f"unknown machine '{target}'")
     try:
         body = cmd.forward_body()
-        status, data = await staff_fleet.forward_run(url, cmd.role, body, on_behalf_of, barb_claim=barb_claim)
+        origin = cmd.origin_node or get_runner().machine
+        status, data = await staff_fleet.forward_run(
+            url,
+            cmd.role,
+            body,
+            on_behalf_of,
+            barb_claim=barb_claim,
+            origin_node=origin,
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"machine '{target}' unreachable: {exc}") from exc
     if status >= 400:
