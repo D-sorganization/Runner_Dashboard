@@ -113,16 +113,7 @@ def rearm_pending_retries(runner: StaffRunner) -> list[str]:
     for rec in store.get_pending_retries(machine=runner.machine):
         role = runner.roles().get(rec.role)
         if role is None:
-            msg = f"pending retry orphaned: role {rec.role} unavailable after restart"
-            store.update_run(
-                rec.id,
-                status="failed",
-                failure_class="orphaned",
-                retryable=False,
-                error=msg,
-                ended_at=_now(),
-            )
-            store.append_event(rec.id, "reconcile", msg)
+            log.warning("Skipping re-arm for %s: role %s is not loaded yet", rec.id, rec.role)
             continue
         plan = retry_plan(runner, rec, role)
         due = _parse_run_ts(rec.next_attempt_at)
