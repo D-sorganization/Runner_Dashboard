@@ -37,6 +37,10 @@ from typing import IO, Any
 if __package__ in (None, ""):  # launched by path from a sterile cwd
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+_fleet_dir = Path(__file__).resolve().parents[2] / "clients" / "fleet"
+if str(_fleet_dir) not in sys.path:
+    sys.path.insert(0, str(_fleet_dir))
+from ops_mcp_contract import stamp_tool_payload, structured_error  # noqa: E402
 from vuln_scan.findings import FindingError, validate_finding  # noqa: E402
 from vuln_scan.sandbox import (  # noqa: E402
     MAX_READ_BYTES,
@@ -185,6 +189,11 @@ def _result(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tool_result(payload: Any, is_error: bool) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        if is_error:
+            payload = structured_error(payload)
+        else:
+            payload = stamp_tool_payload(payload, is_error=False)
     text = json.dumps(payload, indent=1, sort_keys=True, default=str)
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
