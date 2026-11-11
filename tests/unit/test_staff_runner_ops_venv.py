@@ -24,6 +24,13 @@ def _cp(
     return subprocess.CompletedProcess(argv, code, stdout=stdout, stderr=stderr)
 
 
+_STUB_VERIFY_GATES = (
+    "import argparse\n"
+    "if __name__ == '__main__':\n"
+    "    argparse.ArgumentParser().parse_args()\n"
+)
+
+
 @pytest.mark.unit
 def test_setup_with_read_only_home_creates_writable_venv_without_user_install(
     tmp_path: Path,
@@ -43,7 +50,7 @@ def test_setup_with_read_only_home_creates_writable_venv_without_user_install(
     worktree.mkdir()
     (worktree / "scripts").mkdir()
     (worktree / "scripts" / "verify_merge_gates.py").write_text(
-        "# marker\n", encoding="utf-8"
+        _STUB_VERIFY_GATES, encoding="utf-8"
     )
 
     calls: list[list[str]] = []
@@ -52,6 +59,8 @@ def test_setup_with_read_only_home_creates_writable_venv_without_user_install(
         command: list[str], **kwargs: object
     ) -> subprocess.CompletedProcess[str]:
         calls.append(command)
+        if "--help" in command:
+            return _cp(command, 0, "usage\n")
         if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
             return _cp(command, 0, "3.11\n")
         # Base python lacks pytest (triggers venv creation and install)
