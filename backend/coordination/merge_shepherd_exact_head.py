@@ -58,9 +58,7 @@ def pass_at_head(
 ) -> tuple[bool, str]:
     """Return whether an approve verdict exists for ``head_sha`` and is still fresh."""
     matches = [
-        row
-        for row in passes
-        if row.pr == pr and row.verdict == "approve" and head_sha_matches(row.head_sha, head_sha)
+        row for row in passes if row.pr == pr and row.verdict == "approve" and head_sha_matches(row.head_sha, head_sha)
     ]
     if not matches:
         return False, "missing_pass_at_head"
@@ -115,7 +113,9 @@ def shepherd_arm_eligibility(
     return "reviewed", f"{detail}+{pass_detail}"
 
 
-def collect_review_passes_from_store(store: object, repo: str, *, role: str = "code-reviewer") -> tuple[HeadReviewPass, ...]:
+def collect_review_passes_from_store(
+    store: object, repo: str, *, role: str = "code-reviewer"
+) -> tuple[HeadReviewPass, ...]:
     """Build PASS records from succeeded code-reviewer runs with SHA-bound approve lines."""
     from staff.review import parse_review_verdict
 

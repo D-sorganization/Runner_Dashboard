@@ -24,11 +24,13 @@ def _pass(pr: int, sha: str, *, recorded_at: str = "2026-11-10T12:00:00+00:00") 
 
 
 def test_head_sha_matches_accepts_short_prefix() -> None:
-    assert head_sha_matches("abc1234", "abc1234deadbeef")
+    assert head_sha_matches("0000ab01", "0000ab0100000000000000000000000000000000")
 
 
 def test_pass_at_head_rejects_wrong_sha() -> None:
-    ok, detail = pass_at_head([_pass(1, "aaa1111")], pr=1, head_sha="bbb2222", now=datetime(2026, 11, 10, 13, tzinfo=UTC))
+    ok, detail = pass_at_head(
+        [_pass(1, "aaa1111")], pr=1, head_sha="bbb2222", now=datetime(2026, 11, 10, 13, tzinfo=UTC)
+    )
     assert not ok and detail == "missing_pass_at_head"
 
 
@@ -54,7 +56,7 @@ def test_shepherd_arm_eligibility_docs_only_without_hub_pass() -> None:
         checks_state="SUCCESS",
         files_complete=True,
         pr_number=9,
-        head_sha="deadbeef",
+        head_sha="00ff00ff",
         review_passes=(),
     )
     assert kind == "docs_tests_only"
