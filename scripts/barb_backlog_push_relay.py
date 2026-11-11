@@ -266,7 +266,19 @@ def _terminate_tree(pids: Mapping[str, Any], active: dict[str, Any] | None = Non
             pidfile = log_dir / f"{session}.pid"
             if pidfile.is_file():
                 file_pid, start_time, recorded_session = _read_pid_record(pidfile)
-                if file_pid == pid and not _pid_identity_matches(pid, start_time, recorded_session or session):
+                verified = (
+                    file_pid == pid
+                    and file_pid > 0
+                    and _pid_identity_matches(pid, start_time, recorded_session or session)
+                )
+                if not verified:
+                    logger.warning(
+                        "%s: refusing group signal for pid %d; pidfile for session %s is unverifiable (file_pid=%d)",
+                        key,
+                        pid,
+                        session,
+                        file_pid,
+                    )
                     continue
         try:
             os.killpg(os.getpgid(pid), signal.SIGTERM)
