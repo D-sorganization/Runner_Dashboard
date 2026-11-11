@@ -71,4 +71,4 @@ def test_same_model_review_is_never_accepted() -> None:
 
 
 def test_head_sha_matches_accepts_short_prefix() -> None:
-    assert head_sha_matches("915e13f", _HEAD)
+    assert head_sha_matches("ccccccc", _HEAD)
