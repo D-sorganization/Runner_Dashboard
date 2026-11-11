@@ -104,6 +104,19 @@ def claim_snapshot_from_check(
     )
 
 
+def _runs_for_issue(store: RunStore, repo: str, issue: int, *, scan_limit: int = 500) -> list[RunRecord]:
+    """Runs targeting ``repo``#``issue`` via the existing store list API (read-only)."""
+    wanted = str(int(issue))
+    matches = [
+        run
+        for run in store.list_runs(limit=scan_limit, logical_only=False)
+        if run.repo == repo
+        and run.target_kind == "issue"
+        and run.target_ref.lstrip("#") == wanted
+    ]
+    return sorted(matches, key=lambda r: r.created_at)
+
+
 def _pick_staff_run(runs: list[RunRecord]) -> RunRecord | None:
     if not runs:
         return None
@@ -121,7 +134,7 @@ def staff_run_snapshot_for_issue(
 ) -> KanbanStaffRunSnapshot | None:
     """Best-effort staff run linked to ``repo``#``issue`` (read-only)."""
     db = store if store is not None else get_store()
-    runs = db.list_runs_for_issue(repo, issue)
+    runs = _runs_for_issue(db, repo, issue)
     picked = _pick_staff_run(runs)
     if picked is None:
         return None

@@ -290,18 +290,6 @@ class RunStore:
             ).fetchall()
         return [_run_from_row(r) for r in rows]
 
-    def list_runs_for_issue(self, repo: str, issue: int) -> list[RunRecord]:
-        """Runs whose target is ``repo`` issue ``#issue`` (``#N`` and ``N`` forms)."""
-        target = f"#{int(issue)}"
-        alt = str(int(issue))
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM runs WHERE repo = ? AND target_kind = 'issue' "
-                "AND (target_ref = ? OR target_ref = ?) ORDER BY created_at",
-                (repo, target, alt),
-            ).fetchall()
-        return [_run_from_row(r) for r in rows]
-
     def list_runs_for_thread(self, thread_id: str) -> list[RunRecord]:
         if not thread_id:
             return []

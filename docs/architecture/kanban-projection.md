@@ -164,7 +164,7 @@ Hub runs into snapshot records without writing leases or claims:
 - **Incomplete history** — `available: false` from RM (comment/page limits, fail
   open, or incomplete pagination); same fail-closed **unknown** path.
 - **Staff run** — newest active (or latest) run with `target_kind=issue` and
-  `target_ref=#N` from `RunStore.list_runs_for_issue`; exposed as a `staff_run`
+  `target_ref=#N` from `RunStore.list_runs` (read scan); exposed as a `staff_run`
   source link on the card.
 
 Use `ingest_claim_and_staff(repo, issue, ...)` to fetch both snapshots in one
