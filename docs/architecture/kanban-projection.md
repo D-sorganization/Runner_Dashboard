@@ -67,7 +67,7 @@ fail-closed rules in the next section, precedence is not applied.
 | Issue snapshot unavailable or `degraded` | `unknown` |
 | Issue `state` is `closed` and neither merged PR evidence nor explicit merged mapping | `unknown` |
 | Open issue, no open PR, and claim snapshot unavailable or `degraded` | `unknown` (cannot distinguish Issue open vs Claimed) |
-| Open PR expected (linked PR present and `state=open`) but PR snapshot unavailable or `degraded` | `unknown` |
+| Linked PR `state=open` but snapshot `available=false` or `degraded` (even when claim snapshot is healthy) | `unknown` — do not fall through to Issue open / Claimed |
 | Open non-draft PR and reviews snapshot unavailable or `degraded` when `review_requested` or `changes_requested_at_head` is true | `unknown` |
 | Open non-draft PR and both PR and review snapshots carry conflicting `head_sha` | `unknown` |
 | Auto-merge snapshot unavailable or `degraded` on an open non-draft PR **unless** `in_merge_queue` is true (queue state is taken from the PR snapshot) | `unknown` |

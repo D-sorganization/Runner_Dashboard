@@ -41,6 +41,7 @@ def _load(name: str) -> dict:
         ("waiting_owner_wait.json", KanbanColumn.WAITING_ON_DIETER),
         ("unknown_claim_degraded.json", KanbanColumn.UNKNOWN),
         ("unknown_pr_degraded.json", KanbanColumn.UNKNOWN),
+        ("unknown_pr_unavailable_claim_ok.json", KanbanColumn.UNKNOWN),
         ("unknown_head_mismatch.json", KanbanColumn.UNKNOWN),
         ("unknown_issue_degraded.json", KanbanColumn.UNKNOWN),
         ("unknown_review_degraded.json", KanbanColumn.UNKNOWN),

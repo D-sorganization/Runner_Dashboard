@@ -250,6 +250,11 @@ def _unknown(reasons: list[str], snapshot: KanbanWorkItemSnapshot) -> KanbanCard
     )
 
 
+def _linked_open_pr_snapshot(snapshot: KanbanWorkItemSnapshot) -> bool:
+    pr = snapshot.pull_request
+    return pr is not None and pr.state.lower() == "open"
+
+
 def _fail_closed_reasons(snapshot: KanbanWorkItemSnapshot) -> list[str]:
     reasons: list[str] = []
     issue = snapshot.issue
@@ -260,6 +265,7 @@ def _fail_closed_reasons(snapshot: KanbanWorkItemSnapshot) -> list[str]:
 
     pr = snapshot.pull_request
     open_pr = _open_pr(snapshot)
+    linked_open = _linked_open_pr_snapshot(snapshot)
 
     if issue.state.lower() == "closed":
         if pr is None or not pr.available:
@@ -268,7 +274,9 @@ def _fail_closed_reasons(snapshot: KanbanWorkItemSnapshot) -> list[str]:
             reasons.append("issue closed without merged pull request")
         return reasons
 
-    if open_pr is None:
+    if linked_open and open_pr is None:
+        reasons.append("pull request source missing or degraded")
+    elif open_pr is None:
         claim = snapshot.claim
         if claim is None or not claim.available or claim.degraded:
             reasons.append("claim source missing or degraded for unclaimed-or-claimed resolution")
