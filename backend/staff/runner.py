@@ -258,6 +258,8 @@ class StaffRunner:
             lease_note=lease_note,
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
+            dispatch_bundle=plan.dispatch_bundle,
+            library_references=plan.library_references,
             repo_lessons_result=select_repo_lessons(plan.repo),
             prompt_token_cap=TOTAL_CONTEXT_TOKEN_CAP if plan.provider == "codex" else None,
         )
