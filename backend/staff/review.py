@@ -235,6 +235,20 @@ def _role_providers(roster: Mapping[str, Any] | None, role: str) -> list[str] | 
     return list(providers) if providers else None
 
 
+def _fail_fast_unhealthy_providers(candidates: list[str]) -> tuple[list[str], list[str]]:
+    """Fail-fast split of ``candidates`` by provider_auth_preflight status (#4250).
+
+    Deferred import avoids a cycle: ``staff.review_metrics`` imports from this module.
+    """
+    from staff.provider_auth_preflight import provider_auth_cache_snapshot  # noqa: PLC0415
+    from staff.review_metrics import select_available_reviewer, unhealthy_providers  # noqa: PLC0415
+
+    unhealthy = unhealthy_providers(provider_auth_cache_snapshot())
+    if not unhealthy:
+        return candidates, []
+    return select_available_reviewer(candidates, unhealthy)
+
+
 def prepare_review_params(
     params: dict[str, Any],
     default_role: str = REVIEWER_ROLE,
@@ -278,7 +292,15 @@ def prepare_review_params(
             if pr and repo
             else None
         )
-        sel = select_reviewer_provider(author, _role_providers(roster, role))
+        candidates = list(_role_providers(roster, role) or DEFAULT_REVIEWER_PROVIDERS)
+        healthy, skipped = _fail_fast_unhealthy_providers(candidates)
+        if skipped:
+            log.warning(
+                "review dispatch: skipping provider(s) %s for failed auth preflight (fail-fast, #4250)",
+                skipped,
+            )
+            clean_params["skipped_providers"] = skipped
+        sel = select_reviewer_provider(author, healthy)
         clean_params["provider"] = sel.provider
         if sel.model:
             clean_params["model"] = sel.model

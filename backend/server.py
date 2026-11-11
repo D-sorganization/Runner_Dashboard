@@ -860,6 +860,10 @@ from routers import flow_metrics as _flow_metrics_router  # noqa: E402
 
 app.include_router(_flow_metrics_router.router)  # PD-4 flow metrics (#3818)
 
+from routers import staff_review_metrics as _staff_review_metrics_router  # noqa: E402
+
+app.include_router(_staff_review_metrics_router.router)  # review-flow metrics decision gate (#4250)
+
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
