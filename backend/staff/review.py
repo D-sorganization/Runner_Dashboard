@@ -447,3 +447,173 @@ def auto_review_if_eligible(
         return False
     log.info("auto-review: queued %s for PR #%s on %s with %s", run.id, pr_number, repo, params["provider"])
     return True
+
+
+@dataclass(frozen=True)
+class CodeReviewerRunOutcome:
+    status: str
+    failure_class: str
+    retryable: bool
+    error: str
+    remediation: str
+    error_event: str = ""
+
+
+def _post_bound_independent_exact_head_verdict(
+    *,
+    result_line: str,
+    status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    repo: str,
+    reviewer_model: str,
+    expected_pr_number: int | None,
+) -> CodeReviewerRunOutcome | None:
+    from staff.independent_exact_head_verdict import (  # noqa: PLC0415
+        VerdictContextMismatch,
+        VerdictPostError,
+        fetch_pull_head_sha,
+        parse_independent_exact_head_staff_result,
+        publish_independent_exact_head_verdict,
+        validate_independent_verdict_against_run,
+    )
+
+    indep = parse_independent_exact_head_staff_result(result_line)
+    if indep is None:
+        return None
+    if status != "succeeded":
+        return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
+    if expected_pr_number is None:
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="invalid_output",
+            retryable=False,
+            error="Independent exact-head STAFF_RESULT on a non-PR review run",
+            remediation="Code-reviewer independent verdicts require a PR-targeted run.",
+        )
+    try:
+        head_sha = fetch_pull_head_sha(repo, expected_pr_number)
+        validate_independent_verdict_against_run(
+            indep,
+            expected_pr_number=expected_pr_number,
+            expected_head_sha=head_sha,
+        )
+        publish_independent_exact_head_verdict(
+            repo=repo,
+            pr_number=expected_pr_number,
+            verdict=indep.verdict,
+            head_sha=head_sha,
+            reviewer_model=reviewer_model,
+        )
+    except VerdictContextMismatch as exc:
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="invalid_output",
+            retryable=False,
+            error=str(exc),
+            remediation="STAFF_RESULT must name this run's PR and current head SHA.",
+            error_event=str(exc),
+        )
+    except VerdictPostError as exc:
+        msg = str(exc)
+        rem = (
+            "Independent exact-head verdict comment could not be posted with the "
+            "Runner Dashboard GitHub App identity; check hub GITHUB_APP_* and issues write."
+        )
+        if exc.http_status == 403:
+            rem += " (HTTP 403 — wrong App identity or missing permission.)"
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="provider_error",
+            retryable=False,
+            error=msg,
+            remediation=rem,
+            error_event=msg,
+        )
+    return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
+
+
+def finalize_code_reviewer_run(
+    *,
+    status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    result_line: str,
+    same_provider: bool,
+    repo: str,
+    reviewer_model: str,
+    expected_pr_number: int | None,
+) -> CodeReviewerRunOutcome:
+    """Parse review output and post independent exact-head verdicts (#4323)."""
+    indep_out = _post_bound_independent_exact_head_verdict(
+        result_line=result_line,
+        status=status,
+        failure_class=failure_class,
+        retryable=retryable,
+        error=error,
+        remediation=remediation,
+        repo=repo,
+        reviewer_model=reviewer_model,
+        expected_pr_number=expected_pr_number,
+    )
+    if indep_out is not None:
+        return indep_out
+
+    review_verdict = parse_review_verdict(result_line, same_provider=same_provider)
+    if review_verdict.status == "needs_input":
+        return CodeReviewerRunOutcome(
+            status="needs_input",
+            failure_class="needs_input",
+            retryable=retryable,
+            error=error,
+            remediation="Review completed without emitting a STAFF_RESULT verdict line.",
+        )
+    if review_verdict.status == "failed":
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="invalid_output",
+            retryable=retryable,
+            error=review_verdict.error or "Malformed review verdict line",
+            remediation="Review completed with a malformed STAFF_RESULT line.",
+        )
+    return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
+
+
+def maybe_finalize_code_reviewer_run(
+    *,
+    role: str,
+    rc: int,
+    store: Any,
+    run_id: str,
+    status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    result_line: str,
+    same_provider: bool,
+    repo: str,
+    reviewer_model: str,
+    expected_pr_number: int | None,
+) -> tuple[str, str, bool, str, str]:
+    if role != "code-reviewer" or rc != 0:
+        return status, failure_class, retryable, error, remediation
+    out = finalize_code_reviewer_run(
+        status=status,
+        failure_class=failure_class,
+        retryable=retryable,
+        error=error,
+        remediation=remediation,
+        result_line=result_line,
+        same_provider=same_provider,
+        repo=repo,
+        reviewer_model=reviewer_model,
+        expected_pr_number=expected_pr_number,
+    )
+    if out.error_event:
+        store.append_event(run_id, "error", out.error_event)
+    return out.status, out.failure_class, out.retryable, out.error, out.remediation

@@ -63,8 +63,14 @@ def _state_from_row(row: Any) -> _CooldownState | None:
         return None
     try:
         until = datetime.fromisoformat(str(row["until"]).replace("Z", "+00:00"))
-    except (KeyError, ValueError):
-        return None
+    except (KeyError, ValueError) as exc:
+        log.warning("unparseable provider cooldown until %r: %s", row.get("until"), exc)
+        return _CooldownState(
+            failure_class=str(row.get("failure_class", "unknown")),
+            until_epoch=time.time() + 3600.0,
+            until_iso=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            reason="unparseable cooldown expiry (fail-closed)",
+        )
     if until.tzinfo is None:
         until = until.replace(tzinfo=UTC)
     return _CooldownState(
