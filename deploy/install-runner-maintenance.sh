@@ -28,6 +28,7 @@ if [[ ! -f "${SCHEDULE_CONFIG}" ]]; then
 fi
 
 sudo install -m 0755 "${SCRIPT_DIR}/runner-scheduler.py" /usr/local/bin/runner-scheduler
+sudo install -m 0755 "${SCRIPT_DIR}/runner_scheduler_host_pressure.py" /usr/local/bin/runner_scheduler_host_pressure.py
 sudo install -m 0755 "${SCRIPT_DIR}/runner-corruption-scan.sh" /usr/local/bin/runner-corruption-scan
 # Fleet memory policy (RM #2071): drop page cache above THRESH% so WSL returns
 # memory to Windows even while CI keeps the VM busy. Script is /usr/local/sbin
