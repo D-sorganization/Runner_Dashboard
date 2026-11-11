@@ -9,7 +9,6 @@ import logging
 import os
 import platform
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -25,6 +24,11 @@ if str(_SCRIPT_DIR) not in sys.path:
 import runner_target_contract as target_contract  # noqa: E402
 
 RUNNER_ROOT = Path(os.environ.get("RUNNER_ROOT", str(Path.home() / "actions-runners")))
+_HOST_METRICS_CACHE_PATH = (
+    Path(os.environ.get("RUNNER_DASHBOARD_STATE_DIR", str(Path.home() / ".config" / "runner-dashboard")))
+    / "host_metrics.json"
+)
+_HOST_METRICS_STALE_S = float(os.environ.get("RUNNER_HOST_METRICS_STALE_S", "90"))
 CONFIG_PATH = Path(
     os.environ.get(
         "RUNNER_SCHEDULE_CONFIG",
@@ -641,35 +645,90 @@ def set_maintenance(active: bool) -> None:
         MAINTENANCE_PATH.unlink(missing_ok=True)
 
 
-def disk_free_gb(path: str) -> float | None:
-    """Free space at ``path`` in GB, or None when it cannot be read."""
-    try:
-        return shutil.disk_usage(path).free / 1e9
-    except OSError:
+def _parse_host_metrics_sampled_at(payload: dict) -> datetime | None:
+    raw = payload.get("sampled_at")
+    if not isinstance(raw, str):
         return None
+    text = raw.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _fresh_host_metrics_payload() -> dict | None:
+    """Load host metrics cache when fresh (#4309); scheduler never probes directly."""
+    if not _HOST_METRICS_CACHE_PATH.is_file():
+        return None
+    try:
+        payload = json.loads(_HOST_METRICS_CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    sampled_at = _parse_host_metrics_sampled_at(payload)
+    if sampled_at is None:
+        return None
+    age = (datetime.now(UTC) - sampled_at).total_seconds()
+    if age > _HOST_METRICS_STALE_S:
+        return None
+    return payload
+
+
+def disk_free_gb(path: str) -> float | None:
+    """Free space at ``path`` in GB from the metrics cache, or None when unknown."""
+    payload = _fresh_host_metrics_payload()
+    if payload is None:
+        return None
+    disk = payload.get("disk")
+    if not isinstance(disk, dict):
+        return None
+    by_path = disk.get("by_path")
+    if not isinstance(by_path, dict) or path not in by_path:
+        return None
+    entry = by_path[path]
+    if not isinstance(entry, dict):
+        return None
+    value = entry.get("free_gb")
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def mem_available_gb() -> float | None:
-    """``MemAvailable`` from /proc/meminfo in GiB, or None when unreadable."""
-    try:
-        for line in (PROC_ROOT / "meminfo").read_text(encoding="utf-8").splitlines():
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) / (1024 * 1024)
-    except (OSError, ValueError, IndexError):
+    """WSL ``MemAvailable`` in GiB from the metrics cache, or None when unknown."""
+    payload = _fresh_host_metrics_payload()
+    if payload is None:
         return None
-    return None
+    wsl = payload.get("wsl")
+    if not isinstance(wsl, dict):
+        return None
+    value = wsl.get("mem_available_gb")
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def pressure_avg60(resource: str) -> float | None:
-    """PSI ``some avg60`` for ``resource`` (cpu/memory/io), or None when unreadable."""
-    try:
-        for line in (PROC_ROOT / "pressure" / resource).read_text(encoding="utf-8").splitlines():
-            if line.startswith("some "):
-                fields = dict(part.split("=", 1) for part in line.split()[1:])
-                return float(fields["avg60"])
-    except (OSError, ValueError, KeyError):
+    """PSI ``some avg60`` from the metrics cache, or None when unknown."""
+    payload = _fresh_host_metrics_payload()
+    if payload is None:
         return None
-    return None
+    wsl = payload.get("wsl")
+    if not isinstance(wsl, dict):
+        return None
+    psi = wsl.get("psi")
+    if not isinstance(psi, dict):
+        return None
+    if resource == "memory":
+        key = "memory_some_avg60"
+    elif resource == "cpu":
+        key = "cpu_some_avg60"
+    else:
+        return None
+    value = psi.get(key)
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def disk_floor_breach(floor: dict) -> str | None:
