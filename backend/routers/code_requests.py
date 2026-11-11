@@ -64,6 +64,13 @@ def _active_storage_path() -> Path:
     return _CODE_REQUESTS_PATH
 
 
+def _active_dispatch_history_path() -> Path:
+    """Dispatch audit file; legacy tests override via ``_FEATURE_REQUESTS_PATH``."""
+    if _FEATURE_REQUESTS_PATH is not None:
+        return _FEATURE_REQUESTS_PATH
+    return DISPATCH_HISTORY_PATH
+
+
 # ─── Dispatch target ──────────────────────────────────────────────────────────
 
 _DISPATCH_WORKFLOW = "Agent-Quick-Dispatch.yml"
@@ -394,7 +401,7 @@ async def dispatch_code_request(
         principal=principal.id,
         profile_store=_get_profile_store(),
         prompt_notes_path=_PROMPT_NOTES_PATH,
-        history_path=DISPATCH_HISTORY_PATH,
+        history_path=_active_dispatch_history_path(),
         run_cmd_fn=run_cmd,
     )
     code, stderr, resolved = outcome.code, outcome.stderr, outcome.resolved
