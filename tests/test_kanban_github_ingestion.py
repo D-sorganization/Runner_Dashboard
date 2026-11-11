@@ -6,9 +6,8 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
-import pytest
-
 import kanban_github_ingestion as kgi
+import pytest
 from kanban_projection import KanbanColumn, project_kanban_column, snapshot_from_mapping
 
 
