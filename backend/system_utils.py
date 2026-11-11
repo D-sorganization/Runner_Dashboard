@@ -1125,7 +1125,7 @@ async def get_system_metrics_snapshot(
         is_wsl = "microsoft" in platform.uname().release.lower()
         host_resources = _windows_host_resource_snapshot()
         if host_resources:
-            current_cpu: float | None = host_resources["cpu_percent"]
+            current_cpu = float(host_resources["cpu_percent"])
             _cpu_history.append(current_cpu)
         elif is_wsl:
             current_cpu = None
@@ -1241,17 +1241,19 @@ async def get_system_metrics_snapshot(
         try:
             from host_metrics_cache import cache_meta_for_api, read_cache  # noqa: PLC0415
 
-            metrics["host_metrics_cache"] = cache_meta_for_api(read_cache())
-            provider = metrics["host_metrics_cache"]
-            if host_resources and isinstance(provider, dict):
-                provider["windows_memory_percent"] = host_resources.get("memory_percent")
+            cache_meta = cache_meta_for_api(read_cache())
+            if host_resources:
+                cache_meta = {**cache_meta, "windows_memory_percent": host_resources.get("memory_percent")}
+            metrics["host_metrics_cache"] = cache_meta
         except Exception:  # noqa: BLE001
             metrics["host_metrics_cache"] = {"status": "unknown", "reason": "cache reader unavailable"}
 
         if is_wsl:
-            metrics["cpu"]["host_source"] = "windows-host" if host_resources else "unknown"
-            if not host_resources:
-                metrics["cpu"]["percent"] = None
+            cpu_block = metrics.get("cpu")
+            if isinstance(cpu_block, dict):
+                cpu_block["host_source"] = "windows-host" if host_resources else "unknown"
+                if not host_resources:
+                    cpu_block["percent"] = None
 
         return metrics
 

@@ -318,8 +318,10 @@ def metrics_view_for_gauge(result: CacheReadResult) -> dict[str, Any] | None:
     if not result.is_usable:
         return None
     payload = result.payload or {}
-    windows = payload.get("windows") if isinstance(payload.get("windows"), dict) else {}
-    wsl = payload.get("wsl") if isinstance(payload.get("wsl"), dict) else {}
+    raw_windows = payload.get("windows")
+    windows: dict[str, Any] = raw_windows if isinstance(raw_windows, dict) else {}
+    raw_wsl = payload.get("wsl")
+    wsl: dict[str, Any] = raw_wsl if isinstance(raw_wsl, dict) else {}
     cpu = windows.get("cpu_percent")
     mem = windows.get("memory_percent")
     view: dict[str, Any] = {

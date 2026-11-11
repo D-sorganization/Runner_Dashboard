@@ -1188,10 +1188,12 @@ def test_maintenance_hold_beats_resource_floor(monkeypatch, tmp_path: Path) -> N
     assert runner_scheduler.effective_capacity(_floor_config(), None) == (0, "maintenance-drain")
 
 
-def test_disk_free_gb_reads_real_path(tmp_path: Path) -> None:
-    free = runner_scheduler.disk_free_gb(str(tmp_path))
-    assert free is not None and free > 0
-    assert runner_scheduler.disk_free_gb(str(tmp_path / "does-not-exist")) is None
+def test_disk_free_gb_reads_from_metrics_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_floor_cache(tmp_path, disk_free_gb=123.4, mem_available_kb=16 * 1024 * 1024, mem_psi_avg60=0.0)
+    cache_path = tmp_path / "metrics-state" / "host_metrics.json"
+    monkeypatch.setattr(runner_scheduler, "_HOST_METRICS_CACHE_PATH", cache_path)
+    assert runner_scheduler.disk_free_gb("/mnt/c") == pytest.approx(123.4)
+    assert runner_scheduler.disk_free_gb("/other") is None
 
 
 def test_validate_config_rejects_bad_resource_floor() -> None:
