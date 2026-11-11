@@ -15,20 +15,20 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_HOST_CAPS: dict[str, int] = {
-    "deskcomputer": 6,
-    "oglaptop": 6,
-    "controltower": 8,
+    "huba": 6,
+    "nodeb": 6,
+    "nodea": 8,
 }
 
 TARGET_OVERRIDE_PATH = Path(os.environ.get("RUNNER_TARGET_OVERRIDE", "/var/lib/runner-scheduler/target-override.json"))
 
 
-def _normalize_host_token(value: str) -> str:
+def normalize_host_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 def default_host_cap(host: str | None) -> int:
-    token = _normalize_host_token(host or "")
+    token = normalize_host_token(host or "")
     return DEFAULT_HOST_CAPS.get(token, 16)
 
 

@@ -66,7 +66,7 @@ def test_fleet_target_first_override_records_scheduled_before(
     )
     response = client.post(
         URL,
-        json={"host": "DeskComputer", "runners": 3, "apply": False},
+        json={"host": "hub-a", "runners": 3, "apply": False},
     )
     assert response.status_code == 200
     body = response.json()
@@ -76,7 +76,7 @@ def test_fleet_target_first_override_records_scheduled_before(
 def test_fleet_target_clamps_and_persists(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.post(
         URL,
-        json={"host": "DeskComputer", "runners": 99, "until": "2099-01-01T00:00:00Z", "reason": "pytest"},
+        json={"host": "hub-a", "runners": 99, "until": "2099-01-01T00:00:00Z", "reason": "pytest"},
     )
     assert response.status_code == 200, response.text
     body = response.json()

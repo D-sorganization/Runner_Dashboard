@@ -873,7 +873,7 @@ COMMANDS: tuple[Command, ...] = (
         "fleet_set_runner_target",
         "Set an expiring runner-count override on a fleet host (schedule resumes after until).",
         {
-            "host": {"type": "string", "minLength": 1, "description": "Fleet host or alias, e.g. DeskComputer."},
+            "host": {"type": "string", "minLength": 1, "description": "Fleet host or alias, e.g. hub-a."},
             "runners": {"type": "integer", "minimum": 0, "maximum": 32},
             "until": {
                 "type": "string",

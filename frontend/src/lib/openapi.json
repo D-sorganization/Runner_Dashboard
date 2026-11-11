@@ -15177,6 +15177,36 @@
         "tags": ["fleet"]
       }
     },
+    "/api/fleet/target": {
+      "post": {
+        "description": "Set an expiring runner-count override for a fleet host.",
+        "operationId": "fleet_target_api_fleet_target_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Fleet Target Api Fleet Target Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Fleet Target",
+        "tags": ["orchestration", "orchestration"]
+      }
+    },
     "/api/github/app-token": {
       "post": {
         "operationId": "post_github_app_token_api_github_app_token_post",

@@ -15,28 +15,29 @@ from machine_registry import build_machine_registry_index, load_machine_registry
 
 log = logging.getLogger("dashboard.runner_target")
 
+# Normalized fleet host tokens (public examples: hub-a, node-b, node-a).
 DEFAULT_HOST_CAPS: dict[str, int] = {
-    "deskcomputer": 6,
-    "oglaptop": 6,
-    "controltower": 8,
+    "huba": 6,
+    "nodeb": 6,
+    "nodea": 8,
 }
 
 TARGET_OVERRIDE_PATH = Path(os.environ.get("RUNNER_TARGET_OVERRIDE", "/var/lib/runner-scheduler/target-override.json"))
 
 
-def _normalize_host_token(value: str) -> str:
+def normalize_host_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 def default_host_cap(host: str | None) -> int:
-    token = _normalize_host_token(host or "")
+    token = normalize_host_token(host or "")
     return DEFAULT_HOST_CAPS.get(token, 16)
 
 
 def host_runner_cap(host: str) -> int:
     """Effective cap is ``min(registry runners.max, hard panel cap)`` (#4308 / #4307)."""
     hard_cap = default_host_cap(host)
-    token = _normalize_host_token(host)
+    token = normalize_host_token(host)
     try:
         index = build_machine_registry_index(load_machine_registry())
         entry = index.get(token)

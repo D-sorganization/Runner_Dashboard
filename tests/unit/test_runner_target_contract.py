@@ -9,23 +9,23 @@ import runner_target_contract as rtc
 
 
 def test_clamp_runners_uses_host_defaults() -> None:
-    assert rtc.clamp_runners(99, "DeskComputer") == 6
-    assert rtc.clamp_runners(4, "OGLaptop") == 4
-    assert rtc.clamp_runners(10, "ControlTower") == 8
+    assert rtc.clamp_runners(99, "hub-a") == 6
+    assert rtc.clamp_runners(4, "node-b") == 4
+    assert rtc.clamp_runners(10, "node-a") == 8
 
 
 def test_host_runner_cap_uses_min_of_registry_and_hard_cap(monkeypatch) -> None:
     registry = {
         "machines": [
             {
-                "name": "DeskComputer",
+                "name": "hub-a",
                 "runners": {"max": 16},
             }
         ]
     }
 
     monkeypatch.setattr(rtc, "load_machine_registry", lambda: registry)
-    assert rtc.host_runner_cap("DeskComputer") == 6
+    assert rtc.host_runner_cap("hub-a") == 6
 
 
 def test_override_expires_with_fake_clock(tmp_path: Path, monkeypatch) -> None:

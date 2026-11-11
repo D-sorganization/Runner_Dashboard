@@ -8,7 +8,6 @@ import datetime as _dt
 import json
 import logging
 import os
-import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -22,6 +21,7 @@ from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_fleet_peer, require_scope
 from machine_registry import build_machine_registry_index, load_machine_registry, resolve_local_identity
+from runner_target_contract import normalize_host_token
 from routers import orchestration_schedule_routes as _schedule
 from security import safe_subprocess_env, sanitize_log_value
 
@@ -30,10 +30,6 @@ router = APIRouter(tags=["orchestration"])
 
 _ALLOWED_KEYS = frozenset({"host", "runners", "until", "reason", "apply"})
 _APPLY_TIMEOUT_S = 45
-
-
-def _normalize_host_token(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 def parse_target_request(body: object) -> dict[str, Any]:
@@ -70,23 +66,23 @@ def parse_target_request(body: object) -> dict[str, Any]:
 
 
 def _local_host_tokens() -> set[str]:
-    tokens = {_normalize_host_token(HOSTNAME or "local"), "local"}
+    tokens = {normalize_host_token(HOSTNAME or "local"), "local"}
     identity = resolve_local_identity(HOSTNAME, None, load_machine_registry())
-    tokens.add(_normalize_host_token(str(identity.get("name") or "")))
+    tokens.add(normalize_host_token(str(identity.get("name") or "")))
     for alias in identity.get("aliases") or []:
-        tokens.add(_normalize_host_token(str(alias)))
+        tokens.add(normalize_host_token(str(alias)))
     for alias in os.environ.get("RUNNER_ALIASES", "").split(","):
         if alias.strip():
-            tokens.add(_normalize_host_token(alias))
+            tokens.add(normalize_host_token(alias))
     return {token for token in tokens if token}
 
 
 def _host_matches_local(host: str) -> bool:
-    return _normalize_host_token(host) in _local_host_tokens()
+    return normalize_host_token(host) in _local_host_tokens()
 
 
 def _node_url_for_host(host: str) -> str | None:
-    token = _normalize_host_token(host)
+    token = normalize_host_token(host)
     index = build_machine_registry_index(load_machine_registry())
     entry = index.get(token)
     candidates: list[str] = [host]
@@ -100,7 +96,7 @@ def _node_url_for_host(host: str) -> str | None:
         if url:
             return url
     for name, url in FLEET_NODES.items():
-        if _normalize_host_token(name) == token and url:
+        if normalize_host_token(name) == token and url:
             return url
     return None
 
