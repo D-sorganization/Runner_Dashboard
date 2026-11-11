@@ -112,6 +112,7 @@ const LazyOperationsPage = React.lazy(
 const LazyFleetOrchestrationPage = React.lazy(
   () => import("../pages/FleetOrchestrationPage"),
 );
+const LazyKanbanPage = React.lazy(() => import("../pages/Kanban/KanbanPage"));
 
 /**
  * Persistent/global provider control for the shell topbar (#811). Fetches the
@@ -185,6 +186,8 @@ function nativeDesktopTabContent(tabId: string, onThreadSelected?: (threadId: st
       return <LazyStaffPage routeThreadId={new URLSearchParams(window.location.search).get("thread")} onThreadSelected={onThreadSelected} />;
     case "workflows":
       return <LazyWorkflowsPage />;
+    case "kanban":
+      return <LazyKanbanPage />;
     default:
       return null;
   }

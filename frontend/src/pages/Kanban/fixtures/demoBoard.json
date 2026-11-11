@@ -1,0 +1,1114 @@
+{
+  "owner": "D-sorganization",
+  "repo": "Runner_Dashboard",
+  "last_sync": "2026-11-11T14:00:00Z",
+  "cache_ttl_seconds": 60,
+  "sync_mode": "warm",
+  "metrics": {
+    "github_api_calls": 0,
+    "cache_hits": 1,
+    "cache_misses": 0,
+    "api_budget_limit": 40,
+    "api_budget_exhausted": false
+  },
+  "freshness": {
+    "issues": {
+      "status": "ok",
+      "synced_at": "2026-11-11T14:00:00Z",
+      "detail": null
+    },
+    "pull_requests": {
+      "status": "ok",
+      "synced_at": "2026-11-11T14:00:00Z",
+      "detail": null
+    },
+    "checks": {
+      "status": "ok",
+      "synced_at": "2026-11-11T14:00:00Z",
+      "detail": null
+    },
+    "reviews": {
+      "status": "ok",
+      "synced_at": "2026-11-11T14:00:00Z",
+      "detail": null
+    },
+    "auto_merge": {
+      "status": "ok",
+      "synced_at": "2026-11-11T14:00:00Z",
+      "detail": null
+    },
+    "claim": {
+      "status": "fixture",
+      "synced_at": "2026-11-11T14:00:00Z",
+      "detail": "demo until #4320"
+    },
+    "owner_wait": {
+      "status": "fixture",
+      "synced_at": "2026-11-11T14:00:00Z",
+      "detail": "demo until #4321"
+    }
+  },
+  "items": [
+    {
+      "issue_number": 104,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 104,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/104"
+        },
+        "pull_request": {
+          "number": 52,
+          "state": "open",
+          "draft": false,
+          "head_sha": "fed333",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/52"
+        },
+        "auto_merge": {
+          "enabled": true
+        },
+        "reviews": {
+          "head_sha": "fed333",
+          "review_requested": true,
+          "reviews": []
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 104,
+        "column": "armed",
+        "column_label": "Armed",
+        "matched_columns": [
+          "armed",
+          "review",
+          "pr_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "auto-merge armed or merge queue"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#104",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/104",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #52",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/52",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/52",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/52",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 200,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 200,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/200"
+        },
+        "pull_request": {
+          "number": 60,
+          "state": "open",
+          "draft": false,
+          "head_sha": "queue_head",
+          "in_merge_queue": true,
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/60"
+        },
+        "auto_merge": {
+          "available": false,
+          "degraded": true,
+          "enabled": false
+        },
+        "reviews": {
+          "head_sha": "queue_head",
+          "review_requested": false,
+          "reviews": []
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 200,
+        "column": "armed",
+        "column_label": "Armed",
+        "matched_columns": [
+          "armed",
+          "pr_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "auto-merge armed or merge queue"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#200",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/200",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #60",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/60",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/60",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/60",
+            "available": false
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 101,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 101,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/101"
+        },
+        "claim": {
+          "held": true,
+          "agent": "cursor",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/101#issuecomment-1"
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 101,
+        "column": "claimed",
+        "column_label": "Claimed",
+        "matched_columns": [
+          "claimed"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "leased to cursor"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#101",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/101",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/101#issuecomment-1",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 201,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 201,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/201"
+        },
+        "claim": {
+          "held": true,
+          "agent": "agy"
+        },
+        "pull_request": {
+          "number": 61,
+          "state": "open",
+          "draft": true,
+          "head_sha": "draft_head",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/61"
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 201,
+        "column": "pr_open",
+        "column_label": "PR open",
+        "matched_columns": [
+          "pr_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "pull request #61 open"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#201",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/201",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #61",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/61",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/201",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 100,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 100,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/100",
+          "labels": []
+        },
+        "claim": {
+          "held": false
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 100,
+        "column": "issue_open",
+        "column_label": "Issue open",
+        "matched_columns": [
+          "issue_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "open issue without lease or pull request"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#100",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/100",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/100",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 105,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 105,
+          "state": "closed",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/105"
+        },
+        "pull_request": {
+          "number": 53,
+          "state": "merged",
+          "draft": false,
+          "head_sha": "aaa444",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/53"
+        },
+        "auto_merge": {
+          "enabled": false
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 105,
+        "column": "merged",
+        "column_label": "Merged",
+        "matched_columns": [
+          "merged"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "pull request #53 merged"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#105",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/105",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #53",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/53",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/53",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 102,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 102,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/102"
+        },
+        "claim": {
+          "held": true,
+          "agent": "cursor"
+        },
+        "pull_request": {
+          "number": 50,
+          "state": "open",
+          "draft": false,
+          "head_sha": "abc111",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/50"
+        },
+        "auto_merge": {
+          "enabled": false
+        },
+        "reviews": {
+          "head_sha": "abc111",
+          "review_requested": false,
+          "reviews": [
+            {
+              "commit_id": "abc111",
+              "state": "APPROVED",
+              "author": "diete"
+            }
+          ]
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 102,
+        "column": "pr_open",
+        "column_label": "PR open",
+        "matched_columns": [
+          "pr_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "pull request #50 open"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#102",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/102",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #50",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/50",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/102",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/50",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/50",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 103,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 103,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/103"
+        },
+        "claim": {
+          "held": true,
+          "agent": "codex"
+        },
+        "pull_request": {
+          "number": 51,
+          "state": "open",
+          "draft": false,
+          "head_sha": "def222",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/51"
+        },
+        "auto_merge": {
+          "enabled": false
+        },
+        "reviews": {
+          "head_sha": "def222",
+          "review_requested": true,
+          "reviews": []
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 103,
+        "column": "review",
+        "column_label": "Review",
+        "matched_columns": [
+          "review",
+          "pr_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "review requested at head"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#103",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/103",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #51",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/51",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/103",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/51",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/51",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 108,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 108,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/108"
+        },
+        "pull_request": {
+          "number": 55,
+          "state": "open",
+          "draft": false,
+          "head_sha": "head999",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/55"
+        },
+        "auto_merge": {
+          "enabled": false
+        },
+        "reviews": {
+          "head_sha": "head999",
+          "review_requested": true,
+          "reviews": [
+            {
+              "commit_id": "old888",
+              "state": "APPROVED",
+              "author": "bot",
+              "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/55#review_old"
+            }
+          ]
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 108,
+        "column": "review",
+        "column_label": "Review",
+        "matched_columns": [
+          "review",
+          "pr_open"
+        ],
+        "stale_reviews": [
+          {
+            "commit_id": "old888",
+            "state": "APPROVED",
+            "author": "bot",
+            "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/55#review_old"
+          }
+        ],
+        "reasons": [
+          "review requested at head"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#108",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/108",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #55",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/55",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/55#review_old",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/55",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 107,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 107,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/107"
+        },
+        "claim": {
+          "available": false,
+          "degraded": true,
+          "held": false
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 107,
+        "column": "unknown",
+        "column_label": "Unknown",
+        "matched_columns": [],
+        "stale_reviews": [],
+        "reasons": [
+          "claim source missing or degraded for unclaimed-or-claimed resolution"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#107",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/107",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/107",
+            "available": false
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 202,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 202,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/202"
+        },
+        "pull_request": {
+          "number": 62,
+          "state": "open",
+          "draft": false,
+          "head_sha": "aaa",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/62"
+        },
+        "auto_merge": {
+          "enabled": false
+        },
+        "reviews": {
+          "head_sha": "bbb",
+          "review_requested": false,
+          "reviews": []
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 202,
+        "column": "unknown",
+        "column_label": "Unknown",
+        "matched_columns": [],
+        "stale_reviews": [],
+        "reasons": [
+          "pull request head_sha disagrees with review head_sha"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#202",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/202",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #62",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/62",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/62",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/62",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 204,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 204,
+          "state": "open",
+          "degraded": true,
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/204"
+        },
+        "claim": {
+          "held": false
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 204,
+        "column": "unknown",
+        "column_label": "Unknown",
+        "matched_columns": [],
+        "stale_reviews": [],
+        "reasons": [
+          "issue source degraded"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#204",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/204",
+            "available": false
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/204",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 109,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 109,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/109"
+        },
+        "claim": {
+          "held": false
+        },
+        "pull_request": {
+          "number": 56,
+          "state": "open",
+          "degraded": true,
+          "draft": false,
+          "head_sha": "ccc666",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/56"
+        },
+        "auto_merge": {
+          "enabled": false
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 109,
+        "column": "unknown",
+        "column_label": "Unknown",
+        "matched_columns": [],
+        "stale_reviews": [],
+        "reasons": [
+          "pull request source missing or degraded"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#109",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/109",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #56",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/56",
+            "available": false
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/109",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/56",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 210,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 210,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/210"
+        },
+        "claim": {
+          "held": false,
+          "available": true,
+          "agent": null
+        },
+        "pull_request": {
+          "number": 70,
+          "state": "open",
+          "available": false,
+          "draft": false,
+          "head_sha": "unavail_head",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/70"
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 210,
+        "column": "unknown",
+        "column_label": "Unknown",
+        "matched_columns": [],
+        "stale_reviews": [],
+        "reasons": [
+          "pull request source missing or degraded"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#210",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/210",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #70",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/70",
+            "available": false
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/210",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 205,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 205,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/205"
+        },
+        "pull_request": {
+          "number": 63,
+          "state": "open",
+          "draft": false,
+          "head_sha": "ccc",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/63"
+        },
+        "auto_merge": {
+          "enabled": false
+        },
+        "reviews": {
+          "degraded": true,
+          "head_sha": "ccc",
+          "review_requested": true,
+          "reviews": []
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 205,
+        "column": "unknown",
+        "column_label": "Unknown",
+        "matched_columns": [],
+        "stale_reviews": [],
+        "reasons": [
+          "review source missing or degraded while review was requested"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#205",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/205",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #63",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/63",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/63",
+            "available": false
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/63",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 106,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 106,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/106",
+          "labels": [
+            "hold:rd-2657"
+          ]
+        },
+        "claim": {
+          "held": false
+        },
+        "pull_request": {
+          "number": 54,
+          "state": "open",
+          "draft": false,
+          "head_sha": "bbb555",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/54"
+        },
+        "auto_merge": {
+          "enabled": true
+        },
+        "reviews": {
+          "head_sha": "bbb555",
+          "review_requested": false,
+          "reviews": []
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 106,
+        "column": "waiting_on_dieter",
+        "column_label": "Waiting on Dieter",
+        "matched_columns": [
+          "waiting_on_dieter",
+          "armed",
+          "pr_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "issue label 'hold:rd-2657'"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#106",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/106",
+            "available": true
+          },
+          {
+            "kind": "pull_request",
+            "label": "PR #54",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/54",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/106",
+            "available": true
+          },
+          {
+            "kind": "review",
+            "label": "pull request reviews",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/54",
+            "available": true
+          },
+          {
+            "kind": "auto_merge",
+            "label": "auto-merge",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/pull/54",
+            "available": true
+          }
+        ]
+      }
+    },
+    {
+      "issue_number": 203,
+      "snapshot": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue": {
+          "number": 203,
+          "state": "open",
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203"
+        },
+        "claim": {
+          "held": false
+        },
+        "owner_wait": {
+          "waiting": true,
+          "reasons": [
+            "pending staff.approve"
+          ],
+          "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203#issuecomment-approve"
+        }
+      },
+      "card": {
+        "owner": "D-sorganization",
+        "repo": "Runner_Dashboard",
+        "issue_number": 203,
+        "column": "waiting_on_dieter",
+        "column_label": "Waiting on Dieter",
+        "matched_columns": [
+          "waiting_on_dieter",
+          "issue_open"
+        ],
+        "stale_reviews": [],
+        "reasons": [
+          "pending staff.approve"
+        ],
+        "sources": [
+          {
+            "kind": "issue",
+            "label": "Runner_Dashboard#203",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203",
+            "available": true
+          },
+          {
+            "kind": "claim",
+            "label": "coordination lease",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203",
+            "available": true
+          },
+          {
+            "kind": "hold",
+            "label": "owner wait / holds",
+            "url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203#issuecomment-approve",
+            "available": true
+          }
+        ]
+      }
+    }
+  ],
+  "fixture": true
+}
