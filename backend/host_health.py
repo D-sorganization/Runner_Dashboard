@@ -102,7 +102,8 @@ def _suggested_action(level: HealthLevel, desired: int, cap: int, until_hint: st
 
 
 def build_host_health_gauge(host: str, system: dict[str, Any]) -> dict[str, Any]:
-    capacity = system.get("runner_capacity") if isinstance(system, dict) else {}
+    raw_capacity = system.get("runner_capacity") if isinstance(system, dict) else None
+    capacity = raw_capacity if isinstance(raw_capacity, dict) else {}
     state = (capacity or {}).get("state") or {}
     desired = int(state.get("desired") or capacity.get("configured_runners") or 0)
     online = int(state.get("online") or 0)
