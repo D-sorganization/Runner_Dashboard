@@ -126,6 +126,7 @@ class KanbanReviewsSnapshot:
     head_sha: str
     reviews: tuple[KanbanHeadReview, ...] = ()
     review_requested: bool = False
+    changes_requested_at_head: bool = False
     degraded: bool = False
 
 
@@ -197,21 +198,42 @@ def _open_pr(snapshot: KanbanWorkItemSnapshot) -> KanbanPullRequestSnapshot | No
     return pr
 
 
-def _exact_head_reviews(snapshot: KanbanWorkItemSnapshot) -> list[KanbanHeadReview]:
-    pr = _open_pr(snapshot)
+def _canonical_head_sha(snapshot: KanbanWorkItemSnapshot) -> str | None:
+    """Single head SHA for exact-head review comparison.
+
+    When PR and review snapshots both carry a head SHA they must agree; a
+    mismatch is treated as missing head evidence (fail-closed elsewhere).
+    """
+    pr = _open_pr(snapshot) or snapshot.pull_request
     reviews = snapshot.reviews
-    if pr is None or reviews is None or not reviews.available:
+    pr_head = ""
+    if pr is not None and pr.available:
+        pr_head = pr.head_sha.strip()
+    rev_head = ""
+    if reviews is not None and reviews.available:
+        rev_head = reviews.head_sha.strip()
+    if pr_head and rev_head and pr_head != rev_head:
+        return None
+    if pr_head:
+        return pr_head
+    if rev_head:
+        return rev_head
+    return None
+
+
+def _exact_head_reviews(snapshot: KanbanWorkItemSnapshot) -> list[KanbanHeadReview]:
+    reviews = snapshot.reviews
+    head = _canonical_head_sha(snapshot)
+    if head is None or reviews is None or not reviews.available:
         return []
-    head = pr.head_sha
     return [r for r in reviews.reviews if r.commit_id == head]
 
 
 def _stale_reviews(snapshot: KanbanWorkItemSnapshot) -> tuple[KanbanHeadReview, ...]:
-    pr = _open_pr(snapshot)
     reviews = snapshot.reviews
-    if pr is None or reviews is None or not reviews.available:
+    head = _canonical_head_sha(snapshot)
+    if head is None or reviews is None or not reviews.available:
         return ()
-    head = pr.head_sha
     return tuple(r for r in reviews.reviews if r.commit_id and r.commit_id != head)
 
 
@@ -254,13 +276,26 @@ def _fail_closed_reasons(snapshot: KanbanWorkItemSnapshot) -> list[str]:
         if pr is None or not pr.available or pr.degraded:
             reasons.append("pull request source missing or degraded")
         if not open_pr.draft:
-            auto = snapshot.auto_merge
-            if auto is None or not auto.available or auto.degraded:
-                reasons.append("auto-merge source missing or degraded for open pull request")
+            armed_known = open_pr.in_merge_queue
+            if not armed_known:
+                auto = snapshot.auto_merge
+                if auto is None or not auto.available or auto.degraded:
+                    reasons.append("auto-merge source missing or degraded for open pull request")
             reviews = snapshot.reviews
-            needs_reviews = bool(reviews and reviews.review_requested)
-            if needs_reviews and (reviews is None or not reviews.available or reviews.degraded):
+            needs_review_evidence = bool(reviews and (reviews.review_requested or reviews.changes_requested_at_head))
+            if needs_review_evidence and (reviews is None or not reviews.available or reviews.degraded):
                 reasons.append("review source missing or degraded while review was requested")
+            head = _canonical_head_sha(snapshot)
+            if (
+                reviews is not None
+                and reviews.available
+                and not open_pr.draft
+                and _open_pr(snapshot) is not None
+                and open_pr.head_sha.strip()
+                and reviews.head_sha.strip()
+                and head is None
+            ):
+                reasons.append("pull request head_sha disagrees with review head_sha")
     return reasons
 
 
@@ -305,7 +340,12 @@ def _match_review(snapshot: KanbanWorkItemSnapshot) -> _ColumnMatch | None:
         return None
     reviews = snapshot.reviews
     if reviews is None or not reviews.available:
+        if reviews is not None and reviews.changes_requested_at_head:
+            return _ColumnMatch(KanbanColumn.REVIEW, "changes requested at head (summary)")
         return None
+
+    if reviews.changes_requested_at_head:
+        return _ColumnMatch(KanbanColumn.REVIEW, "changes requested at head (summary)")
 
     at_head = _exact_head_reviews(snapshot)
     states = {r.state.upper() for r in at_head}
@@ -432,16 +472,21 @@ def _build_sources(snapshot: KanbanWorkItemSnapshot) -> tuple[KanbanSourceLink, 
             )
         )
     staff = snapshot.staff_run
-    if staff is not None and (staff.run_id or staff.html_url):
+    if staff is not None:
         links.append(
             KanbanSourceLink(
                 kind="staff_run",
-                label=f"staff run {staff.run_id or '?'}",
+                label=f"staff run {staff.run_id or 'unlinked'}",
                 url=staff.html_url or issue.html_url,
                 available=staff.available and not staff.degraded,
             )
         )
     return tuple(links)
+
+
+def _ordered_matches(matches: list[_ColumnMatch]) -> tuple[KanbanColumn, ...]:
+    matched = {m.column for m in matches}
+    return tuple(col for col in _PRECEDENCE if col in matched)
 
 
 def project_kanban_column(snapshot: KanbanWorkItemSnapshot) -> KanbanCard:
@@ -459,8 +504,8 @@ def project_kanban_column(snapshot: KanbanWorkItemSnapshot) -> KanbanCard:
     if not matches:
         return _unknown(["no column predicate matched"], snapshot)
 
-    matched_columns = tuple(m.column for m in matches)
-    chosen = next(col for col in _PRECEDENCE if col in matched_columns)
+    matched_columns = _ordered_matches(matches)
+    chosen = matched_columns[0]
     reason = next(m.reason for m in matches if m.column == chosen)
 
     return KanbanCard(
@@ -551,6 +596,7 @@ def snapshot_from_mapping(payload: Mapping[str, Any]) -> KanbanWorkItemSnapshot:
             head_sha=str(raw.get("head_sha", "")),
             reviews=tuple(revs),
             review_requested=bool(raw.get("review_requested", False)),
+            changes_requested_at_head=bool(raw.get("changes_requested_at_head", False)),
             degraded=bool(raw.get("degraded", False)),
         )
 
