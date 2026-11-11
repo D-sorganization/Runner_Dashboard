@@ -6,13 +6,11 @@ import ast
 import dataclasses
 import re
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
 from staff.failover_dispatch import try_chain_failover
-from types import SimpleNamespace
-
 from staff.plan import RunPlan, derive_run_plan
 from staff.provider_cooldown import reset_provider_cooldowns
 from staff.provider_failover_config import reset_failover_config_cache

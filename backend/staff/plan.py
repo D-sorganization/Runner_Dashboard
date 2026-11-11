@@ -123,6 +123,34 @@ class RunPlan:
         """Copy this plan, applying only the fields that change on retry/failover (#4259)."""
         return derive_run_plan(self, **overrides)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "provider": self.provider,
+            "model": self.model,
+            "model_tier": self.model_tier,
+            "repo": self.repo,
+            "target_kind": self.target_kind,
+            "target_ref": self.target_ref,
+            "prompt": self.prompt,
+            "argv": list(self.argv),
+            "branch": self.branch,
+            "lease_ritual": self.lease_ritual,
+            "focus": self.focus,
+            "thread_id": self.thread_id,
+            "work_item_id": self.work_item_id,
+            "pr_lifecycle": self.pr_lifecycle,
+            "head_ref": self.head_ref,
+            "consolidation": dict(self.consolidation) if self.consolidation else None,
+            "skill_pin": self.skill_pin,
+            "skill": None if not self.skill_pin else {"pin": self.skill_pin},
+            "provider_auth_skipped": [dict(row) for row in self.provider_auth_skipped],
+            "injected_lesson_ids": list(self.injected_lesson_ids),
+            "skipped_lesson_ids": dict(self.skipped_lesson_ids),
+            "lessons_tokens": self.lessons_tokens,
+            "execution_mode": self.execution_mode,
+        }
+
 
 def _run_plan_field_default(fld: Any) -> Any:
     if fld.default is not MISSING:
@@ -155,31 +183,3 @@ def derive_run_plan(plan: object, **overrides: Any) -> RunPlan:
     if not isinstance(argv, list):
         values["argv"] = list(argv or [])
     return RunPlan(**values)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "role": self.role,
-            "provider": self.provider,
-            "model": self.model,
-            "model_tier": self.model_tier,
-            "repo": self.repo,
-            "target_kind": self.target_kind,
-            "target_ref": self.target_ref,
-            "prompt": self.prompt,
-            "argv": list(self.argv),
-            "branch": self.branch,
-            "lease_ritual": self.lease_ritual,
-            "focus": self.focus,
-            "thread_id": self.thread_id,
-            "work_item_id": self.work_item_id,
-            "pr_lifecycle": self.pr_lifecycle,
-            "head_ref": self.head_ref,
-            "consolidation": dict(self.consolidation) if self.consolidation else None,
-            "skill_pin": self.skill_pin,
-            "skill": None if not self.skill_pin else {"pin": self.skill_pin},
-            "provider_auth_skipped": [dict(row) for row in self.provider_auth_skipped],
-            "injected_lesson_ids": list(self.injected_lesson_ids),
-            "skipped_lesson_ids": dict(self.skipped_lesson_ids),
-            "lessons_tokens": self.lessons_tokens,
-            "execution_mode": self.execution_mode,
-        }
