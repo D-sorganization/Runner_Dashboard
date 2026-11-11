@@ -35,3 +35,9 @@ def log_dequeued(dequeued: list[QueuedDispatchItem]) -> None:
             item.number,
             item.queue_id,
         )
+
+
+def reset_dispatch_queue_link_state() -> None:
+    """Reset overlap sessions and run bindings (pytest isolation only)."""
+    _run_sessions.clear()
+    dispatch_queue_manager.reset_state_for_tests()

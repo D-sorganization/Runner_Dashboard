@@ -119,6 +119,34 @@ def error_exit_stream_for_classification(*, error_message: str = "", output_text
             chunks.append(line)
     return "\n".join(chunks)
 
+
+_ADAPTER_STATUS_MARKERS = (
+    "at capacity",
+    "overloaded",
+    "usage limit",
+    "quota",
+    "resource_exhausted",
+)
+
+
+def adapter_classification_stream(*, error_message: str = "", output_text: str = "") -> str:
+    """Error stream plus provider capacity/quota lines that omit generic error markers."""
+    stream = error_exit_stream_for_classification(error_message=error_message, output_text=output_text)
+    if stream.strip():
+        return stream
+    extra: list[str] = []
+    for raw_line in (output_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if any(marker in lower for marker in _ADAPTER_STATUS_MARKERS):
+            extra.append(line)
+    if not extra:
+        return stream
+    return "\n".join(extra)
+
+
 UPGRADE_COMMANDS: dict[str, str] = {
     "claude": "npm install -g @anthropic-ai/claude-code@latest",
     "codex": "npm install -g @openai/codex@latest",
@@ -242,7 +270,7 @@ def classify_run_failure(
     error_stream = error_exit_stream_for_classification(error_message=error_message, output_text=output_text)
     error_lower = error_stream.lower()
 
-    if any(pat in error_lower for pat in ENVIRONMENT_ERROR_PATTERNS):
+    if any(pat in lower for pat in ENVIRONMENT_ERROR_PATTERNS):
         detail = _extract_last_line_text(output_text) or error_message or "sandbox/environment failure"
         return FailureClassification(
             failure_class="environment_error",
@@ -270,7 +298,10 @@ def classify_run_failure(
             error=NO_RESULT_ERROR,
         )
 
-    adapter_row = adapter_failure_classification(provider, error_stream)
+    adapter_row = adapter_failure_classification(
+        provider,
+        adapter_classification_stream(error_message=error_message, output_text=output_text),
+    )
     if adapter_row is not None:
         fc, retryable, remediation, error = adapter_row
         return FailureClassification(
