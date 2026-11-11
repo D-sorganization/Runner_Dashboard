@@ -13,9 +13,9 @@ from staff.failover_dispatch import try_chain_failover
 from staff.plan import RunPlan
 from staff.retry import handle_post_execution_retry
 from staff.roles import RoleSpec
+from staff.runner import RunRecord, StaffRunner
 from staff.skills.registry import clear_skills_cache
 from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
-from staff.runner import RunRecord, StaffRunner
 from staff.store import RunStore
 
 pytestmark = pytest.mark.unit
