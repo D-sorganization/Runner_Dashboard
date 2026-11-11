@@ -30,27 +30,94 @@ class WorktreeBootstrapPreflight:
     attention: str = ""
     python_executable: str = ""
     pre_pr_entrypoint: str = ""
+    pre_pr_advisory: str = ""
     venv_dir: str = ""
     failure_class: str = ""
     retryable: bool = False
     remediation: str = ""
 
 
-def resolve_repo_pre_pr_entrypoint(worktree: Path, *, python_executable: str = "python3") -> str | None:
+def role_requires_pre_pr_entrypoint(role: str) -> bool:
+    """Whether bootstrap must find a runnable local pre-PR script (#4331).
+
+    Roles that do not open pull requests (``permissions.open_pr``) and explicit
+    ``code_read_only`` roles skip the gate — e.g. ``code-reviewer`` on private
+    repos such as ``work_private`` that ship no fleet pre-PR scripts. Unknown
+    roles fail closed.
+    """
+    if not role:
+        return True
+    from staff.roles import load_roles
+
+    spec = load_roles().get(role)
+    if spec is None:
+        return True
+    if spec.code_read_only:
+        return False
+    if not spec.opens_pr:
+        return False
+    return True
+
+
+def _pre_pr_candidate_commands(worktree: Path, python_executable: str) -> list[tuple[str, list[str]]]:
+    """Ordered pre-PR probe commands for a worktree (specific before generic)."""
+    py = python_executable
+    candidates: list[tuple[str, list[str]]] = []
+    if (worktree / "scripts" / "pre_pr.py").is_file():
+        candidates.append(("scripts/pre_pr.py", [py, "-m", "scripts.pre_pr"]))
+        candidates.append(("scripts/pre_pr.py", [py, "scripts/pre_pr.py"]))
+    if (worktree / "shared_scripts" / "pre_pr.py").is_file():
+        candidates.append(("shared_scripts/pre_pr.py", [py, "shared_scripts/pre_pr.py"]))
+    if (worktree / "scripts" / "verify_merge_gates.py").is_file():
+        candidates.append(
+            (
+                "scripts/verify_merge_gates.py",
+                [py, "scripts/verify_merge_gates.py", "--repository-root", "."],
+            )
+        )
+    agent_check = worktree / "scripts" / "agent-check"
+    if agent_check.is_file():
+        candidates.append(("scripts/agent-check", [py, "scripts/agent-check"]))
+    return candidates
+
+
+def _pre_pr_probe_succeeded(
+    worktree: Path,
+    argv: list[str],
+    *,
+    run: _Run,
+    rel: str,
+) -> bool:
+    """True when the entry point is invokable (``--help``) without running merge gates."""
+    if rel == "scripts/agent-check":
+        return True
+    probe = [*argv, "--help"]
+    try:
+        proc = _run_checked(run, worktree, probe, timeout=60)
+    except subprocess.TimeoutExpired:
+        return False
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip().lower()
+        if "no module named" in detail or "modulenotfounderror" in detail:
+            return False
+    return proc.returncode == 0
+
+
+def resolve_repo_pre_pr_entrypoint(
+    worktree: Path,
+    *,
+    python_executable: str = "python3",
+    run: _Run = subprocess.run,
+) -> str | None:
     """Repo-local pre-PR check command for prompts and diagnostics (#2796).
 
     Preference order is specific -> generic. ``scripts.pre_pr`` is RM-only, so
-    other repositories need their own local entry point.
+    other repositories need their own local entry point. Each candidate must pass
+    a lightweight ``--help`` probe so staff runs do not advertise a broken command.
     """
-    entries = (
-        ("scripts/pre_pr.py", f"{python_executable} -m scripts.pre_pr"),
-        ("shared_scripts/pre_pr.py", f"{python_executable} shared_scripts/pre_pr.py"),
-        ("scripts/verify_merge_gates.py", f"{python_executable} scripts/verify_merge_gates.py --repository-root ."),
-        ("scripts/agent-check", f"{python_executable} scripts/agent-check"),
-    )
-    for rel, command in entries:
-        if (worktree / rel).is_file():
-            return command
+    for _rel, argv in _pre_pr_candidate_commands(worktree, python_executable):
+        if _pre_pr_probe_succeeded(worktree, argv, run=run, rel=_rel):
+            return " ".join(argv)
     return None
 
 
@@ -226,6 +293,30 @@ def _git_dir(workspace: Path) -> Path | None:
     return None
 
 
+def _lock_held_by_live_process(lock: Path) -> bool:
+    """True when a live process still has ``lock`` open (#3935 follow-up)."""
+    try:
+        import psutil
+    except ImportError:
+        return False
+
+    try:
+        resolved = str(lock.resolve())
+    except OSError:
+        resolved = str(lock)
+
+    for proc in psutil.process_iter(attrs=["open_files"]):
+        try:
+            open_files = proc.info.get("open_files") or []
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        for entry in open_files:
+            path = getattr(entry, "path", "") or ""
+            if path == resolved:
+                return True
+    return False
+
+
 def is_git_process_active_in_repo(repo_path: Path) -> bool:
     """Check whether any live git process has its cwd or arguments referencing ``repo_path`` (#3935)."""
     try:
@@ -297,30 +388,64 @@ def find_candidate_git_locks(worktree: Path, run: _Run = subprocess.run) -> list
     return sorted(candidates)
 
 
+def _git_activity_paths_for_lock(
+    lock: Path,
+    *,
+    worktree: Path,
+    main_root: Path | None,
+) -> tuple[Path, ...]:
+    """Paths whose live git activity should block removing ``lock`` (#3935 follow-up).
+
+    Submodule locks under ``.git/modules/**`` are scoped to the linked main checkout.
+    Worktree gitdir locks are scoped to that worktree. We no longer preserve every lock
+    when *any* git process is active on the main checkout (that left stale UpstreamDrift
+    ``index.lock`` files in place during parallel staff runs).
+    """
+    parts = lock.parts
+    if "modules" in parts:
+        if main_root is not None:
+            return (main_root,)
+        return (worktree,)
+    if main_root is not None and "worktrees" in parts:
+        return (worktree, main_root)
+    if main_root is not None and main_root != worktree:
+        return (worktree, main_root)
+    return (worktree,)
+
+
 def clean_stale_git_locks(
     worktree: Path,
     *,
     run: _Run = subprocess.run,
     is_git_process_active: Callable[[Path], bool] | None = None,
+    main_root: Path | None = None,
 ) -> list[Path]:
     """Detect and remove stale git/submodule lock files safely (#3935).
 
-    Only removes locks when no live git process is active in the repository or main checkout.
-    When a live git process is detected, locks are preserved and logged.
+    Each lock is removed only when no live git process is active in the repository
+    scope that owns the lock. Locks are never deleted when a live git holds them.
     """
     checker = is_git_process_active or is_git_process_active_in_repo
     locks = find_candidate_git_locks(worktree, run=run)
     if not locks:
         return []
 
-    main_root = _main_checkout_root(worktree, run)
-    if checker(worktree) or (main_root is not None and checker(main_root)):
-        for lock in locks:
-            log.warning("Preserved live git lock (live git process detected): %s", lock)
-        return []
+    if main_root is None:
+        main_root = _main_checkout_root(worktree, run)
 
     removed: list[Path] = []
     for lock in locks:
+        if _lock_held_by_live_process(lock):
+            log.warning("Preserved live git lock (file still open): %s", lock)
+            continue
+        scope = _git_activity_paths_for_lock(lock, worktree=worktree, main_root=main_root)
+        if any(checker(path) for path in scope):
+            log.warning(
+                "Preserved live git lock (live git process in scope %s): %s",
+                ", ".join(str(p) for p in scope),
+                lock,
+            )
+            continue
         try:
             lock.unlink()
             removed.append(lock)
@@ -367,16 +492,36 @@ def run_worktree_bootstrap_preflight(
             ok=False, attention=attention, python_executable=target_python, venv_dir=venv_dir
         )
 
-    pre_pr = resolve_repo_pre_pr_entrypoint(worktree, python_executable=target_python)
+    pre_pr = resolve_repo_pre_pr_entrypoint(worktree, python_executable=python_executable, run=run)
     if not pre_pr:
+        missing = (
+            "no runnable repository pre-PR entry point (probed scripts/pre_pr.py, "
+            "shared_scripts/pre_pr.py, scripts/verify_merge_gates.py and scripts/agent-check)"
+        )
+        if not role_requires_pre_pr_entrypoint(role):
+            log.warning(
+                "pre-PR scripts missing in %s; continuing because role %s does not open PRs",
+                worktree,
+                role,
+            )
+            return WorktreeBootstrapPreflight(
+                ok=True,
+                python_executable=target_python,
+                venv_dir=venv_dir,
+                pre_pr_advisory=f"{missing}; optional for role {role} (no open_pr / code-read-only)",
+            )
         return WorktreeBootstrapPreflight(
             ok=False,
-            attention=(
-                "no repository pre-PR entry point found (checked scripts/pre_pr.py, "
-                "shared_scripts/pre_pr.py, scripts/verify_merge_gates.py and scripts/agent-check)"
-            ),
+            attention=missing,
             python_executable=target_python,
             venv_dir=venv_dir,
+            failure_class="environment_error",
+            retryable=False,
+            remediation=(
+                "Ensure the repo checkout includes a runnable pre-PR script "
+                "(scripts/pre_pr.py or shared_scripts/pre_pr.py after submodule init). "
+                "Staff pytest venvs are not used for pre-PR; populate shared_scripts when needed."
+            ),
         )
 
     return WorktreeBootstrapPreflight(

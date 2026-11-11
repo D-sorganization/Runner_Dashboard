@@ -80,6 +80,12 @@ def ensure_worktree_bootstrap_ready(
                 "preflight",
                 f"worktree bootstrap ok: python={result.python_executable}; pre_pr={result.pre_pr_entrypoint}",
             )
+        elif result.pre_pr_advisory:
+            store.append_event(
+                rec.id,
+                "preflight",
+                (f"worktree bootstrap ok: python={result.python_executable}; pre_pr_advisory={result.pre_pr_advisory}"),
+            )
         return result
     store.update_run(
         rec.id,
@@ -157,6 +163,7 @@ def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
         stage="creating a worktree",
         allow_sweep=not swept,
     )
+    clean_stale_git_locks(checkout, main_root=checkout)
     worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
     workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
     store.update_run(rec.id, workdir=str(worktree))
