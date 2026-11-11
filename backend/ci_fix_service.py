@@ -258,16 +258,10 @@ async def _route_and_launch(
     workflow_name = req.workflow_name or (MERGE_QUEUE_WORKFLOW if is_conflict else "")
     signature = failure_signature(workflow_name, failing_tests, failure_type)
     attempt_store = global_ci_fix_attempt_store()
-    if req.attempt_number is None:
-        cap = attempt_store.reserve_attempt(req.repo, req.pr_number, req.head_sha)
-        if not cap.allowed:
-            raise CIFixAttemptCapError(cap.reason)
-        attempt = cap.head_attempts
-    else:
-        attempt = req.attempt_number
-        cap = attempt_store.check_caps(req.repo, req.pr_number, req.head_sha)
-        if not cap.allowed:
-            raise CIFixAttemptCapError(cap.reason)
+    cap = attempt_store.reserve_attempt(req.repo, req.pr_number, req.head_sha)
+    if not cap.allowed:
+        raise CIFixAttemptCapError(cap.reason)
+    attempt = req.attempt_number if req.attempt_number is not None else cap.head_attempts
     route = route_ci_fix(
         failure_type,
         attempt_number=attempt,
