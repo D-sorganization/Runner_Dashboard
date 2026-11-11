@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
