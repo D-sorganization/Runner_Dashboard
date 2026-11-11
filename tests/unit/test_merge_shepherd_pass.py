@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import pytest
-
 from coordination.merge_shepherd_pass import (
     PassConfig,
+    count_armed_open_pull_requests,
+    graphql_nodes,
     holds_gate_failed_payload,
     hub_hold_blocks_pr,
     load_skip_list,
@@ -14,6 +15,7 @@ from coordination.merge_shepherd_pass import (
     resolve_hub_holds_policy,
     resolve_live_arming,
     run_merge_shepherd_pass,
+    stitch_armed_pull_request_pages,
 )
 
 
@@ -251,6 +253,112 @@ def test_hub_holds_succeed_with_fleet_token() -> None:
     assert err is None
     assert len(holds) == 1
     assert fetched == [("https://hub.example", "fleet-bearer-secret")]
+
+
+def test_count_armed_open_pull_requests_ignores_unarmed_nodes() -> None:
+    nodes = [
+        {"number": 1, "autoMergeRequest": {"enabledAt": "2026-11-10T00:00:00Z"}},
+        {"number": 2, "autoMergeRequest": None},
+        {"number": 3},
+    ]
+    assert count_armed_open_pull_requests(nodes) == 1
+
+
+def test_graphql_armed_count_uses_auto_merge_not_open_total() -> None:
+    armed_nodes = [{"number": i, "autoMergeRequest": {"enabledAt": "t"} if i <= 2 else None} for i in range(1, 11)]
+    payload = {
+        "repository": {
+            "mergeQueue": {"entries": {"totalCount": 0}},
+            "armedPullRequests": {"totalCount": 10, "nodes": armed_nodes},
+            "pullRequests": {"nodes": []},
+        }
+    }
+    _, armed_count, _ = graphql_nodes(payload)
+    assert armed_count == 2
+
+
+def test_stitch_armed_pull_request_pages_includes_armed_beyond_first_page() -> None:
+    page1 = {
+        "nodes": [{"number": i, "autoMergeRequest": None} for i in range(1, 101)],
+        "pageInfo": {"hasNextPage": True, "endCursor": "page-1"},
+    }
+    page2 = {
+        "nodes": [{"number": i, "autoMergeRequest": {"enabledAt": "t"}} for i in range(101, 108)],
+        "pageInfo": {"hasNextPage": False, "endCursor": "page-2"},
+    }
+    stitched = stitch_armed_pull_request_pages([page1, page2])
+    assert count_armed_open_pull_requests(stitched["nodes"]) == 7
+
+    first_page_only = {
+        "repository": {
+            "mergeQueue": {"entries": {"totalCount": 0}},
+            "armedPullRequests": page1,
+            "pullRequests": {"nodes": []},
+        }
+    }
+    _, undercount, _ = graphql_nodes(first_page_only)
+    assert undercount == 0
+
+    stitched_payload = {
+        "repository": {
+            "mergeQueue": {"entries": {"totalCount": 0}},
+            "armedPullRequests": stitched,
+            "pullRequests": {"nodes": []},
+        }
+    }
+    _, armed_count, _ = graphql_nodes(stitched_payload)
+    assert armed_count == 7
+
+
+def test_plan_repo_backoffs_when_armed_only_on_second_graphql_page() -> None:
+    page1 = {
+        "nodes": [{"number": i, "autoMergeRequest": None} for i in range(1, 101)],
+        "pageInfo": {"hasNextPage": True, "endCursor": "page-1"},
+    }
+    page2 = {
+        "nodes": [{"number": i, "autoMergeRequest": {"enabledAt": "t"}} for i in range(101, 108)],
+        "pageInfo": {"hasNextPage": False, "endCursor": "page-2"},
+    }
+    armed_count = count_armed_open_pull_requests(stitch_armed_pull_request_pages([page1, page2])["nodes"])
+    nodes = [_open_pr_node(1)]
+    _, _, backoff = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        nodes,
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=armed_count,
+        queue_depth=0,
+        live=False,
+    )
+    assert backoff is True
+
+
+def test_plan_repo_no_backoff_when_many_open_but_only_two_armed() -> None:
+    nodes = [_open_pr_node(i, review="APPROVED") for i in range(1, 11)]
+    _, _, backoff = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        nodes,
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=2,
+        queue_depth=0,
+        live=False,
+    )
+    assert backoff is False
+
+
+def test_plan_repo_backoffs_when_seven_armed() -> None:
+    nodes = [_open_pr_node(1)]
+    _, _, backoff = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        nodes,
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=7,
+        queue_depth=0,
+        live=False,
+    )
+    assert backoff is True
 
 
 def test_run_pass_is_dry_when_not_live():
