@@ -1216,6 +1216,10 @@ jobs:
             if [ "$result" = "success" ]; then
               continue
             fi
+            if [ "$job" = "coverage-floor" ] && [ "$result" = "skipped" ]; then
+              echo "::notice::coverage-floor only runs on merge_group."
+              continue
+            fi
             if [ "$result" = "cancelled" ] && pr_supersession_lane; then
               if pr_superseded_cancel cancelled "$job"; then
                 echo "::notice::$job cancelled (superseded by a newer workflow run)."
@@ -1244,10 +1248,6 @@ jobs:
             # (docs-only PR, post-merge push); tests-required always runs and
             # encodes that rule itself.
             if [ "$result" = "skipped" ] && [ "$TIER" != "full" ]; then
-              if [ "$job" = "coverage-floor" ]; then
-                echo "::notice::coverage-floor skipped outside merge_group."
-                continue
-              fi
               if [ "$RUN_PYTHON_TESTS" != "true" ] && [ "$job" != "tests" ]; then
                 echo "::notice::$job skipped: Python lane is off for tier '$TIER'."
                 continue

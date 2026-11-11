@@ -28,7 +28,6 @@ MERGE_GROUP_JOB_ALLOWLIST: dict[str, frozenset[str]] = {
             "coverage-floor",
             "tests-required",
             "quality-gate",
-            "ci-failure-alert",
         }
     ),
     "frontend-tests.yml": frozenset(
@@ -118,6 +117,9 @@ def _job_runs_on_merge_group(job: dict) -> bool:
     cond = _job_if(job)
     if not cond:
         return True
+    # Post-mortem jobs (failure handlers) are outside the slim merge_group gate set.
+    if re.search(r"\bfailure\s*\(\)", cond):
+        return False
     if re.search(r"github\.event_name\s*!=\s*['\"]merge_group['\"]", cond):
         return False
     if re.search(r"!=\s*['\"]merge_group['\"]", cond):
