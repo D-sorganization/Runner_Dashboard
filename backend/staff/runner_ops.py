@@ -388,6 +388,7 @@ def apply_code_reviewer_post_classification(
     transcript: Path,
 ) -> tuple[str, str, bool, str, str]:
     from staff import review
+    from staff.verification import _target_pr_number
 
     return review.maybe_finalize_code_reviewer_run(
         role=rec.role,
@@ -401,7 +402,7 @@ def apply_code_reviewer_post_classification(
         remediation=remediation,
         result_line=result_line,
         same_provider=review.is_same_provider_review(rec.prompt),
-        transcript=transcript,
         repo=plan.repo or rec.repo,
         reviewer_model=str(plan.model or plan.provider or ""),
+        expected_pr_number=_target_pr_number(rec),
     )

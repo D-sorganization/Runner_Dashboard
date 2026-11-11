@@ -79,6 +79,17 @@ def test_gate_inactive_without_agent_or_reviews() -> None:
     assert independent_review_hold_reason([], head_sha=_HEAD, author_model="", labels=()) == []
 
 
+def test_inactive_gate_skip_does_not_fail_open_for_agent_labeled_prs() -> None:
+    """Signal 5 off for human PRs; agent labels still activate the gate and block without a verdict."""
+    reasons = independent_review_hold_reason(
+        [],
+        head_sha=_HEAD,
+        author_model="",
+        labels=_AGENT_LABELS,
+    )
+    assert reasons and "cannot be verified" in reasons[0]
+
+
 def test_inactive_gate_skips_signal5_without_head_sha() -> None:
     """Skipping Signal 5 when the gate is inactive does not bypass agent-PR gating elsewhere."""
     assert independent_review_hold_reason([], head_sha="", author_model="", labels=()) == []

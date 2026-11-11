@@ -12,6 +12,8 @@ from github_app_auth import github_app_auth_configured, mint_installation_access
 from security import validate_repo_slug
 from staff.github_run_env import StaffGithubToken
 
+from shared_scripts.independent_exact_head_review import head_sha_matches
+
 log = logging.getLogger("dashboard.staff.independent_exact_head_verdict")
 
 VERDICT_COMMENT_PERMISSIONS = {
@@ -42,6 +44,10 @@ class VerdictPostError(RuntimeError):
         self.http_status = http_status
 
 
+class VerdictContextMismatch(ValueError):
+    """Parsed STAFF_RESULT does not match the trusted code-reviewer run context."""
+
+
 def parse_independent_exact_head_staff_result(text: str) -> IndependentExactHeadStaffResult | None:
     if not text:
         return None
@@ -55,6 +61,63 @@ def parse_independent_exact_head_staff_result(text: str) -> IndependentExactHead
             head_sha=match.group("sha").lower(),
         )
     return None
+
+
+def validate_independent_verdict_against_run(
+    parsed: IndependentExactHeadStaffResult,
+    *,
+    expected_pr_number: int,
+    expected_head_sha: str,
+) -> None:
+    """Reject verdict lines that target a different PR or head than this run (#4324)."""
+    if int(parsed.pr_number) != int(expected_pr_number):
+        raise VerdictContextMismatch(
+            f"STAFF_RESULT targets PR #{parsed.pr_number}, but this review run is for PR #{expected_pr_number}"
+        )
+    head = str(expected_head_sha or "").strip().lower()
+    if not head:
+        raise VerdictContextMismatch("PR head SHA is unknown; cannot bind independent verdict")
+    if not head_sha_matches(parsed.head_sha, head):
+        raise VerdictContextMismatch(f"STAFF_RESULT head @{parsed.head_sha} does not match the PR head @{head}")
+
+
+def fetch_pull_head_sha(repo: str, pr_number: int) -> str:
+    """Live PR head at post time, via the Runner Dashboard App installation."""
+    slug = _repo_slug(repo)
+    full_repo = f"{ORG}/{slug}"
+    cred = mint_runner_dashboard_verdict_token(repo)
+    url = f"https://api.github.com/repos/{full_repo}/pulls/{int(pr_number)}"
+    try:
+        resp = httpx.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {cred.token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+            timeout=httpx.Timeout(30.0),
+        )
+    except httpx.HTTPError as exc:
+        raise VerdictPostError(f"GitHub PR lookup failed: {exc}") from exc
+    if resp.status_code >= 400:
+        detail = (resp.text or "").strip()[:240]
+        raise VerdictPostError(
+            f"GitHub PR lookup refused: HTTP {resp.status_code} ({detail})",
+            http_status=resp.status_code,
+        )
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise VerdictPostError("GitHub PR lookup returned non-JSON") from exc
+    if not isinstance(payload, dict):
+        raise VerdictPostError("GitHub PR lookup returned unexpected payload")
+    head = payload.get("head")
+    if not isinstance(head, dict):
+        raise VerdictPostError("GitHub PR lookup missing head")
+    sha = str(head.get("sha") or "").strip().lower()
+    if not sha:
+        raise VerdictPostError("GitHub PR lookup returned empty head.sha")
+    return sha
 
 
 def _repo_slug(repo: str) -> str:
