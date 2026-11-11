@@ -10343,6 +10343,38 @@ export interface components {
             /** Token */
             token: string;
         };
+        /**
+         * FleetTargetSetRequest
+         * @description POST /api/fleet/target body (DbC: typed payload, no unknown fields).
+         */
+        FleetTargetSetRequest: {
+            /**
+             * Apply
+             * @description Run runner-scheduler --apply after saving override.
+             * @default true
+             */
+            apply: boolean;
+            /**
+             * Host
+             * @description Fleet host or alias.
+             */
+            host: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Runners
+             * @description Requested runner count (clamped to host cap).
+             */
+            runners: number;
+            /**
+             * Until
+             * @description ISO-8601 timestamp or HH:MM expiry.
+             */
+            until?: string | null;
+        };
         /** FrictionCreate */
         FrictionCreate: {
             /**
@@ -17643,7 +17675,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTargetSetRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -17654,6 +17690,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

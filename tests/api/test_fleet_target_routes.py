@@ -73,6 +73,34 @@ def test_fleet_target_first_override_records_scheduled_before(
     assert body["target_override"]["before"] == 5
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"host": "", "runners": 1},
+        {"host": "hub-a", "runners": -1},
+        {"host": "hub-a"},
+        {"host": "hub-a", "runners": 1, "unknown_field": True},
+        {"host": "hub-a", "runners": "x"},
+    ],
+)
+def test_fleet_target_rejects_invalid_payload(client: TestClient, payload: dict[str, object]) -> None:
+    response = client.post(URL, json=payload)
+    assert response.status_code == 422, response.text
+
+
+def test_fleet_target_set_request_validated_payload_contract() -> None:
+    body = routes.FleetTargetSetRequest(host="  hub-a  ", runners=4, reason="", apply=False)
+    payload = body.validated_payload()
+    assert payload == {
+        "host": "hub-a",
+        "runners": 4,
+        "until": None,
+        "reason": "api: /api/fleet/target",
+        "apply": False,
+    }
+
+
 def test_fleet_target_clamps_and_persists(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.post(
         URL,

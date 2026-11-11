@@ -21,6 +21,7 @@ from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_fleet_peer, require_scope
 from machine_registry import build_machine_registry_index, load_machine_registry, resolve_local_identity
+from pydantic import BaseModel, ConfigDict, Field
 from routers import orchestration_schedule_routes as _schedule
 from runner_target_contract import normalize_host_token
 from security import safe_subprocess_env, sanitize_log_value
@@ -28,41 +29,35 @@ from security import safe_subprocess_env, sanitize_log_value
 log = logging.getLogger("dashboard.fleet_target")
 router = APIRouter(tags=["orchestration"])
 
-_ALLOWED_KEYS = frozenset({"host", "runners", "until", "reason", "apply"})
 _APPLY_TIMEOUT_S = 45
 
 
-def parse_target_request(body: object) -> dict[str, Any]:
-    if not isinstance(body, dict):
-        raise ValueError("body must be a JSON object")
-    unknown = set(body) - _ALLOWED_KEYS
-    if unknown:
-        raise ValueError(f"unknown field(s): {', '.join(sorted(unknown))}")
-    host = body.get("host")
-    if not isinstance(host, str) or not host.strip():
-        raise ValueError("host is required")
-    try:
-        runners = int(body["runners"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("runners is required and must be an integer") from exc
-    if runners < 0:
-        raise ValueError("runners must be nonnegative")
-    reason = body.get("reason", "")
-    if reason is not None and not isinstance(reason, str):
-        raise ValueError("reason must be a string")
-    until = body.get("until")
-    if until is not None and not isinstance(until, str):
-        raise ValueError("until must be a string")
-    apply_now = body.get("apply", True)
-    if not isinstance(apply_now, bool):
-        raise ValueError("apply must be a boolean")
-    return {
-        "host": host.strip(),
-        "runners": runners,
-        "until": until,
-        "reason": (reason or "").strip() or "api: /api/fleet/target",
-        "apply": apply_now,
-    }
+class FleetTargetSetRequest(BaseModel):
+    """POST /api/fleet/target body (DbC: typed payload, no unknown fields)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: str = Field(..., min_length=1, max_length=256, description="Fleet host or alias.")
+    runners: int = Field(..., ge=0, description="Requested runner count (clamped to host cap).")
+    until: str | None = Field(default=None, description="ISO-8601 timestamp or HH:MM expiry.")
+    reason: str = Field(default="", max_length=500)
+    apply: bool = Field(default=True, description="Run runner-scheduler --apply after saving override.")
+
+    def validated_payload(self) -> dict[str, Any]:
+        """Pre/post: normalized host, default reason, nonnegative runners."""
+        host = self.host.strip()
+        assert host, "host is required"  # noqa: S101
+        assert self.runners >= 0  # noqa: S101
+        reason = (self.reason or "").strip() or "api: /api/fleet/target"
+        payload = {
+            "host": host,
+            "runners": self.runners,
+            "until": self.until,
+            "reason": reason,
+            "apply": self.apply,
+        }
+        assert payload["host"] and isinstance(payload["runners"], int)  # noqa: S101
+        return payload
 
 
 def _local_host_tokens() -> set[str]:
@@ -251,14 +246,12 @@ async def _proxy_target_to_node(url: str, payload: dict[str, Any]) -> dict[str, 
 @router.post("/api/fleet/target", dependencies=[Depends(require_fleet_peer)])
 async def fleet_target(
     request: Request,
+    body: FleetTargetSetRequest,
     *,
     principal: Principal = Depends(require_scope("fleet.control")),
 ) -> dict[str, Any]:
     """Set an expiring runner-count override for a fleet host."""
-    try:
-        payload = parse_target_request(await request.json())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    payload = body.validated_payload()
 
     if proxy_utils.should_proxy_fleet_to_hub(request):
         return await proxy_utils.proxy_to_hub(request)
