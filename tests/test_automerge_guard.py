@@ -1409,7 +1409,8 @@ def test_malformed_head_field_yields_a_verdict_not_a_crash() -> None:
     fake = FakeGh()
     fake.pull["head"] = "not-an-object"
     verdict = automerge_guard.evaluate_hold("o/r", 7, runner=fake)
-    assert verdict.held is False
+    assert verdict.held is True
+    assert "head SHA" in verdict.describe()
     assert verdict.head_sha == "" and verdict.head_ref == ""
     assert verdict.head_in_base_repo is False
 

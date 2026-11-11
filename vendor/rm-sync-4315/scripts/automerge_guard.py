@@ -203,7 +203,10 @@ class HoldVerdict:
     def describe(self) -> str:
         if not self.held:
             return "no hold in effect"
-        return "; ".join(self.reasons) or "unknown hold"
+        if self.reasons:
+            text = "; ".join(self.reasons)
+            return f"{text}; {self.error}" if self.error else text
+        return self.error or "unknown hold"
 
 
 @dataclass(frozen=True)
@@ -441,7 +444,7 @@ def _independent_review_reasons(run: CommandRunner, repo: str, pr: int, pull: _P
     try:
         comments = _issue_comments(run, repo, pr)
         messages = _commit_messages(run, repo, pr)
-    except (RuntimeError, json.JSONDecodeError, OSError):
+    except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError):
         return ["independent exact-head review state is unreadable"]
     author_model = author_model_from_labels(pull.labels) or author_model_from_commit_messages(messages)
     reviews = parse_issue_comments(comments)
@@ -539,9 +542,8 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
             reasons.append("PR is a draft (mark ready first)")
         reasons += _disarm_reasons(run, repo, pr, pull.head_sha)
         reasons += _deletion_reasons(run, repo, pr, pull)
-        if pull.head_sha:
-            reasons += _independent_review_reasons(run, repo, pr, pull)
-    except (RuntimeError, json.JSONDecodeError, OSError) as exc:
+        reasons += _independent_review_reasons(run, repo, pr, pull)
+    except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         # Fail closed. An unknown state is not a licence to arm.
         return HoldVerdict(True, (), error=str(exc))
     return _verdict_from(raw, pull, reasons)
@@ -651,7 +653,13 @@ def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, r
         f"PR is already clean and the base uses a merge queue; enqueue it with "
         f"`gh pr merge {pr} --repo {repo} --{strategy}` (without any admin bypass)"
     )
-    if not (verdict.node_id and verdict.head_sha):
+    if not verdict.head_sha:
+        hold = disarm_if_held(repo, pr, runner=run)
+        detail = "enqueue refused: PR head SHA is unknown"
+        if hold.held:
+            detail = f"{detail} ({hold.describe()})"
+        return ArmResult(False, hold, detail)
+    if not verdict.node_id:
         return ArmResult(False, verdict, hint)
     hold = disarm_if_held(repo, pr, runner=run)
     if hold.held:
@@ -714,10 +722,13 @@ def _merge_clean_pr(
     hold = disarm_if_held(repo, pr, runner=run)
     if hold.held:
         return ArmResult(False, hold, f"merge refused: {hold.describe()}")
-    pinned = _current_head_sha(repo, pr, run) or sha
+    pinned = _current_head_sha(repo, pr, run)
+    if not pinned:
+        hold = disarm_if_held(repo, pr, runner=run)
+        return ArmResult(False, hold, "merge refused: PR head SHA could not be verified")
     if pinned != sha:
         disarm_if_held(repo, pr, runner=run)
-        return ArmResult(False, hold, f"merge refused: head moved (expected {sha}, saw {pinned or 'unknown'})")
+        return ArmResult(False, hold, f"merge refused: head moved (expected {sha}, saw {pinned})")
     proc = run(
         [
             "gh",
@@ -878,7 +889,7 @@ def enqueue_stalled_pr(
     left alone (never merged directly); at most one GraphQL call is made.
     """
     run = runner or _default_runner
-    verdict = evaluate_hold(repo, pr, runner=run)
+    verdict = disarm_if_held(repo, pr, runner=run)
     if verdict.held:
         logger.warning("Refusing to enqueue %s#%s: %s", repo, pr, verdict.describe())
         return ArmResult(False, verdict, "held")
