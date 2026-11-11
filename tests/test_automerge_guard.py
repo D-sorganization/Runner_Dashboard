@@ -624,8 +624,9 @@ def test_held_pr_makes_no_graphql_or_rest_arm_call() -> None:
     fake = CloudGh(removed=["a.py"])
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
     assert result.armed is False
-    assert not any("merge" in c and "pr" in c for c in fake.calls)
-    assert fake.rest_calls == []
+    assert not any("merge" in c and "pr" in c and "--auto" in c for c in fake.calls)
+    assert not any("PUT" in c for c in fake.rest_calls)
+    assert len([c for c in fake.rest_calls if "DELETE" in c and "/ccr/auto_merge" in " ".join(c)]) == 1
 
 
 # --------------------------------------------------------------------------
