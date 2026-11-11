@@ -1318,6 +1318,64 @@ def test_in_flight_hold_after_merge_already_completed_is_nonzero_exit(
     assert any("IN-FLIGHT HOLD" in rec.message for rec in caplog.records)
 
 
+def test_in_flight_hold_after_enqueue_succeeds_exits_five_on_arm_cli(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = CleanGh(queue=True, labels=["agent-model:agy-desk-001"])
+    fake.issue_comments = [_independent_pass_comment()]
+    real_arm = automerge_guard.arm_auto_merge
+    real_disarm = automerge_guard.disarm_if_held
+    calls = {"n": 0}
+    captured: dict[str, automerge_guard.ArmResult] = {}
+
+    def _clear_verdict() -> automerge_guard.HoldVerdict:
+        return automerge_guard.HoldVerdict(
+            False,
+            head_sha=HEAD_SHA,
+            base_ref="main",
+            node_id="PR_node7",
+            head_ref="feat/x",
+            head_in_base_repo=True,
+        )
+
+    def flaky_disarm(repo: str, pr: int, *, runner: object | None = None) -> automerge_guard.HoldVerdict:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return _clear_verdict()
+        fake.issue_comments = [_independent_fix_needed_comment()]
+        return real_disarm(repo, pr, runner=fake)  # type: ignore[arg-type]
+
+    def arm_via_fake(*args: object, **kwargs: object) -> automerge_guard.ArmResult:
+        kwargs["runner"] = fake  # type: ignore[typeddict-unknown-key]
+        result = real_arm(*args, **kwargs)  # type: ignore[arg-type]
+        captured["result"] = result
+        return result
+
+    monkeypatch.setattr(automerge_guard, "disarm_if_held", flaky_disarm)
+    monkeypatch.setattr(automerge_guard, "arm_auto_merge", arm_via_fake)
+    with caplog.at_level(logging.ERROR):
+        code = automerge_guard._arm_cli(
+            "o/r",
+            7,
+            strategy="squash",
+            delete_branch=False,
+            arm_tier="agent",
+            dispatch_kind="",
+            repo_root=".",
+        )
+    result = captured["result"]
+    assert result.in_flight_hold_after_completion is True
+    assert result.armed is False
+    assert "enqueue completed" in result.detail
+    assert "IN-FLIGHT HOLD" in result.detail
+    assert any("IN-FLIGHT HOLD" in rec.message and "enqueue" in rec.message for rec in caplog.records)
+    assert code == automerge_guard.EXIT_IN_FLIGHT_HOLD
+    assert "IN-FLIGHT HOLD" in capsys.readouterr().out
+    assert len(_graphql_calls(fake)) == 1
+
+
 def test_arm_cli_in_flight_hold_after_completion_exits_five(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
