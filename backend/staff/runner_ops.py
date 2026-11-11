@@ -157,6 +157,7 @@ def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
         stage="creating a worktree",
         allow_sweep=not swept,
     )
+    clean_stale_git_locks(checkout, main_root=checkout)
     worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
     workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
     store.update_run(rec.id, workdir=str(worktree))
