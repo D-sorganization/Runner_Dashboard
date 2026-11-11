@@ -729,8 +729,8 @@ async def dispatch_to_issues(
     try:
         results = await asyncio.gather(*tasks)
     except BaseException:
-        for session_id in overlap_sessions.values():
-            dispatch_queue_manager.release_session(session_id, outcome="dispatch_failed")
+        for overlap_sid in overlap_sessions.values():
+            dispatch_queue_manager.release_session(overlap_sid, outcome="dispatch_failed")
         raise
 
     # ── Collate ───────────────────────────────────────────────────────────────
