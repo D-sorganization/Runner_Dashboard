@@ -18,11 +18,10 @@ from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-_FLEET_DIR = REPO_ROOT / "clients" / "fleet"
-if str(_FLEET_DIR) not in sys.path:
-    sys.path.insert(0, str(_FLEET_DIR))
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for sub in ("backend", "clients/fleet"):
+    path = str(REPO_ROOT / sub)
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from ops_mcp_contract import (  # noqa: E402
     CONTRACT_VERSION,

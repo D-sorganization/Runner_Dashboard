@@ -19,7 +19,11 @@ import sys
 from pathlib import Path
 from typing import IO, Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+_root = Path(__file__).resolve().parents[2]
+for sub in ("clients/fleet", "backend"):
+    path = str(_root / sub)
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from fleet_client import FleetAPIError, FleetArgumentError, FleetClient  # noqa: E402
 from fleet_tools import BY_TOOL  # noqa: E402

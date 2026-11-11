@@ -18,7 +18,7 @@ Runner Dashboard coordinates the fleet (briefings, claims, staff, Barb threads).
 
 | Check                    | Status   | Notes |
 | ------------------------ | -------- | ----- |
-| Bounded `tools/list`     | Enforced | `MAX_TOOLS_LIST_ITEMS` in `clients/fleet/ops_mcp_contract.py` |
+| Bounded `tools/list`     | Enforced | `MAX_TOOLS_LIST_ITEMS` in `backend/ops_mcp_contract.py` |
 | Structured tool errors   | Enforced | `error`, `code`, `message`, `retryable` on tool error payloads |
 | `contract_version` field | Enforced | `runner-dashboard-ops-mcp/1.0.0` on tool JSON payloads |
 | Stdio JSON-RPC handshake | Enforced | subprocess JSON-RPC + real `mcp` SDK session smoke |
