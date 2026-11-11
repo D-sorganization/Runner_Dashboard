@@ -80,6 +80,12 @@ def ensure_worktree_bootstrap_ready(
                 "preflight",
                 f"worktree bootstrap ok: python={result.python_executable}; pre_pr={result.pre_pr_entrypoint}",
             )
+        elif result.pre_pr_advisory:
+            store.append_event(
+                rec.id,
+                "preflight",
+                (f"worktree bootstrap ok: python={result.python_executable}; pre_pr_advisory={result.pre_pr_advisory}"),
+            )
         return result
     store.update_run(
         rec.id,

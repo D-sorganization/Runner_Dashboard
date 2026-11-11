@@ -30,10 +30,33 @@ class WorktreeBootstrapPreflight:
     attention: str = ""
     python_executable: str = ""
     pre_pr_entrypoint: str = ""
+    pre_pr_advisory: str = ""
     venv_dir: str = ""
     failure_class: str = ""
     retryable: bool = False
     remediation: str = ""
+
+
+def role_requires_pre_pr_entrypoint(role: str) -> bool:
+    """Whether bootstrap must find a runnable local pre-PR script (#4331).
+
+    Roles that do not open pull requests (``permissions.open_pr``) and explicit
+    ``code_read_only`` roles skip the gate — e.g. ``code-reviewer`` on private
+    repos such as ``work_private`` that ship no fleet pre-PR scripts. Unknown
+    roles fail closed.
+    """
+    if not role:
+        return True
+    from staff.roles import load_roles
+
+    spec = load_roles().get(role)
+    if spec is None:
+        return True
+    if spec.code_read_only:
+        return False
+    if not spec.opens_pr:
+        return False
+    return True
 
 
 def _pre_pr_candidate_commands(worktree: Path, python_executable: str) -> list[tuple[str, list[str]]]:
@@ -471,12 +494,25 @@ def run_worktree_bootstrap_preflight(
 
     pre_pr = resolve_repo_pre_pr_entrypoint(worktree, python_executable=python_executable, run=run)
     if not pre_pr:
+        missing = (
+            "no runnable repository pre-PR entry point (probed scripts/pre_pr.py, "
+            "shared_scripts/pre_pr.py, scripts/verify_merge_gates.py and scripts/agent-check)"
+        )
+        if not role_requires_pre_pr_entrypoint(role):
+            log.warning(
+                "pre-PR scripts missing in %s; continuing because role %s does not open PRs",
+                worktree,
+                role,
+            )
+            return WorktreeBootstrapPreflight(
+                ok=True,
+                python_executable=target_python,
+                venv_dir=venv_dir,
+                pre_pr_advisory=f"{missing}; optional for role {role} (no open_pr / code-read-only)",
+            )
         return WorktreeBootstrapPreflight(
             ok=False,
-            attention=(
-                "no runnable repository pre-PR entry point (probed scripts/pre_pr.py, "
-                "shared_scripts/pre_pr.py, scripts/verify_merge_gates.py and scripts/agent-check)"
-            ),
+            attention=missing,
             python_executable=target_python,
             venv_dir=venv_dir,
             failure_class="environment_error",

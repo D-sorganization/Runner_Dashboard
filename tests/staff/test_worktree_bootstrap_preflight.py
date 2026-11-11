@@ -608,7 +608,14 @@ def test_resolve_pre_pr_entrypoint_falls_back_when_module_import_missing(tmp_pat
 
 
 @pytest.mark.unit
-def test_bootstrap_preflight_pre_pr_missing_is_non_retryable_environment_error(tmp_path: Path) -> None:
+def test_bootstrap_preflight_pre_pr_missing_is_non_retryable_environment_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "staff.runner_ops_worktree_bootstrap.role_requires_pre_pr_entrypoint",
+        lambda _role: True,
+    )
+
     def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
             return _cp(command, 0, "3.11\n")
@@ -618,6 +625,7 @@ def test_bootstrap_preflight_pre_pr_missing_is_non_retryable_environment_error(t
 
     result = runner_ops.run_worktree_bootstrap_preflight(
         tmp_path,
+        role="issue-remediator",
         run=fake_run,
         which=lambda name: "python3.11" if name == "python3.11" else None,
     )
@@ -626,3 +634,57 @@ def test_bootstrap_preflight_pre_pr_missing_is_non_retryable_environment_error(t
     assert result.failure_class == "environment_error"
     assert result.retryable is False
     assert "shared_scripts" in result.remediation
+
+
+@pytest.mark.unit
+def test_bootstrap_preflight_optional_pre_pr_for_non_open_pr_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "staff.runner_ops_worktree_bootstrap.role_requires_pre_pr_entrypoint",
+        lambda role: role == "issue-remediator",
+    )
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:3] == ["python3.11", "-c", runner_ops._PYTHON_VERSION_SNIPPET]:
+            return _cp(command, 0, "3.11\n")
+        if command[:3] == ["python3.11", "-m", "pytest"] and "--version" in command:
+            return _cp(command, 0, "pytest 8.4.0")
+        raise AssertionError(f"unexpected command: {command}")
+
+    result = runner_ops.run_worktree_bootstrap_preflight(
+        tmp_path,
+        role="code-reviewer",
+        run=fake_run,
+        which=lambda name: "python3.11" if name == "python3.11" else None,
+    )
+
+    assert result.ok is True
+    assert result.pre_pr_entrypoint == ""
+    assert "optional" in result.pre_pr_advisory
+    assert "code-reviewer" in result.pre_pr_advisory
+
+
+@pytest.mark.unit
+def test_role_requires_pre_pr_entrypoint_honors_open_pr_and_code_read_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from staff.role_spec import RoleSpec
+
+    roster = {
+        "code-reviewer": RoleSpec(name="code-reviewer", title="CR", permissions={"open_pr": False, "lease": False}),
+        "issue-remediator": RoleSpec(
+            name="issue-remediator", title="IR", permissions={"open_pr": True, "push_branch": True}
+        ),
+        "research-scout": RoleSpec(
+            name="research-scout", title="RS", permissions={"open_pr": False, "code_read_only": True}
+        ),
+    }
+    monkeypatch.setattr("staff.roles.load_roles", lambda: roster)
+
+    from staff.runner_ops_worktree_bootstrap import role_requires_pre_pr_entrypoint
+
+    assert role_requires_pre_pr_entrypoint("code-reviewer") is False
+    assert role_requires_pre_pr_entrypoint("issue-remediator") is True
+    assert role_requires_pre_pr_entrypoint("research-scout") is False
+    assert role_requires_pre_pr_entrypoint("unknown-role") is True
