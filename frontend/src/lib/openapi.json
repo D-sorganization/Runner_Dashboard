@@ -23682,6 +23682,65 @@
         "tags": ["fleet-state-audit"]
       }
     },
+    "/api/v1/kanban/columns/waiting-on-dieter": {
+      "get": {
+        "description": "Read-only Waiting-on-Dieter column from holds, owner labels, and pending approvals.",
+        "operationId": "get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Waiting On Dieter Column Api V1 Kanban Columns Waiting On Dieter Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Waiting On Dieter Column",
+        "tags": ["kanban"]
+      }
+    },
     "/api/v1/library/browse": {
       "get": {
         "operationId": "library_browse_route_api_v1_library_browse_get",

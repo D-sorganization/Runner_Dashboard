@@ -37,7 +37,7 @@ Ingestion (#4319–#4321) assembles a `KanbanWorkItemSnapshot` per card:
 | Reviews | `KanbanReviewsSnapshot` | GitHub review events on PR |
 | Auto-merge | `KanbanAutoMergeSnapshot` | GitHub `auto_merge` / merge queue |
 | Claim / lease | `KanbanClaimSnapshot` | RM lease scripts / coordination API |
-| Owner wait | `KanbanOwnerWaitSnapshot` | Holds list, issue labels, staff approvals |
+| Owner wait | `KanbanOwnerWaitSnapshot` | Holds list, issue labels, staff approvals (`backend/kanban_owner_wait.py`, #4321) |
 | Staff run | `KanbanStaffRunSnapshot` | Staff runs linked to the issue |
 
 Each sub-record carries `available`, optional `degraded`, and URLs for source

@@ -6101,6 +6101,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/kanban/columns/waiting-on-dieter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Waiting On Dieter Column
+         * @description Read-only Waiting-on-Dieter column from holds, owner labels, and pending approvals.
+         */
+        get: operations["get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/browse": {
         parameters: {
             query?: never;
@@ -22892,6 +22912,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
