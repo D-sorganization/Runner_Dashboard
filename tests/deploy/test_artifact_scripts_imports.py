@@ -51,7 +51,7 @@ def test_backend_scripts_import_modules_exist_in_repo() -> None:
 def _stage_minimal_artifact(stage: Path, *, include_automerge: bool = True) -> None:
     """Stage backend/ + scripts/ the way the packager does (without npm/wheels)."""
     stage.mkdir(parents=True, exist_ok=True)
-    for sub in ("backend", "scripts"):
+    for sub in ("backend", "scripts", "shared_scripts"):
         dest = stage / sub
         src = REPO_ROOT / sub
         if shutil.which("rsync"):
