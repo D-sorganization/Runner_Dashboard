@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from coordination.merge_shepherd_exact_head import HeadReviewPass
+from coordination.merge_shepherd_exact_head import collect_review_passes_from_store
 from coordination.merge_shepherd_pass import (
     PassConfig,
     holds_gate_failed_payload,
@@ -14,8 +15,10 @@ from coordination.merge_shepherd_pass import (
     pre_filter_skip_reason,
     resolve_hub_holds_policy,
     resolve_live_arming,
+    resolve_merge_shepherd_review_store,
     run_merge_shepherd_pass,
 )
+from staff.store import RunRecord, RunStore
 
 
 def _review_pass(pr: int, head: str) -> HeadReviewPass:
@@ -25,6 +28,46 @@ def _review_pass(pr: int, head: str) -> HeadReviewPass:
         verdict="approve",
         recorded_at="2026-11-10T12:00:00+00:00",
     )
+
+
+def test_resolve_merge_shepherd_review_store_uses_runstore_path_not_repo_checkout(
+    tmp_path, monkeypatch
+) -> None:
+    repo_root = tmp_path / "checkout"
+    repo_root.mkdir()
+    db_path = tmp_path / "config" / "staff_runs.sqlite3"
+    monkeypatch.setenv("STAFF_RUNS_DB", str(db_path))
+
+    store = RunStore(path=db_path)
+    store.create_run(
+        RunRecord(
+            id="review-run-1",
+            role="code-reviewer",
+            provider="openai",
+            model="gpt-test",
+            machine="hub",
+            repo="Runner_Dashboard",
+            target_kind="pr",
+            target_ref="42",
+            prompt="review",
+            status="succeeded",
+            outcome="STAFF_RESULT: review approve #42 @0000ab010000",
+            ended_at="2026-11-10T12:00:00+00:00",
+        )
+    )
+
+    repo_only = (
+        repo_root / "data" / "staff_runs.sqlite3",
+        repo_root / "staff_runs.sqlite3",
+    )
+    assert not any(path.is_file() for path in repo_only)
+
+    resolved = resolve_merge_shepherd_review_store(repo_root=repo_root)
+    assert resolved is not None
+    passes = collect_review_passes_from_store(resolved, "Runner_Dashboard")
+    assert len(passes) == 1
+    assert passes[0].pr == 42
+    assert passes[0].head_sha == "0000ab010000"
 
 
 def test_load_skip_list_seeds(tmp_path):

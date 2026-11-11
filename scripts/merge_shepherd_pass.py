@@ -23,6 +23,7 @@ from coordination.merge_shepherd_pass import (  # noqa: E402
     holds_gate_failed_payload,
     resolve_hub_holds_policy,
     resolve_live_arming,
+    resolve_merge_shepherd_review_store,
     run_merge_shepherd_pass,
     summary_to_json,
 )
@@ -163,24 +164,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _SCRIPT_DIR = str(Path(__file__).resolve().parent)
 
-    def _review_store(repo_root: Path):
-        from staff.store import RunStore  # noqa: PLC0415
-
-        candidates = (
-            repo_root / "data" / "staff_runs.sqlite3",
-            repo_root / "staff_runs.sqlite3",
-        )
-        for path in candidates:
-            if path.is_file():
-                return RunStore(path=path)
-        return None
-
+    repo_root = args.repo_root.resolve()
     config = PassConfig(
         live=live,
         dry_run=not live,
-        repo_root=args.repo_root.resolve(),
+        repo_root=repo_root,
         hold_reason=_hold_reason,
-        review_store=_review_store(args.repo_root.resolve()),
+        review_store=resolve_merge_shepherd_review_store(repo_root=repo_root),
     )
     holds, hold_error = _resolve_hub_holds()
     if hold_error:

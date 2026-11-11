@@ -131,6 +131,17 @@ def default_skip_path(repo_root: Path) -> Path:
     return repo_root / "config" / "merge_shepherd_skip.json"
 
 
+def resolve_merge_shepherd_review_store(*, repo_root: Path) -> object | None:
+    """Open the staff run store at the same path the hub ``RunStore`` uses."""
+    from staff.store import RunStore, default_db_path
+
+    _ = repo_root  # skip list and arming still key off the checkout; reviews live in config dir
+    path = default_db_path()
+    if not path.is_file():
+        return None
+    return RunStore(path=path)
+
+
 def load_skip_list(path: Path) -> frozenset[tuple[str, int]]:
     if not path.is_file():
         return frozenset()
