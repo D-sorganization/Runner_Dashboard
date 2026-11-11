@@ -2331,6 +2331,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/hosts/{host}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Host Health
+         * @description Return green/amber/red health gauge and capacity context for one host.
+         */
+        get: operations["get_host_health_api_fleet_hosts__host__health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/identity": {
         parameters: {
             query?: never;
@@ -8007,6 +8027,29 @@ export interface paths {
          * @description Trigger a manual retention archival sweep across all staff entity stores.
          */
         post: operations["trigger_retention_sweep_api_v1_staff_retention_sweep_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/review/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Review Metrics
+         * @description Queue depth, verdict mix, provider availability and 429s for the review flow.
+         *
+         *     Deferred by design: review latency p50/p90 and reviewer disagreement rate need
+         *     the per-head-SHA verdict contract from #4249, which does not exist yet.
+         */
+        get: operations["read_review_metrics_api_v1_staff_review_metrics_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -17242,6 +17285,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_host_health_api_fleet_hosts__host__health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -26503,6 +26579,39 @@ export interface operations {
         parameters: {
             query?: {
                 retention_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_review_metrics_api_v1_staff_review_metrics_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
             };
             header?: never;
             path?: never;

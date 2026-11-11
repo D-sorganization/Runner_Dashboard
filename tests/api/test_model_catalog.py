@@ -66,9 +66,12 @@ def test_fresh_hub_catalog_and_registry_expose_current_models(client: TestClient
         assert len(body["providers"][pid]) > 0
     assert "gpt-6.1-terra" in body["providers"]["codex"]
     assert "claude-opus-5-5" in body["providers"]["claude"]
+    assert "claude-fable-5-2" in body["providers"]["claude"]
+    assert "claude-fable-5-1" in body["providers"]["claude"]
     by_dash = {p["dashboard_id"]: p for p in client.get("/api/providers/registry").json()["providers"]}
     assert "gpt-6.1-terra" in by_dash["codex_cli"]["models"]
     assert "claude-opus-5-5" in by_dash["claude_code_cli"]["models"]
+    assert "claude-fable-5-2" in by_dash["claude_code_cli"]["models"]
 
 
 def test_refresh_updates_catalog_and_dispatch_validator(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

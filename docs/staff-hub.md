@@ -643,6 +643,10 @@ Grok CLI (`grok`) is currently opt-in per role via `providers:` in `staff/roles/
 rather than the default failover chain, pending auth health (#4132) and usage tracking (#4133).
 Per-provider models come from the role's **tier** (`routine` | `standard` | `complex`)
 in `config/staff_model_tiers.json` unless the run or role overrides the model.
+Explicit models must pass staff validation against the live catalog (`GET /api/models/catalog`,
+seeded from each provider CLI; Claude accepts `claude-fable-5-2`, `claude-fable-5-1`,
+`claude-opus-5-5`, and the `haiku` / `sonnet` / `opus` aliases). Board and fleet-decision
+panel seats remain pinned to `claude-fable-5-1` until a dedicated seat cutover issue moves them.
 Roles may **tighten** the order with `retry.failover_chain` (each step must stay in
 `providers`); they cannot widen beyond allowed providers.
 
