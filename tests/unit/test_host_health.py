@@ -17,7 +17,7 @@ def test_build_host_health_gauge_red_when_cpu_hot() -> None:
             "schedule": {"timezone": "UTC", "default_count": 2, "schedules": []},
         },
     }
-    gauge = build_host_health_gauge("DeskComputer", system)
+    gauge = build_host_health_gauge("hub-a", system)
     assert gauge["level"] == "red"
     assert gauge["suggested_action"] is not None
     assert "lower target" in gauge["suggested_action"]
@@ -57,6 +57,6 @@ def test_stub_metrics_provider_falls_back_to_system() -> None:
             "schedule": {"timezone": "UTC", "default_count": 4, "schedules": []},
         },
     }
-    gauge = build_host_health_gauge("OGLaptop", system)
+    gauge = build_host_health_gauge("node-b", system)
     assert gauge["level"] == "green"
     assert gauge["metrics_source"] == "system"

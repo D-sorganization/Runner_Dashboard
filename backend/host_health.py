@@ -11,7 +11,7 @@ from host_metrics import get_host_metrics_provider
 
 HealthLevel = Literal["green", "amber", "red"]
 
-_DEFAULT_CAPS = {"deskcomputer": 6, "oglaptop": 6, "controltower": 8}
+_DEFAULT_CAPS = {"huba": 6, "nodeb": 6, "nodea": 8}
 
 
 def _default_cap(host: str) -> int:
