@@ -56,6 +56,14 @@ def automatic_retry_admission(runner: Any, rec: RunRecord, *, holds: HoldsList |
             store=runner.store,
         )
         if block:
-            return False, block
+            if block.startswith("claim_check_unavailable:"):
+                log.warning(
+                    "automatic retry: claim check unavailable for %s#%s (%s); proceeding",
+                    rec.repo,
+                    issue,
+                    block.removeprefix("claim_check_unavailable:").strip(),
+                )
+            else:
+                return False, block
 
     return True, "retry allowed"

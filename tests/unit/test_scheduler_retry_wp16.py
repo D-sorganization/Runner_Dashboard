@@ -13,11 +13,11 @@ from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from staff import roles as roles_mod
 from staff.holds import Hold, HoldsList
 from staff.retry import handle_post_execution_retry
 from staff.retry_admission import automatic_retry_admission
 from staff.retry_policy import compute_backoff, next_fallback_provider
-from staff import roles as roles_mod
 from staff.roles import RoleSpec
 from staff.runner import RunRequest
 from staff.scheduler import StaffScheduler
@@ -165,6 +165,33 @@ def test_automatic_retry_admission_respects_hold(tmp_path: Path) -> None:
     allowed, reason = automatic_retry_admission(runner, rec, holds=holds)
     assert allowed is False
     assert reason.startswith("hold:")
+
+
+@pytest.mark.unit
+def test_automatic_retry_admission_proceeds_when_claim_check_unavailable(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "s2.sqlite3")
+    runner = MagicMock()
+    runner.store = store
+    runner.roles.return_value = {"r": RoleSpec(name="r", title="R")}
+    rec = RunRecord(
+        id="run-1",
+        role="r",
+        provider="codex",
+        model=None,
+        machine="test",
+        repo="org/repo",
+        target_kind="issue",
+        target_ref="#99",
+        prompt="fix",
+        status="failed",
+    )
+    with patch(
+        "staff.claim_guard.scheduler_blocker",
+        return_value="claim_check_unavailable: gh offline",
+    ):
+        allowed, reason = automatic_retry_admission(runner, rec)
+    assert allowed is True
+    assert reason == "retry allowed"
 
 
 @pytest.mark.unit
@@ -344,8 +371,13 @@ def test_watchdog_waits_for_orphan_then_expires(tmp_path: Path) -> None:
     )
     store.create_run(rec)
 
+    sleeper = (
+        "import subprocess,sys,time;"
+        "c=subprocess.Popen([sys.executable,'-c','import time;time.sleep(5)']);"
+        "time.sleep(0.2)"
+    )
     parent = subprocess.Popen(
-        [sys.executable, "-c", "import subprocess,sys,time;c=subprocess.Popen([sys.executable,'-c','import time;time.sleep(5)']);time.sleep(0.2)"],
+        [sys.executable, "-c", sleeper],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
