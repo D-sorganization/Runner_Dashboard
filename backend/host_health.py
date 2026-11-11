@@ -7,7 +7,7 @@ from datetime import datetime, time
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from host_metrics import get_host_metrics_provider
+from host_metrics import get_host_metrics_provider, normalize_host_key
 
 HealthLevel = Literal["green", "amber", "red"]
 
@@ -15,12 +15,8 @@ _DEFAULT_CAPS = {"huba": 6, "nodeb": 6, "nodea": 8}
 
 
 def _default_cap(host: str) -> int:
-    token = _normalize_host(host)
+    token = normalize_host_key(host)
     return _DEFAULT_CAPS.get(token, 16)
-
-
-def _normalize_host(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 def _metric_percent(system: dict[str, Any], key: str, nested: str | None = None) -> float | None:

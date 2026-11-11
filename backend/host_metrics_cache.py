@@ -15,7 +15,6 @@ import json
 import logging
 import os
 import platform
-import re
 import shutil
 import time
 from dataclasses import dataclass
@@ -24,6 +23,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from dashboard_config import HOSTNAME, RUNNER_BASE_DIR
+from host_metrics import normalize_host_key
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +45,6 @@ def _default_state_dir() -> Path:
 def cache_file_path() -> Path:
     """Return the canonical host-metrics cache path for this node."""
     return _default_state_dir() / CACHE_BASENAME
-
-
-def _normalize_host(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 def _parse_sampled_at(raw: object) -> datetime | None:
@@ -345,8 +341,8 @@ class CachedHostMetricsProvider:
     """#4309 provider wired from ``host_metrics.get_host_metrics_provider``."""
 
     def read_cached(self, host: str) -> dict[str, Any] | None:
-        local = _normalize_host(HOSTNAME or platform.node())
-        if _normalize_host(host) != local:
+        local = normalize_host_key(HOSTNAME or platform.node())
+        if normalize_host_key(host) != local:
             return None
         result = read_cache()
         if not result.is_usable:

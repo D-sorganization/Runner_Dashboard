@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Protocol, runtime_checkable
+
+
+def normalize_host_key(value: str) -> str:
+    """Stable host token for cache lookup and gauge caps (#4309 / #4310)."""
+    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 @runtime_checkable
