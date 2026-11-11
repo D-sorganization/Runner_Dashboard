@@ -14,7 +14,7 @@ from shared_scripts.independent_exact_head_review import (
 
 _AUTHOR = "agy-desk-001"
 _REVIEWER = "antigravity-Brick-20261107-brick001"
-_HEAD = "abc123def456abc123def456abc123def456abcd"
+_HEAD = "cccccccccccccccccccccccccccccccccccccccc"
 _OLD_HEAD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 
