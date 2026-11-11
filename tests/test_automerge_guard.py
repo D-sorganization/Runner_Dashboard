@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -1279,6 +1280,71 @@ def test_in_flight_fix_needed_after_merge_put_blocks_before_merged(
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
     assert result.merged is False
     assert "in-flight verdict" in result.detail or "refused" in result.detail
+
+
+def test_in_flight_hold_after_merge_already_completed_is_nonzero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    fake = CleanGh(queue=False, merged="true", labels=["agent-model:agy-desk-001"])
+    fake.issue_comments = [_independent_pass_comment()]
+
+    real_disarm = automerge_guard.disarm_if_held
+    calls = {"n": 0}
+
+    def _clear_verdict() -> automerge_guard.HoldVerdict:
+        return automerge_guard.HoldVerdict(
+            False,
+            head_sha=HEAD_SHA,
+            base_ref="main",
+            node_id="PR_node7",
+            head_ref="feat/x",
+            head_in_base_repo=True,
+        )
+
+    def flaky_disarm(repo: str, pr: int, *, runner: object | None = None) -> automerge_guard.HoldVerdict:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return _clear_verdict()
+        fake.issue_comments = [_independent_fix_needed_comment()]
+        return real_disarm(repo, pr, runner=fake)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(automerge_guard, "disarm_if_held", flaky_disarm)
+    with caplog.at_level(logging.ERROR):
+        result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is True
+    assert result.in_flight_hold_after_completion is True
+    assert "IN-FLIGHT HOLD" in result.detail
+    assert any("IN-FLIGHT HOLD" in rec.message for rec in caplog.records)
+
+
+def test_arm_cli_in_flight_hold_after_completion_exits_five(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hold = automerge_guard.HoldVerdict(True, ("independent exact-head review is FIX-NEEDED at abc",))
+    monkeypatch.setattr(
+        automerge_guard,
+        "arm_auto_merge",
+        lambda *a, **k: automerge_guard.ArmResult(
+            False,
+            hold,
+            "IN-FLIGHT HOLD: merge completed but independent exact-head review is FIX-NEEDED at abc",
+            merged=True,
+            in_flight_hold_after_completion=True,
+        ),
+    )
+    code = automerge_guard._arm_cli(
+        "o/r",
+        7,
+        strategy="squash",
+        delete_branch=False,
+        arm_tier="agent",
+        dispatch_kind="",
+        repo_root=".",
+    )
+    assert code == automerge_guard.EXIT_IN_FLIGHT_HOLD
+    out = capsys.readouterr().out
+    assert "IN-FLIGHT HOLD" in out
 
 
 def test_malformed_head_field_yields_a_verdict_not_a_crash() -> None:

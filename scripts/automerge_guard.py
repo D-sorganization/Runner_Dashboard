@@ -86,6 +86,9 @@ EXIT_ARM_MAY_BE_ON = 3
 #: Exit code when the armed-PR WIP cap refused ``--arm`` (RD-CI-005, enforce mode).
 EXIT_ARM_CAP_REFUSED = 4
 
+#: Hold appeared during merge/enqueue after the API call succeeded (#4315).
+EXIT_IN_FLIGHT_HOLD = 5
+
 
 def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
     """Run ``cmd`` and capture output. Resolved via PATH so Windows finds gh.exe."""
@@ -216,6 +219,8 @@ class ArmResult:
     #: True only when the PR was already clean, arming was refused, and the
     #: guard merged it directly (#1968) and verified ``merged`` is true.
     merged: bool = False
+    #: True when a hold appeared after merge/enqueue completed; still a failure (#4315).
+    in_flight_hold_after_completion: bool = False
 
     def reason(self) -> str:
         """Why the PR is not armed: ``detail`` when set, else the hold verdict."""
@@ -670,7 +675,18 @@ def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, r
         return ArmResult(False, verdict, f"{hint} (enqueue failed: {err})")
     hold_after = disarm_if_held(repo, pr, runner=run)
     if hold_after.held:
-        return ArmResult(False, hold_after, f"enqueue refused after in-flight verdict: {hold_after.describe()}")
+        logger.error(
+            "IN-FLIGHT HOLD: enqueue of %s#%s completed but %s",
+            repo,
+            pr,
+            hold_after.describe(),
+        )
+        return ArmResult(
+            False,
+            hold_after,
+            f"IN-FLIGHT HOLD: enqueue completed but {hold_after.describe()}",
+            in_flight_hold_after_completion=True,
+        )
     logger.info("Enqueued clean %s#%s in the merge queue.", repo, pr)
     return ArmResult(True, verdict, "enqueued in merge queue (PR was already clean)")
 
@@ -726,7 +742,7 @@ def _merge_clean_pr(
         if not merged:
             return ArmResult(False, hold_after, f"merge refused after in-flight verdict: {hold_after.describe()}")
         logger.error(
-            "Hold appeared during merge of %s#%s (%s) but PR already merged",
+            "IN-FLIGHT HOLD: merge of %s#%s completed but %s",
             repo,
             pr,
             hold_after.describe(),
@@ -734,8 +750,9 @@ def _merge_clean_pr(
         return ArmResult(
             False,
             hold_after,
-            f"merge completed but {hold_after.describe()}",
+            f"IN-FLIGHT HOLD: merge completed but {hold_after.describe()}",
             merged=True,
+            in_flight_hold_after_completion=True,
         )
     check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
     if check.returncode != 0 or check.stdout.strip().lower() != "true":
@@ -952,6 +969,9 @@ def _arm_cli(
             cap_store.confirm_reservation(cap_token)
         else:
             cap_store.release_reservation(cap_token)
+    if result.in_flight_hold_after_completion:
+        _emit(f"IN-FLIGHT HOLD {repo}#{pr}: {result.reason()}")
+        return EXIT_IN_FLIGHT_HOLD
     if result.armed:
         _emit(f"armed {repo}#{pr}")
         return 0
@@ -971,7 +991,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     Without ``--arm`` this only reports. Exit code 0 means "safe to arm", 1
     means held (or, with ``--arm``, that arming did not happen), 2 means
     ``--require-app-token`` refused a non-App token (GOV-1, #1917), 3 means
-    an unverified REST arm could not be revoked (auto-merge may still be ON).
+    an unverified REST arm could not be revoked (auto-merge may still be ON), 4
+    is the armed-PR cap refusal, and 5 means a hold appeared after merge or
+    enqueue completed (#4315).
     """
     import argparse
 
