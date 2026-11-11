@@ -726,7 +726,12 @@ async def dispatch_to_issues(
         )
         for repo, num in filtered_targets
     ]
-    results = await asyncio.gather(*tasks)
+    try:
+        results = await asyncio.gather(*tasks)
+    except BaseException:
+        for session_id in overlap_sessions.values():
+            dispatch_queue_manager.release_session(session_id, outcome="dispatch_failed")
+        raise
 
     # ── Collate ───────────────────────────────────────────────────────────────
     envelope_ids: list[str] = []

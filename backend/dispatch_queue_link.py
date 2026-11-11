@@ -41,3 +41,9 @@ def reset_dispatch_queue_link_state() -> None:
     """Reset overlap sessions and run bindings (pytest isolation only)."""
     _run_sessions.clear()
     dispatch_queue_manager.reset_state_for_tests()
+
+
+def release_unbound_overlap_session(session_id: str | None, *, outcome: str, bound_run_id: str | None = None) -> None:
+    """Release a path-overlap session that never bound to a staff run."""
+    if session_id and not bound_run_id:
+        dispatch_queue_manager.release_session(session_id, outcome=outcome)

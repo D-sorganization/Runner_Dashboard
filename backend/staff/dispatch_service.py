@@ -293,228 +293,240 @@ async def dispatch_staff_run(
             if attempt.session is not None:
                 overlap_session_id = attempt.session.session_id
 
-    runner = get_runner()
-    spec = runner.roles().get(cmd.role)
-    resolved_target: str | None = None
-    decision = None
-    if spec is not None and cmd.repo and consolidation.threshold(spec) is not None:
-        decision = await asyncio.to_thread(consolidation.decide, spec, cmd.repo)  # #1213: gh + capacity I/O
+    overlap_bound_run: list[str | None] = [None]
+    try:
+        runner = get_runner()
+        spec = runner.roles().get(cmd.role)
+        resolved_target: str | None = None
+        decision = None
+        if spec is not None and cmd.repo and consolidation.threshold(spec) is not None:
+            decision = await asyncio.to_thread(consolidation.decide, spec, cmd.repo)  # #1213: gh + capacity I/O
 
-    if cmd.pr and (cmd.auto_fix or cmd.pr_lifecycle == "subscribed"):
-        from pr_subscription import evaluate_pr_subscription
+        if cmd.pr and (cmd.auto_fix or cmd.pr_lifecycle == "subscribed"):
+            from pr_subscription import evaluate_pr_subscription
 
-        sub_decision = evaluate_pr_subscription(
-            is_draft=False,
-            operator_opt_in=cmd.operator_opt_in,
-            wakeups_count=cmd.wakeups_count,
-            max_wakeups=cmd.max_wakeups,
-        )
-        if not sub_decision.allowed:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "code": "pr_subscription_rejected",
-                    "reason": sub_decision.reason,
-                    "handoff_to_rd1": sub_decision.handoff_to_rd1,
-                },
+            sub_decision = evaluate_pr_subscription(
+                is_draft=False,
+                operator_opt_in=cmd.operator_opt_in,
+                wakeups_count=cmd.wakeups_count,
+                max_wakeups=cmd.max_wakeups,
             )
-
-    # Resolve remote and auto targets after origin-side admission policies but before
-    # local planning: only the selected runtime can authoritatively plan its providers.
-    if spec is not None and cmd.machine.strip().lower() != "local":
-        from staff.provider_failover_config import resolve_failover_chain
-
-        configured_chain = resolve_failover_chain(spec)
-        target_provider = cmd.provider or (configured_chain[0].provider if configured_chain else "")
-        resolved_target = await _resolve_target(runner, cmd.machine, target_provider, role=spec)
-        if resolved_target != "local":
-            if cmd.model_tier:
+            if not sub_decision.allowed:
                 raise HTTPException(
                     status_code=422,
-                    detail="internal model_tier is supported only for local dispatch",
+                    detail={
+                        "code": "pr_subscription_rejected",
+                        "reason": sub_decision.reason,
+                        "handoff_to_rd1": sub_decision.handoff_to_rd1,
+                    },
                 )
-            check_rate_limit("dispatches", caller)
+
+        # Resolve remote and auto targets after origin-side admission policies but before
+        # local planning: only the selected runtime can authoritatively plan its providers.
+        if spec is not None and cmd.machine.strip().lower() != "local":
+            from staff.provider_failover_config import resolve_failover_chain
+
+            configured_chain = resolve_failover_chain(spec)
+            target_provider = cmd.provider or (configured_chain[0].provider if configured_chain else "")
+            resolved_target = await _resolve_target(runner, cmd.machine, target_provider, role=spec)
+            if resolved_target != "local":
+                if cmd.model_tier:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="internal model_tier is supported only for local dispatch",
+                    )
+                check_rate_limit("dispatches", caller)
+                origin = cmd.origin_node or runner.machine
+                obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin)
+                return await _forward(resolved_target, cmd, obo_hdr, barb_claim, format_caller(caller))
+
+        req = RunRequest(
+            role=cmd.role,
+            provider=cmd.provider,
+            model=cmd.model,
+            model_tier=cmd.model_tier,
+            repo=cmd.repo,
+            issue=cmd.issue,
+            pr=cmd.pr,
+            prompt=cmd.prompt,
+            machine=cmd.machine,
+            requested_by=cmd.requested_by,
+            on_behalf_of=cmd.on_behalf_of,
+            thread_id=cmd.thread_id,
+            work_item_id=cmd.work_item_id,
+            consolidation=decision,
+            origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
+            pr_lifecycle=cmd.pr_lifecycle,
+            pr_restrictions=cmd.pr_restrictions,
+            head_ref=cmd.head_ref,
+            task_type=cmd.task_type,
+            standards_extra=cmd.standards_extra,
+            requested_skill=cmd.requested_skill,
+            execution_mode=cmd.execution_mode or "local",
+            dispatch_origin=cmd.dispatch_origin,
+            barb_bypass_role_repos=is_barb_seat(caller),
+        )
+        try:
+            plan = runner.plan(req)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
+
+        auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
+        if auth_refusal is not None:
+            raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
+        check_rate_limit("dispatches", caller)
+        target = resolved_target or await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
+        if target != "local":
             origin = cmd.origin_node or runner.machine
             obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin)
-            return await _forward(resolved_target, cmd, obo_hdr, barb_claim, format_caller(caller))
+            return await _forward(target, cmd, obo_hdr, barb_claim, format_caller(caller))
+        if cmd.dry_run:
+            try:
+                record_audit(
+                    action="dispatch",
+                    target=f"role:{plan.role}",
+                    principal=format_caller(caller),
+                    on_behalf_of=cmd.on_behalf_of,
+                    surface=cmd.surface,
+                    thread_id=cmd.thread_id,
+                    outcome="dry_run",
+                    detail={
+                        "repo": plan.repo,
+                        "provider": plan.provider,
+                        "model": plan.model,
+                        "machine": runner.machine,
+                        "dry_run": True,
+                        **(
+                            {"provider_auth_failover": list(plan.provider_auth_skipped)}
+                            if plan.provider_auth_skipped
+                            else {}
+                        ),
+                    },
+                    fail_closed=False,
+                )
+            except AuditError as exc:
+                log.warning("staff: dry-run dispatch audit skipped: %s", exc)
+            return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine, **claim_info}
+        resource_admission.check_dispatch_resource_admission(cmd, caller, machine=target, sampler=sample_dispatch_resources)
+        budget_ok, budget_reason = BudgetGuard(runner.store).can_dispatch(spec, plan.provider)
+        if not budget_ok and not cmd.ignore_budget:
+            raise HTTPException(
+                status_code=429,
+                detail={"code": "budget_exceeded", "message": f"{budget_reason}; resend with ignore_budget to override"},
+            )
+        run_id = cmd.run_id()
+        audit_ctx: dict[str, Any] = {
+            "target": f"role:{plan.role}",
+            "principal": format_caller(caller),
+            "on_behalf_of": cmd.on_behalf_of,
+            "surface": cmd.surface,
+            "thread_id": cmd.thread_id,
+            "request_id": run_id,
+            "run_id": run_id,
+        }
+        from dispatch_routing import resolve_model_routing
 
-    req = RunRequest(
-        role=cmd.role,
-        provider=cmd.provider,
-        model=cmd.model,
-        model_tier=cmd.model_tier,
-        repo=cmd.repo,
-        issue=cmd.issue,
-        pr=cmd.pr,
-        prompt=cmd.prompt,
-        machine=cmd.machine,
-        requested_by=cmd.requested_by,
-        on_behalf_of=cmd.on_behalf_of,
-        thread_id=cmd.thread_id,
-        work_item_id=cmd.work_item_id,
-        consolidation=decision,
-        origin_node=cmd.origin_node or (runner.machine if cmd.thread_id else ""),
-        pr_lifecycle=cmd.pr_lifecycle,
-        pr_restrictions=cmd.pr_restrictions,
-        head_ref=cmd.head_ref,
-        task_type=cmd.task_type,
-        standards_extra=cmd.standards_extra,
-        requested_skill=cmd.requested_skill,
-        execution_mode=cmd.execution_mode or "local",
-        dispatch_origin=cmd.dispatch_origin,
-        barb_bypass_role_repos=is_barb_seat(caller),
-    )
-    try:
-        plan = runner.plan(req)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    from staff.provider_dispatch_preflight import refusal_for_provider_auth  # noqa: PLC0415
-
-    auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
-    if auth_refusal is not None:
-        raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
-    check_rate_limit("dispatches", caller)
-    target = resolved_target or await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
-    if target != "local":
-        origin = cmd.origin_node or runner.machine
-        obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin)
-        return await _forward(target, cmd, obo_hdr, barb_claim, format_caller(caller))
-    if cmd.dry_run:
+        routing = resolve_model_routing(labels=(), prompt=cmd.prompt, requested_model=cmd.model or "")
         try:
             record_audit(
                 action="dispatch",
-                target=f"role:{plan.role}",
-                principal=format_caller(caller),
-                on_behalf_of=cmd.on_behalf_of,
-                surface=cmd.surface,
-                thread_id=cmd.thread_id,
-                outcome="dry_run",
+                **audit_ctx,
+                outcome="admitted",
                 detail={
                     "repo": plan.repo,
+                    "target_ref": plan.target_ref,
                     "provider": plan.provider,
-                    "model": plan.model,
+                    "tier": routing.tier,
+                    "model": plan.model or routing.model,
+                    "routing_reason": routing.reason,
                     "machine": runner.machine,
-                    "dry_run": True,
-                    **(
-                        {"provider_auth_failover": list(plan.provider_auth_skipped)}
-                        if plan.provider_auth_skipped
-                        else {}
-                    ),
+                    **({"force_duplicate": True} if cmd.force_duplicate else {}),
+                    **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
+                    **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
+                    **({"claim_check": claim_info["claim_check"]} if claim_info else {}),
+                    **({"provider_auth_failover": list(plan.provider_auth_skipped)} if plan.provider_auth_skipped else {}),
                 },
-                fail_closed=False,
+                fail_closed=True,
             )
         except AuditError as exc:
-            log.warning("staff: dry-run dispatch audit skipped: %s", exc)
-        return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine, **claim_info}
-    resource_admission.check_dispatch_resource_admission(cmd, caller, machine=target, sampler=sample_dispatch_resources)
-    budget_ok, budget_reason = BudgetGuard(runner.store).can_dispatch(spec, plan.provider)
-    if not budget_ok and not cmd.ignore_budget:
-        raise HTTPException(
-            status_code=429,
-            detail={"code": "budget_exceeded", "message": f"{budget_reason}; resend with ignore_budget to override"},
-        )
-    run_id = cmd.run_id()
-    audit_ctx: dict[str, Any] = {
-        "target": f"role:{plan.role}",
-        "principal": format_caller(caller),
-        "on_behalf_of": cmd.on_behalf_of,
-        "surface": cmd.surface,
-        "thread_id": cmd.thread_id,
-        "request_id": run_id,
-        "run_id": run_id,
-    }
-    from dispatch_routing import resolve_model_routing
-
-    routing = resolve_model_routing(labels=(), prompt=cmd.prompt, requested_model=cmd.model or "")
-    try:
-        record_audit(
-            action="dispatch",
-            **audit_ctx,
-            outcome="admitted",
-            detail={
-                "repo": plan.repo,
-                "target_ref": plan.target_ref,
-                "provider": plan.provider,
-                "tier": routing.tier,
-                "model": plan.model or routing.model,
-                "routing_reason": routing.reason,
-                "machine": runner.machine,
-                **({"force_duplicate": True} if cmd.force_duplicate else {}),
-                **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
-                **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
-                **({"claim_check": claim_info["claim_check"]} if claim_info else {}),
-                **({"provider_auth_failover": list(plan.provider_auth_skipped)} if plan.provider_auth_skipped else {}),
-            },
-            fail_closed=True,
-        )
-    except AuditError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
-        ) from exc
-    # Barb-authored dispatch: the lease check and the run admission share one critical section, so a
-    # takeover cannot land between them (#2734). ``admit`` is synchronous; never await inside the fence.
-    try:
-        with barb_write_fence(
-            barb_claim,
-            surface=cmd.surface,
-            target=f"role:{plan.role}",
-            principal=format_caller(caller),
-            audit=audit_ctx,
-        ):
-            rec, plan, created = runner.admit(req, run_id=run_id)
-    except Exception:
-        if overlap_session_id:
-            from dispatch_routing import dispatch_queue_manager as _dqm  # noqa: PLC0415
-
-            _dqm.release_session(overlap_session_id, outcome="admission_failed")
-        raise
-    if overlap_session_id and created:
-        from dispatch_queue_link import bind_run_session  # noqa: PLC0415
-
-        bind_run_session(rec.id, overlap_session_id)
-    auth_skipped = getattr(plan, "provider_auth_skipped", None)
-    if created and auth_skipped:
-        from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
-
-        for row in auth_skipped:
-            append_chain_attempt(
-                runner.store,
-                rec.id,
-                provider=str(row.get("provider") or ""),
-                model=None,
-                outcome=str(row.get("outcome") or "auth_expired"),
-            )
-    if created and cmd.issue and cmd.repo and claim_info.get("claim_check") != "unavailable":
-        applied = await claim_guard.apply_claim(rec.id, cmd.repo, cmd.issue, rec.role)
-        if applied:
-            runner.store.append_event(rec.id, "claim_label", f"{claim_guard.full_repo(cmd.repo)}#{cmd.issue} {applied}")
-    if created:
-        from staff.routing_shadow import record_for_run  # noqa: PLC0415
-
-        record_for_run(runner.store, rec)  # shadow advice only (STAFF_ROUTING_MODE=shadow); never reroutes
-        try:
-            runner.launch(rec, plan)
-        except Exception as exc:
-            from dispatch_queue_link import release_run_session  # noqa: PLC0415
-
-            release_run_session(rec.id, outcome="launch_failed")
-            _record_launch_failure(runner, rec.id, exc, audit_ctx)
             raise HTTPException(
                 status_code=503,
-                detail={"code": "launch_failed", "message": f"worker did not start: {exc}", "run_id": rec.id},
+                detail={"code": "audit_unavailable", "message": str(exc), "retryable": True},
             ) from exc
-    log.info(
-        "staff: dispatched %s role=%s provider=%s repo=%s target=%s by %s",
-        rec.id,
-        rec.role,
-        rec.provider,
-        rec.repo,
-        rec.target_ref,
-        cmd.requested_by,
-    )
-    return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine, **claim_info}
+        # Barb-authored dispatch: the lease check and the run admission share one critical section, so a
+        # takeover cannot land between them (#2734). ``admit`` is synchronous; never await inside the fence.
+        try:
+            with barb_write_fence(
+                barb_claim,
+                surface=cmd.surface,
+                target=f"role:{plan.role}",
+                principal=format_caller(caller),
+                audit=audit_ctx,
+            ):
+                rec, plan, created = runner.admit(req, run_id=run_id)
+        except Exception:
+            if overlap_session_id:
+                from dispatch_routing import dispatch_queue_manager as _dqm  # noqa: PLC0415
 
+                _dqm.release_session(overlap_session_id, outcome="admission_failed")
+            raise
+        if overlap_session_id and created:
+            from dispatch_queue_link import bind_run_session  # noqa: PLC0415
+
+            bind_run_session(rec.id, overlap_session_id)
+            overlap_bound_run[0] = rec.id
+        auth_skipped = getattr(plan, "provider_auth_skipped", None)
+        if created and auth_skipped:
+            from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
+
+            for row in auth_skipped:
+                append_chain_attempt(
+                    runner.store,
+                    rec.id,
+                    provider=str(row.get("provider") or ""),
+                    model=None,
+                    outcome=str(row.get("outcome") or "auth_expired"),
+                )
+        if created and cmd.issue and cmd.repo and claim_info.get("claim_check") != "unavailable":
+            applied = await claim_guard.apply_claim(rec.id, cmd.repo, cmd.issue, rec.role)
+            if applied:
+                runner.store.append_event(rec.id, "claim_label", f"{claim_guard.full_repo(cmd.repo)}#{cmd.issue} {applied}")
+        if created:
+            from staff.routing_shadow import record_for_run  # noqa: PLC0415
+
+            record_for_run(runner.store, rec)  # shadow advice only (STAFF_ROUTING_MODE=shadow); never reroutes
+            try:
+                runner.launch(rec, plan)
+            except Exception as exc:
+                from dispatch_queue_link import release_run_session  # noqa: PLC0415
+
+                release_run_session(rec.id, outcome="launch_failed")
+                _record_launch_failure(runner, rec.id, exc, audit_ctx)
+                raise HTTPException(
+                    status_code=503,
+                    detail={"code": "launch_failed", "message": f"worker did not start: {exc}", "run_id": rec.id},
+                ) from exc
+        log.info(
+            "staff: dispatched %s role=%s provider=%s repo=%s target=%s by %s",
+            rec.id,
+            rec.role,
+            rec.provider,
+            rec.repo,
+            rec.target_ref,
+            cmd.requested_by,
+        )
+        return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine, **claim_info}
+
+
+    finally:
+        from dispatch_queue_link import release_unbound_overlap_session  # noqa: PLC0415
+
+        release_unbound_overlap_session(
+            overlap_session_id,
+            outcome="dispatch_exited",
+            bound_run_id=overlap_bound_run[0],
+        )
 
 def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, audit_ctx: dict[str, Any]) -> None:
     """Leave an admitted run whose worker never started visibly ``failed`` (#1796)."""

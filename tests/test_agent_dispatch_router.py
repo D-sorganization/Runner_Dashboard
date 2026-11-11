@@ -609,3 +609,45 @@ async def test_expand_epic_children_routes_to_cli_sonnet_with_template_prompt(tm
     entry = json.loads((tmp_path / "issue.json").read_text(encoding="utf-8"))[-1]
     assert entry["tier"] == "cli"
     assert entry["dispatch_kind"] == "expand_epic_children"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_releases_overlap_sessions_when_gather_fails() -> None:
+    """Bulk issue dispatch must release path-overlap sessions when fan-out aborts (#4272)."""
+    from dispatch_routing import dispatch_queue_manager
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=77,
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/dispatch_queue_link.py` for overlap cleanup.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fan-out aborted"),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="fan-out aborted"):
+            await _dispatch_issues(req)
+    assert dispatch_queue_manager.get_active_sessions() == []

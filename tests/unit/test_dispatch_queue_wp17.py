@@ -124,6 +124,17 @@ def test_legacy_fallback_resolves_target_provider_model() -> None:
     assert model_arg == resolved
 
 
+def test_release_unbound_overlap_session_clears_active() -> None:
+    from dispatch_queue_link import release_unbound_overlap_session
+    from dispatch_routing import dispatch_queue_manager
+
+    dispatch_queue_manager.reset_state_for_tests()
+    attempt = dispatch_queue_manager.try_dispatch(repository="org/repo", number=1, prompt="touch `backend/a.py`")
+    assert attempt.session is not None
+    release_unbound_overlap_session(attempt.session.session_id, outcome="dispatch_exited")
+    assert dispatch_queue_manager.get_active_sessions("org/repo") == []
+
+
 def test_staff_session_release_drains_queued_dispatch() -> None:
     manager = DispatchQueueManager()
     d1 = manager.try_dispatch(
