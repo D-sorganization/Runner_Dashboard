@@ -103,13 +103,27 @@ def parse_issue_comments(comments: Sequence[Mapping[str, Any]]) -> list[Independ
     return rows
 
 
+def independent_review_gate_active(
+    reviews: Sequence[IndependentHeadReview],
+    *,
+    author_model: str,
+    labels: Sequence[str] = (),
+) -> bool:
+    """True when an exact-head independent verdict is required before arm or merge."""
+    if reviews:
+        return True
+    if author_model or author_model_from_labels(labels):
+        return True
+    return False
+
+
 def latest_independent_verdict_at_head(
     reviews: Sequence[IndependentHeadReview],
     *,
     head_sha: str,
     author_model: str,
 ) -> tuple[str | None, str]:
-    """Return the latest eligible verdict at ``head_sha``, or (None, detail) when clear."""
+    """Return the latest eligible verdict at ``head_sha``, or (None, detail) when absent."""
     eligible = [
         row
         for row in reviews
@@ -126,25 +140,30 @@ def independent_review_hold_reason(
     *,
     head_sha: str,
     author_model: str,
+    labels: Sequence[str] = (),
     unreadable: bool = False,
 ) -> list[str]:
-    """Signal 5: an independent FIX-NEEDED at the current head blocks arm and merge."""
+    """Signal 5: independent exact-head verdicts at the current head gate arm and merge."""
     if unreadable:
         return ["independent exact-head review state is unreadable"]
     if not head_sha:
         return ["PR head SHA is unknown; independent exact-head review cannot be verified"]
+    if not independent_review_gate_active(reviews, author_model=author_model, labels=labels):
+        return []
     if not author_model:
-        stale_fix = [
+        fix_at_head = [
             row
             for row in reviews
             if row.verdict == "FIX-NEEDED"
             and row.reviewer_model
             and head_sha_matches(row.head_sha, head_sha)
         ]
-        if stale_fix:
+        if fix_at_head:
             return [f"independent exact-head review is FIX-NEEDED at {head_sha}"]
-        return []
-    verdict, _ = latest_independent_verdict_at_head(reviews, head_sha=head_sha, author_model=author_model)
+        return ["independent exact-head verdict at current head cannot be verified (author model unknown)"]
+    verdict, detail = latest_independent_verdict_at_head(reviews, head_sha=head_sha, author_model=author_model)
     if verdict == "FIX-NEEDED":
         return [f"independent exact-head review is FIX-NEEDED at {head_sha}"]
-    return []
+    if verdict == "PASS":
+        return []
+    return [f"no independent exact-head verdict at current head ({detail})"]

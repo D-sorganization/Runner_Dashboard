@@ -5,6 +5,7 @@ from __future__ import annotations
 from shared_scripts.independent_exact_head_review import (
     INDEPENDENT_REVIEW_MARKER,
     head_sha_matches,
+    independent_review_gate_active,
     independent_review_hold_reason,
     latest_independent_verdict_at_head,
     models_are_independent,
@@ -55,6 +56,21 @@ def test_pass_at_head_allows_merge() -> None:
     assert independent_review_hold_reason(reviews, head_sha=_HEAD, author_model=_AUTHOR) == []
 
 
+def test_missing_verdict_at_head_fails_closed_for_agent_prs() -> None:
+    reasons = independent_review_hold_reason(
+        [],
+        head_sha=_HEAD,
+        author_model=_AUTHOR,
+        labels=["agent:cursor"],
+    )
+    assert reasons and "no independent exact-head verdict" in reasons[0]
+
+
+def test_gate_inactive_without_agent_or_reviews() -> None:
+    assert not independent_review_gate_active([], author_model="", labels=())
+    assert independent_review_hold_reason([], head_sha=_HEAD, author_model="", labels=()) == []
+
+
 def test_same_model_review_is_never_accepted() -> None:
     body = (
         f"### {INDEPENDENT_REVIEW_MARKER} (`x` / `{_AUTHOR}`) — Verdict: `FIX-NEEDED @{_HEAD}`"
@@ -67,7 +83,7 @@ def test_same_model_review_is_never_accepted() -> None:
         head_sha=_HEAD,
         author_model=_AUTHOR,
     )
-    assert reasons == []
+    assert reasons and "no independent exact-head verdict" in reasons[0]
 
 
 def test_head_sha_matches_accepts_short_prefix() -> None:

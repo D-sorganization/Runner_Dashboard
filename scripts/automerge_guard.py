@@ -440,16 +440,35 @@ def _independent_review_reasons(run: CommandRunner, repo: str, pr: int, pull: _P
         return ["independent exact-head review state is unreadable"]
     author_model = author_model_from_labels(pull.labels) or author_model_from_commit_messages(messages)
     reviews = parse_issue_comments(comments)
-    return independent_review_hold_reason(reviews, head_sha=pull.head_sha, author_model=author_model)
+    return independent_review_hold_reason(
+        reviews,
+        head_sha=pull.head_sha,
+        author_model=author_model,
+        labels=pull.labels,
+    )
 
 
-def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> None:
+def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
     proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
     if proc.returncode == 0:
         logger.warning("Disarmed auto-merge on %s#%s before a blocked merge.", repo, pr)
-        return
+        return True
     err = proc.stderr.strip() or proc.stdout.strip()
     logger.warning("Could not disarm auto-merge on %s#%s: %s", repo, pr, err)
+    return False
+
+
+def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
+    """Re-check holds on an already-armed PR; disarm when a hold applies (#4315).
+
+    Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
+  ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
+    """
+    run = runner or _default_runner
+    verdict = evaluate_hold(repo, pr, runner=run)
+    if verdict.held:
+        _disarm_auto_merge(repo, pr, run)
+    return verdict
 
 
 def _deletion_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
@@ -629,9 +648,8 @@ def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, r
     )
     if not (verdict.node_id and verdict.head_sha):
         return ArmResult(False, verdict, hint)
-    hold = evaluate_hold(repo, pr, runner=run)
+    hold = disarm_if_held(repo, pr, runner=run)
     if hold.held:
-        _disarm_auto_merge(repo, pr, run)
         return ArmResult(False, hold, f"enqueue refused: {hold.describe()}")
     proc = run(
         [
@@ -650,6 +668,9 @@ def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, r
         err = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Enqueue of clean %s#%s failed: %s", repo, pr, err)
         return ArmResult(False, verdict, f"{hint} (enqueue failed: {err})")
+    hold_after = disarm_if_held(repo, pr, runner=run)
+    if hold_after.held:
+        return ArmResult(False, hold_after, f"enqueue refused after in-flight verdict: {hold_after.describe()}")
     logger.info("Enqueued clean %s#%s in the merge queue.", repo, pr)
     return ArmResult(True, verdict, "enqueued in merge queue (PR was already clean)")
 
@@ -674,10 +695,13 @@ def _merge_clean_pr(
     """
     if not sha:
         return ArmResult(False, verdict, "PR was already clean but the verified head SHA is unknown")
-    hold = evaluate_hold(repo, pr, runner=run)
+    hold = disarm_if_held(repo, pr, runner=run)
     if hold.held:
-        _disarm_auto_merge(repo, pr, run)
         return ArmResult(False, hold, f"merge refused: {hold.describe()}")
+    pinned = _current_head_sha(repo, pr, run) or sha
+    if pinned != sha:
+        disarm_if_held(repo, pr, runner=run)
+        return ArmResult(False, hold, f"merge refused: head moved (expected {sha}, saw {pinned or 'unknown'})")
     proc = run(
         [
             "gh",
@@ -695,6 +719,24 @@ def _merge_clean_pr(
         err = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Direct merge of clean %s#%s refused: %s", repo, pr, err)
         return ArmResult(False, verdict, f"PR was already clean but direct merge refused: {err}")
+    hold_after = disarm_if_held(repo, pr, runner=run)
+    if hold_after.held:
+        check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
+        merged = check.returncode == 0 and check.stdout.strip().lower() == "true"
+        if not merged:
+            return ArmResult(False, hold_after, f"merge refused after in-flight verdict: {hold_after.describe()}")
+        logger.error(
+            "Hold appeared during merge of %s#%s (%s) but PR already merged",
+            repo,
+            pr,
+            hold_after.describe(),
+        )
+        return ArmResult(
+            False,
+            hold_after,
+            f"merge completed but {hold_after.describe()}",
+            merged=True,
+        )
     check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
     if check.returncode != 0 or check.stdout.strip().lower() != "true":
         return ArmResult(
@@ -753,7 +795,7 @@ def arm_auto_merge(
     direct merge.
     """
     run = runner or _default_runner
-    verdict = evaluate_hold(repo, pr, runner=run)
+    verdict = disarm_if_held(repo, pr, runner=run)
     if verdict.held:
         logger.warning("Refusing to arm auto-merge on %s#%s: %s", repo, pr, verdict.describe())
         return ArmResult(False, verdict, "held")
@@ -965,6 +1007,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="",
         help="refuse to arm unless the PR head SHA matches (merge shepherd pin)",
     )
+    parser.add_argument(
+        "--disarm-if-held",
+        action="store_true",
+        help="disarm an already-armed PR when a hold applies (author-bot safety path)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -984,7 +1031,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             match_head_commit=args.match_head_commit,
         )
 
-    verdict = evaluate_hold(args.repo, args.pr)
+    if args.disarm_if_held:
+        verdict = disarm_if_held(args.repo, args.pr)
+    else:
+        verdict = evaluate_hold(args.repo, args.pr)
     _emit(f"{args.repo}#{args.pr}: {verdict.describe()}")
     return 1 if verdict.held else 0
 

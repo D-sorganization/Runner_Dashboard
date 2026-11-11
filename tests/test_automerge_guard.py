@@ -123,6 +123,8 @@ class FakeGh:
             return _completed(json.dumps(payload))
         if "/ccr/auto_merge" in joined:
             return _completed(returncode=0 if self.disarm_on_delete else 1, stderr="disarm failed")
+        if "--jq" in argv and ".head.sha" in joined:
+            return _completed(str(self.pull.get("head", {}).get("sha", "")))
         if "/pulls/" in joined:
             return _completed(json.dumps(self.pull))
         raise AssertionError(f"unexpected gh call: {joined}")
@@ -1171,9 +1173,10 @@ def test_independent_fix_needed_at_head_holds_arm_and_merge() -> None:
 
 def test_independent_pass_at_head_allows_clean_direct_merge() -> None:
     fake = CleanGh(
+        queue=False,
         labels=["agent-model:agy-desk-001"],
         issue_comments=[_independent_pass_comment()],
-        )
+    )
     assert automerge_guard.evaluate_hold("o/r", 7, runner=fake).held is False
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
     assert result.merged is True
@@ -1183,15 +1186,38 @@ def test_independent_pass_at_head_allows_clean_direct_merge() -> None:
 def test_stale_fix_needed_does_not_block_clean_merge_when_pass_at_head() -> None:
     other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     fake = CleanGh(
+        queue=False,
         labels=["agent-model:agy-desk-001"],
         issue_comments=[
             _independent_fix_needed_comment(other),
             _independent_pass_comment(HEAD_SHA),
         ],
-        )
+    )
     assert automerge_guard.evaluate_hold("o/r", 7, runner=fake).held is False
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
     assert result.merged is True
+
+
+def test_arm_disarms_when_hold_at_arm_time(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = CleanGh(
+        labels=["agent-model:agy-desk-001"],
+        issue_comments=[_independent_fix_needed_comment()],
+    )
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.armed is False
+    assert any("DELETE" in call and "/ccr/auto_merge" in " ".join(call) for call in fake.calls)
+
+
+def test_disarm_if_held_author_bot_path_disarms_armed_pr() -> None:
+    fake = FakeGh(
+        labels=["agent-model:agy-desk-001"],
+        issue_comments=[_independent_fix_needed_comment()],
+    )
+    verdict = automerge_guard.disarm_if_held("o/r", 7, runner=fake)
+    assert verdict.held
+    assert any("DELETE" in call and "/ccr/auto_merge" in " ".join(call) for call in fake.calls)
 
 
 def test_merge_path_disarms_when_fix_needed_arrives_before_direct_merge(
@@ -1220,6 +1246,38 @@ def test_merge_path_disarms_when_fix_needed_arrives_before_direct_merge(
     assert result.merged is False
     assert "refused" in result.detail
     assert any("DELETE" in call and "/ccr/auto_merge" in " ".join(call) for call in fake.calls)
+
+
+def test_in_flight_fix_needed_after_merge_put_blocks_before_merged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = CleanGh(queue=False, merged="false", labels=["agent-model:agy-desk-001"])
+    fake.issue_comments = [_independent_pass_comment()]
+
+    real_disarm = automerge_guard.disarm_if_held
+    calls = {"n": 0}
+
+    def _clear_verdict() -> automerge_guard.HoldVerdict:
+        return automerge_guard.HoldVerdict(
+            False,
+            head_sha=HEAD_SHA,
+            base_ref="main",
+            node_id="PR_node7",
+            head_ref="feat/x",
+            head_in_base_repo=True,
+        )
+
+    def flaky_disarm(repo: str, pr: int, *, runner: object | None = None) -> automerge_guard.HoldVerdict:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            return _clear_verdict()
+        fake.issue_comments = [_independent_fix_needed_comment()]
+        return real_disarm(repo, pr, runner=fake)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(automerge_guard, "disarm_if_held", flaky_disarm)
+    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    assert result.merged is False
+    assert "in-flight verdict" in result.detail or "refused" in result.detail
 
 
 def test_malformed_head_field_yields_a_verdict_not_a_crash() -> None:
