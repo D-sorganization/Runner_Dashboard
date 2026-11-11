@@ -2331,6 +2331,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/hosts/{host}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Host Health
+         * @description Return green/amber/red health gauge and capacity context for one host.
+         */
+        get: operations["get_host_health_api_fleet_hosts__host__health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/fleet/identity": {
         parameters: {
             query?: never;
@@ -17262,6 +17282,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_host_health_api_fleet_hosts__host__health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
