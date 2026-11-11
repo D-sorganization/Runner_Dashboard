@@ -106,13 +106,21 @@ def build_host_health_gauge(host: str, system: dict[str, Any]) -> dict[str, Any]
     cap = int(capacity.get("max_runners") or _default_cap(host))
     override = state.get("target_override") if isinstance(state, dict) else None
     metrics = get_host_metrics_provider().read_cached(host)
-    cpu = _metric_percent(metrics or system, "cpu")
-    mem = _metric_percent(metrics or system, "memory")
-    if mem is None and isinstance(system.get("memory"), dict):
-        mem = _metric_percent(system, "memory")
-    if cpu is None and isinstance(system.get("cpu"), dict):
-        cpu = _metric_percent(system, "cpu")
-    level = _pick_level(cpu, mem, busy, online, desired)
+    cache_untrusted = isinstance(metrics, dict) and metrics.get("source") == "cache" and metrics.get("status") != "ok"
+    if cache_untrusted:
+        cpu = None
+        mem = None
+    else:
+        cpu = _metric_percent(metrics or system, "cpu")
+        mem = _metric_percent(metrics or system, "memory")
+        if mem is None and isinstance(system.get("memory"), dict):
+            mem = _metric_percent(system, "memory")
+        if cpu is None and isinstance(system.get("cpu"), dict):
+            cpu = _metric_percent(system, "cpu")
+    if cache_untrusted:
+        level: HealthLevel = "amber"
+    else:
+        level = _pick_level(cpu, mem, busy, online, desired)
     until_hint = (override or {}).get("until") if isinstance(override, dict) else None
     return {
         "level": level,
@@ -123,7 +131,9 @@ def build_host_health_gauge(host: str, system: dict[str, Any]) -> dict[str, Any]
         "cap": cap,
         "cpu_percent": cpu,
         "memory_percent": mem,
-        "metrics_source": "cache" if metrics else "system",
+        "metrics_source": "cache"
+        if isinstance(metrics, dict) and metrics.get("source") == "cache"
+        else ("cache" if metrics else "system"),
         "schedule_window": _active_schedule_window(capacity or {}),
         "target_override": override,
         "suggested_action": _suggested_action(level, desired, cap, until_hint),

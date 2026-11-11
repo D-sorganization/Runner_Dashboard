@@ -288,6 +288,18 @@ def cache_meta_for_api(result: CacheReadResult) -> dict[str, Any]:
     return base
 
 
+def _expects_windows_host_metrics() -> bool:
+    return "microsoft" in platform.uname().release.lower()
+
+
+def _windows_metrics_complete(block: object) -> bool:
+    if not isinstance(block, dict):
+        return False
+    cpu = block.get("cpu_percent")
+    mem = block.get("memory_percent")
+    return isinstance(cpu, (int, float)) and isinstance(mem, (int, float))
+
+
 def windows_host_from_cache() -> dict[str, float] | None:
     """Fresh Windows host CPU/RAM for legacy ``_windows_host_resource_snapshot`` shape."""
     result = read_cache()
@@ -318,6 +330,23 @@ def metrics_view_for_gauge(result: CacheReadResult) -> dict[str, Any] | None:
     windows: dict[str, Any] = raw_windows if isinstance(raw_windows, dict) else {}
     raw_wsl = payload.get("wsl")
     wsl: dict[str, Any] = raw_wsl if isinstance(raw_wsl, dict) else {}
+    windows_ok = _windows_metrics_complete(windows)
+    if _expects_windows_host_metrics() and not windows_ok:
+        return {
+            "status": "degraded",
+            "source": "cache",
+            "sampled_at": payload.get("sampled_at"),
+            "reason": "windows host metrics missing from fresh cache (probe failed or incomplete)",
+            "cpu": {"percent": None},
+            "memory": {
+                "percent": None,
+                "windows_percent": None,
+                "wsl_used_gb": wsl.get("memory_used_gb"),
+                "vmmemwsl_working_set_gb": None,
+            },
+            "wsl": wsl,
+            "disk": payload.get("disk"),
+        }
     cpu = windows.get("cpu_percent")
     mem = windows.get("memory_percent")
     view: dict[str, Any] = {

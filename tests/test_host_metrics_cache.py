@@ -84,6 +84,24 @@ def test_cached_provider_unknown_when_missing(monkeypatch: pytest.MonkeyPatch) -
     assert out.get("status") == "unknown"
 
 
+def test_fresh_cache_without_windows_reports_degraded_on_wsl(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failed Windows probe must not surface as status ok with null CPU/RAM (#4309)."""
+    monkeypatch.setattr(hmc, "cache_file_path", lambda: tmp_path / "host_metrics.json")
+    monkeypatch.setattr(hmc, "_expects_windows_host_metrics", lambda: True)
+    payload = _fresh_payload()
+    payload["windows"] = None
+    hmc.write_cache_atomic(payload)
+    result = hmc.read_cache()
+    assert result.is_usable
+    view = hmc.metrics_view_for_gauge(result)
+    assert view is not None
+    assert view["status"] == "degraded"
+    assert view["cpu"]["percent"] is None
+    assert view["memory"]["percent"] is None
+
+
 def test_scheduler_cache_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hmc, "cache_file_path", lambda: tmp_path / "host_metrics.json")
     hmc.write_cache_atomic(_fresh_payload())
