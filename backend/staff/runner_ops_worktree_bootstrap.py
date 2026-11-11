@@ -237,22 +237,42 @@ def _submodule_update_command(worktree: Path, run: _Run) -> list[str]:
     return command
 
 
-def _bootstrap_submodules(worktree: Path, run: _Run) -> WorktreeBootstrapPreflight | None:
+def _submodule_failure_retryable(detail: str) -> bool:
+    """True when a submodule init error may clear after stale per-worktree lock removal (#4331 follow-up)."""
+    lower = detail.lower()
+    return "index.lock" in lower or ("unable to create" in lower and "file exists" in lower)
+
+
+def _bootstrap_submodules(
+    worktree: Path,
+    run: _Run,
+    *,
+    is_git_process_active: Callable[[Path], bool] | None = None,
+) -> WorktreeBootstrapPreflight | None:
     """Run the submodule update with a bounded per-attempt timeout and one retry.
 
     Returns a failing ``WorktreeBootstrapPreflight`` on timeout/error, or ``None`` on success.
+    Each attempt clears stale locks in the worktree gitdir (including ``worktrees/<id>/modules``).
     """
     command = _submodule_update_command(worktree, run)
     last_timed_out = False
-    for _attempt in range(_SUBMODULE_ATTEMPTS):
+    last_detail = ""
+    for attempt in range(_SUBMODULE_ATTEMPTS):
+        clean_stale_git_locks(worktree, run=run, is_git_process_active=is_git_process_active)
         try:
             submodule = _run_checked(run, worktree, command, timeout=_SUBMODULE_ATTEMPT_TIMEOUT)
         except subprocess.TimeoutExpired:
             last_timed_out = True
             continue
         if submodule.returncode != 0:
-            detail = (submodule.stderr or submodule.stdout or "unknown git submodule error").strip()
-            return WorktreeBootstrapPreflight(ok=False, attention=f"submodule init failed: {detail}")
+            last_detail = (submodule.stderr or submodule.stdout or "unknown git submodule error").strip()
+            if attempt + 1 < _SUBMODULE_ATTEMPTS and _submodule_failure_retryable(last_detail):
+                log.warning(
+                    "submodule update attempt %s failed (lock/checkout); retrying after lock cleanup",
+                    attempt + 1,
+                )
+                continue
+            return WorktreeBootstrapPreflight(ok=False, attention=f"submodule init failed: {last_detail}")
         return None
     if last_timed_out:
         return WorktreeBootstrapPreflight(
@@ -385,7 +405,41 @@ def find_candidate_git_locks(worktree: Path, run: _Run = subprocess.run) -> list
                 for sublock in d.glob(f"**/{lock_name}"):
                     if sublock.is_file():
                         candidates.add(sublock)
+        for lock_name in STALE_LOCK_NAMES:
+            for sublock in d.rglob(lock_name):
+                if sublock.is_file():
+                    candidates.add(sublock)
     return sorted(candidates)
+
+
+def _is_git_worktree_modules_lock(lock: Path) -> bool:
+    """True when ``lock`` sits under ``<commondir>/.git/worktrees/<name>/modules/**``."""
+    try:
+        resolved = lock.resolve()
+    except OSError:
+        resolved = lock
+    for ancestor in resolved.parents:
+        if ancestor.name != "modules":
+            continue
+        wt_name_dir = ancestor.parent
+        worktrees_dir = wt_name_dir.parent
+        if worktrees_dir.name == "worktrees" and worktrees_dir.parent.name == ".git":
+            return True
+        return False
+    return False
+
+
+def _is_under_linked_worktree_gitdir(lock: Path) -> bool:
+    """True when ``lock`` is under ``<commondir>/.git/worktrees/<name>/`` (any file)."""
+    try:
+        resolved = lock.resolve()
+    except OSError:
+        resolved = lock
+    for ancestor in resolved.parents:
+        parent = ancestor.parent
+        if parent.name == "worktrees" and parent.parent.name == ".git":
+            return True
+    return False
 
 
 def _git_activity_paths_for_lock(
@@ -397,17 +451,20 @@ def _git_activity_paths_for_lock(
     """Paths whose live git activity should block removing ``lock`` (#3935 follow-up).
 
     Submodule locks under ``.git/modules/**`` are scoped to the linked main checkout.
-    Worktree gitdir locks are scoped to that worktree. We no longer preserve every lock
-    when *any* git process is active on the main checkout (that left stale UpstreamDrift
-    ``index.lock`` files in place during parallel staff runs).
+    Locks under ``.git/worktrees/<name>/modules/**`` are scoped to the staff worktree
+    only. Path components named ``worktrees`` elsewhere (e.g. ``~/staff-worktrees/``)
+    must not be treated as linked worktree gitdirs.
     """
-    parts = lock.parts
-    if "modules" in parts:
+    if _is_git_worktree_modules_lock(lock):
+        return (worktree,)
+    if "modules" in lock.parts:
         if main_root is not None:
             return (main_root,)
         return (worktree,)
-    if main_root is not None and "worktrees" in parts:
-        return (worktree, main_root)
+    if _is_under_linked_worktree_gitdir(lock):
+        if main_root is not None:
+            return (worktree, main_root)
+        return (worktree,)
     if main_root is not None and main_root != worktree:
         return (worktree, main_root)
     return (worktree,)
@@ -473,7 +530,7 @@ def run_worktree_bootstrap_preflight(
     clean_stale_git_locks(worktree, run=run, is_git_process_active=is_git_process_active)
 
     if (worktree / ".gitmodules").is_file() and not _submodules_already_populated(worktree, run):
-        failure = _bootstrap_submodules(worktree, run)
+        failure = _bootstrap_submodules(worktree, run, is_git_process_active=is_git_process_active)
         if failure is not None:
             return failure
 
