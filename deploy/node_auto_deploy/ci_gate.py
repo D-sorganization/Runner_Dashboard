@@ -13,6 +13,7 @@ from node_auto_deploy.check_runs import (
     run_is_pending,
     validate_check_run_record,
 )
+from node_auto_deploy.required_contexts import load_required_deploy_contexts
 
 DEFAULT_MAIN_HISTORY_LIMIT = 20
 
@@ -46,9 +47,18 @@ def filter_non_blocking_check_runs(check_runs: list[dict[str, Any]]) -> list[dic
     return [r for r in check_runs if str(r.get("name") or "") not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
 
 
-def ci_gate_for_deploy_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+def ci_gate_for_deploy_commit(
+    check_runs: list[dict[str, Any]],
+    expected_sha: str,
+    *,
+    required_contexts: tuple[str, ...] | None = None,
+) -> tuple[bool, str]:
     """Deploy/release gate: required CI checks only (excludes publisher and fleet hygiene jobs)."""
-    return ci_gate_for_commit(filter_non_blocking_check_runs(check_runs), expected_sha)
+    return ci_gate_for_commit(
+        filter_non_blocking_check_runs(check_runs),
+        expected_sha,
+        required_contexts=required_contexts,
+    )
 
 
 def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -58,12 +68,18 @@ def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [r for r in runs if isinstance(r, dict)]
 
 
-def ci_gate_for_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+def ci_gate_for_commit(
+    check_runs: list[dict[str, Any]],
+    expected_sha: str,
+    *,
+    required_contexts: tuple[str, ...] | None = None,
+) -> tuple[bool, str]:
     """Return (passed, detail).
 
     Pre: ``check_runs`` is a list of GitHub check-run dicts; ``expected_sha`` is a git commit id.
-    Post: when passed, every check *name* for that sha has no failing runs and at least one
-    success or skipped run; pending runs fail closed.
+    Post: when passed, every observed check name for that sha is successful (skipped/cancelled fail
+    closed except the documented skip allowlist), duplicate names cannot satisfy a context, every
+    required branch-protection context is present with success, and no checks are still pending.
     """
     if not isinstance(check_runs, list):
         return False, "check_runs must be a list"
@@ -91,6 +107,13 @@ def ci_gate_for_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> t
     by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for run in relevant:
         by_name[run["name"]].append(run)
+
+    required = required_contexts if required_contexts is not None else load_required_deploy_contexts()
+    blocking_required = [name for name in required if name not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
+    missing_required = sorted(name for name in blocking_required if name not in by_name)
+    if missing_required:
+        names = ", ".join(missing_required[:5])
+        return False, f"required checks missing: {names}"
 
     failing_names = sorted(name for name, runs in by_name.items() if not check_name_passes(runs))
     if failing_names:
