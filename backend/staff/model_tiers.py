@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from model_catalog import catalog_models_for_provider
+from model_catalog import DEFAULT_SEED_CATALOG, catalog_models_for_provider, normalize_catalog_provider
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.provider_defaults import default_model_for_provider
 
@@ -35,6 +35,11 @@ def allowed_models_for_provider(provider_id: str, adapter: ProviderAdapter | Non
     """CLI-accepted model ids for validation (fail closed on unknown)."""
     adapter = adapter or ADAPTERS.get(provider_id)
     allowed: set[str] = set(catalog_models_for_provider(provider_id))
+    canonical = normalize_catalog_provider(provider_id)
+    if canonical:
+        # Tier tables are static; always accept the seed catalog even when a live CLI
+        # probe narrows the in-memory cache (common on CI runners).
+        allowed.update(DEFAULT_SEED_CATALOG.get(canonical, ()))
     if adapter is not None:
         allowed.update(adapter.models)
         if adapter.default_model:
