@@ -112,7 +112,7 @@ class _Budget:
 
 
 @contextmanager
-def github_sync_budget_guard(*, max_calls: int):
+def github_sync_budget_guard(*, max_calls: int) -> Iterator[None]:
     """Test helper: fail if sync records more than max_calls GitHub API calls."""
     token_limit = _test_budget_limit.set(max_calls)
     token_calls = _test_budget_calls.set(0)
