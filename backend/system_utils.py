@@ -1227,6 +1227,13 @@ async def get_system_metrics_snapshot(
         except Exception:  # noqa: BLE001 - telemetry must not fail the snapshot
             metrics["fleet_backup_pilot"] = {"enabled": False, "pilot": "node-b"}
 
+        try:
+            from host_health import build_host_health_gauge  # noqa: PLC0415
+
+            metrics["host_health"] = build_host_health_gauge(HOSTNAME or "local", metrics)
+        except Exception:  # noqa: BLE001 - gauge must not break /api/system
+            metrics["host_health"] = {"level": "green", "host": HOSTNAME or "local"}
+
         return metrics
 
     return await asyncio.to_thread(_sync)
