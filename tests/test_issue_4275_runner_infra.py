@@ -14,7 +14,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
 import runner_lease as rl
-from disk_full_cordon import CordonActionKind, CordonPhase, DiskFullCordonState, RunnerSnapshot, plan_cordon_tick
+from disk_full_cordon import (
+    CordonAction,
+    CordonActionKind,
+    CordonPhase,
+    DiskFullCordonState,
+    RunnerSnapshot,
+    plan_cordon_tick,
+)
 from disk_full_cordon_runtime import DEFAULT_CORDON_CLEANUP_TIMEOUT_S, process_disk_full_cordon_tick
 from host_volume import probe_host_volume
 from runner_disk_guard_policy import load_runner_disk_guard_policy
@@ -29,7 +36,7 @@ def test_probe_failure_is_unknown_not_zero_gb() -> None:
     assert result["free_gb"] is None
 
 
-def test_cordon_phase_and_force_action_kinds() -> None:
+def test_cordon_never_stops_busy_runner_after_drain_timeout() -> None:
     config = load_runner_disk_guard_policy()
     state = DiskFullCordonState(phase=CordonPhase.tripping, tripped_at=0.0)
     runners = [RunnerSnapshot(unit="actions.runner.x.service", active=True, busy=True)]
@@ -41,8 +48,45 @@ def test_cordon_phase_and_force_action_kinds() -> None:
         runners=runners,
         now=config.drain.timeout_seconds + 1,
     )
-    force = [a for a in result.actions if a.kind == CordonActionKind.STOP_RUNNER_FORCE]
-    assert force and force[0].force is True
+    stops = [
+        a
+        for a in result.actions
+        if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)
+    ]
+    assert stops == []
+
+
+def test_runtime_never_force_stops_busy_runner(tmp_path: Path) -> None:
+    from disk_full_cordon_runtime import apply_cordon_actions, save_cordon_state
+
+    stops: list[tuple[str, bool]] = []
+
+    def stop_unit(unit: str, reason: str, *, force: bool = False) -> None:
+        stops.append((unit, force))
+
+    state_path = tmp_path / "cordon.json"
+    save_cordon_state(DiskFullCordonState(phase=CordonPhase.tripping, tripped_at=0.0), state_path)
+    config = load_runner_disk_guard_policy()
+    with patch("disk_full_cordon_runtime.probe_host_volume") as probe:
+        probe.return_value = {"status": "ok", "free_gb": 1.0, "percent": 99.0}
+        process_disk_full_cordon_tick(
+            ["actions.runner.x.service"],
+            unit_is_active=lambda u: True,
+            runner_is_busy=lambda u: True,
+            stop_unit=stop_unit,
+            dry_run=False,
+            now=float(config.drain.timeout_seconds + 5),
+            state_path=state_path,
+        )
+    assert stops == []
+
+    apply_cordon_actions(
+        (CordonAction(CordonActionKind.STOP_RUNNER_FORCE, unit="actions.runner.x.service", force=True),),
+        config=config,
+        dry_run=False,
+        stop_unit=stop_unit,
+    )
+    assert stops == []
 
 
 def test_cordon_skips_trip_when_probe_unknown(tmp_path: Path) -> None:

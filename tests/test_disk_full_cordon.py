@@ -126,7 +126,7 @@ def test_trip_starts_drain_and_sets_min_online_zero() -> None:
     assert stops[0].unit == "u2"
 
 
-def test_drain_timeout_force_stops_busy_runners() -> None:
+def test_drain_timeout_never_stops_busy_runners() -> None:
     state = DiskFullCordonState(phase="tripping", tripped_at=1000.0)
     runners = [RunnerSnapshot("u1", active=True, busy=True)]
     result = plan_cordon_tick(
@@ -137,14 +137,11 @@ def test_drain_timeout_force_stops_busy_runners() -> None:
         runners=runners,
         now=1125.0,
     )
-    stop = next(
-        a for a in result.actions if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)
-    )
-    assert stop.force is True
-    assert stop.kind == CordonActionKind.STOP_RUNNER_FORCE
+    stops = [a for a in result.actions if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)]
+    assert stops == []
 
 
-def test_finish_running_jobs_false_stops_busy_immediately() -> None:
+def test_finish_running_jobs_false_still_never_stops_busy_runners() -> None:
     state = DiskFullCordonState(phase="tripping", tripped_at=1000.0)
     runners = [RunnerSnapshot("u1", active=True, busy=True)]
     drain = DiskGuardDrain(finish_running_jobs=False, timeout_seconds=7200)
@@ -156,11 +153,8 @@ def test_finish_running_jobs_false_stops_busy_immediately() -> None:
         runners=runners,
         now=1001.0,
     )
-    stop = next(
-        a for a in result.actions if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)
-    )
-    assert stop.force is True
-    assert stop.kind == CordonActionKind.STOP_RUNNER_FORCE
+    stops = [a for a in result.actions if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)]
+    assert stops == []
 
 
 def test_cordoned_runs_cleanup_once_then_readmits_with_hysteresis() -> None:

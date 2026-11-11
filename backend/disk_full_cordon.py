@@ -123,13 +123,10 @@ def plan_cordon_tick(
     next_phase = CordonPhase(next_state.phase) if not isinstance(next_state.phase, CordonPhase) else next_state.phase
     if next_phase == CordonPhase.tripping:
         assert next_state.tripped_at is not None  # noqa: S101
-        drain_elapsed = now - next_state.tripped_at
-        force_stop = not config.drain.finish_running_jobs or drain_elapsed >= config.drain.timeout_seconds
         for runner in _active_runners(runners):
-            if runner.busy and not force_stop:
+            if runner.busy:
                 continue
-            kind = CordonActionKind.STOP_RUNNER_FORCE if force_stop and runner.busy else CordonActionKind.STOP_RUNNER
-            actions.append(CordonAction(kind, unit=runner.unit, force=force_stop and runner.busy))
+            actions.append(CordonAction(CordonActionKind.STOP_RUNNER, unit=runner.unit, force=False))
         if not _active_runners(runners):
             next_state.phase = CordonPhase.CORDONED
         return _finish_tick(next_state, actions, config)

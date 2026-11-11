@@ -177,12 +177,17 @@ def apply_cordon_actions(
             else:
                 _schedule_cleanup_commands(config, dry_run=False)
         elif action.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE) and action.unit:
-            forced = action.kind == CordonActionKind.STOP_RUNNER_FORCE or action.force
-            reason = "disk-full cordon (forced)" if forced else "disk-full cordon drain"
+            if action.force or action.kind == CordonActionKind.STOP_RUNNER_FORCE:
+                log.warning(
+                    "disk-full cordon: ignoring forced stop for %s (cordon drains idle runners only)",
+                    action.unit,
+                )
+                continue
+            reason = "disk-full cordon drain"
             if dry_run:
                 log.info("disk-full cordon: dry-run stop %s (%s)", action.unit, reason)
             else:
-                stop_unit(action.unit, reason, force=forced)
+                stop_unit(action.unit, reason, force=False)
 
 
 def build_runner_snapshots(
