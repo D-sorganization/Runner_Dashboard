@@ -166,10 +166,10 @@ def independent_review_hold_reason(
     """Signal 5: independent exact-head verdicts at the current head gate arm and merge."""
     if unreadable:
         return ["independent exact-head review state is unreadable"]
-    if not head_sha:
-        return ["PR head SHA is unknown; independent exact-head review cannot be verified"]
     if not independent_review_gate_active(reviews, author_model=author_model, labels=labels):
         return []
+    if not head_sha:
+        return ["PR head SHA is unknown; independent exact-head review cannot be verified"]
     if not author_model:
         fix_at_head = [
             row

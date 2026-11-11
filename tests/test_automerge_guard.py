@@ -110,6 +110,10 @@ class FakeGh:
             return _completed(self.committer_date)
         if "/files" in joined:
             return _completed("\n".join(self.removed))
+        if "/issues/" in joined and "/comments" in joined:
+            return _completed(json.dumps([]))
+        if "/pulls/" in joined and "/commits" in joined:
+            return _completed(json.dumps([]))
         if "/pulls/" in joined:
             return _completed(json.dumps(self.pull))
         raise AssertionError(f"unexpected gh call: {joined}")
