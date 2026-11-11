@@ -19,7 +19,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
             "queue_depth": 50,
             "queue_depth_by_repo": {repo or "Runner_Dashboard": 50},
             "verdict_mix": {"approve": 1, "changes": 0, "escalate": 0},
-            "review_runs_by_machine_provider": {"DeskComputer": {"claude": 60}},
+            "review_runs_by_machine_provider": {"hub-a": {"claude": 60}},
             "provider_availability": [{"provider": "claude", "status": "ok", "detail": ""}],
             "provider_skips": {},
             "rate_limit": {"count_429": 1, "throttled_seconds": 66.0},
