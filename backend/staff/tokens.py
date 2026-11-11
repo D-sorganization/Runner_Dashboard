@@ -149,6 +149,35 @@ def revoke_run_token(run_id: str) -> bool:
     return True
 
 
+def authorization_headers_for_relay_delivery(
+    run_id: str,
+    *,
+    role_hint: str | None = None,
+) -> dict[str, str]:
+    """Mint relay-card bearer headers for a run id (store row or trusted outbox role hint)."""
+    from staff.store import RunRecord, get_store
+
+    rec = get_store().get_run(run_id)
+    if rec is not None:
+        return authorization_headers_for_run(rec)
+    role = (role_hint or "").strip()
+    if not role:
+        raise ValueError(f"run {run_id!r} not in store and no role hint for relay auth")
+    # Outbox payloads carry the Barb role; use only when the local store row is missing (tests).
+    stub = RunRecord(
+        id=run_id,
+        role=role,
+        provider="",
+        model=None,
+        machine="",
+        repo="",
+        target_kind="",
+        target_ref="",
+        prompt="",
+    )
+    return authorization_headers_for_run(stub)
+
+
 def authorization_headers_for_run(
     run: Any,
     *,
