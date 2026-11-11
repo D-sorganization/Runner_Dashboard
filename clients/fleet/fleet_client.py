@@ -847,6 +847,28 @@ class FleetClient(
         wid = _positive_int(work_id, "work_id")
         return self.request("GET", f"/api/v1/library/works/{wid}")
 
+    def fleet_set_runner_target(
+        self,
+        host: str,
+        runners: int,
+        *,
+        until: str | None = None,
+        reason: str | None = None,
+        apply: bool = True,
+    ) -> Any:
+        host_name = _text(host, "host", 128)
+        count = _non_negative_int(runners, "runners")
+        body: dict[str, Any] = {
+            "host": host_name,
+            "runners": count,
+            "apply": bool(apply),
+        }
+        if until is not None:
+            body["until"] = _text(until, "until", 64)
+        if reason is not None:
+            body["reason"] = _text(reason, "reason", 500, required=False)
+        return self.request("POST", "/api/fleet/target", body=body)
+
     def library_fetch_page(
         self,
         source_id: str,

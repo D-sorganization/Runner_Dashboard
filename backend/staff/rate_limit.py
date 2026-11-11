@@ -244,6 +244,30 @@ class BrowserRateLimiter:
             return False, _BROWSER_RETRY_SECONDS
 
 
+_METRICS_LOCK = threading.Lock()
+_RATE_LIMIT_METRICS: dict[str, float] = {"count_429": 0, "throttled_seconds": 0.0}
+
+
+def record_rate_limit_exceeded(retry_after: float) -> None:
+    """In-process count-only tally of 429s and throttled seconds (#4250; no persistence)."""
+    with _METRICS_LOCK:
+        _RATE_LIMIT_METRICS["count_429"] += 1
+        _RATE_LIMIT_METRICS["throttled_seconds"] += max(0.0, retry_after)
+
+
+def rate_limit_metrics_snapshot() -> dict[str, float]:
+    """Snapshot of 429 count and total throttled seconds since process start or last reset."""
+    with _METRICS_LOCK:
+        return dict(_RATE_LIMIT_METRICS)
+
+
+def reset_rate_limit_metrics() -> None:
+    """Test-only reset of the in-process 429 counter."""
+    with _METRICS_LOCK:
+        _RATE_LIMIT_METRICS["count_429"] = 0
+        _RATE_LIMIT_METRICS["throttled_seconds"] = 0.0
+
+
 _GLOBAL_LIMITER: TokenBucketLimiter | None = None
 
 
@@ -278,6 +302,7 @@ def check_rate_limit(
     )
     if not allowed:
         retry_seconds = max(1, int(math.ceil(retry_after)))
+        record_rate_limit_exceeded(retry_after)
         headers = {"Retry-After": str(retry_seconds)}
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

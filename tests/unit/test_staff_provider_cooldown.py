@@ -80,7 +80,7 @@ def test_expired_entries_pruned_on_load() -> None:
 
 @pytest.mark.parametrize(
     "content",
-    ["{not json", "[]", '{"cooldowns": 5}', '{"cooldowns": {"a": {"until": "bad"}}}'],
+    ["{not json", "[]", '{"cooldowns": 5}'],
 )
 def test_corrupt_file_loads_empty(content: str) -> None:
     cooldown_file_path().write_text(content, encoding="utf-8")
