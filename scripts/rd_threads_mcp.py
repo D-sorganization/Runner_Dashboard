@@ -20,6 +20,12 @@ TOOLS = {
         ["summary", "options", "recommendation_reason"],
     ),
 }
+TOOL_AUTH_SCOPES: dict[str, str] = {
+    "send": "staff.chat",
+    "inbox": "fleet.read",
+    "peers": "fleet.read",
+    "ask_barb": "staff.chat",
+}
 SERVER_INFO = {"name": "rd-threads", "title": "Runner Dashboard threads (@barb)", "version": "1.0.0"}
 
 
