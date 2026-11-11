@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, time
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
