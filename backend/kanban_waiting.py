@@ -61,7 +61,8 @@ def _issue_snapshot(issue: dict[str, Any]) -> KanbanIssueSnapshot:
 
 
 def _pr_snapshot(pr: dict[str, Any]) -> KanbanPullRequestSnapshot:
-    head = pr.get("head") if isinstance(pr.get("head"), dict) else {}
+    head_raw = pr.get("head")
+    head: dict[str, Any] = head_raw if isinstance(head_raw, dict) else {}
     return KanbanPullRequestSnapshot(
         available=True,
         number=int(pr.get("number") or 0),
@@ -222,7 +223,7 @@ def build_waiting_on_dieter_column(
     """Assemble the Waiting-on-Dieter column; fails closed when holds are unreadable."""
     sync = holds_sync_state(holds_list)
     generated_at = utc_now_iso()
-    base = {
+    base: dict[str, Any] = {
         "generated_at": generated_at,
         "last_sync_at": sync.last_sync_at,
         "holds_url": sync.holds_url,
@@ -248,7 +249,7 @@ def build_waiting_on_dieter_column(
             if _proposal_issue_tuple(prop.params) is None:
                 unmatched_approvals.append(prop)
     except Exception:
-        proposals = []
+        pass
 
     items: list[dict[str, Any]] = []
     seen_holds: set[str] = set()
