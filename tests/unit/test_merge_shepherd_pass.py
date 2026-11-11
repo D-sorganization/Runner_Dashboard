@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from coordination.merge_shepherd_exact_head import HeadReviewPass
+from coordination.merge_shepherd_exact_head import collect_review_passes_from_store
 from coordination.merge_shepherd_pass import (
     PassConfig,
     holds_gate_failed_payload,
@@ -13,8 +15,59 @@ from coordination.merge_shepherd_pass import (
     pre_filter_skip_reason,
     resolve_hub_holds_policy,
     resolve_live_arming,
+    resolve_merge_shepherd_review_store,
     run_merge_shepherd_pass,
 )
+from staff.store import RunRecord, RunStore
+
+
+def _review_pass(pr: int, head: str) -> HeadReviewPass:
+    return HeadReviewPass(
+        pr=pr,
+        head_sha=head,
+        verdict="approve",
+        recorded_at="2026-11-10T12:00:00+00:00",
+    )
+
+
+def test_resolve_merge_shepherd_review_store_uses_runstore_path_not_repo_checkout(
+    tmp_path, monkeypatch
+) -> None:
+    repo_root = tmp_path / "checkout"
+    repo_root.mkdir()
+    db_path = tmp_path / "config" / "staff_runs.sqlite3"
+    monkeypatch.setenv("STAFF_RUNS_DB", str(db_path))
+
+    store = RunStore(path=db_path)
+    store.create_run(
+        RunRecord(
+            id="review-run-1",
+            role="code-reviewer",
+            provider="openai",
+            model="gpt-test",
+            machine="hub",
+            repo="Runner_Dashboard",
+            target_kind="pr",
+            target_ref="42",
+            prompt="review",
+            status="succeeded",
+            outcome="STAFF_RESULT: review approve #42 @0000ab010000",
+            ended_at="2026-11-10T12:00:00+00:00",
+        )
+    )
+
+    repo_only = (
+        repo_root / "data" / "staff_runs.sqlite3",
+        repo_root / "staff_runs.sqlite3",
+    )
+    assert not any(path.is_file() for path in repo_only)
+
+    resolved = resolve_merge_shepherd_review_store(repo_root=repo_root)
+    assert resolved is not None
+    passes = collect_review_passes_from_store(resolved, "Runner_Dashboard")
+    assert len(passes) == 1
+    assert passes[0].pr == 42
+    assert passes[0].head_sha == "0000ab010000"
 
 
 def test_load_skip_list_seeds(tmp_path):
@@ -148,6 +201,7 @@ def test_plan_repo_backoffs_when_queue_deep():
         armed_count=4,
         queue_depth=3,
         live=False,
+        review_passes=[_review_pass(10, "sha10")],
     )
     assert backoff is True
     assert actions == []
@@ -163,6 +217,11 @@ def test_plan_repo_caps_rd_arms_at_two():
         armed_count=0,
         queue_depth=0,
         live=False,
+        review_passes=[
+            _review_pass(100, "sha100"),
+            _review_pass(101, "sha101"),
+            _review_pass(103, "sha103"),
+        ],
     )
     assert not backoff
     assert len(actions) == 2
@@ -193,10 +252,42 @@ def test_plan_repo_skips_without_approval_unless_docs_only():
         armed_count=0,
         queue_depth=0,
         live=False,
+        review_passes=[_review_pass(200, "sha200")],
     )
     elig = {a.pr_number: a.eligibility for a in actions}
     assert elig.get(200) == "reviewed"
     assert elig.get(201) == "docs_tests_only"
+
+
+def test_plan_repo_skips_approved_without_exact_head_pass() -> None:
+    node = _open_pr_node(300, review="APPROVED", paths=["backend/server.py"])
+    _, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+        review_passes=[],
+    )
+    assert (300, "no_approval:missing_pass_at_head") in {(s["pr"], s["reason"]) for s in skips}
+
+
+def test_plan_repo_honours_merge_hold_callback() -> None:
+    node = _open_pr_node(400, review="REVIEW_REQUIRED", paths=["docs/readme.md"])
+    holds = lambda _repo, pr: "reviewer disabled auto-merge" if pr == 400 else ""
+    _, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+        hold_reason=holds,
+    )
+    assert any(s.get("pr") == 400 and s.get("reason", "").startswith("merge_hold:") for s in skips)
 
 
 def test_plan_repo_never_arms_when_hub_hold_names_pr():

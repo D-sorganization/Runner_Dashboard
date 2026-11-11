@@ -23,6 +23,7 @@ from coordination.merge_shepherd_pass import (  # noqa: E402
     holds_gate_failed_payload,
     resolve_hub_holds_policy,
     resolve_live_arming,
+    resolve_merge_shepherd_review_store,
     run_merge_shepherd_pass,
     summary_to_json,
 )
@@ -150,10 +151,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         github_event_name=os.environ.get("GITHUB_EVENT_NAME", ""),
     )
 
+    def _hold_reason(repo: str, pr: int) -> str:
+        try:
+            if _SCRIPT_DIR not in sys.path:
+                sys.path.insert(0, _SCRIPT_DIR)
+            import automerge_guard  # noqa: PLC0415
+
+            verdict = automerge_guard.evaluate_hold(repo, pr)
+            return verdict.describe() if verdict.held else ""
+        except Exception as exc:  # noqa: BLE001 — fail closed at arm if hold checks break
+            return f"hold_check_failed:{exc}"
+
+    _SCRIPT_DIR = str(Path(__file__).resolve().parent)
+
+    repo_root = args.repo_root.resolve()
     config = PassConfig(
         live=live,
         dry_run=not live,
-        repo_root=args.repo_root.resolve(),
+        repo_root=repo_root,
+        hold_reason=_hold_reason,
+        review_store=resolve_merge_shepherd_review_store(repo_root=repo_root),
     )
     holds, hold_error = _resolve_hub_holds()
     if hold_error:
