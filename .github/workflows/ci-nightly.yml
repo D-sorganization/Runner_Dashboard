@@ -65,7 +65,7 @@ jobs:
   ci-failure-alert:
     name: CI failure alert
     needs: [integration]
-    if: failure() && !cancelled()
+    if: always() && failure() && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

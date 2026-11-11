@@ -1016,6 +1016,7 @@ def _quality_gate(**env: str) -> int:
         "RUN_PYTHON_TESTS": "true",
         "RESULT_LINT": "success",
         "RESULT_TESTS": "success",
+        "RESULT_COVERAGE_FLOOR": "skipped",
         "RESULT_SECURITY": "success",
         "RESULT_FRONTEND": "skipped",
         "RESULT_SECRETS": "skipped",  # pragma: allowlist secret
@@ -1034,6 +1035,8 @@ def _tests_required(**env: str) -> int:
         "TIER": "pr",
         "RUN_PYTHON_TESTS": "true",
         "TESTS": "success",
+        "COVERAGE_FLOOR": "skipped",
+        "GITHUB_EVENT_NAME": "pull_request",
     }
     code, _ = _run_step(_ci_step("tests-required", name="Confirm Python test matrix"), {**defaults, **env})
     return code
@@ -1066,6 +1069,7 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
         "TIER": "merge-group",
         "FULL_SUITE": "false",
         "GITHUB_EVENT_NAME": "merge_group",
+        "RESULT_COVERAGE_FLOOR": "success",
     }
     assert _quality_gate(**mq, RESULT_SECURITY="skipped") == 0
     assert _quality_gate(**dict(mq, RESULT_LINT="skipped")) == 1
