@@ -127,7 +127,7 @@ def compose_prompt(
             pin = dispatch_bundle.skill_pin or dispatch_bundle.skill_version
             pointer = f"\n\n(Skill package truncated; full registry pin: {pin})"
             pointer_tokens = estimate_tokens(pointer)
-            skill_budget = max(16, TIER1_TOKEN_CAP - lessons_tokens - pointer_tokens)
+            skill_budget = max(0, TIER1_TOKEN_CAP - lessons_tokens - pointer_tokens)
             if skill_tokens > skill_budget:
                 skill_block = _truncate_for_budget(skill_block, skill_budget) + pointer
                 skill_tokens = estimate_tokens(skill_block)
