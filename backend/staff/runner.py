@@ -390,11 +390,8 @@ class StaffRunner:
             )
 
             same_provider = review.is_same_provider_review(rec.prompt)
-            status, failure_class, retryable, error, remediation = review.maybe_finalize_code_reviewer_run(
-                role=rec.role, rc=rc, store=store, run_id=rec.id, status=status, failure_class=failure_class,
-                retryable=retryable, error=error, remediation=remediation, result_line=result_line,
-                same_provider=same_provider, transcript=transcript, repo=plan.repo or rec.repo,
-                reviewer_model=str(plan.model or plan.provider or ""),
+            status, failure_class, retryable, error, remediation = ops.apply_code_reviewer_post_classification(
+                store, rec, plan, rc, status, failure_class, retryable, error, remediation, result_line, transcript
             )
 
             workspace.persist_run_transcript(store, rec.id, workdir)
