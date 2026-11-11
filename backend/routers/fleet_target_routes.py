@@ -21,8 +21,8 @@ from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_fleet_peer, require_scope
 from machine_registry import build_machine_registry_index, load_machine_registry, resolve_local_identity
-from runner_target_contract import normalize_host_token
 from routers import orchestration_schedule_routes as _schedule
+from runner_target_contract import normalize_host_token
 from security import safe_subprocess_env, sanitize_log_value
 
 log = logging.getLogger("dashboard.fleet_target")
