@@ -2782,6 +2782,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/kanban/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kanban Github Board
+         * @description Return projected kanban cards from cached GitHub sources with freshness metadata.
+         */
+        get: operations["get_kanban_github_board_api_kanban_github_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/launchers/generate": {
         parameters: {
             query?: never;
@@ -17959,6 +17979,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_kanban_github_board_api_kanban_github_get: {
+        parameters: {
+            query: {
+                owner: string;
+                repo: string;
+                force_cold?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

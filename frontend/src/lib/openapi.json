@@ -15674,6 +15674,72 @@
         "tags": ["remediation", "agents", "remediation"]
       }
     },
+    "/api/kanban/github": {
+      "get": {
+        "description": "Return projected kanban cards from cached GitHub sources with freshness metadata.",
+        "operationId": "get_kanban_github_board_api_kanban_github_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "owner",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force_cold",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force Cold",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Kanban Github Board Api Kanban Github Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Kanban Github Board",
+        "tags": ["kanban"]
+      }
+    },
     "/api/launchers/generate": {
       "post": {
         "description": "Generate Windows PowerShell launcher scripts on the Desktop.",

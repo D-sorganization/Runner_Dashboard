@@ -7,7 +7,8 @@ sources; the board stores no card state. Slice 1 defines the column mapper and
 its contracts. GitHub ingestion (#4319), claims/leases (#4320), holds (#4321),
 and UI (#4322) are out of scope here.
 
-Implementation: `backend/kanban_projection.py`.
+Implementation: `backend/kanban_projection.py`. GitHub ingestion (#4319):
+`backend/kanban_github_ingestion.py` and [kanban-github-ingestion.md](kanban-github-ingestion.md).
 
 ## Columns
 
