@@ -79,6 +79,7 @@ def set_dependencies(  # noqa: PLR0913
     get_fleet_nodes_impl: Callable,
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
+    sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]],
     write_runner_schedule_config: Callable,
     runner_scheduler_apply_command: Callable,
     run_cmd: Callable,
@@ -98,6 +99,7 @@ def set_dependencies(  # noqa: PLR0913
     _schedule_routes.set_dependencies(
         get_runner_capacity_snapshot=get_runner_capacity_snapshot,
         validate_runner_schedule=validate_runner_schedule,
+        sanitize_runner_schedule=sanitize_runner_schedule,
         write_runner_schedule_config=write_runner_schedule_config,
         runner_scheduler_apply_command=runner_scheduler_apply_command,
         runner_scheduler_bin=runner_scheduler_bin,
