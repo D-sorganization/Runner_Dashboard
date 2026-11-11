@@ -77,7 +77,7 @@ def set_dependencies(  # noqa: PLR0913
     get_fleet_nodes_impl: Callable,
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
-    sanitize_runner_schedule: Callable | None,
+    sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]],
     write_runner_schedule_config: Callable,
     runner_scheduler_apply_command: Callable,
     run_cmd: Callable,

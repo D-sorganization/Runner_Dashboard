@@ -18,7 +18,7 @@ router = APIRouter(tags=["orchestration"])
 
 _get_runner_capacity_snapshot: Callable | None = None
 _validate_runner_schedule: Callable | None = None
-_sanitize_runner_schedule: Callable | None = None
+_sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]]
 _write_runner_schedule_config: Callable | None = None
 _runner_scheduler_apply_command: Callable | None = None
 
@@ -31,7 +31,7 @@ _runner_base_dir: Path | None = None
 def set_dependencies(
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
-    sanitize_runner_schedule: Callable | None,
+    sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]],
     write_runner_schedule_config: Callable,
     runner_scheduler_apply_command: Callable,
     runner_scheduler_bin: str,
@@ -94,10 +94,7 @@ async def update_runner_schedule(
     raw_schedule = body.get("schedule", body)
     clamp_notices: list[str] = []
     try:
-        if _sanitize_runner_schedule is not None:
-            config, clamp_notices = _sanitize_runner_schedule(raw_schedule)  # type: ignore[misc]
-        else:
-            config = _validate_runner_schedule(raw_schedule)  # type: ignore[misc]
+        config, clamp_notices = _sanitize_runner_schedule(raw_schedule)  # type: ignore[misc]
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _write_runner_schedule_config(config)  # type: ignore[misc]
