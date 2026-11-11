@@ -337,7 +337,9 @@ async def dispatch_staff_run(
                     )
                 check_rate_limit("dispatches", caller)
                 origin = cmd.origin_node or runner.machine
-                obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin)
+                obo_hdr = staff_fleet.sign_on_behalf_of(
+                    cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin
+                )
                 return await _forward(resolved_target, cmd, obo_hdr, barb_claim, format_caller(caller))
 
         req = RunRequest(
@@ -408,12 +410,17 @@ async def dispatch_staff_run(
             except AuditError as exc:
                 log.warning("staff: dry-run dispatch audit skipped: %s", exc)
             return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine, **claim_info}
-        resource_admission.check_dispatch_resource_admission(cmd, caller, machine=target, sampler=sample_dispatch_resources)
+        resource_admission.check_dispatch_resource_admission(
+            cmd, caller, machine=target, sampler=sample_dispatch_resources
+        )
         budget_ok, budget_reason = BudgetGuard(runner.store).can_dispatch(spec, plan.provider)
         if not budget_ok and not cmd.ignore_budget:
             raise HTTPException(
                 status_code=429,
-                detail={"code": "budget_exceeded", "message": f"{budget_reason}; resend with ignore_budget to override"},
+                detail={
+                    "code": "budget_exceeded",
+                    "message": f"{budget_reason}; resend with ignore_budget to override",
+                },
             )
         run_id = cmd.run_id()
         audit_ctx: dict[str, Any] = {
@@ -445,7 +452,11 @@ async def dispatch_staff_run(
                     **({"operation_id": cmd.operation_id} if cmd.operation_id else {}),
                     **({"ignore_budget": True, "budget_reason": budget_reason} if not budget_ok else {}),
                     **({"claim_check": claim_info["claim_check"]} if claim_info else {}),
-                    **({"provider_auth_failover": list(plan.provider_auth_skipped)} if plan.provider_auth_skipped else {}),
+                    **(
+                        {"provider_auth_failover": list(plan.provider_auth_skipped)}
+                        if plan.provider_auth_skipped
+                        else {}
+                    ),
                 },
                 fail_closed=True,
             )
@@ -491,7 +502,9 @@ async def dispatch_staff_run(
         if created and cmd.issue and cmd.repo and claim_info.get("claim_check") != "unavailable":
             applied = await claim_guard.apply_claim(rec.id, cmd.repo, cmd.issue, rec.role)
             if applied:
-                runner.store.append_event(rec.id, "claim_label", f"{claim_guard.full_repo(cmd.repo)}#{cmd.issue} {applied}")
+                runner.store.append_event(
+                    rec.id, "claim_label", f"{claim_guard.full_repo(cmd.repo)}#{cmd.issue} {applied}"
+                )
         if created:
             from staff.routing_shadow import record_for_run  # noqa: PLC0415
 
@@ -518,7 +531,6 @@ async def dispatch_staff_run(
         )
         return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine, **claim_info}
 
-
     finally:
         from dispatch_queue_link import release_unbound_overlap_session  # noqa: PLC0415
 
@@ -527,6 +539,7 @@ async def dispatch_staff_run(
             outcome="dispatch_exited",
             bound_run_id=overlap_bound_run[0],
         )
+
 
 def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, audit_ctx: dict[str, Any]) -> None:
     """Leave an admitted run whose worker never started visibly ``failed`` (#1796)."""
