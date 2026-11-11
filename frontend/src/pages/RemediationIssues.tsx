@@ -12,6 +12,7 @@
  * an explicit `principalName` prop defaulting to "anonymous".
  */
 import React, { useCallback, useEffect, useState } from "react";
+import { useSubmit } from "../hooks/useSubmit";
 import { legacyFetch } from "../lib/api";
 import { Badge, type BadgeTone } from "../primitives/Badge";
 import { EmptyState } from "../primitives/EmptyState";
@@ -21,7 +22,12 @@ import {
   issueMatchesFilters,
   type IssueRecord,
 } from "./remediationDispatch";
-import { buildBulkIssueRequest, dispatchBulkByRepo, keepFailedSelected } from "./Remediation/remediationBulkRequest";
+import {
+  buildBulkIssueRequest,
+  dispatchBulkByRepo,
+  keepFailedSelected,
+  type BulkByRepoResult,
+} from "./Remediation/remediationBulkRequest";
 import type { ProviderRegistry } from "../lib/useProviderRegistry";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 
@@ -116,6 +122,7 @@ export function RemediationIssuesSubTab({
   const [dispatchResult, setDispatchResult] = useState<DispatchResult | null>(
     null,
   );
+  const confirmDispatch = useSubmit<BulkByRepoResult>();
 
   const fetchIssues = useCallback(() => {
     const activeSource = sourceFilter || "github";
@@ -264,25 +271,32 @@ export function RemediationIssuesSubTab({
     const rows = selectedItems.flatMap((i) =>
       i.number != null ? [{ key: issueKey(i), target: { repo: i.repo || i.repository || repoFilter || "", number: i.number } }] : [],
     );
-    if (!rows.length) return;
-    setDispatchResult(null);
-    const options = {
-      provider: dispatchProvider,
-      prompt: dispatchPrompt,
-      force: forceDispatch,
-      approved_by: principalName || "anonymous",
-    };
-    dispatchBulkByRepo(buildBulkIssueRequest, rows.map((r) => r.target), options, "issue")
-      .then(({ outcome, failed }) => {
-        setDispatchResult(outcome);
-        setSelected(keepFailedSelected(rows, failed));
+    if (!rows.length || confirmDispatch.isSubmitting) return;
+
+    confirmDispatch.submit(async ({ idempotencyKey }) => {
+      const options = {
+        provider: dispatchProvider,
+        prompt: dispatchPrompt,
+        force: forceDispatch,
+        approved_by: principalName || "anonymous",
+        idempotencyKey,
+      };
+      const { outcome, failed } = await dispatchBulkByRepo(
+        buildBulkIssueRequest,
+        rows.map((r) => r.target),
+        options,
+        "issue",
+      );
+      setDispatchResult(outcome);
+      setSelected(keepFailedSelected(rows, failed));
+      if (outcome.type === "success") {
         setShowModal(false);
         setForceDispatch(false);
-      })
-      .catch((err: Error) => {
-        setDispatchResult({ type: "error", text: "Dispatch error: " + (err.message || String(err)) });
-        setShowModal(false);
-      });
+      } else if (failed.length === rows.length) {
+        throw new Error(outcome.text);
+      }
+      return { outcome, failed };
+    });
   }
 
   return (
@@ -725,6 +739,7 @@ export function RemediationIssuesSubTab({
           <button
             className="btn btn-primary"
             onClick={() => {
+              confirmDispatch.reset();
               setShowModal(true);
               setForceDispatch(false);
             }}
@@ -864,6 +879,11 @@ export function RemediationIssuesSubTab({
               </label>
             ) : null}
 
+            {confirmDispatch.failureText ? (
+              <p role="alert" style={{ color: "var(--accent-red)", fontSize: 12, margin: "8px 0 0" }}>
+                {confirmDispatch.failureText}
+              </p>
+            ) : null}
             <div
               style={{
                 display: "flex",
@@ -872,11 +892,15 @@ export function RemediationIssuesSubTab({
                 marginTop: 16,
               }}
             >
-              <button className="btn" onClick={() => setShowModal(false)}>
+              <button className="btn" onClick={() => setShowModal(false)} disabled={confirmDispatch.isSubmitting}>
                 Cancel
               </button>
-              <button className="btn btn-primary" onClick={doDispatch}>
-                Confirm Dispatch
+              <button
+                className="btn btn-primary"
+                onClick={doDispatch}
+                disabled={confirmDispatch.isSubmitting}
+              >
+                {confirmDispatch.isSubmitting ? "Dispatching…" : "Confirm Dispatch"}
               </button>
             </div>
           </div>
