@@ -399,9 +399,9 @@ def get_cached_wsl_base_path() -> str | None:
 def _windows_host_resource_snapshot() -> dict[str, float] | None:
     """Return Windows host CPU/RAM from the on-disk metrics cache only (#4309).
 
-    The background ``host-metrics-probe`` timer forks PowerShell; API handlers and
-    the scheduler must not. Missing or stale cache returns ``None`` so callers
-  report ``unknown`` instead of healthy WSL-only figures.
+      The background ``host-metrics-probe`` timer forks PowerShell; API handlers and
+      the scheduler must not. Missing or stale cache returns ``None`` so callers
+    report ``unknown`` instead of healthy WSL-only figures.
     """
     global _host_snapshot_cache  # noqa: PLW0603
     now = time.monotonic()

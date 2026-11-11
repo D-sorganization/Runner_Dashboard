@@ -9,7 +9,6 @@ import logging
 import os
 import platform
 import re
-import shutil
 import signal
 import subprocess
 import sys
@@ -20,9 +19,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 RUNNER_ROOT = Path(os.environ.get("RUNNER_ROOT", str(Path.home() / "actions-runners")))
-_HOST_METRICS_CACHE_PATH = Path(
-    os.environ.get("RUNNER_DASHBOARD_STATE_DIR", str(Path.home() / ".config" / "runner-dashboard"))
-) / "host_metrics.json"
+_HOST_METRICS_CACHE_PATH = (
+    Path(os.environ.get("RUNNER_DASHBOARD_STATE_DIR", str(Path.home() / ".config" / "runner-dashboard")))
+    / "host_metrics.json"
+)
 _HOST_METRICS_STALE_S = float(os.environ.get("RUNNER_HOST_METRICS_STALE_S", "90"))
 CONFIG_PATH = Path(
     os.environ.get(

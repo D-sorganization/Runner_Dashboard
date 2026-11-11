@@ -216,9 +216,7 @@ $vmmem_gb = if ($vmmem) { [math]::Round($vmmem.WorkingSet64 / 1GB, 2) } else { $
             "memory_available_gb": float(data["memory_available_gb"]),
             "memory_percent": float(data["memory_percent"]),
             "vmmemwsl_working_set_gb": (
-                float(data["vmmemwsl_working_set_gb"])
-                if data.get("vmmemwsl_working_set_gb") is not None
-                else None
+                float(data["vmmemwsl_working_set_gb"]) if data.get("vmmemwsl_working_set_gb") is not None else None
             ),
         }
     except (TypeError, ValueError, KeyError):
