@@ -1130,7 +1130,7 @@ async def get_system_metrics_snapshot(
         elif is_wsl:
             current_cpu = None
         else:
-            current_cpu = wsl_cpu
+            current_cpu = float(wsl_cpu)
             _cpu_history.append(current_cpu)
         cpu_avg_1m = (
             round(sum(_cpu_history) / len(_cpu_history), 1)
