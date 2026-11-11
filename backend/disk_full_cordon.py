@@ -128,11 +128,7 @@ def plan_cordon_tick(
         for runner in _active_runners(runners):
             if runner.busy and not force_stop:
                 continue
-            kind = (
-                CordonActionKind.STOP_RUNNER_FORCE
-                if force_stop and runner.busy
-                else CordonActionKind.STOP_RUNNER
-            )
+            kind = CordonActionKind.STOP_RUNNER_FORCE if force_stop and runner.busy else CordonActionKind.STOP_RUNNER
             actions.append(CordonAction(kind, unit=runner.unit, force=force_stop and runner.busy))
         if not _active_runners(runners):
             next_state.phase = CordonPhase.CORDONED

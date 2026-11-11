@@ -910,11 +910,15 @@ def _run_poll_loop() -> None:
                             _record_stop_action(pool_name)
 
                 elif (
-                    (recovered or _queued_staff_runs_count() > 0 or _should_restore_recovery_floor(
-                        overloaded=overloaded,
-                        active_count=len(pool_active),
-                        scheduled_desired=pool_desired,
-                    ))
+                    (
+                        recovered
+                        or _queued_staff_runs_count() > 0
+                        or _should_restore_recovery_floor(
+                            overloaded=overloaded,
+                            active_count=len(pool_active),
+                            scheduled_desired=pool_desired,
+                        )
+                    )
                     and pool_inactive
                     and len(pool_active) < pool_desired
                 ):
@@ -933,9 +937,7 @@ def _run_poll_loop() -> None:
                         if to_start:
                             recovery_msg = " (soft recovery rate-limit)" if in_soft_recovery else ""
                             reason = (
-                                "queued staff work"
-                                if _queued_staff_runs_count() > 0 and not recovered
-                                else "recovered"
+                                "queued staff work" if _queued_staff_runs_count() > 0 and not recovered else "recovered"
                             )
                             log.info(
                                 "pool=%s %s, starting %d runners%s",
