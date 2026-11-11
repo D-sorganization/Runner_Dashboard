@@ -14,8 +14,8 @@ from shared_scripts.independent_exact_head_review import (
 
 _AUTHOR = "agy-desk-001"
 _REVIEWER = "antigravity-Brick-20261107-brick001"
-_HEAD = "915e13f48e4e9c7b2caa99b12369a4a0799b617c"
-_OLD_HEAD = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+_HEAD = "abc123def456abc123def456abc123def456abcd"
+_OLD_HEAD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 
 def _independent_comment(verdict: str, sha: str, *, created_at: str = "2026-11-10T07:31:36Z") -> dict[str, str]:
