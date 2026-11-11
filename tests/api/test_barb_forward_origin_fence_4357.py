@@ -208,21 +208,21 @@ def test_operator_cannot_spoof_origin_fence_on_peer(peer_client: TestClient, mon
 def test_choose_machine_prefers_idle_peer_over_busy_local() -> None:
     board = {
         "machines": {
-            "DeskComputer": {
+            "origin-host": {
                 "status": "online",
                 "providers": {"claude": True},
                 "running": [{"id": "r1"}],
                 "queued": [],
                 "dispatch_resources": {"cpu_percent": 90.0, "mem_percent": 80.0},
             },
-            "ControlTower": {
+            "peer-a": {
                 "status": "online",
                 "providers": {"claude": True},
                 "running": [],
                 "queued": [],
                 "dispatch_resources": {"cpu_percent": 5.0, "mem_percent": 20.0},
             },
-            "OGLaptop": {
+            "peer-b": {
                 "status": "online",
                 "providers": {"claude": True},
                 "running": [],
@@ -231,5 +231,5 @@ def test_choose_machine_prefers_idle_peer_over_busy_local() -> None:
             },
         }
     }
-    pick = fleet_mod.choose_machine(board, "claude", "DeskComputer")
-    assert pick == "ControlTower"
+    pick = fleet_mod.choose_machine(board, "claude", "origin-host")
+    assert pick == "peer-a"
