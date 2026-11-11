@@ -282,7 +282,13 @@ def relay_run_card_to_origin(
         return False
 
     payload = relay_payload(run, status, question, summary)
-    headers = staff_fleet.fleet_headers()
+    try:
+        from staff.tokens import authorization_headers_for_run  # noqa: PLC0415
+
+        headers = authorization_headers_for_run(run)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff.run_link: cannot mint relay auth for %s: %s", run.id, exc)
+        return False
     target_url = f"{origin_url}/api/v1/staff/threads/{thread_id}/relay-card"
     try:
         if relay_fn is not None:

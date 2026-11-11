@@ -406,9 +406,7 @@ async def answer_thread_run(
 async def relay_thread_run_card(
     thread_id: str,
     body: RelayRunCardRequest,
-    _peer: str = Depends(require_fleet_peer),
     caller: Principal = Depends(require_scope("staff.relay.write")),
-    fleet_node: str | None = Header(default=None, alias="X-Fleet-Node"),
 ) -> dict[str, Any] | JSONResponse:
     """Relay run-card state from an executing node back to origin (issue #1488)."""
     store = _get_store_or_503()
@@ -420,13 +418,7 @@ async def relay_thread_run_card(
                 "message": f"Thread {thread_id} not found",
             },
         )
-    assert_relay_run_card_authorized(
-        thread_id=thread_id,
-        run_id=body.run_id,
-        caller=caller,
-        relay_node=body.node,
-        fleet_node=fleet_node,
-    )
+    assert_relay_run_card_authorized(thread_id=thread_id, run_id=body.run_id, caller=caller)
     return ingest_relayed_card(store, get_thread_bus(), thread_id, body)
 
 

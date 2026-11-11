@@ -14,7 +14,8 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from identity import Principal, require_fleet_peer, require_scope
+from identity import Principal, require_scope
+from staff.tokens import authorization_headers_for_run
 from routers import staff_threads
 from routers.staff_barb import router as barb_router
 from routers.staff_threads import router as threads_router
@@ -27,7 +28,6 @@ from staff.store import RunRecord, RunStore
 from staff.thread_bus import ThreadEventBus
 
 PRINCIPAL = Principal(id="u", type="human", name="U", roles=["admin"], scopes=["staff.read"])
-FLEET_RELAY = Principal(id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"])
 EPOCH = 3
 
 
@@ -63,15 +63,15 @@ def authority_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[d
     monkeypatch.setattr(staff_threads, "get_thread_bus", lambda: ThreadEventBus())
     app = FastAPI()
     app.include_router(threads_router, prefix="/api/v1/staff")
-    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
-    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: FLEET_RELAY
     client = TestClient(app)
+    run_rec = get_runner().store.get_run("r1")
+    assert run_rec is not None
     monkeypatch.setenv("BARB_AUTHORITY_NODE", "CT")
     monkeypatch.setenv("BARB_AUTHORITY_URL", "http://ct:8321")
     monkeypatch.setenv("BARB_AUTHORITY_EPOCH", str(EPOCH))
     monkeypatch.setattr(barb_runtime, "local_node_name", lambda: "CT")
     barb_runtime.reset_authority_config()
-    yield {"store": store, "thread": thread, "client": client, "monkeypatch": monkeypatch}
+    yield {"store": store, "thread": thread, "client": client, "monkeypatch": monkeypatch, "run": run_rec}
     barb_runtime.reset_authority_config()
 
 
@@ -88,13 +88,23 @@ class Net:
             local_node="CT",
         )
         try:
-            resp = self.client.post(url.split("ct:8321")[1], json=body, headers=headers)
+            from staff.runner import get_runner as _get_runner
+
+            run_id = body.get("run_id", "r1")
+            rec = _get_runner().store.get_run(run_id)
+            assert rec is not None
+            auth = authorization_headers_for_run(rec)
+            resp = self.client.post(url.split("ct:8321")[1], json=body, headers={**headers, **auth})
         finally:
             barb_runtime._config = replica_cfg
         if self.lose_response:
             self.lose_response -= 1
             raise ConnectionError("response lost")
         return resp.status_code, resp.json()
+
+
+def _relay_hdr(env: dict[str, Any]) -> dict[str, str]:
+    return authorization_headers_for_run(env["run"])
 
 
 def _become_replica(env: dict[str, Any]) -> None:
@@ -107,7 +117,7 @@ def _become_replica(env: dict[str, Any]) -> None:
 def test_ingest_applies_once_and_dedupes_a_replay(authority_env: dict[str, Any]) -> None:
     c, tid, store = authority_env["client"], authority_env["thread"].id, authority_env["store"]
     body = {"run_id": "r1", "role": "librarian", "status": "succeeded", "node": "worker", "version": 2, "epoch": EPOCH}
-    headers = {"X-Fleet-Node": "worker"}
+    headers = _relay_hdr(authority_env)
     first = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body, headers=headers)
     again = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body, headers=headers)
     assert first.status_code == again.status_code == 200
@@ -117,7 +127,7 @@ def test_ingest_applies_once_and_dedupes_a_replay(authority_env: dict[str, Any])
 @pytest.mark.unit
 def test_ingest_refuses_a_stale_epoch_and_a_stale_version(authority_env: dict[str, Any]) -> None:
     c, tid, store = authority_env["client"], authority_env["thread"].id, authority_env["store"]
-    relay_hdr = {"X-Fleet-Node": "worker"}
+    relay_hdr = _relay_hdr(authority_env)
     old = c.post(
         f"/api/v1/staff/threads/{tid}/relay-card",
         json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 1, "epoch": EPOCH - 1},
@@ -146,7 +156,7 @@ def test_a_replica_refuses_to_ingest(authority_env: dict[str, Any]) -> None:
     resp = authority_env["client"].post(
         f"/api/v1/staff/threads/{tid}/relay-card",
         json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 1, "epoch": EPOCH},
-        headers={"X-Fleet-Node": "worker"},
+        headers=_relay_hdr(authority_env),
     )
     assert resp.status_code == 503 and resp.json()["code"] == "not_authority"
     assert authority_env["store"].list_messages(tid) == []
@@ -163,7 +173,7 @@ def test_legacy_unversioned_relay_still_works_without_authority(
     resp = authority_env["client"].post(
         f"/api/v1/staff/threads/{tid}/relay-card",
         json={"run_id": "r1", "role": "x", "status": "running", "node": "worker"},
-        headers={"X-Fleet-Node": "worker"},
+        headers=_relay_hdr(authority_env),
     )
     assert resp.status_code == 200 and len(authority_env["store"].list_messages(tid)) == 1
 

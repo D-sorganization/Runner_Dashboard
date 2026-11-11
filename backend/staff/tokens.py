@@ -14,7 +14,7 @@ import logging
 import secrets
 import time
 from collections.abc import Iterable
-from typing import Final
+from typing import Any, Final
 
 from identity import SCOPE_PRESETS, Principal, identity_manager
 
@@ -147,3 +147,41 @@ def revoke_run_token(run_id: str) -> bool:
 
     log.debug("Revoked staff run token for %s", run_id)
     return True
+
+
+def authorization_headers_for_run(
+    run: Any,
+    *,
+    ttl_seconds: float | None = None,
+    fleet_actions: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Bearer headers for an active staff run to authorize relay-card writes."""
+    from staff.roles import load_roles
+    from staff.store import RunRecord
+
+    if not isinstance(run, RunRecord):
+        raise TypeError("run must be a RunRecord")
+    library_read = False
+    actions: Iterable[str]
+    if fleet_actions is not None:
+        actions = fleet_actions
+    else:
+        role_spec = load_roles().get(run.role)
+        if role_spec is None:
+            actions = ()
+        else:
+            actions = role_spec.fleet_actions
+            library_read = role_spec.library_read
+    ttl = 86400.0 if ttl_seconds is None else ttl_seconds
+    token = mint_run_token(
+        run.role,
+        run.id,
+        actions,
+        ttl_seconds=ttl,
+        library_read=library_read,
+    )
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json",
+    }

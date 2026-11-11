@@ -31712,22 +31712,6 @@
               "title": "Thread Id",
               "type": "string"
             }
-          },
-          {
-            "in": "header",
-            "name": "X-Fleet-Node",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Fleet-Node"
-            }
           }
         ],
         "requestBody": {

@@ -6,15 +6,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from identity import Principal, require_fleet_peer, require_scope
+from identity import Principal, require_scope
 from routers.staff_threads import router as staff_threads_router
 from staff.conversations import ConversationStore
 from staff.runner import get_runner
 from staff.store import RunRecord
 from staff.thread_bus import ThreadEventBus
-from staff.tokens import mint_run_token
+from staff.tokens import authorization_headers_for_run, mint_run_token
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 
@@ -27,6 +27,10 @@ def _relay_body(run_id: str) -> dict[str, str]:
         "node": "nodeB",
         "provider": "claude",
     }
+
+
+def _headers_for(run: RunRecord) -> dict[str, str]:
+    return {**_XHR, **authorization_headers_for_run(run)}
 
 
 @pytest.fixture
@@ -78,64 +82,64 @@ def test_relay_card_anonymous_is_401(relay_env: dict[str, Any]) -> None:
 
 def test_relay_card_read_scope_is_403(relay_env: dict[str, Any]) -> None:
     app = relay_env["app"]
-    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
-
-    def deny_relay_write() -> Principal:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "Authorization failed", "required_scope": "staff.relay.write", "principal": "viewer"},
-        )
-
-    app.dependency_overrides[require_scope("staff.relay.write")] = deny_relay_write
+    token = mint_run_token("librarian", "no-such-run", (), ttl_seconds=60.0)
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.post(
         f"/api/v1/staff/threads/{relay_env['thread'].id}/relay-card",
         json=_relay_body("run-relay-own"),
-        headers=_XHR,
+        headers={**_XHR, "Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
 
 
 def test_relay_card_cross_run_is_403(relay_env: dict[str, Any]) -> None:
-    fleet = Principal(id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"])
     app = relay_env["app"]
-    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
-    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: fleet
+    other = RunRecord(
+        id="run-other",
+        role="librarian",
+        provider="claude",
+        model=None,
+        machine="nodeB",
+        repo="Repo",
+        target_kind="prompt",
+        target_ref="",
+        prompt="p",
+        thread_id=relay_env["thread"].id,
+        status="running",
+    )
+    get_runner().store.create_run(other)
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.post(
         f"/api/v1/staff/threads/{relay_env['thread'].id}/relay-card",
         json=_relay_body("other-run"),
-        headers=_XHR,
+        headers=_headers_for(other),
     )
     assert resp.status_code == 403
 
 
-def test_relay_card_fleet_peer_wrong_node_is_403(relay_env: dict[str, Any]) -> None:
-    """A fleet peer cannot relay a valid run unless the payload node matches the executing machine."""
-    fleet = Principal(id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"])
+def test_relay_card_fleet_peer_shared_token_cannot_spoof_node(relay_env: dict[str, Any]) -> None:
+    """Shared HUB_FLEET_TOKEN plus spoofed node fields must not authorize relay (#4288 review)."""
+    run = relay_env["run"]
     app = relay_env["app"]
-    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
-    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: fleet
+    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: Principal(
+        id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"]
+    )
     client = TestClient(app, raise_server_exceptions=False)
-    body = {**_relay_body(relay_env["run"].id), "node": "other-node"}
+    body = {**_relay_body(run.id), "node": run.machine}
     resp = client.post(
         f"/api/v1/staff/threads/{relay_env['thread'].id}/relay-card",
         json=body,
-        headers={**_XHR, "X-Fleet-Node": "other-node"},
+        headers={**_XHR, "X-Fleet-Node": run.machine, "Authorization": "Bearer relay-test-fleet-secret"},
     )
     assert resp.status_code == 403
 
 
-def test_relay_card_fleet_peer_executing_node_is_200(relay_env: dict[str, Any]) -> None:
-    fleet = Principal(id="fleet-peer", type="bot", name="Fleet", roles=["fleet-peer"])
-    app = relay_env["app"]
-    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
-    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: fleet
-    client = TestClient(app, raise_server_exceptions=False)
+def test_relay_card_active_run_token_executing_node_is_200(relay_env: dict[str, Any]) -> None:
+    client = TestClient(relay_env["app"], raise_server_exceptions=False)
     resp = client.post(
         f"/api/v1/staff/threads/{relay_env['thread'].id}/relay-card",
         json=_relay_body(relay_env["run"].id),
-        headers={**_XHR, "X-Fleet-Node": "nodeB"},
+        headers=_headers_for(relay_env["run"]),
     )
     assert resp.status_code == 200
 
@@ -147,13 +151,10 @@ def test_relay_card_owner_is_200(relay_env: dict[str, Any]) -> None:
 
     principal, reason = identity_manager.resolve_bearer_token(token)
     assert principal is not None and reason is None
-    app = relay_env["app"]
-    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
-    app.dependency_overrides[require_scope("staff.relay.write")] = lambda: principal
-    client = TestClient(app, raise_server_exceptions=False)
+    client = TestClient(relay_env["app"], raise_server_exceptions=False)
     resp = client.post(
         f"/api/v1/staff/threads/{relay_env['thread'].id}/relay-card",
         json=_relay_body(run.id),
-        headers=_XHR,
+        headers={**_XHR, "Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200

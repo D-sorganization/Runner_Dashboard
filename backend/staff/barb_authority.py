@@ -150,6 +150,17 @@ class AuthorityClient:
         url = self._config.url + route.format(thread_id=urllib.parse.quote(thread_id, safe=""))
         body = {**payload, "run_id": run_id, "version": version, "epoch": self._config.epoch}
         headers = {**self._headers, "Idempotency-Key": f"{kind}:{thread_id}:{run_id}:{version}"}
+        if kind == "run_card":
+            from staff.store import get_store  # noqa: PLC0415
+            from staff.tokens import authorization_headers_for_run  # noqa: PLC0415
+
+            rec = get_store().get_run(run_id)
+            if rec is None:
+                raise AuthorityRejected(f"run {run_id!r} not found for relay delivery")
+            try:
+                headers = {**headers, **authorization_headers_for_run(rec)}
+            except Exception as exc:
+                raise AuthorityRejected(f"cannot mint relay auth for {run_id}: {exc}") from exc
         try:
             status, data = self._transport(url, body, headers)
         except OSError as exc:
