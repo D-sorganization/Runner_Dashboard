@@ -390,15 +390,9 @@ class StaffRunner:
             )
 
             same_provider = review.is_same_provider_review(rec.prompt)
-            if rec.role == "code-reviewer" and rc == 0:
-                review_verdict = review.parse_review_verdict(result_line, same_provider=same_provider)
-                if review_verdict.status == "needs_input":
-                    status = failure_class = "needs_input"
-                    remediation = "Review completed without emitting a STAFF_RESULT verdict line."
-                elif review_verdict.status == "failed":
-                    status, failure_class = "failed", "invalid_output"
-                    error = review_verdict.error or "Malformed review verdict line"
-                    remediation = "Review completed with a malformed STAFF_RESULT line."
+            status, failure_class, retryable, error, remediation = ops.apply_code_reviewer_post_classification(
+                store, rec, plan, rc, status, failure_class, retryable, error, remediation, result_line, transcript
+            )
 
             workspace.persist_run_transcript(store, rec.id, workdir)
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
