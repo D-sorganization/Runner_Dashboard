@@ -3,37 +3,37 @@
   "tier_order": ["routine", "standard", "complex"],
   "models_by_tier": {
     "routine": {
-      "anthropic-api": "opus-5",
+      "anthropic-api": "sonnet",
       "claude": "haiku",
-      "claude-ollama": "llama3.2",
+      "claude-ollama": "glm-5.3-flash:cloud",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash",
       "cursor-agent": "composer-2.5",
       "gemini": "gemini-2.5-flash",
-      "grok": "grok-4.7-high",
-      "ollama": "llama3.2"
+      "grok": "grok-4.7-low",
+      "ollama": "glm-5.3-flash:cloud"
     },
     "standard": {
-      "anthropic-api": "opus-5",
+      "anthropic-api": "sonnet",
       "claude": "sonnet",
-      "claude-ollama": "llama3.2",
+      "claude-ollama": "glm-5.3-flash:cloud",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash-high",
       "cursor-agent": "composer-2.5",
       "gemini": "gemini-2.5-pro",
       "grok": "grok-4.7-high",
-      "ollama": "llama3.2"
+      "ollama": "glm-5.3-flash:cloud"
     },
     "complex": {
-      "anthropic-api": "opus-5",
+      "anthropic-api": "sonnet",
       "claude": "opus",
-      "claude-ollama": "llama3.2",
+      "claude-ollama": "glm-5.3-flash:cloud",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash-high",
       "cursor-agent": "grok-4.7-high",
       "gemini": "gemini-2.5-pro",
       "grok": "grok-4.7-high",
-      "ollama": "llama3.2"
+      "ollama": "glm-5.3-flash:cloud"
     }
   }
 }
