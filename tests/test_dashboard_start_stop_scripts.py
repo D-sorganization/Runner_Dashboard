@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -63,9 +65,61 @@ def test_dashboard_pid_is_dashboard_rejects_unrelated_process(tmp_path: Path) ->
         proc.wait(timeout=5)
 
 
+def _dashboard_identity_check(pid: int, repo_root: Path) -> int:
+    script = (
+        f'source "{PROCESS_HELPERS}"\n'
+        f'if dashboard_pid_is_dashboard {pid} "{repo_root}"; then exit 0; else exit 1; fi\n'
+    )
+    res = subprocess.run([BASH, "-c", script], capture_output=True, text=True, check=False)
+    return res.returncode
+
+
 @pytest.mark.skipif(not Path("/proc").exists(), reason="/proc required for cmdline identity")
 def test_dashboard_pid_is_dashboard_accepts_server_py_argv() -> None:
-    """Linux exec -a sets argv0 so identity matches without starting the full app."""
+    """Identity matches interpreter argv0 + server.py program argument (start-dashboard default)."""
+    server_py = REPO_ROOT / "backend" / "server.py"
+    proc = subprocess.Popen(
+        [
+            BASH,
+            "-c",
+            f"exec {shlex.quote(sys.executable)} {shlex.quote(str(server_py))}",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=str(REPO_ROOT),
+    )
+    try:
+        deadline = time.monotonic() + 5.0
+        matched = False
+        while time.monotonic() < deadline:
+            if _dashboard_identity_check(proc.pid, REPO_ROOT) == 0:
+                matched = True
+                break
+            time.sleep(0.05)
+        assert matched, "expected python argv0 + backend/server.py argv1 in /proc cmdline"
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.mark.skipif(not Path("/proc").exists(), reason="/proc required for cmdline identity")
+def test_dashboard_pid_is_dashboard_rejects_path_only_in_later_argv() -> None:
+    server_py = str(REPO_ROOT / "backend" / "server.py")
+    proc = subprocess.Popen(
+        ["sleep", "120", server_py],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        assert _dashboard_identity_check(proc.pid, REPO_ROOT) == 1
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.mark.skipif(not Path("/proc").exists(), reason="/proc required for cmdline identity")
+def test_dashboard_pid_is_dashboard_rejects_exec_a_server_path_argv0() -> None:
+    """Path in argv0 alone (exec -a) must not satisfy the server.py invocation shape."""
     server_marker = f"{REPO_ROOT}/backend/server.py"
     proc = subprocess.Popen(
         [BASH, "-c", f'exec -a "{server_marker}" sleep 120'],
@@ -73,12 +127,59 @@ def test_dashboard_pid_is_dashboard_accepts_server_py_argv() -> None:
         stderr=subprocess.DEVNULL,
     )
     try:
-        script = (
-            f'source "{PROCESS_HELPERS}"\n'
-            f'if dashboard_pid_is_dashboard {proc.pid} "{REPO_ROOT}"; then exit 0; else exit 1; fi\n'
-        )
-        res = subprocess.run([BASH, "-c", script], capture_output=True, text=True, check=False)
-        assert res.returncode == 0
+        assert _dashboard_identity_check(proc.pid, REPO_ROOT) == 1
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.mark.skipif(not Path("/proc").exists(), reason="/proc required for cmdline identity")
+def test_dashboard_pid_is_dashboard_accepts_uvicorn_module_argv() -> None:
+    backend_dir = REPO_ROOT / "backend"
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "server:app",
+            "--app-dir",
+            str(backend_dir),
+            "--reload-dir",
+            str(backend_dir),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "59999",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        assert _dashboard_identity_check(proc.pid, REPO_ROOT) == 0
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+@pytest.mark.skipif(not Path("/proc").exists(), reason="/proc required for cmdline identity")
+def test_dashboard_pid_is_dashboard_rejects_uvicorn_with_path_not_in_app_dir() -> None:
+    backend_dir = REPO_ROOT / "backend"
+    server_py = str(backend_dir / "server.py")
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "server:app",
+            "--app-dir",
+            "/tmp/not-backend",
+            server_py,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        assert _dashboard_identity_check(proc.pid, REPO_ROOT) == 1
     finally:
         proc.kill()
         proc.wait(timeout=5)
