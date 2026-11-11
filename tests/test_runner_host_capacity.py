@@ -40,8 +40,8 @@ def test_resource_floor_round_trips_on_validate() -> None:
     ("hostname", "aliases", "requested", "expected"),
     [
         ("hub-a", [], 16, 6),
-        ("node-b", ["oglaptop"], 12, 6),
-        ("node-a", ["controltower"], 10, 8),
+        ("node-b", [], 12, 6),
+        ("node-a", [], 10, 8),
     ],
 )
 def test_host_cap_clamps_max_count(hostname: str, aliases: list[str], requested: int, expected: int) -> None:

@@ -13,24 +13,18 @@ _CONFIG_DIR = _REPO_ROOT / "config"
 # Agreed fleet caps (panel th_ce37073f1b17): hub and OG ≤6, control node ≤8.
 _HOST_HARD_CAPS: dict[str, int] = {
     "huba": 6,
-    "deskcomputer": 6,
     "desk": 6,
     "nodeb": 6,
-    "oglaptop": 6,
     "og": 6,
     "nodea": 8,
-    "controltower": 8,
 }
 
 _SCHEDULE_SEED_BY_HOST: dict[str, str] = {
     "huba": "runner-schedule.json",
-    "deskcomputer": "runner-schedule.json",
     "desk": "runner-schedule.json",
     "nodeb": "runner-schedule-oglaptop.json",
-    "oglaptop": "runner-schedule-oglaptop.json",
     "og": "runner-schedule-oglaptop.json",
     "nodea": "runner-schedule-node-b.json",
-    "controltower": "runner-schedule-node-b.json",
 }
 
 _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
