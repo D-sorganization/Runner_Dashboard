@@ -23,6 +23,12 @@ TIER_NAMES: tuple[TierName, ...] = ("routine", "standard", "complex")
 
 _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "staff_model_tiers.json"
 
+# ``models_by_tier.*.anthropic-api`` uses ``sonnet`` at every tier: ``allowed_models_for_provider``
+# only admits catalog ids, and the anthropic-api adapter/catalog exposes ``sonnet`` today.
+# ``backend/staff/pricing.py`` still lists ``opus-5`` as the billing default for cost estimates,
+# but that id is not in the launch catalog yet — wiring tier escalation to opus belongs in #3123
+# / #4267 follow-on once the adapter catalog includes it.
+
 # Claude Code CLI short names used in staff (``review.py``, ``test_staff_chat.py``), plus
 # claude-opus-5-5 (the Grok-offload epic's #3295 S2 default role-override model). Validation
 # only -- ``ProviderAdapter.build_command`` gates on ``adapter.models`` directly, which stays

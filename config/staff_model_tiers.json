@@ -1,4 +1,5 @@
 {
+  "_note_anthropic_api_tiers": "anthropic-api rows use sonnet (not opus-5): model_catalog + adapter only expose sonnet; pricing.DEFAULT_MODEL uses opus-5 for billing (#3123 / #4267 follow-on).",
   "schema_version": "staff-model-tiers.v1",
   "tier_order": ["routine", "standard", "complex"],
   "models_by_tier": {

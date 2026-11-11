@@ -3,19 +3,70 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
 
 import pytest
 from coordination import roster
-from staff.adapters import ADAPTERS
+from staff.adapter_policies import _CHAT_READ_ONLY_FLAGS
+from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.provider_spec import (
     RM_CONTRACT_SCHEMA,
-    export_rm_provider_contract,
     collect_provider_keyed_table_ids,
+    export_rm_provider_contract,
     staff_provider_ids,
     staff_provider_specs,
 )
 
 pytestmark = pytest.mark.unit
+
+_LOCK_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "staff_provider_launch_recipes.v4267.json"
+
+
+def _launch_recipe(adapter: ProviderAdapter) -> dict[str, Any]:
+    env_keys = set(adapter.extra_env.keys())
+    if adapter.env_builder:
+        env_keys |= set(adapter.runtime_env().keys())
+    return {
+        "executable": adapter.executable,
+        "argv_template": list(adapter.argv),
+        "prompt_via_stdin": adapter.prompt_via_stdin,
+        "env_keys": sorted(env_keys),
+        "chat_read_only_argv": list(_CHAT_READ_ONLY_FLAGS.get(adapter.provider_id, ())),
+        "lease_agent": adapter.lease_agent,
+    }
+
+
+def _load_locked_launch_recipes() -> dict[str, dict[str, Any]]:
+    raw = json.loads(_LOCK_PATH.read_text(encoding="utf-8"))
+    providers = raw.get("providers")
+    if not isinstance(providers, dict):
+        raise AssertionError(f"{_LOCK_PATH}: missing providers object")
+    return providers
+
+
+def test_launch_recipes_locked_to_pre_wp13_golden() -> None:
+    """Fail when any staff launch recipe drifts (executable/argv/env) without updating the golden file."""
+    locked = _load_locked_launch_recipes()
+    missing = sorted(staff_provider_ids() - frozenset(locked))
+    assert not missing, f"golden file missing launch recipes for: {missing}"
+    extra = sorted(set(locked) - staff_provider_ids())
+    assert not extra, f"golden file has stale providers (excluded from registry): {extra}"
+
+    drift: list[str] = []
+    for pid in sorted(staff_provider_ids()):
+        live = _launch_recipe(ADAPTERS[pid])
+        if live != locked[pid]:
+            drift.append(pid)
+        spec = staff_provider_specs()[pid]
+        if spec.executable != locked[pid]["executable"]:
+            drift.append(f"{pid}:spec.executable")
+        if list(spec.argv_template) != locked[pid]["argv_template"]:
+            drift.append(f"{pid}:spec.argv_template")
+    assert not drift, (
+        "Launch recipe drifted vs tests/fixtures/staff_provider_launch_recipes.v4267.json — "
+        f"update the golden intentionally or revert the adapter change: {drift}"
+    )
 
 
 def test_specs_cover_adapters_without_deepseek() -> None:
