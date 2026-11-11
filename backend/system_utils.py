@@ -396,47 +396,12 @@ def get_cached_wsl_base_path() -> str | None:
     return _WSL_BASE_PATH_CACHE
 
 
-def _windows_host_resource_snapshot_uncached() -> dict[str, float] | None:
-    """Fork PowerShell to read live Windows host CPU/RAM (no caching)."""
-    command = r"""
-$cpu = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
-$os = Get-CimInstance Win32_OperatingSystem
-$total = [double]$os.TotalVisibleMemorySize * 1KB
-$free = [double]$os.FreePhysicalMemory * 1KB
-$used = $total - $free
-[pscustomobject]@{
-  cpu_percent = [math]::Round([double]$cpu, 1)
-  memory_total_gb = [math]::Round($total / 1GB, 1)
-  memory_used_gb = [math]::Round($used / 1GB, 1)
-  memory_available_gb = [math]::Round($free / 1GB, 1)
-  memory_percent = [math]::Round(($used / $total) * 100, 1)
-} | ConvertTo-Json -Compress
-"""
-    data = _run_windows_powershell_json(command, deadline=time.monotonic() + _HW_PROBE_TIMEOUT_S)
-    if not data or not isinstance(data, dict):
-        return None
-    try:
-        return {
-            "cpu_percent": float(data["cpu_percent"]),
-            "memory_total_gb": float(data["memory_total_gb"]),
-            "memory_used_gb": float(data["memory_used_gb"]),
-            "memory_available_gb": float(data["memory_available_gb"]),
-            "memory_percent": float(data["memory_percent"]),
-        }
-    except (TypeError, ValueError, KeyError):
-        return None
-
-
 def _windows_host_resource_snapshot() -> dict[str, float] | None:
-    """Return live Windows host CPU/RAM metrics with a short freshness cache.
+    """Return Windows host CPU/RAM from the on-disk metrics cache only (#4309).
 
-    The underlying PowerShell fork costs ~2 s and runs on every metrics request.
-    A ``_HOST_SNAPSHOT_TTL_S`` window lets concurrent/rapid callers (frontend
-    polling + the fleet-status peer fan-out) share one fork, which keeps
-    ``/api/system`` and ``/api/fleet/status`` comfortably inside the 15 s budget
-    on a busy host. A single in-process lock collapses a concurrent miss into one
-    fork; if the fresh probe fails it returns ``None`` (callers fall back to
-    psutil/WSL figures) without poisoning the cache.
+    The background ``host-metrics-probe`` timer forks PowerShell; API handlers and
+    the scheduler must not. Missing or stale cache returns ``None`` so callers
+  report ``unknown`` instead of healthy WSL-only figures.
     """
     global _host_snapshot_cache  # noqa: PLW0603
     now = time.monotonic()
@@ -445,18 +410,18 @@ def _windows_host_resource_snapshot() -> dict[str, float] | None:
         return cached[0]
 
     with _host_snapshot_lock:
-        # Re-check: another thread may have refreshed while we waited.
         cached = _host_snapshot_cache
         now = time.monotonic()
         if cached is not None and (now - cached[1]) < _HOST_SNAPSHOT_TTL_S:
             return cached[0]
-        data = _windows_host_resource_snapshot_uncached()
-        if data is not None:
-            _host_snapshot_cache = (data, time.monotonic())
-            return data
-        # Probe failed: serve a slightly-stale prior value if we have one rather
-        # than dropping to the WSL fallback mid-spike; otherwise return None.
-        return cached[0] if cached is not None else None
+        try:
+            from host_metrics_cache import windows_host_from_cache  # noqa: PLC0415
+
+            data = windows_host_from_cache()
+        except ImportError:
+            data = None
+        _host_snapshot_cache = (data, time.monotonic())
+        return data
 
 
 # Host memory cache for WSL
@@ -1092,6 +1057,54 @@ def _get_host_recovery_diagnostics() -> dict[str, Any]:
         }
 
 
+def _memory_block_for_metrics(
+    *,
+    host_resources: dict[str, float] | None,
+    is_wsl: bool,
+    mem: Any,
+    host_memory_gb: float | None,
+    swap: Any,
+) -> dict[str, Any]:
+    """Build the memory section; WSL hosts without a fresh cache report ``unknown`` (#4309)."""
+    base = {
+        "host_total_gb": host_memory_gb or HOST_MEMORY_GB,
+        "wsl_total_gb": round(mem.total / (1024**3), 1),
+        "wsl_used_gb": round(mem.used / (1024**3), 1),
+        "wsl_available_gb": round(mem.available / (1024**3), 1),
+        "wsl_percent": mem.percent,
+        "swap_total_gb": round(swap.total / (1024**3), 1),
+        "swap_used_gb": round(swap.used / (1024**3), 1),
+        "swap_percent": swap.percent,
+    }
+    if host_resources:
+        return {
+            **base,
+            "total_gb": host_resources["memory_total_gb"],
+            "used_gb": host_resources["memory_used_gb"],
+            "available_gb": host_resources["memory_available_gb"],
+            "percent": host_resources["memory_percent"],
+            "source": "windows-host",
+        }
+    if is_wsl:
+        return {
+            **base,
+            "total_gb": host_memory_gb or HOST_MEMORY_GB,
+            "used_gb": None,
+            "available_gb": None,
+            "percent": None,
+            "source": "unknown",
+        }
+    total_gb = (host_memory_gb or HOST_MEMORY_GB) or round(mem.total / (1024**3), 1)
+    return {
+        **base,
+        "total_gb": total_gb,
+        "used_gb": round(mem.used / (1024**3), 1),
+        "available_gb": round(mem.available / (1024**3), 1),
+        "percent": mem.percent,
+        "source": "linux",
+    }
+
+
 async def get_system_metrics_snapshot(
     runner_limit: int | None = None,
     boot_time: float | None = None,
@@ -1108,12 +1121,22 @@ async def get_system_metrics_snapshot(
 
         net = psutil.net_io_counters()
         per_cpu = psutil.cpu_percent(interval=0, percpu=True)
-        current_cpu = psutil.cpu_percent(interval=0)
+        wsl_cpu = psutil.cpu_percent(interval=0)
+        is_wsl = "microsoft" in platform.uname().release.lower()
         host_resources = _windows_host_resource_snapshot()
         if host_resources:
-            current_cpu = host_resources["cpu_percent"]
-        _cpu_history.append(current_cpu)
-        cpu_avg_1m = round(sum(_cpu_history) / len(_cpu_history), 1) if _cpu_history else current_cpu
+            current_cpu: float | None = host_resources["cpu_percent"]
+            _cpu_history.append(current_cpu)
+        elif is_wsl:
+            current_cpu = None
+        else:
+            current_cpu = wsl_cpu
+            _cpu_history.append(current_cpu)
+        cpu_avg_1m = (
+            round(sum(_cpu_history) / len(_cpu_history), 1)
+            if _cpu_history
+            else (current_cpu if current_cpu is not None else wsl_cpu)
+        )
 
         try:
             uptime_seconds = time.time() - psutil.boot_time()
@@ -1136,7 +1159,6 @@ async def get_system_metrics_snapshot(
         local_pool = pools[0]
 
         windows_host = None
-        is_wsl = "microsoft" in platform.uname().release.lower()
         if is_wsl:
             for pool in pools:
                 if pool.get("vhdx_path") is None:
@@ -1175,24 +1197,13 @@ async def get_system_metrics_snapshot(
                 "load_avg_5m": round(load_avg[1], 2),
                 "load_avg_15m": round(load_avg[2], 2),
             },
-            "memory": {
-                "host_total_gb": host_memory_gb or HOST_MEMORY_GB,
-                "wsl_total_gb": round(mem.total / (1024**3), 1),
-                "total_gb": (
-                    host_resources["memory_total_gb"]
-                    if host_resources
-                    else (host_memory_gb or HOST_MEMORY_GB) or round(mem.total / (1024**3), 1)
-                ),
-                "used_gb": (host_resources["memory_used_gb"] if host_resources else round(mem.used / (1024**3), 1)),
-                "available_gb": (
-                    host_resources["memory_available_gb"] if host_resources else round(mem.available / (1024**3), 1)
-                ),
-                "percent": (host_resources["memory_percent"] if host_resources else mem.percent),
-                "source": "windows-host" if host_resources else "wsl",
-                "swap_total_gb": round(swap.total / (1024**3), 1),
-                "swap_used_gb": round(swap.used / (1024**3), 1),
-                "swap_percent": swap.percent,
-            },
+            "memory": _memory_block_for_metrics(
+                host_resources=host_resources,
+                is_wsl=is_wsl,
+                mem=mem,
+                host_memory_gb=host_memory_gb,
+                swap=swap,
+            ),
             "disk": {
                 "path": disk_path,
                 "total_gb": local_pool["total_gb"],
@@ -1226,6 +1237,21 @@ async def get_system_metrics_snapshot(
             metrics["fleet_backup_pilot"] = read_fleet_backup_pilot_status()
         except Exception:  # noqa: BLE001 - telemetry must not fail the snapshot
             metrics["fleet_backup_pilot"] = {"enabled": False, "pilot": "node-b"}
+
+        try:
+            from host_metrics_cache import cache_meta_for_api, read_cache  # noqa: PLC0415
+
+            metrics["host_metrics_cache"] = cache_meta_for_api(read_cache())
+            provider = metrics["host_metrics_cache"]
+            if host_resources and isinstance(provider, dict):
+                provider["windows_memory_percent"] = host_resources.get("memory_percent")
+        except Exception:  # noqa: BLE001
+            metrics["host_metrics_cache"] = {"status": "unknown", "reason": "cache reader unavailable"}
+
+        if is_wsl:
+            metrics["cpu"]["host_source"] = "windows-host" if host_resources else "unknown"
+            if not host_resources:
+                metrics["cpu"]["percent"] = None
 
         return metrics
 

@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -1077,10 +1077,42 @@ def _proc_with(tmp_path: Path, *, mem_available_kb: int = 16 * 1024 * 1024, mem_
     return proc
 
 
+def _write_floor_cache(
+    tmp_path: Path,
+    *,
+    disk_free_gb: float,
+    mem_available_kb: int,
+    mem_psi_avg60: float,
+) -> Path:
+    state_dir = tmp_path / "metrics-state"
+    state_dir.mkdir()
+    mem_gb = mem_available_kb / (1024 * 1024)
+    payload = {
+        "schema_version": 1,
+        "sampled_at": datetime.now(UTC).isoformat(),
+        "wsl": {
+            "mem_available_gb": round(mem_gb, 2),
+            "psi": {"memory_some_avg60": mem_psi_avg60},
+        },
+        "disk": {"by_path": {"/mnt/c": {"free_gb": disk_free_gb, "path": "/mnt/c"}}},
+    }
+    (state_dir / "host_metrics.json").write_text(json.dumps(payload), encoding="utf-8")
+    return state_dir
+
+
 def _floor_env(monkeypatch, tmp_path: Path, *, disk_free_gb: float = 500.0, **proc_kwargs) -> None:
+    mem_available_kb = int(proc_kwargs.get("mem_available_kb", 16 * 1024 * 1024))
+    mem_psi_avg60 = float(proc_kwargs.get("mem_psi_avg60", 0.0))
+    state_dir = _write_floor_cache(
+        tmp_path,
+        disk_free_gb=disk_free_gb,
+        mem_available_kb=mem_available_kb,
+        mem_psi_avg60=mem_psi_avg60,
+    )
+    monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(state_dir))
+    monkeypatch.setattr(runner_scheduler, "_HOST_METRICS_CACHE_PATH", state_dir / "host_metrics.json")
     monkeypatch.setattr(runner_scheduler, "PROC_ROOT", _proc_with(tmp_path, **proc_kwargs))
     monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
-    monkeypatch.setattr(runner_scheduler, "disk_free_gb", lambda _path: disk_free_gb)
 
 
 FLOOR = {
