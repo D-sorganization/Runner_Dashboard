@@ -68,15 +68,34 @@ fail-closed rules in the next section, precedence is not applied.
 | Issue `state` is `closed` and neither merged PR evidence nor explicit merged mapping | `unknown` |
 | Open issue, no open PR, and claim snapshot unavailable or `degraded` | `unknown` (cannot distinguish Issue open vs Claimed) |
 | Open PR expected (linked PR present and `state=open`) but PR snapshot unavailable or `degraded` | `unknown` |
-| Open non-draft PR and reviews snapshot unavailable or `degraded` when review column could apply | `unknown` only when `review_requested` is true or `changes_requested` labels/hints exist without head review data |
-| Auto-merge snapshot unavailable or `degraded` while PR is open and non-draft | `unknown` when auto-merge state would decide Armed vs Review |
+| Open non-draft PR and reviews snapshot unavailable or `degraded` when `review_requested` or `changes_requested_at_head` is true | `unknown` |
+| Open non-draft PR and both PR and review snapshots carry conflicting `head_sha` | `unknown` |
+| Auto-merge snapshot unavailable or `degraded` on an open non-draft PR **unless** `in_merge_queue` is true (queue state is taken from the PR snapshot) | `unknown` |
+| Draft open PR | auto-merge and review evidence **not** required (card maps to `pr_open`) |
 
 When `unknown`, `reasons` lists every fail-closed trigger. No column guess is
 made.
 
+## Predicate reference (open issue unless noted)
+
+| Column | Predicate (all required) |
+| --- | --- |
+| `merged` | Linked PR `state=merged`, **or** issue `state=closed` with linked merged PR |
+| `waiting_on_dieter` | `owner_wait.waiting`, or issue label `hold:*` (case-insensitive prefix) |
+| `armed` | Open non-draft PR and (`auto_merge.enabled` or `pull_request.in_merge_queue`) |
+| `review` | Open non-draft PR and (head `CHANGES_REQUESTED`, or `review_requested` without head `APPROVED`, or head `PENDING`, or `changes_requested_at_head` summary flag) |
+| `pr_open` | Open PR (includes drafts) |
+| `claimed` | Open issue, active lease (`claim.held`), no open PR |
+| `issue_open` | Open issue, no lease, no open PR |
+
+Staff runs never select a column in slice 1; they appear only as `staff_run`
+source links for operator drill-down (#4321).
+
 ## Review and stale reviews
 
-Reviews are compared to `KanbanPullRequestSnapshot.head_sha` (exact head).
+The **canonical head** is `pull_request.head_sha` when present; when the
+reviews snapshot also carries `head_sha`, the two must match or the card is
+`unknown`. Reviews are compared to that canonical head (exact head).
 
 - A review whose `commit_id` **equals** the current head is **exact-head**.
 - Any other `commit_id` is **stale** and listed in `stale_reviews` on the card.
@@ -126,7 +145,7 @@ even when `available` is false so the UI can show broken provenance.
 | `owner`, `repo`, `issue_number` | string / int | Identity |
 | `column` | column id or `unknown` | |
 | `column_label` | string | Human column name or `Unknown` |
-| `matched_columns` | list | All predicates that matched before precedence |
+| `matched_columns` | list | All predicates that matched, ordered by precedence (highest first) |
 | `stale_reviews` | list | Stale review records |
 | `reasons` | list | Fail-closed and informational strings |
 | `sources` | list | Source links |
