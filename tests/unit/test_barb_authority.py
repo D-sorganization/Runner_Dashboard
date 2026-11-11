@@ -113,9 +113,9 @@ def test_failures_are_classified() -> None:
         with pytest.raises(AuthorityUnavailable):
             c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
     with pytest.raises(AuthorityEpochMismatch):
-        c.post("run_card", "thr", "run-1", 1, {})
+        c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
     with pytest.raises(AuthorityRejected):
-        c.post("run_card", "thr", "run-1", 1, {})
+        c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
 
 
 @pytest.mark.unit
