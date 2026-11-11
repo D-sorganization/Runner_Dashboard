@@ -9,6 +9,9 @@ from typing import Any
 
 INDEPENDENT_REVIEW_MARKER = "Independent Exact-Head Acceptance Review"
 
+RUNNER_DASHBOARD_BOT_LOGIN = "d-sorg-runner-dashboard[bot]"
+TRUSTED_INDEPENDENT_REVIEWER_LOGINS = frozenset({RUNNER_DASHBOARD_BOT_LOGIN})
+
 _VERDICT_AT_SHA = re.compile(
     r"(?P<verdict>FIX-NEEDED|PASS)\s*@(?P<sha>[0-9a-fA-F]{6,40})",
     re.IGNORECASE,
@@ -75,6 +78,21 @@ def author_model_from_commit_messages(messages: Sequence[str]) -> str:
     return ""
 
 
+def comment_author_login(item: Mapping[str, Any]) -> str:
+    user = item.get("user")
+    if isinstance(user, Mapping):
+        return str(user.get("login") or "").strip()
+    return ""
+
+
+def is_trusted_independent_reviewer_comment(item: Mapping[str, Any]) -> bool:
+    """Only Runner Dashboard App verdict comments count for automerge_guard (#4323)."""
+    login = comment_author_login(item)
+    if not login:
+        return False
+    return login.lower() in {name.lower() for name in TRUSTED_INDEPENDENT_REVIEWER_LOGINS}
+
+
 def parse_independent_review_comment(body: str, *, created_at: str = "") -> IndependentHeadReview | None:
     if INDEPENDENT_REVIEW_MARKER not in body:
         return None
@@ -96,6 +114,8 @@ def parse_independent_review_comment(body: str, *, created_at: str = "") -> Inde
 def parse_issue_comments(comments: Sequence[Mapping[str, Any]]) -> list[IndependentHeadReview]:
     rows: list[IndependentHeadReview] = []
     for item in comments:
+        if not is_trusted_independent_reviewer_comment(item):
+            continue
         body = str(item.get("body") or "")
         parsed = parse_independent_review_comment(body, created_at=str(item.get("created_at") or ""))
         if parsed is not None:
@@ -146,10 +166,10 @@ def independent_review_hold_reason(
     """Signal 5: independent exact-head verdicts at the current head gate arm and merge."""
     if unreadable:
         return ["independent exact-head review state is unreadable"]
-    if not head_sha:
-        return ["PR head SHA is unknown; independent exact-head review cannot be verified"]
     if not independent_review_gate_active(reviews, author_model=author_model, labels=labels):
         return []
+    if not head_sha:
+        return ["PR head SHA is unknown; independent exact-head review cannot be verified"]
     if not author_model:
         fix_at_head = [
             row
