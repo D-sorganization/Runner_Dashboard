@@ -111,6 +111,39 @@ async def test_cursor_branch_emits_handoff(tmp_path: Path, monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
+async def test_explicit_attempt_number_still_reserves_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = CIFixAttemptStore(tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.global_ci_fix_attempt_store", lambda: store)
+    locks = CIFixLockManager(path=tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.GLOBAL_CI_FIX_LOCK_MGR", locks)
+    monkeypatch.setattr(
+        "ci_fix_service.available_providers",
+        lambda: dict.fromkeys(("claude", "codex", "antigravity"), True),
+    )
+
+    req = CIFixDispatchRequest(
+        repo="Runner_Dashboard",
+        pr_number=4,
+        branch="feat/explicit",
+        head_sha="ddd",
+        log_tail="FAILED t.py::z",
+        attempt_number=1,
+    )
+    caller = Principal(id="t", type="bot", name="t", scopes=["remediation.dispatch"])
+
+    class FakeLauncher:
+        async def __call__(self, cmd: object, _caller: Principal) -> dict:
+            return {"run": {"id": "r1", "provider": "claude", "model": "m"}}
+
+    for _ in range(DEFAULT_PER_HEAD_CAP):
+        await _route_and_launch(req, caller, f"sess-{_}", FakeLauncher())
+        locks.release("Runner_Dashboard", 4)
+
+    with pytest.raises(CIFixAttemptCapError, match="per-head"):
+        await _route_and_launch(req, caller, "sess-blocked", FakeLauncher())
+
+
+@pytest.mark.asyncio
 async def test_routed_provider_must_be_installed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from ci_fix_service import CIFixLaunchUnavailableError
 
