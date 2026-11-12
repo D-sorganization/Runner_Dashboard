@@ -24,7 +24,6 @@ def test_guard_job_repeats_workflow_permissions() -> None:
 
 
 def test_priority_expedite_guard_allowlisted_in_local_only_guard() -> None:
-    text = (ROOT / ".github" / "workflows" / "local-only-runner-guard.yml").read_text(
-        encoding="utf-8"
-    )
-    assert '"priority-expedite-guard.yml"' in text
+    from scripts import local_only_runner_guard as guard
+
+    assert "priority-expedite-guard.yml" in guard._HOSTED_WORKFLOW_ALLOWLIST

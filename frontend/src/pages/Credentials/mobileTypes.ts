@@ -49,6 +49,9 @@ export const PROVIDER_MAP: Record<string, string> = {
   jules: "jules",
   jules_api: "jules",
   linear: "linear",
+  qwen: "qwen",
+  qwen_cli: "qwen",
+  "qwen-code": "qwen",
 };
 
 import type { ProviderRegistry } from "../../lib/useProviderRegistry";

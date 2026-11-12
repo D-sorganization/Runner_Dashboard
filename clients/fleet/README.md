@@ -17,7 +17,9 @@ python3 clients/fleet/fleetctl.py dispatch night-watch --repo Runner_Dashboard -
 ```
 
 ```python
-import sys; sys.path.insert(0, "clients/fleet")
+import sys
+
+sys.path.insert(0, "clients/fleet")
 from fleet_client import FleetClient, FleetAPIError
 
 client = FleetClient()  # reads the FLEET_* environment variables

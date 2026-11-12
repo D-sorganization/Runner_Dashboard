@@ -34,50 +34,59 @@ def test_ci_gate_requires_completed_success() -> None:
         {"head_sha": _SHA, "name": "ci", "status": "completed", "conclusion": "success"},
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "success"},
     ]
-    ok, detail = ci_gate_for_commit(runs, _SHA)
+    ok, detail = ci_gate_for_commit(runs, _SHA, required_contexts=())
     assert ok is True
     assert "succeeded" in detail
 
     pending = [{"head_sha": _SHA, "name": "ci", "status": "in_progress", "conclusion": None}]
-    ok, _ = ci_gate_for_commit(pending, _SHA)
+    ok, _ = ci_gate_for_commit(pending, _SHA, required_contexts=())
     assert ok is False
 
     failed = [{"head_sha": _SHA, "name": "ci", "status": "completed", "conclusion": "failure"}]
-    ok, detail = ci_gate_for_commit(failed, _SHA)
+    ok, detail = ci_gate_for_commit(failed, _SHA, required_contexts=())
     assert ok is False
     assert "failed" in detail
 
 
-def test_ci_gate_treats_skipped_and_duplicate_names_as_passing() -> None:
+def test_ci_gate_rejects_skipped_cancelled_and_duplicate_names() -> None:
     skipped_only = [
         {"head_sha": _SHA, "name": "guard", "status": "completed", "conclusion": "skipped"},
     ]
-    ok, _ = ci_gate_for_commit(skipped_only, _SHA)
-    assert ok is True
+    ok, detail = ci_gate_for_commit(skipped_only, _SHA, required_contexts=())
+    assert ok is False
+    assert "guard" in detail
 
     tier_gated_with_success = [
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "skipped"},
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "success"},
     ]
-    ok, _ = ci_gate_for_commit(tier_gated_with_success, _SHA)
-    assert ok is True
+    ok, detail = ci_gate_for_commit(tier_gated_with_success, _SHA, required_contexts=())
+    assert ok is False
+    assert "lint" in detail
+
+    cancelled_only = [
+        {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "cancelled"},
+    ]
+    ok, detail = ci_gate_for_commit(cancelled_only, _SHA, required_contexts=())
+    assert ok is False
+    assert "lint" in detail
 
     skipped_plus_failure = [
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "skipped"},
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "failure"},
     ]
-    ok, detail = ci_gate_for_commit(skipped_plus_failure, _SHA)
+    ok, detail = ci_gate_for_commit(skipped_plus_failure, _SHA, required_contexts=())
     assert ok is False
     assert "lint" in detail
 
     neutral_only = [
         {"head_sha": _SHA, "name": "note", "status": "completed", "conclusion": "neutral"},
     ]
-    ok, _ = ci_gate_for_commit(neutral_only, _SHA)
+    ok, _ = ci_gate_for_commit(neutral_only, _SHA, required_contexts=())
     assert ok is False
 
 
-def test_ci_gate_passes_ecb3f6b_main_check_list() -> None:
+def test_ci_gate_rejects_ecb3f6b_duplicate_skipped_checks() -> None:
     payload = json.loads(_ECB3F6B_FIXTURE.read_text(encoding="utf-8"))
     assert "ecb3f6b" in payload["fetched_from"]
     runs = [{**run, "head_sha": _ECB3F6B_SHA} for run in payload["check_runs"]]
@@ -88,16 +97,16 @@ def test_ci_gate_passes_ecb3f6b_main_check_list() -> None:
     assert sum(1 for r in runs if r.get("conclusion") == "skipped") == 4
 
     ok, detail = ci_gate_for_commit(runs, _ECB3F6B_SHA)
-    assert ok is True
-    assert _ECB3F6B_SHA[:7] in detail
+    assert ok is False
+    assert detail
 
 
 def test_ci_gate_rejects_malformed_inputs() -> None:
-    ok, detail = ci_gate_for_commit("not-a-list", _SHA)  # type: ignore[arg-type]
+    ok, detail = ci_gate_for_commit("not-a-list", _SHA, required_contexts=())  # type: ignore[arg-type]
     assert ok is False
     assert "list" in detail
 
-    ok, detail = ci_gate_for_commit([{"name": "ci", "head_sha": _SHA}], _SHA)
+    ok, detail = ci_gate_for_commit([{"name": "ci", "head_sha": _SHA}], _SHA, required_contexts=())
     assert ok is False
     assert "invalid check run" in detail
 

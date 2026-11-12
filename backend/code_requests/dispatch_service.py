@@ -127,19 +127,28 @@ def history_entry(req: CodeDispatch, resolved: ResolvedDispatch, code: int, stde
     return entry
 
 
+def _append_history_sync(path: Path, entry: dict[str, Any]) -> None:
+    """Append under the same storage lock used by first-use migration."""
+    from code_requests.storage_split import (
+        _migrate_combined_storage_under_lock,
+        code_requests_storage_lock,
+    )
+
+    target = path if path != CODE_REQUEST_CACHE_PATH else DISPATCH_HISTORY_PATH
+    with code_requests_storage_lock(CODE_REQUEST_CACHE_PATH):
+        _migrate_combined_storage_under_lock(CODE_REQUEST_CACHE_PATH, DISPATCH_HISTORY_PATH)
+        history: list[dict[str, Any]] = []
+        if target.exists():
+            history = json.loads(target.read_text(encoding="utf-8"))
+        history.append(entry)
+        config_schema.atomic_write_json(target, history[-HISTORY_LIMIT:])
+
+
 async def append_history(path: Path, entry: dict[str, Any]) -> None:
     """Append ``entry`` to the dispatch history file, keeping the newest :data:`HISTORY_LIMIT`."""
-    from code_requests.storage_split import migrate_combined_storage_if_needed
-
     async with HISTORY_LOCK:
         try:
-            migrate_combined_storage_if_needed(CODE_REQUEST_CACHE_PATH, DISPATCH_HISTORY_PATH)
-            history: list[dict[str, Any]] = []
-            target = path if path != CODE_REQUEST_CACHE_PATH else DISPATCH_HISTORY_PATH
-            if target.exists():
-                history = json.loads(target.read_text(encoding="utf-8"))
-            history.append(entry)
-            config_schema.atomic_write_json(target, history[-HISTORY_LIMIT:])
+            await asyncio.to_thread(_append_history_sync, path, entry)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             pass
 

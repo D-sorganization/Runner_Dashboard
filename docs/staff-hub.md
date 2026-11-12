@@ -575,6 +575,13 @@ open PRs; bare `ollama run` chat cannot. On a NAT-mode WSL node the server is th
 reached through the default gateway. Pass `model` on a run to pick another Ollama model
 (`kimi-k3:cloud`, `deepseek-v4-pro:cloud`, …) or another Cursor model (`cursor-grok-4.6-high`, …).
 
+The separate `deepseek-api` panel provider uses Claude Code against DeepSeek's Anthropic-compatible API.
+It is paid, disabled by default, excluded from board seats, ordinary staff chat, automatic fallback and
+subscription-only panels. It requires an operator-configured `DEEPSEEK_API_KEY`,
+`STAFF_DEEPSEEK_API_ENABLED=true`, explicit provider selection and `confirm_cost` on each panel request.
+Only `deepseek-flash` and `deepseek-v4-pro` are accepted. Pricing shown is an estimate, not a spending cap;
+obtain cost authorization before any live call. Credentials are never passed as command arguments.
+
 Check a node with a short ad-hoc run (`POST /api/staff/ad-hoc/run` with `{"provider": "claude", "prompt": "..."}`)
 and read `GET /api/staff/schedule`. Its `hold` column must be empty for scheduled worker roles.
 
@@ -643,6 +650,10 @@ Grok CLI (`grok`) is currently opt-in per role via `providers:` in `staff/roles/
 rather than the default failover chain, pending auth health (#4132) and usage tracking (#4133).
 Per-provider models come from the role's **tier** (`routine` | `standard` | `complex`)
 in `config/staff_model_tiers.json` unless the run or role overrides the model.
+Explicit models must pass staff validation against the live catalog (`GET /api/models/catalog`,
+seeded from each provider CLI; Claude accepts `claude-fable-5-2`, `claude-fable-5-1`,
+`claude-opus-5-5`, and the `haiku` / `sonnet` / `opus` aliases). Board and fleet-decision
+panel seats remain pinned to `claude-fable-5-1` until a dedicated seat cutover issue moves them.
 Roles may **tighten** the order with `retry.failover_chain` (each step must stay in
 `providers`); they cannot widen beyond allowed providers.
 

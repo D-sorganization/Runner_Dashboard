@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Protocol, runtime_checkable
+
+
+def normalize_host_key(value: str) -> str:
+    """Stable host token for cache lookup and gauge caps (#4309 / #4310)."""
+    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 @runtime_checkable
@@ -12,7 +18,7 @@ class HostMetricsProvider(Protocol):
 
 
 class StubHostMetricsProvider:
-    """Fallback until #4309 lands; callers use WSL /api/system telemetry instead."""
+    """Fallback when the cache reader cannot be imported."""
 
     def read_cached(self, host: str) -> dict[str, Any] | None:  # noqa: ARG002
         return None

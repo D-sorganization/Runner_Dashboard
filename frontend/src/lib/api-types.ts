@@ -40,10 +40,30 @@ export interface paths {
          *     ``/readyz`` reports unready while draining. Requests already admitted are
          *     allowed to finish; this flag does not cancel or wait for in-flight work.
          *
-         *     Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+         *     Requires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).
          *     Post-condition: _drain_mode is True after successful call.
          */
         post: operations["drain_endpoint__drain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_undrain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undrain Endpoint
+         * @description Clear process-local draining and resume normal mutation admission (#4274 F-04).
+         */
+        post: operations["undrain_endpoint__undrain_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2582,6 +2602,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/fleet/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fleet Target
+         * @description Set an expiring runner-count override for a fleet host.
+         */
+        post: operations["fleet_target_api_fleet_target_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/github/app-token": {
         parameters: {
             query?: never;
@@ -2756,6 +2796,26 @@ export interface paths {
          * @description Dispatch agents to one or more issues.
          */
         post: operations["api_dispatch_to_issues_api_issues_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kanban/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kanban Github Board
+         * @description Return projected kanban cards from cached GitHub sources with freshness metadata.
+         */
+        get: operations["get_kanban_github_board_api_kanban_github_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6081,6 +6141,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/kanban/columns/waiting-on-dieter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Waiting On Dieter Column
+         * @description Read-only Waiting-on-Dieter column from holds, owner labels, and pending approvals.
+         */
+        get: operations["get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/browse": {
         parameters: {
             query?: never;
@@ -8033,6 +8113,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/review/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Review Metrics
+         * @description Queue depth, verdict mix, provider availability and 429s for the review flow.
+         *
+         *     Deferred by design: review latency p50/p90 and reviewer disagreement rate need
+         *     the per-head-SHA verdict contract from #4249, which does not exist yet.
+         */
+        get: operations["read_review_metrics_api_v1_staff_review_metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/roles": {
         parameters: {
             query?: never;
@@ -9268,7 +9371,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "checkin" | "job_board" | "github";
+            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "claude_desktop_adapter" | "codex_desktop_adapter" | "checkin" | "job_board" | "github";
             /**
              * Ts
              * Format: date-time
@@ -9647,6 +9750,11 @@ export interface components {
          * @description Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).
          */
         CIFixDispatchRequest: {
+            /**
+             * Allow Strong Escalation
+             * @default false
+             */
+            allow_strong_escalation: boolean;
             /** Attempt Number */
             attempt_number?: number | null;
             /**
@@ -9667,6 +9775,11 @@ export interface components {
              * @default false
              */
             from_queue: boolean;
+            /**
+             * Head Sha
+             * @default
+             */
+            head_sha: string;
             /**
              * Kind
              * @default ci_failure
@@ -10322,6 +10435,38 @@ export interface components {
             expires_at: number;
             /** Token */
             token: string;
+        };
+        /**
+         * FleetTargetSetRequest
+         * @description POST /api/fleet/target body (DbC: typed payload, no unknown fields).
+         */
+        FleetTargetSetRequest: {
+            /**
+             * Apply
+             * @description Run runner-scheduler --apply after saving override.
+             * @default true
+             */
+            apply: boolean;
+            /**
+             * Host
+             * @description Fleet host or alias.
+             */
+            host: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Runners
+             * @description Requested runner count (clamped to host cap).
+             */
+            runners: number;
+            /**
+             * Until
+             * @description ISO-8601 timestamp or HH:MM expiry.
+             */
+            until?: string | null;
         };
         /** FrictionCreate */
         FrictionCreate: {
@@ -13871,6 +14016,28 @@ export interface operations {
         };
     };
     drain_endpoint__drain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    undrain_endpoint__undrain_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -17616,6 +17783,41 @@ export interface operations {
             };
         };
     };
+    fleet_target_api_fleet_target_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FleetTargetSetRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_github_app_token_api_github_app_token_post: {
         parameters: {
             query?: never;
@@ -17849,6 +18051,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_kanban_github_board_api_kanban_github_get: {
+        parameters: {
+            query: {
+                owner: string;
+                repo: string;
+                force_cold?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -22795,6 +23032,39 @@ export interface operations {
             };
         };
     };
+    get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     library_browse_route_api_v1_library_browse_get: {
         parameters: {
             query?: {
@@ -26556,6 +26826,39 @@ export interface operations {
         parameters: {
             query?: {
                 retention_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_review_metrics_api_v1_staff_review_metrics_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
             };
             header?: never;
             path?: never;

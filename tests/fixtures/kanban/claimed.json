@@ -1,0 +1,14 @@
+{
+  "owner": "D-sorganization",
+  "repo": "Runner_Dashboard",
+  "issue": {
+    "number": 101,
+    "state": "open",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/101"
+  },
+  "claim": {
+    "held": true,
+    "agent": "cursor",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/101#issuecomment-1"
+  }
+}

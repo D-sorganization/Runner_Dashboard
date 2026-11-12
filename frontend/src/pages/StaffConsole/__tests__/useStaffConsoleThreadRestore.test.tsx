@@ -158,6 +158,59 @@ describe("selected role thread restoration", () => {
     expect(api.fetchThread).not.toHaveBeenCalledWith(specialistThread.id, expect.anything());
   });
 
+  it("does not block the composer while re-syncing to a peer-selected thread id", async () => {
+    const threadA: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_a",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const threadB: ThreadInfo = {
+      ...threadA,
+      id: "thr_b",
+      title: "Conversation with Barb",
+    };
+    let resolveFirst!: (threads: ThreadInfo[]) => void;
+    let resolveSecond!: (threads: ThreadInfo[]) => void;
+    const listThreads = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<ThreadInfo[]>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<ThreadInfo[]>((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    const deps = threadApi({ listThreads });
+    const { result, rerender } = renderHook(
+      ({ preferredRoleThreadId }: { preferredRoleThreadId: string }) =>
+        useStaffConsole({
+          roles: ROLES,
+          initialRole: "barb",
+          preferredRoleThreadId,
+          restoreInitialRoleThread: true,
+          threadApi: deps,
+          streamEnabled: false,
+        }),
+      { initialProps: { preferredRoleThreadId: threadA.id } },
+    );
+
+    await act(async () => resolveFirst([threadA]));
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(threadA.id));
+
+    rerender({ preferredRoleThreadId: threadB.id });
+    expect(result.current.openingRole).toBeNull();
+    await act(async () => resolveSecond([threadA, threadB]));
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(threadB.id));
+    expect(result.current.openingRole).toBeNull();
+    expect(listThreads).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps a new conversation when its selected URL id catches up", async () => {
     const threadA: ThreadInfo = {
       ...MAINT_THREAD,
@@ -200,6 +253,38 @@ describe("selected role thread restoration", () => {
     });
     expect(result.current.activeThread?.id).toBe(threadB.id);
     expect(deps.listThreads).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries passive restore when a deduped Barb list request fails", async () => {
+    const restoredThread: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_restore_retry",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const listThreads = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce([restoredThread]);
+    const deps = threadApi({ listThreads });
+    const { result, rerender } = renderHook(
+      (props: { restore: boolean }) =>
+        useStaffConsole({
+          roles: ROLES,
+          initialRole: "barb",
+          restoreInitialRoleThread: props.restore,
+          threadApi: deps,
+          streamEnabled: false,
+        }),
+      { initialProps: { restore: true } },
+    );
+
+    await waitFor(() => expect(listThreads).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.error?.kind).toBe("thread"));
+    rerender({ restore: false });
+    rerender({ restore: true });
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(restoredThread.id));
+    expect(listThreads).toHaveBeenCalledTimes(2);
   });
 
   it("keeps focus provenance attached to passive and explicit thread commits", async () => {

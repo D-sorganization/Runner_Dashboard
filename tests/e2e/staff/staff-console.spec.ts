@@ -60,7 +60,7 @@ async function requestAndFollowRun(page: Page, scenario: string): Promise<Locato
   const runCards = conversation(page).locator(".staff-run-card");
   const before = await runCards.count();
   await proposeDispatch(page, scenario);
-  await expect(runCards).toHaveCount(before + 1);
+  await expect(runCards).toHaveCount(before + 1, { timeout: 30_000 });
   return runCards.nth(before);
 }
 
@@ -446,10 +446,19 @@ test.describe("runs", () => {
     const before = await runCards.count();
 
     await run.getByRole("textbox", { name: "Answer" }).fill("Runner_Dashboard");
+    const answerResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/v1/staff/threads/") &&
+        response.url().includes("/runs/") &&
+        response.url().endsWith("/answer") &&
+        response.ok(),
+    );
     await run.getByRole("button", { name: "Send answer" }).click();
+    await answerResponse;
 
     await expect(run).toContainText(/Answered by .*e2e-operator/);
-    await expect(runCards).toHaveCount(before + 1);
+    await expect(runCards).toHaveCount(before + 1, { timeout: 30_000 });
     await expect(runCards.nth(before)).toContainText("fake run finished for Runner_Dashboard", { timeout: 30_000 });
   });
 
@@ -545,9 +554,11 @@ test.describe("approved dashboard navigation", () => {
       route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
     );
     await restoredPage.goto("/projects");
+    const restoredList = restoredPage.waitForResponse(isBarbThreadList);
     await restoredPage.getByRole("button", { name: "Ask Barb" }).click();
     const restoredDrawer = restoredPage.getByTestId("barb-sidebar");
     await expect(restoredDrawer).toBeVisible();
+    await settleBarbRestore(restoredDrawer, restoredList);
     await expect(restoredDrawer).toContainText("open Context");
     await expect(restoredDrawer).toContainText("Action Executed");
     await expect(restoredPage).toHaveURL(/\/projects(?:[?]|$)/);

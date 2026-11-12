@@ -58,7 +58,11 @@ echo "$(date -Is) backlog-push lane start session=${SESSION}"
 CLAUDE=(claude -p --output-format stream-json --verbose --permission-mode dontAsk --permission-prompts none)
 "${CLAUDE[@]}" <"${PROMPT_PATH}" &
 WORKER_PID=$!
-echo "${WORKER_PID}" >"${PIDFILE}"
+
+# Write enhanced pidfile with identity information (pid, start_time, session)
+# This prevents signalling unrelated processes with recycled PIDs after reboot.
+WORKER_START_TIME=$(cut -d' ' -f22 /proc/${WORKER_PID}/stat 2>/dev/null || echo "0")
+printf '{"pid":%d,"start_time":%s,"session":"%s"}\n' "${WORKER_PID}" "${WORKER_START_TIME}" "${SESSION}" >"${PIDFILE}"
 
 WORKER_STATUS=0
 wait "${WORKER_PID}" || WORKER_STATUS=$?
