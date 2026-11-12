@@ -554,9 +554,11 @@ test.describe("approved dashboard navigation", () => {
       route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
     );
     await restoredPage.goto("/projects");
+    const restoredList = restoredPage.waitForResponse(isBarbThreadList);
     await restoredPage.getByRole("button", { name: "Ask Barb" }).click();
     const restoredDrawer = restoredPage.getByTestId("barb-sidebar");
     await expect(restoredDrawer).toBeVisible();
+    await settleBarbRestore(restoredDrawer, restoredList);
     await expect(restoredDrawer).toContainText("open Context");
     await expect(restoredDrawer).toContainText("Action Executed");
     await expect(restoredPage).toHaveURL(/\/projects(?:[?]|$)/);
