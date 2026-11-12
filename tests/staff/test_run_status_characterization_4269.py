@@ -6,6 +6,7 @@ These tests are intentionally strict: changing a literal or an observed edge sho
 
 from __future__ import annotations
 
+import ast
 import inspect
 from collections.abc import Iterator
 from pathlib import Path
@@ -15,10 +16,51 @@ from staff import claim_guard
 from staff.barb_runtime import TERMINAL_STATUSES as BARB_RUNTIME_TERMINAL
 from staff.barb_versions import TERMINAL_STATUSES as BARB_VERSIONS_TERMINAL
 from staff.run_link import _CARD_STATUS, card_run, update_linked_work_item
-from staff.run_outcome import BUCKETS, _IN_FLIGHT, classify_outcome
+from staff.run_outcome import _IN_FLIGHT, BUCKETS, classify_outcome
 from staff.scheduler_missed_runs import _LIVE_STATUSES
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES, RunRecord, RunStore
 from staff.work_items import WorkItemStore, get_work_item_store, reset_work_item_store
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_STORE_SCAN_ROOTS = (
+    _REPO_ROOT / "backend" / "staff",
+    _REPO_ROOT / "backend" / "coordination",
+)
+
+
+def _store_status_kw_value(node: ast.Call) -> str | None:
+    for kw in node.keywords:
+        if kw.arg != "status":
+            continue
+        if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+            return kw.value.value
+    return None
+
+
+def _is_run_store_write_call(node: ast.Call) -> bool:
+    func = node.func
+    return isinstance(func, ast.Attribute) and func.attr in ("update_run", "create_run")
+
+
+def _collect_store_status_write_literals_from_ast() -> tuple[frozenset[str], int]:
+    """String status literals on ``update_run`` / ``create_run`` keyword args in backend staff sources."""
+    literals: set[str] = set()
+    call_sites = 0
+    for root in _BACKEND_STORE_SCAN_ROOTS:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.rglob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call) or not _is_run_store_write_call(node):
+                    continue
+                if not any(kw.arg == "status" for kw in node.keywords):
+                    continue
+                call_sites += 1
+                lit = _store_status_kw_value(node)
+                if lit is not None:
+                    literals.add(lit)
+    return frozenset(literals), call_sites
 
 
 # ── Literal snapshots (must match imports / source at characterization time) ──
@@ -69,20 +111,6 @@ PINNED_OUTCOME_BUCKETS: tuple[str, ...] = (
     "in_flight",
 )
 
-# Run statuses observed on store.update_run(..., status=...) in backend/staff (grep snapshot).
-PINNED_STORE_WRITE_LITERALS: frozenset[str] = frozenset(
-    {
-        "blocked",
-        "cancelled",
-        "failed",
-        "needs_input",
-        "preparing",
-        "queued",
-        "running",
-        "succeeded",
-    }
-)
-
 # handle_run_status_change calls in staff.runner.StaffRunner (worker / admit / cancel).
 PINNED_RUNNER_HANDLE_STATUSES: tuple[str, ...] = (
     "queued",
@@ -120,11 +148,45 @@ def test_competing_terminal_status_definitions() -> None:
     assert "blocked" not in BARB_RUNTIME_TERMINAL
 
 
-def test_retention_archive_terminal_tuple_unchanged() -> None:
-    from staff import retention  # noqa: PLC0415
+def test_retention_archives_only_terminal_run_statuses(tmp_path: Path) -> None:
+    from staff.retention import archive_old_runs  # noqa: PLC0415
 
-    source = inspect.getsource(retention.archive_old_runs)
-    assert 'terminal_statuses = ("succeeded", "failed", "cancelled")' in source
+    archive_dir = tmp_path / "archives"
+    store = RunStore(tmp_path / "runs.sqlite3")
+    old_ts = "2020-01-01T00:00:00Z"
+    statuses = ("succeeded", "failed", "cancelled", "blocked", "needs_input", "running")
+    try:
+        for idx, status in enumerate(statuses):
+            store.create_run(
+                RunRecord(
+                    f"ret-{idx}",
+                    "ad-hoc",
+                    "claude",
+                    None,
+                    "m",
+                    "repo",
+                    "prompt",
+                    "",
+                    "p",
+                    status=status,
+                    created_at=old_ts,
+                )
+            )
+        archived_count, _files = archive_old_runs(
+            store=store,
+            retention_days=1,
+            archive_dir=archive_dir,
+            reference_date="2026-06-01T00:00:00Z",
+        )
+        assert archived_count == 3
+        for idx, status in enumerate(statuses):
+            rec = store.get_run(f"ret-{idx}")
+            if status in PINNED_RETENTION_TERMINAL:
+                assert rec is None, status
+            else:
+                assert rec is not None and rec.status == status
+    finally:
+        store.close()
 
 
 def test_run_outcome_in_flight_and_buckets() -> None:
@@ -148,14 +210,15 @@ def test_run_outcome_in_flight_and_buckets() -> None:
         ("needs_input", "", "in_flight"),
     ],
 )
-def test_classify_outcome_terminal_and_in_flight_pins(
-    status: str, verification: str, expected_bucket: str
-) -> None:
+def test_classify_outcome_terminal_and_in_flight_pins(status: str, verification: str, expected_bucket: str) -> None:
     assert classify_outcome(status, verification=verification) == expected_bucket
 
 
 def test_store_write_literals_are_subset_of_run_statuses() -> None:
-    assert PINNED_STORE_WRITE_LITERALS <= set(RUN_STATUSES)
+    literals, call_sites = _collect_store_status_write_literals_from_ast()
+    assert call_sites > 0, "expected at least one update_run/create_run call with status="
+    unknown = literals - set(RUN_STATUSES)
+    assert not unknown, f"store write status literals not in RUN_STATUSES: {sorted(unknown)}"
 
 
 def test_store_rejects_unknown_status_literal(tmp_path: Path) -> None:
@@ -184,9 +247,7 @@ def test_store_accepts_every_canonical_literal(tmp_path: Path) -> None:
     try:
         for idx, status in enumerate(RUN_STATUSES):
             rid = f"run-lit-{idx}"
-            store.create_run(
-                RunRecord(rid, "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status=status)
-            )
+            store.create_run(RunRecord(rid, "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status=status))
             got = store.get_run(rid)
             assert got is not None and got.status == status
     finally:
@@ -197,9 +258,7 @@ def test_unconditional_update_run_allows_cancelled_to_running(tmp_path: Path) ->
     """D-05: no compare-and-set today — cancelled can flip back to running."""
     store = RunStore(tmp_path / "runs.sqlite3")
     try:
-        store.create_run(
-            RunRecord("reopen", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="queued")
-        )
+        store.create_run(RunRecord("reopen", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="queued"))
         store.update_run("reopen", status="cancelled", ended_at="2026-11-11T00:00:00Z")
         store.update_run("reopen", status="running")
         got = store.get_run("reopen")
@@ -277,9 +336,7 @@ def test_run_status_to_work_item_transitions_observed(
     ("artifact", "expected"),
     [("pr_open", "waiting_on_ci"), ("pr_merged", "done"), ("", "needs_evidence")],
 )
-def test_succeeded_run_work_item_transition_by_artifact(
-    wi_store: WorkItemStore, artifact: str, expected: str
-) -> None:
+def test_succeeded_run_work_item_transition_by_artifact(wi_store: WorkItemStore, artifact: str, expected: str) -> None:
     wi = wi_store.create_work_item(title="t", requested_by="op")
     wi_store.transition_state(wi.id, "in_progress", actor="test", reason="setup")
     run = RunRecord(

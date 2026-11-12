@@ -19,6 +19,7 @@ class PollFinished(BaseException):
     [([35, 35, 35], []), ([80, 80, 80], []), ([80, 80, 80, 20, 10, 9], [9]), ([None, None, None], [None])],
 )
 def test_io_pressure_used_in_poll(monkeypatch, caplog, pressures, expected_starts):
+    monkeypatch.setattr(ra, "DEFAULT_POOL_MUTATE", True)
     caplog.set_level(logging.WARNING, logger="runner-autoscaler")
     current = [None]
     remaining = iter(pressures)

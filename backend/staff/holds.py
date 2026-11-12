@@ -48,6 +48,9 @@ _metrics_lock = threading.Lock()
 _holds_load_errors_total = 0
 _corrupt_paths: set[str] = set()
 
+# One lock for all on-disk holds mutations across HoldsList instances (#4271).
+_FILE_LOCK = threading.RLock()
+
 
 def _record_load_error(path: Path) -> None:
     global _holds_load_errors_total  # noqa: PLW0603
@@ -301,10 +304,24 @@ class HoldsList:
             if hold.id in seen:
                 raise ValueError(f"duplicate hold id {hold.id}")
             seen.add(hold.id)
-        with self._lock:
-            self._write(holds)
+        with _FILE_LOCK:
+            self._write_unlocked(holds)
             _clear_corrupt_path(self.path)
         return holds
+
+    def upsert_hold(self, hold: Hold) -> list[Hold]:
+        """Atomically load, merge one hold, and persist (#4271)."""
+        with _FILE_LOCK:
+            holds = self.load()
+            existing = next((h for h in holds if h.id == hold.id or h.text.lower() == hold.text.lower()), None)
+            if existing:
+                existing.active = hold.active
+                existing.applies_to = list(set(existing.applies_to + hold.applies_to))
+            else:
+                holds.append(hold)
+            self._write_unlocked(holds)
+            _clear_corrupt_path(self.path)
+            return holds
 
     def blocking(self, role: str, repo: str = "") -> Hold | None:
         """First active *schedule*-kind hold matching the role/repo, or None.
@@ -316,10 +333,14 @@ class HoldsList:
         return next((h for h in self.load() if h.kind == "schedule" and matches(h, role, repo)), None)
 
     def _write(self, holds: list[Hold]) -> None:
+        with _FILE_LOCK:
+            self._write_unlocked(holds)
+
+    def _write_unlocked(self, holds: list[Hold]) -> None:
         path = self.path
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"holds": [h.to_dict() for h in holds], "updated_at": _now()}
-        tmp = path.with_suffix(".tmp")
+        tmp = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         os.replace(tmp, path)
 

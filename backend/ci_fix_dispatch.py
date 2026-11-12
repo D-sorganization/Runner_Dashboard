@@ -167,9 +167,10 @@ def _agy_runs_unattended() -> bool:
 def route_ci_fix(
     failure_type: str,
     attempt_number: int = 1,
-    max_attempts: int = 3,
+    max_attempts: int = 2,
     *,
     branch: str = "",
+    allow_strong_escalation: bool = False,
 ) -> CIFixRoute:
     """Route failure to appropriate provider tier based on type, attempts and author lane.
 
@@ -204,7 +205,7 @@ def route_ci_fix(
             effort=resolve_effort("ci_fix:infra"),
         )
 
-    if attempt_number >= max_attempts:
+    if allow_strong_escalation and attempt_number >= max_attempts:
         return CIFixRoute(
             provider="claude_code_cli",
             tier="strong",

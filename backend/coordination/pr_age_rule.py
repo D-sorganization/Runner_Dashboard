@@ -15,8 +15,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from activity_context import _hit_path
-from coordination import roster
-from coordination.gh_cli import gh_api_json
+from coordination import gh_cli, roster
 from flow_metrics import PR_AGE_RULE_HOURS, open_pr_age_hours
 from staff.claim_guard import full_repo
 
@@ -87,14 +86,14 @@ def list_aging_prs_for_agent(
     rule_hours: float = PR_AGE_RULE_HOURS,
 ) -> list[dict[str, Any]]:
     """Open PRs owned by ``agent`` older than ``rule_hours`` across ``repos`` (short names)."""
-    get = fetch or gh_api_json
+    get: SyncFetch = fetch or gh_cli.gh_api_json_all
     agent_ids = roster.agent_ids()
     target = _normalize_agent(agent)
     hits: list[dict[str, Any]] = []
     for repo_short in repos:
         repo_full = full_repo(repo_short)
         try:
-            pulls = get(f"/repos/{repo_full}/pulls?state=open&per_page=100")
+            pulls = get(f"/repos/{repo_full}/pulls?state=open")
         except Exception as exc:  # noqa: BLE001
             log.warning("pr age rule: cannot list pulls for %s: %s", repo_full, exc)
             continue
@@ -121,10 +120,13 @@ def list_aging_prs_for_agent(
     return hits
 
 
-def _overlapping_files(repo_short: str, number: Any, claim_paths: Sequence[str], get: SyncFetch) -> list[str] | None:
+def _overlapping_files(
+    repo_short: str, number: Any, claim_paths: Sequence[str], get: SyncFetch | None = None
+) -> list[str] | None:
     """Changed files of the PR that overlap ``claim_paths``; ``None`` when the files are unreadable."""
+    list_get: SyncFetch = get or gh_cli.gh_api_json_all
     try:
-        files = get(f"/repos/{full_repo(repo_short)}/pulls/{number}/files?per_page=100")
+        files = list_get(f"/repos/{full_repo(repo_short)}/pulls/{number}/files")
     except Exception as exc:  # noqa: BLE001
         log.warning("pr age rule: cannot list files for %s#%s: %s", repo_short, number, exc)
         return None
@@ -147,7 +149,7 @@ def claim_blocked_by_aging_prs(
     touches an overlapping path (unreadable PR files count as overlapping, so
     the rule fails closed rather than open).
     """
-    get = fetch or gh_api_json
+    get: SyncFetch = fetch or gh_cli.gh_api_json_all
     blocking: list[dict[str, Any]] = []
     for hit in list_aging_prs_for_agent(agent, repos=[claim_repo], fetch=get):
         overlap: list[str] = []

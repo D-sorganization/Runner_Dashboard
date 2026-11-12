@@ -18,6 +18,7 @@ def test_staff_ids_resolve_to_canonical_registry_entries() -> None:
     assert {provider_id: canonical_provider_id(provider_id) for provider_id in ADAPTERS} == {
         "claude": "claude_code_cli",
         "anthropic-api": "anthropic_api",
+        "deepseek-api": "deepseek_api",
         "codex": "codex_cli",
         "antigravity": "antigravity",
         "gemini": "gemini_cli",
@@ -25,6 +26,7 @@ def test_staff_ids_resolve_to_canonical_registry_entries() -> None:
         "ollama": "ollama",
         "claude-ollama": "ollama",
         "grok": "grok_cli",
+        "qwen": "qwen_cli",
     }
     assert all(canonical_provider_id(provider_id) in registry_ids for provider_id in ADAPTERS)
     for provider_id, adapter in ADAPTERS.items():
@@ -105,6 +107,23 @@ def test_grok_cli_is_registered_as_its_own_provider() -> None:
 def test_grok_aliases_resolve_to_the_standalone_grok_cli_row() -> None:
     assert canonical_provider_id("grok") == "grok_cli"
     assert canonical_provider_id("grok-cli") == "grok_cli"
+
+
+def test_qwen_cli_is_registered_with_token_plan_auth() -> None:
+    entry = by_dashboard_id()["qwen_cli"]
+    assert entry.conductor_id == "qwen-cli"
+    assert entry.availability_probe == ("qwen",)
+    assert entry.auth_mode == "api_key"
+    assert entry.enabled is True
+    assert entry.models == (
+        "qwen3.8-flash",
+        "qwen3.8-max",
+        "qwen3.7-plus",
+        "qwen3.7-max",
+        "qwen3.6-flash",
+        "qwen4-max-preview",
+    )
+    assert canonical_provider_id("qwen-code") == "qwen_cli"
 
 
 def test_grok_cli_is_distinct_from_cursor_hosted_grok_models() -> None:

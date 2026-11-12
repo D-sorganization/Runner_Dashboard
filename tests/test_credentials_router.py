@@ -34,6 +34,7 @@ from routers.credentials import (  # noqa: E402
     _probe_gemini_cli,
     _probe_github_cli,
     _probe_grok_cli,
+    _probe_qwen_cli,
     _probe_jules_api,
     _probe_jules_cli,
     _probe_linear_workspaces,
@@ -216,6 +217,28 @@ def test_probe_codex_cli_login_file_counts_as_authenticated(monkeypatch: pytest.
     assert probe["status"] == "ready"
     assert probe["detail"] == "Ready (codex login)"
     assert probe["key_status"] == "oauth"
+
+
+def test_probe_qwen_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("QWENCLOUD_TOKEN_PLAN_API_KEY", raising=False)
+    monkeypatch.delenv("BAILIAN_TOKEN_PLAN_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(credentials, "_find_binary", lambda name: "/usr/bin/qwen" if name == "qwen" else None)
+    probe_missing = _probe_qwen_cli()
+    assert probe_missing["id"] == "qwen_cli"
+    assert probe_missing["authenticated"] is False
+    assert probe_missing["status"] == "missing_key"
+    assert "sk-sp" not in str(probe_missing)
+
+    monkeypatch.setenv("QWENCLOUD_TOKEN_PLAN_API_KEY", "sk-sp-test-plan-key")  # pragma: allowlist secret
+    probe_ok = _probe_qwen_cli()
+    assert probe_ok["authenticated"] is True
+    assert probe_ok["status"] == "ready"
+    assert "sk-sp-test-plan-key" not in str(probe_ok)  # pragma: allowlist secret
+
+    monkeypatch.setattr(credentials, "_find_binary", lambda name: None)
+    probe_not_installed = _probe_qwen_cli()
+    assert probe_not_installed["status"] == "not_installed"
 
 
 def test_probe_grok_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -473,6 +496,7 @@ async def test_collect_all_probes(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "gemini_cli" in probe_ids
     assert "ollama" in probe_ids
     assert "grok_cli" in probe_ids
+    assert "qwen_cli" in probe_ids
     assert "anthropic_api" in probe_ids
 
 
