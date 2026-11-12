@@ -13,12 +13,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 @pytest.fixture(autouse=True)
 def reset_gh_client():
     import gh_client
+    import github_rate_governor
 
+    github_rate_governor.reset_governors_for_tests()
     gh_client._cached_token = "test_token"
     gh_client._client = None
     yield
     gh_client._cached_token = None
     gh_client._client = None
+    github_rate_governor.reset_governors_for_tests()
 
 
 @pytest.mark.asyncio
@@ -235,7 +238,11 @@ async def test_exponential_backoff_increases():
     async def mock_sleep(t):
         sleep_calls.append(t)
 
-    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", side_effect=mock_sleep):
+    with (
+        patch("gh_client._get_client", return_value=mock_client),
+        patch("github_rate_governor.acquire_before_github_call_async", new_callable=AsyncMock),
+        patch("asyncio.sleep", side_effect=mock_sleep),
+    ):
         with pytest.raises(gh_client.GhClientError):
             await gh_client._request("GET", "/test")
 

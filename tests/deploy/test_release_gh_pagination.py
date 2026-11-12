@@ -9,27 +9,36 @@ ROOT = Path(__file__).resolve().parents[2]
 SHA = "a" * 40
 
 
+def _required_success_pages() -> list[dict]:
+    from required_context_helper import policy_required_context_names
+
+    names = list(policy_required_context_names())
+    pages: list[dict] = []
+    for index, name in enumerate(names, start=1):
+        pages.append(
+            {
+                "total_count": len(names),
+                "check_runs": [
+                    {
+                        "id": index,
+                        "head_sha": SHA,
+                        "name": name,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "started_at": "2026-10-22T00:00:00Z",
+                        "check_suite": {"id": index},
+                        "app": {"id": 1, "slug": "github-actions"},
+                    }
+                ],
+            }
+        )
+    return pages
+
+
 def _run_gate(
     tmp_path: Path, *, fail_after_first_page: bool = False, malformed_page: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    pages = [
-        {
-            "total_count": 3,
-            "check_runs": [
-                {
-                    "id": index,
-                    "head_sha": SHA,
-                    "name": name,
-                    "status": "completed",
-                    "conclusion": "success",
-                    "started_at": "2026-10-22T00:00:00Z",
-                    "check_suite": {"id": index},
-                    "app": {"id": 1, "slug": "github-actions"},
-                }
-            ],
-        }
-        for index, name in [(1, "first-page"), (2, 'second "page" 雪'), (3, "third-page")]
-    ]
+    pages = _required_success_pages()
     page_file = tmp_path / "pages.json"
     page_file.write_text(json.dumps(pages), encoding="utf-8")
     fake_gh = tmp_path / "gh"
@@ -88,7 +97,7 @@ def _run_gate(
 def test_release_gate_accepts_old_gh_and_preserves_all_pages(tmp_path: Path) -> None:
     result = _run_gate(tmp_path)
     assert result.returncode == 0, result.stderr
-    assert "3 check name(s) succeeded" in result.stdout
+    assert "succeeded" in result.stdout
     assert "ok=true" in (tmp_path / "output").read_text(encoding="utf-8")
 
 

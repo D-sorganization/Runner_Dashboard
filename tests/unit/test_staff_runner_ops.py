@@ -362,7 +362,7 @@ def test_prepare_run_workdir_keeps_healthy_and_repoless_runs_functional(
     monkeypatch.setattr("staff.runner_ops.clean_stale_git_locks", lock_clean_mock)
 
     wt = prepare_run_workdir(harness.store, harness.rec, harness.make_plan())
-    lock_clean_mock.assert_called_once()
+    assert lock_clean_mock.call_count == 2
     assert wt == harness.wt_root / "Tools-run-4212"
     clone_mock.assert_called_once_with("Tools")
     add_wt_mock.assert_called_once()

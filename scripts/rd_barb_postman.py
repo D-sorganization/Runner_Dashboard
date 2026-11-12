@@ -106,6 +106,8 @@ def detect_provider_caps(provider: str, **kw: Any) -> ProviderRoute:
         caps = _caps.probe_agy(_caps._agy_home(mapping))
     elif norm in ("cursor", "cursor-agent", "cursor_agent"):
         caps = _probe_cursor(kw.get("cursor_dir"))
+    elif norm in ("qwen", "qwen-cli", "qwen-code", "qwen_cli"):
+        return ProviderRoute(norm, "poll", ("qwen CLI has no native cross-session push; hub poll only",))
     else:
         raise ValueError(f"unsupported provider: {provider!r}")
     return ProviderRoute(norm, cast(DeliveryMode, caps.delivery), caps.evidence)

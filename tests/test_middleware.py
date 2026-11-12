@@ -160,6 +160,30 @@ def test_csrf_get_not_blocked() -> None:
     assert resp.status_code == 200
 
 
+def test_csrf_blocks_drain_switch_without_header() -> None:
+    app = _make_app_with_csrf()
+
+    @app.post("/_drain")
+    async def drain() -> dict[str, str]:
+        return {"status": "draining"}
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post("/_drain")
+    assert resp.status_code == 403
+
+
+def test_csrf_allows_drain_switch_with_header() -> None:
+    app = _make_app_with_csrf()
+
+    @app.post("/_undrain")
+    async def undrain() -> dict[str, str]:
+        return {"status": "admitting"}
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post("/_undrain", headers={"X-Requested-With": "XMLHttpRequest"})
+    assert resp.status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # add_security_headers middleware
 # ---------------------------------------------------------------------------

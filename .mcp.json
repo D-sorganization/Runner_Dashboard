@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/specification/main/schema/2024-11-05/schema.json",
+  "_comment": "Ops MCP servers for this repo (coordination only). Claude Code / Cursor auto-discover this file. Set FLEET_API_TOKEN in your environment before starting a server.",
+  "mcpServers": {
+    "fleet": {
+      "command": "python3",
+      "args": ["${workspaceFolder}/clients/fleet/fleet_mcp.py"],
+      "env": {
+        "FLEET_API_URL": "http://127.0.0.1:8321",
+        "FLEET_AGENT": "cursor"
+      }
+    },
+    "rd-threads": {
+      "command": "python3",
+      "args": ["${workspaceFolder}/scripts/rd_threads_mcp.py"],
+      "env": {
+        "FLEET_API_URL": "http://127.0.0.1:8321",
+        "FLEET_AGENT": "cursor"
+      }
+    }
+  }
+}
