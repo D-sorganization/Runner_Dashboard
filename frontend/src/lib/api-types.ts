@@ -9750,6 +9750,11 @@ export interface components {
          * @description Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).
          */
         CIFixDispatchRequest: {
+            /**
+             * Allow Strong Escalation
+             * @default false
+             */
+            allow_strong_escalation: boolean;
             /** Attempt Number */
             attempt_number?: number | null;
             /**
@@ -9770,6 +9775,11 @@ export interface components {
              * @default false
              */
             from_queue: boolean;
+            /**
+             * Head Sha
+             * @default
+             */
+            head_sha: string;
             /**
              * Kind
              * @default ci_failure
