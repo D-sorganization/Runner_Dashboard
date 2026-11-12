@@ -146,7 +146,10 @@ class CIFixAttemptStore:
                     "INSERT INTO ci_fix_attempts (repo, pr_number, head_sha, recorded_at) VALUES (?, ?, ?, ?)",
                     (repo_key, pr, head, utc_now_iso()),
                 )
-                reservation_id = int(cur.lastrowid)
+                reservation_id = cur.lastrowid
+                if reservation_id is None:
+                    db.execute("ROLLBACK")
+                    raise RuntimeError("ci_fix_attempts INSERT did not return row id")
                 db.execute("COMMIT")
                 return AttemptCapDecision(
                     allowed=True,
