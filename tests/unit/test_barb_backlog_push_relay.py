@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import signal
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -315,7 +316,11 @@ def test_real_expiry_signals_only_owned_processes_and_clears_active(
     signalled_pids: list[int] = []
     monkeypatch.setattr(relay.os, "getpgid", lambda pid: pid + 100000, raising=False)
     monkeypatch.setattr(relay.os, "killpg", lambda pgid, sig: signalled_groups.append(pgid - 100000), raising=False)
-    monkeypatch.setattr(relay.os, "kill", lambda pid, sig: signalled_pids.append(pid))
+    monkeypatch.setattr(
+        relay.os,
+        "kill",
+        lambda pid, sig: signalled_pids.append(pid) if sig == signal.SIGTERM else None,
+    )
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     (log_dir / "sup.pid").write_text("4300", encoding="utf-8")
@@ -336,8 +341,9 @@ def test_real_expiry_signals_only_owned_processes_and_clears_active(
     counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
     assert counts["done"] == 1
     assert state["active"] is None
-    assert sorted(signalled_groups) == [4200, 4201]
-    assert signalled_pids == [4300]
+    assert signalled_groups == [4201]
+    assert 4200 not in signalled_groups
+    assert 4200 not in signalled_pids
     assert 9999 not in signalled_pids and 9998 not in signalled_groups
     assert any("wall-clock timeout" in w[2] for w in gh.writes if w[0] == "comment")
 
@@ -468,3 +474,169 @@ def test_recovery_across_restarts_distinguishes_outcome(
 
     comments = [w for w in gh.writes if w[0] == "comment"]
     assert comments and expected_summary_part in comments[-1][2]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="relay liveness probe os.kill(pid, 0) is CTRL_C_EVENT on Windows; relay deploys on POSIX only",
+)
+def _verified_pid_record(pid: int, session: str) -> str:
+    start_time = relay._get_process_start_time_ticks(pid)
+    return json.dumps({"pid": pid, "start_time": start_time, "session": session})
+
+
+def test_terminate_tree_refuses_malformed_pidfile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Refs #4263: malformed pidfile must block group signal for the matching active pid."""
+    signalled: list[int] = []
+    monkeypatch.setattr(relay.os, "getpgid", lambda pid: pid, raising=False)
+    monkeypatch.setattr(
+        relay.os,
+        "killpg",
+        lambda _pgid, sig: signalled.append(sig) if sig == signal.SIGTERM else None,
+        raising=False,
+    )
+    monkeypatch.setattr(relay.os, "kill", lambda *_a: signalled.append(-1))
+
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    session = "barb-bpush-malformed-sup"
+    (log_dir / f"{session}.pid").write_text("not-json-and-not-int", encoding="utf-8")
+    active = {
+        "supervisor_session": session,
+        "lane_sessions": [],
+        "log_dir": str(log_dir),
+    }
+    with caplog.at_level("WARNING"):
+        relay._terminate_tree({"supervisor": 5100}, active)
+
+    assert signalled == []
+    assert "unverifiable" in caplog.text
+
+
+def test_terminate_tree_refuses_pidfile_pid_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Refs #4263: pidfile naming a different pid than active state must not signal the state pid."""
+    signalled_groups: list[int] = []
+    monkeypatch.setattr(relay.os, "getpgid", lambda pid: pid + 100000, raising=False)
+    monkeypatch.setattr(
+        relay.os,
+        "killpg",
+        lambda pgid, sig: signalled_groups.append(pgid - 100000) if sig == signal.SIGTERM else None,
+        raising=False,
+    )
+
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    session = "barb-bpush-mismatch-sup"
+    (log_dir / f"{session}.pid").write_text("9999", encoding="utf-8")
+    active = {
+        "supervisor_session": session,
+        "lane_sessions": [],
+        "log_dir": str(log_dir),
+    }
+    with caplog.at_level("WARNING"):
+        relay._terminate_tree({"supervisor": 5200}, active)
+
+    assert signalled_groups == []
+    assert "unverifiable" in caplog.text
+
+
+def test_terminate_tree_signals_verified_process_group(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Refs #4263: verified pidfile identity still allows group signal on timeout cleanup."""
+    signalled_groups: list[int] = []
+    monkeypatch.setattr(relay, "_pid_identity_matches", lambda *_a, **_k: True)
+    monkeypatch.setattr(relay.os, "getpgid", lambda pid: pid + 100000, raising=False)
+    monkeypatch.setattr(
+        relay.os,
+        "killpg",
+        lambda pgid, sig: signalled_groups.append(pgid - 100000) if sig == signal.SIGTERM else None,
+        raising=False,
+    )
+
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    session = "barb-bpush-verified-sup"
+    pid = 5300
+    (log_dir / f"{session}.pid").write_text(_verified_pid_record(pid, session), encoding="utf-8")
+    active = {
+        "supervisor_session": session,
+        "lane_sessions": [],
+        "log_dir": str(log_dir),
+    }
+    relay._terminate_tree({"supervisor": pid}, active)
+
+    assert signalled_groups == [pid]
+
+
+def test_unrelated_live_process_in_pidfile_is_not_alive_and_never_signalled(tmp_path: Path) -> None:
+    """#4263: a pidfile pointing at an unrelated live process must be reported not-alive.
+
+    This simulates the scenario after a reboot where a PID is recycled to a different process.
+    The test verifies that even though the process is alive, the relay does not signal it
+    because the identity (start_time and session token) do not match.
+    """
+    # Spawn a long-running process that will live for the duration of the test
+    sleeper = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(600)"],
+        start_new_session=True,
+    )
+
+    # Create a pidfile pointing at the unrelated sleeper process
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    session = "barb-bpush-7-sup"
+
+    # Write the sleeper's pid to the pidfile with a mismatched start_time
+    # This simulates a stale pidfile from before the reboot that now points to an unrelated process
+    pidfile = log_dir / f"{session}.pid"
+    pidfile.write_text(
+        json.dumps({"pid": sleeper.pid, "start_time": 100, "session": session}),
+        encoding="utf-8",
+    )
+
+    state = {
+        "processed": {"7": {"status": "running"}},
+        "push_starts": {TODAY: 1},
+        "active": {
+            "issue": 7,
+            "deadline_at": (NOW - timedelta(minutes=1)).isoformat(),  # expired
+            "supervisor_session": session,
+            "lane_sessions": [],
+            "pids": {"supervisor": sleeper.pid},
+            "log_dir": str(log_dir),
+        },
+    }
+
+    # Track what processes get signalled
+    signalled_pids: list[int] = []
+    original_kill = relay.os.kill
+
+    def mock_kill(pid: int, sig: int) -> None:
+        if sig == signal.SIGTERM:
+            signalled_pids.append(pid)
+            raise OSError("not signalling test process")
+        original_kill(pid, sig)
+
+    # Patch os.kill to track calls
+    import unittest.mock as mock
+
+    with mock.patch.object(relay.os, "kill", side_effect=mock_kill):
+        gh = FakeGitHub([])
+        counts = relay.BacklogPushRelay(cfg(tmp_path), gh, state, today=TODAY, now_fn=lambda: NOW).run()
+
+    # The relay should finalize the expired active without signalling the unrelated process
+    assert counts["done"] == 1
+    assert state["active"] is None
+
+    # Verify the unrelated process was never signalled
+    assert sleeper.pid not in signalled_pids
+    assert sleeper.poll() is None  # Process should still be alive
+
+    # Verify the pidfile was removed since the process didn't match the recorded identity
+    assert not pidfile.exists()
+
+    sleeper.kill()
+    sleeper.wait(timeout=5)

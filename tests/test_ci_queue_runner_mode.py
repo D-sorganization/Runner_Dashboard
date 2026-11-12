@@ -10,6 +10,8 @@ from pathlib import Path
 import yaml
 from bash_host import require_bash
 
+from scripts import ci_runner_selector as selector
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci-standard.yml"
 
@@ -196,13 +198,13 @@ def test_fleet_pinned_jobs_force_local_runner_when_hosted_queue_enabled() -> Non
         "ci-health-check",
         "lint",
         "security-scan",
-        "tests",
-        "tests-required",
-        "quality-gate",
         "pick-runner",
     }
     for job_id in go_public_hosted_jobs:
         assert jobs[job_id]["runs-on"] == "ubuntu-latest", job_id
+    fast_checks = selector.pick_runner_fast_checks_runs_on_expression().strip()
+    for job_id in ("tests", "tests-required", "quality-gate"):
+        assert str(jobs[job_id]["runs-on"]).strip() == fast_checks, job_id
 
     routed_jobs = {
         job_id

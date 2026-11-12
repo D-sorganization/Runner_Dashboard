@@ -52,6 +52,7 @@ query($owner: String!, $name: String!) {
     }
     armedPullRequests: pullRequests(states: OPEN, first: 100) {
       totalCount
+      pageInfo { hasNextPage endCursor }
       nodes {
         number
         autoMergeRequest { enabledAt }
@@ -82,6 +83,20 @@ query($owner: String!, $name: String!) {
             }
           }
         }
+      }
+    }
+  }
+}
+"""
+
+ARMED_PULL_REQUESTS_PAGE_QUERY = """
+query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    armedPullRequests: pullRequests(states: OPEN, first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number
+        autoMergeRequest { enabledAt }
       }
     }
   }
@@ -255,6 +270,42 @@ def _pr_file_metadata(node: Mapping[str, Any]) -> tuple[tuple[str, ...], int, in
     return paths, additions, deletions, not has_next
 
 
+def count_armed_open_pull_requests(nodes: Sequence[Mapping[str, Any]]) -> int:
+    """Count open PRs that actually have auto-merge enabled (#4265)."""
+    return sum(1 for node in nodes if isinstance(node, Mapping) and node.get("autoMergeRequest") is not None)
+
+
+def stitch_armed_pull_request_pages(pages: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+    """Concatenate armed ``pullRequests`` pages into one connection block (#4265)."""
+    nodes: list[Mapping[str, Any]] = []
+    for page in pages:
+        if not isinstance(page, Mapping):
+            continue
+        raw_nodes = page.get("nodes") or []
+        if isinstance(raw_nodes, list):
+            nodes.extend(n for n in raw_nodes if isinstance(n, Mapping))
+    last = pages[-1] if pages else {}
+    page_info = last.get("pageInfo") if isinstance(last, Mapping) else {}
+    if not isinstance(page_info, Mapping):
+        page_info = {}
+    return {
+        "totalCount": len(nodes),
+        "nodes": nodes,
+        "pageInfo": page_info,
+    }
+
+
+def armed_pull_requests_has_next_page(armed_block: Mapping[str, Any]) -> tuple[bool, str | None]:
+    """Return (hasNextPage, endCursor) from an armed PR GraphQL connection."""
+    page_info = armed_block.get("pageInfo")
+    if not isinstance(page_info, Mapping):
+        return False, None
+    has_next = bool(page_info.get("hasNextPage"))
+    cursor = page_info.get("endCursor")
+    end_cursor = cursor if isinstance(cursor, str) and cursor else None
+    return has_next, end_cursor
+
+
 def graphql_nodes(payload: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], int, int]:
     """Return open PR nodes, armed count, merge-queue depth from one GraphQL response."""
     repo = payload.get("repository") if isinstance(payload, Mapping) else {}
@@ -264,7 +315,8 @@ def graphql_nodes(payload: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], 
     queue_depth = int(mq.get("totalCount") or 0) if isinstance(mq, Mapping) else 0
     armed_block = repo.get("armedPullRequests") or {}
     armed_nodes = (armed_block.get("nodes") or []) if isinstance(armed_block, Mapping) else []
-    armed_count = int(armed_block.get("totalCount") or len(armed_nodes)) if isinstance(armed_block, Mapping) else 0
+    armed_models_filtered = [n for n in armed_nodes if isinstance(n, Mapping)]
+    armed_count = count_armed_open_pull_requests(armed_models_filtered)
     pr_block = repo.get("pullRequests") or {}
     nodes = (pr_block.get("nodes") or []) if isinstance(pr_block, Mapping) else []
     return [n for n in nodes if isinstance(n, Mapping)], armed_count, queue_depth

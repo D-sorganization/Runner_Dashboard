@@ -48,7 +48,8 @@ def failover_cooldown_seconds() -> dict[str, float]:
         try:
             out[str(key)] = float(val)
         except (TypeError, ValueError):
-            continue
+            log.warning("unparseable cooldown_seconds[%s]=%r; using fail-closed maximum", key, val)
+            out[str(key)] = max(out.get(str(key), 0.0), 3600.0)
     return out
 
 

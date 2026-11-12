@@ -233,6 +233,48 @@ class TestReviewExecutor:
         assert "Advisory only" in prepared.get("prompt", "") or DEFAULT_REVIEW_FOCUS in prepared.get("prompt", "")
 
 
+class TestReviewDispatchFailFast:
+    """Review dispatch skips a provider whose auth preflight failed (#4250)."""
+
+    def test_unhealthy_provider_is_skipped_and_recorded(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import staff.provider_auth_preflight as preflight
+        from staff.review_metrics import provider_skip_counts_snapshot, reset_provider_skip_counts
+
+        reset_provider_skip_counts()
+        monkeypatch.setattr(
+            preflight,
+            "provider_auth_cache_snapshot",
+            lambda: {"providers": {"claude": {"status": "expired"}, "codex": {"status": "ok"}}},
+        )
+        with caplog.at_level(logging.WARNING):
+            prepared = prepare_review_params(
+                {"repo": "Runner_Dashboard", "pr": 42},
+                default_role="code-reviewer",
+                roster={"code-reviewer": MagicMock(providers=["claude", "codex"])},
+            )
+        assert prepared["provider"] == "codex"
+        assert prepared.get("skipped_providers") == ["claude"]
+        assert any("skipping provider" in msg for msg in caplog.messages)
+        assert provider_skip_counts_snapshot() == {"claude": 1}
+
+    def test_all_healthy_dispatches_without_skip(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import staff.provider_auth_preflight as preflight
+
+        monkeypatch.setattr(
+            preflight,
+            "provider_auth_cache_snapshot",
+            lambda: {"providers": {"claude": {"status": "ok"}, "codex": {"status": "ok"}}},
+        )
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42},
+            default_role="code-reviewer",
+            roster={"code-reviewer": MagicMock(providers=["claude", "codex"])},
+        )
+        assert "skipped_providers" not in prepared
+
+
 class TestReviewScopeRepos:
     def test_review_scope_repos_returns_fallback_when_cache_empty(self) -> None:
         """review_scope_repos() returns FALLBACK_P0_P1_REPOS when the cache is empty."""

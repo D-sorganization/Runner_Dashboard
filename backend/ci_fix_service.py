@@ -19,12 +19,12 @@ from typing import Any, Literal
 
 import gh_client
 from cache_utils import cache_set
+from ci_fix_attempt_store import global_ci_fix_attempt_store
 from ci_fix_dispatch import (
     GLOBAL_CI_FIX_LOCK_MGR,
     NIGHT_WATCH_ROLE,
     build_ci_fix_prompt,
     classify_failure_type,
-    count_consecutive_attempts,
     evaluate_ci_fix_trigger,
     extract_failing_test_names,
     failure_signature,
@@ -72,6 +72,14 @@ class CIFixLaunchUnavailableError(Exception):
     """The routed provider is not installed on this node; nothing was launched."""
 
 
+class CIFixAttemptCapError(Exception):
+    """Per-head or per-PR CI-fix attempt cap reached (#4273)."""
+
+
+class CIFixStaleHeadError(Exception):
+    """The failing workflow run's head SHA does not match the PR's current head (#4273)."""
+
+
 class CIFixDispatchRequest(BaseModel):
     """Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook)."""
 
@@ -95,6 +103,8 @@ class CIFixDispatchRequest(BaseModel):
     conflicting_files: list[str] | None = None
     session_id: str = Field(default="", max_length=200)
     from_queue: bool = False
+    head_sha: str = Field(default="", max_length=64)
+    allow_strong_escalation: bool = False
 
 
 def _pr_head_note(branch: str) -> str:
@@ -152,7 +162,8 @@ async def dispatch_ci_fix(
 
     Pre: ``req`` is validated; ``caller`` is the authenticated principal (rate limit, audit).
     Post: on success exactly one staff run was admitted, the PR lock is bound to it, and one
-    audit row names it. On any refusal the lock is released and nothing is audited.
+    audit row names it. On any refusal the lock and attempt reservation are released and nothing
+    is audited.
     Raises :class:`CIFixBusyError`, :class:`CIFixLaunchUnavailableError`, or the staff path's
     ``HTTPException``.
     """
@@ -170,6 +181,72 @@ async def dispatch_ci_fix(
     return result
 
 
+async def _dispatch_cursor_cloud_handoff(
+    req: CIFixDispatchRequest,
+    caller: Principal,
+    session_id: str,
+    *,
+    route: Any,
+    attempt: int,
+    failure_type: str,
+    workflow_name: str,
+    signature: str,
+    failing_tests: list[str],
+) -> dict[str, Any]:
+    """Emit a Cursor cloud handoff check-in (#3377 / #4273 E-21) instead of a local CLI launch."""
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from scripts.cursor_cloud_handoff import emit_handoff_checkin
+
+    note = f"CI-fix routed from {caller.id}: workflow={workflow_name or 'unknown'}"
+    handoff = emit_handoff_checkin(
+        "pr_opened",
+        req.repo,
+        pr=req.pr_number,
+        branch=req.branch,
+        note=note[:2000],
+    )
+    record_ci_fix_audit(
+        repo=req.repo,
+        pr_number=req.pr_number,
+        workflow_name=workflow_name,
+        run_id=req.run_id,
+        failure_type=failure_type,
+        provider="cursor_cloud",
+        model=route.model,
+        attempt_number=attempt,
+        cost_budget=route.cost_budget,
+        staff_run_id=f"cursor-handoff:{session_id}",
+        effort=route.effort,
+        failure_signature=signature,
+    )
+    log.info(
+        "ci-fix: cursor cloud handoff for %s#%d attempt=%d handoff=%s",
+        req.repo,
+        req.pr_number,
+        attempt,
+        handoff.get("reason", "ok"),
+    )
+    return {
+        "status": "dispatched",
+        "repo": req.repo,
+        "pr_number": req.pr_number,
+        "route": route.to_dict(),
+        "launched_provider": "cursor_cloud",
+        "launched_model": route.model,
+        "prompt": "",
+        "session_id": session_id,
+        "failing_tests": failing_tests,
+        "attempt_number": attempt,
+        "staff_run_id": "",
+        "cursor_handoff": handoff,
+    }
+
+
 async def _route_and_launch(
     req: CIFixDispatchRequest, caller: Principal, session_id: str, launcher: Launcher
 ) -> dict[str, Any]:
@@ -181,109 +258,127 @@ async def _route_and_launch(
     failing_tests = req.failing_tests if req.failing_tests is not None else extract_failing_test_names(log_tail)
     workflow_name = req.workflow_name or (MERGE_QUEUE_WORKFLOW if is_conflict else "")
     signature = failure_signature(workflow_name, failing_tests, failure_type)
-    attempt = req.attempt_number or count_consecutive_attempts(req.repo, req.pr_number, signature) + 1
-    route = route_ci_fix(failure_type, attempt_number=attempt, branch=req.branch)
-    if is_conflict:
-        prompt = build_merge_conflict_prompt(req.repo, req.pr_number, req.branch, req.base_ref)
-    else:
-        prompt = build_ci_fix_prompt(
+    attempt_store = global_ci_fix_attempt_store()
+    cap = attempt_store.reserve_attempt(req.repo, req.pr_number, req.head_sha)
+    if not cap.allowed:
+        raise CIFixAttemptCapError(cap.reason)
+    attempt = req.attempt_number if req.attempt_number is not None else cap.head_attempts
+    try:
+        route = route_ci_fix(
+            failure_type,
+            attempt_number=attempt,
+            branch=req.branch,
+            allow_strong_escalation=req.allow_strong_escalation,
+        )
+        if is_conflict:
+            prompt = build_merge_conflict_prompt(req.repo, req.pr_number, req.branch, req.base_ref)
+        else:
+            prompt = build_ci_fix_prompt(
+                repo=req.repo,
+                pr_number=req.pr_number,
+                branch=req.branch,
+                log_tail=log_tail,
+                failing_tests=failing_tests,
+                pr_diff=req.pr_diff,
+                conflicting_files=req.conflicting_files,
+            )
+            if req.from_queue:
+                prompt = f"{prompt}\n{_queue_note(req.repo, req.pr_number)}\n"
+        prompt = f"{_pr_head_note(req.branch)}\n{prompt}"
+
+        if route.provider == "cursor_cloud":
+            return await _dispatch_cursor_cloud_handoff(
+                req,
+                caller,
+                session_id,
+                route=route,
+                attempt=attempt,
+                failure_type=failure_type,
+                workflow_name=workflow_name,
+                signature=signature,
+                failing_tests=failing_tests,
+            )
+
+        if route.tier == "infra":
+            # #2766 item 4: an infra failure is an ops escalation, not a code fix; it goes to the
+            # Night Watch role instead of the CI-fix CLI role, with no forced provider/model.
+            cmd = DispatchCommand(
+                role=NIGHT_WATCH_ROLE,
+                requested_by=f"ci-fix:{caller.id}",
+                repo=req.repo,
+                pr=req.pr_number,
+                prompt=prompt,
+                machine="local",
+                surface="ci_fix",
+                skip_premise_check=True,
+                head_ref=req.branch,
+            )
+        else:
+            provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
+            installed = available_providers()
+            if not installed.get(provider, False):
+                raise CIFixLaunchUnavailableError(
+                    f"Routed CI-fix provider {provider!r} is not installed on this node "
+                    f"(available: {', '.join(sorted(k for k, v in installed.items() if v)) or 'none'})"
+                )
+            cmd = DispatchCommand(
+                role=CI_FIX_ROLE,
+                requested_by=f"ci-fix:{caller.id}",
+                provider=provider,
+                model=route.model,
+                model_tier=CI_FIX_MODEL_TIER[route.tier],
+                repo=req.repo,
+                pr=req.pr_number,
+                prompt=prompt,
+                machine="local",
+                surface="ci_fix",
+                skip_premise_check=True,
+                head_ref=req.branch,
+            )
+        launched = await launcher(cmd, caller)
+        run = launched.get("run") or {}
+        staff_run_id = str(run.get("id") or "")
+        launched_provider = str(run.get("provider") or route.provider)
+        launched_model = str(run.get("model") or route.model)
+        record_ci_fix_audit(
             repo=req.repo,
             pr_number=req.pr_number,
-            branch=req.branch,
-            log_tail=log_tail,
-            failing_tests=failing_tests,
-            pr_diff=req.pr_diff,
-            conflicting_files=req.conflicting_files,
+            workflow_name=workflow_name,
+            run_id=req.run_id,
+            failure_type=failure_type,
+            provider=launched_provider,
+            model=launched_model,
+            attempt_number=attempt,
+            cost_budget=route.cost_budget,
+            staff_run_id=staff_run_id,
+            effort=route.effort,
+            failure_signature=signature,
         )
-        if req.from_queue:
-            prompt = f"{prompt}\n{_queue_note(req.repo, req.pr_number)}\n"
-    prompt = f"{_pr_head_note(req.branch)}\n{prompt}"
-
-    if route.provider == "cursor_cloud":
-        # #2766 item 3: a cursor/* branch is a Cursor-authored PR. This node has no
-        # cursor_cloud_handoff integration yet (see #3377), so launching a local CLI session
-        # for it would silently defeat the routing decision; refuse explicitly instead (DbC).
-        raise CIFixLaunchUnavailableError(
-            "Routed to a Cursor cloud follow-up, which this node cannot launch yet "
-            "(no cursor_cloud_handoff integration); not dispatching a local session for a "
-            "Cursor-authored PR"
+        log.info(
+            "ci-fix: dispatched %s#%d attempt=%d route=%s run=%s",
+            req.repo,
+            req.pr_number,
+            attempt,
+            route.tier,
+            staff_run_id,
         )
-
-    if route.tier == "infra":
-        # #2766 item 4: an infra failure is an ops escalation, not a code fix; it goes to the
-        # Night Watch role instead of the CI-fix CLI role, with no forced provider/model.
-        cmd = DispatchCommand(
-            role=NIGHT_WATCH_ROLE,
-            requested_by=f"ci-fix:{caller.id}",
-            repo=req.repo,
-            pr=req.pr_number,
-            prompt=prompt,
-            machine="local",
-            surface="ci_fix",
-            skip_premise_check=True,
-            head_ref=req.branch,
-        )
-    else:
-        provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
-        installed = available_providers()
-        if not any(installed.get(candidate, False) for candidate in ROUTE_TO_STAFF_PROVIDER.values()):
-            raise CIFixLaunchUnavailableError(
-                "No CI-fix provider is installed on this node; install one or dispatch from a node that has one"
-            )
-        cmd = DispatchCommand(
-            role=CI_FIX_ROLE,
-            requested_by=f"ci-fix:{caller.id}",
-            provider=provider,
-            model=route.model,
-            model_tier=CI_FIX_MODEL_TIER[route.tier],
-            repo=req.repo,
-            pr=req.pr_number,
-            prompt=prompt,
-            machine="local",
-            surface="ci_fix",
-            skip_premise_check=True,
-            head_ref=req.branch,
-        )
-    launched = await launcher(cmd, caller)
-    run = launched.get("run") or {}
-    staff_run_id = str(run.get("id") or "")
-    launched_provider = str(run.get("provider") or route.provider)
-    launched_model = str(run.get("model") or route.model)
-    record_ci_fix_audit(
-        repo=req.repo,
-        pr_number=req.pr_number,
-        workflow_name=workflow_name,
-        run_id=req.run_id,
-        failure_type=failure_type,
-        provider=launched_provider,
-        model=launched_model,
-        attempt_number=attempt,
-        cost_budget=route.cost_budget,
-        staff_run_id=staff_run_id,
-        effort=route.effort,
-        failure_signature=signature,
-    )
-    log.info(
-        "ci-fix: dispatched %s#%d attempt=%d route=%s run=%s",
-        req.repo,
-        req.pr_number,
-        attempt,
-        route.tier,
-        staff_run_id,
-    )
-    return {
-        "status": "dispatched",
-        "repo": req.repo,
-        "pr_number": req.pr_number,
-        "route": route.to_dict(),
-        "launched_provider": launched_provider,
-        "launched_model": launched_model,
-        "prompt": prompt,
-        "session_id": session_id,
-        "failing_tests": failing_tests,
-        "attempt_number": attempt,
-        "staff_run_id": staff_run_id,
-    }
+        return {
+            "status": "dispatched",
+            "repo": req.repo,
+            "pr_number": req.pr_number,
+            "route": route.to_dict(),
+            "launched_provider": launched_provider,
+            "launched_model": launched_model,
+            "prompt": prompt,
+            "session_id": session_id,
+            "failing_tests": failing_tests,
+            "attempt_number": attempt,
+            "staff_run_id": staff_run_id,
+        }
+    except BaseException:
+        if cap.reservation_id is not None:
+            attempt_store.release_reserved_attempt(cap.reservation_id)
+        raise
 
 
 # ─── webhook → dispatch ──────────────────────────────────────────────────────
@@ -353,6 +448,18 @@ async def _ci_failure_request(event: CIFixEvent) -> CIFixDispatchRequest | str:
         return f"PR {event.full_repo}#{event.pr_number} is not open"
     head_obj = pr.get("head")
     head: dict[str, Any] = head_obj if isinstance(head_obj, dict) else {}
+    pr_head_sha = str(head.get("sha") or "")
+    if (
+        event.kind == "ci_failure"
+        and event.head_sha
+        and pr_head_sha
+        and not event.from_queue
+        and event.head_sha != pr_head_sha
+    ):
+        return (
+            f"workflow run head_sha {event.head_sha[:7]} does not match PR head {pr_head_sha[:7]}; "
+            "skipping stale-head CI fix"
+        )
     head_repo = str((head.get("repo") or {}).get("full_name") or event.head_repo)
     if head_repo and head_repo.lower() != event.full_repo.lower():
         return f"PR {event.full_repo}#{event.pr_number} comes from fork {head_repo}; its head cannot be pushed to"
@@ -400,6 +507,7 @@ async def _ci_failure_request(event: CIFixEvent) -> CIFixDispatchRequest | str:
         run_id=run_id,
         log_tail=await fetch_run_log_tail(event.full_repo, run_id) if run_id else "",
         from_queue=event.from_queue,
+        head_sha=pr_head_sha or (event.head_sha if event.kind == "ci_failure" else ""),
     )
 
 
@@ -438,6 +546,9 @@ async def handle_ci_fix_event(event: CIFixEvent, *, launcher: Launcher | None = 
         result = await dispatch_ci_fix(req, WEBHOOK_PRINCIPAL, launcher=launcher)
     except CIFixBusyError as exc:
         log.info("ci-fix: skipped %s: %s", target, exc)
+        return {"dispatched": False, "reason": str(exc)}
+    except CIFixAttemptCapError as exc:
+        log.info("ci-fix: attempt cap for %s: %s", target, exc)
         return {"dispatched": False, "reason": str(exc)}
     except HTTPException as exc:
         log.warning("ci-fix: staff dispatch refused %s: %s", target, exc.detail)
