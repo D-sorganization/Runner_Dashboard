@@ -752,18 +752,21 @@ async def dispatch_to_issues(
             settled = await asyncio.shield(gather_task)
         except asyncio.CancelledError:
             caller_cancelled = True
-            try:
-                settled = await asyncio.shield(gather_task)
-            except asyncio.CancelledError:
-                if gather_task.done():
-                    settled = gather_task.result()
+            while not gather_task.done():
+                try:
+                    settled = await asyncio.shield(gather_task)
+                    break
+                except asyncio.CancelledError:
+                    caller_cancelled = True
+            if settled is None and gather_task.done():
+                settled = gather_task.result()
     finally:
         try:
-            if settled is None and overlap_sessions and not gather_task.done():
+            while settled is None and overlap_sessions and not gather_task.done():
                 try:
                     await asyncio.shield(gather_task)
                 except asyncio.CancelledError:
-                    pass
+                    caller_cancelled = True
             if settled is None and gather_task.done():
                 try:
                     settled = gather_task.result()

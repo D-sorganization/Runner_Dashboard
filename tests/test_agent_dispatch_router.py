@@ -836,7 +836,10 @@ async def test_dispatch_issues_double_cancel_during_post_cancel_gather_releases_
         comment=None,
         should_close=False,
     )
-    slow_gate = asyncio.Event()
+    gather_pending = asyncio.Event()
+    unblock_gather = asyncio.Event()
+    post_cancel_shield = asyncio.Event()
+    fanouts_waiting = 0
 
     def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
         session_id = uuid4().hex
@@ -852,7 +855,11 @@ async def test_dispatch_issues_double_cancel_during_post_cancel_gather_releases_
         return DispatchAttemptResult(dispatched=True, session=session)
 
     async def fanout_side_effect(**_kwargs: object) -> tuple[str | None, str | None, str | None]:
-        await slow_gate.wait()
+        nonlocal fanouts_waiting
+        fanouts_waiting += 1
+        if fanouts_waiting == 2:
+            gather_pending.set()
+        await unblock_gather.wait()
         return ("env", "fp", None)
 
     release_calls: list[str] = []
@@ -865,12 +872,11 @@ async def test_dispatch_issues_double_cancel_during_post_cancel_gather_releases_
     shield_invocations = 0
     real_shield = asyncio.shield
 
-    async def first_gather_shield_not_deferred(awaitable: object) -> object:
-        """Let cancellation land mid-gather so the post-cancel sibling wait is real."""
+    async def instrument_shield(awaitable: object) -> object:
         nonlocal shield_invocations
         shield_invocations += 1
-        if shield_invocations == 1:
-            return await awaitable  # type: ignore[misc]
+        if shield_invocations == 2:
+            post_cancel_shield.set()
         return await real_shield(awaitable)  # type: ignore[arg-type]
 
     req = IssueDispatchRequest(
@@ -900,31 +906,134 @@ async def test_dispatch_issues_double_cancel_during_post_cancel_gather_releases_
             side_effect=fanout_side_effect,
         ),
         patch.object(dispatch_queue_manager, "release_session", side_effect=track_release),
-        patch("agent_dispatch_router.asyncio.shield", side_effect=first_gather_shield_not_deferred),
+        patch("agent_dispatch_router.asyncio.shield", side_effect=instrument_shield),
     ):
         dispatch_task = asyncio.create_task(_dispatch_issues(req))
-        await asyncio.sleep(0.05)
+        await gather_pending.wait()
         held = dispatch_queue_manager.get_active_sessions()
         assert len(held) == 2
         session_ids = {s.session_id for s in held}
 
         dispatch_task.cancel()
-        for _ in range(50):
-            if dispatch_task.cancelling():
-                break
-            await asyncio.sleep(0)
+        await post_cancel_shield.wait()
         dispatch_task.cancel()
+        unblock_gather.set()
+        with pytest.raises(asyncio.CancelledError):
+            await dispatch_task
 
-        async def unblock_sibling_gather() -> None:
-            await asyncio.sleep(0.02)
-            slow_gate.set()
+    assert dispatch_queue_manager.get_active_sessions() == []
+    assert set(release_calls) == session_ids
+    assert len(release_calls) == len(session_ids)
 
-        unblock_task = asyncio.create_task(unblock_sibling_gather())
-        try:
-            with pytest.raises(asyncio.CancelledError):
-                await dispatch_task
-        finally:
-            await unblock_task
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_triple_cancel_during_shielded_gather_releases_once() -> None:
+    """Repeated caller cancels during shielded sibling wait must still release overlap sessions (#4375)."""
+    from uuid import uuid4
+
+    from dispatch_routing import (
+        ActiveSession,
+        DispatchAttemptResult,
+        dispatch_queue_manager,
+    )
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    gather_pending = asyncio.Event()
+    unblock_gather = asyncio.Event()
+    post_cancel_shield = asyncio.Event()
+    third_shield = asyncio.Event()
+    fanouts_waiting = 0
+
+    def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
+        session_id = uuid4().hex
+        session = ActiveSession(
+            session_id=session_id,
+            repository=str(_kwargs.get("repository", "")),
+            number=_kwargs.get("number"),
+            declared_paths=list(_kwargs.get("declared_paths") or []),
+            tier="strong",
+            model="test-model",
+        )
+        dispatch_queue_manager._active_sessions[session_id] = session
+        return DispatchAttemptResult(dispatched=True, session=session)
+
+    async def fanout_side_effect(**_kwargs: object) -> tuple[str | None, str | None, str | None]:
+        nonlocal fanouts_waiting
+        fanouts_waiting += 1
+        if fanouts_waiting == 2:
+            gather_pending.set()
+        await unblock_gather.wait()
+        return ("env", "fp", None)
+
+    release_calls: list[str] = []
+    real_release = dispatch_queue_manager.release_session
+
+    def track_release(session_id: str, **kwargs: object) -> object:
+        release_calls.append(session_id)
+        return real_release(session_id, **kwargs)
+
+    shield_invocations = 0
+    real_shield = asyncio.shield
+
+    async def instrument_shield(awaitable: object) -> object:
+        nonlocal shield_invocations
+        shield_invocations += 1
+        if shield_invocations == 2:
+            post_cancel_shield.set()
+        elif shield_invocations == 3:
+            third_shield.set()
+        return await real_shield(awaitable)  # type: ignore[arg-type]
+
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="list",
+            items=[
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=77),
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=78),
+            ],
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/cancel_a.py` and `backend/cancel_b.py`.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch.object(dispatch_queue_manager, "try_dispatch", side_effect=admit_overlap),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=fanout_side_effect,
+        ),
+        patch.object(dispatch_queue_manager, "release_session", side_effect=track_release),
+        patch("agent_dispatch_router.asyncio.shield", side_effect=instrument_shield),
+    ):
+        dispatch_task = asyncio.create_task(_dispatch_issues(req))
+        await gather_pending.wait()
+        held = dispatch_queue_manager.get_active_sessions()
+        assert len(held) == 2
+        session_ids = {s.session_id for s in held}
+
+        dispatch_task.cancel()
+        await post_cancel_shield.wait()
+        dispatch_task.cancel()
+        await third_shield.wait()
+        dispatch_task.cancel()
+        unblock_gather.set()
+        with pytest.raises(asyncio.CancelledError):
+            await dispatch_task
 
     assert dispatch_queue_manager.get_active_sessions() == []
     assert set(release_calls) == session_ids

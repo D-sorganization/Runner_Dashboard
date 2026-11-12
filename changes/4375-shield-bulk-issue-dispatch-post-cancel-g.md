@@ -1,4 +1,4 @@
 ---
 issue: 4375
-summary: "Shield bulk issue dispatch post-cancel gather wait and always release overlap sessions on exit, including double-cancel."
+summary: "Re-shield bulk issue dispatch gather wait through any number of caller cancellations; event-synchronized double/triple-cancel regression tests."
 ---
