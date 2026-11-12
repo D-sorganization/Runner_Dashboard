@@ -370,6 +370,50 @@ def _probe_codex_cli() -> dict[str, Any]:
     }
 
 
+def _probe_qwen_cli() -> dict[str, Any]:
+    """Probe Qwen Code CLI binary on PATH and Token Plan key presence (never returns the key)."""
+    from staff.qwen_provider import token_plan_api_key  # noqa: PLC0415
+
+    qwen_binary = _find_binary("qwen")
+    key_ready = bool(token_plan_api_key())
+    ready = qwen_binary is not None and key_ready
+    if not qwen_binary:
+        detail = "qwen not found on PATH"
+        status = "not_installed"
+    elif key_ready:
+        detail = "Ready (QwenCloud Token Plan key present)"
+        status = "ready"
+    else:
+        detail = "Token Plan key missing: set QWENCLOUD_TOKEN_PLAN_API_KEY or BAILIAN_TOKEN_PLAN_API_KEY"
+        status = "missing_key"
+    key_source = "unavailable"
+    for env_name in ("QWENCLOUD_TOKEN_PLAN_API_KEY", "BAILIAN_TOKEN_PLAN_API_KEY", "OPENAI_API_KEY"):
+        if key_ready and _env_present(env_name) and env_name != "OPENAI_API_KEY":
+            key_source = _env_source(env_name)
+            break
+        if key_ready and env_name == "OPENAI_API_KEY" and _env_present(env_name):
+            key_source = _env_source(env_name)
+    return {
+        "id": "qwen_cli",
+        "label": "Qwen Code CLI",
+        "icon": "qwen",
+        "installed": qwen_binary is not None,
+        "authenticated": ready,
+        "reachable": ready,
+        "usable": ready,
+        "binary_found": qwen_binary is not None,
+        "key_status": "api_key" if key_ready else "missing",
+        "status": status,
+        "detail": detail,
+        "config_source": key_source if key_ready else ("system" if qwen_binary else "unavailable"),
+        "docs_url": "https://www.npmjs.com/package/@qwen-code/qwen-code",
+        "setup_hint": (
+            "npm i -g @qwen-code/qwen-code@latest, then set QWENCLOUD_TOKEN_PLAN_API_KEY "
+            "in /etc/runner-dashboard/qwen.env (root-only EnvironmentFile=)"
+        ),
+    }
+
+
 def _probe_grok_cli() -> dict[str, Any]:
     """Probe standalone Grok CLI presence and subscription login (#4132)."""
     grok_binary = _find_binary("grok")
@@ -689,6 +733,7 @@ async def _collect_all_probes() -> list[dict[str, Any]]:
         _probe_ollama(),
         _probe_antigravity_cli(),
         _probe_grok_cli(),
+        _probe_qwen_cli(),
     ]
     probes.extend(linear_probes)
     return probes

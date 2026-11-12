@@ -167,3 +167,69 @@ async def test_routed_provider_must_be_installed(tmp_path: Path, monkeypatch: py
 
     with pytest.raises(CIFixLaunchUnavailableError, match="codex"):
         await _route_and_launch(req, caller, "sess", lambda *a: {})
+    head_count, total = store.counts("Runner_Dashboard", 3, "ccc")
+    assert head_count == 0 and total == 0
+
+
+@pytest.mark.asyncio
+async def test_launcher_exception_does_not_consume_attempt_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = CIFixAttemptStore(tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.global_ci_fix_attempt_store", lambda: store)
+    locks = CIFixLockManager(path=tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.GLOBAL_CI_FIX_LOCK_MGR", locks)
+    monkeypatch.setattr(
+        "ci_fix_service.available_providers",
+        lambda: dict.fromkeys(("claude", "codex", "antigravity"), True),
+    )
+
+    req = CIFixDispatchRequest(
+        repo="Runner_Dashboard",
+        pr_number=5,
+        branch="feat/y",
+        head_sha="eee",
+        log_tail="FAILED t.py::a",
+    )
+    caller = Principal(id="t", type="bot", name="t", scopes=["remediation.dispatch"])
+
+    class ExplodingLauncher:
+        async def __call__(self, cmd: object, _caller: Principal) -> dict:
+            raise RuntimeError("launcher failed")
+
+    with pytest.raises(RuntimeError, match="launcher failed"):
+        await _route_and_launch(req, caller, "sess", ExplodingLauncher())
+    head_count, total = store.counts("Runner_Dashboard", 5, "eee")
+    assert head_count == 0 and total == 0
+
+
+@pytest.mark.asyncio
+async def test_staff_dispatch_refusal_does_not_consume_attempt_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import HTTPException
+
+    store = CIFixAttemptStore(tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.global_ci_fix_attempt_store", lambda: store)
+    locks = CIFixLockManager(path=tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.GLOBAL_CI_FIX_LOCK_MGR", locks)
+    monkeypatch.setattr(
+        "ci_fix_service.available_providers",
+        lambda: dict.fromkeys(("claude", "codex", "antigravity"), True),
+    )
+
+    req = CIFixDispatchRequest(
+        repo="Runner_Dashboard",
+        pr_number=6,
+        branch="feat/z",
+        head_sha="fff",
+        log_tail="FAILED t.py::b",
+    )
+    caller = Principal(id="t", type="bot", name="t", scopes=["remediation.dispatch"])
+
+    class RefusingLauncher:
+        async def __call__(self, cmd: object, _caller: Principal) -> dict:
+            raise HTTPException(status_code=503, detail="staff dispatch refused")
+
+    with pytest.raises(HTTPException):
+        await _route_and_launch(req, caller, "sess", RefusingLauncher())
+    head_count, total = store.counts("Runner_Dashboard", 6, "fff")
+    assert head_count == 0 and total == 0

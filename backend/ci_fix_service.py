@@ -162,7 +162,8 @@ async def dispatch_ci_fix(
 
     Pre: ``req`` is validated; ``caller`` is the authenticated principal (rate limit, audit).
     Post: on success exactly one staff run was admitted, the PR lock is bound to it, and one
-    audit row names it. On any refusal the lock is released and nothing is audited.
+    audit row names it. On any refusal the lock and attempt reservation are released and nothing
+    is audited.
     Raises :class:`CIFixBusyError`, :class:`CIFixLaunchUnavailableError`, or the staff path's
     ``HTTPException``.
     """
@@ -262,117 +263,121 @@ async def _route_and_launch(
     if not cap.allowed:
         raise CIFixAttemptCapError(cap.reason)
     attempt = req.attempt_number if req.attempt_number is not None else cap.head_attempts
-    route = route_ci_fix(
-        failure_type,
-        attempt_number=attempt,
-        branch=req.branch,
-        allow_strong_escalation=req.allow_strong_escalation,
-    )
-    if is_conflict:
-        prompt = build_merge_conflict_prompt(req.repo, req.pr_number, req.branch, req.base_ref)
-    else:
-        prompt = build_ci_fix_prompt(
+    try:
+        route = route_ci_fix(
+            failure_type,
+            attempt_number=attempt,
+            branch=req.branch,
+            allow_strong_escalation=req.allow_strong_escalation,
+        )
+        if is_conflict:
+            prompt = build_merge_conflict_prompt(req.repo, req.pr_number, req.branch, req.base_ref)
+        else:
+            prompt = build_ci_fix_prompt(
+                repo=req.repo,
+                pr_number=req.pr_number,
+                branch=req.branch,
+                log_tail=log_tail,
+                failing_tests=failing_tests,
+                pr_diff=req.pr_diff,
+                conflicting_files=req.conflicting_files,
+            )
+            if req.from_queue:
+                prompt = f"{prompt}\n{_queue_note(req.repo, req.pr_number)}\n"
+        prompt = f"{_pr_head_note(req.branch)}\n{prompt}"
+
+        if route.provider == "cursor_cloud":
+            return await _dispatch_cursor_cloud_handoff(
+                req,
+                caller,
+                session_id,
+                route=route,
+                attempt=attempt,
+                failure_type=failure_type,
+                workflow_name=workflow_name,
+                signature=signature,
+                failing_tests=failing_tests,
+            )
+
+        if route.tier == "infra":
+            # #2766 item 4: an infra failure is an ops escalation, not a code fix; it goes to the
+            # Night Watch role instead of the CI-fix CLI role, with no forced provider/model.
+            cmd = DispatchCommand(
+                role=NIGHT_WATCH_ROLE,
+                requested_by=f"ci-fix:{caller.id}",
+                repo=req.repo,
+                pr=req.pr_number,
+                prompt=prompt,
+                machine="local",
+                surface="ci_fix",
+                skip_premise_check=True,
+                head_ref=req.branch,
+            )
+        else:
+            provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
+            installed = available_providers()
+            if not installed.get(provider, False):
+                raise CIFixLaunchUnavailableError(
+                    f"Routed CI-fix provider {provider!r} is not installed on this node "
+                    f"(available: {', '.join(sorted(k for k, v in installed.items() if v)) or 'none'})"
+                )
+            cmd = DispatchCommand(
+                role=CI_FIX_ROLE,
+                requested_by=f"ci-fix:{caller.id}",
+                provider=provider,
+                model=route.model,
+                model_tier=CI_FIX_MODEL_TIER[route.tier],
+                repo=req.repo,
+                pr=req.pr_number,
+                prompt=prompt,
+                machine="local",
+                surface="ci_fix",
+                skip_premise_check=True,
+                head_ref=req.branch,
+            )
+        launched = await launcher(cmd, caller)
+        run = launched.get("run") or {}
+        staff_run_id = str(run.get("id") or "")
+        launched_provider = str(run.get("provider") or route.provider)
+        launched_model = str(run.get("model") or route.model)
+        record_ci_fix_audit(
             repo=req.repo,
             pr_number=req.pr_number,
-            branch=req.branch,
-            log_tail=log_tail,
-            failing_tests=failing_tests,
-            pr_diff=req.pr_diff,
-            conflicting_files=req.conflicting_files,
-        )
-        if req.from_queue:
-            prompt = f"{prompt}\n{_queue_note(req.repo, req.pr_number)}\n"
-    prompt = f"{_pr_head_note(req.branch)}\n{prompt}"
-
-    if route.provider == "cursor_cloud":
-        return await _dispatch_cursor_cloud_handoff(
-            req,
-            caller,
-            session_id,
-            route=route,
-            attempt=attempt,
-            failure_type=failure_type,
             workflow_name=workflow_name,
-            signature=signature,
-            failing_tests=failing_tests,
+            run_id=req.run_id,
+            failure_type=failure_type,
+            provider=launched_provider,
+            model=launched_model,
+            attempt_number=attempt,
+            cost_budget=route.cost_budget,
+            staff_run_id=staff_run_id,
+            effort=route.effort,
+            failure_signature=signature,
         )
-
-    if route.tier == "infra":
-        # #2766 item 4: an infra failure is an ops escalation, not a code fix; it goes to the
-        # Night Watch role instead of the CI-fix CLI role, with no forced provider/model.
-        cmd = DispatchCommand(
-            role=NIGHT_WATCH_ROLE,
-            requested_by=f"ci-fix:{caller.id}",
-            repo=req.repo,
-            pr=req.pr_number,
-            prompt=prompt,
-            machine="local",
-            surface="ci_fix",
-            skip_premise_check=True,
-            head_ref=req.branch,
+        log.info(
+            "ci-fix: dispatched %s#%d attempt=%d route=%s run=%s",
+            req.repo,
+            req.pr_number,
+            attempt,
+            route.tier,
+            staff_run_id,
         )
-    else:
-        provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
-        installed = available_providers()
-        if not installed.get(provider, False):
-            raise CIFixLaunchUnavailableError(
-                f"Routed CI-fix provider {provider!r} is not installed on this node "
-                f"(available: {', '.join(sorted(k for k, v in installed.items() if v)) or 'none'})"
-            )
-        cmd = DispatchCommand(
-            role=CI_FIX_ROLE,
-            requested_by=f"ci-fix:{caller.id}",
-            provider=provider,
-            model=route.model,
-            model_tier=CI_FIX_MODEL_TIER[route.tier],
-            repo=req.repo,
-            pr=req.pr_number,
-            prompt=prompt,
-            machine="local",
-            surface="ci_fix",
-            skip_premise_check=True,
-            head_ref=req.branch,
-        )
-    launched = await launcher(cmd, caller)
-    run = launched.get("run") or {}
-    staff_run_id = str(run.get("id") or "")
-    launched_provider = str(run.get("provider") or route.provider)
-    launched_model = str(run.get("model") or route.model)
-    record_ci_fix_audit(
-        repo=req.repo,
-        pr_number=req.pr_number,
-        workflow_name=workflow_name,
-        run_id=req.run_id,
-        failure_type=failure_type,
-        provider=launched_provider,
-        model=launched_model,
-        attempt_number=attempt,
-        cost_budget=route.cost_budget,
-        staff_run_id=staff_run_id,
-        effort=route.effort,
-        failure_signature=signature,
-    )
-    log.info(
-        "ci-fix: dispatched %s#%d attempt=%d route=%s run=%s",
-        req.repo,
-        req.pr_number,
-        attempt,
-        route.tier,
-        staff_run_id,
-    )
-    return {
-        "status": "dispatched",
-        "repo": req.repo,
-        "pr_number": req.pr_number,
-        "route": route.to_dict(),
-        "launched_provider": launched_provider,
-        "launched_model": launched_model,
-        "prompt": prompt,
-        "session_id": session_id,
-        "failing_tests": failing_tests,
-        "attempt_number": attempt,
-        "staff_run_id": staff_run_id,
-    }
+        return {
+            "status": "dispatched",
+            "repo": req.repo,
+            "pr_number": req.pr_number,
+            "route": route.to_dict(),
+            "launched_provider": launched_provider,
+            "launched_model": launched_model,
+            "prompt": prompt,
+            "session_id": session_id,
+            "failing_tests": failing_tests,
+            "attempt_number": attempt,
+            "staff_run_id": staff_run_id,
+        }
+    except BaseException:
+        attempt_store.release_reserved_attempt(req.repo, req.pr_number, req.head_sha)
+        raise
 
 
 # ─── webhook → dispatch ──────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ router = APIRouter(tags=["orchestration"])
 
 _get_runner_capacity_snapshot: Callable | None = None
 _validate_runner_schedule: Callable | None = None
+_sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]]
 _write_runner_schedule_config: Callable | None = None
 _runner_scheduler_apply_command: Callable | None = None
 
@@ -30,6 +31,7 @@ _runner_base_dir: Path | None = None
 def set_dependencies(
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
+    sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]],
     write_runner_schedule_config: Callable,
     runner_scheduler_apply_command: Callable,
     runner_scheduler_bin: str,
@@ -39,11 +41,13 @@ def set_dependencies(
 ) -> None:
     """Wire server.py helpers into this route module."""
     global _get_runner_capacity_snapshot, _validate_runner_schedule  # noqa: PLW0603
+    global _sanitize_runner_schedule  # noqa: PLW0603
     global _write_runner_schedule_config, _runner_scheduler_apply_command  # noqa: PLW0603
     global _runner_scheduler_bin, _runner_schedule_config  # noqa: PLW0603
     global _runner_scheduler_state, _runner_base_dir  # noqa: PLW0603
     _get_runner_capacity_snapshot = get_runner_capacity_snapshot
     _validate_runner_schedule = validate_runner_schedule
+    _sanitize_runner_schedule = sanitize_runner_schedule
     _write_runner_schedule_config = write_runner_schedule_config
     _runner_scheduler_apply_command = runner_scheduler_apply_command
     _runner_scheduler_bin = runner_scheduler_bin
@@ -87,8 +91,10 @@ async def update_runner_schedule(
     body = await request.json()
     if not isinstance(body, dict):
         raise HTTPException(status_code=400, detail="schedule payload must be an object")
+    raw_schedule = body.get("schedule", body)
+    clamp_notices: list[str] = []
     try:
-        config = _validate_runner_schedule(body.get("schedule", body))  # type: ignore[misc]
+        config, clamp_notices = _sanitize_runner_schedule(raw_schedule)  # type: ignore[misc]
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _write_runner_schedule_config(config)  # type: ignore[misc]
@@ -120,9 +126,13 @@ async def update_runner_schedule(
                 status_code=500,
                 detail=f"Schedule saved, but apply failed: {error}",
             )
-    return {
+    response: dict[str, object] = {
         "saved": True,
         "applied": apply_now,
         "apply_result": apply_result,
         **await asyncio.to_thread(_get_runner_capacity_snapshot),  # type: ignore[arg-type]
     }
+    if clamp_notices:
+        response["capacity_clamped"] = True
+        response["clamp_notices"] = clamp_notices
+    return response

@@ -54,6 +54,8 @@ def test_same_tier_failover_uses_tier_model(tmp_path, monkeypatch: pytest.Monkey
         focus="",
         head_ref="",
         strategy_mode="",
+        dispatch_bundle=None,
+        library_references="",
     )
     role = RoleSpec(name="worker", title="Worker", providers=("codex", "claude"), tier="routine")
     runner = MagicMock(store=store, machine="test")
@@ -119,6 +121,8 @@ def test_tier_escalation_requires_flag(tmp_path, monkeypatch: pytest.MonkeyPatch
         focus="",
         head_ref="",
         strategy_mode="",
+        dispatch_bundle=None,
+        library_references="",
     )
     role = RoleSpec(
         name="worker",
@@ -193,6 +197,8 @@ def test_tier_escalation_requires_flag(tmp_path, monkeypatch: pytest.MonkeyPatch
         focus="",
         head_ref="",
         strategy_mode="",
+        dispatch_bundle=None,
+        library_references="",
     )
     try_chain_failover(runner, store.get_run("run-esc2"), plan2, role_esc, guard, retries_exhausted=False)
     attempt = store.get_run("run-esc2-a2")
@@ -238,6 +244,8 @@ def test_tier_escalation_does_not_bypass_provider_cooldown(tmp_path, monkeypatch
         focus="",
         head_ref="",
         strategy_mode="",
+        dispatch_bundle=None,
+        library_references="",
     )
     role = RoleSpec(
         name="worker",

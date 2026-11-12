@@ -16,6 +16,15 @@ def test_reserve_attempt_enforces_per_head_cap(tmp_path: Path) -> None:
     assert "per-head" in blocked.reason
 
 
+def test_release_reserved_attempt_reverts_latest_head_row(tmp_path: Path) -> None:
+    store = CIFixAttemptStore(tmp_path / "attempts.db")
+    assert store.reserve_attempt("Runner_Dashboard", 3, "abc123").allowed
+    assert store.counts("Runner_Dashboard", 3, "abc123") == (1, 1)
+    assert store.release_reserved_attempt("Runner_Dashboard", 3, "abc123")
+    assert store.counts("Runner_Dashboard", 3, "abc123") == (0, 0)
+    assert not store.release_reserved_attempt("Runner_Dashboard", 3, "abc123")
+
+
 def test_reserve_attempt_enforces_per_pr_cap(tmp_path: Path) -> None:
     store = CIFixAttemptStore(tmp_path / "attempts.db")
     for i in range(DEFAULT_PER_PR_CAP):

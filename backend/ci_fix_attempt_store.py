@@ -155,6 +155,29 @@ class CIFixAttemptStore:
                 db.execute("ROLLBACK")
                 raise
 
+    def release_reserved_attempt(self, repo: str, pr_number: int, head_sha: str) -> bool:
+        """Drop the newest attempt row for this head when dispatch never launched (#4273)."""
+        repo_key, pr = self._key(repo, pr_number)
+        head = (head_sha or "").strip().lower()
+        with self._lock:
+            db = self._conn()
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                row = db.execute(
+                    "SELECT id FROM ci_fix_attempts WHERE repo = ? AND pr_number = ? AND head_sha = ? "
+                    "ORDER BY id DESC LIMIT 1",
+                    (repo_key, pr, head),
+                ).fetchone()
+                if row is None:
+                    db.execute("ROLLBACK")
+                    return False
+                db.execute("DELETE FROM ci_fix_attempts WHERE id = ?", (int(row[0]),))
+                db.execute("COMMIT")
+                return True
+            except BaseException:
+                db.execute("ROLLBACK")
+                raise
+
 
 def get_ci_fix_attempt_store(db_path: Path | None = None) -> CIFixAttemptStore:
     if db_path is None:
