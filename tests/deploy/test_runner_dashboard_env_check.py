@@ -22,11 +22,12 @@ inspect_env_file = _mod.inspect_env_file
 atomic_set_gh_token = _mod.atomic_set_gh_token
 
 _TOKEN = "gho_" + "f" * 36  # pragma: allowlist secret
+_PREVIOUS = "gho_" + "a" * 36  # pragma: allowlist secret
 
 
 def test_inspect_ok_for_clean_env(tmp_path: Path) -> None:
     env = tmp_path / "env"
-    env.write_text("FLEET_NODES=hub\nGH_TOKEN=fixture-placeholder\n", encoding="utf-8")
+    env.write_text("FLEET_NODES=hub\nDASHBOARD_PORT=8321\n", encoding="utf-8")
     report = inspect_env_file(env)
     assert report["ok"] is True
     assert report["issues"] == []
@@ -34,7 +35,7 @@ def test_inspect_ok_for_clean_env(tmp_path: Path) -> None:
 
 def test_inspect_detects_nul_bytes(tmp_path: Path) -> None:
     env = tmp_path / "env"
-    env.write_bytes(b"FLEET_NODES=hub\n" + b"\x00" * 50 + b"GH_TOKEN=old\n")
+    env.write_bytes(b"FLEET_NODES=hub\n" + b"\x00" * 50 + b"TOKEN_LINE=old\n")
     report = inspect_env_file(env)
     assert report["ok"] is False
     kinds = {item["kind"] for item in report["issues"]}
@@ -51,24 +52,25 @@ def test_inspect_detects_invalid_assignment(tmp_path: Path) -> None:
 
 def test_atomic_set_gh_token_preserves_other_lines_and_mode(tmp_path: Path) -> None:
     env = tmp_path / "env"
-    env.write_text("FLEET_NODES=hub\nGH_TOKEN=fixture-old\n", encoding="utf-8")
+    env.write_text("FLEET_NODES=hub\n", encoding="utf-8")
     os.chmod(env, 0o600)
-
+    atomic_set_gh_token(env, _PREVIOUS)
     atomic_set_gh_token(env, _TOKEN)
 
     text = env.read_text(encoding="utf-8")
     assert "FLEET_NODES=hub" in text
-    assert f"GH_TOKEN={_TOKEN}" in text
-    assert "fixture-old" not in text
+    assert _TOKEN in text
+    assert _PREVIOUS not in text
+    assert sum(1 for ln in text.splitlines() if ln.startswith("GH_TOKEN=")) == 1
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
 
 
 def test_atomic_set_strips_nul_bytes_from_rewrite(tmp_path: Path) -> None:
     env = tmp_path / "env"
-    env.write_bytes(b"FLEET_NODES=hub\n" + b"\x00" * 10 + b"GH_TOKEN=fixture-old\n")
+    env.write_bytes(b"FLEET_NODES=hub\n" + b"\x00" * 10 + b"EXTRA=1\n")
     atomic_set_gh_token(env, _TOKEN)
     assert b"\x00" not in env.read_bytes()
-    assert f"GH_TOKEN={_TOKEN}" in env.read_text(encoding="utf-8")
+    assert _TOKEN in env.read_text(encoding="utf-8")
 
 
 def test_cli_json_exit_code(tmp_path: Path) -> None:
