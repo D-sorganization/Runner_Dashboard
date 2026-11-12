@@ -24,8 +24,9 @@ def test_guard_scripts_checkout_is_sparse_on_base_ref_only() -> None:
     checkout = [s for s in _steps() if str(s.get("uses", "")).startswith("actions/checkout")]
     assert len(checkout) == 1
     with_block = checkout[0].get("with") or {}
-    assert "phantom_guard_issue_paths.py" in str(with_block.get("sparse-checkout", ""))
-    assert "phantom_guard_title.py" in str(with_block.get("sparse-checkout", ""))
+    sparse = str(with_block.get("sparse-checkout", ""))
+    assert sparse == "scripts"
+    assert with_block.get("sparse-checkout-cone-mode", True) is not False
     assert "${{ github.event.pull_request.base.ref" in str(with_block.get("ref", ""))
 
 

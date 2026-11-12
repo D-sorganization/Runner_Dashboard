@@ -26,7 +26,7 @@ def _claim_section_text() -> str:
 def test_agents_md_claim_commands_reference_existing_repo_scripts() -> None:
     section = _claim_section_text()
     assert "scripts.check_agent_claim" not in section, "check_agent_claim lives only in Repository_Management"
-    assert "Repository_Management" in section or "STAFF_RM_ROOT" in section
+    assert "STAFF_RM_ROOT" in section
 
     for module in _MODULE_INVOCATION.findall(section):
         script_py = REPO_ROOT / "scripts" / f"{module}.py"
@@ -40,4 +40,4 @@ def test_agents_md_claim_commands_reference_existing_repo_scripts() -> None:
 def test_agents_md_documents_rm_check_agent_claim_separately() -> None:
     section = _claim_section_text()
     assert "check_agent_claim" in section
-    assert "STAFF_RM_ROOT" in section or "Repository_Management" in section
+    assert "STAFF_RM_ROOT" in section

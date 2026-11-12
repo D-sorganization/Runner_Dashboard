@@ -32,10 +32,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
-          sparse-checkout: |
-            scripts/phantom_guard_issue_paths.py
-            scripts/phantom_guard_title.py
-          sparse-checkout-cone-mode: false
+          sparse-checkout: scripts
 
       - name: Anti-phantom guard
         env:
