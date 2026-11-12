@@ -190,7 +190,6 @@ def test_current_behavior_in_process_lock_serializes_claim_api_posts(
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="#4270 B-05: durable compare-and-set should let only one acquirer win (PR 2)")
 def test_two_unserialized_acquires_both_succeed_without_process_lock(
     rm: FakeRM, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -287,32 +286,10 @@ def _seed_staff_run(store: RunStore, run_id: str = RUN_ID) -> None:
 
 
 @pytest.mark.unit
-def test_current_behavior_staff_lease_acquire_continues_after_failed_post_agent_lease(
+def test_staff_lease_acquire_blocks_when_post_agent_lease_fails(
     staff_lease_env: tuple[FakeRM, RunStore],
 ) -> None:
-    """#4270 B-06: dispatch admission does not inspect ``LeaseWriteResult.ok`` today."""
-    rm, store = staff_lease_env
-    rm.respond("check_agent_claim", claim_status(False))
-    rm.respond(
-        "post_agent_lease",
-        lease_result(label=False, comment=False, errors=["HTTP 502"]),
-        rc=1,
-    )
-    rm.respond("agent_communicate:register", {"ok": True})
-    _seed_staff_run(store)
-    note = lease_mod.acquire(store, RUN_ID, repo="Runner_Dashboard", issue=str(ISSUE), agent=AGENT, branch="b")
-    assert note is not None
-    assert "lease and presence" in note.lower()
-    rec = store.get_run(RUN_ID)
-    assert rec is not None and rec.lease_id is not None and rec.status != "blocked"
-    assert [name for name, _ in rm.calls() if name == "post_agent_lease"]
-
-
-@pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="#4270 B-06: failed lease post must surface as held/blocked to the agent (PR 2)")
-def test_staff_lease_acquire_should_block_when_post_agent_lease_fails(
-    staff_lease_env: tuple[FakeRM, RunStore],
-) -> None:
+    """#4270 B-06: failed ``post_agent_lease`` blocks dispatch admission (PR 2)."""
     rm, store = staff_lease_env
     rm.respond("check_agent_claim", claim_status(False))
     rm.respond(
@@ -325,36 +302,22 @@ def test_staff_lease_acquire_should_block_when_post_agent_lease_fails(
     assert note is None
     rec = store.get_run(RUN_ID)
     assert rec is not None and rec.failure_class == "lease_blocked"
+    assert "agent_communicate" not in [name for name, _ in rm.calls()]
 
 
 # ── B-08: orphan ``claim:*`` label when comment post fails ─────────────────
 
 
 @pytest.mark.unit
-def test_current_behavior_failed_comment_post_does_not_invoke_release_agent_lease(
-    rm: FakeRM, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """#4270 B-08: a label may remain on GitHub when ``post_agent_lease`` fails closed on comment."""
+def test_failed_lease_post_rolls_back_orphan_claim_label(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#4270 B-08: partial label success rolls back via ``release_agent_lease`` (PR 2)."""
     rm.respond("check_agent_claim", claim_status(False))
     rm.respond(
         "post_agent_lease",
         lease_result(label=True, comment=False, errors=["comment: HTTP 502"]),
         rc=1,
     )
-    with pytest.raises(RMScriptError):
-        claims_mod.claim(REPO, ISSUE, agent=AGENT, session=f"{AGENT}-{ISSUE}", intent="orphan-risk")
-    assert "release_agent_lease" not in [name for name, _ in rm.calls()]
-
-
-@pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="#4270 B-08: failed lease post should roll back any claim label it added (PR 2)")
-def test_failed_lease_post_should_roll_back_orphan_claim_label(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
-    rm.respond("check_agent_claim", claim_status(False))
-    rm.respond(
-        "post_agent_lease",
-        lease_result(label=True, comment=False, errors=["comment: HTTP 502"]),
-        rc=1,
-    )
+    rm.respond("release_agent_lease", lease_result(agent=AGENT))
     with pytest.raises(RMScriptError):
         claims_mod.claim(REPO, ISSUE, agent=AGENT, session=f"{AGENT}-{ISSUE}", intent="orphan-risk")
     assert "release_agent_lease" in [name for name, _ in rm.calls()]

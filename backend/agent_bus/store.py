@@ -22,6 +22,15 @@ from time_utils import utc_now_iso
 
 log = logging.getLogger("dashboard.agent_bus")
 
+
+class LiveSessionConflictError(RuntimeError):
+    """Raised when register would displace a different principal on a live lease (#4274 B-12)."""
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+        super().__init__(f"session {session_id!r} already has a live registration")
+
+
 _store: AgentBusStore | None = None
 
 
@@ -106,36 +115,47 @@ class AgentBusStore:
     ) -> dict[str, Any]:
         now = utc_now_iso()
         lease_expires = iso_after(lease_seconds)
-        principal_id = principal.id
         token: str | None = None
-        if mint_token:
-            principal_id = f"fleet-session:{session_id}"
-            session_principal = Principal(
-                id=principal_id,
-                type="bot",
-                name=f"{role}@{node}",
-                roles=["bot"],
-            )
-            raw = f"abs_{secrets.token_urlsafe(32)}"
-            identity_manager.add_ephemeral_token(
-                hashlib.sha256(raw.encode()).hexdigest(),
-                session_principal,
-                expires_at=datetime.now(UTC).timestamp() + lease_seconds,
-                name=f"agent-bus-{session_id}",
-            )
-            token = raw
         with self._lock:
             conn = self._conn()
-            conn.execute(
-                "INSERT INTO agent_bus_principals "
-                "(session_id, role, provider, node, principal_id, lease_expires_at, registered_at, last_heartbeat_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(session_id) DO UPDATE SET role=excluded.role, provider=excluded.provider, "
-                "node=excluded.node, principal_id=excluded.principal_id, lease_expires_at=excluded.lease_expires_at, "
-                "last_heartbeat_at=excluded.last_heartbeat_at",
-                (session_id, role, provider, node, principal_id, lease_expires, now, now),
-            )
-            conn.close()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM agent_bus_principals WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+                existing = self._row_principal(row) if row else None
+                if existing is not None and existing.live() and principal.id != existing.principal_id:
+                    raise LiveSessionConflictError(session_id)
+                principal_id = principal.id
+                if mint_token:
+                    principal_id = f"fleet-session:{session_id}"
+                    session_principal = Principal(
+                        id=principal_id,
+                        type="bot",
+                        name=f"{role}@{node}",
+                        roles=["bot"],
+                    )
+                    raw = f"abs_{secrets.token_urlsafe(32)}"
+                    identity_manager.add_ephemeral_token(
+                        hashlib.sha256(raw.encode()).hexdigest(),
+                        session_principal,
+                        expires_at=datetime.now(UTC).timestamp() + lease_seconds,
+                        name=f"agent-bus-{session_id}",
+                    )
+                    token = raw
+                conn.execute(
+                    "INSERT INTO agent_bus_principals "
+                    "(session_id, role, provider, node, principal_id, lease_expires_at, "
+                    "registered_at, last_heartbeat_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(session_id) DO UPDATE SET role=excluded.role, provider=excluded.provider, "
+                    "node=excluded.node, principal_id=excluded.principal_id, "
+                    "lease_expires_at=excluded.lease_expires_at, "
+                    "last_heartbeat_at=excluded.last_heartbeat_at",
+                    (session_id, role, provider, node, principal_id, lease_expires, now, now),
+                )
+            finally:
+                conn.close()
         out: dict[str, Any] = {
             "session": session_id,
             "role": role,
