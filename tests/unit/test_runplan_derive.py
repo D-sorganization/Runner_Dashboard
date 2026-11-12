@@ -34,6 +34,11 @@ _DIRECT_RUNPLAN_ALLOWLIST = frozenset(
 )
 
 
+def _allow_automatic_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bypass claim/hold gates; these tests focus on RunPlan field preservation (#4271)."""
+    monkeypatch.setattr("staff.retry.automatic_retry_admission", lambda *a, **k: (True, ""))
+
+
 def _full_plan(**overrides: object) -> RunPlan:
     base = RunPlan(
         role="worker",
@@ -178,6 +183,7 @@ def test_same_provider_retry_keeps_pr_restrictions(tmp_path: Path, monkeypatch: 
         scheduled.append((rec, attempt_plan))
 
     monkeypatch.setattr("staff.retry._schedule", capture_schedule)
+    _allow_automatic_retry(monkeypatch)
 
     latest = store.get_run("run-root")
     assert latest is not None
@@ -315,6 +321,7 @@ def test_declarative_provider_fallback_keeps_pr_restrictions(
         scheduled.append(attempt_plan)
 
     monkeypatch.setattr("staff.retry._schedule", capture_schedule)
+    _allow_automatic_retry(monkeypatch)
     latest = runner.store.get_run("run-root")
     assert latest is not None
     assert handle_post_execution_retry(runner, latest, plan) is True
@@ -377,6 +384,7 @@ def test_legacy_provider_fallback_keeps_pr_restrictions(
         scheduled.append(attempt_plan)
 
     monkeypatch.setattr("staff.retry._schedule", capture_schedule)
+    _allow_automatic_retry(monkeypatch)
     latest = runner.store.get_run("run-root")
     assert latest is not None
     assert handle_post_execution_retry(runner, latest, plan) is True
