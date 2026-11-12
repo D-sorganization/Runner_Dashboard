@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time
 from datetime import UTC, datetime
@@ -93,22 +94,30 @@ def validate_host_pressure(host: object) -> None:
         raise ValueError("resource_floor.host.min_online must be >= 0")
 
 
+def _coerce_host_percent(raw: object, *, field: str) -> float | None:
+    if isinstance(raw, bool) or not isinstance(raw, int | float):
+        return None
+    value = float(raw)
+    if not math.isfinite(value) or value < 0 or value > 100:
+        log.warning("host metrics %s invalid (%r); ignoring", field, raw)
+        return None
+    return value
+
+
 def _windows_metrics(payload: dict[str, Any]) -> tuple[float | None, float | None]:
     windows = payload.get("windows")
     if not isinstance(windows, dict):
         return None, None
-    cpu = windows.get("cpu_percent")
-    mem = windows.get("memory_percent")
-    cpu_f = float(cpu) if isinstance(cpu, (int, float)) and not isinstance(cpu, bool) else None
-    mem_f = float(mem) if isinstance(mem, (int, float)) and not isinstance(mem, bool) else None
+    cpu_f = _coerce_host_percent(windows.get("cpu_percent"), field="windows.cpu_percent")
+    mem_f = _coerce_host_percent(windows.get("memory_percent"), field="windows.memory_percent")
     return cpu_f, mem_f
 
 
 def _breach_now(host: dict[str, Any], cpu: float | None, mem: float | None) -> bool:
     max_cpu = float(host.get("max_host_cpu_percent", 85))
     max_ram = float(host.get("max_host_ram_percent", 80))
-    cpu_hit = cpu is not None and cpu >= max_cpu
-    mem_hit = mem is not None and mem >= max_ram
+    cpu_hit = cpu is not None and math.isfinite(cpu) and 0 <= cpu <= 100 and cpu >= max_cpu
+    mem_hit = mem is not None and math.isfinite(mem) and 0 <= mem <= 100 and mem >= max_ram
     return cpu_hit or mem_hit
 
 

@@ -98,6 +98,35 @@ def test_recovery_requires_sustain_window(pressure_env) -> None:
     assert reason == "default"
 
 
+def test_malformed_infinity_nan_does_not_shed(pressure_env, caplog: pytest.LogCaptureFixture) -> None:
+    cache, latch = pressure_env
+    t0 = 3_000_000.0
+    from datetime import UTC, datetime
+
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    sampled = datetime.fromtimestamp(t0, tz=UTC).isoformat()
+    cache.write_text(
+        f'{{"sampled_at": "{sampled}", "windows": {{"cpu_percent": Infinity, "memory_percent": NaN}}}}\n',
+        encoding="utf-8",
+    )
+    with caplog.at_level("WARNING"):
+        desired, reason = host_pressure.apply_host_pressure_guard(FLOOR, 6, "default", now=t0)
+    assert desired == 6
+    assert reason == "default"
+    assert not latch.exists()
+    assert any("invalid" in rec.message for rec in caplog.records)
+
+
+def test_negative_percent_over_100_not_breach(pressure_env) -> None:
+    cache, latch = pressure_env
+    t0 = 3_100_000.0
+    _write_cache(cache, cpu=-1.0, mem=150.0, sampled_at=t0)
+    desired, reason = host_pressure.apply_host_pressure_guard(FLOOR, 6, "default", now=t0)
+    assert desired == 6
+    assert reason == "default"
+    assert not latch.exists()
+
+
 def test_oscillation_before_sustain_does_not_latch(pressure_env) -> None:
     cache, latch = pressure_env
     t0 = 2_000_000.0
