@@ -126,22 +126,34 @@ def test_trip_starts_drain_and_sets_min_online_zero() -> None:
     assert stops[0].unit == "u2"
 
 
-def test_drain_timeout_never_stops_busy_runners() -> None:
+def test_drain_timeout_force_stops_busy_runners_then_cordons() -> None:
+    policy = _cfg()
     state = DiskFullCordonState(phase="tripping", tripped_at=1000.0)
     runners = [RunnerSnapshot("u1", active=True, busy=True)]
-    result = plan_cordon_tick(
+    at_timeout = plan_cordon_tick(
         state,
         free_gb=20.0,
         used_percent=93.0,
-        config=_cfg(),
+        config=policy,
         runners=runners,
         now=1125.0,
     )
-    stops = [a for a in result.actions if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)]
-    assert stops == []
+    force = next(a for a in at_timeout.actions if a.kind == CordonActionKind.STOP_RUNNER_FORCE)
+    assert force.unit == "u1"
+    assert at_timeout.state.phase == "tripping"
+
+    drained = plan_cordon_tick(
+        at_timeout.state,
+        free_gb=20.0,
+        used_percent=93.0,
+        config=policy,
+        runners=[],
+        now=1126.0,
+    )
+    assert drained.state.phase == "cordoned"
 
 
-def test_finish_running_jobs_false_still_never_stops_busy_runners() -> None:
+def test_finish_running_jobs_false_force_stops_busy_immediately() -> None:
     state = DiskFullCordonState(phase="tripping", tripped_at=1000.0)
     runners = [RunnerSnapshot("u1", active=True, busy=True)]
     drain = DiskGuardDrain(finish_running_jobs=False, timeout_seconds=7200)
@@ -153,8 +165,8 @@ def test_finish_running_jobs_false_still_never_stops_busy_runners() -> None:
         runners=runners,
         now=1001.0,
     )
-    stops = [a for a in result.actions if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)]
-    assert stops == []
+    force = next(a for a in result.actions if a.kind == CordonActionKind.STOP_RUNNER_FORCE)
+    assert force.unit == "u1"
 
 
 def test_cordoned_runs_cleanup_once_then_readmits_with_hysteresis() -> None:

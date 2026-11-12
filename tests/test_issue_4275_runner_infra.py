@@ -36,57 +36,85 @@ def test_probe_failure_is_unknown_not_zero_gb() -> None:
     assert result["free_gb"] is None
 
 
-def test_cordon_never_stops_busy_runner_after_drain_timeout() -> None:
+def test_cordon_emits_stop_runner_force_after_drain_timeout() -> None:
     config = load_runner_disk_guard_policy()
-    state = DiskFullCordonState(phase=CordonPhase.tripping, tripped_at=0.0)
-    runners = [RunnerSnapshot(unit="actions.runner.x.service", active=True, busy=True)]
+    tripped_at = 1000.0
+    unit = "actions.runner.x.service"
+    state = DiskFullCordonState(phase=CordonPhase.tripping, tripped_at=tripped_at)
+    runners = [RunnerSnapshot(unit=unit, active=True, busy=True)]
     result = plan_cordon_tick(
         state,
         free_gb=1.0,
         used_percent=99.0,
         config=config,
         runners=runners,
-        now=config.drain.timeout_seconds + 1,
+        now=tripped_at + float(config.drain.timeout_seconds) + 1,
     )
-    stops = [
-        a
-        for a in result.actions
-        if a.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE)
-    ]
-    assert stops == []
+    force = [a for a in result.actions if a.kind == CordonActionKind.STOP_RUNNER_FORCE and a.unit == unit]
+    assert len(force) == 1
+
+    cordoned = plan_cordon_tick(
+        result.state,
+        free_gb=1.0,
+        used_percent=99.0,
+        config=config,
+        runners=[],
+        now=tripped_at + float(config.drain.timeout_seconds) + 2,
+    )
+    assert cordoned.state.phase == CordonPhase.CORDONED
 
 
-def test_runtime_never_force_stops_busy_runner(tmp_path: Path) -> None:
-    from disk_full_cordon_runtime import apply_cordon_actions, save_cordon_state
+def test_runtime_force_stops_busy_runner_after_drain_timeout(tmp_path: Path) -> None:
+    from disk_full_cordon_runtime import load_cordon_state, save_cordon_state
 
     stops: list[tuple[str, bool]] = []
+    unit = "actions.runner.x.service"
 
-    def stop_unit(unit: str, reason: str, *, force: bool = False) -> None:
-        stops.append((unit, force))
+    def stop_unit(unit_name: str, reason: str, *, force: bool = False) -> None:
+        stops.append((unit_name, force))
 
     state_path = tmp_path / "cordon.json"
-    save_cordon_state(DiskFullCordonState(phase=CordonPhase.tripping, tripped_at=0.0), state_path)
+    tripped_at = 500.0
+    save_cordon_state(
+        DiskFullCordonState(phase=CordonPhase.tripping, tripped_at=tripped_at),
+        state_path,
+    )
     config = load_runner_disk_guard_policy()
+    now = tripped_at + float(config.drain.timeout_seconds) + 5
+    active = {"busy": True}
+
+    def unit_is_active(_u: str) -> bool:
+        return active["busy"]
+
     with patch("disk_full_cordon_runtime.probe_host_volume") as probe:
         probe.return_value = {"status": "ok", "free_gb": 1.0, "percent": 99.0}
         process_disk_full_cordon_tick(
-            ["actions.runner.x.service"],
-            unit_is_active=lambda u: True,
-            runner_is_busy=lambda u: True,
+            [unit],
+            unit_is_active=unit_is_active,
+            runner_is_busy=lambda _u: True,
             stop_unit=stop_unit,
             dry_run=False,
-            now=float(config.drain.timeout_seconds + 5),
+            now=now,
             state_path=state_path,
+            policy=config,
         )
-    assert stops == []
+    assert stops == [(unit, True)]
 
-    apply_cordon_actions(
-        (CordonAction(CordonActionKind.STOP_RUNNER_FORCE, unit="actions.runner.x.service", force=True),),
-        config=config,
-        dry_run=False,
-        stop_unit=stop_unit,
-    )
-    assert stops == []
+    active["busy"] = False
+    with patch("disk_full_cordon_runtime.probe_host_volume") as probe:
+        probe.return_value = {"status": "ok", "free_gb": 1.0, "percent": 99.0}
+        process_disk_full_cordon_tick(
+            [unit],
+            unit_is_active=lambda _u: False,
+            runner_is_busy=lambda _u: False,
+            stop_unit=stop_unit,
+            dry_run=False,
+            now=now + 1,
+            state_path=state_path,
+            policy=config,
+        )
+    saved = load_cordon_state(state_path)
+    assert saved.phase == CordonPhase.CORDONED
 
 
 def test_cordon_skips_trip_when_probe_unknown(tmp_path: Path) -> None:
