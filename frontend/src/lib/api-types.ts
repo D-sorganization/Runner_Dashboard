@@ -9371,7 +9371,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "checkin" | "job_board" | "github";
+            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "claude_desktop_adapter" | "codex_desktop_adapter" | "checkin" | "job_board" | "github";
             /**
              * Ts
              * Format: date-time

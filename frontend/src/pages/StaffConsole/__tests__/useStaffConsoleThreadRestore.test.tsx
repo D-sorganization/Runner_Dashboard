@@ -255,6 +255,38 @@ describe("selected role thread restoration", () => {
     expect(deps.listThreads).toHaveBeenCalledTimes(1);
   });
 
+  it("retries passive restore when a deduped Barb list request fails", async () => {
+    const restoredThread: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_restore_retry",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const listThreads = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Failed to fetch"))
+      .mockResolvedValueOnce([restoredThread]);
+    const deps = threadApi({ listThreads });
+    const { result, rerender } = renderHook(
+      (props: { restore: boolean }) =>
+        useStaffConsole({
+          roles: ROLES,
+          initialRole: "barb",
+          restoreInitialRoleThread: props.restore,
+          threadApi: deps,
+          streamEnabled: false,
+        }),
+      { initialProps: { restore: true } },
+    );
+
+    await waitFor(() => expect(listThreads).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.error?.kind).toBe("thread"));
+    rerender({ restore: false });
+    rerender({ restore: true });
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(restoredThread.id));
+    expect(listThreads).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps focus provenance attached to passive and explicit thread commits", async () => {
     const restoredThread: ThreadInfo = {
       ...MAINT_THREAD,
