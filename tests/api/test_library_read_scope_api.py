@@ -69,10 +69,7 @@ def reader(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     store = SimpleNamespace(get_run=runs.get)
     monkeypatch.setattr("staff.store.get_run_store", lambda: store)
     monkeypatch.setattr(staff_references, "get_run_store", lambda: store)
-    token = tokens.mint_run_token("research-scout", "run-own", [], 60)
-    # Simulate the explicit capability only; use real token authentication and registry.
-    presets["staff-run:run-own"].append("library.read")
-    manager._ephemeral_principals["staff:research-scout:run-own"].scopes.append("library.read")
+    token = tokens.mint_run_token("research-scout", "run-own", [], 60, library_read=True)
     app = FastAPI()
     app.include_router(routes.router)
     app.include_router(staff_references.router, prefix="/api/v1/staff")

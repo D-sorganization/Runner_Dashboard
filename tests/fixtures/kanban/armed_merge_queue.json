@@ -1,0 +1,27 @@
+{
+  "owner": "D-sorganization",
+  "repo": "Runner_Dashboard",
+  "issue": {
+    "number": 200,
+    "state": "open",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/200"
+  },
+  "pull_request": {
+    "number": 60,
+    "state": "open",
+    "draft": false,
+    "head_sha": "queue_head",
+    "in_merge_queue": true,
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/60"
+  },
+  "auto_merge": {
+    "available": false,
+    "degraded": true,
+    "enabled": false
+  },
+  "reviews": {
+    "head_sha": "queue_head",
+    "review_requested": false,
+    "reviews": []
+  }
+}

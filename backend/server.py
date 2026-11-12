@@ -129,6 +129,7 @@ import prometheus_metrics as _prometheus_metrics_router  # noqa: E402
 import proxy_utils as _proxy_utils  # noqa: E402  # single hub-proxy implementation (issue #923)
 import push as _push_router  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
+import runner_host_capacity  # noqa: E402
 import unified_issue_inventory as unified_issue_inventory  # noqa: E402
 import usage_monitoring as usage_monitoring  # noqa: E402
 from cache_utils import cache_delete as _cache_delete  # noqa: E402
@@ -859,9 +860,17 @@ from routers import flow_metrics as _flow_metrics_router  # noqa: E402
 
 app.include_router(_flow_metrics_router.router)  # PD-4 flow metrics (#3818)
 
+from routers import staff_review_metrics as _staff_review_metrics_router  # noqa: E402
+
+app.include_router(_staff_review_metrics_router.router)  # review-flow metrics decision gate (#4250)
+
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+
+from routers import fleet_state_audit_route as _fleet_state_audit_router  # noqa: E402
+
+app.include_router(_fleet_state_audit_router.router)  # Barb state audit (#3640)
 
 from routers import fleet_productivity_pull as _fleet_productivity_pull_router  # noqa: E402
 
@@ -1558,18 +1567,39 @@ def _validate_hhmm(value: object) -> str:
     return value
 
 
-def _validate_runner_schedule(config: dict) -> dict:
+def _sanitize_runner_schedule(
+    config: dict,
+    *,
+    hostname: str | None = None,
+    aliases: list[str] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     if not isinstance(config, dict):
         raise ValueError("schedule config must be an object")
+    host = hostname if hostname is not None else HOSTNAME
+    host_aliases = aliases if aliases is not None else RUNNER_ALIASES
     days_allowed = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
-    max_count = max(0, min(_runner_limit(), int(config.get("max_count", _runner_limit()))))
+    ceiling = runner_host_capacity.schedule_capacity_ceiling(host, host_aliases, _runner_limit())
+    requested_max = int(config.get("max_count", ceiling))
+    max_count = max(0, min(ceiling, requested_max))
+    clamp_notices: list[str] = []
+    if requested_max > ceiling:
+        clamp_notices.append(f"max_count clamped from {requested_max} to {ceiling} (host cap)")
+    requested_default = int(config.get("default_count", 1))
+    default_count = max(0, min(max_count, requested_default))
+    if requested_default > default_count:
+        clamp_notices.append(f"default_count clamped from {requested_default} to {default_count}")
     sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
-        "default_count": max(0, min(max_count, int(config.get("default_count", 1)))),
+        "default_count": default_count,
         "max_count": max_count,
         "schedules": [],
     }
+    if "resource_floor" in config:
+        runner_host_capacity.validate_resource_floor(config.get("resource_floor"))
+        floor = config.get("resource_floor")
+        if isinstance(floor, dict):
+            sanitized["resource_floor"] = json.loads(json.dumps(floor))
     schedules = config.get("schedules", [])
     if not isinstance(schedules, list):
         raise ValueError("schedules must be a list")
@@ -1582,7 +1612,11 @@ def _validate_runner_schedule(config: dict) -> dict:
         normalized_days = [str(day).lower() for day in days]
         if any(day not in days_allowed for day in normalized_days):
             raise ValueError("schedule days must be mon/tue/wed/thu/fri/sat/sun")
-        runners = max(0, min(max_count, int(entry.get("runners", 0))))
+        requested_runners = int(entry.get("runners", 0))
+        runners = max(0, min(max_count, requested_runners))
+        if requested_runners > runners:
+            name = str(entry.get("name") or "scheduled")
+            clamp_notices.append(f"schedule {name!r} runners clamped from {requested_runners} to {runners}")
         sanitized["schedules"].append(
             {
                 "name": str(entry.get("name") or "scheduled"),
@@ -1592,6 +1626,11 @@ def _validate_runner_schedule(config: dict) -> dict:
                 "runners": runners,
             }
         )
+    return sanitized, clamp_notices
+
+
+def _validate_runner_schedule(config: dict) -> dict:
+    sanitized, _ = _sanitize_runner_schedule(config)
     return sanitized
 
 
@@ -1619,6 +1658,9 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
     env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
     env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
     env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
+    from runner_target_contract import TARGET_OVERRIDE_PATH  # noqa: PLC0415
+
+    env["RUNNER_TARGET_OVERRIDE"] = str(TARGET_OVERRIDE_PATH)
     try:
         result = subprocess.run(
             [sys.executable, RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
@@ -1645,6 +1687,11 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
             "config": config,
         }
     state["available"] = True
+    from runner_target_contract import load_target_override  # noqa: PLC0415
+
+    override = load_target_override()
+    if override:
+        state["target_override"] = override
     return state
 
 
@@ -1679,6 +1726,7 @@ def _build_runner_capacity_snapshot() -> dict:
     timer_states: dict[str, str] = {}
     for unit in ("runner-scheduler.timer", "runner-cleanup.timer"):
         timer_states[unit] = "active" if _unit_active_sync(unit) else "inactive"
+    hard_cap = runner_host_capacity.host_runner_hard_cap(HOSTNAME, RUNNER_ALIASES)
     return {
         "machine": HOSTNAME,
         "aliases": RUNNER_ALIASES,
@@ -1687,6 +1735,14 @@ def _build_runner_capacity_snapshot() -> dict:
         "installed_runners": sum(1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()),
         "max_runners": config["max_count"],
         "host_runner_limit": _runner_limit(),
+        "host_runner_hard_cap": hard_cap,
+        "schedule_config_drift": runner_host_capacity.schedule_config_drift(
+            config,
+            hostname=HOSTNAME,
+            aliases=RUNNER_ALIASES,
+            live_path=RUNNER_SCHEDULE_CONFIG,
+            repo_root=REPO_ROOT,
+        ),
         "config_path": str(RUNNER_SCHEDULE_CONFIG),
         "state_path": str(RUNNER_SCHEDULER_STATE),
         "timers": timer_states,
@@ -2759,6 +2815,7 @@ _orchestration_router.set_dependencies(
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
     get_runner_capacity_snapshot=get_runner_capacity_snapshot,
     validate_runner_schedule=_validate_runner_schedule,
+    sanitize_runner_schedule=_sanitize_runner_schedule,
     write_runner_schedule_config=_write_runner_schedule_config,
     runner_scheduler_apply_command=_runner_scheduler_apply_command,
     run_cmd=run_cmd,

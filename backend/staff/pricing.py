@@ -46,6 +46,8 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
         "deepseek-v4-pro": Price(1.32, 3.96, estimate=True),
     },
     "claude": {
+        "fable-5.2": Price(8.0, 40.0),
+        "fable-5-2": Price(8.0, 40.0),
         "fable-5.1": Price(10.0, 50.0),
         "fable-5-1": Price(10.0, 50.0),
         "fable-5": Price(10.0, 50.0),
@@ -87,6 +89,8 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
     # Local inference: any model, always free.
     "ollama": {},
     "claude-ollama": {},
+    "cursor-agent": {},
+    "grok": {},
 }
 
 # The anthropic-api provider (issue #3123) bills the same Anthropic Messages
@@ -103,6 +107,8 @@ DEFAULT_MODEL: dict[str, str] = {
     "gemini": "gemini-2.5-pro",
     "antigravity": "gemini-3.8-flash-high",
     "anthropic-api": "opus-5",
+    "cursor-agent": "composer-2.5",
+    "grok": "grok-4.7-high",
 }
 
 # Providers that never carry per-token cost regardless of model.
@@ -113,8 +119,11 @@ FREE_PROVIDERS: frozenset[str] = frozenset({"ollama", "claude-ollama"})
 WALL_TIME_USD_PER_MINUTE: dict[str, float] = {
     "antigravity": 0.0,
     "cursor-agent": 0.0,
+    "grok": 0.0,
     "ollama": 0.0,
     "claude-ollama": 0.0,
+    "gemini": 0.0,
+    "anthropic-api": 0.0,
 }
 
 METHODS = ("reported", "token_table", "wall_time", "none")

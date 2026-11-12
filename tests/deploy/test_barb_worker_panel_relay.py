@@ -26,7 +26,9 @@ def _bash(script: Path, *args: str, home: Path) -> subprocess.CompletedProcess[s
 
 def test_scripts_exist_and_are_executable() -> None:
     for path in (PASS, INSTALL):
-        assert path.is_file() and path.stat().st_mode & 0o111, path
+        assert path.is_file(), path
+        if os.name == "posix":
+            assert path.stat().st_mode & 0o111, path
 
 
 def test_pass_refuses_to_run_without_a_bot_token(tmp_path: Path) -> None:
@@ -46,7 +48,7 @@ def test_installer_backlog_push_flags_and_default_off() -> None:
     assert "unset GH_TOKEN" in lane.read_text(encoding="utf-8")
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="checks the non-root refusal")
+@pytest.mark.skipif(not hasattr(os, "geteuid") or os.geteuid() == 0, reason="requires a non-root POSIX user")
 def test_installer_needs_root(tmp_path: Path) -> None:
     result = _bash(INSTALL, home=tmp_path)
     assert result.returncode == 2 and "run as root" in result.stderr

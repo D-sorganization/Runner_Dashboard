@@ -48,6 +48,7 @@
         "pr-body-lint.yml",
         "publish-guard.yml",
         "rd-barb-hold-integrity.yml",
+        "merge-shepherd.yml",
         "recurring-scan.yml",
         "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",

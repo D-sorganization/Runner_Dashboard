@@ -62,7 +62,7 @@ Keep labels `blocked`, `judgement:design`, and `panel-review` until the ruling; 
 - [ ] Failed shadow thread transport returns `ok: false` (#3792 contract).
 - [ ] Fallback drill with fakes: one takeover note, ledger skip on resume, one back note (unit test).
 - [ ] 3 consecutive weekdays on RD with Grok George routines disabled except dormant check (deferred validation).
-- [ ] Fleet PR(s) under 500 lines each, TDD, exactly one `Closes #3700` on the final merge.
+- [ ] Cohesive fleet PRs (~500 lines advisory reference), TDD, exactly one `Closes #3700` on the final merge.
 
 ## Test plan (TDD)
 
@@ -73,7 +73,7 @@ Keep labels `blocked`, `judgement:design`, and `panel-review` until the ruling; 
 5. **Green:** implement `george_persona.py` until unit suite passes; run `pytest tests/unit/test_george_persona.py -q`.
 6. **Gate:** `pytest tests/ -q --ignore=tests/deploy` (or targeted staff tests) before PR.
 
-## Suggested PR split (<500 lines each)
+## Suggested PR split (advisory ~500 lines each (not a gate))
 
 | PR | Content | Closes |
 | --- | --- | --- |

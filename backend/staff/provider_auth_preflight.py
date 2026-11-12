@@ -16,6 +16,7 @@ from staff.cli_oauth_session import (
     oauth_last_refresh_epoch_for_provider,
     provider_oauth_session_alive,
 )
+from staff.provider_spec import SUBSCRIPTION_OAUTH_PROVIDERS
 
 log = logging.getLogger("dashboard.staff.provider_auth_preflight")
 
@@ -24,7 +25,8 @@ _EVENING_HOUR = 20
 _EXPIRING_HOURS = 48.0
 _KEEPALIVE_INTERVAL_SECONDS = 4 * 3600
 _STALE_REFRESH_DAYS = float(os.environ.get("STAFF_PROVIDER_AUTH_STALE_DAYS", "7"))
-_PROBE_PROVIDERS = ("claude", "antigravity", "codex", "grok")
+
+_PROBE_PROVIDERS = tuple(sorted(SUBSCRIPTION_OAUTH_PROVIDERS))
 
 _cache: dict[str, Any] = {"checked_at": None, "providers": {}, "machine": ""}
 

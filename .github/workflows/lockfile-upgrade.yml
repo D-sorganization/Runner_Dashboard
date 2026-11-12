@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install uv
-        uses: astral-sh/setup-uv@0c5e2b8115b80b4c7c5ddf6ff09aefeccbbb8624 # v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           version: "latest"
 
@@ -34,7 +34,7 @@ jobs:
         run: uv lock --upgrade
 
       - name: Open PR with lockfile updates
-        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c12e265e54 # v7
+        uses: peter-evans/create-pull-request@84ae59a2cdc2258d6fa0732dd66352dddae2a412 # v7.0.9
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/weekly-lockfile-upgrade

@@ -650,6 +650,10 @@ Grok CLI (`grok`) is currently opt-in per role via `providers:` in `staff/roles/
 rather than the default failover chain, pending auth health (#4132) and usage tracking (#4133).
 Per-provider models come from the role's **tier** (`routine` | `standard` | `complex`)
 in `config/staff_model_tiers.json` unless the run or role overrides the model.
+Explicit models must pass staff validation against the live catalog (`GET /api/models/catalog`,
+seeded from each provider CLI; Claude accepts `claude-fable-5-2`, `claude-fable-5-1`,
+`claude-opus-5-5`, and the `haiku` / `sonnet` / `opus` aliases). Board and fleet-decision
+panel seats remain pinned to `claude-fable-5-1` until a dedicated seat cutover issue moves them.
 Roles may **tighten** the order with `retry.failover_chain` (each step must stay in
 `providers`); they cannot widen beyond allowed providers.
 
@@ -732,6 +736,12 @@ curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Be
 | Fable | Skeptic: failure modes, edge cases and long-term maintainability | claude      | `claude-fable-5-1`    |
 
 `backend/staff/panel_models.py` (`PANEL_PRESETS`) is the source of truth for the seats; the Staff Console's new-panel form prefills them when the preset is picked. A finished panel appends a Barb turnover note (scope `panel`); a turnover failure is logged and never fails the panel. Add `repos` for read-only grounding (above).
+
+`require_verified_subscription=true` is a separate opt-in policy. It rejects providers without an
+independently verifiable subscription path, including API providers, Cursor and Antigravity. Thus the
+default fleet-decision preset cannot pass this policy until Antigravity has a verified subscription
+checker. Claude and Codex also fail closed when their credential or endpoint configuration is ambiguous.
+Ordinary panels retain their configured provider and fallback behavior.
 
 ```bash
 curl -sS http://localhost:8321/api/v1/staff/panels/presets -H "Authorization: Bearer $DASHBOARD_TOKEN" | jq '.presets[] | select(.id == "fleet-decision")'

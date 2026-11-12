@@ -358,8 +358,11 @@ def test_prepare_run_workdir_keeps_healthy_and_repoless_runs_functional(
     monkeypatch.setattr("staff.workspace.clone_repo", clone_mock)
     monkeypatch.setattr("staff.workspace.add_run_worktree", add_wt_mock)
     monkeypatch.setattr("staff.workspace.sweep_stale_worktrees", sweep_mock)
+    lock_clean_mock = MagicMock(return_value=[])
+    monkeypatch.setattr("staff.runner_ops.clean_stale_git_locks", lock_clean_mock)
 
     wt = prepare_run_workdir(harness.store, harness.rec, harness.make_plan())
+    assert lock_clean_mock.call_count == 2
     assert wt == harness.wt_root / "Tools-run-4212"
     clone_mock.assert_called_once_with("Tools")
     add_wt_mock.assert_called_once()
@@ -368,3 +371,71 @@ def test_prepare_run_workdir_keeps_healthy_and_repoless_runs_functional(
     repoless = prepare_run_workdir(harness.store, harness.rec, harness.make_plan(repo=""))
     assert repoless == harness.wt_root / "run-4212"
     assert repoless.is_dir()
+
+
+@pytest.mark.unit
+def test_apply_staff_run_fleet_token_passes_library_read_from_role(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RM#2393: runner_ops mints ``library.read`` only when the role spec opts in; YAML ``scopes`` are not forwarded."""
+    import identity
+    from identity import identity_manager, principal_has_scope
+    from staff.role_spec import RoleSpec
+    from staff.runner_ops import apply_staff_run_fleet_token
+    from staff.tokens import revoke_run_token
+    import staff.tokens as tokens_mod
+
+    manager = identity.IdentityManager(tmp_path / "identity")
+    monkeypatch.setattr(identity, "identity_manager", manager)
+    monkeypatch.setattr("staff.tokens.identity_manager", manager)
+    monkeypatch.setattr(tokens_mod, "_active_run_tokens", {})
+    presets = dict(identity.SCOPE_PRESETS)
+    monkeypatch.setattr(identity, "SCOPE_PRESETS", presets)
+    monkeypatch.setattr(tokens_mod, "SCOPE_PRESETS", presets)
+
+    store = RunStore(tmp_path / "runs.sqlite3")
+    rec = RunRecord(
+        id="run-2393-lib",
+        role="research-scout",
+        provider="claude",
+        model="claude-test",
+        machine="testbox",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="2393",
+        prompt="read library",
+        status="running",
+    )
+    store.create_run(rec)
+    plan = RunPlan(
+        role="research-scout",
+        provider="claude",
+        model="claude-test",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="2393",
+        operator_prompt="read",
+        prompt="read library",
+        argv=["claude"],
+        branch="staff/2393",
+        lease_ritual=False,
+    )
+    role = RoleSpec(
+        name="research-scout",
+        title="Scout",
+        permissions={"library_read": True, "fleet_actions": ["runner.start"]},
+    )
+    adapter = DummyAdapter("claude")
+    adapter.runtime_env = lambda: {}  # type: ignore[method-assign]
+
+    env = apply_staff_run_fleet_token(store, rec, plan, role, {}, adapter, wall_clock_timeout=300.0)
+    assert env is not None
+    token = env["FLEET_API_TOKEN"]
+    assert token.startswith("run_")
+    prin = manager.verify_token(token)
+    assert prin is not None
+    assert principal_has_scope(prin, "library.read")
+    assert principal_has_scope(prin, "runners.control")
+    assert not principal_has_scope(prin, "proposals.write")
+    assert not principal_has_scope(prin, "admin")
+    revoke_run_token(rec.id)

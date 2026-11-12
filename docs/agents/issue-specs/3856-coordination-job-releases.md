@@ -23,7 +23,7 @@ Job-board claim/release history lives in the activity log but is not exposed rea
 
 1. GET returns JSON list with repo, issue, agent, reason, timestamp fields aligned to log schema.
 2. Read-only; no mutation endpoints in this slice.
-3. PR under 500 lines, TDD; `Closes #3856`.
+3. Prefer cohesive PRs (~500 changed lines advisory), TDD; `Closes #3856`.
 
 ## Test plan (TDD)
 
@@ -33,4 +33,4 @@ Job-board claim/release history lives in the activity log but is not exposed rea
 
 ## PR split
 
-Single PR (under 500 lines).
+Single cohesive PR (line count advisory).

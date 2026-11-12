@@ -6,7 +6,7 @@ After #3867 ledger and #3868 harness land, schedule a **weekly** pilot on `D-sor
 
 ## Scope
 
-**In:** Cron/scheduler entry, pilot config for Tools repo, Barb review routing for follow-ups (&lt;500 line unstacked PRs).
+**In:** Cron/scheduler entry, pilot config for Tools repo, Barb review routing for follow-ups (cohesive unstacked PRs (line count advisory)).
 
 **Out:** Second repo until exit criteria met.
 
@@ -26,7 +26,7 @@ After #3867 ledger and #3868 harness land, schedule a **weekly** pilot on `D-sor
 
 - [ ] Weekly slot fires in dry-run on staging (test).
 - [ ] Pilot limited to Tools (test/config).
-- [ ] PR &lt;500 lines; `Closes #3869`.
+- [ ] Cohesive PR (~500 lines advisory); `Closes #3869`.
 
 ## Labels
 
