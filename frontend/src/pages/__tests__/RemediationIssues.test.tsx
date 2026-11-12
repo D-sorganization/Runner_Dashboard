@@ -261,3 +261,101 @@ describe("RemediationIssuesSubTab", () => {
     );
   });
 });
+
+describe("RemediationIssues confirm dispatch — useSubmit (#4276)", () => {
+  async function armConfirmDispatch(): Promise<ReturnType<typeof mockFetch>> {
+    const fetchFn = mockFetch({ linearReady: false });
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Pickable task")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    return fetchFn;
+  }
+
+  it("double-click on Confirm Dispatch sends one staff request", async () => {
+    const fetchFn = await armConfirmDispatch();
+    const confirm = screen.getByRole("button", { name: "Confirm Dispatch" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => {
+      const staffCalls = fetchFn.mock.calls.filter((c) =>
+        String(c[0]).includes("/api/v1/staff/requests"),
+      );
+      expect(staffCalls).toHaveLength(1);
+    });
+  });
+
+  it("HTTP 500 renders failure text on Confirm Dispatch", async () => {
+    mockFetch({ linearReady: false, dispatchOk: false });
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Pickable task")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/nope|HTTP 500/i),
+    );
+  });
+
+  it("retry after failure reuses the Idempotency-Key", async () => {
+    let fail = true;
+    const fetchFn = vi.fn((url: string) => {
+      if (url.includes("/api/linear/workspaces")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ workspaces: [{ auth_status: "missing" }] }),
+        } as Response);
+      }
+      if (url.includes("/api/v1/staff/requests")) {
+        if (fail) {
+          fail = false;
+          return Promise.resolve({
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({ detail: "nope" }),
+          } as Response);
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              state: "executed",
+              kind: "issue.act",
+              result: { accepted: 1, dispatched: [{ number: 5 }], rejected: [] },
+            }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ items: ISSUES }),
+      } as Response);
+    });
+    vi.stubGlobal("fetch", fetchFn);
+    render(<RemediationIssuesSubTab principalName="dieter" />);
+    await waitFor(() =>
+      expect(screen.getByText("Pickable task")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
+    fireEvent.click(screen.getByText("Dispatch to selected"));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Dispatch" }));
+    await waitFor(() => {
+      const staffCalls = fetchFn.mock.calls.filter((c) =>
+        String(c[0]).includes("/api/v1/staff/requests"),
+      );
+      expect(staffCalls).toHaveLength(2);
+      const h0 = (staffCalls[0][1] as RequestInit).headers as Record<string, string>;
+      const h1 = (staffCalls[1][1] as RequestInit).headers as Record<string, string>;
+      expect(h0["Idempotency-Key"]).toBeTruthy();
+      expect(h0["Idempotency-Key"]).toBe(h1["Idempotency-Key"]);
+    });
+  });
+});
