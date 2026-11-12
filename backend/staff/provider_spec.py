@@ -24,6 +24,21 @@ SUBSCRIPTION_OAUTH_PROVIDERS = frozenset({"claude", "codex", "antigravity", "gem
 # DeepSeek remains behind #4231 — never part of the staff launch registry.
 _EXCLUDED_PROVIDER_IDS = frozenset({"deepseek", "deepseek-api", "opencode"})
 
+# Provider-keyed tables that must carry exactly the staff launch registry key set (#4267).
+FULL_REGISTRY_PARITY_TABLES: tuple[str, ...] = ("known_providers", "model_tiers")
+
+# Provider-keyed tables that may list a subset but never ids outside the registry (#4267).
+SUBSET_REGISTRY_PARITY_TABLES: tuple[str, ...] = (
+    "failover_default_chain",
+    "auth_preflight_probes",
+    "classifier_login_commands",
+    "classifier_upgrade_commands",
+    "review_provider_family",
+)
+
+# Pre-registry author ids kept for same-provider review matching only.
+REVIEW_FAMILY_LEGACY_PROVIDER_KEYS = frozenset({"grok-chat"})
+
 
 @dataclass(frozen=True)
 class ProviderSpec:
@@ -137,13 +152,29 @@ def export_rm_provider_contract_json() -> str:
     return json.dumps(export_rm_provider_contract(), indent=2, sort_keys=True)
 
 
+def parity_provider_id(provider_id: str) -> str:
+    """Normalize dispatch/classifier spellings to staff registry ids for parity checks."""
+    import provider_switch as provider_switch_mod
+
+    raw = provider_id.strip()
+    if raw in staff_provider_specs():
+        return raw
+    target = provider_switch_mod.canonical_id(raw)
+    for registry_id in staff_provider_ids():
+        if provider_switch_mod.canonical_id(registry_id) == target:
+            return registry_id
+    return raw
+
+
 def collect_provider_keyed_table_ids() -> dict[str, frozenset[str]]:
     """Provider-keyed tables that must stay aligned with :func:`staff_provider_ids`."""
+    from staff.classifier import LOGIN_COMMANDS, UPGRADE_COMMANDS
     from staff.model_tiers import _load_tier_config
     from staff.panel_models import PANEL_PROVIDERS
     from staff.pricing import DEFAULT_MODEL, PRICE_TABLE, WALL_TIME_USD_PER_MINUTE
     from staff.provider_auth_preflight import _PROBE_PROVIDERS
     from staff.provider_failover_config import default_failover_chain
+    from staff.review import PROVIDER_FAMILY
 
     registry = staff_provider_ids()
     tier_table = _load_tier_config().get("models_by_tier") or {}
@@ -163,4 +194,7 @@ def collect_provider_keyed_table_ids() -> dict[str, frozenset[str]]:
         "wall_time_rates": frozenset(WALL_TIME_USD_PER_MINUTE),
         "auth_preflight_probes": frozenset(_PROBE_PROVIDERS),
         "lease_agents": lease_agents_for_roster(),
+        "classifier_login_commands": frozenset(parity_provider_id(k) for k in LOGIN_COMMANDS),
+        "classifier_upgrade_commands": frozenset(UPGRADE_COMMANDS),
+        "review_provider_family": frozenset(PROVIDER_FAMILY),
     }
