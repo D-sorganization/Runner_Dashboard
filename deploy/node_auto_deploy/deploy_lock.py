@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
 import socket
 import time
@@ -82,6 +83,17 @@ def lock_is_stale(
     return age is not None and age >= ttl
 
 
+def _read_lock_text(fd: int) -> str:
+    os.lseek(fd, 0, os.SEEK_SET)
+    chunks: list[bytes] = []
+    while True:
+        block = os.read(fd, 4096)
+        if not block:
+            break
+        chunks.append(block)
+    return b"".join(chunks).decode("utf-8", errors="replace")
+
+
 def write_lock_metadata(
     lock_path: Path,
     *,
@@ -109,20 +121,49 @@ def try_reclaim_stale_lock(
 ) -> bool:
     """Remove ``lock_path`` when its metadata proves the owner is stale."""
     try:
-        text = lock_path.read_text(encoding="utf-8", errors="replace")
+        fd = os.open(lock_path, os.O_RDWR)
     except OSError:
-        return False
-    if not lock_is_stale(
-        text,
-        lock_path=lock_path,
-        host=host,
-        proc_root=proc_root,
-        clock=clock,
-        ttl_seconds=ttl_seconds,
-    ):
         return False
     try:
-        lock_path.unlink()
-    except OSError:
-        return False
-    return True
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (BlockingIOError, OSError):
+            return False
+        text = _read_lock_text(fd)
+        if not lock_is_stale(
+            text,
+            lock_path=lock_path,
+            host=host,
+            proc_root=proc_root,
+            clock=clock,
+            ttl_seconds=ttl_seconds,
+        ):
+            return False
+        try:
+            opened = os.fstat(fd)
+            on_disk = os.stat(lock_path)
+        except OSError:
+            return False
+        if opened.st_ino != on_disk.st_ino or opened.st_dev != on_disk.st_dev:
+            return False
+        text_again = _read_lock_text(fd)
+        if text_again != text or not lock_is_stale(
+            text_again,
+            lock_path=lock_path,
+            host=host,
+            proc_root=proc_root,
+            clock=clock,
+            ttl_seconds=ttl_seconds,
+        ):
+            return False
+        try:
+            lock_path.unlink()
+        except OSError:
+            return False
+        return True
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(fd)

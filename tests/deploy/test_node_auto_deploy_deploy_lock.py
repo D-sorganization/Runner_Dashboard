@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -95,3 +96,89 @@ def test_try_reclaim_stale_lock_removes_dead_owner_file(tmp_path: Path) -> None:
     lock.write_text("pid=999001\n", encoding="ascii")
     assert try_reclaim_stale_lock(lock, proc_root=tmp_path / "proc")
     assert not lock.exists()
+
+
+def test_concurrent_stale_reclaim_only_one_succeeds(tmp_path: Path) -> None:
+    lock = tmp_path / ".node-auto-deploy.lock"
+    lock.write_text("pid=999001\nstarted_at=1.0\nhost=node-a\n", encoding="ascii")
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    barrier = threading.Barrier(2)
+    results: list[bool] = []
+
+    def reclaim() -> None:
+        barrier.wait()
+        results.append(
+            try_reclaim_stale_lock(
+                lock,
+                host="node-a",
+                proc_root=proc,
+                clock=lambda: 100.0,
+                ttl_seconds=60,
+            )
+        )
+
+    threads = [threading.Thread(target=reclaim), threading.Thread(target=reclaim)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert results.count(True) == 1
+    assert results.count(False) == 1
+    assert not lock.exists()
+
+
+def test_try_reclaim_aborts_when_lock_path_replaced_before_unlink(tmp_path: Path, monkeypatch) -> None:
+    lock = tmp_path / ".node-auto-deploy.lock"
+    lock.write_text("pid=999001\nstarted_at=1.0\nhost=node-a\n", encoding="ascii")
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    (proc / str(os.getpid())).mkdir(parents=True)
+    pause = threading.Event()
+    replaced = threading.Event()
+    original_stat = os.stat
+
+    def stat_with_pause(path: str | os.PathLike[str], *args: object, **kwargs: object) -> os.stat_result:
+        if Path(path) == lock:
+            pause.set()
+            replaced.wait(timeout=2.0)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "stat", stat_with_pause)
+
+    def replacer() -> None:
+        assert pause.wait(timeout=2.0)
+        lock.unlink(missing_ok=True)
+        write_lock_metadata(lock, host="node-a", clock=lambda: 50.0)
+        replaced.set()
+
+    outcome: dict[str, bool] = {}
+
+    def reclaim() -> None:
+        outcome["reclaimed"] = try_reclaim_stale_lock(
+            lock,
+            host="node-a",
+            proc_root=proc,
+            clock=lambda: 100.0,
+            ttl_seconds=60,
+        )
+
+    reclaim_thread = threading.Thread(target=reclaim)
+    replace_thread = threading.Thread(target=replacer)
+    reclaim_thread.start()
+    replace_thread.start()
+    reclaim_thread.join(timeout=5.0)
+    replace_thread.join(timeout=5.0)
+    assert not reclaim_thread.is_alive()
+    assert not replace_thread.is_alive()
+    assert outcome.get("reclaimed") is False
+    assert lock.exists()
+    assert not lock_is_stale(
+        lock.read_text(encoding="ascii"),
+        lock_path=lock,
+        host="node-a",
+        proc_root=proc,
+        clock=lambda: 50.0,
+        ttl_seconds=60,
+    )
