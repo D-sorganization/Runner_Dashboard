@@ -86,7 +86,7 @@ def dispatcher_rows_since(database: str | Path, since: str) -> tuple[list[dict[s
     try:
         runs = conn.execute(
             """SELECT requested_by, dispatched_by, dispatch_origin, created_at, status, repo,
-            verification, target_kind, target_ref, artifact, pr_number
+            verification, target_kind, target_ref, artifact, pr_number, role, outcome, machine, provider
             FROM runs WHERE created_at >= ? AND retry_of = ''""",
             (since,),
         ).fetchall()

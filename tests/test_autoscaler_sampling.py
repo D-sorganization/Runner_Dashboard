@@ -285,10 +285,10 @@ def test_virtual_lease_with_pin_resolves_to_runner_name(tmp_path: Path, monkeypa
     ],
 )
 def test_unpinned_virtual_lease_blocks_scale_down(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str) -> None:
-    """Issue #3025: an active virtual lease without a pin fails closed."""
+    """#4273 J-06: unpinned virtual leases do not fleet-wide block scale-down."""
     _write_leases(tmp_path, monkeypatch, "leases:\n" + record)
     guard = samp._lease_scale_down_guard()
-    assert guard.block_scale_down is True
+    assert guard.block_scale_down is False
     assert guard.protected_runner_names == frozenset()
 
 

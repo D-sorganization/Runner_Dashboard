@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS
+from staff.provider_spec import known_staff_providers
 
 log = logging.getLogger("dashboard.staff.provider_fallback")
 
@@ -22,18 +23,7 @@ IMMEDIATE_FALLBACK_CLASSES = frozenset({"provider_capacity", "quota_exhausted"})
 # Only these classes may appear in declarative ``when`` lists (DbC).
 ALLOWED_WHEN_CLASSES = frozenset({"provider_capacity", "quota_exhausted", "rate_limited"})
 
-KNOWN_PROVIDERS = frozenset(
-    {
-        "claude",
-        "codex",
-        "antigravity",
-        "gemini",
-        "cursor-agent",
-        "ollama",
-        "claude-ollama",
-        "grok-chat",
-    }
-)
+KNOWN_PROVIDERS = known_staff_providers()
 
 
 @dataclass(frozen=True)
@@ -259,6 +249,8 @@ def try_declarative_fallback(
         consolidation=plan.consolidation,
         focus=plan.focus,
         head_ref=plan.head_ref,
+        dispatch_bundle=plan.dispatch_bundle,
+        library_references=plan.library_references,
     )
     fallback_rec = RunRecord(
         id=attempt_id,

@@ -36,8 +36,15 @@ from staff.adapter_policies import (
     grok_unattended_flags,
 )
 from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
+from staff.deepseek_provider import deepseek_available, deepseek_environment
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
+from staff.qwen_provider import (
+    QWEN_DEFAULT_MODEL,
+    QWEN_TOKEN_PLAN_BASE_URL,
+    qwen_api_key_env,
+    qwen_available,
+)
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
 from staff.staff_result import apply_output_schema
 
@@ -216,8 +223,10 @@ class ProviderAdapter:
             )
         allowed = claude_allowed_tools(read_only_tools)
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
+        if self.provider_id == "deepseek-api" and chosen_model not in self.models:
+            raise ValueError("unsupported DeepSeek model")
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
-        if self.provider_id in ("claude", "claude-ollama", "anthropic-api"):
+        if self.provider_id in ("claude", "claude-ollama", "anthropic-api", "deepseek-api"):
             cmd = [
                 self.executable,
                 "-p",
@@ -227,6 +236,9 @@ class ProviderAdapter:
                 "--verbose",
             ]
             cmd += read_only + ["--disallowedTools", ",".join(CLAUDE_WRITE_TOOLS)]
+            if self.provider_id == "deepseek-api":
+                # Explicit allowlist also excludes separately billed web search/fetch.
+                cmd += ["--tools", ",".join(read_only_tools)]
             if allowed:
                 cmd += ["--allowedTools", ",".join(allowed)]
             if session_id:
@@ -256,6 +268,17 @@ class ProviderAdapter:
             cmd += read_only
             if session_id:
                 cmd += ["--resume", session_id]
+        elif self.provider_id == "qwen":
+            cmd = [
+                self.executable,
+                "--auth-type",
+                "openai",
+                "--output-format",
+                "stream-json",
+                "--channel",
+                "CI",
+                *read_only,
+            ]
         else:  # gemini
             cmd = [self.executable, "-p", prompt, *read_only]
             if session_id:
@@ -263,7 +286,7 @@ class ProviderAdapter:
 
         if chosen_model:
             cmd += ["--model", chosen_model]
-        if self.provider_id in ("codex", "ollama"):
+        if self.provider_id in ("codex", "ollama", "qwen"):
             cmd.append(prompt)
         assert not _CHAT_BYPASS_FLAGS & set(cmd), "chat argv must never bypass permissions"  # noqa: S101
         return cmd
@@ -370,6 +393,19 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         ),
     ),
     "anthropic-api": _build_anthropic_api_adapter(ProviderAdapter, _UNATTENDED_CLAUDE),
+    "deepseek-api": ProviderAdapter(
+        provider_id="deepseek-api",
+        label="DeepSeek API (explicit opt-in)",
+        executable="claude",
+        argv=_UNATTENDED_CLAUDE,
+        default_model="deepseek-flash",
+        models=("deepseek-flash", "deepseek-v4-pro"),
+        json_lines=True,
+        unattended=False,
+        installed_override=deepseek_available,
+        env_builder=deepseek_environment,
+        notes="Paid API; requires explicit host enablement and provider selection; chat only.",
+    ),
     "codex": ProviderAdapter(
         provider_id="codex",
         label="Codex CLI",
@@ -472,6 +508,44 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "turns raise ChatReadOnlyUnsupportedError rather than guess one; not in the "
             "default failover chain (config/provider_failover.json) until auth health (#4132) "
             "and usage tracking (#4133) land — opt in per role via `providers:` meanwhile."
+        ),
+    ),
+    "qwen": ProviderAdapter(
+        provider_id="qwen",
+        label="Qwen Code CLI",
+        executable="qwen",
+        argv=(
+            "--auth-type",
+            "openai",
+            "--output-format",
+            "stream-json",
+            "--approval-mode",
+            "auto-edit",
+            "--channel",
+            "CI",
+            "--model",
+            "{model}",
+            "{prompt}",
+        ),
+        default_model=QWEN_DEFAULT_MODEL,
+        models=(
+            "qwen3.8-flash",
+            "qwen3.8-max",
+            "qwen3.7-plus",
+            "qwen3.7-max",
+            "qwen3.6-flash",
+            "qwen4-max-preview",
+        ),
+        json_lines=True,
+        installed_override=qwen_available,
+        extra_env={
+            "OPENAI_BASE_URL": QWEN_TOKEN_PLAN_BASE_URL,
+            "OPENAI_MODEL": QWEN_DEFAULT_MODEL,
+        },
+        env_builder=qwen_api_key_env,
+        notes=(
+            "QwenCloud Token Plan subscription via OpenAI-compatible endpoint; never `--yolo`/`-y` "
+            "(#1586). Token Plan key is injected only into the child env as OPENAI_API_KEY."
         ),
     ),
     "ollama": ProviderAdapter(

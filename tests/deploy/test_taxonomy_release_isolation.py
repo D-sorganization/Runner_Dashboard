@@ -85,6 +85,7 @@ def test_label_event_snapshot_preserves_release_gate_semantics(
 ) -> None:
     monkeypatch.syspath_prepend(str(ROOT / "deploy"))
     from main_auto_release.gate import commit_passes_publisher_ci_gate
+    from required_context_helper import success_runs_for_required_contexts  # noqa: WPS433
 
     # Actual incident: unrelated claim events produced cancelled route/preview/apply
     # checks on otherwise green main. A skipped route also skips its dependent jobs.
@@ -93,13 +94,8 @@ def test_label_event_snapshot_preserves_release_gate_semantics(
         {"name": name, "head_sha": SHA, "status": "completed", "conclusion": conclusion}
         for name in ("route", "preview", "apply")
     ]
-    checks += [
-        {
-            "name": "quality-gate",
-            "head_sha": SHA,
-            "status": "completed",
-            "conclusion": "failure" if source_failure else "success",
-        },
-        {"name": "tests", "head_sha": SHA, "status": "completed", "conclusion": "success"},
-    ]
+    checks += success_runs_for_required_contexts(SHA)
+    for run in checks:
+        if run.get("name") == "quality-gate":
+            run["conclusion"] = "failure" if source_failure else "success"
     assert commit_passes_publisher_ci_gate(checks, SHA)[0] is not source_failure

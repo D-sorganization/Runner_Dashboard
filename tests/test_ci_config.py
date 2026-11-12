@@ -181,10 +181,16 @@ def test_ci_uses_reversible_zero_polling_runner_selector() -> None:
     assert "d-sorg-fleet" in text
     assert "gh api" not in str(picker)
     assert "gh repo list" not in str(picker)
-    go_public_pinned = ("ci-health-check", "quality-gate", "security-scan", "tests", "tests-required", "changes", "lint")
+    from scripts import ci_runner_selector as selector
+
+    fast_checks_expr = selector.pick_runner_fast_checks_runs_on_expression().strip()
+    for job_name in ("quality-gate", "tests", "tests-required"):
+        assert str(workflow["jobs"][job_name]["runs-on"]).strip() == fast_checks_expr, job_name
+    go_public_pinned = ("ci-health-check", "security-scan", "changes", "lint")
     for job_name in go_public_pinned:
         assert workflow["jobs"][job_name]["runs-on"] == "ubuntu-latest", job_name
     assert picker["runs-on"] == "ubuntu-latest"
+    assert "fast_checks_runner" in str(picker["outputs"])
 
 
 def test_job_level_environment_uses_pre_runner_contexts_only() -> None:
@@ -268,7 +274,7 @@ def test_local_only_guard_uses_reversible_public_fast_lane() -> None:
     assert "ubuntu-latest" in text
     assert "CI_RUNNER_MODE" in text
     assert "d-sorg-fleet" in text
-    assert '"anti-phantom-merge.yml"' in text
+    assert "scripts.local_only_runner_guard" in text
 
 
 def test_main_line_cap_exempts_current_legacy_frontend_baseline() -> None:

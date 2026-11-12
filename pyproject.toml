@@ -38,6 +38,7 @@ dev = [
     "coverage==7.6.1",
     "types-PyYAML",
     "types-requests",
+    "mcp==2.3.0",
 ]
 
 [project.optional-dependencies]

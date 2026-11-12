@@ -92,6 +92,7 @@ jobs:
     outputs:
       runner: ${{ steps.select.outputs.runner }}
       mode: ${{ steps.select.outputs.mode }}
+      fast_checks_runner: ${{ steps.select.outputs.fast_checks_runner }}
     steps:
       - id: detect-expedite
         name: Detect priority:expedite on this PR
@@ -135,9 +136,10 @@ jobs:
           CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
           CI_QUEUE_RUNNER_LABEL: ${{ vars.CI_QUEUE_RUNNER_LABEL }}
           CI_PR_RUNNER_MODE: ${{ vars.CI_PR_RUNNER_MODE }}
+          RD_FAST_CHECKS_RUNNER: ${{ vars.RD_FAST_CHECKS_RUNNER }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
-          FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
           EVENT_NAME: ${{ github.event_name }}
+          FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
           HAS_EXPEDITE: ${{ steps.detect-expedite.outputs.has_expedite }}
           FORK_PR: ${{ github.event.pull_request &&
             github.event.pull_request.head.repo.full_name != github.repository }}
@@ -188,6 +190,22 @@ jobs:
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
             echo "Public repo hosted runner (CI_RUNNER_MODE not local)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          FAST_CHECKS="${RD_FAST_CHECKS_RUNNER:-}"
+          if [ -n "$FAST_CHECKS" ] && [ "$FAST_CHECKS" != "hosted" ] && [ "$FAST_CHECKS" != "local" ]; then
+            echo "::error::RD_FAST_CHECKS_RUNNER must be 'hosted', 'local', or unset (got '$FAST_CHECKS')"
+            exit 1
+          fi
+          if [ "$FORK_PR" = "true" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$FAST_CHECKS" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
           fi
 
   # ── Event tier + docs-only fast path (issue #1864, RM#1915) ─────────────
@@ -848,7 +866,10 @@ jobs:
       actions: write
       contents: read
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
     timeout-minutes: 20
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -1004,7 +1025,10 @@ jobs:
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
     timeout-minutes: 5
     steps:
       - name: Confirm Python test matrix
@@ -1129,7 +1153,10 @@ jobs:
       needs.pr-guard.result == 'skipped' ||
       needs.pr-guard.result == 'failure')
     # Fork PRs run on a hosted runner, never the fleet (RM#1989).
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
