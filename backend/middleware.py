@@ -197,6 +197,9 @@ _ALT_AUTH_EXEMPT_PREFIXES = (
 DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
 WEBHOOK_MAX_BODY_SIZE = 256 * 1024  # 256 KB
 
+# Process-local drain switches live outside /api/* but are state-changing (#4274 F-04).
+_PRIVILEGED_STATE_PATHS = frozenset({"/_drain", "/_undrain"})
+
 
 def limit_body_size(max_bytes: int) -> Callable[[Callable], Callable]:
     """Decorator to set a per-route maximum body size in bytes.
@@ -381,6 +384,12 @@ async def csrf_check(request: Request, call_next: Any) -> Any:
         # Allow health / static routes without the header so monitoring tools
         # (e.g. curl health checks) still work.  Only enforce on /api/* paths.
         if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/linear/webhook"):
+            if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+                return JSONResponse(
+                    {"error": "CSRF check failed: missing X-Requested-With header"},
+                    status_code=403,
+                )
+        elif request.url.path in _PRIVILEGED_STATE_PATHS:
             if request.headers.get("X-Requested-With") != "XMLHttpRequest":
                 return JSONResponse(
                     {"error": "CSRF check failed: missing X-Requested-With header"},

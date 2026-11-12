@@ -62,12 +62,14 @@ export function FleetOrchestrationPage(): React.ReactElement {
       });
   }, []);
 
-  const dispatchWorkflow = useCallback((payload: OrchestrationDispatchPayload) => {
+  const dispatchWorkflow = useCallback(
+    (payload: OrchestrationDispatchPayload, options?: { idempotencyKey?: string }) => {
     return legacyFetch("/api/fleet/orchestration/dispatch", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Requested-With": "XMLHttpRequest",
+        ...(options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
       },
       body: JSON.stringify(payload),
     })
@@ -82,20 +84,24 @@ export function FleetOrchestrationPage(): React.ReactElement {
         }
         return normalizeDispatchResponse(data);
       });
-  }, []);
+  },
+  []);
 
-  const deployAction = useCallback((payload: OrchestrationDeployPayload) => {
+  const deployAction = useCallback(
+    (payload: OrchestrationDeployPayload, options?: { idempotencyKey?: string }) => {
     return legacyFetch("/api/fleet/orchestration/deploy", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-Requested-With": "XMLHttpRequest",
+        ...(options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
       },
       body: JSON.stringify(payload),
     })
       .then((r) => parseJsonOrThrow(r, "Deploy failed"))
       .then(normalizeDeployResponse);
-  }, []);
+  },
+  []);
 
   useEffect(() => {
     const controller = new AbortController();

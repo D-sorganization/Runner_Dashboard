@@ -147,6 +147,51 @@ def test_with_fleet_env_barb_fleet_loader_is_safe() -> None:
     assert " eval " not in f" {text} "
     assert "echo \"${FLEET_API_TOKEN" not in text
     assert "printf '%s' \"${FLEET_API_TOKEN" not in text
+    assert "RUN_JWT_AGENT_SESSION" in text
+
+
+def test_with_fleet_env_run_jwt_exchange_default_off_keeps_bootstrap(tmp_path: Path) -> None:
+    rd = tmp_path / "rd"
+    scripts = rd / "scripts"
+    scripts.mkdir(parents=True)
+    helper = scripts / "exchange_run_jwt.py"
+    helper.write_text("#!/usr/bin/env python3\nimport sys\nsys.stdout.write('must-not-run')\n", encoding="utf-8")
+    helper.chmod(0o755)
+    rd_cfg = tmp_path / ".config" / "runner-dashboard"
+    rd_cfg.mkdir(parents=True)
+    (rd_cfg / "token").write_text("bootstrap-token\n", encoding="utf-8")
+    proc = _source_with_fleet_env(
+        tmp_path,
+        extra_env={"RUNNER_DASHBOARD_ROOT": str(rd)},
+        printf='printf "%s" "${FLEET_API_TOKEN:-}"',
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "bootstrap-token"
+
+
+def test_with_fleet_env_run_jwt_exchange_when_flagged(tmp_path: Path) -> None:
+    rd = tmp_path / "rd"
+    scripts = rd / "scripts"
+    scripts.mkdir(parents=True)
+    helper = scripts / "exchange_run_jwt.py"
+    helper.write_text("#!/usr/bin/env python3\nimport sys\nsys.stdout.write('run-jwt-value')\n", encoding="utf-8")
+    helper.chmod(0o755)
+    rd_cfg = tmp_path / ".config" / "runner-dashboard"
+    rd_cfg.mkdir(parents=True)
+    (rd_cfg / "token").write_text("bootstrap-token\n", encoding="utf-8")
+    proc = _source_with_fleet_env(
+        tmp_path,
+        extra_env={
+            "RUNNER_DASHBOARD_ROOT": str(rd),
+            "RUN_JWT_AGENT_SESSION": "1",
+            "FLEET_RUN_JWT_RUN_ID": "run-test",
+            "FLEET_RUN_JWT_CALLER_NODE": "barb-vm",
+            "FLEET_AGENT": "agent-grok",
+        },
+        printf='printf "%s" "${FLEET_API_TOKEN:-}"',
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "run-jwt-value"
 
 
 def test_with_fleet_env_reads_token_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

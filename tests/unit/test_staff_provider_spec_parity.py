@@ -11,9 +11,13 @@ from coordination import roster
 from staff.adapter_policies import _CHAT_READ_ONLY_FLAGS
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.provider_spec import (
+    FULL_REGISTRY_PARITY_TABLES,
+    REVIEW_FAMILY_LEGACY_PROVIDER_KEYS,
     RM_CONTRACT_SCHEMA,
+    SUBSET_REGISTRY_PARITY_TABLES,
     collect_provider_keyed_table_ids,
     export_rm_provider_contract,
+    parity_provider_id,
     staff_provider_ids,
     staff_provider_specs,
 )
@@ -80,18 +84,28 @@ def test_specs_cover_adapters_without_deepseek() -> None:
         assert spec.lease_agent == adapter.lease_agent
 
 
-def test_known_providers_and_tiers_match_registry() -> None:
+@pytest.mark.parametrize("table_name", FULL_REGISTRY_PARITY_TABLES)
+def test_full_registry_parity_tables_match_registry(table_name: str) -> None:
     tables = collect_provider_keyed_table_ids()
     registry = tables["registry"]
-    assert tables["known_providers"] == registry
-    assert tables["model_tiers"] == registry
+    assert tables[table_name] == registry, f"{table_name} drifted from staff registry"
 
 
-def test_failover_chain_and_probes_stay_in_registry() -> None:
+@pytest.mark.parametrize("table_name", SUBSET_REGISTRY_PARITY_TABLES)
+def test_subset_registry_parity_tables_stay_in_registry(table_name: str) -> None:
     tables = collect_provider_keyed_table_ids()
     registry = tables["registry"]
-    assert tables["failover_default_chain"] <= registry
-    assert tables["auth_preflight_probes"] <= registry
+    ids = tables[table_name]
+    if table_name == "review_provider_family":
+        ids = frozenset(k for k in ids if k not in REVIEW_FAMILY_LEGACY_PROVIDER_KEYS)
+        ids = frozenset(parity_provider_id(k) for k in ids)
+    elif table_name.startswith("classifier"):
+        ids = frozenset(parity_provider_id(k) for k in ids)
+    assert ids <= registry, f"{table_name} lists ids outside staff registry: {sorted(ids - registry)}"
+
+
+def test_registry_includes_grok_and_anthropic_api_not_grok_chat() -> None:
+    registry = staff_provider_ids()
     assert "grok" in registry
     assert "anthropic-api" in registry
     assert "grok-chat" not in registry

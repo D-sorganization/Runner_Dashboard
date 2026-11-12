@@ -40,10 +40,30 @@ export interface paths {
          *     ``/readyz`` reports unready while draining. Requests already admitted are
          *     allowed to finish; this flag does not cancel or wait for in-flight work.
          *
-         *     Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+         *     Requires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).
          *     Post-condition: _drain_mode is True after successful call.
          */
         post: operations["drain_endpoint__drain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_undrain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undrain Endpoint
+         * @description Clear process-local draining and resume normal mutation admission (#4274 F-04).
+         */
+        post: operations["undrain_endpoint__undrain_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2776,6 +2796,26 @@ export interface paths {
          * @description Dispatch agents to one or more issues.
          */
         post: operations["api_dispatch_to_issues_api_issues_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kanban/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kanban Github Board
+         * @description Return projected kanban cards from cached GitHub sources with freshness metadata.
+         */
+        get: operations["get_kanban_github_board_api_kanban_github_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6093,6 +6133,26 @@ export interface paths {
          * @description Run or return a cached Barb state audit report.
          */
         get: operations["get_fleet_state_audit_api_v1_fleet_state_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kanban/columns/waiting-on-dieter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Waiting On Dieter Column
+         * @description Read-only Waiting-on-Dieter column from holds, owner labels, and pending approvals.
+         */
+        get: operations["get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -13967,6 +14027,28 @@ export interface operations {
             };
         };
     };
+    undrain_endpoint__undrain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     list_principals_api_admin_principals_get: {
         parameters: {
             query?: never;
@@ -17959,6 +18041,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_kanban_github_board_api_kanban_github_get: {
+        parameters: {
+            query: {
+                owner: string;
+                repo: string;
+                force_cold?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -22892,6 +23009,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

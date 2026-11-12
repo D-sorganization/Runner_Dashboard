@@ -6,12 +6,12 @@
  * security, docs) and global prompt notes.
  */
 import React, { useEffect, useState } from "react";
+import { useSubmit } from "../hooks/useSubmit";
 import { IssueGlyph, AlertGlyph } from "./decompIcons";
 import {
   ALL_STANDARDS,
   buildCodeRequest,
   type CodeRequestsProps,
-  type DispatchStatus,
   type PromptTemplate,
   type SaveStatus,
   repoName,
@@ -19,7 +19,7 @@ import {
 import { CodeRequestsHistory } from "./CodeRequestsHistory";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { PromptNotesEditor } from "./CodeRequestsPromptNotes";
-import { errorMessage, submitStaffRequest } from "./Staff/staffApi";
+import { submitStaffRequest } from "./Staff/staffApi";
 import "./CodeRequests.css";
 
 export type * from "./codeRequestsTypes";
@@ -53,8 +53,7 @@ export function CodeRequestsTab({
   const [promptText, setPromptText] = useState("");
   const [selStds, setSelStds] = useState<Record<string, boolean>>({});
   const [templateName, setTemplateName] = useState("");
-  const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus>(null);
-  const [dispatchError, setDispatchError] = useState("");
+  const codeRequestDispatch = useSubmit<void>();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
 
   useEffect(() => {
@@ -92,28 +91,27 @@ export function CodeRequestsTab({
   }
 
   function doDispatch(): void {
-    if (!selRepo || !promptText.trim()) return;
-    setDispatchStatus("dispatching");
+    if (!selRepo || !promptText.trim() || codeRequestDispatch.isSubmitting) return;
     const activeProvider = selProvider || (registry?.providers[0]?.dashboardId || "codex");
-    const dispatchFn = onDispatch ?? ((p) => submitStaffRequest(buildCodeRequest(p)));
-    dispatchFn({
+    const payload = {
       repository: selRepo,
       branch: selBranch,
       provider: activeProvider,
-      // Prompt notes and standards are applied server-side (#1501).
       prompt: promptText,
       standards: Object.keys(selStds).filter((k) => selStds[k]),
       profile_id: selProfileId || undefined,
-    })
-      .then(() => {
-        setDispatchStatus("ok");
+    };
+    codeRequestDispatch.submit(async ({ idempotencyKey }) => {
+      try {
+        if (onDispatch) {
+          await onDispatch(payload, { idempotencyKey });
+        } else {
+          await submitStaffRequest(buildCodeRequest(payload), idempotencyKey);
+        }
+      } finally {
         onRefresh();
-      })
-      .catch((err: unknown) => {
-        setDispatchError(errorMessage(err));
-        setDispatchStatus("error");
-        onRefresh();
-      });
+      }
+    });
   }
 
   function doSaveTemplate(): void {
@@ -372,10 +370,16 @@ export function CodeRequestsTab({
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button
               className="action-btn"
-              disabled={targetUnavailable || !selRepo || !promptText.trim()}
+              disabled={
+                targetUnavailable ||
+                !selRepo ||
+                !promptText.trim() ||
+                codeRequestDispatch.isSubmitting
+              }
               onClick={doDispatch}
             >
-              <IssueGlyph size={14} /> Dispatch
+              <IssueGlyph size={14} />{" "}
+              {codeRequestDispatch.isSubmitting ? "Dispatching…" : "Dispatch"}
             </button>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input
@@ -404,14 +408,14 @@ export function CodeRequestsTab({
               </button>
             </div>
           </div>
-          {dispatchStatus === "ok" ? (
-            <div style={{ color: "var(--accent-green)", fontSize: 13, marginTop: 8 }}>
+          {codeRequestDispatch.state.status === "succeeded" ? (
+            <div role="status" style={{ color: "var(--accent-green)", fontSize: 13, marginTop: 8 }}>
               Code request dispatched.
             </div>
           ) : null}
-          {dispatchStatus === "error" ? (
+          {codeRequestDispatch.failureText ? (
             <div role="alert" style={{ color: "var(--accent-red)", fontSize: 13, marginTop: 8 }}>
-              {dispatchError ? "Dispatch failed: " + dispatchError : "Dispatch failed."}
+              {"Dispatch failed: " + codeRequestDispatch.failureText}
             </div>
           ) : null}
           {saveStatus === "ok" ? (

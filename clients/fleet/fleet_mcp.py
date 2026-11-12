@@ -19,10 +19,15 @@ import sys
 from pathlib import Path
 from typing import IO, Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+_root = Path(__file__).resolve().parents[2]
+for sub in ("clients/fleet", "backend"):
+    path = str(_root / sub)
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
 from fleet_client import FleetAPIError, FleetArgumentError, FleetClient  # noqa: E402
 from fleet_tools import BY_TOOL  # noqa: E402
+from ops_mcp_contract import stamp_tool_payload  # noqa: E402
 
 PROTOCOL_VERSION = "2025-06-18"
 SERVER_INFO = {"name": "fleet", "title": "Runner Dashboard Fleet API", "version": "1.0.0"}
@@ -52,6 +57,8 @@ def _result(msg_id: Any, result: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tool_result(payload: Any, is_error: bool) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        payload = stamp_tool_payload(payload, is_error=is_error)
     text = json.dumps(payload, indent=2, sort_keys=True, default=str)
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 

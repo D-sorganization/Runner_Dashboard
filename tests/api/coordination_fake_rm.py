@@ -87,12 +87,27 @@ class FakeRM:
         return [tuple(json.loads(p.read_text(encoding="utf-8"))) for p in files]
 
 
+def patch_gh_list_fetch(monkeypatch: pytest.MonkeyPatch, fetch: Any) -> None:
+    """Route paginated GitHub list reads and legacy ``evidence_fetch`` through the same fake."""
+    from coordination import claims as claims_mod  # noqa: PLC0415
+    from coordination import gh_cli  # noqa: PLC0415
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", fetch)
+
+    def list_pages(path: str) -> list[Any]:
+        out = fetch(path)
+        return out if isinstance(out, list) else []
+
+    monkeypatch.setattr(gh_cli, "gh_api_json_all", list_pages)
+
+
 def install(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, principals: dict[str, identity.Principal], repos: str
 ) -> Iterator[FakeRM]:
     """Point the dashboard at a fresh ``FakeRM`` with ``principals`` keyed by bearer token; resets state around."""
     from coordination import board as board_mod  # noqa: PLC0415
     from coordination import claims as claims_mod  # noqa: PLC0415
+    from coordination import gh_cli  # noqa: PLC0415
     from coordination import roster as roster_mod  # noqa: PLC0415
     from staff import fleet as staff_fleet  # noqa: PLC0415
     from staff import runner as runner_mod  # noqa: PLC0415
@@ -100,7 +115,9 @@ def install(
     from staff import store as store_mod  # noqa: PLC0415
 
     fake = FakeRM(tmp_path / "rm")
-    monkeypatch.setattr(claims_mod, "evidence_fetch", lambda _path: [])  # no live gh in a unit test (#3274)
+    _no_gh = lambda _path: []  # noqa: E731 — no live gh in a unit test (#3274)
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _no_gh)
+    monkeypatch.setattr(gh_cli, "gh_api_json_all", _no_gh)
     monkeypatch.setenv("STAFF_RM_ROOT", str(fake.root))
     monkeypatch.setenv("STAFF_RM_PYTHON", sys.executable)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))

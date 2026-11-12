@@ -12,6 +12,7 @@
       "cursor-agent": "composer-2.5",
       "gemini": "gemini-2.5-flash",
       "grok": "grok-4.7-low",
+      "qwen": "qwen3.8-flash",
       "ollama": "glm-5.3-flash:cloud"
     },
     "standard": {
@@ -23,6 +24,7 @@
       "cursor-agent": "composer-2.5",
       "gemini": "gemini-2.5-pro",
       "grok": "grok-4.7-high",
+      "qwen": "qwen3.8-max",
       "ollama": "glm-5.3-flash:cloud"
     },
     "complex": {
@@ -34,6 +36,7 @@
       "cursor-agent": "grok-4.7-high",
       "gemini": "gemini-2.5-pro",
       "grok": "grok-4.7-high",
+      "qwen": "qwen4-max-preview",
       "ollama": "glm-5.3-flash:cloud"
     }
   }

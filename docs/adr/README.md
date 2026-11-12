@@ -33,6 +33,7 @@ it.
 7. [0007 — Agent client ingress stays local-only](./0007-agent-client-ingress-local-only.md) — fleet-machine access for agents; #2252 defines a separately gated owner browser exception.
 9. [0009 — Private Mode: classification levels and the safe-disable contract](./0009-private-mode-classification-levels.md) — the `Level` total order and the optional `private_mode` overlay field, off by default (epic #3249, PM-0).
 10. [0010 — Independent verifier at the exact head SHA](./0010-verifier-at-exact-sha.md) — a reviewer other than the PR's builder must record accept/reject against the PR's current tree hash before Barb arms auto-merge; self-verify refused, a timeout is `STALE_UNVERIFIED` (#3300 upgrade 1).
+11. [0011 — Pool controller: lane files, claim-as-dequeue, drain semantics](./0011-pool-controller-lane-files-and-claim-queue.md) — `pool-controller-lane.v1` lane files, `LaneState` transitions, write-before-spawn behind `DASHBOARD_ENABLE_POOL_CONTROLLER` (#4279 WP27 slice 1).
 
 ## Template
 
