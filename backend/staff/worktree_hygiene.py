@@ -10,6 +10,7 @@ import hashlib
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -27,11 +28,15 @@ from staff.worktree_links import (
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
 
+_FILE_ATTRIBUTE_DIRECTORY = getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
+
+
 @dataclass(frozen=True)
 class _TrackedSymlinkSnapshot:
     rel_posix: str
     kind: str
     target: str
+    target_is_directory: bool
 
 
 def persist_run_transcript(store: Any, rec_id: str, workdir: Path) -> Path | None:
@@ -221,8 +226,33 @@ def _capture_tracked_symlink_journal(worktree: Path) -> tuple[_TrackedSymlinkSna
             target = os.readlink(entry)
         except OSError as exc:
             raise OSError(f"cannot snapshot tracked symlink {rel}: {exc}") from exc
-        snapshots.append(_TrackedSymlinkSnapshot(rel_posix=rel, kind=kind, target=target))
+        snapshots.append(
+            _TrackedSymlinkSnapshot(
+                rel_posix=rel,
+                kind=kind,
+                target=target,
+                target_is_directory=_link_target_is_directory(entry, kind),
+            )
+        )
     return tuple(snapshots)
+
+
+def _link_target_is_directory(entry: Path, kind: str) -> bool:
+    """True when the snapshot must be recreated as a directory link or junction."""
+    if kind == "Windows reparse point":
+        attributes = getattr(entry.lstat(), "st_file_attributes", 0)
+        return bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
+    return entry.is_dir()
+
+
+def _recreate_tracked_link_entry(entry: Path, snap: _TrackedSymlinkSnapshot) -> None:
+    """Recreate a journal entry using the recorded kind and directory semantics."""
+    if snap.kind == "Windows reparse point":
+        entry.symlink_to(snap.target, target_is_directory=True)
+    elif snap.target_is_directory:
+        entry.symlink_to(snap.target, target_is_directory=True)
+    else:
+        entry.symlink_to(snap.target)
 
 
 def _restore_tracked_symlinks_from_journal(
@@ -237,7 +267,11 @@ def _restore_tracked_symlinks_from_journal(
     for snap in journal:
         entry = worktree.joinpath(*snap.rel_posix.split("/"))
         try:
-            if entry.is_symlink():
+            try:
+                kind = _link_kind(entry)
+            except OSError:
+                kind = ""
+            if kind:
                 if os.readlink(entry) == snap.target:
                     continue
                 failures.append(snap.rel_posix)
@@ -256,7 +290,7 @@ def _restore_tracked_symlinks_from_journal(
                 )
                 continue
             entry.parent.mkdir(parents=True, exist_ok=True)
-            entry.symlink_to(snap.target)
+            _recreate_tracked_link_entry(entry, snap)
             log.info(
                 "restored tracked %s %s -> %s",
                 snap.kind,

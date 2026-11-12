@@ -1,4 +1,4 @@
 ---
 issue: 4360
-summary: "Restore all index-tracked symlinks after failed staff worktree link unlink or forced removal, without overwriting concurrent replacements"
+summary: "Restore index-tracked symlinks after failed worktree removal with recorded link kind and directory/junction semantics; skip concurrent replacements"
 ---

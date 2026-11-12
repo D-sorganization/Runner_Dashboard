@@ -207,3 +207,74 @@ def test_rollback_create_failure_is_reported(tracked_symlink_worktree, monkeypat
     assert not removed
     assert (tree / ".gaai/agents").is_symlink()
     assert not (tree / "docs/model").exists()
+
+
+@pytest.fixture
+def tracked_directory_symlink_worktree(tmp_path: Path):
+    root = Path(tempfile.mkdtemp(dir=tmp_path, prefix="rd4360-dir-"))
+    repo = root / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    outside = root / "external-dir"
+    outside.mkdir()
+    (outside / "sentinel").write_text("dir target\n")
+    rel = ".gaai/agents"
+    link = repo / rel
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(outside, target_is_directory=True)
+    _git(repo, "add", "--", rel)
+    _git(repo, "commit", "-qm", "directory symlink fixture")
+    tree = root / "worktree"
+    _git(repo, "worktree", "add", "-q", "--detach", str(tree))
+    return {"root": root, "repo": repo, "tree": tree, "outside": outside, "rel": rel}
+
+
+def test_rollback_restores_directory_symlink_semantics(tracked_directory_symlink_worktree) -> None:
+    repo = tracked_directory_symlink_worktree["repo"]
+    tree = tracked_directory_symlink_worktree["tree"]
+    rel = tracked_directory_symlink_worktree["rel"]
+    outside = tracked_directory_symlink_worktree["outside"]
+    link = tree / rel
+    journal = hygiene._capture_tracked_symlink_journal(tree)
+    assert journal[0].target_is_directory
+    link.unlink()
+    assert not link.exists()
+    recreated: list[bool] = []
+    original_symlink_to = Path.symlink_to
+
+    def record_directory_semantics(self, target, *args, **kwargs):
+        recreated.append(bool(kwargs.get("target_is_directory")))
+        return original_symlink_to(self, target, *args, **kwargs)
+
+    with patch.object(Path, "symlink_to", record_directory_semantics):
+        failures = hygiene._restore_tracked_symlinks_from_journal(tree, journal, repo)
+    assert failures == []
+    assert link.is_symlink()
+    assert link.is_dir()
+    assert recreated == [True]
+    assert (outside / "sentinel").read_text() == "dir target\n"
+
+
+def test_rollback_restores_windows_junction_kind(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    root = tmp_path / "wt"
+    root.mkdir()
+    entry = root / "junction"
+    target = tmp_path / "outside"
+    target.mkdir()
+    snap = hygiene._TrackedSymlinkSnapshot(
+        rel_posix="junction",
+        kind="Windows reparse point",
+        target=str(target),
+        target_is_directory=True,
+    )
+    calls: list[dict[str, object]] = []
+    original_symlink_to = Path.symlink_to
+
+    def fake_symlink_to(self, link_target, *args, **kwargs):
+        calls.append({"target": link_target, "kwargs": dict(kwargs)})
+        return original_symlink_to(self, link_target, *args, **kwargs)
+
+    with patch.object(Path, "symlink_to", fake_symlink_to):
+        hygiene._recreate_tracked_link_entry(entry, snap)
+    assert calls == [{"target": str(target), "kwargs": {"target_is_directory": True}}]
+    assert os.readlink(entry) == str(target)
