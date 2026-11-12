@@ -54,3 +54,11 @@ def test_refresh_ignores_inherited_stale_gh_token(tmp_path: Path) -> None:
     assert f"GH_TOKEN={_FRESH}" in content
     assert _STALE not in content
     assert "FLEET_NODES=x" in content
+    assert b"\x00" not in secrets.read_bytes()
+
+
+def test_refresh_rewrites_atomically_without_in_place_sed(tmp_path: Path) -> None:
+    """Regression: refresh-token must not use sed -i / append (corrupts on partial writes)."""
+    script_text = _SCRIPT.read_text(encoding="utf-8")
+    assert "sed -i '/^GH_TOKEN=/d'" not in script_text
+    assert "set-gh-token-stdin" in script_text or "runner_dashboard_env_check.py" in script_text
