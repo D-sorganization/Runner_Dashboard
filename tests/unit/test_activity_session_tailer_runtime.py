@@ -39,6 +39,7 @@ async def test_start_session_tailer_loop_invokes_pass_once_before_first_sleep(
 
     async def fake_sleep(_interval: float) -> None:
         slept.set()
+        await asyncio.Future()
 
     monkeypatch.setattr(runtime, "run_session_tailer_pass", fake_pass)
     monkeypatch.setattr(runtime.asyncio, "sleep", fake_sleep)
@@ -61,6 +62,7 @@ async def test_start_session_tailer_loop_is_idempotent_while_task_alive(
 
     async def fake_sleep(_interval: float) -> None:
         slept.set()
+        await asyncio.Future()
 
     monkeypatch.setattr(runtime, "run_session_tailer_pass", lambda *, node: {})
     monkeypatch.setattr(runtime.asyncio, "sleep", fake_sleep)
