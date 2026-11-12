@@ -22,6 +22,15 @@ from time_utils import utc_now_iso
 
 log = logging.getLogger("dashboard.agent_bus")
 
+
+class LiveSessionConflictError(RuntimeError):
+    """Raised when register would displace a different principal on a live lease (#4274 B-12)."""
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+        super().__init__(f"session {session_id!r} already has a live registration")
+
+
 _store: AgentBusStore | None = None
 
 
@@ -104,6 +113,9 @@ class AgentBusStore:
         lease_seconds: int,
         mint_token: bool,
     ) -> dict[str, Any]:
+        existing = self.get_principal(session_id)
+        if existing is not None and existing.live() and principal.id != existing.principal_id:
+            raise LiveSessionConflictError(session_id)
         now = utc_now_iso()
         lease_expires = iso_after(lease_seconds)
         principal_id = principal.id
