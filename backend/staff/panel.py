@@ -475,7 +475,17 @@ async def default_turn_runner(
     grounding_dir = GROUNDING_DIR.get() if speaker.name != MODERATOR_NAME else None
     workdir = grounding_dir or scratch_dir  # a snapshot is shared by the panel and removed by run_panel
     tools = GROUNDING_TOOLS if grounding_dir else ()
-    env: dict[str, str] = {**os.environ, "STAFF_PANEL_TURN": "1"}
+    from security import safe_subprocess_env  # noqa: PLC0415
+
+    env: dict[str, str] = (
+        safe_subprocess_env()
+        if speaker.provider == "deepseek-api"
+        else {k: v for k, v in os.environ.items() if k != "DEEPSEEK_API_KEY"}
+    )
+    env["STAFF_PANEL_TURN"] = "1"
+    if speaker.provider == "deepseek-api":
+        env.pop("ANTHROPIC_CUSTOM_HEADERS", None)
+        env["CLAUDE_CONFIG_DIR"] = str(Path(scratch_dir) / "claude-config")
     proc = None
     try:
         try:
@@ -486,7 +496,8 @@ async def default_turn_runner(
         stdin_text = adapter.chat_stdin(prompt)
         extra: dict[str, Any] = {"stdin_text": stdin_text} if isinstance(stdin_text, str) else {}
         proc = spawn_cli_process(cmd=cmd, cwd=workdir, env=env, **extra)
-        bus = get_thread_bus() if message_id is not None else _NULL_BUS
+        # Buffer paid-provider output until the credential can be redacted across token chunks.
+        bus = get_thread_bus() if message_id is not None and speaker.provider != "deepseek-api" else _NULL_BUS
         out = await stream_turn_output(
             reader=LiveProcessReader(proc),
             adapter=adapter,
@@ -494,11 +505,15 @@ async def default_turn_runner(
             thread_id=thread_id,
             placeholder_id=message_id or "",
         )
-        text = out.reply_text.strip()
+        secret = env.get("ANTHROPIC_AUTH_TOKEN", "") if speaker.provider == "deepseek-api" else ""
+        text = out.reply_text.replace(secret, "[redacted]").strip() if secret else out.reply_text.strip()
         if is_hook_error_reply(text):
             return TurnOutcome(ok=False, error=hook_error_reason(text))
         if out.returncode != 0 or not text:
-            tail = "".join(out.stderr_lines[-5:]).strip()[-400:]
+            tail = "".join(out.stderr_lines[-5:])
+            if secret:
+                tail = tail.replace(secret, "[redacted]")
+            tail = tail.strip()[-400:]
             return TurnOutcome(ok=False, error=f"exit {out.returncode}: {tail or 'empty reply'}")
         return TurnOutcome(ok=True, text=text)
     finally:

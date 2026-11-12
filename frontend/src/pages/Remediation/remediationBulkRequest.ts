@@ -23,6 +23,8 @@ export interface BulkRequestOptions {
   prompt?: string;
   force?: boolean;
   approved_by?: string;
+  /** Stable across retries of the same operator intent (#4276). */
+  idempotencyKey?: string;
 }
 
 export interface BulkDispatchOutcome {
@@ -157,6 +159,12 @@ function groupByRepo(targets: readonly BulkTarget[]): Map<string, BulkTarget[]> 
   return groups;
 }
 
+/** One staff POST per repository; each needs its own key, stable on retry of the same intent. */
+export function idempotencyKeyForBulkRepo(baseKey: string | undefined, repo: string): string | undefined {
+  if (!baseKey) return undefined;
+  return `${baseKey}::${repo}`;
+}
+
 /**
  * Dispatch a selection that may span repositories: one request per repository, since a
  * request targets a single repo. Post: every target is dispatched, awaiting approval, or
@@ -167,14 +175,15 @@ export async function dispatchBulkByRepo(
   targets: readonly BulkTarget[],
   options: BulkRequestOptions,
   kindLabel: string,
-  submit: (req: WorkRequest) => Promise<StaffRequestResponse> = (req) => submitStaffRequest(req),
+  submit: (req: WorkRequest, idempotencyKey?: string) => Promise<StaffRequestResponse> = (req, key) =>
+    submitStaffRequest(req, key),
 ): Promise<BulkByRepoResult> {
   const groups = groupByRepo(targets);
   const parts: { repo: string; outcome: BulkDispatchOutcome }[] = [];
   const failed: BulkTarget[] = [];
   for (const [repo, inRepo] of groups) {
     try {
-      const resp = await submit(build(inRepo, options));
+      const resp = await submit(build(inRepo, options), idempotencyKeyForBulkRepo(options.idempotencyKey, repo));
       parts.push({ repo, outcome: formatBulkResponseResult(resp, inRepo.length, kindLabel) });
       const rejected = new Set(((resp.result as BulkResultShape | undefined)?.rejected ?? []).map((r) => r.number));
       failed.push(...inRepo.filter((t) => rejected.has(t.number)));

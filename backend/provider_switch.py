@@ -27,10 +27,28 @@ def canonical_id(provider_id: str) -> str:
     return _ALIASES.get(pid, pid)
 
 
+def _parse_disable_token(token: str) -> bool:
+    """``1`` / ``true`` / ``yes`` / ``on`` (any case) mean disabled (#4267)."""
+    return token.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def disabled_providers() -> frozenset[str]:
     """Canonical ids listed in ``STAFF_DISABLED_PROVIDERS`` (empty when unset)."""
     raw = os.environ.get(ENV_VAR, "")
-    return frozenset(canonical_id(part) for part in raw.split(",") if part.strip())
+    out: set[str] = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" in part:
+            name, flag = part.split("=", 1)
+            if _parse_disable_token(flag):
+                out.add(canonical_id(name))
+            continue
+        if _parse_disable_token(part):
+            continue
+        out.add(canonical_id(part))
+    return frozenset(out)
 
 
 def is_disabled(provider_id: str) -> bool:

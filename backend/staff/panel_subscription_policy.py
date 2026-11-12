@@ -108,6 +108,8 @@ def check_provider_subscription(provider: str) -> SubscriptionCheck:
     A provider switched off (#1597) or with no live OAuth session fails closed;
     this never consults or reports a pay-per-use API key.
     """
+    if provider == "deepseek-api":
+        return SubscriptionCheck(provider, False, "DeepSeek API is a paid API route")
     if provider_switch.is_disabled(provider):
         return SubscriptionCheck(provider, False, provider_switch.DISABLED_DETAIL)
     if provider == "antigravity":

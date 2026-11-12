@@ -128,6 +128,7 @@ def test_mcp_tool_set_is_the_contracted_list() -> None:
         "tail_session",
         "fleet_priorities",
         "fleet_sessions",
+        "fleet_set_runner_target",
         "fleet_inbox",
         "fleet_register_presence",
         "fleet_release_presence",
