@@ -3058,6 +3058,10 @@ async def _startup() -> None:
 
     start_library_ingest_loop()
 
+    from activity_session_tailer_runtime import start_session_tailer_loop  # noqa: PLC0415
+
+    start_session_tailer_loop(node=HOSTNAME)
+
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
 
