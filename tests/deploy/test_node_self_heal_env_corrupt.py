@@ -67,7 +67,7 @@ def test_self_heal_probes_health_not_version(tmp_path: Path) -> None:
 def test_corrupt_env_skips_service_restart(tmp_path: Path) -> None:
     status, stderr = _run(
         tmp_path,
-        env_bytes=b"FLEET_NODES=hub\n" + b"\x00" * 40 + b"GH_TOKEN=gho_old\n",
+        env_bytes=b"FLEET_NODES=hub\n" + b"\x00" * 40 + b"GH_TOKEN=fixture-old\n",
         http_ok=False,
     )
     assert status["env_file_ok"] is False

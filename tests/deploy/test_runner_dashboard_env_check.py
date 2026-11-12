@@ -21,12 +21,12 @@ _SPEC.loader.exec_module(_mod)
 inspect_env_file = _mod.inspect_env_file
 atomic_set_gh_token = _mod.atomic_set_gh_token
 
-_TOKEN = "gho_" + "x" * 36
+_TOKEN = "gho_" + "f" * 36  # pragma: allowlist secret
 
 
 def test_inspect_ok_for_clean_env(tmp_path: Path) -> None:
     env = tmp_path / "env"
-    env.write_text("FLEET_NODES=hub\nGH_TOKEN=gho_placeholder\n", encoding="utf-8")
+    env.write_text("FLEET_NODES=hub\nGH_TOKEN=fixture-placeholder\n", encoding="utf-8")
     report = inspect_env_file(env)
     assert report["ok"] is True
     assert report["issues"] == []
@@ -51,7 +51,7 @@ def test_inspect_detects_invalid_assignment(tmp_path: Path) -> None:
 
 def test_atomic_set_gh_token_preserves_other_lines_and_mode(tmp_path: Path) -> None:
     env = tmp_path / "env"
-    env.write_text("FLEET_NODES=hub\nGH_TOKEN=gho_old\n", encoding="utf-8")
+    env.write_text("FLEET_NODES=hub\nGH_TOKEN=fixture-old\n", encoding="utf-8")
     os.chmod(env, 0o600)
 
     atomic_set_gh_token(env, _TOKEN)
@@ -59,13 +59,13 @@ def test_atomic_set_gh_token_preserves_other_lines_and_mode(tmp_path: Path) -> N
     text = env.read_text(encoding="utf-8")
     assert "FLEET_NODES=hub" in text
     assert f"GH_TOKEN={_TOKEN}" in text
-    assert "gho_old" not in text
+    assert "fixture-old" not in text
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
 
 
 def test_atomic_set_strips_nul_bytes_from_rewrite(tmp_path: Path) -> None:
     env = tmp_path / "env"
-    env.write_bytes(b"FLEET_NODES=hub\n" + b"\x00" * 10 + b"GH_TOKEN=gho_old\n")
+    env.write_bytes(b"FLEET_NODES=hub\n" + b"\x00" * 10 + b"GH_TOKEN=fixture-old\n")
     atomic_set_gh_token(env, _TOKEN)
     assert b"\x00" not in env.read_bytes()
     assert f"GH_TOKEN={_TOKEN}" in env.read_text(encoding="utf-8")
