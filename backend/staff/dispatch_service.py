@@ -246,7 +246,7 @@ async def dispatch_staff_run(
     overlap_session_id: str | None = None
 
     if not cmd.dry_run and not cmd.skip_premise_check and (cmd.issue or cmd.prompt):
-        from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+        from dispatch_premise import evaluate_dispatch_premise, log_dispatch_skip
         from dispatch_routing import dispatch_queue_manager, extract_declared_paths, resolve_model_routing
 
         premise_res = await evaluate_dispatch_premise(
@@ -258,8 +258,6 @@ async def dispatch_staff_run(
         )
         if not premise_res.allowed:
             await log_dispatch_skip(premise_res, cmd.repo, cmd.issue)
-            if premise_res.should_close and premise_res.comment and cmd.issue:
-                await close_item_as_resolved_on_main(cmd.repo, cmd.issue, premise_res.comment)
             raise HTTPException(
                 status_code=409,
                 detail={

@@ -57,6 +57,8 @@ def test_token_table_math_for_claude_models() -> None:
     assert method == "token_table" and usd == pytest.approx(5.0 + 2.5)
     usd, _ = pricing.estimate_cost("claude", "claude-fable-5-1-20260701", 2_000, 1_000)
     assert usd == pytest.approx(0.02 + 0.05)
+    usd, _ = pricing.estimate_cost("claude", "claude-fable-5-2", 1_000_000, 100_000)
+    assert usd == pytest.approx(8.0 + 4.0)
     usd, _ = pricing.estimate_cost("claude", "sonnet-5", 1_000_000, 0)
     assert usd == pytest.approx(2.0)
     usd, _ = pricing.estimate_cost("claude", "claude-haiku-4-5", 0, 1_000_000)

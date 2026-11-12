@@ -35,7 +35,7 @@ import dispatch_quota
 import quota_enforcement
 from dispatch_contract import DispatchAccess
 from dispatch_effort import EXPAND_EPIC_CHILDREN, Effort, normalize_dispatch_kind, resolve_effort
-from dispatch_premise import close_item_as_resolved_on_main, evaluate_dispatch_premise, log_dispatch_skip
+from dispatch_premise import evaluate_dispatch_premise, log_dispatch_skip
 from dispatch_queue_link import log_dequeued
 from dispatch_routing import (
     ModelRoutingDecision,
@@ -641,13 +641,6 @@ async def dispatch_to_issues(
                     }
                 )
                 await log_dispatch_skip(premise_res, repo, num)
-                if premise_res.should_close and premise_res.comment:
-                    await close_item_as_resolved_on_main(
-                        repo,
-                        num,
-                        premise_res.comment,
-                        run_cmd_fn=run_cmd_fn,
-                    )
                 continue
         # ── Queue depth delay guard (RD-CI-033 / #2034) ───────────────────────
         from dispatch_queue_delay import check_dispatch_queue_delay  # noqa: PLC0415

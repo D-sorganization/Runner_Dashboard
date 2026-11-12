@@ -2532,6 +2532,52 @@
         "title": "FleetRunTokenResponse",
         "type": "object"
       },
+      "FleetTargetSetRequest": {
+        "additionalProperties": false,
+        "description": "POST /api/fleet/target body (DbC: typed payload, no unknown fields).",
+        "properties": {
+          "apply": {
+            "default": true,
+            "description": "Run runner-scheduler --apply after saving override.",
+            "title": "Apply",
+            "type": "boolean"
+          },
+          "host": {
+            "description": "Fleet host or alias.",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "runners": {
+            "description": "Requested runner count (clamped to host cap).",
+            "minimum": 0.0,
+            "title": "Runners",
+            "type": "integer"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO-8601 timestamp or HH:MM expiry.",
+            "title": "Until"
+          }
+        },
+        "required": ["host", "runners"],
+        "title": "FleetTargetSetRequest",
+        "type": "object"
+      },
       "FrictionCreate": {
         "properties": {
           "detector": {
@@ -15226,6 +15272,56 @@
         ],
         "summary": "Get Fleet Status",
         "tags": ["fleet"]
+      }
+    },
+    "/api/fleet/target": {
+      "post": {
+        "description": "Set an expiring runner-count override for a fleet host.",
+        "operationId": "fleet_target_api_fleet_target_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetTargetSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Fleet Target Api Fleet Target Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Fleet Target",
+        "tags": ["orchestration", "orchestration"]
       }
     },
     "/api/github/app-token": {
@@ -30061,6 +30157,65 @@
         ],
         "summary": "Trigger Retention Sweep",
         "tags": ["staff-export"]
+      }
+    },
+    "/api/v1/staff/review/metrics": {
+      "get": {
+        "description": "Queue depth, verdict mix, provider availability and 429s for the review flow.\n\nDeferred by design: review latency p50/p90 and reviewer disagreement rate need\nthe per-head-SHA verdict contract from #4249, which does not exist yet.",
+        "operationId": "read_review_metrics_api_v1_staff_review_metrics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Read Review Metrics Api V1 Staff Review Metrics Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Read Review Metrics",
+        "tags": ["staff-review-metrics"]
       }
     },
     "/api/v1/staff/roles": {
