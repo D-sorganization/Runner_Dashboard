@@ -1,9 +1,11 @@
+import { safeHttpHref } from "../../lib/safeHttpHref";
 import { Badge } from "../../primitives/Badge";
 import type { KanbanCard } from "./types";
 
 function primaryIssueUrl(card: KanbanCard): string | null {
   const issue = card.sources.find((s) => s.kind === "issue" && s.url);
-  return issue?.url ?? null;
+  if (!issue?.url) return null;
+  return safeHttpHref(issue.url);
 }
 
 export function KanbanCardView({ card }: { card: KanbanCard }) {
@@ -45,18 +47,24 @@ export function KanbanCardView({ card }: { card: KanbanCard }) {
       <ul className="kanban-card__sources" aria-label="Source links">
         {card.sources
           .filter((s) => s.url)
-          .map((source) => (
-            <li key={`${source.kind}-${source.url}`}>
-              <a
-                className={source.available ? "kanban-card__source" : "kanban-card__source kanban-card__source--muted"}
-                href={source.url}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                {source.label || source.kind}
-              </a>
-            </li>
-          ))}
+          .map((source) => {
+            const href = safeHttpHref(source.url);
+            const label = source.label || source.kind;
+            const className = source.available
+              ? "kanban-card__source"
+              : "kanban-card__source kanban-card__source--muted";
+            return (
+              <li key={`${source.kind}-${source.url}`}>
+                {href ? (
+                  <a className={className} href={href} rel="noopener noreferrer" target="_blank">
+                    {label}
+                  </a>
+                ) : (
+                  <span className={className}>{label}</span>
+                )}
+              </li>
+            );
+          })}
       </ul>
     </article>
   );
