@@ -129,6 +129,8 @@ def handle_post_execution_retry(
             consolidation=plan.consolidation,
             focus=plan.focus,
             head_ref=plan.head_ref,
+            dispatch_bundle=plan.dispatch_bundle,
+            library_references=plan.library_references,
         )
         attempt_rec = RunRecord(
             id=attempt_id,
@@ -200,6 +202,8 @@ def handle_post_execution_retry(
                     consolidation=plan.consolidation,
                     focus=plan.focus,
                     head_ref=plan.head_ref,
+                    dispatch_bundle=plan.dispatch_bundle,
+                    library_references=plan.library_references,
                 )
                 fallback_rec = RunRecord(
                     id=attempt_id,

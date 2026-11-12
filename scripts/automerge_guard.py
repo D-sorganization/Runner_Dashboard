@@ -432,7 +432,7 @@ def _commit_messages(run: CommandRunner, repo: str, pr: int) -> list[str]:
 
 
 def _independent_review_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
-    """Signal 5: independent exact-head FIX-NEEDED at the current head."""
+    """Signal 5: independent exact-head FIX-NEEDED at the current head (#4315, #4323)."""
     _repo_root_on_path()
     from shared_scripts.independent_exact_head_review import (  # noqa: PLC0415
         author_model_from_commit_messages,

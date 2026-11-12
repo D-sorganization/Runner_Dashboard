@@ -166,6 +166,7 @@ def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
     clean_stale_git_locks(checkout, main_root=checkout)
     worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
     workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
+    clean_stale_git_locks(worktree, main_root=checkout)
     store.update_run(rec.id, workdir=str(worktree))
     store.append_event(rec.id, "worktree", f"{worktree} on {plan.branch}")
     return worktree
@@ -378,4 +379,38 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         skipped_lesson_ids=json.dumps(dict(getattr(plan, "skipped_lesson_ids", {}) or {})),
         lessons_tokens=int(getattr(plan, "lessons_tokens", 0) or 0),
         execution_mode=getattr(req, "execution_mode", "local") or "local",
+    )
+
+
+def apply_code_reviewer_post_classification(
+    store: RunStore,
+    rec: RunRecord,
+    plan: RunPlan,
+    rc: int,
+    status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    result_line: str,
+    transcript: Path,
+) -> tuple[str, str, bool, str, str]:
+    from staff import review
+    from staff.verification import _target_pr_number
+
+    return review.maybe_finalize_code_reviewer_run(
+        role=rec.role,
+        rc=rc,
+        store=store,
+        run_id=rec.id,
+        status=status,
+        failure_class=failure_class,
+        retryable=retryable,
+        error=error,
+        remediation=remediation,
+        result_line=result_line,
+        same_provider=review.is_same_provider_review(rec.prompt),
+        repo=plan.repo or rec.repo,
+        reviewer_model=str(plan.model or plan.provider or ""),
+        expected_pr_number=_target_pr_number(rec),
     )
