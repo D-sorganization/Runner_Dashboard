@@ -79,10 +79,35 @@ export async function openThread(page: Page, roleTitle: string): Promise<void> {
   await expect(page.getByRole("textbox", { name: "Staff conversation input" })).toBeVisible();
 }
 
+type SendOptions = {
+  /** Per-action explicit confirm for in-turn auto-execute (#4274 E-18). */
+  confirmActions?: string[];
+};
+
 /** Type and send one message. */
-export async function send(page: Page, text: string): Promise<void> {
+export async function send(page: Page, text: string, options?: SendOptions): Promise<void> {
+  const confirmActions = options?.confirmActions;
+  const messagesRoute = "**/api/v1/staff/threads/*/messages";
+  if (confirmActions?.length) {
+    await page.route(messagesRoute, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      const postData = route.request().postDataJSON() as { body: string; meta?: Record<string, unknown> };
+      await route.continue({
+        postData: JSON.stringify({
+          ...postData,
+          meta: { ...(postData.meta ?? {}), confirm_actions: confirmActions },
+        }),
+      });
+    });
+  }
   await page.getByRole("textbox", { name: "Staff conversation input" }).fill(text);
   await page.getByRole("button", { name: "Send message" }).click();
+  if (confirmActions?.length) {
+    await page.unroute(messagesRoute);
+  }
 }
 
 /** The conversation log, the region every reply lands in. */

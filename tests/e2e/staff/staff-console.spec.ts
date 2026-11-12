@@ -29,17 +29,21 @@ function reply(text: string): string {
 const BARB = "Ask Barb (auto-route)";
 
 /** Ask Barb for a dispatch and return the ActionCard her reply proposes. */
-async function proposeDispatch(page: Page, scenario = "dispatch"): Promise<Locator> {
+async function proposeDispatch(
+  page: Page,
+  scenario = "dispatch",
+  confirmActions?: string[],
+): Promise<Locator> {
   const cards = conversation(page).locator(".staff-action-card");
   const before = await cards.count();
-  await send(page, `dispatch ${nonce()} [[e2e:${scenario}]]`);
+  await send(page, `dispatch ${nonce()} [[e2e:${scenario}]]`, confirmActions ? { confirmActions } : undefined);
   await expect(cards).toHaveCount(before + 1);
   return cards.nth(before);
 }
 
 /**
  * Have a caller who can chat but not approve ask Barb for a dispatch; return the proposal id.
- * An approver's own request would run at once (#1786), so cards to act on come from here.
+ * Without per-action confirm, proposals stay pending (#4274 E-18); cards to act on come from here.
  */
 async function proposeAsRequester(browser: Browser): Promise<string> {
   const context = await browser.newContext();
@@ -54,12 +58,12 @@ async function proposeAsRequester(browser: Browser): Promise<string> {
   return id;
 }
 
-/** The operator's own request for a dispatch runs at once; return the run card it starts (#1547, #1786). */
+/** Operator-confirmed dispatch auto-runs; return the run card it starts (#1547, #1786, #4274 E-18). */
 async function requestAndFollowRun(page: Page, scenario: string): Promise<Locator> {
   await openThread(page, BARB);
   const runCards = conversation(page).locator(".staff-run-card");
   const before = await runCards.count();
-  await proposeDispatch(page, scenario);
+  await proposeDispatch(page, scenario, ["staff.dispatch"]);
   await expect(runCards).toHaveCount(before + 1, { timeout: 30_000 });
   return runCards.nth(before);
 }
@@ -378,10 +382,16 @@ test.describe("proposals", () => {
     await expect(page.locator(`[data-proposal-id="${id}"]`)).toContainText("staff.dispatch");
   });
 
-  test("the operator's own request runs at once, without an Approve tap (#1786)", async ({ page }) => {
+  test("E-18: operator message without confirm leaves an Approve button (#4274)", async ({ page }) => {
     await openThread(page, BARB);
     const card = await proposeDispatch(page);
+    await expect(card).toContainText("staff.dispatch");
+    await expect(card.getByRole("button", { name: /^Approve$/ })).toBeVisible();
+  });
 
+  test("confirm_actions auto-runs the operator dispatch without an Approve tap (#1786, E-18)", async ({ page }) => {
+    await openThread(page, BARB);
+    const card = await proposeDispatch(page, "dispatch", ["staff.dispatch"]);
     await expect(card).toContainText(/Executed by .*e2e-operator/);
     await expect(card.getByRole("button", { name: /^Approve$/ })).toHaveCount(0);
   });
