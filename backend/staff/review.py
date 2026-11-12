@@ -29,12 +29,14 @@ RUN_LOOKUP_LIMIT = 200
 PROVIDER_FAMILY: dict[str, str] = {
     "claude": "anthropic",
     "claude-ollama": "anthropic",
+    "anthropic-api": "anthropic",
     "codex": "openai",
     "gemini": "google",
     "antigravity": "google",
     "cursor-agent": "cursor",
     "ollama": "local",
-    "grok-chat": "xai",
+    "grok": "xai",
+    "grok-chat": "xai",  # legacy author ids on pre-registry runs
 }
 
 # Alternates must be CLI-accepted ids or aliases; a provider without an entry reviews on its default model.
@@ -78,7 +80,7 @@ FORBIDDEN_REVIEW_KEYS: frozenset[str] = frozenset(
 )
 
 _VERDICT_RE = re.compile(
-    r"STAFF_RESULT:\s*review\s+(approve|changes|escalate)\s+#(\d+)",
+    r"STAFF_RESULT:\s*review\s+(approve|changes|escalate)\s+#(\d+)(?:\s+@([0-9a-fA-F]{7,40}))?",
     re.IGNORECASE,
 )
 
@@ -118,6 +120,7 @@ class ReviewVerdict:
     outcome: str
     status: str  # "succeeded" | "failed" | "needs_input"
     same_provider: bool = False
+    head_sha: str = ""
     error: str | None = None
 
 
@@ -204,14 +207,17 @@ def parse_review_verdict(text: str, *, same_provider: bool = False) -> ReviewVer
     if match is not None:
         verdict = match.group(1).lower()
         pr = int(match.group(2))
+        head_sha = (match.group(3) or "").lower()
         suffix = " (same-provider)" if same_provider else ""
-        outcome = f"review {verdict} #{pr}{suffix}"
+        at_sha = f" @{head_sha[:7]}" if head_sha else ""
+        outcome = f"review {verdict} #{pr}{at_sha}{suffix}"
         return ReviewVerdict(
             verdict=verdict,
             pr_number=pr,
             outcome=outcome,
             status="succeeded",
             same_provider=same_provider,
+            head_sha=head_sha,
         )
 
     return ReviewVerdict(

@@ -1,0 +1,265 @@
+{
+  "schema_version": "staff-provider-launch-recipes.v4267",
+  "locked_at_issue": 4267,
+  "providers": {
+    "anthropic-api": {
+      "executable": "claude",
+      "argv_template": [
+        "-p",
+        "{prompt}",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--allowedTools",
+        "Read,Grep,Glob,Edit,Write,MultiEdit,NotebookEdit,TodoWrite,Task,WebFetch,WebSearch,Bash(git:*),Bash(gh:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(black:*),Bash(mypy:*),Bash(pre-commit:*),Bash(uv:*),Bash(pip:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(tsc:*),Bash(make:*),Bash(curl:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(rg:*),Bash(find:*),Bash(wc:*),Bash(sort:*),Bash(diff:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),Bash(echo:*),Bash(sed:*),Bash(jq:*)",
+        "--disallowedTools",
+        "Bash(sudo:*),Bash(su:*),Bash(gh repo delete:*),Bash(gh secret:*),Bash(gh auth:*),Bash(gh pr merge --admin:*),Bash(systemctl:*),Bash(shutdown:*),Bash(reboot:*)",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [],
+      "chat_read_only_argv": [
+        "--permission-mode",
+        "default"
+      ],
+      "lease_agent": "anthropic-api"
+    },
+    "antigravity": {
+      "executable": "agy",
+      "argv_template": [
+        "--print",
+        "{prompt}",
+        "--output-format",
+        "stream-json",
+        "--add-dir",
+        "{workdir}",
+        "--add-dir",
+        "{gitdir}",
+        "--mode",
+        "auto",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [],
+      "chat_read_only_argv": [
+        "--mode",
+        "plan"
+      ],
+      "lease_agent": "antigravity"
+    },
+    "claude": {
+      "executable": "claude",
+      "argv_template": [
+        "-p",
+        "{prompt}",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--allowedTools",
+        "Read,Grep,Glob,Edit,Write,MultiEdit,NotebookEdit,TodoWrite,Task,WebFetch,WebSearch,Bash(git:*),Bash(gh:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(black:*),Bash(mypy:*),Bash(pre-commit:*),Bash(uv:*),Bash(pip:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(tsc:*),Bash(make:*),Bash(curl:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(rg:*),Bash(find:*),Bash(wc:*),Bash(sort:*),Bash(diff:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),Bash(echo:*),Bash(sed:*),Bash(jq:*)",
+        "--disallowedTools",
+        "Bash(sudo:*),Bash(su:*),Bash(gh repo delete:*),Bash(gh secret:*),Bash(gh auth:*),Bash(gh pr merge --admin:*),Bash(systemctl:*),Bash(shutdown:*),Bash(reboot:*)",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [],
+      "chat_read_only_argv": [
+        "--permission-mode",
+        "default"
+      ],
+      "lease_agent": "claude"
+    },
+    "claude-ollama": {
+      "executable": "claude",
+      "argv_template": [
+        "-p",
+        "{prompt}",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--allowedTools",
+        "Read,Grep,Glob,Edit,Write,MultiEdit,NotebookEdit,TodoWrite,Task,WebFetch,WebSearch,Bash(git:*),Bash(gh:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(black:*),Bash(mypy:*),Bash(pre-commit:*),Bash(uv:*),Bash(pip:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(tsc:*),Bash(make:*),Bash(curl:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(rg:*),Bash(find:*),Bash(wc:*),Bash(sort:*),Bash(diff:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),Bash(echo:*),Bash(sed:*),Bash(jq:*)",
+        "--disallowedTools",
+        "Bash(sudo:*),Bash(su:*),Bash(gh repo delete:*),Bash(gh secret:*),Bash(gh auth:*),Bash(gh pr merge --admin:*),Bash(systemctl:*),Bash(shutdown:*),Bash(reboot:*)",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CONFIG_DIR"
+      ],
+      "chat_read_only_argv": [
+        "--permission-mode",
+        "default"
+      ],
+      "lease_agent": "local"
+    },
+    "codex": {
+      "executable": "codex",
+      "argv_template": [
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "--add-dir",
+        "{gitdir}",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "--skip-git-repo-check",
+        "--json",
+        "--model",
+        "{model}",
+        "{prompt}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [],
+      "chat_read_only_argv": [
+        "--sandbox",
+        "read-only"
+      ],
+      "lease_agent": "codex"
+    },
+    "cursor-agent": {
+      "executable": "cursor-agent",
+      "argv_template": [
+        "-p",
+        "{prompt}",
+        "--output-format",
+        "stream-json",
+        "--sandbox",
+        "enabled",
+        "--trust",
+        "--workspace",
+        "{workdir}",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [],
+      "chat_read_only_argv": [
+        "--mode",
+        "ask"
+      ],
+      "lease_agent": "cursor-agent"
+    },
+    "gemini": {
+      "executable": "gemini",
+      "argv_template": [
+        "-p",
+        "{prompt}",
+        "--approval-mode",
+        "auto_edit",
+        "--policy",
+        "{policy}",
+        "--output-format",
+        "stream-json",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [
+        "GEMINI_CLI_TRUST_WORKSPACE"
+      ],
+      "chat_read_only_argv": [
+        "--approval-mode",
+        "plan"
+      ],
+      "lease_agent": "gemini"
+    },
+    "grok": {
+      "executable": "grok",
+      "argv_template": [
+        "-p",
+        "{prompt}",
+        "--output-format",
+        "stream-json",
+        "--allow",
+        "git,gh,python,python3,pytest,ruff,black,mypy,pre-commit,uv,pip,npm,npx,node,tsc,make,curl,ls,cat,head,tail,grep,rg,find,wc,sort,diff,mkdir,cp,mv,echo,sed,jq",
+        "--deny",
+        "sudo,su,gh repo delete,gh secret,gh auth,gh pr merge --admin,systemctl,shutdown,reboot",
+        "--no-auto-update",
+        "-w",
+        "{workdir}",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [],
+      "chat_read_only_argv": [],
+      "lease_agent": "grok"
+    },
+    "qwen": {
+      "executable": "qwen",
+      "argv_template": [
+        "--auth-type",
+        "openai",
+        "--output-format",
+        "stream-json",
+        "--approval-mode",
+        "auto-edit",
+        "--channel",
+        "CI",
+        "--model",
+        "{model}",
+        "{prompt}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL"
+      ],
+      "chat_read_only_argv": [
+        "--approval-mode",
+        "plan"
+      ],
+      "lease_agent": "qwen"
+    },
+    "ollama": {
+      "executable": "codex",
+      "argv_template": [
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "--add-dir",
+        "{gitdir}",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "--skip-git-repo-check",
+        "--json",
+        "--oss",
+        "--local-provider",
+        "ollama",
+        "--model",
+        "{model}",
+        "{prompt}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [
+        "CODEX_OSS_BASE_URL",
+        "OLLAMA_HOST"
+      ],
+      "chat_read_only_argv": [
+        "--sandbox",
+        "read-only"
+      ],
+      "lease_agent": "local"
+    }
+  }
+}

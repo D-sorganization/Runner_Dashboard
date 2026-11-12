@@ -162,6 +162,14 @@ class ChatTurnRunner:
         prompt_text = compose_turn_prompt(context_blocks, raw_prompt)
         turn_epoch = thread.epoch
 
+        if provider == "deepseek-api":
+            return ChatTurnResult(
+                ok=False,
+                failure_class="paid_provider_requires_panel",
+                retryable=False,
+                remediation="Use an explicitly cost-confirmed panel for DeepSeek API.",
+            )
+
         acquired = await self.pool.acquire(role_name, timeout=self.acquire_timeout)
         if not acquired:
             log.warning(
@@ -191,6 +199,8 @@ class ChatTurnRunner:
             best_failed: tuple[str, ChatTurnResult] | None = None
 
             for candidate in chain:
+                if candidate == "deepseek-api":
+                    continue  # Paid DeepSeek is limited to explicitly confirmed panel requests.
                 if fallback_steps:
                     turn_epoch = self.conv_store.advance_thread_epoch(thread_id, "seat_failover")
                 if not is_provider_healthy(candidate):
@@ -200,7 +210,10 @@ class ChatTurnRunner:
                     continue
 
                 adapter = self.adapters.get(candidate) or get_adapter(candidate)
-                existing_session = thread.meta.get("provider_sessions", {}).get(candidate)
+                # A failed paid resume must not trigger an automatic second paid attempt.
+                existing_session = (
+                    None if candidate == "deepseek-api" else thread.meta.get("provider_sessions", {}).get(candidate)
+                )
 
                 if existing_session:
                     result = await self._run_turn_attempt(
@@ -365,7 +378,17 @@ class ChatTurnRunner:
                 remediation=remediation,
                 error=str(exc),
             )
-        env = {**os.environ, **adapter.runtime_env()}
+        from security import safe_subprocess_env  # noqa: PLC0415
+
+        env = (
+            safe_subprocess_env()
+            if adapter.provider_id == "deepseek-api"
+            else {key: value for key, value in os.environ.items() if key != "DEEPSEEK_API_KEY"}
+        )
+        if adapter.provider_id == "deepseek-api":
+            env.pop("ANTHROPIC_CUSTOM_HEADERS", None)
+            env["CLAUDE_CONFIG_DIR"] = os.path.join(scratch_dir, "deepseek-claude-config")
+        env.update(adapter.runtime_env())
 
         # chat_stdin() is non-None only when the prompt is too long for argv (#2744).
         proc = self._spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env, stdin_text=adapter.chat_stdin(prompt))

@@ -116,11 +116,19 @@ async def run_dispatch(
     claim_principal = fence_principal
     if fleet_bearer and obo and on_behalf_of and not is_peer and not barb_declared:
         claim_principal = caller
-    barb_claim = claim_for_write(headers, claim_principal, surface="staff.dispatch")
+    trusted_hub_forward = (is_peer or fleet_bearer) and obo is not None
     trusted_forwarder = is_peer or fleet_bearer
+    barb_claim = claim_for_write(headers, claim_principal, surface="staff.dispatch")
     barb_claim = apply_origin_fence_trust(
         barb_claim,
         headers.get(ORIGIN_FENCE_HEADER),
         trusted_forwarder=trusted_forwarder,
     )
+    # Hub→peer forwards: the origin hub already fenced Barb-authored dispatches before
+    # calling forward_run; re-checking X-Barb-* against this node's lease store rejects
+    # valid cross-host work with stale_barb_lease/no_lease. Direct (non-forwarded) writes
+    # still fence locally. When a peer-trusted origin attestation is present (#4357), keep
+    # the validated claim; otherwise skip the peer-local lease store for declared forwards.
+    if trusted_hub_forward and barb_declared and (barb_claim is None or not barb_claim.lease_validated_at_origin):
+        barb_claim = None
     return await dispatch_staff_run(cmd, caller, barb_claim=barb_claim)

@@ -583,6 +583,115 @@ def test_clean_stale_git_locks_clears_main_module_lock_when_git_active_only_on_w
 
 
 @pytest.mark.unit
+def test_main_modules_lock_scoped_to_main_when_checkout_path_contains_worktrees_component(
+    tmp_path: Path,
+) -> None:
+    """Regression: main at ``.../worktrees/UpstreamDrift/.git/modules`` is not a linked worktree modules lock."""
+    main_repo = tmp_path / "worktrees" / "UpstreamDrift"
+    main_modules = main_repo / ".git" / "modules" / "vendor" / "ud-tools"
+    main_modules.mkdir(parents=True)
+    module_lock = main_modules / "index.lock"
+    module_lock.write_text("lock", encoding="utf-8")
+
+    wt_path = tmp_path / "staff-wt"
+    wt_path.mkdir()
+    wt_gitdir = main_repo / ".git" / "worktrees" / "staff-wt"
+    wt_gitdir.mkdir(parents=True)
+    (wt_path / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {wt_path}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    removed = runner_ops.clean_stale_git_locks(
+        wt_path,
+        run=fake_run,
+        main_root=main_repo,
+        is_git_process_active=lambda p: p == wt_path,
+    )
+
+    assert module_lock in removed
+    assert not module_lock.exists()
+
+
+@pytest.mark.unit
+def test_clean_stale_git_locks_clears_per_worktree_modules_index_lock_when_main_git_busy(
+    tmp_path: Path,
+) -> None:
+    main_repo = tmp_path / "UpstreamDrift"
+    wt_name = "UpstreamDrift-run-7afeaa164e94"
+    wt_gitdir = main_repo / ".git" / "worktrees" / wt_name
+    wt_modules = wt_gitdir / "modules" / "vendor" / "ud-tools"
+    wt_modules.mkdir(parents=True)
+    stale_lock = wt_modules / "index.lock"
+    stale_lock.write_text("stale", encoding="utf-8")
+
+    wt_path = tmp_path / "staff-wt"
+    wt_path.mkdir()
+    (wt_path / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {wt_path}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    removed = runner_ops.clean_stale_git_locks(
+        wt_path,
+        run=fake_run,
+        main_root=main_repo,
+        is_git_process_active=lambda p: p == main_repo,
+    )
+
+    assert stale_lock in removed
+    assert not stale_lock.exists()
+
+
+@pytest.mark.unit
+def test_bootstrap_submodules_retries_after_per_worktree_index_lock(tmp_path: Path) -> None:
+    from staff import runner_ops_worktree_bootstrap as boot
+
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    main_repo = tmp_path / "UpstreamDrift"
+    wt_gitdir = main_repo / ".git" / "worktrees" / "wt"
+    wt_modules = wt_gitdir / "modules" / "vendor" / "ud-tools"
+    (worktree / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+    stale_lock = wt_modules / "index.lock"
+
+    submodule_calls = 0
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal submodule_calls
+        if command[:2] == ["git", "--version"]:
+            return _cp(command, 0, "git version 2.47.1\n")
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {worktree}\n")
+        if "submodule" in command and "update" in command:
+            submodule_calls += 1
+            if submodule_calls == 1:
+                wt_modules.mkdir(parents=True, exist_ok=True)
+                stale_lock.write_text("leftover", encoding="utf-8")
+                return _cp(
+                    command,
+                    1,
+                    stderr=(
+                        "fatal: Unable to create "
+                        f"'{stale_lock}': File exists.\n"
+                        "fatal: Unable to checkout '0cf7f77a' in submodule path 'vendor/ud-tools'\n"
+                    ),
+                )
+            return _cp(command, 0)
+        raise AssertionError(f"unexpected command: {command}")
+
+    failure = boot._bootstrap_submodules(worktree, fake_run, is_git_process_active=lambda _p: False)
+
+    assert failure is None
+    assert submodule_calls == 2
+    assert not stale_lock.exists()
+
+
+@pytest.mark.unit
 def test_resolve_pre_pr_entrypoint_falls_back_when_module_import_missing(tmp_path: Path) -> None:
     scripts = tmp_path / "scripts"
     scripts.mkdir()

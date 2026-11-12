@@ -13,6 +13,7 @@ from node_auto_deploy.ci_gate import (  # noqa: E402
     ci_gate_for_commit,
     select_deployable_main_commit,
 )
+from required_context_helper import success_runs_for_required_contexts  # noqa: E402
 
 _HEAD_FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "916a571_check_runs.json"
 _GREEN_FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "4ece23d_check_runs.json"
@@ -88,18 +89,12 @@ def test_cancelled_check_on_skipped_commit_does_not_block_newer_green() -> None:
     head = _runs_from_fixture(_HEAD_FIXTURE, _HEAD_SHA)
     green = _runs_from_fixture(_GREEN_FIXTURE, _GREEN_SHA)
     cancelled_sha = "a" * 40
-    cancelled = [
+    cancelled = success_runs_for_required_contexts(cancelled_sha) + [
         {
             "head_sha": cancelled_sha,
             "name": "Build and scan image",
             "status": "completed",
             "conclusion": "cancelled",
-        },
-        {
-            "head_sha": cancelled_sha,
-            "name": "quality-gate",
-            "status": "completed",
-            "conclusion": "success",
         },
     ]
     runs_by_sha = {_HEAD_SHA: head, cancelled_sha: cancelled, _GREEN_SHA: green}
