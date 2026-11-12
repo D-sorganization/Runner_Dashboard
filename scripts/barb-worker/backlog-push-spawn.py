@@ -159,6 +159,25 @@ def _recoverable_pid(pid: int, session: str) -> bool:
     return _verify_process_identity(pid, session) and _candidate_matches_worker_shape(pid)
 
 
+def _read_pid_record_from_file(pidfile: Path) -> int | None:
+    """Read a pid file supporting both legacy (plain int) and new (JSON) formats.
+
+    Returns the pid if the file exists and can be parsed, else None.
+    """
+    if not pidfile.is_file() or pidfile.stat().st_size == 0:
+        return None
+    try:
+        content = pidfile.read_text(encoding="utf-8").strip()
+        if content.startswith("{"):
+            data = json.loads(content)
+            return int(data.get("pid", 0)) or None
+        else:
+            pid = int(content)
+            return pid if pid > 0 else None
+    except (ValueError, OSError, json.JSONDecodeError):
+        return None
+
+
 def _record_recovery_evidence(
     log_dir: Path,
     key: str,
@@ -330,8 +349,9 @@ def _spawn_one(
             stderr=subprocess.DEVNULL,
         )
     for _ in range(100):
-        if pidfile.is_file() and pidfile.stat().st_size > 0:
-            return int(pidfile.read_text(encoding="utf-8").strip())
+        pid = _read_pid_record_from_file(pidfile)
+        if pid is not None:
+            return pid
         time.sleep(0.1)
     raise RuntimeError(f"backlog-push-spawn: no pid for session {session!r}")
 
@@ -366,15 +386,12 @@ def main(argv: list[str] | None = None) -> int:
 
             existing_pid: int | None = None
             rejected_candidate_pid: int | None = None
-            if pidfile.is_file() and pidfile.stat().st_size > 0:
-                try:
-                    candidate = int(pidfile.read_text(encoding="utf-8").strip())
-                    if _recoverable_pid(candidate, session):
-                        existing_pid = candidate
-                    else:
-                        rejected_candidate_pid = candidate
-                except (ValueError, OSError):
-                    pass
+            candidate = _read_pid_record_from_file(pidfile)
+            if candidate is not None:
+                if _recoverable_pid(candidate, session):
+                    existing_pid = candidate
+                else:
+                    rejected_candidate_pid = candidate
 
             if existing_pid is not None:
                 pid = existing_pid

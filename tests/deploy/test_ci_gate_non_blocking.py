@@ -63,6 +63,16 @@ def test_verify_closure_listed() -> None:
     assert "verify-closure" in NON_BLOCKING_DEPLOY_CHECK_NAMES
 
 
+def test_failed_shepherd_check_does_not_block_deploy() -> None:
+    runs = [
+        _run("quality-gate", "completed", "success", 1),
+        _run("shepherd", "completed", "failure", 2),
+    ]
+    ok, detail = ci_gate_for_deploy_commit(runs, _SHA)
+    assert ok is True, detail
+    assert "shepherd" in NON_BLOCKING_DEPLOY_CHECK_NAMES
+
+
 def test_failed_queue_slo_check_does_not_block_release_or_deploy() -> None:
     from main_auto_release.gate import commit_passes_publisher_ci_gate
 

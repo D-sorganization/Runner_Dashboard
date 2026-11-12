@@ -40,6 +40,11 @@ class Price:
 # wins), so ``claude-opus-5``, ``opus-5`` and ``claude-opus-5-20260401`` all hit
 # the same row. Order inside a provider does not matter.
 PRICE_TABLE: dict[str, dict[str, Price]] = {
+    # Peak, cache-miss rates from https://api-docs.deepseek.com/quick_start/pricing/ (2026-11-09).
+    "deepseek-api": {
+        "deepseek-flash": Price(0.30, 1.20, estimate=True),
+        "deepseek-v4-pro": Price(1.32, 3.96, estimate=True),
+    },
     "claude": {
         "fable-5.2": Price(8.0, 40.0),
         "fable-5-2": Price(8.0, 40.0),

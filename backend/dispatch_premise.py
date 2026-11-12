@@ -1,11 +1,11 @@
 """Pre-dispatch premise check for task, issue, and follow-up chip dispatches.
 
-Part of Repository_Management#1889 / Issue #1847 (RD-2).
+Part of Repository_Management#1889 / Issue #1847 (RD-2), hardened in #4260.
 
 Before dispatching any agent session from an issue, a follow-up chip or `spawn_task`:
-1. If the task names a failing check or command, re-run it once against current
-   `main` (one REST call or a local command on the node). If it passes, comment
-   "already resolved on main at <sha>", close the item, and don't dispatch.
+1. If the task names a failing check via `failing-check: <name>`, query that check on current
+   `main` (GitHub check-runs REST or an allowlisted local script). If it passes, annotate
+   the skip in the dispatch audit; never auto-close the issue.
 2. If an open PR already references the issue, or an active `claim:*` lease exists,
    don't dispatch.
 3. Log every skip with its reason in the dispatch audit.
@@ -24,6 +24,16 @@ from time_utils import utc_now_iso
 
 log = logging.getLogger("dashboard.dispatch.premise")
 
+_FAILING_CHECK_MARKER = re.compile(r"^\s*failing-check:\s*(?P<name>[^\s#]+)", re.I | re.M)
+
+# Allowlisted local re-check commands keyed by normalized check name (#4260).
+ALLOWED_LOCAL_PREMISE_CHECKS: dict[str, list[str]] = {
+    "check_law_of_demeter": ["python3", "scripts/ci/check_law_of_demeter.py"],
+    "check_dry_duplication_gate": ["python3", "scripts/ci/check_dry_duplication_gate.py"],
+    "check_architecture_budget": ["python3", "scripts/ci/check_architecture_budget.py"],
+    "check_conflict_markers": ["git", "grep", "-n", "<<<<<<<"],
+}
+
 # ─── Audited No-Op Prompts Replay Register ────────────────────────────────────
 
 AUDITED_NO_OP_PROMPTS: list[dict[str, Any]] = [
@@ -31,21 +41,21 @@ AUDITED_NO_OP_PROMPTS: list[dict[str, Any]] = [
         "id": "lod-baseline",
         "repository": "D-sorganization/Runner_Dashboard",
         "issue": 1720,
-        "prompt": "Fix Law of Demeter violations: check_law_of_demeter baseline on branch",
+        "prompt": "failing-check: check_law_of_demeter\nFix Law of Demeter violations on branch",
         "description": "the LoD baseline had already been fixed on the branch",
     },
     {
         "id": "conflict-marker",
         "repository": "D-sorganization/Runner_Dashboard",
         "issue": 1740,
-        "prompt": "Remove stray conflict marker <<<<<<< in docs/HANDOFF.md",
+        "prompt": "failing-check: check_conflict_markers\nRemove stray conflict marker in docs/HANDOFF.md",
         "description": "the stray conflict marker had already been removed by #1739, 39 minutes earlier",
     },
     {
         "id": "local-only-runner-guard",
         "repository": "D-sorganization/AffineDrift",
         "issue": 4200,
-        "prompt": "Fix failing workflow local-only-runner-guard.yml on AffineDrift",
+        "prompt": "failing-check: local-only-runner-guard\nFix failing workflow on AffineDrift",
         "description": "the AffineDrift local-only-runner-guard failure had been fixed 7 weeks earlier",
     },
 ]
@@ -75,53 +85,29 @@ class PremiseCheckResult:
         }
 
 
-# ─── Check & Command Extraction ───────────────────────────────────────────────
-
-_CHECK_PATTERNS: list[tuple[re.Pattern, str, str]] = [
-    (re.compile(r"local-only-runner-guard(?:\.ya?ml)?", re.I), "local-only-runner-guard", "workflow"),
-    (re.compile(r"check_law_of_demeter(?:\.py)?|law of demeter|lod baseline", re.I), "check_law_of_demeter", "script"),
-    (re.compile(r"<<<<<<<|conflict marker", re.I), "check_conflict_markers", "conflict_marker"),
-    (re.compile(r"check_dry_duplication_gate(?:\.py)?", re.I), "check_dry_duplication_gate", "script"),
-    (re.compile(r"check_architecture_budget(?:\.py)?", re.I), "check_architecture_budget", "script"),
-    (re.compile(r"([\w.-]+\.(?:ya?ml))", re.I), r"\1", "workflow"),
-]
-
-_COMMAND_PATTERN = re.compile(
-    r"(?:^|\s)(pytest\s+[\w/.:-]+|python3?\s+[\w/.:-]+\.py|ruff\s+[\w/.:-]+|git\s+grep\s+['\"][^'\"]+['\"])",
-    re.I,
-)
+def _normalize_check_name(name: str) -> str:
+    stripped = name.strip().lower()
+    for suffix in (".yml", ".yaml"):
+        if stripped.endswith(suffix):
+            return stripped[: -len(suffix)]
+    return stripped
 
 
 def extract_failing_check_premise(text: str) -> dict[str, Any] | None:
-    """Detect whether a prompt or issue body specifies a failing check or command."""
+    """Return premise info only when an explicit ``failing-check:`` marker is present."""
     if not text:
         return None
-
-    # Check for known check patterns / workflows
-    for pat, name_template, check_type in _CHECK_PATTERNS:
-        match = pat.search(text)
-        if match:
-            check_name = match.expand(name_template) if "\\" in name_template else name_template
-            command = f"python3 scripts/ci/{check_name}.py" if check_type == "script" else ""
-            if check_type == "conflict_marker":
-                command = "git grep -n '<<<<<<<'"
-            return {
-                "check_name": check_name,
-                "check_type": check_type,
-                "command": command,
-            }
-
-    # Check for shell command invocation
-    cmd_match = _COMMAND_PATTERN.search(text)
-    if cmd_match:
-        cmd = cmd_match.group(1).strip()
-        return {
-            "check_name": cmd.split()[0],
-            "check_type": "command",
-            "command": cmd,
-        }
-
-    return None
+    match = _FAILING_CHECK_MARKER.search(text)
+    if not match:
+        return None
+    raw_name = match.group("name").strip()
+    check_name = _normalize_check_name(raw_name)
+    check_type = "workflow" if raw_name.lower().endswith((".yml", ".yaml")) else "check_run"
+    return {
+        "check_name": check_name,
+        "check_type": check_type,
+        "command": "",
+    }
 
 
 # ─── Open PR & Claim Checks ───────────────────────────────────────────────────
@@ -261,16 +247,17 @@ async def _check_runs_on_main(
 
     check_runs = res.get("check_runs") or []
     head_sha = ""
+    target_name = _normalize_check_name(check_name)
     for cr in check_runs:
-        cr_name = str(cr.get("name") or "").lower()
+        cr_name = _normalize_check_name(str(cr.get("name") or ""))
         if not head_sha:
             head_sha = str(cr.get("head_sha") or "")[:7]
-        target_name = check_name.lower().replace(".yml", "").replace(".yaml", "")
-        if target_name in cr_name or cr_name in target_name:
-            status = cr.get("status")
-            conclusion = cr.get("conclusion")
-            if status == "completed":
-                return conclusion == "success", head_sha
+        if cr_name != target_name:
+            continue
+        status = cr.get("status")
+        conclusion = cr.get("conclusion")
+        if status == "completed":
+            return conclusion == "success", head_sha
 
     return None, head_sha
 
@@ -290,21 +277,18 @@ async def recheck_premise_on_main(
     full_repo = _normalize_repo(repository)
     check_name = check_info["check_name"]
 
-    # 1. Try REST API check-run query on main
     passed, head_sha = await _check_runs_on_main(full_repo, check_name, gh_get_fn)
     if passed is not None:
         return passed, head_sha or "main"
 
-    # 2. Try running local command if run_cmd_fn provided
-    command = check_info.get("command")
-    if command and run_cmd_fn:
-        cmd_args = command.split() if isinstance(command, str) else list(command)
+    cmd_args = ALLOWED_LOCAL_PREMISE_CHECKS.get(check_name)
+    if cmd_args and run_cmd_fn:
         try:
             cwd = repo_root or Path.cwd()
             code, _stdout, _stderr = await run_cmd_fn(cmd_args, timeout=30, cwd=cwd)
             return code == 0, head_sha or "main"
         except Exception as exc:  # noqa: BLE001
-            log.warning("Local check command %s failed to run: %s", command, exc)
+            log.warning("Allowlisted check command %s failed to run: %s", cmd_args, exc)
 
     return False, head_sha or "main"
 
@@ -330,11 +314,10 @@ async def evaluate_dispatch_premise(
     Enforces:
     - Skip if active claim:* lease or label exists.
     - Skip if an open PR references the issue.
-    - Skip if named failing check/command already passes on current main.
+    - Skip if named failing check (structured marker only) already passes on current main.
     """
     full_repo = _normalize_repo(repository)
 
-    # 1. Active claim check
     if issue_number:
         has_claim, claim_detail = await check_issue_has_active_claim(
             full_repo,
@@ -350,7 +333,6 @@ async def evaluate_dispatch_premise(
                 detail=claim_detail,
             )
 
-    # 2. Open PR reference check
     if issue_number and check_open_pr:
         has_pr, pr_info = await check_issue_has_open_pr(
             full_repo,
@@ -364,7 +346,6 @@ async def evaluate_dispatch_premise(
                 detail=f"open PR #{pr_info['number']} ('{pr_info['title']}') already references issue #{issue_number}",
             )
 
-    # 3. Failing check or command premise re-check against main
     full_text = f"{prompt}\n{issue_body}".strip()
     check_info = extract_failing_check_premise(full_text)
     if check_info:
@@ -383,7 +364,7 @@ async def evaluate_dispatch_premise(
                 reason="already_resolved_on_main",
                 detail=f"premise check '{check_info['check_name']}' already passing on main at {sha_label}",
                 comment=comment,
-                should_close=True,
+                should_close=False,
                 head_sha=sha_label,
                 check_name=check_info["check_name"],
             )
@@ -427,7 +408,7 @@ async def close_item_as_resolved_on_main(
     *,
     run_cmd_fn: Any = None,
 ) -> bool:
-    """Comment on and close an issue that is already resolved on main."""
+    """Post an operator-visible note that a premise check passed on main (#4260: comment only)."""
     full_repo = _normalize_repo(repository)
     comment_cmd = [
         "gh",
@@ -439,27 +420,15 @@ async def close_item_as_resolved_on_main(
         "--body",
         comment,
     ]
-    close_cmd = [
-        "gh",
-        "issue",
-        "close",
-        str(issue_number),
-        "--repo",
-        full_repo,
-        "--reason",
-        "completed",
-    ]
 
     try:
         if run_cmd_fn:
             await run_cmd_fn(comment_cmd, timeout=30)
-            await run_cmd_fn(close_cmd, timeout=30)
         else:
             from system_utils import run_cmd  # noqa: PLC0415
 
             await run_cmd(comment_cmd, timeout=30)
-            await run_cmd(close_cmd, timeout=30)
         return True
     except Exception as exc:  # noqa: BLE001
-        log.warning("Failed to comment and close issue %s#%d: %s", full_repo, issue_number, exc)
+        log.warning("Failed to comment on issue %s#%d: %s", full_repo, issue_number, exc)
         return False
