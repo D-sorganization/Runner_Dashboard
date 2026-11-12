@@ -7,7 +7,6 @@ import threading
 import time
 
 import pytest
-
 from github_rate_governor import (
     GitHubGovernorExhausted,
     GitHubRateGovernor,
@@ -66,6 +65,61 @@ def test_observe_headers_syncs_remaining() -> None:
         }
     )
     assert gov.tokens_available() == pytest.approx(12.0, abs=0.01)
+
+
+def test_stale_header_response_does_not_replenish_tokens() -> None:
+    """Out-of-order responses must not raise the balance above concurrent acquires."""
+    reset_at = int(time.time()) + 3600
+    headers_window = {
+        "X-RateLimit-Remaining": "100",
+        "X-RateLimit-Reset": str(reset_at),
+    }
+    gov = GitHubRateGovernor(identity="test", capacity=100.0, refill_per_sec=0.0, max_wait_sec=1.0)
+    gov.observe_response_headers(headers_window)
+    assert gov.tokens_available() == pytest.approx(100.0, abs=0.01)
+
+    for _ in range(5):
+        gov.acquire(cost=1.0)
+    assert gov.tokens_available() == pytest.approx(95.0, abs=0.01)
+
+    # Stale response: issued when remaining was 99, arrives after five local acquires.
+    gov.observe_response_headers(
+        {
+            "X-RateLimit-Remaining": "99",
+            "X-RateLimit-Reset": str(reset_at),
+        }
+    )
+    assert gov.tokens_available() == pytest.approx(95.0, abs=0.01)
+
+    # Fresher (lower) remaining in the same window still reconciles downward.
+    gov.observe_response_headers(
+        {
+            "X-RateLimit-Remaining": "90",
+            "X-RateLimit-Reset": str(reset_at),
+        }
+    )
+    assert gov.tokens_available() == pytest.approx(90.0, abs=0.01)
+
+
+def test_new_rate_limit_window_from_headers_restores_budget() -> None:
+    gov = GitHubRateGovernor(identity="test", capacity=100.0, refill_per_sec=0.0, max_wait_sec=1.0)
+    old_reset = int(time.time()) + 10
+    new_reset = old_reset + 3600
+    gov.observe_response_headers(
+        {"X-RateLimit-Remaining": "5", "X-RateLimit-Reset": str(old_reset)},
+    )
+    assert gov.tokens_available() == pytest.approx(5.0, abs=0.01)
+
+    gov.observe_response_headers(
+        {"X-RateLimit-Remaining": "100", "X-RateLimit-Reset": str(new_reset)},
+    )
+    assert gov.tokens_available() == pytest.approx(100.0, abs=0.01)
+
+    # Responses tied to the prior window must not inflate the new one.
+    gov.observe_response_headers(
+        {"X-RateLimit-Remaining": "80", "X-RateLimit-Reset": str(old_reset)},
+    )
+    assert gov.tokens_available() == pytest.approx(100.0, abs=0.01)
 
 
 def test_secondary_limit_backoff_blocks_acquire() -> None:

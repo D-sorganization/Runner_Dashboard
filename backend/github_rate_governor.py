@@ -51,6 +51,7 @@ class GitHubRateGovernor:
         self._tokens = self._capacity
         self._last_refill = time.monotonic()
         self._blocked_until = 0.0
+        self._header_reset_epoch: int | None = None
 
     def configure_for_tests(self, *, capacity: float, refill_per_sec: float) -> None:
         with self._lock:
@@ -147,11 +148,24 @@ class GitHubRateGovernor:
         if not remaining_raw.isdigit():
             return
         remaining = float(remaining_raw)
+        capped = min(self._capacity, remaining)
         with self._lock:
-            self._tokens = min(self._capacity, remaining)
-            self._last_refill = time.monotonic()
-            if reset_raw.isdigit():
-                reset_epoch = int(reset_raw)
+            reset_epoch = int(reset_raw) if reset_raw.isdigit() else None
+            tracked = self._header_reset_epoch
+            if reset_epoch is not None and tracked is not None and reset_epoch < tracked:
+                # Response from a prior rate-limit window; ignore remaining (stale ordering).
+                pass
+            elif reset_epoch is not None and (tracked is None or reset_epoch > tracked):
+                # New window: GitHub reset the primary bucket; trust its remaining count.
+                self._header_reset_epoch = reset_epoch
+                self._tokens = capped
+                self._last_refill = time.monotonic()
+            else:
+                # Same window (or no reset header): never raise balance from out-of-order responses.
+                self._tokens = min(self._tokens, capped)
+                if reset_epoch is not None and tracked is None:
+                    self._header_reset_epoch = reset_epoch
+            if reset_epoch is not None:
                 seconds_until_reset = max(0, reset_epoch - int(time.time()))
                 if remaining <= 0 and seconds_until_reset > 0:
                     self._blocked_until = max(self._blocked_until, time.monotonic() + seconds_until_reset)
