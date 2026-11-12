@@ -145,10 +145,12 @@ class AgentBusStore:
                     token = raw
                 conn.execute(
                     "INSERT INTO agent_bus_principals "
-                    "(session_id, role, provider, node, principal_id, lease_expires_at, registered_at, last_heartbeat_at) "
+                    "(session_id, role, provider, node, principal_id, lease_expires_at, "
+                    "registered_at, last_heartbeat_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(session_id) DO UPDATE SET role=excluded.role, provider=excluded.provider, "
-                    "node=excluded.node, principal_id=excluded.principal_id, lease_expires_at=excluded.lease_expires_at, "
+                    "node=excluded.node, principal_id=excluded.principal_id, "
+                    "lease_expires_at=excluded.lease_expires_at, "
                     "last_heartbeat_at=excluded.last_heartbeat_at",
                     (session_id, role, provider, node, principal_id, lease_expires, now, now),
                 )
