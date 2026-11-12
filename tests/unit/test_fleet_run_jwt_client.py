@@ -7,7 +7,8 @@ from typing import Any
 
 import pytest
 
-from scripts import fleet_run_jwt as mod
+import fleet_run_jwt as mod
+from scripts import fleet_run_jwt as cli
 
 
 def test_fetch_run_jwt_exchanges_bootstrap_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -81,8 +82,8 @@ def test_main_token_prints_jwt_without_logging_secrets(
     def _fake_fetch(**_kwargs: Any) -> tuple[str, float, str]:
         return jwt_value, 1.0, "jti-x"
 
-    monkeypatch.setattr(mod, "fetch_run_jwt", _fake_fetch)
+    monkeypatch.setattr(cli, "fetch_run_jwt", _fake_fetch)
     caplog.set_level(logging.ERROR)
-    assert mod.main(["token"]) == 0
+    assert cli.main(["token"]) == 0
     assert capsys.readouterr().out == jwt_value
     assert jwt_value not in caplog.text
