@@ -41,6 +41,13 @@ def _real_gh_path() -> str:
 
 
 def _inject_fleet_github_token(env: dict[str, str]) -> dict[str, str]:
+    role = str(env.get("STAFF_ROLE", "")).strip()
+    existing = (env.get("GH_TOKEN") or env.get("GITHUB_TOKEN") or "").strip()
+    if role == "code-reviewer" and existing.startswith("ghs_"):
+        cleaned = scrub_personal_github_tokens(env)
+        cleaned["GH_TOKEN"] = existing
+        cleaned["GITHUB_TOKEN"] = existing
+        return cleaned
     cleaned = scrub_personal_github_tokens(env)
     url = cleaned.get("STAFF_GITHUB_CREDENTIAL_URL", "").strip()
     fleet = cleaned.get("FLEET_API_TOKEN", "").strip()

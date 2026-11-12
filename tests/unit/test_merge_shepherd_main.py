@@ -37,6 +37,69 @@ def test_main_exits_nonzero_and_skips_graphql_when_hub_holds_unavailable(
     assert str(payload["holds_unavailable"]).startswith("holds_unavailable:")
 
 
+def _armed_page1_graphql_stdout() -> str:
+    page1 = {
+        "nodes": [{"number": i, "autoMergeRequest": None} for i in range(1, 101)],
+        "pageInfo": {"hasNextPage": True, "endCursor": "page-1"},
+    }
+    payload = {
+        "repository": {
+            "mergeQueue": {"entries": {"totalCount": 0}},
+            "armedPullRequests": page1,
+            "pullRequests": {"nodes": []},
+        }
+    }
+    return json.dumps({"data": payload})
+
+
+def _graphql_runner_followup(cmd: list[str], *, followup_stdout: str) -> object:
+    import subprocess
+
+    is_followup = any(isinstance(part, str) and part.startswith("after=") for part in cmd)
+    if is_followup:
+        return subprocess.CompletedProcess(cmd, 0, followup_stdout, "")
+    return subprocess.CompletedProcess(cmd, 0, _armed_page1_graphql_stdout(), "")
+
+
+def test_graphql_fails_closed_when_armed_follow_up_page_unparseable() -> None:
+    def runner(cmd: list[str]) -> object:
+        return _graphql_runner_followup(cmd, followup_stdout=json.dumps({"data": []}))
+
+    with pytest.raises(OSError, match="armed_pull_requests_pagination_incomplete"):
+        msp._graphql("D-sorganization", "Runner_Dashboard", runner=runner)
+
+
+def test_graphql_fails_closed_when_armed_only_on_broken_page_two() -> None:
+    def runner(cmd: list[str]) -> object:
+        return _graphql_runner_followup(cmd, followup_stdout=json.dumps({"data": None}))
+
+    with pytest.raises(OSError, match="armed_pull_requests_pagination_incomplete"):
+        msp._graphql("D-sorganization", "Runner_Dashboard", runner=runner)
+
+    from coordination.merge_shepherd_pass import graphql_nodes
+
+    undercount_payload = json.loads(_armed_page1_graphql_stdout())["data"]
+    _, armed_count, _ = graphql_nodes(undercount_payload)
+    assert armed_count == 0
+
+
+def test_graphql_stitches_armed_when_follow_up_pages_complete() -> None:
+    page2 = {
+        "nodes": [{"number": i, "autoMergeRequest": {"enabledAt": "t"}} for i in range(101, 108)],
+        "pageInfo": {"hasNextPage": False, "endCursor": "page-2"},
+    }
+    followup = json.dumps({"data": {"repository": {"armedPullRequests": page2}}})
+
+    def runner(cmd: list[str]) -> object:
+        return _graphql_runner_followup(cmd, followup_stdout=followup)
+
+    payload = msp._graphql("D-sorganization", "Runner_Dashboard", runner=runner)
+    from coordination.merge_shepherd_pass import graphql_nodes
+
+    _, armed_count, _ = graphql_nodes(payload)
+    assert armed_count == 7
+
+
 def test_hub_fleet_token_does_not_fall_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
     monkeypatch.setenv("GH_TOKEN", "github-app-only")

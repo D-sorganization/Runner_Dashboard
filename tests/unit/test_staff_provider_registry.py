@@ -18,6 +18,7 @@ def test_staff_ids_resolve_to_canonical_registry_entries() -> None:
     assert {provider_id: canonical_provider_id(provider_id) for provider_id in ADAPTERS} == {
         "claude": "claude_code_cli",
         "anthropic-api": "anthropic_api",
+        "deepseek-api": "deepseek_api",
         "codex": "codex_cli",
         "antigravity": "antigravity",
         "gemini": "gemini_cli",
