@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose new behavior for outside contributors (no fleet dispatch metadata).
+title: "[Feature] "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's missing or awkward today, and who is affected.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see, and any alternatives you considered.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, mockups, or related issues.
+    validations:
+      required: false

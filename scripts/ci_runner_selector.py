@@ -26,14 +26,30 @@ _PUBLIC_HOSTED_TAIL: Final = (
     "|| 'd-sorg-fleet'"
 )
 
-_MERGE_GROUP_HOSTED: Final = (
+_QUEUE_AND_PR_HOSTED: Final = (
+    "github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' "
+    "|| github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' "
+)
+
+_MERGE_GROUP_FAST_CHECKS: Final = (
     f"github.event.repository.private && github.event_name == 'merge_group' "
     f"&& vars.{RD_FAST_CHECKS_VAR} == 'hosted' && 'ubuntu-latest'"
 )
 
 _PRIVATE_FAST_CHECKS_TAIL: Final = (
     "!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' "
-    f"|| ({_MERGE_GROUP_HOSTED} || 'd-sorg-fleet')"
+    f"|| {_QUEUE_AND_PR_HOSTED}"
+    f"|| {_MERGE_GROUP_FAST_CHECKS} "
+    "|| github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL "
+    "|| 'd-sorg-fleet'"
+)
+
+_FRONTEND_FAST_CHECKS_TAIL: Final = (
+    "!github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' "
+    f"|| {_QUEUE_AND_PR_HOSTED}"
+    f"|| {_MERGE_GROUP_FAST_CHECKS} "
+    "|| github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL "
+    "|| vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet'"
 )
 
 _WORKFLOW_NAME_TO_FILE: Final[dict[str, str]] = {
@@ -64,6 +80,11 @@ def required_check_runs_on_expression() -> str:
     return f"${{{{ {_FORK_ROUTE}{_PRIVATE_FAST_CHECKS_TAIL} }}}}"
 
 
+def frontend_required_check_runs_on_expression() -> str:
+    """``runs-on`` for frontend-tests required-check jobs (browser-label fallback)."""
+    return f"${{{{ {_FORK_ROUTE}{_FRONTEND_FAST_CHECKS_TAIL} }}}}"
+
+
 def pick_runner_fast_checks_bash_fragment() -> str:
     """Bash appended inside pick-runner to emit ``fast_checks_runner`` (no leading indent)."""
     return f"""\
@@ -75,6 +96,8 @@ fi
 if [ "$FORK_PR" = "true" ]; then
   echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
 elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
+  echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
   echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
 elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$FAST_CHECKS" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
   echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"

@@ -120,41 +120,52 @@ class AssistantMemoryStore:
 
     def append(self, entry: MemoryEntry) -> MemoryEntry:
         payload = len(json.dumps(entry.body, separators=(",", ":")).encode("utf-8"))
-        if self.total_payload_bytes() + payload > MAX_STORE_BYTES:
-            raise ValueError("store_size_cap_exceeded")
         with self._lock:
-            self._db.execute(
-                """
-                INSERT INTO memory_entries (
-                  id, entry_type, author_principal, source_product, tags_json, body_json,
-                  created_at, expires_at, supersedes_id, superseded_by,
-                  repo, review_status, source_run, visibility, reviewed_by, accepted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    entry.id,
-                    entry.entry_type,
-                    entry.author_principal,
-                    entry.source_product,
-                    json.dumps(entry.tags),
-                    json.dumps(entry.body),
-                    entry.created_at,
-                    entry.expires_at,
-                    entry.supersedes_id,
-                    entry.superseded_by,
-                    entry.repo,
-                    entry.review_status,
-                    entry.source_run,
-                    entry.visibility,
-                    entry.reviewed_by,
-                    entry.accepted_at,
-                ),
-            )
-            if entry.supersedes_id:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                if self.total_payload_bytes() + payload > MAX_STORE_BYTES:
+                    raise ValueError("store_size_cap_exceeded")
+                if entry.supersedes_id:
+                    cur = self._db.execute(
+                        "UPDATE memory_entries SET superseded_by = ? WHERE id = ? AND superseded_by IS NULL",
+                        (entry.id, entry.supersedes_id),
+                    )
+                    if cur.rowcount == 0:
+                        if self.get(entry.supersedes_id) is None:
+                            raise KeyError(f"memory entry {entry.supersedes_id} not found")
+                        raise ValueError("stale_supersession_conflict")
                 self._db.execute(
-                    "UPDATE memory_entries SET superseded_by = ? WHERE id = ? AND superseded_by IS NULL",
-                    (entry.id, entry.supersedes_id),
+                    """
+                    INSERT INTO memory_entries (
+                      id, entry_type, author_principal, source_product, tags_json, body_json,
+                      created_at, expires_at, supersedes_id, superseded_by,
+                      repo, review_status, source_run, visibility, reviewed_by, accepted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        entry.id,
+                        entry.entry_type,
+                        entry.author_principal,
+                        entry.source_product,
+                        json.dumps(entry.tags),
+                        json.dumps(entry.body),
+                        entry.created_at,
+                        entry.expires_at,
+                        entry.supersedes_id,
+                        entry.superseded_by,
+                        entry.repo,
+                        entry.review_status,
+                        entry.source_run,
+                        entry.visibility,
+                        entry.reviewed_by,
+                        entry.accepted_at,
+                    ),
                 )
+                self._db.execute("COMMIT")
+            except Exception:
+                if self._db.in_transaction:
+                    self._db.execute("ROLLBACK")
+                raise
         return entry
 
     def append_idempotent(
@@ -229,18 +240,31 @@ class AssistantMemoryStore:
         self,
         entry_id: str,
         *,
+        expected_review_status: str,
         review_status: str,
         reviewed_by: str,
         accepted_at: str | None = None,
         expires_at: str | None = None,
     ) -> MemoryEntry:
+        """Conditional transition: rejects a review racing a concurrent, stale read."""
         with self._lock:
             q = (
                 "UPDATE memory_entries SET review_status = ?, reviewed_by = ?, accepted_at = ?"
-                f"{', expires_at = ?' if expires_at else ''} WHERE id = ?"
+                f"{', expires_at = ?' if expires_at else ''} WHERE id = ? AND review_status = ?"
             )
-            v = (review_status, reviewed_by, accepted_at, *((expires_at,) if expires_at else ()), entry_id)
-            self._db.execute(q, v)
+            v = (
+                review_status,
+                reviewed_by,
+                accepted_at,
+                *((expires_at,) if expires_at else ()),
+                entry_id,
+                expected_review_status,
+            )
+            cur = self._db.execute(q, v)
+            if cur.rowcount == 0:
+                if self.get(entry_id) is None:
+                    raise KeyError(f"memory entry {entry_id} not found")
+                raise ValueError("stale_review_conflict")
         if not (updated := self.get(entry_id)):
             raise KeyError(f"memory entry {entry_id} not found")
         return updated
@@ -276,8 +300,10 @@ class AssistantMemoryStore:
             params.append(author)
         if not include_superseded:
             clauses.append("superseded_by IS NULL")
-        if not include_barb_only:
-            clauses.append("(visibility IS NULL OR visibility != 'barb-only')")
+        if include_barb_only:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility IN ('fleet', 'barb-only'))")
+        else:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility = 'fleet')")
         if active_only:
             clauses.append("memory_expiry_is_future(expires_at, ?)")
             params.append(_now())
@@ -289,6 +315,57 @@ class AssistantMemoryStore:
         if tag:
             entries = [e for e in entries if tag in e.tags]
         return entries
+
+    def list_entries_page(
+        self,
+        *,
+        cursor: tuple[str, str] | None = None,
+        entry_type: str | None = None,
+        repo: str | None = None,
+        review_status: str | None = None,
+        include_superseded: bool = False,
+        include_barb_only: bool = False,
+        active_only: bool = False,
+        limit: int = 100,
+    ) -> tuple[list[MemoryEntry], tuple[str, str] | None]:
+        """Keyset page ordered by (created_at, id) descending.
+
+        Unlike `list_entries`'s single `LIMIT`, repeated calls chaining
+        `cursor` to the prior call's returned cursor visit every matching row
+        exactly once, with no gap or duplicate even when rows share
+        `created_at` to the second. Returns `(entries, next_cursor)`;
+        `next_cursor` is `None` once the result set is exhausted.
+        """
+        clauses: list[str] = []
+        params: list[Any] = []
+        if entry_type:
+            clauses.append("entry_type = ?")
+            params.append(entry_type)
+        for c, v in (("repo", repo), ("review_status", review_status)):
+            if v:
+                clauses.append(f"{c} = ?")
+                params.append(v)
+        if not include_superseded:
+            clauses.append("superseded_by IS NULL")
+        if include_barb_only:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility IN ('fleet', 'barb-only'))")
+        else:
+            clauses.append("(visibility IS NULL OR visibility = '' OR visibility = 'fleet')")
+        if active_only:
+            clauses.append("memory_expiry_is_future(expires_at, ?)")
+            params.append(_now())
+        if cursor is not None:
+            clauses.append("(created_at < ? OR (created_at = ? AND id < ?))")
+            params.extend([cursor[0], cursor[0], cursor[1]])
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = f"SELECT * FROM memory_entries {where} ORDER BY created_at DESC, id DESC LIMIT ?"  # noqa: S608
+        params.append(limit + 1)  # one extra row to detect "more" without a round-trip
+        rows = self._db.execute(sql, tuple(params)).fetchall()
+        entries = [_Row(*row).to_entry() for row in rows]
+        has_more = len(entries) > limit
+        entries = entries[:limit]
+        next_cursor = (entries[-1].created_at, entries[-1].id) if has_more and entries else None
+        return entries, next_cursor
 
 
 def get_memory_store() -> AssistantMemoryStore:

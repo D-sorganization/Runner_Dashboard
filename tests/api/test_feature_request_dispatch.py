@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
-from routers import feature_requests  # noqa: E402
+from routers import code_requests as feature_requests  # noqa: E402
 from server import app  # noqa: E402
 
 _NOT_FOUND = (
@@ -61,7 +61,7 @@ def _history(path: Path) -> list[dict]:
 
 
 def test_dispatch_failure_returns_502_and_records_failed(client: TestClient, history_path: Path) -> None:
-    with patch("routers.feature_requests.run_cmd", new=AsyncMock(return_value=_NOT_FOUND)):
+    with patch("routers.code_requests.run_cmd", new=AsyncMock(return_value=_NOT_FOUND)):
         resp = client.post("/api/feature-requests/dispatch", json=_BODY)
 
     assert resp.status_code == 502
@@ -73,7 +73,7 @@ def test_dispatch_failure_returns_502_and_records_failed(client: TestClient, his
 
 
 def test_dispatch_success_records_dispatched(client: TestClient, history_path: Path) -> None:
-    with patch("routers.feature_requests.run_cmd", new=AsyncMock(return_value=(0, "", ""))):
+    with patch("routers.code_requests.run_cmd", new=AsyncMock(return_value=(0, "", ""))):
         resp = client.post("/api/feature-requests/dispatch", json=_BODY)
 
     assert resp.status_code == 200
@@ -85,7 +85,7 @@ def test_dispatch_success_records_dispatched(client: TestClient, history_path: P
 
 def test_list_reports_unavailable_dispatch_target(client: TestClient) -> None:
     probe = AsyncMock(return_value=_NOT_FOUND)
-    with patch("routers.feature_requests.run_cmd", new=probe):
+    with patch("routers.code_requests.run_cmd", new=probe):
         first = client.get("/api/feature-requests").json()
         second = client.get("/api/feature-requests").json()
 
@@ -97,7 +97,7 @@ def test_list_reports_unavailable_dispatch_target(client: TestClient) -> None:
 
 def test_dispatch_failure_marks_target_unavailable(client: TestClient) -> None:
     calls = AsyncMock(return_value=_NOT_FOUND)
-    with patch("routers.feature_requests.run_cmd", new=calls):
+    with patch("routers.code_requests.run_cmd", new=calls):
         client.post("/api/feature-requests/dispatch", json=_BODY)
         listed = client.get("/api/feature-requests").json()
 

@@ -51,6 +51,8 @@ def test_policy_file_lists_the_intended_contexts() -> None:
         "guard",
         "TypeScript typecheck (tsc)",
         "detect-secrets (baseline diff)",
+        "api-contract-regeneration",
+        "Adversarial redaction gate fixtures",
     }
 
 
@@ -74,6 +76,8 @@ def test_live_snapshot_reproduces_the_known_issue_1119_gap() -> None:
             "frontend-required",
             "guard",
             "TypeScript typecheck (tsc)",
+            "api-contract-regeneration",
+            "Adversarial redaction gate fixtures",
         ]
     )
 

@@ -12,11 +12,27 @@ const PULL_FIXTURE = {
     repo_full: "D-sorganization/Runner_Dashboard",
     number: 2111,
     title: "perf(fleet): bound /api/fleet/status cold path (#2110)",
-    author_login: "dieterolson",
+    author_login: "fleet-operator",
     html_url: "https://github.com/D-sorganization/Runner_Dashboard/pull/2111",
   },
   check_runs: [
     { name: "tsc", status: "completed", conclusion: "success", details_url: "https://example.com/tsc" },
+  ],
+  workflow_runs: [
+    {
+      workflow_run_id: 39694764174,
+      repo_full: "D-sorganization/Runner_Dashboard",
+      html_url: "https://github.com/D-sorganization/Runner_Dashboard/actions/runs/39694764174",
+      jobs: [
+        {
+          check_run_id: 1,
+          name: "tsc",
+          status: "completed",
+          conclusion: "success",
+          details_url: "https://github.com/D-sorganization/Runner_Dashboard/actions/runs/39694764174/job/1",
+        },
+      ],
+    },
   ],
 };
 
@@ -55,6 +71,7 @@ describe("delivery metrics UI", () => {
     await waitFor(() => expect(ready.result.current.state.kind).toBe("ready"));
     await ready.result.current.selectPull("D-sorganization/Runner_Dashboard", 2111);
     await waitFor(() => expect(ready.result.current.pullDetail?.pull.number).toBe(2111));
+    expect(ready.result.current.pullDetail?.workflow_runs[0]?.workflow_run_id).toBe(39694764174);
   });
 
   it("panel: disabled, happy path, invalid JSON", async () => {

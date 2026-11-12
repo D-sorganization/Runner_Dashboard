@@ -143,4 +143,133 @@ describe("PushSettings", () => {
       expect(screen.getByText(/phone-access-tailnet\.md/i)).toBeInTheDocument();
     });
   });
+
+  it("sends X-Requested-With CSRF header when subscribing from the PWA", async () => {
+    const fetchSpy = makeVapidFetch(200, "dGVzdC12YXBpZC1rZXk");
+    // Hold the VAPID response so the Subscribe button is still disabled when the
+    // test first finds it: this is what a loaded CI runner does by chance (#4108).
+    let openVapidGate: () => void = () => {};
+    const vapidGate = new Promise<void>((resolve) => {
+      openVapidGate = resolve;
+    });
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("vapid")) await vapidGate;
+      return fetchSpy(url, init);
+    }) as unknown as typeof fetch;
+    Object.defineProperty(window, "PushManager", {
+      configurable: true,
+      value: function PushManager() {},
+      writable: true,
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: Promise.resolve({
+          pushManager: {
+            subscribe: vi.fn(() =>
+              Promise.resolve({
+                toJSON: () =>
+                  Promise.resolve({
+                    endpoint: "https://fcm.googleapis.com/fcm/send/sub-1",
+                    keys: { p256dh: "k1", auth: "a1" },
+                  }),
+              }),
+            ),
+          },
+        }),
+      },
+      writable: true,
+    });
+
+    render(<PushSettings />);
+    const subscribeButton = await screen.findByRole("button", { name: /subscribe/i });
+    expect(subscribeButton).toBeDisabled();
+    openVapidGate();
+    // Await the real condition: the button enables once the VAPID key has loaded.
+    await waitFor(() => expect(subscribeButton).toBeEnabled());
+    await act(async () => {
+      fireEvent.click(subscribeButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Active")).toBeInTheDocument();
+    });
+
+    const subscribeCall = fetchSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "/api/push/subscribe",
+    ) as [string, RequestInit] | undefined;
+    expect(subscribeCall).toBeDefined();
+    expect(
+      (subscribeCall![1].headers as Record<string, string>)["X-Requested-With"],
+    ).toBe("XMLHttpRequest");
+  });
+
+  it("hydrates on load, edits topics + quiet hours after subscribe, and calls DELETE on unsubscribe", async () => {
+    const unsubscribeBrowserSpy = vi.fn(() => Promise.resolve(true));
+    Object.defineProperty(window, "PushManager", { configurable: true, value: function PushManager() {}, writable: true });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        ready: Promise.resolve({
+          pushManager: {
+            getSubscription: vi.fn(() =>
+              Promise.resolve({ endpoint: "https://fcm.googleapis.com/fcm/send/sub-7", unsubscribe: unsubscribeBrowserSpy }),
+            ),
+          },
+        }),
+      },
+      writable: true,
+    });
+
+    const fetchSpy = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("vapid-public-key")) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ publicKey: "dGVzdC12YXBpZC1rZXk" }) } as Response);
+      }
+      if (url.includes("/api/push/subscriptions") && (!init?.method || init.method === "GET")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              subscriptions: [
+                { id: 7, endpoint: "https://fcm.googleapis.com/fcm/send/sub-7", topics: ["agent.completed"], quiet_hours_start: "23:00", quiet_hours_end: "07:00" },
+              ],
+            }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ id: 7, deleted: true }) } as Response);
+    });
+    global.fetch = fetchSpy;
+
+    render(<PushSettings />);
+    await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
+
+    const checkboxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    expect(checkboxes[0].checked).toBe(true);
+    expect(checkboxes[2].disabled).toBe(false);
+    expect((screen.getByLabelText("Quiet hours start") as HTMLInputElement).value).toBe("23:00");
+    expect((screen.getByLabelText("Quiet hours end") as HTMLInputElement).value).toBe("07:00");
+
+    await act(async () => fireEvent.click(checkboxes[2]));
+    const patchCall = fetchSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "/api/push/subscribe/7" && (call[1] as RequestInit | undefined)?.method === "PATCH",
+    ) as [string, RequestInit] | undefined;
+    expect(patchCall).toBeDefined();
+    expect(JSON.parse(patchCall![1].body as string)).toEqual({
+      topics: ["agent.completed", "ci.failed"],
+      quiet_hours_start: "23:00",
+      quiet_hours_end: "07:00",
+    });
+
+    await act(async () => fireEvent.change(screen.getByLabelText("Quiet hours start"), { target: { value: "21:30" } }));
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: /unsubscribe/i })));
+    await waitFor(() => expect(screen.getByText("Not subscribed")).toBeInTheDocument());
+    expect(unsubscribeBrowserSpy).toHaveBeenCalled();
+
+    const deleteCall = fetchSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "/api/push/subscribe/7" && (call[1] as RequestInit | undefined)?.method === "DELETE",
+    ) as [string, RequestInit] | undefined;
+    expect(deleteCall).toBeDefined();
+    expect((deleteCall![1].headers as Record<string, string>)["X-Requested-With"]).toBe("XMLHttpRequest");
+  });
 });

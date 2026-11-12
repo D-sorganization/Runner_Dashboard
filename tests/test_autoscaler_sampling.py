@@ -242,3 +242,63 @@ def test_io_pressure_snapshot_reads_linux_psi(tmp_path: Path) -> None:
 
 def test_io_pressure_snapshot_returns_none_when_psi_unavailable(tmp_path: Path) -> None:
     assert samp._io_pressure_snapshot(str(tmp_path / "missing")) is None
+
+
+def _write_leases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> None:
+    config_dir = tmp_path / "cfg"
+    config_dir.mkdir()
+    (config_dir / "leases.yml").write_text(body, encoding="utf-8")
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr(samp.time, "time", lambda: 1000.0)
+
+
+def test_virtual_lease_with_pin_resolves_to_runner_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #3025: virtual-{env} leases protect the runner named in metadata."""
+    _write_leases(
+        tmp_path,
+        monkeypatch,
+        "leases:\n"
+        "  - runner_id: virtual-prod\n"
+        "    metadata:\n"
+        "      runner_name: runner-a\n"
+        "  - runner_id: virtual-abc123\n"
+        "    metadata:\n"
+        "      pinned_runner: runner-b\n"
+        "  - runner_id: github-claim-42\n"
+        "    metadata:\n"
+        "      runner: runner-c\n"
+        "  - runner_id: direct-runner\n",
+    )
+    guard = samp._lease_scale_down_guard()
+    assert guard.protected_runner_names == {"runner-a", "runner-b", "runner-c", "direct-runner"}
+    assert guard.block_scale_down is False
+    assert samp._leased_runners() == {"runner-a", "runner-b", "runner-c", "direct-runner"}
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        "  - runner_id: github-claim-7\n",
+        "  - runner_id: virtual-prod\n    metadata: {}\n",
+        "  - runner_id: virtual-prod\n    metadata: not-a-mapping\n",
+        "  - runner_id: virtual-prod\n    metadata:\n      runner_name: ''\n",
+    ],
+)
+def test_unpinned_virtual_lease_blocks_scale_down(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str) -> None:
+    """Issue #3025: an active virtual lease without a pin fails closed."""
+    _write_leases(tmp_path, monkeypatch, "leases:\n" + record)
+    guard = samp._lease_scale_down_guard()
+    assert guard.block_scale_down is True
+    assert guard.protected_runner_names == frozenset()
+
+
+def test_expired_unpinned_virtual_lease_does_not_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_leases(tmp_path, monkeypatch, "leases:\n  - runner_id: virtual-prod\n    expires_at: 1\n")
+    assert samp._lease_scale_down_guard().block_scale_down is False
+
+
+def test_runner_name_from_lease_record_direct_id() -> None:
+    assert samp._runner_name_from_lease_record({"runner_id": "runner-x"}) == "runner-x"
+    assert samp._is_virtual_lease_runner_id("virtual-env") is True
+    assert samp._is_virtual_lease_runner_id("github-claim-3") is True
+    assert samp._is_virtual_lease_runner_id("runner-x") is False

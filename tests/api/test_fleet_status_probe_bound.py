@@ -79,7 +79,7 @@ async def test_stale_flag_while_refreshing(monkeypatch: pytest.MonkeyPatch) -> N
     from fleet_status_cache import FLEET_STATUS_FRESH_TTL_S, FLEET_STATUS_STALE_TTL_S
 
     cache_key = fleet_status_cache_key(exclude_pools=True)
-    cached = {"DeskComputer": {"hostname": "cached"}}
+    cached = {"hub-a": {"hostname": "cached"}}
     cache_utils.cache_set(cache_key, cached)
 
     def _tiered_get(key: str, ttl: float):
@@ -96,8 +96,8 @@ async def test_stale_flag_while_refreshing(monkeypatch: pytest.MonkeyPatch) -> N
 
     async def slow_collect() -> dict:
         await asyncio.sleep(0.15)
-        return {"DeskComputer": {"hostname": "fresh"}}
+        return {"hub-a": {"hostname": "fresh"}}
 
     served = await serve_fleet_status(cache_key, slow_collect, wait_timeout=0.01)
     assert served.get("_stale") is True
-    assert served["DeskComputer"]["hostname"] == "cached"
+    assert served["hub-a"]["hostname"] == "cached"

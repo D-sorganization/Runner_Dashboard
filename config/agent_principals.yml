@@ -8,6 +8,11 @@
 #
 # assistant_profile: merged into every agents[] row (per-agent keys override).
 # kind: grokbot | codex | claude | other — stored on the principal as assistant_kind.
+# inbox_webhook_url: optional POST target when a message lands in this principal's agent-bus inbox (#3682).
+# inbox_roles: agent-bus role addresses (defaults: agent-<id suffix>, or rd-barb -> rd-barb).
+#
+# Barb lane principals use roles [bot, barb]: the ``barb`` preset in identity.SCOPE_PRESETS
+# is the single source for Barb-capable scopes (full hub agent surface except staff.approve).
 #
 # Mint a bearer without printing it in logs (run on the hub or a machine with admin session):
 #   TOKEN=$(curl -s -X POST "$FLEET_API_URL/api/admin/principals/<id>/token" \
@@ -26,29 +31,99 @@ agents:
   - id: agent-grok
     kind: grokbot
     name: Barb (Grok fleet secretary)
+    roles:
+      - bot
+      - barb
+  - id: agent-grok-vm
+    kind: grokbot
+    name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
+    roles:
+      - bot
+      - barb
+  - id: grok-barb
+    kind: grokbot
+    name: Grok Barb persona principal
+    roles:
+      - bot
+      - barb
+  - id: agent-duet
+    kind: claude
+    name: Duet Barb (barb-worker VM)
+    roles:
+      - bot
+      - barb
+  - id: agent-smithers
+    kind: grokbot
+    name: Smithers (Grok work-task intake)
     scopes:
       - fleet.read
-      - memory.read
-      - memory.write
   - id: agent-codex-hands
     kind: codex
     name: Codex hands (computer control)
-    scopes:
-      - fleet.read
-      - memory.read
-      - memory.write
+    roles:
+      - bot
+      - barb
   - id: agent-codex
     kind: codex
     name: Codex CLI agent
+    scopes:
+      - fleet.read
   - id: agent-claude
     kind: claude
     name: Claude agent
+    scopes:
+      - fleet.read
   - id: agent-gemini
     kind: other
     name: Gemini agent
+    scopes:
+      - fleet.read
+  - id: rd-barb
+    kind: other
+    name: RD Barb lane (rd-barb watchdog)
+    roles:
+      - bot
+      - barb
+  - id: agent-claude-barb
+    kind: claude
+    name: Claude Barb lane
+    roles:
+      - bot
+      - barb
+  - id: agent-codex-barb
+    kind: codex
+    name: Codex Barb lane
+    roles:
+      - bot
+      - barb
+  - id: agent-cursor-barb
+    kind: other
+    name: Cursor Barb lane
+    roles:
+      - bot
+      - barb
+  - id: agent-agy-barb
+    kind: other
+    name: Antigravity Barb lane
+    roles:
+      - bot
+      - barb
+  - id: openbot-barb
+    kind: other
+    name: OpenBot Barb (OpenBot desktop lane, #4254)
+    roles:
+      - bot
+      - barb
   - id: email-intake
     name: Verified email intake
     roles:
       - email-intake
     scopes:
       - intake.proposals.create
+  - id: agent-cursor
+    kind: other
+    name: Cursor cloud check-in agent
+    roles:
+      - checkin-only
+    scopes:
+      - activity.checkin

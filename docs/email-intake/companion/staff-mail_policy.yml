@@ -8,10 +8,10 @@ rate_limit_per_sender_per_hour: 12
 max_message_bytes: 262144
 
 allowed_senders:
-  - address: dieterolson@gmail.com
+  - address: user@example.com
     enabled: true
-  - address: dieterolson@affinedrift.com
+  - address: user@work.example.com
     enabled: true
-  - address: dolson@inentec.com
+  - address: disabled-sender@partner.example.org
     enabled: false
-    # pending InEnTec IT confirmation
+    # pending partner IT confirmation

@@ -191,10 +191,10 @@ class TestOllamaModels:
         from agent_remediation import provider_registry
 
         # Trailing slash must be normalized away (deployment sets a bare base).
-        monkeypatch.setenv("DASHBOARD_OLLAMA_URL", "http://100.69.12.6:11434/")
+        monkeypatch.setenv("DASHBOARD_OLLAMA_URL", "http://100.64.254.11:11434/")
         reloaded = importlib.reload(provider_registry)
         try:
-            assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://100.69.12.6:11434/api/tags"
+            assert reloaded.OLLAMA_TAGS_ENDPOINT == "http://100.64.254.11:11434/api/tags"
         finally:
             monkeypatch.delenv("DASHBOARD_OLLAMA_URL", raising=False)
             importlib.reload(provider_registry)
@@ -368,6 +368,17 @@ class TestRegistryV2Providers:
         assert any("grok" in m for m in entry.models), entry.models
         assert "SuperGrok" in entry.notes
 
+    def test_cline_is_cli_not_vscode_extension(self) -> None:
+        from agent_remediation import by_dashboard_id  # noqa: PLC0415
+
+        entry = by_dashboard_id()["cline"]
+        assert entry.label == "Cline CLI"
+        assert entry.execution_mode == "local_exec"
+        assert entry.auth_mode == "local"
+        assert entry.availability_probe == ("cline",)
+        assert "VS Code" not in entry.setup_hint
+        assert "npm" in entry.setup_hint.lower() or "cline auth" in entry.setup_hint
+
     def test_every_provider_carries_enabled_flag(self, client: TestClient) -> None:
         for prov in _registry(client)["providers"]:
             assert isinstance(prov["enabled"], bool), prov["dashboard_id"]
@@ -378,6 +389,14 @@ class TestRegistryV2Providers:
         assert by_dash["jules_api"]["enabled"] is False
         for dashboard_id in ("claude_code_cli", "codex_cli", "antigravity", "cursor_agent"):
             assert by_dash[dashboard_id]["enabled"] is True
+
+    def test_anthropic_api_is_listed_but_disabled(self, client: TestClient) -> None:
+        """Ships inert (#3123 slice 4): listed for visibility, never selectable yet."""
+        by_dash = _by_dashboard_id(_registry(client))
+        entry = by_dash["anthropic_api"]
+        assert entry["enabled"] is False
+        assert entry["auth_mode"] == "api_key"
+        assert entry["dispatch_mode"] == "future"
 
     def test_selectable_conductor_ids_match_enabled_registry_rows(self) -> None:
         from agent_remediation.provider_registry import (  # noqa: PLC0415
@@ -418,7 +437,7 @@ class TestNodeAvailabilityProbe:
         monkeypatch.setattr(shutil, "which", _fake_which(set()))
         result = probe_provider_availability(credential_probes={})
         assert "maxwell" not in result
-        for dashboard_id in ("antigravity", "cursor_agent", "claude_code_cli", "codex_cli", "jules_cli"):
+        for dashboard_id in ("antigravity", "cline", "cursor_agent", "claude_code_cli", "codex_cli", "jules_cli"):
             assert dashboard_id in result
             assert set(result[dashboard_id]) == {"installed", "authenticated", "detail"}
 

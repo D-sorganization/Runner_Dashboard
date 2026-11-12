@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a defect for outside contributors (no fleet dispatch metadata).
+title: "[Bug] "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened
+      description: Current behavior, expected behavior, and steps to reproduce.
+      placeholder: |
+        **Current:** ...
+        **Expected:** ...
+        **Steps to reproduce:**
+        1. ...
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python/Node version, browser (if frontend), and whether this is a standalone run or uses an overlay.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Logs, stack traces, or screenshots that help diagnose the issue.
+    validations:
+      required: false

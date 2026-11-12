@@ -28,6 +28,14 @@ def list_tokens(_auth: Principal = Depends(require_scope("admin"))):  # noqa: B0
     return {"tokens": [t.model_dump() for t in identity_manager.tokens]}
 
 
+@router.get("/token-health", dependencies=[Depends(require_scope("admin"))])
+def get_token_health():
+    """Agent token presence, validity and days to expiry per configured principal (#3895)."""
+    from agent_token_health import token_health_report  # noqa: PLC0415
+
+    return {"principals": token_health_report(identity_manager)}
+
+
 @router.post("/principals/{principal_id}/token")
 def create_service_token(
     principal_id: str,

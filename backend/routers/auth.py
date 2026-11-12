@@ -64,6 +64,14 @@ def _oauth_blocked_hint() -> str:
     return _OAUTH_BLOCKED_HINT_BASE
 
 
+def _oauth_configuration_hint(reason: str) -> str:
+    if "github_org_missing" in reason:
+        return "Set GITHUB_ORG to the GitHub organization whose members may sign in. " + _oauth_blocked_hint()
+    if "github_org_invalid" in reason:
+        return "Set GITHUB_ORG to a valid GitHub organization name. " + _oauth_blocked_hint()
+    return _oauth_blocked_hint()
+
+
 _OAUTH_BLOCKED_HINT = _OAUTH_BLOCKED_HINT_BASE
 
 
@@ -105,7 +113,7 @@ def _require_production_oauth(config: OAuthConfig) -> None:
             detail={
                 "message": "Production GitHub OAuth is not ready.",
                 "reason": exc.diagnostic["reason"],
-                "hint": _oauth_blocked_hint(),
+                "hint": _oauth_configuration_hint(exc.diagnostic["reason"]),
             },
         ) from exc
 

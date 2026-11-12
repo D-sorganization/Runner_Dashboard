@@ -1,10 +1,10 @@
 """Contracts for ``deploy/fleet-health-monitor.ps1``.
 
 The 2026-07-30 fleet outage went unnoticed for weeks because the deployed
-DeskComputer health monitor only watched the ControlTower-SSD pool: the
-DeskComputer runners sat offline until GitHub's 14-day auto-purge deleted
+hub-a health monitor only watched the ControlTower-SSD pool: the
+hub-a runners sat offline until GitHub's 14-day auto-purge deleted
 their registrations, and nothing alarmed. This canonical monitor closes the
-blind spot with per-pool online floors, a DeskComputer unit self-heal, and
+blind spot with per-pool online floors, a hub-a unit self-heal, and
 an explicit registration-purge alarm.
 
 Static checks run everywhere; behavioural checks drive the pure helpers via
@@ -151,7 +151,7 @@ def test_script_explicitly_quarantines_nvme_keepalive() -> None:
 
 def test_ct_ssh_enforces_a_hard_timeout() -> None:
     """Regression guard: on 2026-07-31 a cycle hung >100 min inside the
-    ControlTower SSH call (the $TimeoutSec parameter existed but was never
+    node-a SSH call (the $TimeoutSec parameter existed but was never
     enforced) and MultipleInstances=IgnoreNew silently rejected every later
     firing. The SSH child must be waited on with a deadline and killed on
     expiry."""
@@ -161,7 +161,7 @@ def test_ct_ssh_enforces_a_hard_timeout() -> None:
     assert "ct_ssh_timeout" in text or "timed out" in text
 
 
-def test_script_guards_controltower_host_disk_space() -> None:
+def test_script_guards_node_a_host_disk_space() -> None:
     """A WSL2 vhdx that runs out of host disk mid-write corrupts the distro
     (null-byte files, corrupt package DB) — the probable origin of the #1071
     NVMe corruption, which on 2026-07-31 came within minutes of repeating on
@@ -170,7 +170,7 @@ def test_script_guards_controltower_host_disk_space() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     assert "$DiskFloorsGb" in text, "disk floors must be a declared parameter"
     assert "Test-DiskBelowFloor" in text
-    assert "DISKFREE=" in text, "the ControlTower probe must report free space"
+    assert "DISKFREE=" in text, "the node-a probe must report free space"
     assert "vhdx corruption risk" in text.lower()
 
 
@@ -204,6 +204,13 @@ def test_desktop_floor_comes_from_scheduler_state() -> None:
 
 # ---------------------------------------------------------------------------
 # Behavioural checks — pure helpers
+#
+# NOTE (topology-sanitize, #3461): two of the pool keys below must match
+# deploy/fleet-health-monitor.ps1's own hardcoded $PoolPrefixes table real
+# machine-name literals — the script is held under #2657 (no deploy script
+# changes), so these can't be renamed until that script gets an
+# example/override layer. Left unsanitized on purpose; #2853's guard will
+# keep flagging this block until that design step lands.
 # ---------------------------------------------------------------------------
 
 

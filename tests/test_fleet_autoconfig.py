@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 from fleet_autoconfig import (
-    assert_no_maxwell_port_collision,
     current_identity_names,
     derive_fleet_nodes_from_registry,
     derive_pool_topology,
@@ -156,23 +155,6 @@ def test_derive_pool_topology_single_pool_machine_has_no_phantom_peer() -> None:
 
 def test_registry_dashboard_url_ports_collects_machine_and_pool_ports() -> None:
     assert registry_dashboard_url_ports(_SPLIT_POOL_REGISTRY) == {8321, 8322}
-
-
-def test_assert_no_maxwell_port_collision_raises_on_peer_port() -> None:
-    with pytest.raises(RuntimeError, match="MAXWELL_PORT=8322"):
-        assert_no_maxwell_port_collision(
-            _SPLIT_POOL_REGISTRY,
-            maxwell_port=8322,
-            local_port=8321,
-        )
-
-
-def test_assert_no_maxwell_port_collision_allows_local_port_and_distinct_port() -> None:
-    # Maxwell on its real default (8080) never collides.
-    assert_no_maxwell_port_collision(_SPLIT_POOL_REGISTRY, maxwell_port=8080, local_port=8321)
-    # Maxwell sharing *this* dashboard's own port is the co-located reverse-proxy
-    # case, not a peer-pool collision, so it is allowed here.
-    assert_no_maxwell_port_collision(_SPLIT_POOL_REGISTRY, maxwell_port=8321, local_port=8321)
 
 
 # ---------------------------------------------------------------------------

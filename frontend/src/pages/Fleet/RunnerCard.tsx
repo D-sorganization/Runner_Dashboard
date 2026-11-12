@@ -108,6 +108,8 @@ export function RunnerCard({
               className={`touch-button touch-button-${action === "restart" ? "primary" : "default"}`}
               data-action={action}
               key={action}
+              aria-label={`${action} runner`}
+              title={`${action.charAt(0).toUpperCase()}${action.slice(1)} runner`}
               onClick={() => onAction(action)}
               style={{ flex: "1", fontSize: "11px", padding: "4px 0", textTransform: "capitalize" }}
               type="button"

@@ -53,7 +53,7 @@ async def test_webpush_transport_send_constructs_expected_headers(push_db: Path,
         _, client_pub = webpush_crypto.generate_vapid_keypair()
         push.upsert_subscription(
             user_id="user-1",
-            endpoint="https://push.example.com/sub/abc123",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/abc123",
             keys=push.PushKeys(p256dh=client_pub, auth="AAAAAAAAAAAAAAAAAAAAAA"),
             user_agent="pytest",
             topics=["agent.completed"],
@@ -72,7 +72,7 @@ async def test_webpush_transport_send_constructs_expected_headers(push_db: Path,
         assert len(captured_requests) == 1
 
         req = captured_requests[0]
-        assert req.url == "https://push.example.com/sub/abc123"
+        assert req.url == "https://fcm.googleapis.com/fcm/send/sub/abc123"
         assert req.headers["Content-Encoding"] == "aes128gcm"
         assert req.headers["TTL"] == "86400"
         assert req.headers["Urgency"] == "normal"
@@ -108,7 +108,7 @@ async def test_webpush_transport_purges_on_410_gone(push_db: Path, vapid_keys: t
         _, client_pub = webpush_crypto.generate_vapid_keypair()
         push.upsert_subscription(
             user_id="user-1",
-            endpoint="https://push.example.com/sub/stale-sub",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/stale-sub",
             keys=push.PushKeys(p256dh=client_pub, auth="AAAAAAAAAAAAAAAAAAAAAA"),
             user_agent="pytest",
             topics=["agent.completed"],

@@ -32,7 +32,7 @@ def rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRM]:
     principals = {
         "bot-token": bot("agent-codex"),
         "rogue-token": bot("ci-bot"),
-        "op-token": identity.Principal(id="dieter", type="human", name="Dieter", roles=["operator"]),
+        "op-token": identity.Principal(id="operator", type="human", name="Dieter", roles=["operator"]),
     }
     yield from install(tmp_path, monkeypatch, principals, repos="Tools")
 

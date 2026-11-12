@@ -2,8 +2,8 @@
 
 # Project Status
 
-- Last steward run: `2026-09-29`
-- Last verified: `2026-10-24` (cloud agent; charter cross-check and epic closure evidence on GitHub)
+- Last steward run: `2026-10-25`
+- Last verified: `2026-10-25` (GitHub PR/issue state, recent main commits, and main check runs)
 - 18 features: **17 shipped**, **0 in-progress**, **1 parked**
 
 ## Progress
@@ -33,6 +33,7 @@
 
 - **BR-18 / #1811** — Autonomous release gate (cross-client journeys and recovery drills). Open with `do-not-automate`; humans only until evidence matrix is complete.
 - **#2658** — Runner Dashboard deploy/release **HOLD** on staff dispatch (Dieter hold 2026-10-23); enforcement work tracked on the open issue/PR thread for #2658.
+- **Main CI** — The current `main` commit (`133a89e`, 2026-10-25) has a successful `quality-gate`, but `frontend-required` and Playwright E2E smoke checks failed; the CI gate wait is queued. GitHub Actions run-list access returned 403, so run-level diagnosis is unavailable here.
 
 ## Risks
 
@@ -44,12 +45,14 @@
 
 ## Changed Since Last Run
 
-- Marked Staff Console epics **#1347–#1353** (F5–F10, F14) **shipped** using closed-epic evidence (all closed 2026-10-14).
-- Refreshed headline counts from **10 shipped** to **17 shipped**; F18 remains **parked** (#1085).
-- Recorded **#1811** (BR-18, `do-not-automate`) and **#2658** deploy/release HOLD in blockers.
-- Pre-close verification for delivery metrics epic **#2117** posted 2026-10-24; epic left **open** pending escapes and grouping criteria.
+- Corrected charter statuses for Staff Console epics **#1347–#1353** (F5–F10, F14), all closed 2026-10-14; the status count remains **17 shipped**, **0 in-progress**, **1 parked**.
+- Since the 2026-10-24 status refresh, main received changes including #2757 (CI Docker scope and self-hosted pytest fixes), #2778 (deploy artifact preservation), #2770 (dispatch duplicate guard), #2799 (issue-dispatch retry/cooldown guard), #2795 (eligible-issue targeting), and #2725 (Local Tools navigation).
+- GitHub reported **65 open PRs** and `open_issues_count: 132` (GitHub's total includes PRs) at this check. Recent open work includes the Fleet Job Board epic **#2781** and blocked slices **#2782–#2787**; these remain open.
+- Main CI currently has failed frontend-required and Playwright E2E checks; see Blockers. Run-level state could not be read because Actions API access returned 403.
+- Epic **#2117** remains open pending escapes rollups and role/model grouping, per the pre-close evidence updated 2026-10-24.
+- The local live fleet summary endpoint did not respond, and `docs/fleet-in-flight.md` is absent from this checkout; live fleet activity is therefore not represented here.
 
 ## Decisions Needed
 
-- Charter (`docs/project/CHARTER.md`) still lists F5–F10 and F14 as in-progress; steward should align charter rows with closed epics #1347–#1353 when the next charter sweep runs.
-- Confirm deprecation or retention for off-theme pages called out in prior steward notes (#1338 scope).
+- **First recorded 2026-10-25:** Decide whether to provision the dedicated scan VM and remaining prerequisites for the real security-scanner acceptance in #2613; plan: [`docs/operations/security-scanning.md`](../operations/security-scanning.md), catalog record: [`DV-#2613`](../planning/deferred-validation.json).
+- Confirm deprecation or retention for off-theme pages called out in prior steward notes (#1338 scope); the related legacy-route sunset PR #2721 remains open.

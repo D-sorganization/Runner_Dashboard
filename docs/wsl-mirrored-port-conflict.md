@@ -85,7 +85,7 @@ wsl-mirrored-port-helper.sh: clearing tailscale serve binding for port 8321
 wsl-mirrored-port-helper.sh: cleared
 python3: 2026-05-22 ... INFO   Network: http://0.0.0.0:8321
 wsl-mirrored-port-helper.sh: restored
-systemd[1]: Started D-sorganization Runner Dashboard (DeskComputer).
+systemd[1]: Started D-sorganization Runner Dashboard (hub-a).
 ```
 
 ## Related

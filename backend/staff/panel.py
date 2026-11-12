@@ -11,33 +11,42 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
+import json
 import logging
 import os
-import re
-import shutil
-import tempfile
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 import provider_switch
 from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
+from staff.barb_continuity import get_barb_continuity_store
 from staff.chat_streaming import LiveProcessReader, spawn_cli_process, stream_turn_output
-from staff.cli_projects import PANEL_SCRATCH_PREFIX
 from staff.conversation_models import ThreadRecord
 from staff.conversations import ConversationStore, get_conversation_store
-from staff.group_models import GroupCostEstimate, get_group_threshold, lookup_seat_price
+from staff.panel_grounding import GROUNDING_DIR, GROUNDING_TOOLS, build_snapshot, remove_snapshot
+from staff.panel_hook_errors import hook_error_reason, is_hook_error_reply
 from staff.panel_models import (
     CODEBASE_REPOS,
     DEFAULT_TURN_TIMEOUT_SECONDS,
     MODERATOR_NAME,
-    STANCES,
     PanelCreateRequest,
     PanelSpeaker,
     TurnOutcome,
-    default_quorum,
 )
+from staff.panel_prompts import (
+    build_synthesis_prompt,
+    build_turn_prompt,
+    compute_tally,
+    estimate_panel_cost,
+    parse_stance,
+)
+from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_scratch
+from staff.panel_subscription_policy import check_provider_subscription
+from staff.seat_fallback import FallbackStep, run_turn_with_fallback
 from staff.thread_bus import get_thread_bus
 
 log = logging.getLogger("dashboard.staff.panel")
@@ -46,39 +55,24 @@ __all__ = [
     "PanelSpeaker",
     "TurnOutcome",
     "TurnRunner",
+    "DIGEST_MAX_BYTES",
     "compute_tally",
     "active_panel_count",
     "default_turn_runner",
     "estimate_panel_cost",
+    "list_panel_summaries",
+    "panel_digest",
     "panel_result",
+    "panel_summary",
     "parse_stance",
     "run_panel",
+    "record_panel_turnover",
     "start_panel_thread",
 ]
 
-TurnRunner = Callable[[PanelSpeaker, str, str, str], Awaitable[TurnOutcome]]
-TURN_EXCERPT_CHARS = 3000  # each earlier turn is quoted up to this length in later prompts
+TurnRunner = Callable[[PanelSpeaker, str, str, str | None], Awaitable[TurnOutcome]]
 _ACTIVE_PANELS: set[str] = set()
-_STANCE_RE = re.compile(r"^[\s*_>-]*stance[\s*_]*:[\s*_]*([a-z]+)", re.IGNORECASE | re.MULTILINE)
-_POSITION_RE = re.compile(r"^[\s*_>-]*position[\s*_]*:[\s*_]*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
-_STANCE_ALIASES = {
-    "agree": "agree",
-    "partly": "partly",
-    "partially": "partly",
-    "partial": "partly",
-    "disagree": "disagree",
-}
-
-_MODE_BRIEF = {
-    "debate": (
-        "This is a debate. Argue from your perspective, answer the other panelists by name, "
-        "concede points that are right, and move the panel toward a defensible consensus."
-    ),
-    "brainstorm": (
-        "This is a brainstorm. Build on the other panelists' ideas, add new ones from your "
-        "perspective, and flag the most promising directions. Quantity and variety first."
-    ),
-}
+DIGEST_MAX_BYTES = 4096  # #3313: a caller gets one GET for the verdict instead of the full transcript.
 
 
 def active_panel_count() -> int:
@@ -86,160 +80,10 @@ def active_panel_count() -> int:
     return len(_ACTIVE_PANELS)
 
 
-# ── parsing and prompts ─────────────────────────────────────────────────────
-def parse_stance(text: str) -> tuple[str | None, str | None]:
-    """Return the last ``STANCE:`` (normalised to agree/partly/disagree) and ``POSITION:`` in ``text``."""
-    stances = _STANCE_RE.findall(text or "")
-    stance = _STANCE_ALIASES.get(stances[-1].lower()) if stances else None
-    positions = _POSITION_RE.findall(text or "")
-    position = positions[-1].strip(" *_") if positions else None
-    if stance is None:
-        return None, None
-    assert stance in STANCES  # noqa: S101
-    return stance, position or None
-
-
 def _speaker(expert: Any) -> PanelSpeaker:
     return PanelSpeaker(name=expert.name, perspective=expert.perspective, provider=expert.provider, model=expert.model)
 
 
-def _transcript(turns: list[dict[str, Any]]) -> str:
-    if not turns:
-        return "(no one has spoken yet; you open the discussion)"
-    parts = []
-    for t in turns:
-        text = t["text"] if t["status"] == "ok" else f"[missed turn: {t['status']}]"
-        if len(text) > TURN_EXCERPT_CHARS:
-            text = text[:TURN_EXCERPT_CHARS] + " [...]"
-        parts.append(f"### Round {t['round']} — {t['expert']}\n{text}")
-    return "\n\n".join(parts)
-
-
-def build_turn_prompt(
-    request: PanelCreateRequest,
-    speaker: PanelSpeaker,
-    round_no: int,
-    turns: list[dict[str, Any]],
-    codebase_context: str = "",
-) -> str:
-    """The prompt for one expert turn: persona, mode, round, topic and the whole discussion so far."""
-    others = ", ".join(f"{e.name} ({e.perspective})" for e in request.experts if e.name != speaker.name)
-    return (
-        f"You are {speaker.name}, one of {len(request.experts)} experts on a discussion panel.\n"
-        f"Your perspective: {speaker.perspective}\n"
-        f"The other panelists: {others}.\n\n"
-        f"{_MODE_BRIEF[request.mode]}\n\n"
-        f"This is round {round_no} of {request.rounds}. Keep your turn under 300 words. "
-        "Do not use tools or edit files; answer from your own knowledge.\n\n"
-        f"## Topic\n{request.topic}\n\n"
-        f"{codebase_context}\n\n"
-        f"## Discussion so far\n{_transcript(turns)}\n\n"
-        "End your turn with exactly these two lines:\n"
-        "STANCE: agree | partly | disagree  (with the emerging panel consensus)\n"
-        "POSITION: <your current position in one sentence>"
-    )
-
-
-def compute_tally(seats: list[str], turns: list[dict[str, Any]], quorum: int | None) -> dict[str, Any]:
-    """Participation tally. A seat participated if at least one of its turns is ``ok``, else it abstained.
-
-    Pre: ``turns`` are records with ``expert``, ``status`` and optionally ``error``.
-    Post: ``tally`` counts add up to ``len(seats)``; each abstention carries a reason (the seat's last
-    error, or "no turn recorded"); ``quorum_met`` is ``participated >= quorum`` (default: majority).
-    """
-    needed = quorum if quorum is not None else default_quorum(len(seats))
-    abstentions: list[dict[str, str]] = []
-    for seat in seats:
-        mine = [t for t in turns if t.get("expert") == seat]
-        if any(t.get("status") == "ok" for t in mine):
-            continue
-        reasons = [str(t.get("error") or t.get("status")) for t in mine]
-        abstentions.append({"expert": seat, "reason": reasons[-1] if reasons else "no turn recorded"})
-    participated = len(seats) - len(abstentions)
-    return {
-        "tally": {"participated": participated, "abstained": len(abstentions)},
-        "abstentions": abstentions,
-        "quorum": needed,
-        "quorum_met": participated >= needed,
-    }
-
-
-def _tally_brief(tally: dict[str, Any], seats: int) -> str:
-    counts = tally["tally"]
-    lines = [
-        f"Participation tally: {counts['participated']} of {seats} seats participated, {counts['abstained']} abstained."
-    ]
-    lines += [f"- {a['expert']} abstained: {a['reason']}" for a in tally["abstentions"]]
-    lines.append(
-        f"Quorum ({tally['quorum']} seats) was met."
-        if tally["quorum_met"]
-        else f"Quorum ({tally['quorum']} seats) was NOT met; say so prominently and lower your confidence."
-    )
-    lines.append(
-        "Your synthesis does not override this tally: report it as is and never imply abstaining seats agreed."
-    )
-    return "\n".join(lines)
-
-
-def build_synthesis_prompt(
-    request: PanelCreateRequest,
-    turns: list[dict[str, Any]],
-    rounds_used: int,
-    consensus: bool,
-    codebase_context: str = "",
-    tally: dict[str, Any] | None = None,
-) -> str:
-    """The moderator's prompt: the whole discussion and the sections the synthesis must have."""
-    if consensus:
-        outcome = f"The panel reached consensus in round {rounds_used} of {request.rounds}."
-    else:
-        outcome = f"The panel ran {rounds_used} of {request.rounds} rounds without unanimous agreement."
-    if request.mode == "brainstorm":
-        sections = "**Top ideas** (ranked), **Themes**, **Open questions**, **Next steps**"
-    else:
-        sections = (
-            "**Consensus**, **Agreed points**, **Open disagreements** (who holds which view), "
-            "**Recommendation**, **Confidence** (low / medium / high, with why)"
-        )
-    return (
-        f"You are the {MODERATOR_NAME} of an expert panel. {outcome}\n"
-        "Do not use tools or edit files. Summarise the discussion faithfully; do not invent "
-        "positions no panelist took, and say plainly where the panel disagreed.\n\n"
-        f"## Topic\n{request.topic}\n\n"
-        f"{codebase_context}\n\n"
-        f"## Discussion\n{_transcript(turns)}\n\n"
-        f"{_tally_brief(tally, len(request.experts)) + chr(10) * 2 if tally else ''}"
-        f"Write the synthesis in Markdown with these sections: {sections}."
-    )
-
-
-# ── cost ────────────────────────────────────────────────────────────────────
-def estimate_panel_cost(request: PanelCreateRequest) -> GroupCostEstimate:
-    """Estimated USD for the whole panel. Each prompt grows by the turns before it (~400 tokens each)."""
-    base_tokens = 350 + len(request.topic) // 4
-    per_turn_tokens, turn_output = 400, 600
-    costs: dict[str, float] = {}
-    turn_index = 0
-    for _ in range(request.rounds):
-        for expert in request.experts:
-            price = lookup_seat_price(expert.provider, expert.model or "")
-            prompt_tokens = base_tokens + per_turn_tokens * turn_index
-            costs[expert.name] = costs.get(expert.name, 0.0) + price.cost(prompt_tokens, turn_output)
-            turn_index += 1
-    moderator_price = lookup_seat_price(request.moderator_provider, request.moderator_model or "")
-    costs[MODERATOR_NAME] = moderator_price.cost(base_tokens + per_turn_tokens * turn_index, 1000)
-    total = sum(costs.values())
-    threshold = get_group_threshold()
-    exceeds = total >= threshold
-    warning = (
-        f"Estimated panel cost ${total:.2f} exceeds threshold ${threshold:.2f}. Set 'confirm_cost: true' to proceed."
-        if exceeds
-        else None
-    )
-    return GroupCostEstimate("panel", total, costs, exceeds, threshold, warning)
-
-
-# ── thread state ────────────────────────────────────────────────────────────
 def _preload_codebase_context(request: PanelCreateRequest) -> str:
     """Read an available pack once; absent packs never trigger a cold repository scan."""
     from knowledge_pack.cartographer import preload_panel_context
@@ -307,20 +151,39 @@ async def _speak(
     meta: dict[str, Any],
     runner: TurnRunner,
     timeout: float,
+    *,
+    strict_subscription: bool = False,
 ) -> dict[str, Any]:
-    """Run one turn into its own message and return the turn record (status ok/error/timeout)."""
+    """Run one turn into its own message and return the turn record (status ok/error/timeout).
+
+    ``strict_subscription`` (#4223) pins this turn to ``speaker``'s own provider and model --
+    no fallback step ever substitutes a different one -- and rechecks that provider's
+    subscription authentication immediately before the turn is attempted; an unverified or
+    disabled provider fails this turn closed without ever invoking ``runner``.
+    """
     placeholder = store.add_message(
         thread_id, author_kind="role", author=speaker.name, body_md="", meta=meta, delivery="streaming"
     )
     await _publish(store, placeholder.id)
-    try:
-        outcome = await asyncio.wait_for(runner(speaker, prompt, thread_id, placeholder.id), timeout=timeout)
-        status, text, error = ("ok", outcome.text, None) if outcome.ok else ("error", "", outcome.error or "failed")
-    except TimeoutError:
-        status, text, error = "timeout", "", f"no reply within {timeout:.0f} s"
-    except Exception as exc:  # noqa: BLE001 — one seat failing must not end the panel
-        log.warning("panel turn by %s failed: %s", speaker.name, exc)
-        status, text, error = "error", "", str(exc)
+    status: str
+    text: str
+    error: str | None
+    policy_failure = check_provider_subscription(speaker.provider) if strict_subscription else None
+    if policy_failure is not None and not policy_failure.ok:
+        status, text, error = "error", "", f"subscription policy: {policy_failure.reason}"
+    else:
+        steps = (FallbackStep(speaker.provider, speaker.model),) if strict_subscription else None
+        try:
+            outcome = await asyncio.wait_for(
+                run_turn_with_fallback(speaker, prompt, thread_id, placeholder.id, runner, steps=steps),
+                timeout=timeout,
+            )
+            status, text, error = ("ok", outcome.text, None) if outcome.ok else ("error", "", outcome.error or "failed")
+        except TimeoutError:
+            status, text, error = "timeout", "", f"no reply within {timeout:.0f} s"
+        except Exception as exc:  # noqa: BLE001 — one seat failing must not end the panel
+            log.warning("panel turn by %s failed: %s", speaker.name, exc)
+            status, text, error = "error", "", str(exc)
     stance, position = parse_stance(text) if status == "ok" else (None, None)
     final_meta = {**meta, "panel_status": status, "panel_stance": stance, "panel_position": position}
     if error:
@@ -336,6 +199,60 @@ async def _speak(
     return {"message_id": placeholder.id, "status": status, "text": text, "stance": stance, "error": error}
 
 
+async def _prepare_grounding(request: PanelCreateRequest) -> str | None:
+    """Snapshot the named repos for read-only seat access; None when not asked for or nothing could be built."""
+    from staff.workspace import find_repo_checkout
+
+    if not request.repos or not request.ground_repos:
+        return None
+    roots = {repo: root for repo in request.repos if (root := find_repo_checkout(repo)) is not None}
+    if not roots:
+        log.warning("panel grounding requested but no checkout found for %s", request.repos)
+        return None
+    task = asyncio.create_task(asyncio.to_thread(build_snapshot, roots))
+    try:
+        return await task
+    except asyncio.CancelledError:
+
+        def _drop_orphan(fut: asyncio.Task[str | None]) -> None:
+            try:
+                path = fut.result()
+            except (asyncio.CancelledError, Exception):
+                return
+            if path:
+                remove_snapshot(path)
+
+        task.add_done_callback(_drop_orphan)
+        raise
+    except Exception as exc:  # noqa: BLE001 — a grounding problem degrades the panel, never fails it
+        log.warning("panel grounding snapshot failed: %s", exc)
+        return None
+
+
+def _grounded_repo_names(grounding_dir: str | None) -> tuple[str, ...]:
+    if not grounding_dir:
+        return ()
+    return tuple(sorted(p.name for p in Path(grounding_dir).iterdir() if p.is_dir()))
+
+
+def record_panel_turnover(thread_id: str, topic: str, consensus: bool, rounds_used: int, ok: bool) -> None:
+    """Append a Barb turnover note (scope ``panel``) for a finished panel. Never raises."""
+    try:
+        outcome = "consensus reached" if consensus else "no consensus"
+        get_barb_continuity_store().append_turnover(
+            scope="panel",
+            author="panel-engine",
+            summary=(
+                f"Panel {'complete' if ok else 'failed'} ({outcome}, {rounds_used} round(s)) on: "
+                f"{topic[:200]}. Thread {thread_id}."
+            ),
+            completed=[f"panel thread {thread_id}"] if ok else [],
+            next_actions=[f"Read the synthesis at /api/v1/staff/panels/{thread_id}"],
+        )
+    except Exception as exc:  # noqa: BLE001 — a turnover problem must never fail a panel
+        log.warning("panel %s turnover note not recorded: %s", thread_id, exc)
+
+
 async def run_panel(
     thread_id: str,
     request: PanelCreateRequest,
@@ -349,8 +266,13 @@ async def run_panel(
     codebase_context = str(thread.meta.get("panel", {}).get("codebase_context", "")) if thread else ""
     turns: list[dict[str, Any]] = []
     rounds_used, consensus = 0, False
+    grounding_dir: str | None = None
+    grounding_token: contextvars.Token[str | None] | None = None
     _ACTIVE_PANELS.add(thread_id)
     try:
+        grounding_dir = await _prepare_grounding(request)
+        grounding_token = GROUNDING_DIR.set(grounding_dir)
+        grounded_repos = _grounded_repo_names(grounding_dir)
         try:  # never awaited: the sweep must not hold up or abandon the panel (#1683)
             cli_projects.start_panel_sweep(os.environ)
         except Exception as exc:  # noqa: BLE001 — sweep problem must never fail a panel
@@ -359,9 +281,18 @@ async def run_panel(
             round_turns = []
             for expert in request.experts:
                 speaker = _speaker(expert)
-                prompt = build_turn_prompt(request, speaker, round_no, turns, codebase_context)
+                prompt = build_turn_prompt(request, speaker, round_no, turns, codebase_context, grounded_repos)
                 meta = {"is_panel_turn": True, "panel_round": round_no, "panel_expert": speaker.name}
-                record = await _speak(store, thread_id, speaker, prompt, meta, run, turn_timeout)
+                record = await _speak(
+                    store,
+                    thread_id,
+                    speaker,
+                    prompt,
+                    meta,
+                    run,
+                    turn_timeout,
+                    strict_subscription=request.require_verified_subscription,
+                )
                 record.update(round=round_no, expert=speaker.name)
                 turns.append(record)
                 round_turns.append(record)
@@ -378,19 +309,69 @@ async def run_panel(
         )
         prompt = build_synthesis_prompt(request, turns, rounds_used, consensus, codebase_context, tally)
         meta = {"is_panel_synthesis": True, "panel_expert": MODERATOR_NAME}
-        synthesis = await _speak(store, thread_id, moderator, prompt, meta, run, turn_timeout)
-        ok = synthesis["status"] == "ok"
+        synthesis = await _speak(
+            store,
+            thread_id,
+            moderator,
+            prompt,
+            meta,
+            run,
+            turn_timeout,
+            strict_subscription=request.require_verified_subscription,
+        )
+        synthesis_ok = synthesis["status"] == "ok"
+        expert_ok = any(t.get("status") == "ok" for t in turns)
+        seat_errors = sum(1 for t in turns if t.get("status") != "ok")
+        if synthesis_ok:
+            panel_status = "complete"
+        elif expert_ok:
+            panel_status = "complete"
+        else:
+            panel_status = "failed"
         _set_panel_state(
             store,
             thread_id,
-            status="complete" if ok else "failed",
-            synthesis_message_id=synthesis["message_id"] if ok else None,
+            status=panel_status,
+            synthesis_message_id=synthesis["message_id"],
+            synthesis_ok=synthesis_ok,
+            seat_errors=seat_errors if seat_errors else None,
         )
+        record_panel_turnover(thread_id, request.topic, consensus, rounds_used, panel_status == "complete")
     except Exception as exc:  # noqa: BLE001 — record the failure on the thread, never leave it "running"
         log.exception("panel %s failed", thread_id)
         _set_panel_state(store, thread_id, status="failed", error=str(exc))
     finally:
         _ACTIVE_PANELS.discard(thread_id)
+        if grounding_token is not None:
+            GROUNDING_DIR.reset(grounding_token)
+        if grounding_dir:
+            cli_projects.remove_turn_project(grounding_dir, os.environ)
+            remove_snapshot(grounding_dir)
+
+
+def panel_summary(thread: ThreadRecord) -> dict[str, Any]:
+    """Compact panel row for list endpoints. Pre: ``thread.kind == \"panel\"``."""
+    assert thread.kind == "panel", f"panel_summary requires kind=panel, got {thread.kind!r}"  # noqa: S101
+    state = dict(thread.meta.get("panel", {}))
+    return {
+        "thread_id": thread.id,
+        "title": thread.title,
+        "status": state.get("status", "running"),
+        "mode": state.get("mode"),
+        "rounds": state.get("rounds"),
+        "rounds_used": state.get("rounds_used", 0),
+        "consensus": bool(state.get("consensus")),
+        "created_at": thread.created_at,
+        "updated_at": thread.updated_at,
+        "last_message_at": thread.last_message_at,
+    }
+
+
+def list_panel_summaries(store: ConversationStore, *, limit: int = 200) -> list[dict[str, Any]]:
+    """Recent panel threads, newest ``updated_at`` first. Pre: ``1 <= limit <= 200``."""
+    assert 1 <= limit <= 200, f"list_panel_summaries limit out of range: {limit}"  # noqa: S101
+    threads = store.list_threads(kind="panel", limit=limit)
+    return [panel_summary(t) for t in threads]
 
 
 def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | None:
@@ -434,6 +415,37 @@ def panel_result(store: ConversationStore, thread_id: str) -> dict[str, Any] | N
     }
 
 
+def panel_digest(store: ConversationStore, thread_id: str) -> dict[str, Any] | None:
+    """Compact verdict for ``thread_id``: status, tally and a synthesis excerpt, no turn transcript.
+
+    None if not a panel (the API turns that into a 404). Post: the UTF-8 JSON encoding of the
+    result is at most ``DIGEST_MAX_BYTES``; a synthesis too long to fit is cut short with
+    ``truncated: true`` rather than the digest ever growing past the cap.
+    """
+    result = panel_result(store, thread_id)
+    if result is None:
+        return None
+    digest: dict[str, Any] = {
+        "thread_id": result["thread_id"],
+        "title": result["title"],
+        "status": result["status"],
+        "mode": result["mode"],
+        "rounds_used": result["rounds_used"],
+        "consensus": result["consensus"],
+        "tally": result.get("tally"),
+        "quorum": result.get("quorum"),
+        "quorum_met": result.get("quorum_met"),
+        "abstentions": result.get("abstentions", []),
+        "synthesis": result.get("synthesis") or "",
+        "truncated": False,
+    }
+    while digest["synthesis"] and len(json.dumps(digest, ensure_ascii=False).encode("utf-8")) > DIGEST_MAX_BYTES:
+        keep = len(digest["synthesis"]) * 9 // 10
+        digest["synthesis"] = digest["synthesis"][:keep].rstrip() + "…"
+        digest["truncated"] = True
+    return digest
+
+
 # ── the real turn runner ────────────────────────────────────────────────────
 class _NullBus:
     """Null bus that discards all published tokens."""
@@ -459,17 +471,33 @@ async def default_turn_runner(
         adapter = get_adapter(speaker.provider)
     except KeyError:
         return TurnOutcome(ok=False, error=f"unknown provider {speaker.provider!r}")
-    scratch_dir = tempfile.mkdtemp(prefix=PANEL_SCRATCH_PREFIX)
-    env: dict[str, str] = {**os.environ}
+    scratch_dir = prepare_panel_turn_scratch()
+    grounding_dir = GROUNDING_DIR.get() if speaker.name != MODERATOR_NAME else None
+    workdir = grounding_dir or scratch_dir  # a snapshot is shared by the panel and removed by run_panel
+    tools = GROUNDING_TOOLS if grounding_dir else ()
+    from security import safe_subprocess_env  # noqa: PLC0415
+
+    env: dict[str, str] = (
+        safe_subprocess_env()
+        if speaker.provider == "deepseek-api"
+        else {k: v for k, v in os.environ.items() if k != "DEEPSEEK_API_KEY"}
+    )
+    env["STAFF_PANEL_TURN"] = "1"
+    if speaker.provider == "deepseek-api":
+        env.pop("ANTHROPIC_CUSTOM_HEADERS", None)
+        env["CLAUDE_CONFIG_DIR"] = str(Path(scratch_dir) / "claude-config")
     proc = None
     try:
         try:
-            cmd = adapter.chat_argv(prompt=prompt, workdir=scratch_dir, model=speaker.model, read_only_tools=())
+            cmd = adapter.chat_argv(prompt=prompt, workdir=workdir, model=speaker.model, read_only_tools=tools)
         except (ChatReadOnlyUnsupportedError, ValueError) as exc:
             return TurnOutcome(ok=False, error=str(exc))
         env.update(adapter.runtime_env())
-        proc = spawn_cli_process(cmd=cmd, cwd=scratch_dir, env=env)
-        bus = get_thread_bus() if message_id is not None else _NULL_BUS
+        stdin_text = adapter.chat_stdin(prompt)
+        extra: dict[str, Any] = {"stdin_text": stdin_text} if isinstance(stdin_text, str) else {}
+        proc = spawn_cli_process(cmd=cmd, cwd=workdir, env=env, **extra)
+        # Buffer paid-provider output until the credential can be redacted across token chunks.
+        bus = get_thread_bus() if message_id is not None and speaker.provider != "deepseek-api" else _NULL_BUS
         out = await stream_turn_output(
             reader=LiveProcessReader(proc),
             adapter=adapter,
@@ -477,14 +505,20 @@ async def default_turn_runner(
             thread_id=thread_id,
             placeholder_id=message_id or "",
         )
-        text = out.reply_text.strip()
+        secret = env.get("ANTHROPIC_AUTH_TOKEN", "") if speaker.provider == "deepseek-api" else ""
+        text = out.reply_text.replace(secret, "[redacted]").strip() if secret else out.reply_text.strip()
+        if is_hook_error_reply(text):
+            return TurnOutcome(ok=False, error=hook_error_reason(text))
         if out.returncode != 0 or not text:
-            tail = "".join(out.stderr_lines[-5:]).strip()[-400:]
+            tail = "".join(out.stderr_lines[-5:])
+            if secret:
+                tail = tail.replace(secret, "[redacted]")
+            tail = tail.strip()[-400:]
             return TurnOutcome(ok=False, error=f"exit {out.returncode}: {tail or 'empty reply'}")
         return TurnOutcome(ok=True, text=text)
     finally:
         if proc is not None and proc.poll() is None:
             with contextlib.suppress(OSError):
                 proc.kill()
-        shutil.rmtree(scratch_dir, ignore_errors=True)
+        remove_panel_turn_scratch(scratch_dir)
         cli_projects.remove_turn_project(scratch_dir, env)

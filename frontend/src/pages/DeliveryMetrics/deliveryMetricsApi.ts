@@ -1,3 +1,10 @@
+export interface DimensionBucket {
+  key: string;
+  prs: number;
+  merged: number;
+  median_ci_rounds: number | null;
+}
+
 export interface DeliveryMetricsSummary {
   since: string;
   until: string;
@@ -8,6 +15,11 @@ export interface DeliveryMetricsSummary {
     median_ci_rounds: number | null;
   };
   weekly_trends: { week_start: string; prs: number; merged: number; median_ci_rounds: number | null }[];
+  groupings: {
+    by_role: DimensionBucket[];
+    by_agent: DimensionBucket[];
+    by_model: DimensionBucket[];
+  };
   pr_drill_down: PrRollupRow[];
 }
 
@@ -18,12 +30,30 @@ export interface PrRollupRow {
   ci_rounds_to_green: number | null;
   lead_time_seconds: number | null;
   ci_wait_seconds: number | null;
+  rework_seconds?: number | null;
+  role: string | null;
+  agent: string | null;
+  model: string | null;
   churn_flags: string[];
+}
+
+export interface WorkflowRunDrillDown {
+  workflow_run_id: number;
+  repo_full: string;
+  html_url: string;
+  jobs: {
+    check_run_id: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    details_url: string;
+  }[];
 }
 
 export interface PullDrillDown {
   pull: { repo_full: string; number: number; title: string; author_login: string; html_url: string };
   check_runs: { name: string; status: string; conclusion: string | null; details_url: string }[];
+  workflow_runs: WorkflowRunDrillDown[];
 }
 
 const XHR = { "X-Requested-With": "XMLHttpRequest" };
@@ -37,7 +67,12 @@ export function formatDuration(seconds: number | null | undefined): string {
 
 function assertSummary(value: unknown): DeliveryMetricsSummary {
   const v = value as DeliveryMetricsSummary;
-  if (!v?.summary || !Array.isArray(v.weekly_trends) || !Array.isArray(v.pr_drill_down)) {
+  if (
+    !v?.summary ||
+    !Array.isArray(v.weekly_trends) ||
+    !Array.isArray(v.pr_drill_down) ||
+    !v.groupings?.by_role
+  ) {
     throw new Error("Invalid delivery metrics response");
   }
   return v;
@@ -61,10 +96,17 @@ export async function fetchPullDrillDown(repoFull: string, number: number): Prom
   const response = await fetch("/api/v1/metrics/pull?" + params.toString(), { headers: XHR });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = (await response.json()) as PullDrillDown;
-  if (!body?.pull || !Array.isArray(body.check_runs)) throw new Error("Invalid pull drill-down response");
+  if (!body?.pull || !Array.isArray(body.check_runs) || !Array.isArray(body.workflow_runs)) {
+    throw new Error("Invalid pull drill-down response");
+  }
   return body;
 }
 
 export function uniqueRepos(rows: PrRollupRow[]): string[] {
   return [...new Set(rows.map((r) => r.repo_full))].sort();
+}
+
+export function uniqueField(rows: PrRollupRow[], field: "role" | "agent" | "model"): string[] {
+  const values = rows.map((r) => r[field]).filter((v): v is string => Boolean(v));
+  return [...new Set(values)].sort();
 }

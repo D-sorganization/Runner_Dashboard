@@ -35,8 +35,19 @@ _STATE_PATH = Path(
 _MAINTENANCE_PATH = Path(os.environ.get("RUNNER_MAINTENANCE_FLAG", "/var/lib/runner-scheduler/maintenance.json"))
 
 
+def _fallback_state_path() -> Path:
+    state_dir = os.environ.get("RUNNER_DASHBOARD_STATE_DIR", "").strip()
+    if state_dir:
+        return Path(state_dir).expanduser() / "disk-full-cordon-state.json"
+    return Path.home() / ".config" / "runner-dashboard" / "disk-full-cordon-state.json"
+
+
 def load_cordon_state(path: Path | None = None) -> DiskFullCordonState:
     state_path = path or _STATE_PATH
+    if path is None and not state_path.exists():
+        fb = _fallback_state_path()
+        if fb.exists():
+            state_path = fb
     try:
         raw = state_path.read_text(encoding="utf-8")
         payload = json.loads(raw)
@@ -59,7 +70,13 @@ def load_cordon_state(path: Path | None = None) -> DiskFullCordonState:
 
 def save_cordon_state(state: DiskFullCordonState, path: Path | None = None) -> None:
     state_path = path or _STATE_PATH
-    state_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        if path is not None:
+            raise
+        state_path = _fallback_state_path()
+        state_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "phase": state.phase,
         "tripped_at": state.tripped_at,
@@ -114,9 +131,10 @@ def _run_cleanup_commands(
         except (OSError, subprocess.TimeoutExpired) as exc:
             log.warning("disk-full cordon: cleanup %s failed: %s", command.description, exc)
     try:
+        from staff.store import get_run_store  # noqa: PLC0415
         from staff.worktree_hygiene import sweep_stale_worktrees  # noqa: PLC0415
 
-        sweep_stale_worktrees()
+        sweep_stale_worktrees(get_run_store())
     except Exception as exc:  # noqa: BLE001
         log.debug("disk-full cordon: stale worktree sweep skipped: %s", exc)
 

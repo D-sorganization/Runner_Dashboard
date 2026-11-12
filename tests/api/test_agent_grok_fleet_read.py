@@ -14,6 +14,7 @@ from identity import Principal, TokenRecord, identity_manager
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _REMOTE = ("100.64.0.15", 52000)
 _HUB = "hub-fleet-secret"  # pragma: allowlist secret
+_BARB_SCOPE = "barb:pr-queue"
 
 
 @pytest.fixture
@@ -80,6 +81,17 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def grok_barb_claim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """Live Barb lease headers for agent-grok: Barb-seat writes must declare a claim (#3318, #3622)."""
+    from staff import barb_continuity  # noqa: PLC0415
+
+    store = barb_continuity.BarbContinuityStore(tmp_path / "barb-continuity.sqlite3")
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", store)
+    lease = store.checkout_lease(scope=_BARB_SCOPE, holder="agent-grok")["lease"]
+    return {"X-Barb-Scope": _BARB_SCOPE, "X-Barb-Lease-Epoch": str(lease["epoch"])}
+
+
 @pytest.mark.integration
 def test_grok_ingested_with_fleet_read_and_reads_priorities(
     remote_client: TestClient, grok_env: dict[str, str]
@@ -90,8 +102,12 @@ def test_grok_ingested_with_fleet_read_and_reads_priorities(
     assert identity.principal_has_scope(prin, "memory.read")
     assert identity.principal_has_scope(prin, "memory.write")
     assert identity.principal_has_scope(prin, "staff.dispatch")
-    assert not identity.principal_has_scope(prin, "priorities.write")
-    assert not identity.principal_has_scope(prin, "staff.holds.write")
+    # Barb peer scopes (#3648): barb preset operator surface (#4148), not wildcard admin role.
+    assert identity.principal_has_scope(prin, "priorities.write")
+    assert identity.principal_has_scope(prin, "staff.holds.write")
+    assert identity.principal_has_scope(prin, "staff.admin")
+    assert not identity.principal_has_scope(prin, "admin")
+    assert "admin" not in prin.roles
 
     resp = remote_client.get("/api/priorities", headers=_auth(grok_env["grok"]))
     assert resp.status_code == 200, resp.text
@@ -113,24 +129,27 @@ def test_codex_bot_without_fleet_read_denied_priorities(remote_client: TestClien
 
 
 @pytest.mark.integration
-def test_grok_cannot_write_directives_or_holds(remote_client: TestClient, grok_env: dict[str, str]) -> None:
+def test_grok_writes_directives_only_under_a_live_barb_claim(
+    remote_client: TestClient, grok_env: dict[str, str], grok_barb_claim: dict[str, str]
+) -> None:
+    """A Barb peer may write (#3648) but Barb-seat writes still need a live claim (#3318, #3687)."""
     headers = {**_XHR, **_auth(grok_env["grok"])}
-    directives = remote_client.put(
-        "/api/priorities/directives",
-        json={"directives": [{"text": "nope", "priority": 1}]},
-        headers=headers,
-    )
-    assert directives.status_code == 403
-    assert directives.json()["detail"]["required_scope"] == "priorities.write"
+    body = {"directives": [{"text": "peer directive", "priority": 1}]}
+
+    unclaimed = remote_client.put("/api/priorities/directives", json=body, headers=headers)
+    assert unclaimed.status_code == 409
+    assert unclaimed.json()["detail"]["reason"] == "claim_required"
+
+    claimed = remote_client.put("/api/priorities/directives", json=body, headers={**headers, **grok_barb_claim})
+    assert claimed.status_code == 200, claimed.text
 
     holds = remote_client.put("/api/staff/holds", json={"holds": []}, headers=headers)
-    assert holds.status_code == 403
-    assert holds.json()["detail"]["required_scope"] == "staff.holds.write"
+    assert holds.status_code == 200, holds.text
 
 
 @pytest.mark.integration
 def test_grok_staff_summary_and_dispatch_dry_run(
-    remote_client: TestClient, grok_env: dict[str, str], staff_cli_installed
+    remote_client: TestClient, grok_env: dict[str, str], grok_barb_claim: dict[str, str], staff_cli_installed
 ) -> None:
     staff_cli_installed("claude")
     summary = remote_client.get("/api/staff/summary", headers=_auth(grok_env["grok"]))
@@ -139,7 +158,7 @@ def test_grok_staff_summary_and_dispatch_dry_run(
     dispatch = remote_client.post(
         "/api/staff/ad-hoc/run",
         json={"prompt": "dry", "provider": "claude", "dry_run": True},
-        headers={**_XHR, **_auth(grok_env["grok"])},
+        headers={**_XHR, **_auth(grok_env["grok"]), **grok_barb_claim},
     )
     assert dispatch.status_code == 200
     assert dispatch.json()["dry_run"] is True

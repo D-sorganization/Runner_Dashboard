@@ -23,6 +23,7 @@ log = logging.getLogger("dashboard.staff.remote_runs")
 # Positive cache entries expire quickly and are size-bounded so completed or
 # moved runs cannot pin stale peer locations for the process lifetime.
 _RUN_PEER_CACHE: OrderedDict[str, tuple[str, str, float]] = OrderedDict()
+_SESSION_PEER_CACHE: OrderedDict[str, tuple[str, str, float]] = OrderedDict()
 _RUN_PEER_CACHE_LIMIT = 512
 _RUN_PEER_CACHE_TTL_SECONDS = 30.0
 _LOOKUP_TIMEOUT_SECONDS = 2.5
@@ -328,3 +329,116 @@ async def proxy_remote_cancel(
     if status >= 400:
         raise RemoteRunLookupUnavailable(f"peer {peer_name} returned HTTP {status} for local-run cancel")
     return data
+
+
+def _has_local_session_chunks(data: Any, session_id: str) -> bool:
+    return isinstance(data, dict) and data.get("session_id") == session_id and isinstance(data.get("items"), list)
+
+
+def _is_confirmed_local_session_miss(response: httpx.Response, session_id: str) -> bool:
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    expected = {"code": "local_session_not_found", "session_id": session_id}
+    return (body.get("detail") if isinstance(body, dict) else None) == expected
+
+
+async def find_remote_session(session_id: str, peers: dict[str, str] | None = None) -> tuple[str, str] | None:
+    """Locate which peer node holds transcript chunks/metadata for ``session_id`` (#2867)."""
+    if (entry := _SESSION_PEER_CACHE.get(session_id)) is not None:
+        if entry[2] > time.monotonic():
+            _SESSION_PEER_CACHE.move_to_end(session_id)
+            return entry[0], entry[1]
+        _SESSION_PEER_CACHE.pop(session_id, None)
+    nodes = peers if peers is not None else staff_fleet.peer_nodes()
+    if not nodes:
+        return None
+    headers = staff_fleet.fleet_headers()
+
+    async def _lookup(name: str, url: str) -> tuple[str, str] | None:
+        acquired = False
+        try:
+            await asyncio.wait_for(_LOOKUP_SEMAPHORE.acquire(), timeout=_LOOKUP_TIMEOUT_SECONDS)
+            acquired = True
+            path = f"{url}/api/v1/activity/local-sessions/{session_id}/chunks?after_seq=-1&limit=1"
+            data = await asyncio.wait_for(staff_fleet.get_json(path, headers), timeout=_LOOKUP_TIMEOUT_SECONDS)
+            if _has_local_session_chunks(data, session_id):
+                return name, url
+            raise RemoteRunLookupUnavailable(f"peer {name} returned an invalid local-session response")
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404 and _is_confirmed_local_session_miss(exc.response, session_id):
+                return None
+            raise RemoteRunLookupUnavailable(f"peer {name} returned HTTP {exc.response.status_code}") from exc
+        except Exception as exc:  # noqa: BLE001
+            raise RemoteRunLookupUnavailable(f"peer {name} lookup failed") from exc
+        finally:
+            if acquired:
+                _LOOKUP_SEMAPHORE.release()
+
+    tasks = [asyncio.create_task(_lookup(name, url)) for name, url in nodes.items()]
+    try:
+        done, pending = await asyncio.wait(tasks, timeout=_LOOKUP_TIMEOUT_SECONDS)
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        failures = [t.exception() for t in done if not t.cancelled() and t.exception() is not None]
+        for task in done:
+            if not task.cancelled() and task.exception() is None and (match := task.result()) is not None:
+                _SESSION_PEER_CACHE[session_id] = (*match, time.monotonic() + _RUN_PEER_CACHE_TTL_SECONDS)
+                while len(_SESSION_PEER_CACHE) > _RUN_PEER_CACHE_LIMIT:
+                    _SESSION_PEER_CACHE.popitem(last=False)
+                return match
+        if pending or failures:
+            raise RemoteRunLookupUnavailable("peer session lookup did not complete within its bounded budget")
+        return None
+    finally:
+        for task in (t for t in tasks if not t.done()):
+            task.cancel()
+
+
+async def proxy_remote_session_chunks(
+    session_id: str, after_seq: int, limit: int, peer_name: str, peer_url: str
+) -> dict[str, Any]:
+    """Fetch transcript chunks and gaps from the peer node that owns ``session_id`` (#2867)."""
+    try:
+        path = f"{peer_url}/api/v1/activity/local-sessions/{session_id}/chunks?after_seq={after_seq}&limit={limit}"
+        data = await staff_fleet.get_json(path, staff_fleet.fleet_headers())
+        if not _has_local_session_chunks(data, session_id):
+            raise RemoteRunLookupUnavailable(f"peer {peer_name} returned invalid session chunks")
+        return data
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404 and _is_confirmed_local_session_miss(exc.response, session_id):
+            _SESSION_PEER_CACHE.pop(session_id, None)
+            raise RemoteRunNotFound(f"session {session_id} no longer exists on {peer_name}") from exc
+        raise RemoteRunLookupUnavailable(f"peer {peer_name} returned HTTP {exc.response.status_code}") from exc
+    except Exception as exc:  # noqa: BLE001
+        raise RemoteRunLookupUnavailable(f"peer {peer_name} session chunks unavailable") from exc
+
+
+async def stream_remote_session(
+    session_id: str, after_seq: int, peer_name: str, peer_url: str, *, follow: bool = True
+) -> AsyncIterator[str]:
+    """Proxy a live or replay-only transcript SSE stream from a peer node (#2867)."""
+    headers = {**staff_fleet.fleet_headers(), "Accept": "text/event-stream"}
+    flw = str(follow).lower()
+    url = f"{peer_url}/api/v1/activity/local-sessions/{session_id}/stream?after_seq={after_seq}&follow={flw}"
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=None, write=5.0, pool=None)) as client:
+            async with client.stream("GET", url, headers=headers) as resp:
+                if resp.status_code >= 400:
+                    body = await _read_bounded_stream_error_body(resp) if resp.status_code == 404 else None
+                    resp_obj = httpx.Response(status_code=404, content=body or b"")
+                    missing = bool(body and _is_confirmed_local_session_miss(resp_obj, session_id))
+                    if missing:
+                        _SESSION_PEER_CACHE.pop(session_id, None)
+                    err = json.dumps({"session_id": session_id, "machine": peer_name, "status_code": resp.status_code})
+                    yield f"event: {'error' if missing else 'node_unreachable'}\ndata: {err}\n\n"
+                    return
+                async for line in resp.aiter_lines():
+                    yield f"{line}\n"
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff.remote_runs: remote session SSE dropped for %s on %s: %s", session_id, peer_name, exc)
+        err = json.dumps({"session_id": session_id, "machine": peer_name, "unreachable_since": _now_iso()})
+        yield f"event: node_unreachable\ndata: {err}\n\n"

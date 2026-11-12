@@ -89,6 +89,23 @@ async def test_refresh_rewrites_the_card_after_a_decision(store: Any) -> None:
 
 
 @pytest.mark.asyncio
+async def test_refresh_puts_the_failure_reason_on_the_card(store: Any) -> None:
+    """A failed proposal's card carries the real refusal, not just a generic retry notice (#3631)."""
+    tid = _thread(store)
+    prop = await post_proposal(
+        store, _Bus(), thread_id=tid, author="barb", action="staff.dispatch", params={}, reason="why"
+    )
+    store.transition_proposal_state(prop.id, "failed", reason="resource_saturated: io_pressure=49.0%>=35.0%")
+    bus = _Bus()
+
+    await refresh_proposal_card(store, bus, prop.id)
+
+    card = store.get_message(prop.message_id).meta["proposal"]
+    assert card["status"] == "failed"
+    assert card["fail_reason"] == "resource_saturated: io_pressure=49.0%>=35.0%"
+
+
+@pytest.mark.asyncio
 async def test_refresh_leaves_non_card_messages_alone(store: Any) -> None:
     tid = _thread(store)
     msg = store.add_message(thread_id=tid, author_kind="role", author="maintenance", body_md="Detection")

@@ -229,7 +229,12 @@ export function FleetOrchestrationTab({
           flexWrap: "wrap",
         }}
       >
-        <button className="btn" onClick={onRefresh} disabled={loading}>
+        <button
+          className="btn"
+          onClick={onRefresh}
+          disabled={loading}
+          title="Reload fleet orchestration machines and deploy history"
+        >
           <RefreshGlyph size={12} />
           {loading ? "Loading…" : "Refresh"}
         </button>
@@ -240,6 +245,7 @@ export function FleetOrchestrationTab({
             setDispatchError(null);
             setDispatchSuccess(null);
           }}
+          title="Open the workflow dispatch dialog"
         >
           <PlayGlyph size={12} />
           Dispatch Workflow
@@ -335,6 +341,7 @@ export function FleetOrchestrationTab({
                   <td>
                     <span
                       className="section-badge"
+                      title={m.online ? "Machine is online" : "Machine is offline"}
                       style={{
                         background: machineStatusBg(m.online),
                         color: machineStatusColor(m.online),
@@ -477,6 +484,7 @@ export function FleetOrchestrationTab({
           className="btn"
           onClick={handleDeploy}
           disabled={deployLoading || !deployConfirm}
+          title="Deploy the dashboard to selected fleet nodes"
         >
           {deployLoading ? "Deploying…" : "Deploy"}
         </button>
@@ -551,6 +559,7 @@ export function FleetOrchestrationTab({
                   <td>
                     <span
                       className="section-badge"
+                      title={`Deploy decision: ${entry.decision}`}
                       style={{
                         background:
                           entry.decision === "accepted"
@@ -643,6 +652,8 @@ export function FleetOrchestrationTab({
                   className="input"
                   style={{ width: "100%" }}
                   placeholder="e.g. Repository_Management"
+                  aria-label="Repository for workflow dispatch"
+                  title="Bare repository name to run the workflow against"
                   value={dispatchRepo}
                   onChange={(e) => setDispatchRepo(e.target.value)}
                 />
@@ -662,6 +673,8 @@ export function FleetOrchestrationTab({
                   className="input"
                   style={{ width: "100%" }}
                   placeholder="e.g. ci-standard.yml"
+                  aria-label="Workflow file for dispatch"
+                  title="Workflow YAML file name in the repository"
                   value={dispatchWorkflow}
                   onChange={(e) => setDispatchWorkflow(e.target.value)}
                 />
@@ -681,6 +694,8 @@ export function FleetOrchestrationTab({
                   className="input"
                   style={{ width: "100%" }}
                   placeholder="main"
+                  aria-label="Git ref for workflow dispatch"
+                  title="Branch or tag to run the workflow on"
                   value={dispatchBranch}
                   onChange={(e) => setDispatchBranch(e.target.value)}
                 />
@@ -740,6 +755,7 @@ export function FleetOrchestrationTab({
                 className="btn btn-primary"
                 onClick={handleDispatch}
                 disabled={dispatchLoading}
+                title="Trigger the workflow on GitHub Actions"
               >
                 {dispatchLoading ? "Dispatching…" : "Dispatch"}
               </button>

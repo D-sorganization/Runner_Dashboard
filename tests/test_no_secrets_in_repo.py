@@ -64,6 +64,8 @@ _TOKEN_PATTERNS: dict[str, re.Pattern[str]] = {
     "slack_token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"),
     # PEM private-key headers — any of RSA / EC / OPENSSH / PGP.
     "private_key_block": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----"),
+    # Telegram Bot API tokens: numeric bot id, colon, 35-char alnum/underscore/hyphen secret (RD #3076).
+    "telegram_bot_token": re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{35}\b"),
 }
 
 # Files that may legitimately contain credential-shaped strings.
@@ -209,6 +211,20 @@ def test_github_pattern_still_matches_classic_token_format() -> None:
 
     classic = "ghs_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"  # pragma: allowlist secret
     assert _TOKEN_PATTERNS["github_server_to_server"].search(classic)
+
+
+def test_telegram_pattern_matches_bot_token_format() -> None:
+    """The bot-id:secret shape Telegram issues must trip the gate (RD #3076)."""
+
+    fake = "123456789:" + "ABCDEFghijklmnopqrstuvwxyz0123456789A"[:35]  # pragma: allowlist secret
+    assert _TOKEN_PATTERNS["telegram_bot_token"].search(fake)
+
+
+def test_telegram_pattern_does_not_match_short_numeric_ratios() -> None:
+    """A bare ``N:M`` ratio or short id must not false-positive."""
+
+    for benign in ("resize to 16:9", "RD_BARB_TELEGRAM_CHAT_ID=123456789", "12:34"):
+        assert not _TOKEN_PATTERNS["telegram_bot_token"].search(benign)
 
 
 def test_github_patterns_do_not_match_prefix_mentions() -> None:

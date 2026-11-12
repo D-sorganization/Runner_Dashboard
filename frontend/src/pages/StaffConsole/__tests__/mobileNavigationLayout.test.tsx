@@ -104,7 +104,7 @@ const MOCK_MESSAGES: ThreadMessage[] = [
         description: "Trim stale worktrees",
         risk_level: "medium",
         status: "proposed",
-        params: { host: "ControlTower" },
+        params: { host: "node-a" },
         created_at: "2026-09-29T12:01:00Z",
       },
     },
@@ -333,7 +333,7 @@ describe("Mobile Staff Console Layout Ownership (#1805 / BR-12)", () => {
 
       await waitFor(() => expect(approveBtn).toBeEnabled());
       fireEvent.click(approveBtn);
-      expect(onApprove).toHaveBeenCalledWith("prop-101", { host: "ControlTower" }, "e".repeat(64));
+      expect(onApprove).toHaveBeenCalledWith("prop-101", { host: "node-a" }, "e".repeat(64));
     });
   });
 });

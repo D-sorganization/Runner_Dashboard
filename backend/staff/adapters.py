@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS
+from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS, canonical_provider_id
 from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
@@ -33,18 +33,25 @@ from staff.adapter_policies import (
     claude_read_only_run_tools,
     claude_unattended_tools,
     gemini_policy_toml,
+    grok_unattended_flags,
 )
+from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
+from staff.deepseek_provider import deepseek_available, deepseek_environment
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
+from staff.staff_result import apply_output_schema
 
-# Provider ids used by staff roles. They intentionally match the
-# ``dashboard_id`` values in agent_remediation/provider_registry.py where an
-# entry exists there (claude_code_cli → "claude", codex_cli → "codex").
+# Provider ids used by staff roles (mapped to provider_registry.py via canonical_provider_id).
 ProviderId = str
+
+# ``agy`` is a Windows binary reached through WSL interop, whose command line is capped near 32 K
+# characters; a longer argv fails with ``agy: Invalid argument`` (#2744). Longer prompts go on stdin.
+AGY_MAX_ARGV_PROMPT_CHARS = 16_000
 
 __all__ = [
     "ADAPTERS",
+    "AGY_MAX_ARGV_PROMPT_CHARS",
     "CHAT_READ_ONLY_TOOLS",
     "CLAUDE_WRITE_TOOLS",
     "ChatReadOnlyUnsupportedError",
@@ -76,8 +83,7 @@ class ProviderAdapter:
     provider_id: ProviderId
     label: str
     executable: str
-    # argv template; ``{prompt}``, ``{model}``, ``{workdir}``, ``{gitdir}`` and
-    # ``{policy}`` are substituted.
+    # argv template; ``{prompt}``, ``{model}``, ``{workdir}``, ``{gitdir}`` and ``{policy}`` are substituted.
     argv: tuple[str, ...]
     default_model: str | None = None
     models: tuple[str, ...] = ()
@@ -89,7 +95,6 @@ class ProviderAdapter:
     extra_env: dict[str, str] = field(default_factory=dict)
     # Env computed at launch (e.g. the Ollama URL, which depends on the host network).
     env_builder: Callable[[], dict[str, str]] | None = None
-
     # RM agent id used for issue leases; ``None`` means the provider id itself.
     lease_as: str | None = None
     # False when the CLI cannot run unattended without a permission bypass (#1586).
@@ -98,6 +103,7 @@ class ProviderAdapter:
     policy_text: Callable[[], str] | None = None
     # Whether chat turns print JSON lines; ``None`` means the same as unattended runs.
     chat_json_lines: bool | None = None
+    installed_override: Callable[[], bool] | None = None
 
     @property
     def chat_json(self) -> bool:
@@ -120,16 +126,15 @@ class ProviderAdapter:
         policy: str | None = None,
         read_only: bool = False,
         session_id: str | None = None,
+        output_schema: dict | None = None,
     ) -> list[str]:
         """Return argv for one unattended run.
 
-        Pre: ``prompt`` is non-empty; ``workdir`` is an existing directory path;
-        ``gitdir`` is the worktree's git common dir (defaults to ``workdir``);
-        ``policy`` is the path the runner wrote ``policy_text()`` to.
-        Post: the returned list never contains an unexpanded ``{...}`` slot nor a
-        :data:`PERMISSION_BYPASS_FLAGS` entry. When ``read_only`` is True, no allowed
-        tool is in :data:`CLAUDE_WRITE_TOOLS`. A provider that cannot run without
-        a bypass or has no code-read-only unattended mode raises :class:`UnattendedUnsupportedError`.
+        Pre: ``prompt`` non-empty; ``gitdir`` defaults to ``workdir``; ``policy`` is the
+        rendered ``policy_text()`` path. Post: no unexpanded ``{...}`` slot or
+        :data:`PERMISSION_BYPASS_FLAGS` entry; ``read_only`` implies no :data:`CLAUDE_WRITE_TOOLS`
+        tool is allowed. Raises :class:`UnattendedUnsupportedError` when unsupported.
+        ``output_schema`` (#3619) goes to :func:`staff.staff_result.apply_output_schema`.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
         if not self.unattended:
@@ -178,15 +183,14 @@ class ProviderAdapter:
                 out[out.index("--mode") + 1] = "plan"
         if session_id:
             if self.provider_id in ("codex", "ollama"):
-                resumed: list[str] = [self.executable, "exec", "resume", "--skip-git-repo-check", "--json"]
-                if model:
-                    resumed.extend(["-m", model])
-                resumed.extend([session_id, prompt])
-                out = resumed
+                # Resume applies this invocation's config; retain explicit launch options.
+                out[-1:] = ["resume", session_id, prompt]
             elif self.provider_id == "antigravity":
                 out.extend(["--conversation", session_id])
             else:
                 out.extend(["--resume", session_id])
+        if output_schema is not None:
+            apply_output_schema(self.provider_id, out, workdir, output_schema)
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
         assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
         return out
@@ -201,12 +205,10 @@ class ProviderAdapter:
     ) -> list[str]:
         """Return argv for a read-only chat turn (SC-B4 #1307, hardened by #1484).
 
-        Pre: ``prompt`` is non-empty; every ``read_only_tools`` name is in
-        :data:`CHAT_READ_ONLY_TOOLS`.
-        Post: the argv carries this provider's explicit read-only flag on fresh
-        *and* resumed turns, never a bypass flag, and resumes ``session_id`` when
-        given. A provider with no known read-only mode raises
-        :class:`ChatReadOnlyUnsupportedError` instead of running writable.
+        Pre: ``prompt`` non-empty; every ``read_only_tools`` name is in :data:`CHAT_READ_ONLY_TOOLS`.
+        Post: carries the provider's read-only flag on fresh *and* resumed turns, never a
+        bypass flag; resumes ``session_id`` when given. Raises :class:`ChatReadOnlyUnsupportedError`
+        instead of running writable when the provider has no known read-only mode.
         """
         assert prompt.strip(), "prompt must be non-empty"  # noqa: S101
         if self.provider_id not in _CHAT_READ_ONLY_FLAGS:
@@ -215,9 +217,10 @@ class ProviderAdapter:
             )
         allowed = claude_allowed_tools(read_only_tools)
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
+        if self.provider_id == "deepseek-api" and chosen_model not in self.models:
+            raise ValueError("unsupported DeepSeek model")
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
-
-        if self.provider_id in ("claude", "claude-ollama"):
+        if self.provider_id in ("claude", "claude-ollama", "anthropic-api", "deepseek-api"):
             cmd = [
                 self.executable,
                 "-p",
@@ -227,6 +230,9 @@ class ProviderAdapter:
                 "--verbose",
             ]
             cmd += read_only + ["--disallowedTools", ",".join(CLAUDE_WRITE_TOOLS)]
+            if self.provider_id == "deepseek-api":
+                # Explicit allowlist also excludes separately billed web search/fetch.
+                cmd += ["--tools", ",".join(read_only_tools)]
             if allowed:
                 cmd += ["--allowedTools", ",".join(allowed)]
             if session_id:
@@ -235,20 +241,12 @@ class ProviderAdapter:
             cmd = [self.executable, "exec"]
             if self.provider_id == "ollama":
                 cmd += ["--oss", "--local-provider", "ollama"]
-            cmd += read_only + ["--skip-git-repo-check"]
+            cmd += read_only + (["resume"] if session_id else []) + ["--json", "--skip-git-repo-check"]
             if session_id:
-                cmd += ["--session", session_id]
+                cmd.append(session_id)
         elif self.provider_id == "antigravity":
-            cmd = [
-                self.executable,
-                "--print",
-                prompt,
-                "--output-format",
-                "stream-json",
-                "--add-dir",
-                workdir,
-            ]
-            cmd += read_only
+            cmd = [self.executable, *(["--print", prompt] if self.chat_stdin(prompt) is None else [])]
+            cmd += ["--output-format", "stream-json", "--add-dir", workdir, *read_only]
             if session_id:
                 cmd += ["--conversation", session_id]
         elif self.provider_id == "cursor-agent":
@@ -275,6 +273,16 @@ class ProviderAdapter:
             cmd.append(prompt)
         assert not _CHAT_BYPASS_FLAGS & set(cmd), "chat argv must never bypass permissions"  # noqa: S101
         return cmd
+
+    def chat_stdin(self, prompt: str) -> str | None:
+        """Return the text to pipe on stdin for a chat turn, or None when the prompt rides in argv.
+
+        Post: only antigravity with a prompt over :data:`AGY_MAX_ARGV_PROMPT_CHARS` returns the prompt
+        (and :meth:`chat_argv` then omits ``--print <prompt>``); every other case returns None.
+        """
+        if self.provider_id == "antigravity" and len(prompt) > AGY_MAX_ARGV_PROMPT_CHARS:
+            return prompt
+        return None
 
     def parse_line(self, line: str) -> dict[str, Any]:
         """Turn one stdout line into a flat event.
@@ -303,7 +311,7 @@ class ProviderAdapter:
         return event
 
     def installed(self) -> bool:
-        return shutil.which(self.executable) is not None
+        return self.installed_override() if self.installed_override else shutil.which(self.executable) is not None
 
 
 _CLAUDE_ALLOWED, _CLAUDE_DENIED = claude_unattended_tools()
@@ -337,6 +345,22 @@ _UNATTENDED_CODEX = (
     "--skip-git-repo-check",
     "--json",
 )
+_GROK_ALLOW, _GROK_DENY = grok_unattended_flags()
+_UNATTENDED_GROK = (
+    "-p",
+    "{prompt}",
+    "--output-format",
+    "stream-json",
+    "--allow",
+    _GROK_ALLOW,
+    "--deny",
+    _GROK_DENY,
+    "--no-auto-update",
+    "-w",
+    "{workdir}",
+    "--model",
+    "{model}",
+)
 
 ADAPTERS: dict[ProviderId, ProviderAdapter] = {
     "claude": ProviderAdapter(
@@ -351,13 +375,27 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "listed tools and shell prefixes run, anything else is refused instead of prompted (#1586)."
         ),
     ),
+    "anthropic-api": _build_anthropic_api_adapter(ProviderAdapter, _UNATTENDED_CLAUDE),
+    "deepseek-api": ProviderAdapter(
+        provider_id="deepseek-api",
+        label="DeepSeek API (explicit opt-in)",
+        executable="claude",
+        argv=_UNATTENDED_CLAUDE,
+        default_model="deepseek-flash",
+        models=("deepseek-flash", "deepseek-v4-pro"),
+        json_lines=True,
+        unattended=False,
+        installed_override=deepseek_available,
+        env_builder=deepseek_environment,
+        notes="Paid API; requires explicit host enablement and provider selection; chat only.",
+    ),
     "codex": ProviderAdapter(
         provider_id="codex",
         label="Codex CLI",
         executable="codex",
         argv=(*_UNATTENDED_CODEX, "--model", "{model}", "{prompt}"),
         json_lines=True,
-        chat_json_lines=False,
+        chat_json_lines=True,
         notes=(
             "--json events carry the answer (item.completed agent_message) and tokens (turn.completed). The "
             "workspace-write sandbox replaces the old approvals bypass (#1586)."
@@ -438,6 +476,23 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "workspace-trust prompt for the run's own worktree."
         ),
     ),
+    "grok": ProviderAdapter(
+        provider_id="grok",
+        label="Grok CLI",
+        executable="grok",
+        argv=_UNATTENDED_GROK,
+        json_lines=True,
+        notes=(
+            "Standalone Grok Build CLI registry row `grok_cli` (#4130), distinct from the "
+            "Cursor-hosted Grok models under `cursor-agent`. Launch flags (`--allow`/`--deny`/"
+            "`--no-auto-update`/`-w`) are a best-effort mapping from published Grok docs, not "
+            "yet verified against a real `grok` binary — never `--yolo`/`--always-approve` "
+            "(permission bypass, #1586). Has no confirmed read-only chat flag yet, so chat "
+            "turns raise ChatReadOnlyUnsupportedError rather than guess one; not in the "
+            "default failover chain (config/provider_failover.json) until auth health (#4132) "
+            "and usage tracking (#4133) land — opt in per role via `providers:` meanwhile."
+        ),
+    ),
     "ollama": ProviderAdapter(
         provider_id="ollama",
         label="Ollama models via Codex",
@@ -452,7 +507,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "{prompt}",
         ),
         json_lines=True,
-        chat_json_lines=False,
+        chat_json_lines=True,
         default_model=ollama_env.DEFAULT_OLLAMA_MODEL,
         env_builder=ollama_env.codex_ollama_env,
         lease_as="local",  # RM has no per-harness id for local models
@@ -473,8 +528,11 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
 
 
 def get_adapter(provider_id: str) -> ProviderAdapter:
-    """Return the adapter for ``provider_id`` or raise ``KeyError``."""
-    return ADAPTERS[provider_id]
+    """Return an adapter by legacy or canonical id, preferring the primary launch path."""
+    if provider_id in ADAPTERS:
+        return ADAPTERS[provider_id]
+    canonical_id = canonical_provider_id(provider_id)
+    return next(adapter for key, adapter in ADAPTERS.items() if canonical_provider_id(key) == canonical_id)
 
 
 def available_providers() -> dict[str, bool]:

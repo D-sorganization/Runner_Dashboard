@@ -123,7 +123,7 @@ _WRAPPED = """## Active Priorities (Execute This Cycle)
      whichever agent/seat the owner directs.
    - Epic/Issue: `Runner_Dashboard#1352` (SC-F Grok workstream); docs `Repository_Management#1803`
    - Acceptance criteria: `staff-node-acceptance.sh --run-ad-hoc --expect-sha
-80acce6` passes on DeskComputer.
+80acce6` passes on hub-a.
 
 ---
 
@@ -143,5 +143,5 @@ def test_wrapped_head_and_bullets_are_joined_and_code_spans_kept_balanced() -> N
         "Instruction-writer (Alpha) to file the epic; execution by whichever agent/seat the owner directs."
     )
     assert first.tracking == "`Runner_Dashboard#1352` (SC-F Grok workstream); docs `Repository_Management#1803`"
-    assert first.acceptance == "`staff-node-acceptance.sh --run-ad-hoc --expect-sha 80acce6` passes on DeskComputer."
+    assert first.acceptance == "`staff-node-acceptance.sh --run-ad-hoc --expect-sha 80acce6` passes on hub-a."
     assert parse_consensus(_WRAPPED).deferred[0].reassess == "2026-10-03"

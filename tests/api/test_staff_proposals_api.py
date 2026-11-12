@@ -61,7 +61,7 @@ def test_list_and_decide_proposals_endpoints(client: TestClient) -> None:
         message_id="msg_1",
         thread_id=th.id,
         action="runner.restart",
-        params={"runner_name": "oglaptop"},
+        params={"runner_name": "node-b"},
         risk="high",
         principal="barb",
     )
@@ -216,7 +216,7 @@ def test_execute_proposal_permission_denial(client: TestClient) -> None:
         message_id=msg.id,
         thread_id=th.id,
         action="maintenance.runner_stop",
-        params={"runner_name": "oglaptop", "proposing_role": "restricted_bot"},
+        params={"runner_name": "node-b", "proposing_role": "restricted_bot"},
         risk="high",
         principal="restricted_bot",
     )
@@ -251,7 +251,7 @@ def test_improper_role_proposal_can_still_be_denied(client: TestClient) -> None:
         message_id=msg.id,
         thread_id=th.id,
         action="maintenance.runner_stop",
-        params={"runner_name": "oglaptop", "proposing_role": "restricted_bot"},
+        params={"runner_name": "node-b", "proposing_role": "restricted_bot"},
         risk="high",
         principal="restricted_bot",
     )

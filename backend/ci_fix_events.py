@@ -4,10 +4,12 @@ Pure functions only: signature verification and payload parsing. No network, no 
 
 Accepted events (everything else is ignored with a reason):
 
-- ``workflow_run`` / ``completed`` with conclusion ``failure`` or ``timed_out`` on a run tied
-  to a pull request, including ``merge_group`` runs whose ``pull_requests`` is empty (the PR
-  number comes from the ``gh-readonly-queue/<base>/pr-<N>-<sha>`` head ref).
-  ``cancelled`` is not a failure: fleet workflows cancel superseded runs by concurrency group.
+- ``workflow_run`` / ``completed`` with conclusion ``failure``, ``timed_out`` or ``cancelled``
+  on a run tied to a pull request, including ``merge_group`` runs whose ``pull_requests`` is
+  empty (the PR number comes from the ``gh-readonly-queue/<base>/pr-<N>-<sha>`` head ref).
+  A ``cancelled`` run is parsed here, but ``evaluate_ci_fix_trigger`` (#2766) only treats it as
+  a real failure when no newer run of the same workflow exists for its head SHA: fleet
+  workflows cancel superseded runs by concurrency group, and that is not a failure.
 - ``pull_request`` / ``dequeued`` with reason ``MERGE_CONFLICT`` or ``CHECKS_FAILED``
   (``PullRequestDequeuedEvent`` in ``@octokit/webhooks-types``; ``reason`` is a free-form
   string there, so case, spaces and hyphens are normalised).
@@ -30,6 +32,9 @@ from pydantic import BaseModel, ConfigDict, Field
 GITHUB_WEBHOOK_SECRET_ENV = "GITHUB_WEBHOOK_SECRET"  # pragma: allowlist secret (env var name)
 CI_FIX_ENABLED_ENV = "CI_FIX_DISPATCH_ENABLED"
 FAILED_CONCLUSIONS = ("failure", "timed_out")
+# #2766 item 1: a cancelled run is parsed too (unlike failure/timed_out it is not accepted
+# outright); ``evaluate_ci_fix_trigger`` decides eligibility from the head SHA supersession fact.
+ACCEPTED_RUN_CONCLUSIONS = (*FAILED_CONCLUSIONS, "cancelled")
 DEQUEUE_KINDS: dict[str, Literal["merge_conflict", "queue_checks_failed"]] = {
     "MERGE_CONFLICT": "merge_conflict",
     "CHECKS_FAILED": "queue_checks_failed",
@@ -48,6 +53,7 @@ class CIFixEvent(BaseModel):
     repo: str = Field(min_length=1, pattern=r"^[A-Za-z0-9._-]+$")
     pr_number: int = Field(gt=0)
     head_branch: str = ""
+    head_sha: str = ""
     base_ref: str = ""
     run_id: int | None = None
     workflow_name: str = ""
@@ -101,7 +107,7 @@ def _parse_workflow_run(payload: dict[str, Any], owner: str, repo: str) -> tuple
         return None, f"workflow_run action {payload.get('action')!r} is not 'completed'"
     run = payload.get("workflow_run") or {}
     conclusion = str(run.get("conclusion") or "").lower()
-    if conclusion not in FAILED_CONCLUSIONS:
+    if conclusion not in ACCEPTED_RUN_CONCLUSIONS:
         return None, f"run conclusion {conclusion!r} is not a failure"
     head_branch = str(run.get("head_branch") or "")
     queue_match = QUEUE_REF_PATTERN.match(head_branch)
@@ -116,6 +122,7 @@ def _parse_workflow_run(payload: dict[str, Any], owner: str, repo: str) -> tuple
         repo=repo,
         pr_number=pr_number,
         head_branch=head_branch,
+        head_sha=str(run.get("head_sha") or ""),
         base_ref=base_ref,
         run_id=int(run["id"]) if run.get("id") else None,
         workflow_name=str(run.get("name") or ""),

@@ -67,7 +67,7 @@ class TestAggressiveDockerUnderPressure:
 
     def test_dangling_images_use_short_window(self, cleanup_text: str) -> None:
         """2026-09-14: 42 dangling upstream-drift images (~100 GiB, all under
-        41 h old) sat under the 168h window and grew the ControlTower vhdx by
+        41 h old) sat under the 168h window and grew the node-a vhdx by
         33 GB in nine days. Dangling images are superseded by definition, so
         the routine path must prune them on a much shorter window than build
         cache, without touching tagged images (no --all)."""
@@ -95,7 +95,7 @@ class TestAggressiveDockerUnderPressure:
 
     def test_orphan_buildx_state_volumes_are_reaped(self, cleanup_text: str) -> None:
         """docker/setup-buildx-action leaves one buildx_buildkit_<id>_state
-        volume per job; DeskComputer had 37 unreferenced ones (119 GiB) on
+        volume per job; hub-a had 37 unreferenced ones (119 GiB) on
         2026-09-14 because PRUNE_DOCKER_VOLUMES=0 skips every volume. The
         reaper must be name-scoped AND dangling-scoped so user volumes and a
         builder mid-job are never removed."""

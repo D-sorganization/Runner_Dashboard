@@ -193,6 +193,9 @@ def _build_canonical_json(
     principal: str = "",
     on_behalf_of: str = "",
     correlation_id: str = "",
+    envelope_id: str = "",
+    reason: str = "",
+    schema_version: str = "",
 ) -> str:
     """Build canonical JSON string for signing/verification."""
     return json.dumps(
@@ -206,6 +209,9 @@ def _build_canonical_json(
             "principal": principal,
             "on_behalf_of": on_behalf_of,
             "correlation_id": correlation_id,
+            "envelope_id": envelope_id,
+            "reason": reason,
+            "schema_version": schema_version,
         },
         separators=(",", ":"),
         sort_keys=True,
@@ -241,6 +247,9 @@ def _sign_envelope_payload(
     on_behalf_of: str = "",
     correlation_id: str = "",
     payload_hash: str = "",
+    envelope_id: str = "",
+    reason: str = "",
+    schema_version: str = "",
 ) -> str:
     """Generate HMAC-SHA256 signature over envelope payload.
 
@@ -257,6 +266,9 @@ def _sign_envelope_payload(
         principal,
         on_behalf_of,
         correlation_id,
+        envelope_id,
+        reason,
+        schema_version,
     )
     # Include payload hash to bind signature to payload content (issue #317).
     if payload_hash:
@@ -277,6 +289,9 @@ def _verify_envelope_signature(
     on_behalf_of: str = "",
     correlation_id: str = "",
     payload_hash: str = "",
+    envelope_id: str = "",
+    reason: str = "",
+    schema_version: str = "",
 ) -> bool:
     """Verify HMAC-SHA256 signature over envelope payload."""
     expected = _sign_envelope_payload(
@@ -291,5 +306,8 @@ def _verify_envelope_signature(
         on_behalf_of,
         correlation_id,
         payload_hash,
+        envelope_id,
+        reason,
+        schema_version,
     )
     return hmac.compare_digest(expected, signature)

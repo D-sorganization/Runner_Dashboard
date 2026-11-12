@@ -53,6 +53,7 @@ _OWNER_GETS = {
     "/api/v1/staff/outcomes",
     "/api/v1/staff/proposals",
     "/api/v1/staff/work-items",
+    "/api/v1/staff/panels",
     "/api/v1/staff/panels/presets",
 }
 _OWNER_GET_PATTERNS = tuple(

@@ -77,6 +77,10 @@ def backend_env(state: Path, port: int) -> dict[str, str]:
             for k, v in os.environ.items()
             if k in ("LANG", "LC_ALL", "TZ", "SYSTEMROOT", "TEMP", "TMP", "LD_LIBRARY_PATH")
         },
+        # Repo root first (the backend runs with cwd=backend/, so top-level
+        # packages such as ``shared_scripts`` are otherwise unimportable from a
+        # plain checkout), then any caller-supplied entries (#2992).
+        "PYTHONPATH": os.pathsep.join(filter(None, [str(REPO), os.environ.get("PYTHONPATH", "")])),
         "PATH": os.pathsep.join([str(FAKES / "bin"), system_path or os.environ.get("PATH", "")]),
         "HOME": str(state / "home"),
         "XDG_CONFIG_HOME": str(state / "xdg"),
@@ -106,6 +110,13 @@ def backend_env(state: Path, port: int) -> dict[str, str]:
         "STAFF_INBOX_GITHUB_SOURCES": "0",
         # Staff runs need a GitHub-shaped credential without reaching api.github.com (#2038).
         "STAFF_E2E_HERMETIC": "1",
+        # The dispatch I/O-pressure gate samples real host load; a shared CI
+        # runner can legitimately sit above the threshold, which made
+        # staff.dispatch proposals refuse with a 503 under this suite's own
+        # load rather than any bug in the proposal flow (#3631). The gate has
+        # dedicated unit coverage (tests/api/test_staff_dispatch_admission.py)
+        # and is irrelevant to this fake-provider UI suite.
+        "STAFF_DISPATCH_RESOURCE_GATE": "0",
     }
 
 

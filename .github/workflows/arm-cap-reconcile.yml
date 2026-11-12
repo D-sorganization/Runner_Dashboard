@@ -22,10 +22,18 @@ concurrency:
 
 jobs:
   reconcile:
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # ubuntu-latest images may not ship python3.12/3.11 (ubuntu-26.04 does not), so
+      # pin the interpreter instead of relying on the runner image (#3891).
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
       - name: Reconcile armed inventory
         env:
           GH_TOKEN: ${{ github.token }}

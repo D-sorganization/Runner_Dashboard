@@ -1,0 +1,44 @@
+name: Publish Guard # Issue #3080; docs/architecture/publish-guard.md
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+# Never cancel main-push / merge-group runs (tests/test_main_push_concurrency.py).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  publish-guard:
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    name: Publish Guard and Fork Canary
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    timeout-minutes: 5
+    env:
+      # Single mode flag for the publish guard: flip to "enforce" at cutover.
+      RD_PUBLISH_GUARD_MODE: report
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install pyyaml
+      - name: Guard self-test (canary must trip every rule)
+        run: python scripts/publish_guard.py --self-test
+      - name: Publish guard
+        run: python scripts/publish_guard.py
+      - name: Fork-PR / self-hosted workflow canary (enforcing)
+        run: python scripts/workflow_fork_canary.py --mode enforce

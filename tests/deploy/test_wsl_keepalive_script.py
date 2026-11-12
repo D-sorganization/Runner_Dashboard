@@ -21,12 +21,12 @@ out to ``wsl.exe``. Those are covered by the Pester suite at
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import textwrap
 from pathlib import Path
 
 import pytest
-
 from pwsh_host import find_pwsh, run_pwsh_command, run_pwsh_file
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,14 +34,14 @@ SCRIPT = REPO_ROOT / "deploy" / "wsl-keepalive.ps1"
 
 
 def _enable_marker(tmp_path: Path) -> Path:
-    marker = tmp_path / "deskcomputer-runner-enabled.flag"
+    marker = tmp_path / "hub-a-runner-enabled.flag"
     marker.write_text("enabled\n", encoding="utf-8")
     return marker
 
 
 def test_drain_marker_exits_before_validation_or_recovery(tmp_path: Path) -> None:
     """A deliberate host drain must prevent WSL warm-up and recovery."""
-    marker = tmp_path / "deskcomputer-runner-drained.flag"
+    marker = tmp_path / "hub-a-runner-drained.flag"
     marker.write_text("drained\n", encoding="utf-8")
     shell = find_pwsh()
     if shell is None:
@@ -86,14 +86,20 @@ def test_missing_enable_marker_exits_before_validation_or_recovery(tmp_path: Pat
 def test_keepalive_and_monitor_share_default_operator_markers() -> None:
     keepalive_text = SCRIPT.read_text(encoding="utf-8")
     monitor_text = (REPO_ROOT / "deploy" / "fleet-health-monitor.ps1").read_text(encoding="utf-8")
-    marker_suffixes = (
-        r"runner_fleet_monitor\deskcomputer-runner-drained.flag",
-        r"runner_fleet_monitor\deskcomputer-runner-enabled.flag",
+    marker_pattern = re.compile(
+        r"runner_fleet_monitor\\([a-z0-9-]+-runner-(?:drained|enabled)\.flag)",
+        re.IGNORECASE,
     )
+    markers_by_script = []
     for text in (keepalive_text, monitor_text):
         assert "[Environment]::GetFolderPath('UserProfile')" in text
-        for marker_suffix in marker_suffixes:
-            assert marker_suffix in text
+        markers = set(marker_pattern.findall(text))
+        assert {marker.rsplit("-runner-", 1)[1] for marker in markers} == {
+            "drained.flag",
+            "enabled.flag",
+        }
+        markers_by_script.append(markers)
+    assert markers_by_script[0] == markers_by_script[1]
 
 
 INSTALLER = REPO_ROOT / "deploy" / "install-wsl-keepalive-task.ps1"
@@ -197,7 +203,7 @@ def test_script_defaults_to_resident_mode() -> None:
 
     ``Watchdog`` recovery calls ``wsl --shutdown``, which kills every distro
     and the WSL2 VM -- taking every runner and in-flight CI job with it, and
-    corrupting the ext4 root on a hard kill mid-write (root-caused on OGLaptop
+    corrupting the ext4 root on a hard kill mid-write (root-caused on node-b
     2026-05-29: 415 shutdowns, 48 e2fsck errors). The canonical installer
     already passes ``-Mode Resident`` explicitly, so this default only governs
     a bare run or a legacy task that omits ``-Mode`` -- exactly the paths that

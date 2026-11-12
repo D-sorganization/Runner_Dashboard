@@ -13,16 +13,16 @@ const mockEvents = [
     id: 1,
     event_type: "runner_online",
     level: "info",
-    source: "ControlTower",
-    message: "Runner d-sorg-local-ControlTower-1 connected",
+    source: "node-a",
+    message: "Runner d-sorg-local-node-a-1 connected",
     timestamp: "2026-09-25T10:00:00Z",
   },
   {
     id: 2,
     event_type: "runner_offline",
     level: "warning",
-    source: "DeskComputer",
-    message: "Runner d-sorg-local-DeskComputer-1 disconnected",
+    source: "hub-a",
+    message: "Runner d-sorg-local-hub-a-1 disconnected",
     timestamp: "2026-09-25T09:45:00Z",
   },
 ];
@@ -39,8 +39,8 @@ describe("FleetEventsSection", () => {
     );
 
     expect(screen.getByRole("region", { name: /Fleet Event Log/i })).toBeInTheDocument();
-    expect(screen.getByText("Runner d-sorg-local-ControlTower-1 connected")).toBeInTheDocument();
-    expect(screen.getByText("Runner d-sorg-local-DeskComputer-1 disconnected")).toBeInTheDocument();
+    expect(screen.getByText("Runner d-sorg-local-node-a-1 connected")).toBeInTheDocument();
+    expect(screen.getByText("Runner d-sorg-local-hub-a-1 disconnected")).toBeInTheDocument();
   });
 
   it("filters events by level", () => {
@@ -55,8 +55,8 @@ describe("FleetEventsSection", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^Warning/i }));
 
-    expect(screen.getByText("Runner d-sorg-local-DeskComputer-1 disconnected")).toBeInTheDocument();
-    expect(screen.queryByText("Runner d-sorg-local-ControlTower-1 connected")).not.toBeInTheDocument();
+    expect(screen.getByText("Runner d-sorg-local-hub-a-1 disconnected")).toBeInTheDocument();
+    expect(screen.queryByText("Runner d-sorg-local-node-a-1 connected")).not.toBeInTheDocument();
   });
 
   it("fails visibly with independent error state and retry CTA", () => {

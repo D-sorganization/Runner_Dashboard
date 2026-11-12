@@ -91,6 +91,11 @@ export interface StaffRoleItem {
   retired_reason?: string;
   /** A schedule-blocking hold from GET /api/v1/staff/schedule (#1804); not the role file's `holds:`. */
   schedule_hold?: string | null;
+  /** Runtime model-selector override state from GET /api/v1/staff/roster (epic #3295 S2). */
+  model?: string | null;
+  model_override?: string | null;
+  effective_model?: string | null;
+  allowed_models?: string[];
   [key: string]: unknown;
 }
 

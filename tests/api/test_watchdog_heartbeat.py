@@ -56,3 +56,52 @@ def test_watchdog_interval_from_env(monkeypatch):
     interval = usec / 1_000_000 / 2
     # 200ms / 2 = 100ms
     assert interval == pytest.approx(0.1, abs=1e-6)
+
+
+@pytest.mark.asyncio
+async def test_server_watchdog_heartbeat_survives_transient_error(monkeypatch):
+    """RD-31 (#3034): _watchdog_heartbeat logs and continues after transient sd_notify error."""
+    import datetime as _dt
+    import enum as _enum
+    import sys
+    import typing as _typing
+
+    import typing_extensions as _te
+
+    if not hasattr(_dt, "UTC"):
+        _dt.UTC = _dt.timezone.utc  # noqa: UP017
+    if not hasattr(_enum, "StrEnum"):
+
+        class _SE(str, _enum.Enum):  # noqa: UP042
+            pass
+
+        _enum.StrEnum = _SE
+    if not hasattr(_typing, "Self"):
+        _typing.Self = _te.Self
+    if sys_path_backend not in sys.path:
+        sys.path.insert(0, sys_path_backend)
+    import server
+
+    calls = []
+
+    def flaky(msg):
+        calls.append(msg)
+        if len(calls) == 1:
+            raise OSError("transient notify error")
+
+    class _Stop(BaseException):
+        pass
+
+    n = 0
+
+    async def fake_sleep(_s):
+        nonlocal n
+        n += 1
+        if n >= 3:
+            raise _Stop
+
+    monkeypatch.setattr(server, "_sd_notify", flaky)
+    monkeypatch.setattr(server.asyncio, "sleep", fake_sleep)
+    with pytest.raises(_Stop):
+        await server._watchdog_heartbeat()
+    assert calls == ["WATCHDOG=1", "WATCHDOG=1"]

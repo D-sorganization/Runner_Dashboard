@@ -37,7 +37,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 from machine_registry import load_machine_registry
+from routers import fleet_health_routes as _health_routes
 from routers import fleet_maintenance_routes as _maintenance_routes
+from routers import fleet_target_routes as _target_routes
 from routers import orchestration_audit_routes as _audit_routes
 from routers import orchestration_node_routes as _node_routes
 from routers import orchestration_schedule_routes as _schedule_routes
@@ -56,6 +58,8 @@ router = APIRouter(tags=["orchestration"])
 router.include_router(_audit_routes.router)
 router.include_router(_schedule_routes.router)
 router.include_router(_maintenance_routes.router)
+router.include_router(_health_routes.router)
+router.include_router(_target_routes.router)
 router.include_router(_node_routes.router)
 
 
@@ -77,6 +81,7 @@ def set_dependencies(  # noqa: PLR0913
     get_fleet_nodes_impl: Callable,
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
+    sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]],
     write_runner_schedule_config: Callable,
     runner_scheduler_apply_command: Callable,
     run_cmd: Callable,
@@ -96,6 +101,7 @@ def set_dependencies(  # noqa: PLR0913
     _schedule_routes.set_dependencies(
         get_runner_capacity_snapshot=get_runner_capacity_snapshot,
         validate_runner_schedule=validate_runner_schedule,
+        sanitize_runner_schedule=sanitize_runner_schedule,
         write_runner_schedule_config=write_runner_schedule_config,
         runner_scheduler_apply_command=runner_scheduler_apply_command,
         runner_scheduler_bin=runner_scheduler_bin,

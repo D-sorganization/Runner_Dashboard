@@ -8,34 +8,97 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
-import subprocess
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TypedDict
 
 import provider_switch
 from staff import cli_version, workspace
 from staff import quota as quota_mod
-from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ProviderAdapter
+from staff.anthropic_api_budget import PROVIDER_ID as ANTHROPIC_API_PROVIDER_ID
+from staff.cloud_dispatch import scrub_api_key_env
+from staff.disk_floor_shared import staff_disk_floor_breach_reason
 from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
+from staff.runner_ops_worktree_bootstrap import (  # noqa: F401  re-exported for existing importers (#3913)
+    _PYTHON_VERSION_SNIPPET,
+    _SUBMODULE_ATTEMPTS,
+    WorktreeBootstrapPreflight,
+    clean_stale_git_locks,
+    find_candidate_git_locks,
+    is_git_process_active_in_repo,
+    resolve_repo_pre_pr_entrypoint,
+    run_worktree_bootstrap_preflight,
+)
+from staff.runner_stream import (  # noqa: F401  re-exported for existing importers (#2803)
+    RESULT_NUDGE_PROMPT,
+    PumpResult,
+    execute_retry_nudge,
+    extract_transcript_question,
+    pump_nudge_output,
+    pump_output,
+)
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import mint_run_token
-from staff.watchdog import StaffWatchdog
 
 log = logging.getLogger("dashboard.staff.runner_ops")
 
+
+class StaffRunPreparationError(RuntimeError):
+    """Raised when a run is already marked failed with classification (do not overwrite in _worker)."""
+
+
 _GITHUB_AUTH_REMEDIATION = (
-    "On the fleet hub (DeskComputer), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
+    "On the fleet hub (hub-a), configure GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, "
     "and GITHUB_APP_PRIVATE_KEY_FILE. On spoke nodes, ensure HUB_URL and HUB_FLEET_TOKEN "
     "are set so staff runs can mint tokens via POST /api/fleet/run-token on the hub. "
     "STAFF_ALLOW_OPERATOR_TOKEN=1 is hub-only and does not apply on fleet nodes."
 )
+
+
+def ensure_worktree_bootstrap_ready(
+    store: RunStore,
+    rec: RunRecord,
+    plan: RunPlan,
+    workdir: Path,
+) -> WorktreeBootstrapPreflight | None:
+    """Run bootstrap preflight and fail fast with ``environment_error`` when it fails."""
+    if not plan.repo:
+        return WorktreeBootstrapPreflight(ok=True)
+    try:
+        result = run_worktree_bootstrap_preflight(workdir, role=plan.role)
+    except TypeError:
+        result = run_worktree_bootstrap_preflight(workdir)
+    if result.ok:
+        if result.pre_pr_entrypoint:
+            store.append_event(
+                rec.id,
+                "preflight",
+                f"worktree bootstrap ok: python={result.python_executable}; pre_pr={result.pre_pr_entrypoint}",
+            )
+        elif result.pre_pr_advisory:
+            store.append_event(
+                rec.id,
+                "preflight",
+                (f"worktree bootstrap ok: python={result.python_executable}; pre_pr_advisory={result.pre_pr_advisory}"),
+            )
+        return result
+    store.update_run(
+        rec.id,
+        status="failed",
+        failure_class=result.failure_class or "environment_error",
+        retryable=result.retryable,
+        remediation=result.remediation
+        or "Worktree bootstrap preflight failed; fix environment prerequisites before re-dispatching.",
+        error=result.attention,
+        ended_at=_now(),
+    )
+    store.append_event(rec.id, "error", result.attention)
+    return None
 
 
 def prepare_cloud_workdir(store: RunStore, rec: RunRecord) -> Path:
@@ -47,6 +110,40 @@ def prepare_cloud_workdir(store: RunStore, rec: RunRecord) -> Path:
     return workdir
 
 
+def _ensure_disk_floor_admitted(
+    store: RunStore,
+    rec: RunRecord,
+    *,
+    stage: str,
+    allow_sweep: bool = True,
+) -> bool:
+    """Enforce ``resource_floor`` before ``stage``; returns whether a sweep ran."""
+    if not stage.strip():
+        raise ValueError("stage must be non-empty")
+    swept = False
+    breach = staff_disk_floor_breach_reason()
+    if breach and allow_sweep:
+        swept = True
+        stats = workspace.sweep_stale_worktrees(store)
+        if any(stats.values()):
+            store.append_event(rec.id, "worktree", f"disk floor breached ({breach}); prune attempt {stats}")
+        breach = staff_disk_floor_breach_reason()
+    if breach:
+        detail = f"runner schedule disk floor breached: {breach}; free space before {stage}"
+        store.update_run(
+            rec.id,
+            status="failed",
+            failure_class="workspace_error",
+            retryable=True,
+            remediation="Free disk space until the runner-scheduler resource_floor readmits, then retry.",
+            error=detail,
+            ended_at=_now(),
+        )
+        store.append_event(rec.id, "error", detail)
+        raise StaffRunPreparationError(detail)
+    return swept
+
+
 def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
     """Resolve clone/worktree for ``rec``; persists ``workdir`` on the run row."""
     if not plan.repo:
@@ -55,11 +152,21 @@ def prepare_run_workdir(store: RunStore, rec: RunRecord, plan: RunPlan) -> Path:
         store.update_run(rec.id, workdir=str(workdir))
         return workdir
     checkout = workspace.find_repo_checkout(plan.repo)
+    swept = False
     if checkout is None:
+        swept = _ensure_disk_floor_admitted(store, rec, stage=f"cloning {plan.repo}")
         store.append_event(rec.id, "clone", f"no local checkout of {plan.repo}; cloning")
         checkout = workspace.clone_repo(plan.repo)
+    _ensure_disk_floor_admitted(
+        store,
+        rec,
+        stage="creating a worktree",
+        allow_sweep=not swept,
+    )
+    clean_stale_git_locks(checkout, main_root=checkout)
     worktree = workspace.staff_worktrees_root() / f"{plan.repo}-{rec.id}"
     workspace.add_run_worktree(checkout, worktree, plan.branch, plan.head_ref)
+    clean_stale_git_locks(worktree, main_root=checkout)
     store.update_run(rec.id, workdir=str(worktree))
     store.append_event(rec.id, "worktree", f"{worktree} on {plan.branch}")
     return worktree
@@ -101,6 +208,19 @@ def apply_staff_run_github_child_env(
     return env
 
 
+def sanitize_launch_env(env: Mapping[str, str], *, execution_mode: str, provider: str) -> dict[str, str]:
+    """Strip provider API keys from a launch env unless this is the anthropic-api launch itself (#3534).
+
+    Pre: ``env`` is the env about to be handed to a staff CLI subprocess.
+    Post: every launch other than the ``anthropic-api`` provider's own local run
+    (cloud dispatch already scrubs unconditionally) never carries a provider API
+    key, even once Dieter configures one for anthropic-api's exclusive use.
+    """
+    if execution_mode == "cloud" or provider != ANTHROPIC_API_PROVIDER_ID:
+        return scrub_api_key_env(env)
+    return dict(env)
+
+
 def apply_staff_run_fleet_token(
     store: RunStore,
     rec: RunRecord,
@@ -113,7 +233,9 @@ def apply_staff_run_fleet_token(
 ) -> dict[str, str] | None:
     """Attach fleet API token and adapter runtime env, or fail the run on mint errors."""
     try:
-        token = mint_run_token(plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout)
+        token = mint_run_token(
+            plan.role, rec.id, role.fleet_actions, ttl_seconds=wall_clock_timeout, library_read=role.library_read
+        )
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint staff run token for %s", rec.id)
         err = f"token minting failed: {exc}"
@@ -226,207 +348,6 @@ def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> LaunchPaths
     return paths
 
 
-RESULT_NUDGE_PROMPT = "Please emit your final result line now. Reply ONLY with exact prefix: STAFF_RESULT: <summary>"
-
-
-class PumpResult(tuple[dict[str, Any], str]):
-    """(usage, result_line) tuple for backward compatibility with optional session_id."""
-
-    usage: dict[str, Any]
-    result_line: str
-    session_id: str | None
-
-    def __new__(cls, usage: dict[str, Any], result_line: str, session_id: str | None = None) -> PumpResult:
-        inst = super().__new__(cls, (usage, result_line))
-        inst.usage = usage
-        inst.result_line = result_line
-        inst.session_id = session_id
-        return inst
-
-
-def pump_output(
-    rec: RunRecord,
-    adapter: ProviderAdapter,
-    proc: subprocess.Popen[str],
-    transcript: Path,
-    store: RunStore,
-    watchdog: StaffWatchdog | None = None,
-) -> PumpResult:
-    """Stream stdout lines into the transcript file and the event store.
-
-    Returns the usage the adapter reported, the last ``STAFF_RESULT:`` text seen,
-    and any captured session_id (#1709).
-    """
-    from staff.chat_history import extract_session_id
-
-    usage: dict[str, Any] = {}
-    result_line = ""
-    session_id: str | None = None
-    assert proc.stdout is not None  # noqa: S101
-    with transcript.open("a", encoding="utf-8") as tf:
-        for line in proc.stdout:
-            if watchdog is not None:
-                watchdog.record_output()
-            tf.write(redact_sensitive_content(line))
-            event = adapter.parse_line(line)
-            if not session_id:
-                pid = getattr(adapter, "provider_id", getattr(rec, "provider", ""))
-                session_id = extract_session_id(pid, event, raw_line=line)
-            if event.get("usage"):
-                usage.update(event["usage"])
-            if event.get("kind") == "rate_limit_event" and isinstance(event.get("raw"), dict):
-                quota_mod.observe(rec.provider, event["raw"])  # live plan windows, free (#1587)
-            text = event.get("text") or ""
-            if text.strip():
-                store.append_event(
-                    rec.id,
-                    event.get("kind", "text"),
-                    text,
-                    lesson_evidence=event.get("lesson_evidence"),
-                )
-                if "STAFF_RESULT:" in text:
-                    result_line = text[text.index("STAFF_RESULT:") :]
-    return PumpResult(usage, result_line, session_id)
-
-
-def pump_nudge_output(
-    rec: RunRecord,
-    adapter: ProviderAdapter,
-    proc: subprocess.Popen[str],
-    transcript: Path,
-    store: RunStore,
-    watchdog: StaffWatchdog | None = None,
-) -> PumpResult:
-    """Stream stdout lines from retry nudge into transcript and event store (#1709).
-
-    Accepts the result line ONLY on an exact prefix match (``text.startswith('STAFF_RESULT:')``).
-    """
-    usage: dict[str, Any] = {}
-    result_line = ""
-    assert proc.stdout is not None  # noqa: S101
-    with transcript.open("a", encoding="utf-8") as tf:
-        tf.write("\n--- [nudge retry for STAFF_RESULT] ---\n")
-        for line in proc.stdout:
-            if watchdog is not None:
-                watchdog.record_output()
-            tf.write(redact_sensitive_content(line))
-            event = adapter.parse_line(line)
-            if event.get("usage"):
-                usage.update(event["usage"])
-            text = (event.get("text") or "").strip()
-            if text:
-                store.append_event(rec.id, "nudge_reply", text)
-                if text.startswith("STAFF_RESULT:"):
-                    result_line = text
-    return PumpResult(usage, result_line)
-
-
-def execute_retry_nudge(
-    *,
-    rec: RunRecord,
-    adapter: ProviderAdapter,
-    plan: Any,
-    role: RoleSpec | None,
-    workdir: Path,
-    env: dict[str, str],
-    session_id: str | None,
-    transcript: Path,
-    store: RunStore,
-    wall_clock_timeout: float,
-    idle_timeout: float,
-    lock: Any,
-    procs: dict[str, subprocess.Popen[str]],
-    cancel_flags: set[str],
-) -> tuple[str, dict[str, Any], int]:
-    if not session_id:
-        return "", {}, 0
-
-    store.append_event(rec.id, "nudge", "session exited 0 without STAFF_RESULT; nudging for result line (#1709)")
-    try:
-        launch_paths = resolve_launch_paths(adapter, workdir)
-        ro_kwargs: ReadOnlyKwargs = read_only_kwargs(role) if role is not None else {}
-        if adapter.provider_id == "antigravity":
-            antigravity_permissions(
-                read_only=bool(ro_kwargs.get("read_only")),
-                workdir=workdir,
-                gitdir=Path(launch_paths.get("gitdir", str(workdir))),
-            )
-        nudge_argv = adapter.build_command(
-            RESULT_NUDGE_PROMPT,
-            str(workdir),
-            model=plan.model,
-            session_id=session_id,
-            **ro_kwargs,
-            **launch_paths,
-        )
-    except Exception as exc:  # noqa: BLE001
-        store.append_event(rec.id, "nudge", f"could not build nudge command: {exc}")
-        return "", {}, 0
-
-    exe = shutil.which(adapter.executable) or adapter.executable
-    try:
-        nudge_proc = subprocess.Popen(
-            [exe, *nudge_argv[1:]],
-            cwd=str(workdir),
-            env=env,
-            stdin=subprocess.PIPE if adapter.prompt_via_stdin else subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-        )
-    except Exception as exc:  # noqa: BLE001
-        store.append_event(rec.id, "nudge", f"could not launch nudge process: {exc}")
-        return "", {}, 0
-
-    with lock:
-        procs[rec.id] = nudge_proc
-        cancelled = rec.id in cancel_flags
-    if cancelled:
-        from staff.watchdog import terminate_process_group
-
-        terminate_process_group(nudge_proc.pid, grace_period=1.0)
-        return "", {}, -1
-
-    if adapter.prompt_via_stdin and nudge_proc.stdin is not None:
-        nudge_proc.stdin.write(RESULT_NUDGE_PROMPT + "\n")
-        nudge_proc.stdin.close()
-
-    watchdog = StaffWatchdog(
-        run_id=rec.id,
-        proc=nudge_proc,
-        store=store,
-        max_seconds=min(wall_clock_timeout, 300),
-        idle_seconds=min(idle_timeout, 120),
-    )
-    watchdog.start()
-    try:
-        nudge_pump = pump_nudge_output(rec, adapter, nudge_proc, transcript, store, watchdog)
-        try:
-            rc = nudge_proc.wait(timeout=5.0)
-        except subprocess.TimeoutExpired:
-            rc = -1
-    finally:
-        watchdog.stop()
-        with lock:
-            procs.pop(rec.id, None)
-
-    return nudge_pump.result_line, nudge_pump.usage, rc
-
-
-def extract_transcript_question(transcript: Path) -> str | None:
-    """Extract trailing question text from transcript if agent ended on a question."""
-    from staff.classifier import _extract_last_line_text  # noqa: PLC0415
-
-    try:
-        last = _extract_last_line_text(transcript.read_text(encoding="utf-8", errors="replace"))
-        return last if last.endswith("?") else None
-    except Exception:  # noqa: BLE001
-        return None
-
-
 def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: int, run_id: str | None) -> RunRecord:
     """The ``queued`` row for an admitted run; ``run_id`` defaults to a fresh id."""
     return RunRecord(
@@ -440,6 +361,7 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         target_ref=plan.target_ref,
         prompt=plan.prompt,
         requested_by=req.requested_by,
+        dispatch_origin=req.dispatch_origin,
         on_behalf_of=req.on_behalf_of,
         branch=plan.branch,
         strategy_mode=plan.strategy_mode,
@@ -457,4 +379,38 @@ def new_run_record(plan: RunPlan, req: RunRequest, machine: str, max_attempts: i
         skipped_lesson_ids=json.dumps(dict(getattr(plan, "skipped_lesson_ids", {}) or {})),
         lessons_tokens=int(getattr(plan, "lessons_tokens", 0) or 0),
         execution_mode=getattr(req, "execution_mode", "local") or "local",
+    )
+
+
+def apply_code_reviewer_post_classification(
+    store: RunStore,
+    rec: RunRecord,
+    plan: RunPlan,
+    rc: int,
+    status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    result_line: str,
+    transcript: Path,
+) -> tuple[str, str, bool, str, str]:
+    from staff import review
+    from staff.verification import _target_pr_number
+
+    return review.maybe_finalize_code_reviewer_run(
+        role=rec.role,
+        rc=rc,
+        store=store,
+        run_id=rec.id,
+        status=status,
+        failure_class=failure_class,
+        retryable=retryable,
+        error=error,
+        remediation=remediation,
+        result_line=result_line,
+        same_provider=review.is_same_provider_review(rec.prompt),
+        repo=plan.repo or rec.repo,
+        reviewer_model=str(plan.model or plan.provider or ""),
+        expected_pr_number=_target_pr_number(rec),
     )

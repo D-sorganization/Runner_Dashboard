@@ -55,14 +55,17 @@ jobs:
     if: >-
       github.event_name == 'issues' &&
       github.event.label.name == 'panel-review'
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
-            const script = require('./.github/scripts/panel-review.js');
+            const script = require('./.github/scripts/panel-review.cjs');
             const { data: issue } = await github.rest.issues.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -75,7 +78,10 @@ jobs:
 
   sweep:
     if: github.event_name != 'issues'
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -85,7 +91,7 @@ jobs:
           MODE: ${{ inputs.mode || 'both' }}
         with:
           script: |
-            const script = require('./.github/scripts/panel-review.js');
+            const script = require('./.github/scripts/panel-review.cjs');
             await script.sweep({
               github, context, core,
               specificIssueNumber: process.env.ISSUE_NUMBER

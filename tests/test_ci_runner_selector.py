@@ -56,17 +56,21 @@ def test_pick_runner_bash_fragment_validates_fast_checks_mode() -> None:
 
 
 def test_workflows_use_canonical_required_check_expression() -> None:
-    workflows = {
-        REPO_ROOT / ".github/workflows/anti-phantom-merge.yml": "guard",
-        REPO_ROOT / ".github/workflows/ci-secrets.yml": "detect-secrets",
-        REPO_ROOT / ".github/workflows/frontend-tests.yml": "typecheck",
-    }
-    canonical = selector.required_check_runs_on_expression().strip()
-    for path, job_id in workflows.items():
-        import yaml
+    import yaml
 
+    seen: set[tuple[str, str]] = set()
+    cases = [
+        (REPO_ROOT / ".github/workflows/anti-phantom-merge.yml", "guard", selector.required_check_runs_on_expression()),
+        (REPO_ROOT / ".github/workflows/ci-secrets.yml", "detect-secrets", selector.required_check_runs_on_expression()),
+        (REPO_ROOT / ".github/workflows/frontend-tests.yml", "typecheck", selector.frontend_required_check_runs_on_expression()),
+        (REPO_ROOT / ".github/workflows/frontend-tests.yml", "frontend-required", selector.frontend_required_check_runs_on_expression()),
+    ]
+    for path, job_id, canonical in cases:
+        key = (str(path), job_id)
+        assert key not in seen, key
+        seen.add(key)
         job = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"][job_id]
-        assert str(job["runs-on"]).strip() == canonical
+        assert str(job["runs-on"]).strip() == canonical.strip()
 
 
 def test_runs_on_uses_fast_checks_lane_detects_markers() -> None:

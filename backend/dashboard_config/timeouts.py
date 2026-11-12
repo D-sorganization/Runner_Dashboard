@@ -21,7 +21,6 @@ class HttpTimeout:
 
     # Maxwell daemon proxy calls run on localhost; 3 s is generous for any
     # healthy daemon and lets us fail fast when it is unresponsive.
-    MAXWELL_PROXY_S: float = 3.0
 
     # Hub VERSION fetch + local systemctl invocations: 5 s is enough for the
     # Tailscale-wrapped HTTP round trip or a systemd unit-file lookup.
@@ -30,7 +29,7 @@ class HttpTimeout:
 
     # Cross-node system probes go through the Tailscale mesh and may queue
     # behind a busy CPU while the remote dashboard enumerates runner processes.
-    # DeskComputer has been observed taking 20-25 s under full CI load, so use
+    # hub-a has been observed taking 20-25 s under full CI load, so use
     # a larger budget here and keep the gather fan-out independent per node.
     PROXY_NODE_SYSTEM_S: float = 30.0
 
@@ -58,7 +57,7 @@ class HttpTimeout:
     # signing the request takes 5-8 s consistently even when curl-direct
     # is sub-second. A 1 s budget killed every health check, surfacing as
     # `github_api=unreachable` on hosts where the network was fine
-    # (observed on d-sorg-local-ControlTower 2026-05-18 evening; the
+    # (observed on d-sorg-local-node-a 2026-05-18 evening; the
     # entire Overview tab rendered 0 % success rate because /api/stats
     # depends on the same path and times out the same way). 10 s leaves
     # enough headroom for tail-latency without holding the worker thread
@@ -74,6 +73,9 @@ class HttpTimeout:
     # Workflow / runner dispatch via ``gh`` may negotiate webhooks under load;
     # 30 s matches GitHub's documented dispatch worst case.
     GH_DISPATCH_S: int = 30
+
+    # Agent-bus inbox webhook fan-out (#3682 slice 4): one POST attempt, fail fast.
+    AGENT_BUS_INBOX_WEBHOOK_S: float = 3.0
 
 
 class Concurrency:

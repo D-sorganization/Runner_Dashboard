@@ -246,14 +246,14 @@ def test_explicit_unknown_disallowed_or_chat_only_provider_stays_fail_closed(
 def test_pick_machine_for_chain_prefers_node_with_healthy_provider() -> None:
     board = {
         "machines": {
-            "Brick": {
+            "node-c": {
                 "status": "online",
                 "providers": {"codex": True, "claude": True},
                 "providers_cooldown": [{"provider": "codex"}],
                 "running": [],
                 "queued": [],
             },
-            "OGLaptop": {
+            "node-b": {
                 "status": "online",
                 "providers": {"codex": True, "claude": True},
                 "providers_cooldown": [],
@@ -263,4 +263,4 @@ def test_pick_machine_for_chain_prefers_node_with_healthy_provider() -> None:
         }
     }
     chain = (FailoverStep("codex"), FailoverStep("claude"))
-    assert pick_machine_for_chain(board, chain, "DeskComputer") == "OGLaptop"
+    assert pick_machine_for_chain(board, chain, "hub-a") == "node-b"

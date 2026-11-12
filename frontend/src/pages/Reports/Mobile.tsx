@@ -170,6 +170,8 @@ function ReportDetailSheet({ report, onClose }: ReportDetailSheetProps) {
             className="touch-button touch-button-primary"
             href={viewUrl}
             rel="noreferrer"
+            aria-label={isChart ? "View chart in a new tab" : "View report in a new tab"}
+            title={isChart ? "View chart in a new tab" : "View report in a new tab"}
             style={{
               borderRadius: "8px",
               display: "block",

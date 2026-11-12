@@ -1,8 +1,7 @@
 """Event-driven CI-fix dispatch engine (RD-1 / Issue #1846).
 
 Dispatches fresh, small, capped sessions on failing CI for open PRs with auto-merge armed:
-- Truncates log tail to <= 200 lines.
-- Extracts failing test names.
+- Truncates log tail to <= 200 lines and extracts failing test names.
 - Enforces strict concurrency lock (1 CI-fix session per PR at a time); a lock ends when
   its staff run ends or after ``CI_FIX_LOCK_TTL_SECONDS`` (#1881).
 - Recovers the PR of a merge-queue run from its ``gh-readonly-queue/*`` head ref (#1879).
@@ -104,10 +103,38 @@ def extract_failing_test_names(log_text: str) -> list[str]:
     return names
 
 
+# #2766 item 4: a runner-environment failure is not a code defect; a "fix the code" session
+# can never pass CI for one of these, so it is classified separately and routed to Night Watch.
+INFRA_LOG_PATTERNS: tuple[str, ...] = (
+    "error while loading shared libraries",
+    "importerror: libpython",
+    "cannot open shared object file",
+    "no such file or directory: 'buildx'",
+    "docker: 'buildx' is not a docker command",
+    "failed to solve",  # buildx/docker build-step setup failure
+    "buildx failed with",
+    "http 401",
+    "http 403",
+    "401 unauthorized",
+    "403 forbidden",
+    "no space left on device",
+    "runner has no free disk space",
+    "disk quota exceeded",
+)
+INFRA_WORKFLOW_HINTS: tuple[str, ...] = ("buildx", "docker-build-scan", "docker-build")
+
+
 def classify_failure_type(workflow_name: str, log_excerpt: str) -> str:
-    """Classify the failure category from workflow name and log cues."""
+    """Classify the failure category from workflow name and log cues.
+
+    ``infra`` (runner/environment, #2766) is checked first: a shared-library load error or an
+    HTTP 401/403 from the API is never fixed by editing the PR's code, regardless of which
+    workflow carries it.
+    """
     wf_lower = workflow_name.lower()
     log_lower = log_excerpt.lower()
+    if any(pat in log_lower for pat in INFRA_LOG_PATTERNS) or any(hint in wf_lower for hint in INFRA_WORKFLOW_HINTS):
+        return "infra"
     if any(k in wf_lower for k in ("lint", "format", "style", "ruff", "black")):
         return "lint"
     if "conflict" in log_lower or "merge conflict" in log_lower:
@@ -125,6 +152,8 @@ STRONG_MODEL = "claude-opus-5-5"
 CLI_CLAUDE_MODEL = "claude-sonnet-5-5"
 CHEAP_CODEX_MODEL = "gpt-6-luna"
 AGY_MODEL = "gemini-3.8-flash-high"
+NIGHT_WATCH_ROLE = "night-watch"
+CURSOR_AUTHOR_BRANCH_PREFIX = "cursor/"
 
 
 def _agy_runs_unattended() -> bool:
@@ -139,8 +168,42 @@ def route_ci_fix(
     failure_type: str,
     attempt_number: int = 1,
     max_attempts: int = 3,
+    *,
+    branch: str = "",
 ) -> CIFixRoute:
-    """Route failure to appropriate provider tier based on type and attempts."""
+    """Route failure to appropriate provider tier based on type, attempts and author lane.
+
+    #2766 item 3: a ``cursor/*`` branch is a Cursor-authored PR; it is handed back to a
+    Cursor cloud follow-up on the same branch (subscription, zero local load) rather than a
+    local CLI session, regardless of failure type or attempt count.
+    #2766 item 4: an ``infra`` failure (runner/environment, never the PR's code) is routed to
+    Night Watch instead of a code-fix session, also regardless of attempt count.
+    """
+    if branch.startswith(CURSOR_AUTHOR_BRANCH_PREFIX):
+        return CIFixRoute(
+            provider="cursor_cloud",
+            tier="cloud",
+            model="cursor-cloud-followup",
+            cost_budget=0.0,
+            escalated=False,
+            reason=(
+                "Cursor-authored PR (cursor/* branch): routed to a Cursor cloud follow-up on the "
+                "same branch instead of a local CLI session"
+            ),
+            effort=resolve_effort(f"ci_fix:{failure_type}"),
+        )
+
+    if failure_type == "infra":
+        return CIFixRoute(
+            provider="night_watch",
+            tier="infra",
+            model="",
+            cost_budget=0.0,
+            escalated=False,
+            reason="Runner-environment failure, not a code defect: routed to Night Watch instead of a code fix",
+            effort=resolve_effort("ci_fix:infra"),
+        )
+
     if attempt_number >= max_attempts:
         return CIFixRoute(
             provider="claude_code_cli",
@@ -260,8 +323,32 @@ def evaluate_ci_fix_trigger(
     workflow_name = str(event_payload.get("workflow_name", ""))
     repo = str(event_payload.get("repository", ""))
     run_id = event_payload.get("run_id")
+    head_sha = str(event_payload.get("head_sha") or "")
 
-    if conclusion not in ("failure", "timed_out", "cancelled"):
+    if conclusion == "cancelled":
+        # #2766 item 1 / DbC pre: a cancelled run is only judged eligible once we know
+        # which head SHA it ran on, so we can tell a real cancel apart from a concurrency-group
+        # supersession cancel (164 closer cancels, Merge Hold Guard bursts).
+        if not repo or not run_id or not head_sha:
+            return CIFixTriggerDecision(
+                eligible=False,
+                reason="Cancelled run is missing repo, run id or head SHA; cannot rule out supersession",
+                workflow_name=workflow_name,
+                run_id=run_id,
+            )
+        if bool(event_payload.get("superseded_by_newer_run")):
+            return CIFixTriggerDecision(
+                eligible=False,
+                reason=(
+                    "Cancelled run was superseded by a newer run of the same workflow for this head SHA; "
+                    "not a real failure"
+                ),
+                workflow_name=workflow_name,
+                run_id=run_id,
+            )
+        # The latest run for this head SHA was cancelled outright (not concurrency-superseded):
+        # treat it like any other failure below.
+    elif conclusion not in ("failure", "timed_out"):
         return CIFixTriggerDecision(
             eligible=False,
             reason=f"Run conclusion '{conclusion}' is not failed",

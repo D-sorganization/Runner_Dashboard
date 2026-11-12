@@ -45,7 +45,7 @@ def test_run_record_and_request_carry_thread_and_work_item(run_store: RunStore) 
         role="librarian",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="prompt",
         target_ref="",
@@ -73,7 +73,7 @@ def test_post_run_card_creates_message_and_broadcasts(conv_store: Any) -> None:
         role="librarian",
         provider="claude",
         model="claude-3-5-sonnet",
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="prompt",
         target_ref="",
@@ -94,7 +94,7 @@ def test_post_run_card_creates_message_and_broadcasts(conv_store: Any) -> None:
     assert msg.run_id == "run-card-001"
     assert msg.meta["status"] == "running"
     assert msg.meta["role"] == "librarian"
-    assert msg.meta["machine"] == "DeskComputer"
+    assert msg.meta["machine"] == "hub-a"
 
     # Verify message persisted in conversation thread
     messages = conv_store.list_messages("thread-t1")
@@ -111,7 +111,7 @@ def test_handle_run_status_change_posts_terminal_summary(conv_store: Any) -> Non
         role="cartographer",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="issue",
         target_ref="#123",
@@ -141,7 +141,7 @@ def test_needs_input_creates_question_card_and_continuation_run(
         role="ad-hoc",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="prompt",
         target_ref="",
@@ -192,7 +192,7 @@ def test_answer_thread_run_endpoint(
         role="ad-hoc",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="prompt",
         target_ref="",
@@ -224,7 +224,7 @@ def _thread_run(conv_store: Any, run_id: str = "run-live-001", status: str = "qu
         role="e2e-analyst",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="",
         target_kind="prompt",
         target_ref="",
@@ -281,7 +281,7 @@ def test_run_card_meta_carries_the_console_run_shape(conv_store: Any, status: st
     run = msg.meta["run"]
     assert run["id"] == rec.id
     assert run["status"] == card_status
-    assert run["node"] == "DeskComputer"
+    assert run["node"] == "hub-a"
     assert run["provider"] == "claude"
     assert run["role"] == "e2e-analyst"
     assert run["thread_id"] == rec.thread_id
@@ -318,7 +318,7 @@ def test_answering_marks_the_question_card_answered(conv_store: Any, run_store: 
                 role=req.role,
                 provider=req.provider or "claude",
                 model=None,
-                machine="DeskComputer",
+                machine="hub-a",
                 repo="",
                 target_kind="prompt",
                 target_ref="",

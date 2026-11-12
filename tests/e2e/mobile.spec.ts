@@ -28,14 +28,15 @@ test.describe("Mobile shell bottom navigation", () => {
   test("renders bottom tab bar at mobile viewport", async ({ page }) => {
     await page.goto("/");
     // MobileShell bottom nav should be visible at mobile widths
-    const nav = page.locator('[role="tablist"]');
+    // Scoped by name: the Staff home has its own "Staff views" tablist (#3772).
+    const nav = page.getByRole("tablist", { name: "Main navigation" });
     await expect(nav).toBeVisible();
   });
 
-  test("Fleet tab is default active tab", async ({ page }) => {
+  test("Staff tab is default active tab", async ({ page }) => {
     await page.goto("/");
-    const fleetTab = page.locator('[role="tab"][aria-selected="true"]');
-    await expect(fleetTab).toContainText(/fleet/i);
+    const activeTab = page.locator('[role="tab"][aria-selected="true"]');
+    await expect(activeTab).toContainText(/staff/i);
   });
 
   test("bottom nav tabs are at least 44px tall (touch target)", async ({
@@ -54,18 +55,75 @@ test.describe("Mobile shell bottom navigation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mobile header chrome (#3749)
+// ---------------------------------------------------------------------------
+
+test.describe("Mobile header chrome (#3749)", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
+  test("Ask Barb header button is a compact icon with its label only in aria-label", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const askBarb = page.getByTestId("mobile-ask-barb");
+    await expect(askBarb).toHaveAccessibleName("Ask Barb");
+    expect((await askBarb.innerText()).trim()).toBe("");
+    const box = await askBarb.boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  });
+
+  test("header no longer floats above the open More drawer", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    const askBarb = page.getByTestId("mobile-ask-barb");
+    const box = await askBarb.boundingBox();
+    if (!box) throw new Error("Ask Barb button has no layout box");
+
+    await page.getByRole("tab", { name: /more/i }).click();
+    await expect(page.getByRole("dialog", { name: /more options/i })).toBeVisible();
+
+    const topElementTestId = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid") ?? null,
+      { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    );
+    // The drawer's full-screen overlay must intercept this point, not the
+    // header button — otherwise Ask Barb stays clickable through the modal.
+    expect(topElementTestId).not.toBe("mobile-ask-barb");
+  });
+
+  test("page content starts within 64px of the top on every primary route", async ({
+    page,
+  }) => {
+    for (const route of ["/", "/work", "/fleet", "/settings"]) {
+      await page.goto(route);
+      const content = page.locator(".mobile-shell__content");
+      await expect(content).toBeVisible();
+      const top = await content.evaluate(
+        (el) => el.firstElementChild?.getBoundingClientRect().top ?? null,
+      );
+      expect(top, `first content top offset on ${route}`).not.toBeNull();
+      expect(top as number, `first content top offset on ${route}`).toBeLessThanOrEqual(64);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Mobile 3-tap dispatch flow
 // ---------------------------------------------------------------------------
 
 test.describe("Mobile 3-tap dispatch flow", () => {
   test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
 
-  test("Remediation tab is reachable via bottom nav", async ({ page }) => {
+  test("Remediation is reachable via the More drawer", async ({ page }) => {
     await page.goto("/");
-    const remediationTab = page.locator('[role="tab"]', {
-      hasText: /remediation/i,
-    });
-    await remediationTab.click();
+    // Remediation no longer has its own bottom-nav slot (Staff/Work/Fleet/More
+    // only); it lives in the "More" drawer alongside the other secondary tabs.
+    await page.getByRole("tab", { name: /more/i }).click();
+    const drawer = page.getByRole("dialog", { name: /more options/i });
+    await expect(drawer).toBeVisible();
+    await drawer.getByRole("button", { name: /remediation/i }).click();
     // Should show remediation content without crashing
     await expect(page.locator("body")).not.toBeEmpty();
   });
@@ -91,6 +149,33 @@ test.describe("Mobile accessibility", () => {
       expect(label || text?.trim()).toBeTruthy();
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Mobile horizontal overflow (#3747) — no page scrolls sideways at phone
+// width. The scroller is `main.mobile-shell__content`, not `document`.
+// ---------------------------------------------------------------------------
+
+test.describe("Mobile horizontal overflow", () => {
+  test.skip(({ isMobile }) => !isMobile, "Mobile viewport only");
+
+  for (const path of ["/fleet/security", "/settings"]) {
+    test(`${path} has no horizontal overflow in main`, async ({ page }) => {
+      await page.goto(path);
+      const main = page.locator("main.mobile-shell__content");
+      await expect(main).toBeVisible();
+      // Sections load async (security contracts/posture/coverage/findings,
+      // settings' local-apps/vault); wait for data requests to settle before
+      // measuring, or the table/form that causes the overflow may not have
+      // rendered yet.
+      await page.waitForLoadState("networkidle", { timeout: 30_000 });
+      const { scrollWidth, clientWidth } = await main.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }));
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -257,12 +342,40 @@ async function mockStaffApi(page: import("@playwright/test").Page): Promise<void
 }
 
 /** The hit-tested center belongs to the control instead of an overlapping layer. */
-async function ownsItsCentre(locator: Locator): Promise<boolean> {
+async function centerForHitTest(locator: Locator): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate((el) => {
+    const tab = el as HTMLElement;
+    const strip = tab.closest(".staff-mobile__tabs");
+    if (strip instanceof HTMLElement) {
+      const target = tab.offsetLeft + tab.offsetWidth / 2 - strip.clientWidth / 2;
+      strip.scrollLeft = Math.max(0, Math.min(target, strip.scrollWidth - strip.clientWidth));
+    }
+    tab.scrollIntoView({ block: "nearest", inline: "center" });
+  });
+}
+
+async function hitTestOwnsCentre(locator: Locator): Promise<boolean> {
   return locator.evaluate((el) => {
     const box = el.getBoundingClientRect();
+    if (box.width < 1 || box.height < 1) {
+      return false;
+    }
     const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return el.contains(top);
+    return top !== null && (el === top || el.contains(top));
   });
+}
+
+async function ownsItsCentre(locator: Locator): Promise<boolean> {
+  await centerForHitTest(locator);
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    if (await hitTestOwnsCentre(locator)) {
+      return true;
+    }
+    await locator.page().waitForTimeout(50);
+  }
+  return hitTestOwnsCentre(locator);
 }
 
 test.describe("Mobile Staff Console (SC-D8)", () => {
@@ -278,12 +391,16 @@ test.describe("Mobile Staff Console (SC-D8)", () => {
 
     // 2. Open mobile dashboard and navigate to Staff Console
     await page.goto("/");
-    const staffTab = page.locator('[role="tab"]', { hasText: /staff/i });
+    // Exact match: the home view's own "Choose staff" tab also contains
+    // "staff" and would otherwise make this locator ambiguous.
+    const staffTab = page.getByRole("tab", { name: "Staff", exact: true });
     if (await staffTab.isVisible()) {
       await staffTab.click();
     }
 
-    // Verify roster view with Ask Barb
+    // Staff now opens the chat-first home (#2708/#3511); open the roster via
+    // its "Choose staff" tab to reach Ask Barb.
+    await page.getByTestId("staff-mobile-tab-roster").click();
     const askBarb = page.locator('[data-testid="staff-mobile-ask-barb"]');
     await expect(askBarb).toBeVisible();
 
@@ -317,6 +434,10 @@ test.describe("Mobile Staff Console (SC-D8)", () => {
   }) => {
     await mockStaffApi(page);
     await page.goto("/staff");
+
+    // /staff opens the chat-first home (#2708/#3511); the roster (and its
+    // Ask Barb entry) lives behind the "Choose staff" tab.
+    await page.getByTestId("staff-mobile-tab-roster").click();
 
     const askBarb = page.getByTestId("staff-mobile-ask-barb");
     await expect(askBarb).toBeVisible();
@@ -440,8 +561,13 @@ test.describe("Staff Console bottom-nav regression (#1805)", () => {
       expect(staffBounds!.y + staffBounds!.height, "Staff Console fits above shell navigation")
         .toBeLessThanOrEqual(reservedNav!.y);
 
-      for (const view of ["roster", "inbox", "runs"]) {
+      for (const view of ["roster", "personas", "inbox", "runs"]) {
         const tab = page.getByTestId(`staff-mobile-tab-${view}`);
+        await tab.scrollIntoViewIfNeeded();
+        const box = await tab.boundingBox();
+        expect(box, `${view} tab has layout geometry at ${width}px`).not.toBeNull();
+        expect(box!.width, `${view} hit target width at ${width}px`).toBeGreaterThanOrEqual(44);
+        expect(box!.height, `${view} hit target height at ${width}px`).toBeGreaterThanOrEqual(44);
         expect(await ownsItsCentre(tab), `${view} hit target at ${width}px`).toBe(true);
         await tab.click();
         await expect(tab).toHaveAttribute("aria-selected", "true");

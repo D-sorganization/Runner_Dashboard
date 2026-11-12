@@ -11,11 +11,40 @@ suite.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
 import pytest
 from staff import knowledge_refresh, workspace
+
+
+@pytest.mark.unit
+def test_configured_fake_checkout_roots_remain_available(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("STAFF_REPOS_ROOT", str(tmp_path))
+    assert workspace.repos_roots() == [tmp_path]
+    assert knowledge_refresh.repos_roots() == [tmp_path]
+
+
+@pytest.mark.unit
+def test_workspace_is_safe_between_tests(monkeypatch, tmp_path: Path) -> None:
+    """A worker running after function fixture teardown still sees safe defaults."""
+    monkeypatch.undo()
+    with pytest.MonkeyPatch.context() as probe:
+        probe.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+        probe.setattr(workspace, "_default_repos_roots", lambda _home: [tmp_path])
+        assert workspace.repos_roots() == []
+        assert knowledge_refresh.repos_roots() == []
+        assert os.environ.get("STAFF_WORKTREES_ROOT")
+        assert os.environ.get("STAFF_RM_ROOT")
+        assert workspace.staff_worktrees_root() != tmp_path / "_staff_worktrees"
+
+        def no_subprocess(*_args, **_kwargs):
+            pytest.fail("between-test clone attempted a real subprocess")
+
+        probe.setattr(workspace.subprocess, "run", no_subprocess)
+        with pytest.raises(AssertionError, match="clone_repo.*disabled"):
+            workspace.clone_repo("synthetic-repo")
 
 
 @pytest.mark.unit

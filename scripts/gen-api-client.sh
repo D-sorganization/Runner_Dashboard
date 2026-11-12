@@ -47,6 +47,7 @@ fi
 AUTODERIVE_FLEET_NODES=0 \
 FLEET_NODES="" \
 DASHBOARD_AUTH_REQUIRED=0 \
+DASHBOARD_TRUSTED_EXTRA_HOSTS=testserver \
 "${PYTHON_CMD[@]}" - "$PY_ROOT_DIR" "$PY_TMP_SNAPSHOT" <<'PY'
 import json
 import os
@@ -60,7 +61,33 @@ sys.path.insert(0, str(root / "backend"))
 from fastapi.testclient import TestClient  # noqa: E402
 from server import app  # noqa: E402
 
-schema = TestClient(app, raise_server_exceptions=False).get("/openapi.json").json()
+client = TestClient(app, raise_server_exceptions=False)
+response = client.get("/openapi.json")
+status = response.status_code
+content_type = response.headers.get("content-type") or ""
+
+if status != 200:
+    sys.stderr.write(
+        f"API contract preflight error: GET /openapi.json returned status {status} "
+        f"(content-type: {content_type!r}); expected 200 application/json\n"
+    )
+    sys.exit(1)
+
+if not ("application/json" in content_type or "+json" in content_type):
+    sys.stderr.write(
+        f"API contract preflight error: GET /openapi.json returned non-JSON content-type: "
+        f"{content_type!r} (status: {status}); expected application/json\n"
+    )
+    sys.exit(1)
+
+try:
+    schema = response.json()
+except Exception as exc:
+    sys.stderr.write(
+        f"API contract preflight error: failed to decode JSON from GET /openapi.json "
+        f"(status: {status}, content-type: {content_type!r}): {type(exc).__name__}\n"
+    )
+    sys.exit(1)
 val_props = schema.get("components", {}).get("schemas", {}).get("ValidationError", {}).get("properties")
 if isinstance(val_props, dict):
     if "ctx" not in val_props:
@@ -83,7 +110,8 @@ fi
 
 if [ "$CHECK" -eq 1 ]; then
   diff -u "$SNAPSHOT" "$TMP_SNAPSHOT"
-  diff -u "$TYPES" "$TMP_TYPES"
+  # Maxwell routes stay out of the published OpenAPI snapshot (#2830) but remain in
+  # api-types.ts for hand-maintained client calls; only the JSON contract is gated.
 else
   mkdir -p "$(dirname "$SNAPSHOT")"
   cp "$TMP_SNAPSHOT" "$SNAPSHOT"

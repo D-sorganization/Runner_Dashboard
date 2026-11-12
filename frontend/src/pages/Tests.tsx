@@ -161,6 +161,8 @@ function CiSection({ ciResults }: { ciResults: CiResult[] }): React.ReactElement
                           target="_blank"
                           rel="noopener"
                           className="tests-tab__link"
+                          title={`Open CI run for ${r.repo}`}
+                          aria-label={`Open CI run for ${r.repo}`}
                         >
                           {r.repo}
                         </a>
@@ -183,6 +185,20 @@ function CiSection({ ciResults }: { ciResults: CiResult[] }): React.ReactElement
                           disabled={rerunSt === "running"}
                           onClick={() => rerunFailed(r.repo, r.run_id)}
                           variant="primary"
+                          aria-label={
+                            rerunSt === "running"
+                              ? "Re-run in progress"
+                              : rerunSt === "triggered"
+                                ? "Re-run triggered"
+                                : "Re-run failed CI jobs"
+                          }
+                          title={
+                            rerunSt === "running"
+                              ? "Re-run in progress"
+                              : rerunSt === "triggered"
+                                ? "Re-run triggered"
+                                : "Re-run failed CI jobs"
+                          }
                         >
                           {rerunSt === "running" ? (
                             <span className="spinner" />

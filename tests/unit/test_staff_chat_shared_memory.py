@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 from identity import Principal
-from staff import chat as chat_module
 from staff import chat_shared_memory
+from staff import chat_turn_runner as chat_module
 from staff.chat import ChatConcurrencyPool, ChatTurnResult, ChatTurnRunner
 from staff.conversations import ConversationStore
 from staff.roles import RoleSpec

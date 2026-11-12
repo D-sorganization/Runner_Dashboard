@@ -146,10 +146,19 @@ def test_port_from_env(monkeypatch) -> None:
 
 def test_host_default(monkeypatch) -> None:
     env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_HOST"}
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
     monkeypatch.setattr(os, "environ", env)
     importlib.reload(dashboard_config)
     # Default preserves historical behaviour (binds all interfaces).
     assert dashboard_config.HOST == "0.0.0.0"
+
+
+def test_host_defaults_loopback_when_loopback_auth(monkeypatch) -> None:
+    env = {k: v for k, v in os.environ.items() if k not in ("DASHBOARD_HOST", "DASHBOARD_LOOPBACK_AUTH")}
+    env["DASHBOARD_LOOPBACK_AUTH"] = "1"
+    monkeypatch.setattr(os, "environ", env)
+    importlib.reload(dashboard_config)
+    assert dashboard_config.HOST == "127.0.0.1"
 
 
 def test_host_from_env(monkeypatch) -> None:
@@ -174,10 +183,10 @@ def test_host_empty_falls_back_to_default(monkeypatch) -> None:
     # the documented default rather than propagate the empty string.
     env = os.environ.copy()
     env["DASHBOARD_HOST"] = "   "
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
     monkeypatch.setattr(os, "environ", env)
     importlib.reload(dashboard_config)
     assert dashboard_config.HOST == "0.0.0.0"
-
 
 def test_host_in_all_exports() -> None:
     importlib.reload(dashboard_config)

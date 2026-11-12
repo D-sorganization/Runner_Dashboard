@@ -197,6 +197,8 @@ export function ClaimsPanel() {
         <TouchButton
           variant="primary"
           disabled={!ready || !session.trim() || busy !== null}
+          aria-label={busy === "claim" ? "Claiming maintenance session" : "Claim maintenance session"}
+          title={busy === "claim" ? "Claiming maintenance session" : "Claim maintenance session"}
           onClick={() => write("claim")}
         >
           {busy === "claim" ? "Claiming..." : "Claim"}
@@ -204,6 +206,12 @@ export function ClaimsPanel() {
         <TouchButton
           variant="danger"
           disabled={!ready || !session.trim() || busy !== null}
+          aria-label={
+            busy === "release" ? "Releasing maintenance session" : "Release maintenance session"
+          }
+          title={
+            busy === "release" ? "Releasing maintenance session" : "Release maintenance session"
+          }
           onClick={() => write("release")}
         >
           {busy === "release" ? "Releasing..." : "Release"}

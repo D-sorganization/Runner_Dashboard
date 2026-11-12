@@ -40,9 +40,9 @@ async def test_local_peer_pool_probes_system_not_fleet_status(monkeypatch: pytes
 
     local = frozenset({"http://127.0.0.1:8321"})
     result = await fleet._fetch_peer_pool(
-        {"name": "ControlTower-SSD", "url": "http://127.0.0.1:8321"},
+        {"name": "node-a-SSD", "url": "http://127.0.0.1:8321"},
         local_dashboard_urls=local,
     )
 
     assert seen == ["http://127.0.0.1:8321/api/system"]
-    assert result == {"ControlTower-SSD": {"hostname": "local-pool"}}
+    assert result == {"node-a-SSD": {"hostname": "local-pool"}}

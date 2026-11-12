@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import pytest
 
+from retired_route_sunset import RETIRED_ROUTE_HTTP_SUNSET
 from staff.adapters import ADAPTERS, get_adapter
 from staff.router import route_deterministic
 from staff.router_models import ROLE_KEYWORD_RULES
@@ -25,7 +26,7 @@ def test_assistant_chat_returns_410_gone(make_authed_client, operator_principal)
     assert link_header is not None
     assert "</api/v1/staff/threads>" in link_header
     assert 'rel="successor-version"' in link_header
-    assert "Sunset" in resp.headers
+    assert resp.headers.get("Sunset") == RETIRED_ROUTE_HTTP_SUNSET
 
     body = resp.json()
     assert "retired" in body.get("error", "").lower() or "retired" in body.get("detail", "").lower()

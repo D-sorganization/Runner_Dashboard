@@ -181,7 +181,7 @@ interface ListQueueParams {
 
 interface CancelRunParams {
   repo: string;
-  run_id: number;
+  run_id: number | string;
   signal?: AbortSignal;
 }
 

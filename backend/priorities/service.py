@@ -14,9 +14,8 @@ from typing import Any
 
 from priorities.directives import get_directives
 from priorities.sources import SourceUnavailable, latest_consensus, list_meetings, load_portfolios, read_meeting
-from staff.workspace import rm_root
+from staff.workspace import NO_RM_REASON, rm_root
 
-NO_RM_REASON = "Repository_Management checkout not found (set STAFF_RM_ROOT)"
 NO_MEETING_REASON = "no board meeting with a consensus.md has been held yet"
 
 

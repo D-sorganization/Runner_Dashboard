@@ -31,6 +31,9 @@ DEFAULT_PROVIDER_ORDER = (
     "ollama",
     "cline",
 )
+DEFAULT_CURSOR_BRANCH_PREFIXES: tuple[str, ...] = ("cursor/",)
+DEFAULT_CURSOR_BRANCH_PROVIDER = "cursor_agent"
+DEFAULT_BLOCKED_PR_LABELS: tuple[str, ...] = ("do-not-merge",)
 RUNNER_STATE_MATCH_TERMS: tuple[str, ...] = (
     "toolchain binary missing",
     "rustc (never executed) no such file or directory",
@@ -142,6 +145,25 @@ def _as_tuple_strings(values: Any, *, fallback: tuple[str, ...]) -> tuple[str, .
     return tuple(items) or fallback
 
 
+def _as_label_tuple(values: Any) -> tuple[str, ...]:
+    """Normalise label payloads from webhook/manual inputs to a stable tuple of names."""
+    if values is None:
+        return ()
+    if isinstance(values, str):
+        return tuple(part.strip() for part in values.split(",") if part.strip())
+    if not isinstance(values, (list, tuple)):
+        return ()
+    labels: list[str] = []
+    for value in values:
+        if isinstance(value, dict):
+            candidate = str(value.get("name") or "").strip()
+        else:
+            candidate = str(value).strip()
+        if candidate:
+            labels.append(candidate)
+    return tuple(labels)
+
+
 @dataclass(frozen=True, slots=True)
 class AttemptRecord:
     provider_id: str
@@ -178,11 +200,15 @@ class FailureContext:
     run_id: int | None = None
     conclusion: str = "failure"
     protected_branch: bool = False
+    pr_labels: tuple[str, ...] = field(default_factory=tuple)
     source: str = "dashboard"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> FailureContext:
         run_id = data.get("run_id")
+        labels_payload = data.get("pr_labels")
+        if labels_payload is None:
+            labels_payload = data.get("labels")
         return cls(
             repository=str(data.get("repository") or ""),
             workflow_name=str(data.get("workflow_name") or data.get("workflow") or ""),
@@ -192,6 +218,7 @@ class FailureContext:
             run_id=int(run_id) if run_id is not None else None,
             conclusion=str(data.get("conclusion") or "failure"),
             protected_branch=bool(data.get("protected_branch", False)),
+            pr_labels=_as_label_tuple(labels_payload),
             source=str(data.get("source") or "dashboard"),
         )
 
@@ -209,12 +236,17 @@ class RemediationPolicy:
     provider_order: tuple[str, ...]
     enabled_providers: tuple[str, ...]
     default_provider: str
+    cursor_branch_prefixes: tuple[str, ...] = DEFAULT_CURSOR_BRANCH_PREFIXES
+    cursor_branch_provider: str = DEFAULT_CURSOR_BRANCH_PROVIDER
+    blocked_pr_labels: tuple[str, ...] = DEFAULT_BLOCKED_PR_LABELS
     workflow_type_rules: dict[str, WorkflowTypeRule] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["provider_order"] = list(self.provider_order)
         data["enabled_providers"] = list(self.enabled_providers)
+        data["cursor_branch_prefixes"] = list(self.cursor_branch_prefixes)
+        data["blocked_pr_labels"] = list(self.blocked_pr_labels)
         data["workflow_type_rules"] = {
             workflow_type: rule.to_dict() for workflow_type, rule in self.workflow_type_rules.items()
         }
@@ -322,6 +354,9 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
             provider_order=DEFAULT_PROVIDER_ORDER,
             enabled_providers=DEFAULT_PROVIDER_ORDER,
             default_provider="codex_cli",
+            cursor_branch_prefixes=DEFAULT_CURSOR_BRANCH_PREFIXES,
+            cursor_branch_provider=DEFAULT_CURSOR_BRANCH_PROVIDER,
+            blocked_pr_labels=DEFAULT_BLOCKED_PR_LABELS,
             workflow_type_rules=_default_workflow_type_rules(),
         )
     payload = json.loads(resolved.read_text(encoding="utf-8"))
@@ -334,6 +369,12 @@ def load_policy(path: Path | str | None = None) -> RemediationPolicy:
         provider_order=_as_tuple_strings(payload.get("provider_order"), fallback=DEFAULT_PROVIDER_ORDER),
         enabled_providers=_as_tuple_strings(payload.get("enabled_providers"), fallback=DEFAULT_PROVIDER_ORDER),
         default_provider=str(payload.get("default_provider") or "codex_cli"),
+        cursor_branch_prefixes=_as_tuple_strings(
+            payload.get("cursor_branch_prefixes"),
+            fallback=DEFAULT_CURSOR_BRANCH_PREFIXES,
+        ),
+        cursor_branch_provider=str(payload.get("cursor_branch_provider") or DEFAULT_CURSOR_BRANCH_PROVIDER),
+        blocked_pr_labels=_as_tuple_strings(payload.get("blocked_pr_labels"), fallback=DEFAULT_BLOCKED_PR_LABELS),
         workflow_type_rules=_load_workflow_type_rules(payload.get("workflow_type_rules")),
     )
 
@@ -424,43 +465,3 @@ def build_failure_fingerprint(context: FailureContext) -> str:
 
     raw = f"{context.repository}|{context.workflow_name}|{context.failure_reason[:200]}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
-
-
-def _parse_timestamp(value: str) -> datetime | None:
-    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S+00:00"):
-        try:
-            return datetime.strptime(value, fmt).replace(tzinfo=UTC)
-        except ValueError:
-            continue
-    return None
-
-
-def _attempts_for_fingerprint(
-    fingerprint: str,
-    attempts: list[AttemptRecord],
-    *,
-    window_hours: int,
-) -> list[AttemptRecord]:
-    cutoff = datetime.now(UTC) - _dt_mod.timedelta(hours=window_hours)
-    result = []
-    for a in attempts:
-        if a.fingerprint != fingerprint:
-            continue
-        ts = _parse_timestamp(a.created_at)
-        if ts is None or ts >= cutoff:
-            result.append(a)
-    return result
-
-
-def _attempts_for_provider(
-    fingerprint: str,
-    provider_id: str,
-    attempts: list[AttemptRecord],
-    *,
-    window_hours: int,
-) -> list[AttemptRecord]:
-    return [
-        a
-        for a in _attempts_for_fingerprint(fingerprint, attempts, window_hours=window_hours)
-        if a.provider_id == provider_id
-    ]

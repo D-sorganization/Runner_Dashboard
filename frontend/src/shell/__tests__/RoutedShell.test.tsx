@@ -18,7 +18,7 @@ import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 // --- Mocks: keep the test light and focused on routing -------------------
 
 const breakpointMock = vi.fn(() => "lg");
-const sessionMock = vi.fn(() => ({ loggedIn: false, refresh: vi.fn() }));
+const sessionMock = vi.fn(() => ({ loading: false, loggedIn: false, refresh: vi.fn() }));
 
 
 vi.mock("../../pages/Analysis", () => ({
@@ -230,7 +230,7 @@ describe("RoutedShell — URL is the source of truth", () => {
     window.history.replaceState({}, "", "/");
     localStorage.clear();
     breakpointMock.mockReturnValue("lg");
-    sessionMock.mockReturnValue({ loggedIn: false, refresh: vi.fn() });
+    sessionMock.mockReturnValue({ loading: false, loggedIn: false, refresh: vi.fn() });
   });
 
   it("preserves the selected conversation when navigating between dashboard tabs", async () => {
@@ -253,7 +253,12 @@ describe("RoutedShell — URL is the source of truth", () => {
 
   it("shows an accessible error when sign-out fails instead of silently refreshing", async () => {
     const refresh = vi.fn();
-    sessionMock.mockReturnValue({ loggedIn: true, refresh });
+    sessionMock.mockReturnValue({
+      loading: false,
+      loggedIn: true,
+      authMethod: "github",
+      refresh,
+    });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
     try {
       renderAt("/t/queue", { withToaster: true });

@@ -114,6 +114,8 @@ export const FleetRowActions: React.FC<FleetRowActionsProps> = ({
                 key={key}
                 role="menuitem"
                 type="button"
+                aria-label={item.label}
+                title={item.label}
                 onClick={() => handleSelect(key)}
                 style={{
                   width: "100%",

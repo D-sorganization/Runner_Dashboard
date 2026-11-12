@@ -27,6 +27,7 @@ import {
   fetchRoster,
   fetchRun,
   fetchRuns,
+  fetchUsageSnapshot,
   type BoardResponse,
   type HoldsResponse,
   type OutcomesGroupBy,
@@ -40,6 +41,7 @@ import {
   type RunsResponse,
   type ScheduleResponse,
   type StaffSummaryResponse,
+  type UsageSnapshotReport,
 } from "../pages/Staff/staffApi";
 import {
   fetchStaffProviders,
@@ -64,6 +66,7 @@ export const staffKeys = {
   roster: () => [...staffKeys.all, "roster"] as const,
   board: () => [...staffKeys.all, "board"] as const,
   quota: () => [...staffKeys.all, "quota"] as const,
+  usageSnapshot: () => [...staffKeys.all, "usage-snapshot"] as const,
   summary: () => [...staffKeys.all, "summary"] as const,
   runs: (filter: RunsFilter = {}) => [...staffKeys.all, "runs", filter] as const,
   run: (id: string) => [...staffKeys.all, "run", id] as const,
@@ -98,6 +101,21 @@ export function useStaffQuota(): UseQueryResult<QuotaReport, Error> {
     {
       queryKey: staffKeys.quota(),
       queryFn: ({ signal }) => fetchQuota(signal),
+      staleTime: 30_000,
+      refetchInterval: 60_000,
+      refetchIntervalInBackground: false,
+    },
+    client,
+  );
+}
+
+/** Fleet usage snapshot (#3042): relayed Usage-Tracker readings, same one-minute poll as quota. */
+export function useStaffUsageSnapshot(): UseQueryResult<UsageSnapshotReport, Error> {
+  const client = useResolvedQueryClient();
+  return useQuery(
+    {
+      queryKey: staffKeys.usageSnapshot(),
+      queryFn: ({ signal }) => fetchUsageSnapshot(signal),
       staleTime: 30_000,
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,

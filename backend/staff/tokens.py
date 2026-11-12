@@ -76,11 +76,13 @@ def mint_run_token(
     run_id: str,
     fleet_actions: Iterable[str],
     ttl_seconds: float,
+    library_read: bool = False,
 ) -> str:
     """Mint a short-lived token for a staff run.
 
     Principal ID: ``staff:<role>:<run_id>``
-    Scopes: intersection of role fleet_actions and ACTION_POLICY
+    Scopes: intersection of role fleet_actions and ACTION_POLICY, plus
+    ``library.read`` iff the role spec's ``library_read`` is explicitly True (#2623)
     TTL: run deadline in seconds
     """
     if not role or not run_id:
@@ -88,7 +90,10 @@ def mint_run_token(
     if ttl_seconds <= 0:
         raise ValueError("ttl_seconds must be positive")
 
-    scopes = sorted(set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential"})
+    scope_set = set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential"}
+    if library_read is True:
+        scope_set.add("library.read")
+    scopes = sorted(scope_set)
     principal_id = f"staff:{role}:{run_id}"
     role_preset = f"staff-run:{run_id}"
 

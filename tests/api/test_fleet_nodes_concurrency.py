@@ -40,7 +40,7 @@ async def test_collect_live_fleet_nodes_runs_local_and_remote_concurrently(
         await barrier.wait()
         order_log.append("local_sys_finish")
         return {
-            "hostname": "ControlTower-NVMe",
+            "hostname": "node-a-NVMe",
             "hardware_specs": {},
             "workload_capacity": {},
         }
@@ -96,7 +96,7 @@ async def test_get_fleet_nodes_single_flight_coalesces_concurrent_calls(
         await collect_event.wait()
         return [
             {
-                "name": "ControlTower-NVMe",
+                "name": "node-a-NVMe",
                 "url": "http://localhost:8321",
                 "online": True,
                 "dashboard_reachable": True,
@@ -133,7 +133,7 @@ async def test_get_fleet_nodes_single_flight_coalesces_concurrent_calls(
     assert len(results) == 5
     for r in results:
         assert r["count"] == 1
-        assert r["nodes"][0]["name"] == "ControlTower-NVMe"
+        assert r["nodes"][0]["name"] == "node-a-NVMe"
 
     # Crucially, collection was triggered EXACTLY ONCE
     assert collect_calls == 1

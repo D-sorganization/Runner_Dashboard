@@ -2,16 +2,16 @@
 
 Fleet survey findings these pin:
 
-* DeskComputer: every ``<runner>/.env`` carried a legacy
+* hub-a: every ``<runner>/.env`` carried a legacy
   ``ACTIONS_RUNNER_HOOK_JOB_COMPLETED=.../fleet/runner-post-job.sh``. The runner
   ``.env`` wins over the unit's ``Environment=``, so the canonical hooks never
   ran. ``runner-hooks-restore.sh`` removes such overrides (with a backup), and
   ``job-completed.sh`` took over the legacy script's only duty: clearing
   ``_work/_temp``.
-* ControlTower: the 8 runner units had no ``ACTIONS_RUNNER_HOOK_*`` at all.
+* node-a: the 8 runner units had no ``ACTIONS_RUNNER_HOOK_*`` at all.
   ``runner-hooks-restore.sh`` installs a ``15-runner-hooks.conf`` drop-in and
   daemon-reloads; it never restarts a unit.
-* DeskComputer's ``/opt/runner-dashboard`` checkout was months stale, so the
+* hub-a's ``/opt/runner-dashboard`` checkout was months stale, so the
   restore timer must never overwrite an installed hook's content -- only restore
   a missing one or re-chmod a non-executable one.
 """
@@ -342,7 +342,7 @@ def test_check_passes_when_hooks_match_their_source(host: _Host) -> None:
 
 @pytest.mark.skipif(os.name != "posix", reason="exec bits are POSIX-only")
 def test_check_reports_a_missing_hook_source_dir(host: _Host) -> None:
-    """ControlTower/OGLaptop 2026-10-17: /opt/runner-dashboard absent, restore a silent no-op (#1977)."""
+    """node-a/node-b 2026-10-17: /opt/runner-dashboard absent, restore a silent no-op (#1977)."""
     _wire_clean_host(host)
     for hook in host.src_dir.iterdir():
         hook.unlink()
@@ -356,7 +356,7 @@ def test_check_reports_a_missing_hook_source_dir(host: _Host) -> None:
 
 @pytest.mark.skipif(os.name != "posix", reason="exec bits are POSIX-only")
 def test_check_reports_an_installed_hook_that_differs_from_source(host: _Host) -> None:
-    """DeskComputer 2026-10-17: the source was a stale 2026-07-31 checkout (#1977)."""
+    """hub-a 2026-10-17: the source was a stale 2026-07-31 checkout (#1977)."""
     _wire_clean_host(host)
     (host.hook_dir / "job-started.sh").write_text("# newer installed job-started.sh\n", encoding="utf-8")
 
@@ -439,7 +439,7 @@ def test_all_hook_timeouts_pass_kill_after_escalation() -> None:
     """Every timeout invocation in runner-hooks must pass -k <grace> so a
     TERM-ignoring or TERM-spinning child is killed with SIGKILL (#1982).
     A bare timeout caused git's remove_junk signal handler to spin in state R
-    for 97 minutes on ControlTower."""
+    for 97 minutes on node-a."""
     hook_dir = DEPLOY / "runner-hooks"
     scripts = sorted(hook_dir.glob("*.sh"))
     assert scripts, "expected runner hook scripts"

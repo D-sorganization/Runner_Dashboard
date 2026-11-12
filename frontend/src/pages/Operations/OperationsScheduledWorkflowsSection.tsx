@@ -182,6 +182,8 @@ export function OperationsScheduledWorkflowsSection({
           href={lr.html_url}
           target="_blank"
           rel="noopener noreferrer"
+          title="Open this workflow run in GitHub Actions"
+          aria-label="Open workflow run in GitHub Actions"
           style={{ textDecoration: "none" }}
         >
           {badge}
@@ -241,6 +243,7 @@ export function OperationsScheduledWorkflowsSection({
             type="button"
             onClick={() => load()}
             disabled={loading}
+            title="Reload scheduled workflow inventory and recent runs"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -334,6 +337,8 @@ export function OperationsScheduledWorkflowsSection({
         <input
           type="search"
           placeholder="Filter workflows by name or repository..."
+          aria-label="Filter scheduled workflows by name or repository"
+          title="Filter scheduled workflows by name or repository"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{

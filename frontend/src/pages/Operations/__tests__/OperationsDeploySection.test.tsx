@@ -26,8 +26,8 @@ const DEPLOYMENT_DATA = {
   },
   machines: [
     {
-      name: "controltower",
-      display_name: "ControlTower",
+      name: "node-a",
+      display_name: "node-a",
       rollout_state: "drifted",
       rollout_label: "Drifted",
       desired_version: "4.10.0",
@@ -44,8 +44,8 @@ const DEPLOYMENT_DATA = {
 const ORCHESTRATION_DATA = {
   machines: [
     {
-      name: "controltower",
-      display_name: "ControlTower",
+      name: "node-a",
+      display_name: "node-a",
       role: "hub",
       online: true,
       runner_count: 8,
@@ -62,7 +62,7 @@ const ORCHESTRATION_DATA = {
       audit_id: "audit-101",
       recorded_at: "2026-06-15T12:00:00Z",
       orchestration_type: "fleet_deploy",
-      machine: "controltower",
+      machine: "node-a",
       deploy_action: "restart_runner",
       requested_by: "codex",
       decision: "accepted",
@@ -107,7 +107,7 @@ describe("OperationsDeploySection", () => {
     render(<OperationsDeploySection />);
 
     expect(screen.getByRole("heading", { name: /Deploy & versions/i })).toBeInTheDocument();
-    expect((await screen.findAllByText("ControlTower")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("node-a")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("4.10.0").length).toBeGreaterThan(0);
     expect(screen.getByText("Behind expected version")).toBeInTheDocument();
     expect(screen.getByText("fleet_deploy")).toBeInTheDocument();
@@ -119,7 +119,7 @@ describe("OperationsDeploySection", () => {
 
     render(<OperationsDeploySection />);
 
-    await screen.findAllByText("ControlTower");
+    await screen.findAllByText("node-a");
 
     const actionInput = screen.getByPlaceholderText(/e\.g\. restart_runner/i);
     fireEvent.change(actionInput, { target: { value: "restart_runner" } });

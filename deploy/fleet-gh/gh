@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Fleet ``gh`` shim: App token only, no personal-auth fallback."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+from gh_app_credential import (  # noqa: E402
+    MINT_FAILURE_EXIT,
+    MINT_FAILURE_MESSAGE,
+    FleetGhMintError,
+    apply_fleet_app_token,
+)
+
+
+def _ensure_backend_on_path() -> None:
+    backend_root = Path(os.environ.get("FLEET_GH_BACKEND_ROOT", "")).expanduser()
+    if backend_root.is_dir() and str(backend_root) not in sys.path:
+        sys.path.insert(0, str(backend_root))
+
+
+def main() -> int:
+    real_gh = os.environ.get("STAFF_REAL_GH", "").strip()
+    if not real_gh:
+        sys.stderr.write("fleet-gh: STAFF_REAL_GH is not set\n")
+        return 127
+    try:
+        env = apply_fleet_app_token(dict(os.environ))
+    except FleetGhMintError:
+        sys.stderr.write(MINT_FAILURE_MESSAGE + "\n")
+        return MINT_FAILURE_EXIT
+
+    args = list(sys.argv[1:])
+    try:
+        _ensure_backend_on_path()
+        from staff.gh_drain_gate_guard import check_drain_gate_for_pr_create
+
+        allowed, err = check_drain_gate_for_pr_create(args, env=env)
+        if not allowed:
+            sys.stderr.write(err + "\n")
+            return 2
+    except Exception:  # noqa: BLE001
+        pass
+
+    completed = subprocess.run([real_gh, *args], env=env, check=False)  # noqa: S603
+    return int(completed.returncode)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

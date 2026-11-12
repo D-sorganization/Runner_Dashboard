@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import datetime as _dt
+import re
 from collections.abc import Iterator
 from functools import partial
 from pathlib import Path
@@ -33,6 +34,7 @@ from staff.actions import (
 )
 from staff.audit import reset_audit_store
 from staff.conversations import get_conversation_store, reset_conversation_store
+from staff.dashboard_navigation import DASHBOARD_NAV_TABS
 from staff.roles import RoleSpec
 from staff.runner import StaffRunner, reset_runner
 from staff.store import reset_store
@@ -167,6 +169,20 @@ def test_dashboard_navigation_is_allowlisted_read_only_action() -> None:
     assert unregistered.failure_class == "invalid_params"
 
 
+def test_dashboard_navigate_allowlist_covers_every_registered_frontend_tab() -> None:
+    """Regression for #2759: a tab registered in the frontend nav must be
+    navigable, same technique as test_frontend_integrity.py's
+    test_every_registered_desktop_tab_has_native_route_content."""
+    nav_data_path = Path(__file__).resolve().parents[2] / "frontend" / "src" / "shell" / "navRegistryData.ts"
+    nav_data = nav_data_path.read_text(encoding="utf-8")
+    registered_tab_ids = set(re.findall(r'tabId:\s*"([^"]+)"', nav_data))
+
+    assert registered_tab_ids, "expected at least one tabId in navRegistryData.ts"
+    assert registered_tab_ids <= DASHBOARD_NAV_TABS, (
+        f"Missing from DASHBOARD_NAV_TABS: {registered_tab_ids - DASHBOARD_NAV_TABS}"
+    )
+
+
 def test_approval_policy_matrix() -> None:
     store = get_conversation_store()
     th = store.create_thread(title="Test Policy", kind="direct", participants=["barb", "user"])
@@ -229,9 +245,14 @@ def test_approval_policy_accepts_role_presets_for_approve() -> None:
     )
     action = ACTION_REGISTRY.get("staff.dispatch")
 
-    # Real loopback principal shape: role preset only, no explicit scopes.
+    # Operator role preset only, no explicit scopes.
+    operator = Principal(id="op-preset", type="human", name="Operator", roles=["operator"])
+    check_approval_policy(action, prop_medium, operator)
+
+    # Fail closed (#3540): loopback preset does not grant staff.approve or staff.dispatch.
     loopback = Principal(id="__loopback__", type="human", name="Loopback development admin", roles=["loopback"])
-    check_approval_policy(action, prop_medium, loopback)
+    with pytest.raises(PermissionError, match="staff.approve"):
+        check_approval_policy(action, prop_medium, loopback)
 
     # Fail closed: the bot preset may propose/dispatch but does not grant staff.approve.
     bot = Principal(id="barb", type="bot", name="Barb", roles=["bot"])

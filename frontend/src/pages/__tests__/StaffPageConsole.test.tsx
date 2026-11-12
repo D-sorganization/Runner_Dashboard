@@ -10,7 +10,7 @@ import { queryClient } from "../../hooks/usePollingQueries";
 import { StaffPage } from "../Staff";
 
 const ROSTER = {
-  machine: "DeskComputer",
+  machine: "hub-a",
   active_runs: 0,
   providers: {},
   roles: [{ name: "night-watch", title: "Night Watch", summary: "Sweeps red main.", providers: [] }],

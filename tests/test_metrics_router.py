@@ -22,8 +22,8 @@ def _build_client() -> TestClient:
 def test_metrics_router_renders_all_gauges_and_counters(monkeypatch) -> None:
     fake_snapshot = {
         "nodes": {
-            "Brick": {"online": 1, "cordon": 0, "disk_free_bytes": 53687091200},
-            "ControlTower": {"online": 0, "cordon": 1, "disk_free_bytes": 10737418240},
+            "node-c": {"online": 1, "cordon": 0, "disk_free_bytes": 53687091200},
+            "node-a": {"online": 0, "cordon": 1, "disk_free_bytes": 10737418240},
         },
         "in_flight": 2,
         "runs_24h": {"ok": 14, "failed": 1, "blocked": 3},
@@ -41,10 +41,10 @@ def test_metrics_router_renders_all_gauges_and_counters(monkeypatch) -> None:
         assert resp.headers["cache-control"] == "no-store"
         assert resp.headers["content-type"].startswith("text/plain; version=0.0.4")
         body = resp.text
-        assert 'rd_node_online{node="Brick"} 1' in body
-        assert 'rd_node_online{node="ControlTower"} 0' in body
-        assert 'rd_node_cordon{node="ControlTower"} 1' in body
-        assert 'rd_node_disk_free_bytes{node="Brick"} 53687091200' in body
+        assert 'rd_node_online{node="node-c"} 1' in body
+        assert 'rd_node_online{node="node-a"} 0' in body
+        assert 'rd_node_cordon{node="node-a"} 1' in body
+        assert 'rd_node_disk_free_bytes{node="node-c"} 53687091200' in body
         assert "rd_staff_runs_in_flight 2" in body
         assert 'rd_staff_runs_24h_total{status="ok"} 14' in body
         assert 'rd_staff_runs_24h_total{status="failed"} 1' in body

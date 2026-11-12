@@ -9,14 +9,15 @@ Principal: **`agent-codex-hands`**
 - `fleet.read` — priorities, coordination reads, fleet status
 - `staff.dispatch` — `POST /api/staff/{role}/run` (including `dry_run`)
 - `memory.read` / `memory.write` — shared context bank
-- **Not granted:** `staff.holds.write`, `priorities.write` (directive writes)
+- `staff.read`, `priorities.write` (directives), `staff.holds.write` (holds; change only when Dieter approves, then apply directly via `PUT /api/staff/holds`)
+- **Not granted:** admin or token-issuing scopes
 
 ## Token install
 
 On the machine where Codex runs with computer control:
 
 ```bash
-export FLEET_API_URL="http://deskcomputer:8321"
+export FLEET_API_URL="http://hub-a:8321"
 mkdir -p ~/.config/runner-dashboard/agent-tokens
 # Mint on the hub (admin session); capture token without logging it:
 TOKEN=$(curl -s -X POST "$FLEET_API_URL/api/admin/principals/agent-codex-hands/token" \

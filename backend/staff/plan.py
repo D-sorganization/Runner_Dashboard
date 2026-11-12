@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from staff import consolidation
 from staff.model_tiers import validate_role_tier
+
+if TYPE_CHECKING:
+    from staff.dispatch_bundle import DispatchBundle
 
 _SAFE_BRANCH = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
@@ -37,6 +40,8 @@ class RunRequest:
     consolidation: dict[str, Any] | None = None
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
+    # Explicit operator PR restrictions (RM#2712); resolved by ``staff.lifecycle_fence``.
+    pr_restrictions: tuple[str, ...] = ()
     # Existing branch the worktree starts from instead of origin/main (RD-1 CI fixes, #1881).
     head_ref: str = ""
     task_type: str = ""
@@ -44,6 +49,9 @@ class RunRequest:
     # When set, must exist in the skills registry (#2157); omit to use role/repo matching + fallback.
     requested_skill: str | None = None
     execution_mode: str = "local"
+    dispatch_origin: str = ""
+    # Barb lane dispatch: skip per-role repo allowlist when planning (#4117).
+    barb_bypass_role_repos: bool = False
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
@@ -84,9 +92,15 @@ class RunPlan:
     work_item_id: str = ""
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
+    # Operator PR restrictions behind ``pr_lifecycle`` (RM#2712); re-resolved at execute time
+    # so the fence is re-derived (not just stored text) and still fails closed (#4156).
+    pr_restrictions: tuple[str, ...] = ()
     head_ref: str = ""
     model_tier: str = ""
     skill_pin: str = ""
+    # Planning-time dispatch bundle and library block; required when ``_execute`` recomposes the prompt (#4266 A-03).
+    dispatch_bundle: DispatchBundle | None = None
+    library_references: str = ""
     standards_version: str = ""
     standards_tokens: int = 0
     context_stamp: str = "{}"

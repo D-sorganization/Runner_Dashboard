@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Response
 from identity import Principal, require_scope
 
+log = logging.getLogger("dashboard.metrics")
 router = APIRouter(tags=["metrics"])
 _METRICS_READ = require_scope("staff.read")
 PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -35,6 +37,7 @@ def collect_metrics_snapshot() -> dict[str, Any]:
     from staff import fleet as staff_fleet  # noqa: PLC0415
     from staff.classifier import format_attention_items  # noqa: PLC0415
     from staff.exclusions import active_exclusions  # noqa: PLC0415
+    from staff.holds import holds_metrics_snapshot  # noqa: PLC0415
     from staff.runner import get_runner  # noqa: PLC0415
 
     runner = get_runner()
@@ -88,6 +91,18 @@ def collect_metrics_snapshot() -> dict[str, Any]:
 
     liveness = board.get("liveness") or []
     liveness_alerts = [item for item in liveness if isinstance(item, dict) and item.get("state") in ("late", "dead")]
+    ci_slo = cache_get("ci_slo_metrics", 86400.0) or {}
+    andon = cache_get("andon_metrics", 86400.0) or {}
+    # #2766: PRs red for more than 24h with zero CI-fix attempts, refreshed by the sweep
+    # (``ci_fix_service.run_ci_fix_sweep``); 0 until the first sweep has run.
+    ci_fix_red = cache_get("ci_fix_red_24h_zero_fix_total", 86400.0) or {}
+    activity: dict[str, Any] = {}
+    try:
+        from activity_transcript import activity_metrics_snapshot  # noqa: PLC0415
+
+        activity = activity_metrics_snapshot()
+    except Exception:
+        activity = {}
     return {
         "nodes": nodes,
         "in_flight": len(board.get("running", [])) + len(board.get("queued", [])),
@@ -96,7 +111,35 @@ def collect_metrics_snapshot() -> dict[str, Any]:
         "attention_items": len(format_attention_items(recent)),
         "liveness_alerts": len(liveness_alerts),
         "holds_active": len(staff_fleet.holds_snapshot()),
+        "holds_load_errors_total": holds_metrics_snapshot()["load_errors_total"],
+        "holds_corrupt": holds_metrics_snapshot()["corrupt"],
+        "ci_slo": ci_slo if isinstance(ci_slo, dict) else {},
+        "andon": andon if isinstance(andon, dict) else {},
+        "activity": activity,
+        "ci_fix_red_24h_zero_fix_total": int(ci_fix_red.get("count", 0)) if isinstance(ci_fix_red, dict) else 0,
+        "agent_tokens": _agent_token_rows(),
+        "watchdog_rows": _watchdog_rows(nodes, in_flight=len(board.get("running", [])) + len(board.get("queued", []))),
     }
+
+
+def _watchdog_rows(nodes: dict[str, dict[str, Any]], *, in_flight: int) -> list[dict[str, Any]]:
+    """Fleet health watchdog rows (#3934 S2): per-host anomaly/disk-fill projection."""
+    from host_trend_watchdog import get_registry  # noqa: PLC0415
+
+    annotated = {name: {**info, "in_flight": in_flight} for name, info in nodes.items()}
+    return get_registry().observe(annotated, now=datetime.now(UTC))
+
+
+def _agent_token_rows() -> list[dict[str, Any]]:
+    """Agent token health rows (#3895); empty when the identity store is unavailable."""
+    try:
+        from agent_token_health import token_health_report  # noqa: PLC0415
+        from identity import identity_manager  # noqa: PLC0415
+
+        return token_health_report(identity_manager)
+    except Exception:  # noqa: BLE001 - metrics must render without the identity store
+        log.warning("agent token health unavailable for /api/metrics", exc_info=True)
+        return []
 
 
 def render_prometheus_text(snapshot: dict[str, Any]) -> str:
@@ -164,9 +207,74 @@ def render_prometheus_text(snapshot: dict[str, Any]) -> str:
             "# HELP rd_holds_active_total Active fleet/staff holds.",
             "# TYPE rd_holds_active_total gauge",
             f"rd_holds_active_total {int(snapshot.get('holds_active', 0))}",
-            "",
+            "# HELP rd_holds_load_errors_total Total times staff_holds.json failed closed on load.",
+            "# TYPE rd_holds_load_errors_total counter",
+            f"rd_holds_load_errors_total {int(snapshot.get('holds_load_errors_total', 0))}",
+            "# HELP rd_holds_corrupt Whether staff_holds.json is currently failing closed (1=corrupt, 0=ok).",
+            "# TYPE rd_holds_corrupt gauge",
+            f"rd_holds_corrupt {int(snapshot.get('holds_corrupt', 0))}",
+            "# HELP rd_ci_fix_red_24h_zero_fix_total Open PRs red >24h with zero CI-fix attempts.",
+            "# TYPE rd_ci_fix_red_24h_zero_fix_total gauge",
+            f"rd_ci_fix_red_24h_zero_fix_total {int(snapshot.get('ci_fix_red_24h_zero_fix_total', 0))}",
         ]
     )
+    ci_slo = snapshot.get("ci_slo") or {}
+    activity = snapshot.get("activity") or {}
+    if isinstance(activity, dict) and activity:
+        lines += [
+            "# HELP rd_activity_ingest_events_total Activity transcript chunks accepted.",
+            "# TYPE rd_activity_ingest_events_total counter",
+            f"rd_activity_ingest_events_total {int(activity.get('ingest_events', 0))}",
+            "# TYPE rd_activity_spool_bytes gauge",
+            f"rd_activity_spool_bytes {int(activity.get('store_bytes', 0))}",
+            "# TYPE rd_activity_spool_depth gauge",
+            f"rd_activity_spool_depth {int(activity.get('spool_depth', 0))}",
+            "# TYPE rd_activity_gaps_total counter",
+            f"rd_activity_gaps_total {int(activity.get('gaps_total', 0))}",
+        ]
+        lines += [
+            f'rd_activity_ingest_rejects_total{{code="{code}"}} {int(activity.get(f"reject_{code}", 0))}'
+            for code in ("413", "429", "409")
+        ]
+    if isinstance(ci_slo, dict) and ci_slo.get("metrics"):
+        lines.extend(
+            [
+                "# TYPE rd_ci_slo_ok gauge",
+                f"rd_ci_slo_ok {1 if ci_slo.get('ok') else 0}",
+            ]
+        )
+    andon = snapshot.get("andon") or {}
+    if isinstance(andon, dict) and isinstance(andon.get("metrics"), dict):
+        am = andon["metrics"]
+        dup_prs = int(am.get("duplicate_fix_prs_total", am.get("duplicate_fix_prs", 0)))
+        max_issue_prs = int(am.get("open_prs_per_issue_max", am.get("max_open_prs_per_issue", 0)))
+        lines.extend(
+            [
+                "# TYPE rd_andon_backlog_total gauge",
+                f"rd_andon_backlog_total {int(am.get('andon_backlog', 0))}",
+                "# TYPE rd_andon_to_card_p90_minutes gauge",
+                f"rd_andon_to_card_p90_minutes {float(am.get('andon_to_card_p90_minutes', 0.0)):.2f}",
+                "# TYPE rd_andon_duplicate_fix_prs_total gauge",
+                f"rd_andon_duplicate_fix_prs_total {dup_prs}",
+                "# TYPE rd_andon_max_open_prs_per_issue gauge",
+                f"rd_andon_max_open_prs_per_issue {max_issue_prs}",
+                "# TYPE rd_andon_unlinked_pr_share gauge",
+                f"rd_andon_unlinked_pr_share {float(am.get('unlinked_pr_share', 0.0)):.4f}",
+                "# TYPE rd_andon_red_main_ttff_p90_minutes gauge",
+                f"rd_andon_red_main_ttff_p90_minutes {float(am.get('red_main_ttff_p90_minutes', 0.0)):.2f}",
+            ]
+        )
+    agent_tokens = snapshot.get("agent_tokens") or []
+    if agent_tokens:
+        from agent_token_health import render_token_health_lines  # noqa: PLC0415
+
+        lines.extend(render_token_health_lines(agent_tokens))
+    watchdog_rows = snapshot.get("watchdog_rows") or []
+    if watchdog_rows:
+        from host_trend_watchdog import render_watchdog_lines  # noqa: PLC0415
+
+        lines.extend(render_watchdog_lines(watchdog_rows))
+    lines.append("")
     return "\n".join(lines)
 
 

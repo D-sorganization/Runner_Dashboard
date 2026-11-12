@@ -79,6 +79,21 @@ class ReplayStore:
         )
         self._evict_if_needed()
 
+    def claim_once(self, envelope_id: str) -> bool:
+        """Atomically reserve an identifier; return True only for its first live claim."""
+        if not isinstance(envelope_id, str) or not envelope_id.strip():
+            raise ValueError("envelope_id must be a non-empty string")
+        now = time.time()
+        self._execute("DELETE FROM processed WHERE expires_at <= ?", (now,))
+        cur = self._execute(
+            "INSERT OR IGNORE INTO processed (id, expires_at) VALUES (?, ?)",
+            (envelope_id, now + self._ttl_s),
+        )
+        if cur.rowcount == 1:
+            self._evict_if_needed()
+            return True
+        return False
+
     def purge_expired(self) -> int:
         """Delete all rows whose TTL has elapsed.  Returns the count deleted."""
         now = time.time()

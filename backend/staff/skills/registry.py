@@ -9,7 +9,7 @@ from pathlib import Path
 
 from staff.skills.contract import SkillDetail, SkillSummary, SkillValidationError, parse_skill_md, semver_sort_key
 from staff.skills.pointer import resolve_skill_source
-from staff.workspace import rm_root
+from staff.workspace import is_standalone_mode, rm_root
 
 log = logging.getLogger("dashboard.staff.skills")
 SKILLS_DIR_ENV = "STAFF_SKILLS_DIR"
@@ -27,6 +27,8 @@ def skills_dir() -> Path | None:
     if override:
         p = Path(override).expanduser()
         return p if p.is_dir() else None
+    if is_standalone_mode():
+        return None
     root = rm_root()
     if root is not None:
         cand = root / "skills"
@@ -117,6 +119,23 @@ def repo_matches_skill(skill_repos: tuple[str, ...], repo: str) -> bool:
     return bool(repo) and repo in skill_repos
 
 
+def role_matches_skill(skill_roles: tuple[str, ...], role: str) -> bool:
+    if not skill_roles or "*" in skill_roles:
+        return True
+    return bool(role) and role in skill_roles
+
+
+def role_match_rank(skill_roles: tuple[str, ...], role: str) -> int:
+    """Higher is a better match: explicit role beats ``*`` only."""
+    if not role_matches_skill(skill_roles, role):
+        return -1
+    if role in skill_roles:
+        return 2
+    if "*" in skill_roles:
+        return 1
+    return 0
+
+
 def list_skills(
     *,
     role: str | None = None,
@@ -127,7 +146,7 @@ def list_skills(
     with _CACHE_LOCK:
         rows = list(_CACHE_SUMMARIES.values())
     if role:
-        rows = [r for r in rows if role in r.roles]
+        rows = [r for r in rows if role_matches_skill(r.roles, role)]
     if repo:
         rows = [r for r in rows if repo_matches_skill(r.repos, repo)]
     if task_type:

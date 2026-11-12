@@ -69,6 +69,10 @@
   color: "F1948A"
   description: "> 3 days. Should be an epic with children."
 
+- name: "size:large"
+  color: "FAD1A1"
+  description: "Advisory: PR changed-line count exceeds the reference cap (see scripts/pr_size_gate.py). Not a merge blocker."
+
 # ---------------------------------------------------------------------------
 # Flags — booleans that surface specific lanes.
 # ---------------------------------------------------------------------------
@@ -79,6 +83,10 @@
 - name: "panel-review"
   color: "9333EA"
   description: "Agent panel is reviewing / should review. Do not implement from this issue."
+
+- name: "priority:expedite"
+  color: "B60205"
+  description: "Expedited lane: hosted CI + merge-queue jump (trusted actors only)."
 
 # ---------------------------------------------------------------------------
 # Judgement — dispatch gating.

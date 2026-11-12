@@ -30,6 +30,7 @@ from node_auto_deploy.activity import (  # noqa: E402
     fetch_staff_activity,
     local_activity_count,
     staff_database_path,
+    verify_staff_activity_probe,
 )
 from node_auto_deploy.github_api import github_get, load_token_from_env_file  # noqa: E402
 from node_auto_deploy.health import wait_for_health  # noqa: E402
@@ -38,6 +39,7 @@ from node_auto_deploy.kill_switch import auto_deploy_disabled, kill_switch_reaso
 from node_auto_deploy.releases import release_dir  # noqa: E402
 from node_auto_deploy.runner import CycleConfig, CycleDeps, evaluate_cycle  # noqa: E402
 from node_auto_deploy.service_scope import ServiceScopeDecision, detect_service_scope  # noqa: E402
+from node_auto_deploy.staleness import DEFAULT_MAX_GREEN_BEHIND, DEFAULT_MAX_UNRELEASED_HOURS  # noqa: E402
 from node_auto_deploy.state import default_state_path, load_state, record_event, save_state  # noqa: E402
 from node_auto_deploy.transaction import (  # noqa: E402
     deployment_lock,
@@ -121,6 +123,14 @@ def _wait_healthy(port: int) -> bool:
     return wait_for_health(port)
 
 
+def _env_number(name: str, default: float) -> float:
+    try:
+        value = float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Runner Dashboard node auto-deploy")
     parser.add_argument("--repo", default=DEFAULT_REPO)
@@ -170,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
         machine_role=role,
         hub_url=hub_url,
         fleet_token=fleet_token,
+        max_unreleased_hours=_env_number("AUTO_DEPLOY_MAX_UNRELEASED_HOURS", DEFAULT_MAX_UNRELEASED_HOURS),
+        max_green_behind=int(_env_number("AUTO_DEPLOY_MAX_GREEN_BEHIND", DEFAULT_MAX_GREEN_BEHIND)),
     )
     deps = CycleDeps(
         github_get=gh_get,
@@ -191,7 +203,14 @@ def main(argv: list[str] | None = None) -> int:
         deployed_sha = deployed_git_sha(live_dir / "deployment.json")
         main_head = str(gh_get(f"/repos/{args.repo}/commits/main").get("sha") or "").lower()
         record_commit = target_sha or main_head or deployed_sha or "unknown"
-        record_event(state, commit=record_commit, result="skipped", message=message)
+        stale = deps.release_staleness
+        record_event(
+            state,
+            commit=record_commit,
+            result="skipped",
+            message=message,
+            attention=stale is not None and stale.attention,
+        )
         save_state(state_path, state)
         print(message)
         return 0
@@ -253,7 +272,11 @@ def main(argv: list[str] | None = None) -> int:
                     return False
                 # A newly active item is valid after service recovery; this call
                 # only verifies the authenticated local API and full DB are readable.
-                staff_in_flight()
+                verify_staff_activity_probe(
+                    f"http://127.0.0.1:{args.port}",
+                    fleet_token,
+                    staff_database_path(),
+                )
                 return True
 
             outcome = install_and_run_transaction(

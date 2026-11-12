@@ -275,6 +275,7 @@ export function PrincipalsTab(): React.ReactElement {
                 <label style={labelStyle}>Max Runners</label>
                 <input
                   type="number"
+                  aria-label="Max runners"
                   value={editingQuota.quotas.max_runners}
                   onChange={(e) =>
                     setEditingQuota({
@@ -293,6 +294,7 @@ export function PrincipalsTab(): React.ReactElement {
                 <input
                   type="number"
                   step="0.01"
+                  aria-label="Agent spend in USD per day"
                   value={editingQuota.quotas.agent_spend_usd_day}
                   onChange={(e) =>
                     setEditingQuota({
@@ -310,6 +312,7 @@ export function PrincipalsTab(): React.ReactElement {
                 <label style={labelStyle}>Local App Slots</label>
                 <input
                   type="number"
+                  aria-label="Local app slots"
                   value={editingQuota.quotas.local_app_slots}
                   onChange={(e) =>
                     setEditingQuota({
@@ -375,6 +378,7 @@ export function PrincipalsTab(): React.ReactElement {
                 <input
                   name="name"
                   type="text"
+                  aria-label="Token name"
                   placeholder="e.g., prod-deployment-script"
                   required
                   style={inputStyle}
@@ -385,6 +389,7 @@ export function PrincipalsTab(): React.ReactElement {
                 <input
                   name="expires"
                   type="number"
+                  aria-label="Token expires in days (optional)"
                   placeholder="e.g., 30"
                   style={inputStyle}
                 />
@@ -433,6 +438,7 @@ export function PrincipalsTab(): React.ReactElement {
         </div>
         <span
           className="section-badge"
+          title={`${principals.length} registered principals`}
           style={{ background: "rgba(255,255,255,0.2)", color: "white" }}
         >
           {principals.length}
@@ -473,6 +479,7 @@ export function PrincipalsTab(): React.ReactElement {
                 <td style={{ padding: "12px" }}>
                   <span
                     className="section-badge"
+                    title={`Principal type: ${p.type}`}
                     style={{
                       background:
                         p.type === "bot"
@@ -492,6 +499,7 @@ export function PrincipalsTab(): React.ReactElement {
                     <span
                       key={r}
                       className="section-badge"
+                      title={`Role: ${r}`}
                       style={{
                         marginRight: "4px",
                         background: "rgba(255,255,255,0.1)",
@@ -583,6 +591,7 @@ export function PrincipalsTab(): React.ReactElement {
         </div>
         <span
           className="section-badge"
+          title={`${tokens.length} active service tokens`}
           style={{
             background: "rgba(255,255,255,0.1)",
             color: "var(--text-secondary)",

@@ -98,7 +98,7 @@ export const RunList: React.FC<{ runs?: ActiveRunSummary[]; state?: SourceState;
     {runs?.map((r) => (
       <div key={r.id} className="context-run-row">
         <span className="context-run-id">{r.id}</span>
-        <span className="context-run-status">{r.status}</span>
+        <span className="context-run-status" title={`Run status: ${r.status}`}>{r.status}</span>
       </div>
     ))}
     {state === "ready" && !runs?.length && <div className="context-empty-text">None</div>}

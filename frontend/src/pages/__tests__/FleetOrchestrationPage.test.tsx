@@ -27,8 +27,8 @@ function orchestrationPayload() {
   return {
     machines: [
       {
-        name: "controltower",
-        display_name: "ControlTower",
+        name: "node-a",
+        display_name: "node-a",
         role: "hub",
         online: true,
         runner_count: 8,
@@ -45,7 +45,7 @@ function orchestrationPayload() {
         audit_id: "audit-1",
         recorded_at: "2026-06-15T00:00:00Z",
         orchestration_type: "fleet_deploy",
-        machine: "controltower",
+        machine: "node-a",
         deploy_action: "restart_runner",
         requested_by: "codex",
         decision: "accepted",
@@ -66,19 +66,19 @@ function mockFleetOrchestrationFetch() {
         repo: "Runner_Dashboard",
         workflow: "frontend-tests.yml",
         ref: "main",
-        machine_target: "controltower",
+        machine_target: "node-a",
       });
       return Promise.resolve(jsonResponse({ audit_id: "dispatch-1" }));
     }
     if (url === "/api/fleet/orchestration/deploy") {
       expect(init?.method).toBe("POST");
       expect(JSON.parse(String(init.body))).toMatchObject({
-        machine: "controltower",
+        machine: "node-a",
         action: "restart_runner",
         confirmed: true,
       });
       return Promise.resolve(
-        jsonResponse({ message: "Restart runner dispatched to controltower" }),
+        jsonResponse({ message: "Restart runner dispatched to node-a" }),
       );
     }
     return Promise.reject(new Error("unexpected fetch " + url));
@@ -92,7 +92,7 @@ describe("FleetOrchestrationPage", () => {
     render(<FleetOrchestrationPage />);
 
     expect(await screen.findByText("fleet_deploy")).toBeInTheDocument();
-    expect(screen.getAllByText("ControlTower").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("node-a").length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/fleet/orchestration",
       expect.objectContaining({ headers: expect.any(Headers) }),
@@ -117,7 +117,7 @@ describe("FleetOrchestrationPage", () => {
     });
     const selects = screen.getAllByRole("combobox");
     fireEvent.change(selects[selects.length - 1], {
-      target: { value: "controltower" },
+      target: { value: "node-a" },
     });
     fireEvent.click(screen.getByRole("button", { name: /^Dispatch$/i }));
 
@@ -136,7 +136,7 @@ describe("FleetOrchestrationPage", () => {
     await screen.findByText("fleet_deploy");
 
     const selects = screen.getAllByRole("combobox");
-    fireEvent.change(selects[0], { target: { value: "controltower" } });
+    fireEvent.change(selects[0], { target: { value: "node-a" } });
     fireEvent.click(
       screen.getByLabelText("I confirm this action against the selected machine"),
     );
@@ -149,7 +149,7 @@ describe("FleetOrchestrationPage", () => {
       ),
     );
     expect(
-      await screen.findByText("Restart runner dispatched to controltower"),
+      await screen.findByText("Restart runner dispatched to node-a"),
     ).toBeInTheDocument();
   });
 });

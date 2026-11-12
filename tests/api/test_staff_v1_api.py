@@ -11,6 +11,7 @@ Tests:
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -261,3 +262,70 @@ def test_v1_cursor_pagination_on_runs(client: TestClient, v1_auth_env: dict[str,
     bad_resp = client.get("/api/v1/staff/runs?cursor=not-a-valid-base64!!!", headers=headers)
     assert bad_resp.status_code == 400
     assert bad_resp.json()["error"]["code"] == "invalid_cursor"
+
+
+_MINIMAL_WEBP = (
+    b"RIFF$\x00\x00\x00WEBPVP8 \x18\x00\x00\x00\xd0\x01\x00\x9d\x01*\x01\x00\x01\x00>"
+    b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+)
+
+
+def _write_role_with_avatar(roles_dir: Path, *, name: str, avatar_rel: str) -> None:
+    import yaml
+
+    from tests.unit.test_staff_roles import _VALID_ROLE_DICT
+
+    roles_dir.mkdir(parents=True, exist_ok=True)
+    avatars_dir = roles_dir.parent / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+    (avatars_dir / avatar_rel).write_bytes(_MINIMAL_WEBP)
+    role = dict(_VALID_ROLE_DICT, name=name, avatar=avatar_rel)
+    (roles_dir / f"{name}.yml").write_text(yaml.dump(role), encoding="utf-8")
+
+
+def test_roster_avatar_field_is_a_servable_url(client: TestClient, v1_auth_env: dict[str, str]) -> None:
+    """GET /api/v1/staff/roster rewrites a role's ``avatar`` to a fetchable URL (#2680)."""
+    from staff import roles as roles_mod
+
+    roles_dir = Path(os.environ["STAFF_ROLES_DIR"])
+    _write_role_with_avatar(roles_dir, name="cartographer", avatar_rel="cartographer.webp")
+    roles_mod.clear_roles_cache()
+
+    headers = {"Authorization": f"Bearer {v1_auth_env['viewer']}"}
+    resp = client.get("/api/v1/staff/roster", headers=headers)
+    assert resp.status_code == 200
+    role = next(r for r in resp.json()["roles"] if r["name"] == "cartographer")
+    assert role["avatar"] == "/api/v1/staff/avatars/cartographer.webp"
+
+    img_resp = client.get(role["avatar"], headers=headers)
+    assert img_resp.status_code == 200
+    assert img_resp.content == _MINIMAL_WEBP
+    assert img_resp.headers["content-type"] == "image/webp"
+
+
+def test_avatar_endpoint_rejects_path_traversal_and_missing_file(
+    client: TestClient, v1_auth_env: dict[str, str]
+) -> None:
+    from staff import roles as roles_mod
+
+    roles_dir = Path(os.environ["STAFF_ROLES_DIR"])
+    _write_role_with_avatar(roles_dir, name="cartographer", avatar_rel="cartographer.webp")
+    roles_mod.clear_roles_cache()
+
+    headers = {"Authorization": f"Bearer {v1_auth_env['viewer']}"}
+    traversal_resp = client.get("/api/v1/staff/avatars/../../etc/passwd", headers=headers)
+    assert traversal_resp.status_code == 404
+
+    missing_resp = client.get("/api/v1/staff/avatars/nonexistent.webp", headers=headers)
+    assert missing_resp.status_code == 404
+
+
+def test_avatar_endpoint_requires_auth(client: TestClient, v1_auth_env: dict[str, str]) -> None:
+    from staff import roles as roles_mod
+
+    roles_dir = Path(os.environ["STAFF_ROLES_DIR"])
+    _write_role_with_avatar(roles_dir, name="cartographer", avatar_rel="cartographer.webp")
+    roles_mod.clear_roles_cache()
+
+    resp = client.get("/api/v1/staff/avatars/cartographer.webp")
+    assert resp.status_code == 401

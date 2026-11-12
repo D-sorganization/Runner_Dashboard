@@ -28,11 +28,30 @@ SYNC_SCRIPT="${SCRIPT_DIR}/sync_provider_credentials.py"
 if [[ ! -f "${SYNC_SCRIPT}" && -f "${DASHBOARD_HOME}/.config/runner-dashboard/self-heal/sync_provider_credentials.py" ]]; then
   SYNC_SCRIPT="${DASHBOARD_HOME}/.config/runner-dashboard/self-heal/sync_provider_credentials.py"
 fi
+credential_sync_ok=1
+credential_sync_error=""
 if [[ -f "${SYNC_SCRIPT}" ]]; then
   if sync_out="$("${PYTHON_BIN}" "${SYNC_SCRIPT}" 2>/dev/null)"; then
     if echo "${sync_out}" | grep -q '"\/'; then
       healed_actions+=("synced_provider_credentials")
     fi
+  else
+    credential_sync_ok=0
+    credential_sync_error="$(printf '%s' "${sync_out:-}" | "${PYTHON_BIN}" -c '
+import json, sys
+raw = sys.stdin.read().strip()
+try:
+    payload = json.loads(raw) if raw else {}
+except ValueError:
+    payload = {}
+print(str(payload.get("error") or "sync_provider_credentials.py exited non-zero")[:200])
+' 2>/dev/null || echo "sync_provider_credentials.py exited non-zero")"
+    healed_actions+=("alert:credential_sync_failed")
+  fi
+  # Detect a self-heal copy that has drifted from the live deployed script (#3975).
+  CANONICAL_SYNC_SCRIPT="${DEPLOY_DIR}/deploy/sync_provider_credentials.py"
+  if [[ -f "${CANONICAL_SYNC_SCRIPT}" ]] && ! cmp -s "${SYNC_SCRIPT}" "${CANONICAL_SYNC_SCRIPT}" 2>/dev/null; then
+    healed_actions+=("alert:sync_script_stale")
   fi
 fi
 
@@ -72,6 +91,45 @@ for _ in 1 2; do
 done
 
 if [[ "${health_ok}" -eq 0 && "${auto_deploy_busy}" -eq 0 ]]; then
+  LOOPBACK_GUARD="${SCRIPT_DIR}/loopback_bind_guard.py"
+  if [[ ! -f "${LOOPBACK_GUARD}" && -f "${DASHBOARD_HOME}/actions-runners/dashboard/deploy/loopback_bind_guard.py" ]]; then
+    LOOPBACK_GUARD="${DASHBOARD_HOME}/actions-runners/dashboard/deploy/loopback_bind_guard.py"
+  fi
+  ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${DASHBOARD_HOME}/.config/runner-dashboard/env}"
+  bind_scope=system
+  if systemctl --user is-enabled runner-dashboard.service &>/dev/null 2>&1 || \
+     systemctl --user is-active runner-dashboard.service &>/dev/null 2>&1; then
+    bind_scope=user
+  fi
+  needs_loopback_repair=0
+  journal_bind_failure=0
+  if [[ -f "${LOOPBACK_GUARD}" ]]; then
+    if "${PYTHON_BIN}" "${LOOPBACK_GUARD}" detect-journal --service runner-dashboard.service 2>/dev/null; then
+      needs_loopback_repair=1
+      journal_bind_failure=1
+      healed_actions+=("alert:loopback_bind_guard:journal_startup_failure")
+    fi
+    issue_json="$("${PYTHON_BIN}" "${LOOPBACK_GUARD}" diagnose --env-file "${ENV_FILE}" 2>/dev/null || echo "null")"
+    if [[ "${issue_json}" != "null" ]]; then
+      needs_loopback_repair=1
+      healed_actions+=("alert:loopback_bind_guard:env_misconfigured")
+    fi
+    if [[ "${needs_loopback_repair}" -eq 1 ]]; then
+      force_dropin_flag=()
+      if [[ "${journal_bind_failure}" -eq 1 ]]; then
+        force_dropin_flag=(--force-dropin)
+      fi
+      repair_json="$("${PYTHON_BIN}" "${LOOPBACK_GUARD}" repair \
+        --env-file "${ENV_FILE}" --scope "${bind_scope}" --home "${DASHBOARD_HOME}" \
+        "${force_dropin_flag[@]}" 2>/dev/null || true)"
+      if echo "${repair_json}" | grep -q 'env_set_dashboard_host_loopback'; then
+        healed_actions+=("loopback_bind_env_repair")
+      fi
+      if echo "${repair_json}" | grep -q 'installed_systemd_dropin'; then
+        healed_actions+=("loopback_bind_dropin_installed")
+      fi
+    fi
+  fi
   if systemctl --user is-enabled runner-dashboard.service &>/dev/null 2>&1 || \
      systemctl --user is-active runner-dashboard.service &>/dev/null 2>&1; then
     systemctl --user restart runner-dashboard.service || true
@@ -80,6 +138,22 @@ if [[ "${health_ok}" -eq 0 && "${auto_deploy_busy}" -eq 0 ]]; then
        systemctl is-active runner-dashboard.service &>/dev/null 2>&1; then
     sudo -n systemctl restart runner-dashboard.service 2>/dev/null || systemctl restart runner-dashboard.service 2>/dev/null || true
     healed_actions+=("restarted_system_runner_dashboard")
+  fi
+fi
+
+# 3b. Ensure native-Linux tailnet serve bridge when loopback auth binds 127.0.0.1 only
+if [[ "${health_ok}" -eq 1 ]]; then
+  HUB_SERVE="${SCRIPT_DIR}/hub_tailnet_serve.py"
+  if [[ ! -f "${HUB_SERVE}" && -f "${DEPLOY_DIR}/deploy/hub_tailnet_serve.py" ]]; then
+    HUB_SERVE="${DEPLOY_DIR}/deploy/hub_tailnet_serve.py"
+  fi
+  ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${DASHBOARD_HOME}/.config/runner-dashboard/env}"
+  if [[ -f "${HUB_SERVE}" ]]; then
+    if serve_out="$("${PYTHON_BIN}" "${HUB_SERVE}" ensure --env-file "${ENV_FILE}" --port "${PORT}" 2>/dev/null)"; then
+      if echo "${serve_out}" | grep -q '"action": "configured"'; then
+        healed_actions+=("hub_tailnet_serve_configured")
+      fi
+    fi
   fi
 fi
 
@@ -95,14 +169,19 @@ if [[ -d "${BASE_DIR}" ]]; then
 fi
 
 mkdir -p "$(dirname "${STATUS_FILE}")"
-"${PYTHON_BIN}" - "${STATUS_FILE}" "${health_ok}" "${healed_actions[@]:-}" << 'PY'
+"${PYTHON_BIN}" - "${STATUS_FILE}" "${health_ok}" "${credential_sync_ok}" "${credential_sync_error}" "${healed_actions[@]:-}" << 'PY'
 import datetime, json, os, sys
 status_path = sys.argv[1]
 health_ok = sys.argv[2] == "1"
-actions = [a for a in sys.argv[3:] if a]
+credential_sync_ok = sys.argv[3] == "1"
+credential_sync_error = sys.argv[4]
+actions = [a for a in sys.argv[5:] if a]
 payload = {
     "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-    "healthy": health_ok,
+    "healthy": health_ok and credential_sync_ok,
+    "http_healthy": health_ok,
+    "credential_sync_ok": credential_sync_ok,
+    "credential_sync_error": credential_sync_error or None,
     "actions": actions,
 }
 tmp = f"{status_path}.tmp"

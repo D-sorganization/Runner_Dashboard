@@ -1,0 +1,12 @@
+{
+  "bundle_format": "grok-role-bundle/v1",
+  "grok_import": {},
+  "roles": {
+    "sync-canary": {
+      "payload_hash": "8bb5ffce4089f58092ff8c9318d01456597e2f375fc44010d2cf72455675f9f3",
+      "payload_path": "roles/sync-canary.json",
+      "source_content_hash": "04d68856561fecb58ae225f668a35580919995c9be89d691a3e40fd14c79e1e0",
+      "source_file": "sync-canary.yml"
+    }
+  }
+}

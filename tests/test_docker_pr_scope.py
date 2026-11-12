@@ -28,6 +28,38 @@ def test_truncated_file_list_runs_docker() -> None:
     assert run_docker_for_paths([f"docs/file{i}.md" for i in range(100)])
 
 
+def test_empty_file_list_fails_safe_runs_docker() -> None:
+    """When git diff fails or returns zero files on a PR, fail safe and run Docker validation (#2764)."""
+    assert run_docker_for_paths([])
+
+
+def test_main_emits_scope_failed_on_empty_stdin(monkeypatch, capsys) -> None:
+    """Empty stdin (e.g. git diff failure) must output run_docker=true and scope_failed=true (#2764)."""
+    import io
+
+    from scripts.ci import docker_pr_scope
+
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    docker_pr_scope.main()
+    captured = capsys.readouterr()
+    assert "run_docker=true" in captured.out
+    assert "scope_failed=true" in captured.out
+
+
+def test_main_emits_scope_failed_false_on_valid_paths(monkeypatch, capsys) -> None:
+    """Valid changed-file paths must output scope_failed=false (#2764)."""
+    import io
+
+    from scripts.ci import docker_pr_scope
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("docs/README.md\n"))
+    docker_pr_scope.main()
+    captured = capsys.readouterr()
+    assert "run_docker=false" in captured.out
+    assert "scope_failed=false" in captured.out
+
+
+
 def test_docker_scope_workflow_does_not_call_pull_files_api() -> None:
     workflow = yaml.safe_load(DOCKER_WORKFLOW.read_text(encoding="utf-8"))
     blob = yaml.dump(workflow)

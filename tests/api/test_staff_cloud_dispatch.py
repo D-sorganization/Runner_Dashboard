@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from tests.api.test_agent_grok_fleet_read import (
     _XHR,
     _auth,
+    grok_barb_claim,  # noqa: F401
     grok_env,  # noqa: F401
     remote_client,  # noqa: F401
 )
@@ -31,6 +32,7 @@ def test_cloud_capabilities_route(
 def test_dispatch_dry_run_cloud_argv(
     remote_client: TestClient,  # noqa: F811
     grok_env: dict[str, str],  # noqa: F811
+    grok_barb_claim: dict[str, str],  # noqa: F811
     staff_cli_installed,
 ) -> None:
     staff_cli_installed("claude")
@@ -42,7 +44,7 @@ def test_dispatch_dry_run_cloud_argv(
             "dry_run": True,
             "execution_mode": "cloud",
         },
-        headers={**_XHR, **_auth(grok_env["grok"])},
+        headers={**_XHR, **_auth(grok_env["grok"]), **grok_barb_claim},
     )
     assert resp.status_code == 200
     plan = resp.json()["plan"]

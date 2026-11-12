@@ -35,14 +35,13 @@ from .policy import (
     FailureContext,
     RemediationPolicy,
     WorkflowTypeRule,
-    _attempts_for_fingerprint,
-    _attempts_for_provider,
     build_failure_fingerprint,
     classify_workflow_type,
     is_runner_state_failure,
     load_policy,
     save_policy,
 )
+from .policy_attempts import _attempts_for_fingerprint, _attempts_for_provider
 from .provider_registry import (
     PROVIDER_REGISTRY,
     ProviderEntry,

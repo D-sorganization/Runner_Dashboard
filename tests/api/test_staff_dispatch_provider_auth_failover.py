@@ -45,7 +45,7 @@ async def test_dispatch_uses_next_provider_when_first_auth_expired() -> None:
         patch("staff.provider_dispatch_preflight.refusal_for_provider_auth", return_value=None),
     ):
         runner = mock_runner.return_value
-        runner.machine = "DeskComputer"
+        runner.machine = "hub-a"
         runner.plan.return_value = plan
         out = await dispatch_staff_run(cmd, caller)
 

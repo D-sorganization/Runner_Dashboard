@@ -14,13 +14,15 @@ The Antigravity CLI (`agy`) provides headless and unattended execution using Goo
 - **Unattended Execution:** Runs in `--mode plan` with `--print <prompt> --output-format stream-json --add-dir <workdir> --model <model>`.
 - **Output Contract:** Results stream NDJSON events; the final answer appears in `result.response` and token accounting in `result.usage`. The runner parses `STAFF_RESULT: ok|failed` from the output stream.
 
+**Finding work:** list claimable issues with `GET /api/coordination/jobs`, claim via `POST /api/coordination/claims`, and release with `POST /api/coordination/claims/release` when finished.
+
 ---
 
 ## 2. Installation on Fleet Nodes
 
 `agy` must be accessible on `PATH` for the user running the dashboard daemon or staff worker.
 
-### Windows (DeskComputer, OGLaptop)
+### Windows (hub-a, node-b)
 
 Install via WinGet or direct installer:
 
@@ -34,7 +36,7 @@ Verify binary presence:
 agy --version
 ```
 
-### Linux / WSL (ControlTower, DeskComputer WSL)
+### Linux / WSL (node-a, hub-a WSL)
 
 Install the native Linux CLI using the [official installer](https://antigravity.google/cli/install.sh), as the service user. Ensure the installed `agy` is on the dashboard service PATH. Avoid linking a Windows `agy.exe`: sign-in can work from a Windows directory and fail from a Linux worktree.
 

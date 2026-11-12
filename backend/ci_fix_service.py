@@ -14,11 +14,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import gh_client
+from cache_utils import cache_set
 from ci_fix_dispatch import (
     GLOBAL_CI_FIX_LOCK_MGR,
+    NIGHT_WATCH_ROLE,
     build_ci_fix_prompt,
     classify_failure_type,
     count_consecutive_attempts,
@@ -30,7 +33,8 @@ from ci_fix_dispatch import (
     route_ci_fix,
     truncate_log_tail,
 )
-from ci_fix_events import FAILED_CONCLUSIONS, CIFixEvent
+from ci_fix_events import ACCEPTED_RUN_CONCLUSIONS, FAILED_CONCLUSIONS, CIFixEvent
+from ci_fix_sweep import count_stale_red_prs_without_fix_attempts, select_sweep_candidates
 from dashboard_config import ORG
 from fastapi import HTTPException
 from identity import Principal
@@ -40,10 +44,14 @@ from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 
 log = logging.getLogger("dashboard.ci_fix_service")
 
-# Route provider ids (``agent_remediation`` naming) → staff adapter ids.
+# Route provider ids (``agent_remediation`` naming) → staff adapter ids. ``cursor_cloud`` has no
+# local adapter (#2766 item 3: it is a cloud follow-up, not a CLI launch on this node) and
+# ``night_watch`` dispatches by role instead of provider, so neither is listed here.
 ROUTE_TO_STAFF_PROVIDER = {"claude_code_cli": "claude", "codex_cli": "codex", "antigravity": "antigravity"}
 CI_FIX_MODEL_TIER = {"cheap": "routine", "cli": "standard", "strong": "complex"}
 CI_FIX_ROLE = "ad-hoc"
+# Cache key the Prometheus exporter (``routers/metrics.py``) reads for the stale-red-PR count.
+CI_FIX_RED_24H_METRIC_CACHE_KEY = "ci_fix_red_24h_zero_fix_total"
 WEBHOOK_PRINCIPAL = Principal(
     id="ci-fix-webhook",
     type="bot",
@@ -174,7 +182,7 @@ async def _route_and_launch(
     workflow_name = req.workflow_name or (MERGE_QUEUE_WORKFLOW if is_conflict else "")
     signature = failure_signature(workflow_name, failing_tests, failure_type)
     attempt = req.attempt_number or count_consecutive_attempts(req.repo, req.pr_number, signature) + 1
-    route = route_ci_fix(failure_type, attempt_number=attempt)
+    route = route_ci_fix(failure_type, attempt_number=attempt, branch=req.branch)
     if is_conflict:
         prompt = build_merge_conflict_prompt(req.repo, req.pr_number, req.branch, req.base_ref)
     else:
@@ -190,30 +198,56 @@ async def _route_and_launch(
         if req.from_queue:
             prompt = f"{prompt}\n{_queue_note(req.repo, req.pr_number)}\n"
     prompt = f"{_pr_head_note(req.branch)}\n{prompt}"
-    provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
-    installed = available_providers()
-    if not any(installed.get(candidate, False) for candidate in ROUTE_TO_STAFF_PROVIDER.values()):
+
+    if route.provider == "cursor_cloud":
+        # #2766 item 3: a cursor/* branch is a Cursor-authored PR. This node has no
+        # cursor_cloud_handoff integration yet (see #3377), so launching a local CLI session
+        # for it would silently defeat the routing decision; refuse explicitly instead (DbC).
         raise CIFixLaunchUnavailableError(
-            "No CI-fix provider is installed on this node; install one or dispatch from a node that has one"
+            "Routed to a Cursor cloud follow-up, which this node cannot launch yet "
+            "(no cursor_cloud_handoff integration); not dispatching a local session for a "
+            "Cursor-authored PR"
         )
-    cmd = DispatchCommand(
-        role=CI_FIX_ROLE,
-        requested_by=f"ci-fix:{caller.id}",
-        provider=provider,
-        model=route.model,
-        model_tier=CI_FIX_MODEL_TIER[route.tier],
-        repo=req.repo,
-        pr=req.pr_number,
-        prompt=prompt,
-        machine="local",
-        surface="ci_fix",
-        skip_premise_check=True,
-        head_ref=req.branch,
-    )
+
+    if route.tier == "infra":
+        # #2766 item 4: an infra failure is an ops escalation, not a code fix; it goes to the
+        # Night Watch role instead of the CI-fix CLI role, with no forced provider/model.
+        cmd = DispatchCommand(
+            role=NIGHT_WATCH_ROLE,
+            requested_by=f"ci-fix:{caller.id}",
+            repo=req.repo,
+            pr=req.pr_number,
+            prompt=prompt,
+            machine="local",
+            surface="ci_fix",
+            skip_premise_check=True,
+            head_ref=req.branch,
+        )
+    else:
+        provider = ROUTE_TO_STAFF_PROVIDER[route.provider]
+        installed = available_providers()
+        if not any(installed.get(candidate, False) for candidate in ROUTE_TO_STAFF_PROVIDER.values()):
+            raise CIFixLaunchUnavailableError(
+                "No CI-fix provider is installed on this node; install one or dispatch from a node that has one"
+            )
+        cmd = DispatchCommand(
+            role=CI_FIX_ROLE,
+            requested_by=f"ci-fix:{caller.id}",
+            provider=provider,
+            model=route.model,
+            model_tier=CI_FIX_MODEL_TIER[route.tier],
+            repo=req.repo,
+            pr=req.pr_number,
+            prompt=prompt,
+            machine="local",
+            surface="ci_fix",
+            skip_premise_check=True,
+            head_ref=req.branch,
+        )
     launched = await launcher(cmd, caller)
     run = launched.get("run") or {}
     staff_run_id = str(run.get("id") or "")
-    launched_provider = str(run.get("provider") or provider)
+    launched_provider = str(run.get("provider") or route.provider)
     launched_model = str(run.get("model") or route.model)
     record_ci_fix_audit(
         repo=req.repo,
@@ -284,6 +318,24 @@ async def _find_queue_run(event: CIFixEvent) -> dict[str, Any] | None:
     return None
 
 
+async def _cancelled_run_is_superseded(full_repo: str, workflow_name: str, head_sha: str, run_id: int) -> bool:
+    """Whether a newer run of ``workflow_name`` exists for ``head_sha`` (#2766 item 1).
+
+    Fails open (not superseded) when GitHub is unreachable: dispatching one fix session for a
+    cancel that turns out to have been a genuine supersession is cheaper than silently
+    dropping a real failure because the API was briefly down.
+    """
+    try:
+        data = await gh_client.get(f"/repos/{full_repo}/actions/runs?head_sha={head_sha}&per_page=20")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("ci-fix: cannot check for a newer run of %s@%s: %s", workflow_name, head_sha, exc)
+        return False
+    for run in data.get("workflow_runs", []):
+        if str(run.get("name") or "") == workflow_name and int(run.get("id") or 0) > run_id:
+            return True
+    return False
+
+
 async def _ci_failure_request(event: CIFixEvent) -> CIFixDispatchRequest | str:
     """Request for a failing run (PR or merge-queue), or the reason it is not eligible."""
     run_id, workflow_name = event.run_id, event.workflow_name
@@ -315,13 +367,24 @@ async def _ci_failure_request(event: CIFixEvent) -> CIFixDispatchRequest | str:
         "is_draft": bool(pr.get("draft")) if pr else bool(event.is_draft),
         "auto_merge_armed": event.from_queue or bool(pr.get("auto_merge")),
     }
+    # Only a real ``ci_failure`` event carries a run conclusion/head SHA; a dequeue event's
+    # own ``conclusion`` field is the (non-run) dequeue reason, so it is always treated as a
+    # failure, as before.
+    is_run_event = event.kind == "ci_failure" and event.conclusion in ACCEPTED_RUN_CONCLUSIONS
+    conclusion = event.conclusion if is_run_event else "failure"
+    head_sha = event.head_sha if event.kind == "ci_failure" else ""
+    superseded = False
+    if conclusion == "cancelled" and run_id and head_sha:
+        superseded = await _cancelled_run_is_superseded(event.full_repo, workflow_name, head_sha, run_id)
     decision = evaluate_ci_fix_trigger(
         {
-            "conclusion": "failure",
+            "conclusion": conclusion,
             "workflow_name": workflow_name,
             "repository": event.repo,
             "run_id": run_id,
             "head_branch": event.head_branch,
+            "head_sha": head_sha,
+            "superseded_by_newer_run": superseded,
             "pull_requests": [facts],
         },
         lock_manager=GLOBAL_CI_FIX_LOCK_MGR,
@@ -383,3 +446,55 @@ async def handle_ci_fix_event(event: CIFixEvent, *, launcher: Launcher | None = 
         log.warning("ci-fix: event for %s not dispatched: %s", target, exc)
         return {"dispatched": False, "reason": str(exc)}
     return {"dispatched": True, "staff_run_id": result["staff_run_id"], "route": result["route"]}
+
+
+# ─── sweep (#2766 item 2) ─────────────────────────────────────────────────────
+
+PRFactsProvider = Callable[[], Awaitable[list[dict[str, Any]]]]
+
+
+async def run_ci_fix_sweep(
+    repo: str,
+    *,
+    pr_provider: PRFactsProvider,
+    launcher: Launcher | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Cron-style 30-minute sweep: dispatch a fix for every red, armed, unlocked PR (#2766 item 2).
+
+    ``pr_provider`` returns open PR facts for ``repo``: ``number``, ``repo``, ``branch``,
+    ``is_draft``, ``auto_merge_armed``, ``red_since`` (ISO timestamp or ``None``), ``labels``,
+    ``workflow_name``, ``run_id``. This keeps the sweep's decision logic
+    (:func:`ci_fix_sweep.select_sweep_candidates`) identical whether the facts came from a
+    live GitHub poll or a scheduled caller's own cache.
+
+    Post: every selected candidate gets exactly one dispatch attempt — never silently skipped
+    without an entry in ``skipped`` — and the red>24h/zero-fix-round metric is refreshed for
+    the Prometheus exporter.
+    """
+    at = now or datetime.now(UTC)
+    prs = await pr_provider()
+    candidates = select_sweep_candidates(prs, now=at, lock_manager=GLOBAL_CI_FIX_LOCK_MGR)
+    dispatched: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for pr in candidates:
+        req = CIFixDispatchRequest(
+            repo=str(pr.get("repo") or repo),
+            pr_number=int(pr["number"]),
+            branch=str(pr.get("branch") or ""),
+            workflow_name=str(pr.get("workflow_name") or ""),
+            run_id=pr.get("run_id"),
+            from_queue=False,
+        )
+        try:
+            result = await dispatch_ci_fix(req, WEBHOOK_PRINCIPAL, launcher=launcher)
+            dispatched.append({"repo": req.repo, "pr_number": req.pr_number, "staff_run_id": result["staff_run_id"]})
+        except CIFixBusyError as exc:
+            skipped.append({"repo": req.repo, "pr_number": req.pr_number, "reason": str(exc)})
+        except Exception as exc:  # noqa: BLE001 - one PR's refusal never blocks the rest of the sweep
+            log.warning("ci-fix sweep: %s#%d not dispatched: %s", req.repo, req.pr_number, exc)
+            skipped.append({"repo": req.repo, "pr_number": req.pr_number, "reason": str(exc)})
+
+    stale = count_stale_red_prs_without_fix_attempts(prs, now=at)
+    cache_set(CI_FIX_RED_24H_METRIC_CACHE_KEY, {"count": stale, "generated_at": at.isoformat()})
+    return {"dispatched": dispatched, "skipped": skipped, "candidates": len(candidates), "red_24h_zero_fix": stale}

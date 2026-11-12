@@ -36,7 +36,11 @@ export function StatusPill({ count, label, onClick, selected, status }: StatusPi
       <span aria-label={`${count} ${label}`} className="status-pill-count">
         {count}
       </span>
-      <span className="status-pill-label" style={{ marginLeft: "4px", opacity: 0.85 }}>
+      <span
+        className="status-pill-label"
+        style={{ marginLeft: "4px", opacity: 0.85 }}
+        title={label}
+      >
         {label}
       </span>
     </Pill>

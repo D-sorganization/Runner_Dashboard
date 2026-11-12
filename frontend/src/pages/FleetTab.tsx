@@ -116,8 +116,8 @@ export function FleetTab(p: any): React.ReactElement {
       .sort(runnerSort);
   });
   const machineNames = Object.keys(runnersByMachine).sort(function (a, b) {
-    if (a === "ControlTower") return -1;
-    if (b === "ControlTower") return 1;
+    if (a === "node-a") return -1;
+    if (b === "node-a") return 1;
     return a.localeCompare(b);
   });
   const nodesByName: any = {};

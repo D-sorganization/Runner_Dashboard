@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Explicit operator ``gh`` — bypasses fleet App wrapper; uses stored personal login.
+set -euo pipefail
+real="${STAFF_REAL_GH:-/usr/bin/gh}"
+exec env -u GH_TOKEN -u GITHUB_TOKEN "${real}" "$@"

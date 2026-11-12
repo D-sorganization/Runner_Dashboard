@@ -26,10 +26,10 @@ def test_unset_means_legacy_single_node() -> None:
 
 @pytest.mark.unit
 def test_authority_and_replica_roles() -> None:
-    env = {"BARB_AUTHORITY_NODE": "ControlTower", "BARB_AUTHORITY_URL": "http://ct:8321/", "BARB_AUTHORITY_EPOCH": "4"}
-    auth = AuthorityConfig.from_env(env, local_node="controltower")
+    env = {"BARB_AUTHORITY_NODE": "node-a", "BARB_AUTHORITY_URL": "http://ct:8321/", "BARB_AUTHORITY_EPOCH": "4"}
+    auth = AuthorityConfig.from_env(env, local_node="node-a")
     assert auth.role is AuthorityRole.AUTHORITY and auth.epoch == 4 and auth.url == "http://ct:8321"
-    rep = AuthorityConfig.from_env(env, local_node="DeskComputer")
+    rep = AuthorityConfig.from_env(env, local_node="hub-a")
     assert rep.role is AuthorityRole.REPLICA and rep.url == "http://ct:8321"
 
 
@@ -57,11 +57,11 @@ def test_replica_requires_a_url() -> None:
 @pytest.mark.unit
 def test_registry_hub_default_and_manifest_key_override() -> None:
     machines = [
-        {"name": "DeskComputer", "role": "worker", "dashboard_url": "http://d:8321"},
-        {"name": "ControlTower", "role": "hub", "dashboard_url": "http://ct:8321"},
+        {"name": "hub-a", "role": "worker", "dashboard_url": "http://d:8321"},
+        {"name": "node-a", "role": "hub", "dashboard_url": "http://ct:8321"},
     ]
-    assert registry_hub({"machines": machines}) == ("ControlTower", "http://ct:8321")
-    assert registry_hub({"machines": machines, "barb_authority": "DeskComputer"}) == ("DeskComputer", "http://d:8321")
+    assert registry_hub({"machines": machines}) == ("node-a", "http://ct:8321")
+    assert registry_hub({"machines": machines, "barb_authority": "hub-a"}) == ("hub-a", "http://d:8321")
     assert registry_hub({"machines": []}) is None
 
 

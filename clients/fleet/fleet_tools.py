@@ -12,9 +12,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from fleet_checkin import checkin_commands
 from fleet_client import LIMITS, MAX_VERIFICATION_CHARACTERS, FleetArgumentError, FleetClient
 from fleet_exclusion_tools import exclusion_commands
 from fleet_friction_tools import friction_commands
+from fleet_panel_tools import panel_commands
 from fleet_validators import MEMORY_ENTRY_TYPES, MEMORY_VISIBILITIES
 
 REPO = {"type": "string", "description": "Repository name, e.g. Runner_Dashboard (owner/ prefix optional)."}
@@ -202,6 +204,40 @@ COMMANDS: tuple[Command, ...] = (
         "claim hints and the fleet rules - one call.",
         {"repo": REPO, "agent": AGENT},
         tool="fleet_briefing",
+    ),
+    Command(
+        "activity-context",
+        "activity_context",
+        "Read token-capped shared running activity context (needs scope activity.read).",
+        {
+            "repo": REPO,
+            "budget_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000,
+                "description": "Token cap (1..4000, default 1500).",
+            },
+        },
+        tool="activity_context",
+    ),
+    Command(
+        "tail-session",
+        "tail_session",
+        "Tail bounded session transcript chunks after a sequence cursor (needs scope activity.read).",
+        {
+            "session_id": {"type": "string", "description": "Target session id to tail."},
+            "after_seq": {"type": "integer", "minimum": -1, "description": "Return chunks after seq (default -1)."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 500, "description": "Max chunks (1..500)."},
+            "budget_tokens": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4000,
+                "description": "Token cap (1..4000, default 1500).",
+            },
+        },
+        required=("session_id",),
+        tool="tail_session",
+        positional=("session_id",),
     ),
     Command(
         "sessions",
@@ -833,6 +869,24 @@ COMMANDS: tuple[Command, ...] = (
         positional=("scope",),
     ),
     Command(
+        "fleet-target",
+        "fleet_set_runner_target",
+        "Set an expiring runner-count override on a fleet host (schedule resumes after until).",
+        {
+            "host": {"type": "string", "minLength": 1, "description": "Fleet host or alias, e.g. hub-a."},
+            "runners": {"type": "integer", "minimum": 0, "maximum": 32},
+            "until": {
+                "type": "string",
+                "description": "ISO-8601 or HH:MM when the override expires (schedule takes over).",
+            },
+            "reason": {"type": "string", "maxLength": 500},
+            "apply": {"type": "boolean", "description": "Run runner-scheduler --apply after saving (default true)."},
+        },
+        required=("host", "runners"),
+        tool="fleet_set_runner_target",
+        positional=("host", "runners"),
+    ),
+    Command(
         "barb seat release",
         "barb_seat_release",
         "Release your seat after writing a turnover; the hub refuses (409) without one.",
@@ -847,7 +901,13 @@ COMMANDS: tuple[Command, ...] = (
         positional=("scope",),
     ),
 )
-COMMANDS = (*COMMANDS, *friction_commands(Command), *exclusion_commands(Command))
+COMMANDS = (
+    *COMMANDS,
+    *friction_commands(Command),
+    *exclusion_commands(Command),
+    *checkin_commands(Command),
+    *panel_commands(Command),
+)
 
 BY_CLI: dict[str, Command] = {c.cli: c for c in COMMANDS}
 BY_TOOL: dict[str, Command] = {c.tool: c for c in COMMANDS if c.tool}

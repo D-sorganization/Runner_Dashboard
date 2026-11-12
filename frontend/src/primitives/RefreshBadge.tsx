@@ -67,6 +67,8 @@ export function RefreshBadge({ staleness, onRetry }: RefreshBadgeProps) {
       <span
         role="status"
         aria-live="polite"
+        aria-label="Data refresh status"
+        title="Time since last successful refresh"
         style={{ ...containerStyle, color: "var(--text-secondary, #8b949e)" }}
       >
         <span

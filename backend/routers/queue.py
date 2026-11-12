@@ -17,14 +17,17 @@ import os
 from datetime import UTC, datetime
 from typing import Annotated, Any, cast
 
-from cache_utils import cache_delete, cache_get, cache_set
+from cache_utils import cache_delete, cache_get, cache_get_swr, cache_set
 from dashboard_config import ORG
+from dashboard_config.cache_ttls import CacheTtl
 from error_models import bad_gateway, validation_error
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from gh_utils import gh_api
 from identity import Principal, require_fleet_peer, require_scope
 from models.github_payloads import GhWorkflowRun
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
+from pydantic import BaseModel, Field, ValidationError
 from queue_cleanup import DEFAULT_MIN_AGE_MINUTES, find_stale_runs, purge_stale_runs
 from run_timing import annotate_runs_with_timing
 from security import validate_repo_slug
@@ -468,6 +471,33 @@ async def get_queue_merge_settings(request: Request) -> dict:
     return report
 
 
+# Bumped whenever a purge cancels runs so the next poll rescans instead of
+# serving runs that no longer exist.
+_stale_runs_generation = 0
+# A cold scan of a large org can take a while; give up waiting (502) after this.
+_STALE_RUNS_COLD_WAIT_S = 120.0
+
+
+def _stale_scan_timed_out() -> list:
+    raise TimeoutError("stale-run scan still running; retry shortly")
+
+
+async def _cached_stale_runs(min_age_minutes: int, repo: str | None, reason: str | None) -> list:
+    """Share one org-wide stale scan across polls (stale-while-revalidate)."""
+    key = f"queue:stale-runs:{_stale_runs_generation}:{min_age_minutes}:{repo or ''}:{reason or ''}"
+    return cast(
+        list,
+        await cache_get_swr(
+            key,
+            lambda: find_stale_runs(org=ORG, min_age_minutes=min_age_minutes, repo=repo, reason=reason),
+            fresh_ttl=CacheTtl.STALE_RUNS_S,
+            stale_ttl=CacheTtl.STALE_RUNS_MAX_AGE_S,
+            wait_timeout=_STALE_RUNS_COLD_WAIT_S,
+            on_timeout=_stale_scan_timed_out,
+        ),
+    )
+
+
 @router.get("/api/queue/stale", dependencies=[Depends(require_fleet_peer)])
 async def get_stale_queue_runs(
     request: Request,
@@ -491,12 +521,7 @@ async def get_stale_queue_runs(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
-        runs = await find_stale_runs(
-            org=ORG,
-            min_age_minutes=min_age_minutes,
-            repo=validated_repo,
-            reason=reason,
-        )
+        runs = await _cached_stale_runs(min_age_minutes, validated_repo, reason)
     except Exception as exc:
         log.exception("Failed to fetch stale runs")
         raise HTTPException(
@@ -525,6 +550,13 @@ async def get_stale_queue_runs(
     }
 
 
+class _PurgeStaleBounds(BaseModel):
+    """Body overrides carry the same bounds as their query counterparts."""
+
+    min_age_minutes: int = Field(ge=1, le=60 * 24 * 14)
+    max_count: int | None = Field(ge=1, le=500)
+
+
 @router.post("/api/queue/purge-stale", dependencies=[Depends(require_fleet_peer)])
 async def purge_stale_queue_runs(
     request: Request,
@@ -547,7 +579,17 @@ async def purge_stale_queue_runs(
     if should_proxy_fleet_to_hub(request):
         return await proxy_to_hub(request)
     body = await _json_body_or_empty(request)
-    min_age_minutes = int(body.get("min_age_minutes", body.get("min_age", min_age_minutes)))
+    try:
+        bounds = _PurgeStaleBounds.model_validate(
+            {
+                "min_age_minutes": body.get("min_age_minutes", body.get("min_age", min_age_minutes)),
+                "max_count": body.get("max_count", body.get("max_cancel", max_count)),
+            }
+        )
+    except ValidationError as exc:
+        raise RequestValidationError([{**error, "loc": ("body", *error["loc"])} for error in exc.errors()]) from exc
+    min_age_minutes = bounds.min_age_minutes
+    max_count = bounds.max_count
 
     # Safely decode dry_run
     body_dry_run = body.get("dry_run")
@@ -568,9 +610,6 @@ async def purge_stale_queue_runs(
             safe_only = str(body_safe_only).lower() != "false"
     else:
         safe_only = safe_only
-
-    max_count = body.get("max_count", body.get("max_cancel", max_count))
-    max_count = int(max_count) if max_count else None
 
     body_superseded_only = body.get("superseded_only")
     if body_superseded_only is not None:
@@ -613,6 +652,8 @@ async def purge_stale_queue_runs(
 
     result["reason_counts"] = _reason_counts(list(result.get("runs", [])))
     if not dry_run and result.get("cancelled_count", 0):
+        global _stale_runs_generation
+        _stale_runs_generation += 1
         cache_delete("queue")
         cache_delete("queue:stale")
         cache_delete("diagnose")

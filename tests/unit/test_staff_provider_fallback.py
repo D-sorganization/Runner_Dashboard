@@ -182,3 +182,27 @@ def test_provider_capacity_skips_same_provider_retry() -> None:
     assert ok is False
     assert "declarative fallback" in reason
     assert is_retryable_class("provider_capacity") is True
+
+
+@pytest.mark.unit
+def test_quota_exhausted_skips_same_provider_retry() -> None:
+    role = RoleSpec(name="r", title="R", providers=("codex",))
+    from staff.store import RunRecord
+
+    rec = RunRecord(
+        id="run-q",
+        role="r",
+        provider="codex",
+        model="gpt-6-luna",
+        machine="test",
+        repo="",
+        target_kind="",
+        target_ref="",
+        prompt="x",
+        failure_class="quota_exhausted",
+        attempt=1,
+        max_attempts=3,
+    )
+    ok, reason = should_retry(rec, role)
+    assert ok is False
+    assert "failover chain" in reason

@@ -49,6 +49,9 @@ def proposal_card(prop: ActionProposalRecord, *, description: str, proposed_by: 
         "decided_by": prop.decided_by or None,
         "decided_at": prop.decided_at,
         "description": description,
+        # The real refusal (e.g. a dispatch resource-admission 503), so a failure card is
+        # self-explaining instead of only the generic retry notice (#3631).
+        "fail_reason": prop.reason if prop.state == "failed" else None,
     }
 
 

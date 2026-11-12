@@ -326,6 +326,8 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
                 id={`staff-dispatch-${f}`}
                 className="form-input staff-assign__number"
                 inputMode="numeric"
+                aria-label={FIELD_LABELS[f]}
+                title={`Numeric value for ${FIELD_LABELS[f]}`}
                 value={numbers[f]}
                 onChange={(e) => setNumbers((prev) => ({ ...prev, [f]: e.target.value }))}
               />
@@ -346,10 +348,20 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
           />
         </div>
         <div className="staff-assign__actions">
-          <TouchButton type="submit" disabled={!canSubmit}>
+          <TouchButton
+            type="submit"
+            disabled={!canSubmit}
+            title="Dry-run this request and show the execution plan without starting a run"
+          >
             {busy === "preview" ? "Previewing…" : "Preview"}
           </TouchButton>
-          <TouchButton type="button" variant="primary" disabled={!canSubmit} onClick={() => submit(false)}>
+          <TouchButton
+            type="button"
+            variant="primary"
+            disabled={!canSubmit}
+            title="Submit this request and start a staff run for real"
+            onClick={() => submit(false)}
+          >
             {busy === "dispatch" ? "Dispatching…" : "Dispatch"}
           </TouchButton>
         </div>

@@ -28,6 +28,8 @@ CLAUDE_WRITE_TOOLS: tuple[str, ...] = ("Edit", "Write", "MultiEdit", "NotebookEd
 _CHAT_READ_ONLY_FLAGS: dict[str, tuple[str, ...]] = {
     "claude": ("--permission-mode", "default"),
     "claude-ollama": ("--permission-mode", "default"),
+    "anthropic-api": ("--permission-mode", "default"),
+    "deepseek-api": ("--permission-mode", "default"),
     "codex": ("--sandbox", "read-only"),
     "ollama": ("--sandbox", "read-only"),
     "antigravity": ("--mode", "plan"),
@@ -184,6 +186,18 @@ READ_ONLY_RUN_SHELL_DENY: tuple[str, ...] = UNATTENDED_SHELL_DENY + (
 )
 _CLAUDE_READ_ONLY_RUN_TOOLS = ("Read", "Grep", "Glob", "TodoWrite", "WebFetch", "WebSearch")
 READ_ONLY_RUN_PROVIDERS: frozenset[str] = frozenset({"claude", "antigravity"})
+
+
+def grok_unattended_flags() -> tuple[str, str]:
+    """``(--allow, --deny)`` values for an unattended standalone Grok CLI run (#4131).
+
+    The Grok Build CLI's own ``--allow``/``--deny`` syntax is not yet confirmed against a
+    real ``grok`` binary (its docs only mention the flags generically); this reuses the
+    shared shell allow/deny prefixes as comma-separated values rather than guess a
+    Grok-specific vocabulary. Never ``--yolo``/``--always-approve``, which bypass
+    permissions outright and are banned fleet-wide (#1586).
+    """
+    return ",".join(UNATTENDED_SHELL_ALLOW), ",".join(UNATTENDED_SHELL_DENY)
 
 
 def antigravity_permissions(

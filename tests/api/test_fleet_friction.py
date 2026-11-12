@@ -152,6 +152,20 @@ async def test_staff_summary_includes_counts(tmp_path: Path, monkeypatch: pytest
     assert (out["friction_open"], out["owner_questions_open"]) == (1, 1)
 
 
+async def test_staff_summary_includes_anthropic_api_budget_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#3123 slice 3: staff/summary carries the anthropic-api spend/budget figures."""
+    from staff import summary_view  # noqa: PLC0415
+
+    monkeypatch.setenv("FLEET_FRICTION_DB", str(tmp_path / "f.sqlite3"))
+    out = await summary_view.build_staff_summary()
+    assert out["anthropic_api_budget_month_usd"] == 200.0
+    assert out["anthropic_api_spend_today_usd"] == 0.0
+    assert out["anthropic_api_spend_month_usd"] == 0.0
+    assert out["anthropic_api_remaining_usd"] == 200.0
+
+
 def test_importer_parses_real_table_format() -> None:
     rows, warnings = parse_ledger(_FIXTURE.read_text(encoding="utf-8"))
     assert [r["ledger_id"] for r in rows] == ["F1", "F2", "F3"]

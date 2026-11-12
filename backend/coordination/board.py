@@ -24,17 +24,32 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from coordination.board_pagination import (
+    _is_replay_warning,
+    _merge_paginated,
+    _session,
+    default_board_page_fetcher,
+    paginate_board_comments,
+)
 from coordination.rm_scripts import ScriptResult, run_module
 from staff.roles import load_roles
 
 CACHE_SECONDS = 60.0
 BOARD_REPO = "Repository_Management"
+BOARD_ISSUE = 2539
+BOARD_COMMENT_LIMIT = 1000
+BOARD_PAGE_SIZE = 100
+BOARD_MAX_PAGES = 100
 SCRIPT = "agent_communicate"
 SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "paths", "goals", "expires", "at")
 DEFAULT_GUIDANCE = "Coordination unavailable; retain leases and inspect active PRs before editing."
+
+BoardPageFetcher = Callable[[int, int], list[dict[str, Any]]]
+board_page_fetcher: BoardPageFetcher | None = default_board_page_fetcher
 
 _clock = time.monotonic  # cache ages; tests replace it with a fake clock
 _real_clock = time.monotonic  # wall time for join timeouts, never faked
@@ -69,12 +84,13 @@ def reset_cache() -> None:
 
     Post: reads in flight when this ran can no longer be stored (their generation is stale).
     """
-    global _all_repos_supported, _generation
+    global _all_repos_supported, _generation, board_page_fetcher
     with _lock:
         _cache.clear()
         _refreshing.clear()
         _key_locks.clear()
         _all_repos_supported = None
+        board_page_fetcher = default_board_page_fetcher
         _generation += 1
 
 
@@ -174,6 +190,10 @@ def _unavailable(reason: str) -> dict[str, Any]:
         "available": False,
         "reason": reason,
         "complete": False,
+        "degraded_history": False,
+        "read_warnings": [],
+        "replay_warnings": [],
+        "active_conflicts": [],
         "sessions": [],
         "messages": [],
         "conflicts": [],
@@ -181,22 +201,59 @@ def _unavailable(reason: str) -> dict[str, Any]:
     }
 
 
-def _parse_read(res: ScriptResult) -> dict[str, Any]:
+def _comment_limit_reached(data: dict[str, Any]) -> bool:
+    if data.get("comment_limit_exceeded") or data.get("page_limit_reached"):
+        return True
+    count = data.get("comment_count")
+    if isinstance(count, int) and count > BOARD_COMMENT_LIMIT and not data.get("complete", False):
+        return True
+    warnings = [str(w).lower() for w in data.get("warnings") or []]
+    return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in warnings)
+
+
+def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, Any]:
     data = res.json()
     if data is None or data.get("error") or "sessions" not in data:
         return _unavailable(res.failure())
+    limit_hit = _comment_limit_reached(data)
+    if limit_hit and board_page_fetcher is not None:
+        return _merge_paginated(data, paginate_board_comments(board_page_fetcher, session=session))
+    has_structured_warnings = (
+        isinstance(data.get("read_warnings"), list)
+        and isinstance(data.get("replay_warnings"), list)
+        and isinstance(data.get("active_conflicts"), list)
+    )
+    raw_warnings = [str(w) for w in data.get("warnings") or []]
+    if has_structured_warnings:
+        read_warnings = [str(w) for w in data["read_warnings"]]
+        replay_warnings = [str(w) for w in data["replay_warnings"]]
+        active_conflicts = [str(w) for w in data["active_conflicts"]]
+    else:
+        # Do not default missing read_warnings/active_conflicts to empty when warnings exist
+        live = {str(s.get("session")) for s in data.get("sessions") or [] if isinstance(s, dict)}
+        read_warnings = [w for w in raw_warnings if _is_replay_warning(w) is None]
+        replay_warnings = [w for w in raw_warnings if _is_replay_warning(w) is not None]
+        active_conflicts = [w for w in raw_warnings if _is_replay_warning(w) in live]
+    is_complete = (
+        bool(data.get("complete", False))
+        and not limit_hit
+        and not read_warnings
+        and not active_conflicts
+        and (data.get("ok", True) is True or (not has_structured_warnings and bool(replay_warnings)))
+    )
     return {
         "available": True,
-        "complete": bool(data.get("complete", False)),
+        "complete": is_complete,
+        "degraded_history": bool(data.get("degraded_history", bool(replay_warnings))),
+        "read_warnings": read_warnings,
+        "replay_warnings": replay_warnings,
+        "active_conflicts": active_conflicts,
+        "comment_limit_exceeded": limit_hit,
         "sessions": [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)],
         "messages": list(data.get("messages") or []),
         "conflicts": list(data.get("conflicts") or []),
-        "warnings": [str(w) for w in data.get("warnings") or []],
+        "warnings": list(dict.fromkeys([*read_warnings, *replay_warnings, *raw_warnings])),
     }
-
-
-def _session(raw: dict[str, Any]) -> dict[str, Any]:
-    return {**{k: raw.get(k) for k in SESSION_KEYS}, "source": "board"}
 
 
 def _unsupported(res: ScriptResult) -> bool:
@@ -229,15 +286,23 @@ def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
     for part in ok:
         for s in part["sessions"]:
             seen.setdefault((str(s.get("session")), str(s.get("repo"))), s)
-    warnings = [w for p in ok for w in p["warnings"]]
-    warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
+    read_warnings = [w for p in ok for w in p.get("read_warnings", [])]
+    read_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
+    replay_warnings = [w for p in ok for w in p.get("replay_warnings", [])]
+    active_conflicts = [w for p in ok for w in p.get("active_conflicts", [])]
+    all_warnings = [w for p in ok for w in p["warnings"]]
+    all_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
     return {
         "available": True,
         "complete": all(p["complete"] for p in parts),
+        "degraded_history": any(p.get("degraded_history", False) for p in parts),
+        "read_warnings": list(dict.fromkeys(read_warnings)),
+        "replay_warnings": list(dict.fromkeys(replay_warnings)),
+        "active_conflicts": list(dict.fromkeys(active_conflicts)),
         "sessions": list(seen.values()),
         "messages": [],
         "conflicts": [],
-        "warnings": list(dict.fromkeys(warnings)),
+        "warnings": list(dict.fromkeys(all_warnings)),
     }
 
 
@@ -250,28 +315,51 @@ def read_sessions(repo: str | None = None) -> dict[str, Any]:
     return {**data, "sessions": [s for s in data["sessions"] if str(s.get("repo") or "").casefold() == wanted]}
 
 
+def cached_board_state() -> dict[str, Any] | None:
+    """Return the cached board read if present, without triggering a subprocess call."""
+    with _lock:
+        hit = _cache.get("all")
+        return hit[1] if hit is not None else None
+
+
 def has_live_session(session: str, repo: str) -> bool:
     """Does ``session`` hold live presence in ``repo`` right now? Reads the board fresh (bypasses the cache).
 
     RM binds a session to the repo it registered in and silently drops messages and acks from any other
     sender, so this is the precondition for ``send`` / ``ack``. Raises ``RMScriptError`` when the board
-    cannot be read (an unknown answer must not be treated as "registered").
+    cannot be read or when the board read is incomplete and ``session`` is absent (fail-closed, #3550).
     """
     _invalidate()
     data = read_sessions(repo)
     if not data["available"]:
         raise RMScriptError(f"board unavailable, cannot confirm presence of {session}: {data.get('reason')}")
-    return any(str(s.get("session")) == session for s in data["sessions"])
+    if any(str(s.get("session")) == session for s in data["sessions"]):
+        return True
+    if not data.get("complete", True):
+        detail = "; ".join(data.get("warnings") or ["incomplete board read"])
+        raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
+    return False
 
 
 def read_inbox(session: str, repo: str) -> dict[str, Any]:
     """Messages and path/goal conflicts addressed to ``session``."""
 
     def load() -> dict[str, Any]:
-        return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"))
+        return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"), session=session)
 
     data = _cached(f"inbox:{repo.casefold()}:{session}", load)
-    keys = ("available", "reason", "complete", "messages", "conflicts", "warnings")
+    keys = (
+        "available",
+        "reason",
+        "complete",
+        "degraded_history",
+        "read_warnings",
+        "replay_warnings",
+        "active_conflicts",
+        "messages",
+        "conflicts",
+        "warnings",
+    )
     return {k: data[k] for k in keys if k in data}
 
 

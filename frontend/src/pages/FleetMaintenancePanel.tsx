@@ -106,6 +106,20 @@ export function FleetMaintenancePanel({
             variant={rebootConfirm ? "danger" : "primary"}
             onClick={() => void submit()}
             disabled={busy}
+            aria-label={
+              pending === "resume"
+                ? "Confirm resume runners on this machine"
+                : rebootConfirm
+                  ? "Confirm drain all runners and reboot this host"
+                  : "Confirm drain all runners on this machine"
+            }
+            title={
+              pending === "resume"
+                ? "Confirm resume runners on this machine"
+                : rebootConfirm
+                  ? "Confirm drain all runners and reboot this host"
+                  : "Confirm drain all runners on this machine"
+            }
           >
             {pending === "resume"
               ? "Confirm resume"

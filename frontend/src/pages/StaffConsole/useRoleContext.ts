@@ -20,7 +20,7 @@ import {
 } from "../../hooks/useStaffQueries";
 import { errorMessage } from "../Staff/staffApi";
 import type { ContextPaneProps, SourceState } from "./contextTypes";
-import { putRoleSchedule, type ScheduleRoleReport } from "./roleContextApi";
+import { putRoleModel, putRoleSchedule, type ScheduleRoleReport } from "./roleContextApi";
 import { scheduleHold, toRoleDetail, toThreadContext } from "./roleDetail";
 import type { StaffRoleItem } from "./types";
 
@@ -64,7 +64,12 @@ function scheduleDisabledReason(role: StaffRoleItem, state: SourceState, enabled
 export function useRoleContext(
   role: StaffRoleItem,
   threadId?: string | null,
-): Required<Pick<ContextPaneProps, "role" | "threadContext" | "onToggleSchedule" | "scheduleDisabledReason">> {
+): Required<
+  Pick<
+    ContextPaneProps,
+    "role" | "threadContext" | "onToggleSchedule" | "scheduleDisabledReason" | "onChangeModel" | "modelDisabledReason"
+  >
+> {
   const client = useResolvedQueryClient();
   const providers = useStaffProviders();
   const schedule = useScheduleReports();
@@ -105,10 +110,23 @@ export function useRoleContext(
     [client],
   );
 
+  // Persist, then re-read the roster so the dropdown and the role card both show
+  // the new effective model. A refusal (e.g. 422 invalid model) rejects, and
+  // ContextPane rolls the dropdown back and shows the reason.
+  const onChangeModel = useCallback(
+    async (roleName: string, model: string | null) => {
+      await putRoleModel(roleName, model);
+      await client.invalidateQueries({ queryKey: staffKeys.roster() });
+    },
+    [client],
+  );
+
   return {
     role: detail,
     threadContext,
     onToggleSchedule,
     scheduleDisabledReason: scheduleDisabledReason(role, schedule.state, detail.schedule?.enabled ?? null),
+    onChangeModel,
+    modelDisabledReason: role.retired ? "Read-only: the role is retired." : null,
   };
 }

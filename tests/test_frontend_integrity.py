@@ -77,7 +77,8 @@ _REQUIRED_FUNCTIONS = [
     "function CodeRequestsTab",
     "function FeatureRequestsTab",
     "function FleetOrchestrationTab",
-    "function DashboardHelp",
+    # DashboardHelp lived only in the orphaned AssistantSidebar, retired with
+    # assistant chat (#1330) and deleted in #2820.
 ]
 
 # RunnerPlanTab is not yet implemented in the frontend; tracked for a future PR.
@@ -378,9 +379,19 @@ def test_mobile_viewport_meta_allows_user_zoom() -> None:
     content = _read_html_shell()
 
     assert 'name="viewport"' in content
-    assert 'content="width=device-width, initial-scale=1.0"' in content
+    assert 'content="width=device-width, initial-scale=1.0, viewport-fit=cover"' in content
     assert "maximum-scale" not in content
     assert "user-scalable=no" not in content
+
+
+def test_mobile_viewport_meta_covers_safe_areas() -> None:
+    """viewport-fit=cover is required for env(safe-area-inset-*) to resolve to
+    the real notch/home-indicator insets in standalone PWA mode (#3751) —
+    without it, those env() values are always 0 even though the bottom tab
+    bar and FAB already rely on them."""
+    content = _read_html_shell()
+
+    assert "viewport-fit=cover" in content
 
 
 def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:
@@ -393,7 +404,9 @@ def test_mobile_a11y_reduced_motion_contract_is_static_guarded() -> None:
     assert "transition-duration: 0.01ms !important;" in css
     assert "function prefersReducedMotion()" in js
     assert 'window.matchMedia("(prefers-reduced-motion: reduce)")' in js
-    assert 'transition: prefersReducedMotion() ? "none"' in js
+    # Live JS motion guard (Staff Console thread scroll); the old sidebar
+    # width-transition guard was deleted with AssistantSidebar (#2820).
+    assert 'prefersReducedMotion() ? "auto" : "smooth"' in js
 
 
 def test_mobile_a11y_dialogs_and_sections_are_labelled() -> None:
@@ -573,7 +586,10 @@ def test_queue_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "queue":' in routed_shell
-    assert "return <QueueTab />;" in routed_shell
+    assert "const LazyQueueTab = React.lazy(" in routed_shell
+    assert "return <LazyQueueTab />;" in routed_shell
+    assert 'import("../pages/Queue")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/Queue"', routed_shell, re.M)
     assert 'fetch("/api/queue")' in queue_page
     assert "p.queue ?? localQueue ?? {}" in queue_page
 
@@ -602,7 +618,10 @@ def test_machines_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "machines":' in routed_shell
-    assert "return <MachinesPage />;" in routed_shell
+    assert "const LazyMachinesPage = React.lazy(" in routed_shell
+    assert "return <LazyMachinesPage />;" in routed_shell
+    assert 'import("../pages/Machines")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/Machines"', routed_shell, re.M)
     assert 'legacyFetch("/api/fleet/nodes"' in machines_page
     assert 'legacyFetch("/api/runners"' in machines_page
     assert "export function MachinesPage" in machines_page
@@ -639,7 +658,8 @@ def test_runner_schedule_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "runner-schedule":' in routed_shell
-    assert "return <RunnerSchedulePage />;" in routed_shell
+    assert "const LazyRunnerSchedulePage = React.lazy(" in routed_shell
+    assert "return <LazyRunnerSchedulePage />;" in routed_shell
     assert 'legacyFetch("/api/fleet/schedule"' in schedule_page
     assert 'method: "POST"' in schedule_page
     assert "export function RunnerSchedulePage" in schedule_page
@@ -655,7 +675,8 @@ def test_workflows_desktop_route_bypasses_legacy_app() -> None:
     )
 
     assert 'case "workflows":' in routed_shell
-    assert "return <WorkflowsPage />;" in routed_shell
+    assert "const LazyWorkflowsPage = React.lazy(" in routed_shell
+    assert "return <LazyWorkflowsPage />;" in routed_shell
     assert 'legacyFetch("/api/workflows/list"' in workflows_page
     assert 'legacyFetch("/api/workflows/dispatch"' in workflows_page
     assert "export function WorkflowsPage" in workflows_page
@@ -688,7 +709,8 @@ def test_credentials_settings_section_bypasses_legacy_app() -> None:
     credentials_page = (_FRONTEND_DIR / "src" / "pages" / "CredentialsPage.tsx").read_text(encoding="utf-8")
 
     assert 'case "settings":' in routed_shell
-    assert "return <SettingsPage />;" in routed_shell
+    assert "const LazySettingsPage = React.lazy(" in routed_shell
+    assert "return <LazySettingsPage />;" in routed_shell
     assert "<CredentialsPage />" in settings_page
     assert "<CredentialsMobile />" in settings_page
     assert 'legacyFetch("/api/credentials"' in credentials_page
@@ -705,7 +727,8 @@ def test_feature_requests_desktop_route_bypasses_legacy_app() -> None:
 
     assert 'case "code-requests":' in routed_shell
     assert 'case "feature-requests":' in routed_shell
-    assert "return <CodeRequestsPage />;" in routed_shell
+    assert "const LazyCodeRequestsPage = React.lazy(" in routed_shell
+    assert "return <LazyCodeRequestsPage />;" in routed_shell
     assert 'legacyFetch("/api/repos"' in code_requests_page
     assert 'legacyFetch("/api/code-requests"' in code_requests_page
     assert 'legacyFetch("/api/code-requests/templates"' in code_requests_page
@@ -737,9 +760,6 @@ def test_overview_desktop_route_bypasses_legacy_app() -> None:
         encoding="utf-8",
     )
     overview_page = (_FRONTEND_DIR / "src" / "pages" / "OverviewPage.tsx").read_text(encoding="utf-8")
-    vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
-        encoding="utf-8",
-    )
 
     assert 'case "overview":' in routed_shell
     assert "const LazyOverviewPage = React.lazy(" in routed_shell
@@ -750,7 +770,9 @@ def test_overview_desktop_route_bypasses_legacy_app() -> None:
     assert 'legacyFetch("/api/fleet/control/" + action' in overview_page
     assert 'legacyFetch("/api/runners/" + id + "/" + action' in overview_page
     assert "export function OverviewPage" in overview_page
-    assert "return 'fleet-overview'" in vite_config
+    # #2990: the page is a dynamic-import chunk, never a static entry import.
+    assert 'import("../pages/OverviewPage")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/OverviewPage"', routed_shell, re.M)
 
 
 def test_remediation_desktop_route_bypasses_legacy_app() -> None:
@@ -759,9 +781,6 @@ def test_remediation_desktop_route_bypasses_legacy_app() -> None:
         encoding="utf-8",
     )
     remediation_page = (_FRONTEND_DIR / "src" / "pages" / "RemediationPage.tsx").read_text(encoding="utf-8")
-    vite_config = (_FRONTEND_DIR.parent / "vite.config.ts").read_text(
-        encoding="utf-8",
-    )
 
     assert 'case "remediation":' in routed_shell
     assert "const LazyRemediationPage = React.lazy(" in routed_shell
@@ -773,7 +792,9 @@ def test_remediation_desktop_route_bypasses_legacy_app() -> None:
     assert 'legacyFetch("/api/agent-remediation/plan"' in remediation_page
     assert "buildPrefilledRemediationUrl" in remediation_page
     assert "export function RemediationPage" in remediation_page
-    assert "return 'remediation'" in vite_config
+    # #2990: the page is a dynamic-import chunk, never a static entry import.
+    assert 'import("../pages/RemediationPage")' in routed_shell
+    assert not re.search(r'^import\s[^;]*from\s+"\.\./pages/RemediationPage"', routed_shell, re.M)
 
 
 def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
@@ -786,15 +807,30 @@ def test_native_mobile_tabs_do_not_build_legacy_fallback() -> None:
     )
 
     for marker in [
-        "overview: <FleetMobile />",
-        "queue: <QueueMobile />",
+        "overview: (",
+        "<LazyFleetMobile />",
+        "queue: (",
+        "<LazyQueueMobile />",
         "remediation: (",
-        "<RemediationMobile",
-        "reports: <ReportsMobile />",
+        "<LazyRemediationMobile",
+        "reports: (",
+        "<LazyReportsMobile />",
         "const mobileFallback = mobileTabContent[mobileTab] ? null :",
-        "nativeDesktopTabContent(mobileTab)",
+        "nativeDesktopTabContent(mobileTab, onThreadSelected)",
     ]:
         assert marker in routed_shell
+
+    # #2990: mobile views are lazy chunks mapped to the native components,
+    # and must not be statically imported into the entry bundle.
+    for lazy_name, export in [
+        ("LazyFleetMobile", "FleetMobile"),
+        ("LazyReportsMobile", "ReportsMobile"),
+        ("LazyRemediationMobile", "RemediationMobile"),
+        ("LazyQueueMobile", "QueueMobile"),
+    ]:
+        assert f"const {lazy_name} = React.lazy(" in routed_shell
+        assert re.search(rf"\{{\s*{export}\s*\}}\)\s*=>\s*\(\{{\s*default:\s*{export}", routed_shell)
+        assert not re.search(rf"^import\s*\{{[^}}]*{export}[^}}]*\}}\s*from", routed_shell, re.M)
 
     assert "{mobileFallback}" in routed_shell
     assert "LegacyApp" not in routed_shell

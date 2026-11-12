@@ -41,7 +41,7 @@ const BASE_ROLE = {
 };
 
 const ROSTER = {
-  machine: "DeskComputer",
+  machine: "hub-a",
   active_runs: 1,
   providers: { claude: true, codex: false },
   roles: [
@@ -82,7 +82,7 @@ const ROSTER = {
 };
 
 const RUN = {
-  id: "run-1", role: "night-watch", provider: "claude", model: null, machine: "DeskComputer",
+  id: "run-1", role: "night-watch", provider: "claude", model: null, machine: "hub-a",
   repo: "UpstreamDrift", target_kind: "issue", target_ref: "10622", prompt: "Fix the thing",
   status: "running", requested_by: "operator", created_at: "2026-09-22T10:00:00Z",
   started_at: "2026-09-22T10:00:05Z", ended_at: null, exit_code: null, cost_usd: 0.42,
@@ -100,17 +100,17 @@ const CONSOLIDATED_RUN = {
 };
 
 const BOARD = {
-  machine: "DeskComputer",
+  machine: "hub-a",
   generated_at: "2026-09-22T10:01:00Z",
   running: [RUN],
-  queued: [{ ...RUN, id: "run-2", status: "queued", machine: "ControlTower" }],
+  queued: [{ ...RUN, id: "run-2", status: "queued", machine: "node-a" }],
   recent: [],
   spend_today_usd: 3.5,
   providers: { claude: true, codex: false },
 };
 
 const EVENTS = [
-  { seq: 1, ts: "2026-09-22T10:00:00Z", kind: "queued", text: "queued on DeskComputer for claude" },
+  { seq: 1, ts: "2026-09-22T10:00:00Z", kind: "queued", text: "queued on hub-a for claude" },
   { seq: 2, ts: "2026-09-22T10:00:05Z", kind: "start", text: "claude in /tmp/wt" },
 ];
 
@@ -233,8 +233,8 @@ describe("StaffPage", () => {
     stubFetch();
     render(<StaffPage />);
     await waitFor(() => expect(screen.getByTestId("board-spend")).toHaveTextContent("$3.50"));
-    expect(screen.getByTestId("board-machine-DeskComputer")).toHaveTextContent("1 running");
-    expect(screen.getByTestId("board-machine-ControlTower")).toHaveTextContent("1 queued");
+    expect(screen.getByTestId("board-machine-hub-a")).toHaveTextContent("1 running");
+    expect(screen.getByTestId("board-machine-node-a")).toHaveTextContent("1 queued");
   });
 
   it("board is a compact strip: totals in the header, details collapsed (#1722)", async () => {
@@ -253,7 +253,7 @@ describe("StaffPage", () => {
     render(<StaffPage />);
     await waitFor(() => expect(screen.getByTestId("board-spend")).toHaveTextContent("$0.60"));
     expect(screen.getByTestId("board-spend")).toHaveAttribute("title", "claude: $0.28 · codex: $0.32");
-    expect(screen.getByTestId("board-machine-DeskComputer")).toHaveTextContent("1 running");
+    expect(screen.getByTestId("board-machine-hub-a")).toHaveTextContent("1 running");
   });
 
   it("board renders with missing spend showing em dash without crashing (#1289)", async () => {
@@ -262,7 +262,7 @@ describe("StaffPage", () => {
     );
     render(<StaffPage />);
     await waitFor(() => expect(screen.getByTestId("board-spend")).toHaveTextContent("—"));
-    expect(screen.getByTestId("board-machine-DeskComputer")).toHaveTextContent("1 running");
+    expect(screen.getByTestId("board-machine-hub-a")).toHaveTextContent("1 running");
   });
 
   it("board renders with NaN spend showing em dash without crashing (#1289)", async () => {
@@ -271,7 +271,7 @@ describe("StaffPage", () => {
     );
     render(<StaffPage />);
     await waitFor(() => expect(screen.getByTestId("board-spend")).toHaveTextContent("—"));
-    expect(screen.getByTestId("board-machine-DeskComputer")).toHaveTextContent("1 running");
+    expect(screen.getByTestId("board-machine-hub-a")).toHaveTextContent("1 running");
   });
 
   it("board lists late and dead scheduled roles as liveness alerts", async () => {
@@ -286,7 +286,7 @@ describe("StaffPage", () => {
         next_fire: "2026-09-23T09:00:00Z",
         expected_interval_seconds: 86400,
         age_seconds: 1_800_000,
-        machine: "ControlTower",
+        machine: "node-a",
       },
     ];
     stubFetch((url) =>
@@ -296,7 +296,7 @@ describe("StaffPage", () => {
     await waitFor(() => expect(screen.getByTestId("board-liveness-alerts")).toBeInTheDocument());
     const list = screen.getByTestId("board-liveness-alerts");
     expect(within(list).getByText("dead")).toBeInTheDocument();
-    expect(list).toHaveTextContent("night-watch on ControlTower");
+    expect(list).toHaveTextContent("night-watch on node-a");
     expect(list).toHaveTextContent("last success never");
   });
 
@@ -341,7 +341,7 @@ describe("StaffPage", () => {
   it("assign preview posts dry_run with CSRF header and shows the plan", async () => {
     const fetchMock = stubFetch((url, opts) => {
       if (url === "/api/v1/staff/requests" && opts?.method === "POST") {
-        return { status: 200, body: { state: "planned", plan: { plan: PLAN, machine: "DeskComputer" } } };
+        return { status: 200, body: { state: "planned", plan: { plan: PLAN, machine: "hub-a" } } };
       }
       return undefined;
     });
@@ -402,7 +402,7 @@ describe("StaffPage", () => {
     await waitFor(() => expect(screen.getByTestId("run-row-run-1")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("run-row-run-1"));
     await waitFor(() => expect(screen.getByTestId("run-events")).toHaveTextContent("[start] claude in /tmp/wt"));
-    expect(screen.getByTestId("run-events")).toHaveTextContent("[queued] queued on DeskComputer");
+    expect(screen.getByTestId("run-events")).toHaveTextContent("[queued] queued on hub-a");
 
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = FakeEventSource.instances[0];

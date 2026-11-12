@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import sys
+from pathlib import Path
 from typing import Any
 
 from fastapi import (
@@ -14,11 +15,10 @@ from fastapi import (
     Header,
     HTTPException,
     Query,
-    Request,
     Response,
     status,
 )
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from identity import Principal, format_caller, require_fleet_peer, require_scope
 from staff.audit import record_audit
 from staff.availability import record_fast_acknowledgment
@@ -30,25 +30,35 @@ from staff.conversation_models import (
     AnswerNeedsInputRequest,
     CreateThreadRequest,
     PostMessageRequest,
+    RelayAgentRequest,
     RelayRunCardRequest,
     UpdateThreadRequest,
 )
-from staff.conversations import (
-    ConversationsUnavailableError,
-    get_conversation_store,
-)
-from staff.loop_guard import enforce_loop_guard_or_raise
+from staff.conversations import ConversationsUnavailableError, get_conversation_store
+from staff.loop_guard import enforce_loop_guard_or_raise, principal_author_kind
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
 from staff.request_cards import request_message_card
 from staff.thread_bus import get_thread_bus
-from staff.thread_helpers import find_idempotent_reply, shape_new_thread
+from staff.thread_helpers import (
+    find_idempotent_reply,
+    shape_new_thread,
+    store_without_turn,
+    thread_readable_by,
+)
 
 log = logging.getLogger("dashboard.staff.threads")
 
 router = APIRouter(tags=["staff-threads"])
 
-STREAM_HEARTBEAT_SECONDS = 15.0
+# Production (start-dashboard.sh) and the E2E harness both launch server.py with only
+# backend/ on sys.path; the repo-root scripts package needs this explicit shim (#3311
+# follow-up, reused here for the #3705 relay-to-Grok-Bot endpoint).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.rd_barb_notify import load_config, persona_relay, relay_allowlist_from_config  # noqa: E402
 
 
 def _get_store_or_503() -> Any:
@@ -128,13 +138,15 @@ async def list_threads(
     caller_id = format_caller(caller)
 
     try:
-        all_threads = store.list_threads(
+        all_threads = await asyncio.to_thread(
+            store.list_threads,
             status=thread_status,
             participant=role,
             limit=200,
         )
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    all_threads = [t for t in all_threads if thread_readable_by(t, caller)]
     if unread:
         all_threads = [t for t in all_threads if t.unread_counters.get(caller_id, 0) > 0]
 
@@ -164,15 +176,20 @@ async def list_threads(
 async def get_thread_detail(
     thread_id: str,
     since_seq: int = Query(default=0, ge=0),
-    _caller: Principal = Depends(require_scope("staff.read")),
+    caller: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     """Get thread metadata along with its historical messages."""
     store = _get_store_or_503()
     try:
-        thread = store.get_thread(thread_id)
-        if not thread:
+        thread = await asyncio.to_thread(store.get_thread, thread_id)
+        if not thread or not thread_readable_by(thread, caller):
             raise HTTPException(status_code=404, detail="thread not found")
-        messages = store.list_messages(thread_id, limit=200, since_seq=since_seq)
+        messages = await asyncio.to_thread(
+            store.list_messages,
+            thread_id,
+            limit=200,
+            since_seq=since_seq,
+        )
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -240,11 +257,12 @@ async def post_message(
     check_rate_limit("messages", caller)
     store = _get_store_or_503()
     caller_id = format_caller(caller)
-    enforce_loop_guard_or_raise(thread_id, store, getattr(caller, "type", "bot"))
+    author_kind = principal_author_kind(caller)
+    enforce_loop_guard_or_raise(thread_id, store, getattr(caller, "type", "bot"), message_kind=body.kind or "text")
 
     try:
         thread = store.get_thread(thread_id)
-        if not thread:
+        if not thread or not thread_readable_by(thread, caller):
             raise HTTPException(status_code=404, detail="thread not found")
 
         existing = find_idempotent_reply(store._conn, thread_id, idempotency_key)
@@ -252,10 +270,7 @@ async def post_message(
             user_msg_dict, reply_placeholder = existing
             response.status_code = status.HTTP_200_OK
             response.headers["Idempotent-Replay"] = "true"
-            return {
-                "message": user_msg_dict,
-                "reply_placeholder": reply_placeholder,
-            }
+            return {"message": user_msg_dict, "reply_placeholder": reply_placeholder}
 
         if thread.kind == "panel":
             raise HTTPException(
@@ -263,15 +278,20 @@ async def post_message(
                 detail={"code": "panel_thread_read_only", "message": "A panel thread takes no new messages"},
             )
 
+        if (thread.meta or {}).get("no_auto_reply"):
+            return store_without_turn(
+                store, get_thread_bus(), thread_id, body, caller_id, idempotency_key.strip(), author_kind=author_kind
+            )
+
         from staff.group_threads import dispatch_group_message, is_group_thread
 
         if is_group_thread(thread):
             return await dispatch_group_message(thread, body, caller, caller_id, idempotency_key, store)
 
-        # Persist user message
+        # Persist caller message
         user_msg = store.add_message(
             thread_id=thread_id,
-            author_kind="user",
+            author_kind=author_kind,
             author=caller_id,
             kind=body.kind or "text",
             body_md=body.body,
@@ -400,67 +420,50 @@ async def relay_thread_run_card(
     return ingest_relayed_card(store, get_thread_bus(), thread_id, body)
 
 
-@router.get(
-    "/threads/{thread_id}/stream",
+@router.post(
+    "/threads/{thread_id}/relay",
+    response_model=None,
+    responses={403: {"description": "relay_not_allowed"}},
 )
-@router.get("/threads/{thread_id}/events", include_in_schema=False)
-async def stream_thread(
+async def relay_to_grok_bot(
     thread_id: str,
-    request: Request,
-    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
-    since_seq: int | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-    follow: bool = Query(default=True, description="Keep stream open for live updates"),
-    _caller: Principal = Depends(require_scope("staff.read")),
-) -> StreamingResponse:
-    """SSE feed for thread updates (token deltas, message completions, proposals)."""
-    store = _get_store_or_503()
-    thread = store.get_thread(thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="thread not found")
+    body: RelayAgentRequest,
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Forward one agent-to-agent request from an RD role to its Grok Bot counterpart (#3705).
 
-    bus = get_thread_bus()
-    queue = await bus.subscribe(thread_id)
+    No Dieter approval gate: fleet-internal traffic, denied only by the operator-configured
+    per-role allowlist (``RD_<ROLE>_RELAY_ALLOWLIST``) and the personal-persona exclusion in
+    ``rd_barb_notify.validate_relay``. Every attempt is audited via ``staff.audit.record_audit``,
+    whether sent, deduped or denied.
+    """
+    cfg = load_config(role=body.from_role)
+    allowed_pairs = relay_allowlist_from_config(cfg, role=body.from_role)
 
-    # Determine replay point
-    replay_after = 0
-    if since_seq is not None:
-        replay_after = since_seq
-    elif last_event_id is not None:
-        try:
-            replay_after = int(last_event_id)
-        except ValueError:
-            replay_after = 0
+    def _audit(payload: dict[str, Any]) -> None:
+        outcome = "sent" if (payload.get("result") or {}).get("ok") else "denied"
+        record_audit(
+            action="relay_to_grok_bot",
+            target=f"grok:{payload.get('to_grok_bot', '')}",
+            principal=f"role:{payload.get('from_role', '')}",
+            surface="api",
+            thread_id=thread_id,
+            outcome=outcome,
+            detail=payload,
+            fail_closed=False,
+        )
 
-    async def _event_generator():  # type: ignore[no-untyped-def]
-        try:
-            # 1. Replay missed messages from SQLite
-            missed = store.list_messages(thread_id, limit=limit, since_seq=replay_after)
-            for m in missed:
-                yield f"id: {m.seq}\nevent: message\ndata: {json.dumps(m.to_dict())}\n\n"
-
-            if not follow:
-                return
-
-            # 2. Live event loop
-            while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    ev = await asyncio.wait_for(queue.get(), timeout=STREAM_HEARTBEAT_SECONDS)
-                    eid = ev.get("id")
-                    eid_str = f"id: {eid}\n" if eid is not None else ""
-                    yield f"{eid_str}event: {ev['event']}\ndata: {json.dumps(ev['data'])}\n\n"
-                except TimeoutError:
-                    yield ": keep-alive\n\n"
-        finally:
-            await bus.unsubscribe(thread_id, queue)
-
-    return StreamingResponse(
-        _event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    result = persona_relay(
+        body.from_role,
+        body.to_grok_bot,
+        body.request,
+        thread_id,
+        allowed_pairs=allowed_pairs,
+        audit=_audit,
     )
+    if not result.get("ok") and result.get("error") == "relay_not_allowed":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result)
+    return result
 
 
 # ── READ STATUS & INBOX ──────────────────────────────────────────────────────

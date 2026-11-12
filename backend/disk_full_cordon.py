@@ -69,8 +69,13 @@ def disk_pressure_trips(free_gb: float, used_percent: float, thresholds: DiskGua
 
 
 def disk_pressure_allows_readmit(free_gb: float, used_percent: float, thresholds: DiskGuardThresholds) -> bool:
-    """True when host volume cleared hysteresis (free GB **or** used %)."""
-    return free_gb >= thresholds.readmit_min_free_gb or used_percent <= thresholds.readmit_used_percent
+    """True when host volume cleared hysteresis (free GB **and** used %).
+
+    Trip is an OR over both metrics, so readmit must be an AND: with validated
+    thresholds (``readmit_min_free_gb > trip_min_free_gb`` and
+    ``readmit_used_percent < trip_used_percent``) no sample both trips and readmits.
+    """
+    return free_gb >= thresholds.readmit_min_free_gb and used_percent <= thresholds.readmit_used_percent
 
 
 def _active_runners(runners: list[RunnerSnapshot]) -> list[RunnerSnapshot]:

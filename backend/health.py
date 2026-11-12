@@ -59,9 +59,11 @@ UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 def _oauth_health_payload() -> dict:
     """OAuth readiness plus redacted operator token expiry (#2075)."""
     from github_app_user_oauth import aggregate_operator_auth_health  # noqa: PLC0415
+    from identity import token_store_health_snapshot  # noqa: PLC0415
 
     payload: dict = dict(OAuthConfig.from_env().diagnostic())
     payload["operator_sessions"] = aggregate_operator_auth_health()
+    payload["identity_tokens"] = token_store_health_snapshot()
     return payload
 
 
@@ -175,7 +177,10 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         runner_count = 0
 
     github_api = "connected" if gh_ok else "unreachable"
-    status = "healthy" if gh_ok else "degraded"
+    from runner_control_health import get_runner_control_health  # noqa: PLC0415
+
+    runner_control = get_runner_control_health()
+    status = "healthy" if gh_ok and runner_control["status"] == "healthy" else "degraded"
     duration_s = time.perf_counter() - start
     record_dashboard_health(status, github_api, duration_s)
     hub_circuit_open = hub_in_cooldown()
@@ -187,6 +192,8 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
     except Exception:  # noqa: BLE001
         staff_avail = {}
 
+    from machine_registry import machine_registry_is_empty  # noqa: PLC0415
+
     return {
         "status": status,
         "timestamp": _dt_mod.datetime.now(UTC).isoformat(),
@@ -195,6 +202,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         "github_error_type": github_error_type,
         "github_auth_source": github_auth.get("auth_source", "unknown"),
         "github_auth_status": github_auth.get("status", "unknown"),
+        "runner_control": runner_control,
         "github_check_seconds": round(duration_s, 3),
         "hub_circuit_open": hub_circuit_open,
         "runners_registered": runner_count,
@@ -202,6 +210,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         "deployment": _deployment_info(),
         "oauth": _oauth_health_payload(),
         "staff_availability": staff_avail,
+        "machine_registry_empty": machine_registry_is_empty(),
     }
 
 

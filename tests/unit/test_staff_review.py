@@ -185,6 +185,25 @@ class TestReviewExecutor:
         assert prepared["role"] == "fleet-critic"
         assert any("falling back to fleet-critic" in msg for msg in caplog.messages)
 
+    def test_code_reviewer_requests_fleet_review_skill(self) -> None:
+        """Code Reviewer dispatch names the fleet-review skill (#3618) instead of
+        relying on role-based skill matching, which fleet-review's own roles list
+        does not include."""
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42},
+            default_role="code-reviewer",
+            roster={"code-reviewer": MagicMock()},
+        )
+        assert prepared.get("skill") == "fleet-review"
+
+    def test_non_code_reviewer_role_does_not_request_fleet_review_skill(self) -> None:
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42},
+            default_role="fleet-critic",
+            roster={"fleet-critic": MagicMock()},
+        )
+        assert "skill" not in prepared
+
     def test_review_executor_never_passes_request_changes(self) -> None:
         """The review executor must never pass request_changes, blocking, or enforce parameters."""
         raw_params = {
@@ -206,6 +225,48 @@ class TestReviewExecutor:
         assert "enforce" not in prepared
         assert prepared.get("role") == "code-reviewer"
         assert "Advisory only" in prepared.get("prompt", "") or DEFAULT_REVIEW_FOCUS in prepared.get("prompt", "")
+
+
+class TestReviewDispatchFailFast:
+    """Review dispatch skips a provider whose auth preflight failed (#4250)."""
+
+    def test_unhealthy_provider_is_skipped_and_recorded(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import staff.provider_auth_preflight as preflight
+        from staff.review_metrics import provider_skip_counts_snapshot, reset_provider_skip_counts
+
+        reset_provider_skip_counts()
+        monkeypatch.setattr(
+            preflight,
+            "provider_auth_cache_snapshot",
+            lambda: {"providers": {"claude": {"status": "expired"}, "codex": {"status": "ok"}}},
+        )
+        with caplog.at_level(logging.WARNING):
+            prepared = prepare_review_params(
+                {"repo": "Runner_Dashboard", "pr": 42},
+                default_role="code-reviewer",
+                roster={"code-reviewer": MagicMock(providers=["claude", "codex"])},
+            )
+        assert prepared["provider"] == "codex"
+        assert prepared.get("skipped_providers") == ["claude"]
+        assert any("skipping provider" in msg for msg in caplog.messages)
+        assert provider_skip_counts_snapshot() == {"claude": 1}
+
+    def test_all_healthy_dispatches_without_skip(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import staff.provider_auth_preflight as preflight
+
+        monkeypatch.setattr(
+            preflight,
+            "provider_auth_cache_snapshot",
+            lambda: {"providers": {"claude": {"status": "ok"}, "codex": {"status": "ok"}}},
+        )
+        prepared = prepare_review_params(
+            {"repo": "Runner_Dashboard", "pr": 42},
+            default_role="code-reviewer",
+            roster={"code-reviewer": MagicMock(providers=["claude", "codex"])},
+        )
+        assert "skipped_providers" not in prepared
 
 
 class TestReviewScopeRepos:

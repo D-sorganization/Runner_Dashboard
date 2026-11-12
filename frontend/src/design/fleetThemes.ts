@@ -12,6 +12,7 @@
  */
 
 import { darkColorTokens, lightColorTokens } from './tokens';
+import { semanticAliasVarsForFleetTheme } from './semanticCssVars';
 
 /* ── Fleet Theme Types ──────────────────────────────────────────────── */
 
@@ -269,6 +270,7 @@ export function fleetThemeToCssVars(theme: FleetThemeDef): Record<string, string
     '--badge-neutral-bg': `${c.text_secondary}1f`,
     '--badge-neutral-fg': c.text,
     ...standardThemeNeutrals(theme),
+    ...semanticAliasVarsForFleetTheme(theme),
   };
 }
 

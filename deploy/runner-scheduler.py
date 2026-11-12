@@ -19,6 +19,11 @@ from datetime import UTC, datetime, time, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+import runner_target_contract as target_contract  # noqa: E402
+
 RUNNER_ROOT = Path(os.environ.get("RUNNER_ROOT", str(Path.home() / "actions-runners")))
 CONFIG_PATH = Path(
     os.environ.get(
@@ -52,6 +57,8 @@ STOP_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_STOP_TIMEOUT_SECONDS", "120"
 # Maintenance hold (#1929 item 3): while this flag exists every tick targets 0
 # runners, so a drain is not undone by the next scheduled start.
 MAINTENANCE_PATH = Path(os.environ.get("RUNNER_MAINTENANCE_FLAG", "/var/lib/runner-scheduler/maintenance.json"))
+# Set while the disk floor is breached and not yet readmitted (#4086): the hysteresis memory between ticks.
+DISK_FLOOR_LATCH_PATH = Path(os.environ.get("RUNNER_DISK_FLOOR_LATCH", "/var/lib/runner-scheduler/disk-floor.json"))
 MAINTENANCE_DRAIN_TIMEOUT_SECONDS = float(os.environ.get("RUNNER_MAINTENANCE_DRAIN_TIMEOUT_SECONDS", "3600"))
 PROC_ROOT = Path("/proc")
 CGROUP_ROOT = Path(os.environ.get("RUNNER_CGROUP_ROOT", "/sys/fs/cgroup"))
@@ -111,6 +118,7 @@ def validate_config(config: dict) -> None:
 
 RESOURCE_FLOOR_NUMERIC_KEYS = (
     "min_disk_free_gb",
+    "readmit_disk_free_gb",
     "min_mem_available_gb",
     "max_memory_pressure_avg60",
     "runners",
@@ -131,6 +139,8 @@ def validate_resource_floor(floor: object) -> None:
             raise ValueError(f"resource_floor.{key} must be a nonnegative number")
     if "disk_path" in floor and not isinstance(floor["disk_path"], str):
         raise ValueError("resource_floor.disk_path must be a string")
+    if "readmit_disk_free_gb" in floor and floor["readmit_disk_free_gb"] < floor.get("min_disk_free_gb", 0):
+        raise ValueError("resource_floor.readmit_disk_free_gb must be >= min_disk_free_gb")
 
 
 def load_config() -> dict:
@@ -150,6 +160,18 @@ def schedule_matches(entry: dict, now: datetime) -> bool:
     if start <= end:
         return today in days and start <= current < end
     return (today in days and current >= start) or (yesterday in days and current < end)
+
+
+def scheduler_clock() -> datetime:
+    """Wall clock for the scheduler; override with RUNNER_SCHEDULER_NOW in tests."""
+    raw = os.environ.get("RUNNER_SCHEDULER_NOW", "").strip()
+    if raw:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed
+    tz = _resolve_tz(os.environ.get("RUNNER_SCHEDULE_TIMEZONE", "America/Los_Angeles"))
+    return datetime.now(tz)
 
 
 def desired_capacity(
@@ -350,6 +372,32 @@ def runner_num(unit: str, workdir: Path | None) -> int | None:
     return None
 
 
+def lookup_unit(unit_name: str, *, cleanup_stale: bool = False) -> RunnerUnit | None:
+    """Resolve a single systemd unit without RUNNER_ROOT filtering (#4046)."""
+    workdir = unit_workdir(unit_name)
+    if workdir is None:
+        return None
+    num = runner_num(unit_name, workdir)
+    if num is None:
+        num = 0
+    return RunnerUnit(
+        num=num,
+        unit=unit_name,
+        workdir=workdir,
+        active=unit_active(unit_name),
+        busy=runner_busy(workdir, unit=unit_name, cleanup_stale=cleanup_stale),
+    )
+
+
+def stop_unit_by_name(unit_name: str) -> bool:
+    """Stop one runner unit using the freeze/recheck contract (#4046)."""
+    unit = lookup_unit(unit_name, cleanup_stale=True)
+    if unit is None:
+        log.error("cannot resolve runner unit %s", unit_name)
+        return False
+    return stop_runner_safely(unit)
+
+
 def list_units(*, cleanup_stale: bool = False) -> list[RunnerUnit]:
     result = run_cmd(["systemctl", "list-unit-files", "--type=service", "--no-legend"])
     units: list[RunnerUnit] = []
@@ -485,6 +533,8 @@ def stop_runner_safely(unit: RunnerUnit) -> bool:
 
 
 def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list[dict]:
+    if [u.num for u in units] != sorted(u.num for u in units):
+        raise ValueError("runner units must be sorted by slot number")
     actions: list[dict] = []
     desired = max(0, min(desired, len(units)))
     active = [unit for unit in units if unit.active]
@@ -493,8 +543,7 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
             actions.append({"runner": unit.num, "unit": unit.unit, "action": "start"})
             if not dry_run:
                 run_cmd(["systemctl", "start", unit.unit])
-    if len(active) > desired:
-        needed = len(active) - desired
+    if (needed := len(active) - desired) > 0:
         stopped = 0
         for unit in sorted((u for u in active if not u.busy), key=lambda item: item.num, reverse=True):
             if stopped >= needed:
@@ -508,6 +557,14 @@ def apply_capacity(units: list[RunnerUnit], desired: int, dry_run: bool) -> list
                 continue
             actions.append({"runner": unit.num, "unit": unit.unit, "action": "stop"})
             stopped += 1
+    if len(active) == desired:
+        missing = next((u for u in units[:desired] if not u.active and not u.busy), None)
+        surplus = next((u for u in reversed(active) if u not in units[:desired] and not u.busy), None)
+        if missing and surplus and _confirmed_idle(surplus, not dry_run, cleanup_stale=not dry_run):
+            if dry_run or run_cmd(["systemctl", "start", missing.unit]).returncode == 0:
+                actions.append({"runner": missing.num, "unit": missing.unit, "action": "start"})
+                if dry_run or stop_runner_safely(surplus):
+                    actions.append({"runner": surplus.num, "unit": surplus.unit, "action": "stop"})
     return actions
 
 
@@ -615,13 +672,44 @@ def pressure_avg60(resource: str) -> float | None:
     return None
 
 
+def disk_floor_breach(floor: dict) -> str | None:
+    """Disk-floor breach with optional readmit hysteresis (#4086).
+
+    Below ``min_disk_free_gb`` the floor latches; with ``readmit_disk_free_gb`` set
+    it stays breached until free space reaches that higher mark, so capacity does
+    not flap while free space hovers at the minimum. An unreadable probe neither
+    breaches nor touches the latch.
+    """
+    free = disk_free_gb(str(floor.get("disk_path", "/")))
+    if free is None:
+        return None
+    minimum = floor["min_disk_free_gb"]
+    readmit = floor.get("readmit_disk_free_gb")
+    if free < minimum:
+        if readmit is not None and not DISK_FLOOR_LATCH_PATH.exists():
+            try:
+                DISK_FLOOR_LATCH_PATH.parent.mkdir(parents=True, exist_ok=True)
+                DISK_FLOOR_LATCH_PATH.write_text(
+                    json.dumps({"since": datetime.now(UTC).isoformat(), "free_gb": round(free, 1)}) + "\n",
+                    encoding="utf-8",
+                )
+            except OSError as exc:  # the breach still applies this tick; only hysteresis is lost
+                log.warning("disk-floor latch not written (%s): %s", DISK_FLOOR_LATCH_PATH, exc)
+        return f"disk_free={free:.1f}GB<{minimum}"
+    if readmit is not None and DISK_FLOOR_LATCH_PATH.exists():
+        if free < readmit:
+            return f"disk_free={free:.1f}GB<{readmit} (readmit)"
+        DISK_FLOOR_LATCH_PATH.unlink(missing_ok=True)
+    return None
+
+
 def resource_floor_breaches(floor: dict) -> list[str]:
     """Breached host-resource floors; an unreadable probe never counts as a breach."""
     breaches: list[str] = []
     if "min_disk_free_gb" in floor:
-        free = disk_free_gb(str(floor.get("disk_path", "/")))
-        if free is not None and free < floor["min_disk_free_gb"]:
-            breaches.append(f"disk_free={free:.1f}GB<{floor['min_disk_free_gb']}")
+        disk_breach = disk_floor_breach(floor)
+        if disk_breach:
+            breaches.append(disk_breach)
     if "min_mem_available_gb" in floor:
         available = mem_available_gb()
         if available is not None and available < floor["min_mem_available_gb"]:
@@ -649,15 +737,35 @@ def apply_resource_floor(config: dict, desired: int, reason: str) -> tuple[int, 
     return floored, f"{reason} + resource-floor ({', '.join(breaches)})"
 
 
+def active_target_override() -> tuple[int | None, str | None, dict | None]:
+    """Load the persisted override when present and unexpired."""
+    record = target_contract.load_target_override(now=scheduler_clock)
+    if not record:
+        return None, None, None
+    runners = int(record.get("runners", 0))
+    actor = str(record.get("actor") or "override")
+    return runners, f"target-override ({actor})", record
+
+
 def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
     """Desired runner count; an active maintenance hold overrides everything with 0."""
     if maintenance_active():
         return 0, "maintenance-drain"
-    desired, reason = desired_capacity(
-        config,
-        target,
-        target_source="cli: --target" if target is not None else None,
-    )
+    persisted, persisted_reason, _record = active_target_override()
+    if persisted is not None:
+        desired, reason = desired_capacity(
+            config,
+            persisted,
+            target_source=persisted_reason or "target-override",
+        )
+    elif target is not None:
+        desired, reason = desired_capacity(
+            config,
+            target,
+            target_source="cli: --target",
+        )
+    else:
+        desired, reason = desired_capacity(config, None)
     return apply_resource_floor(config, desired, reason)
 
 
@@ -692,6 +800,7 @@ def build_state(config: dict, desired: int, reason: str, actions: list[dict]) ->
     busy_active = [unit for unit in active if unit.busy]
     busy_without_listener = [unit for unit in busy if not unit.active]
     tz = _resolve_tz(config.get("timezone", "America/Los_Angeles"))
+    _, _, override_record = active_target_override()
     return {
         "hostname": platform.node(),
         "timestamp": datetime.now(tz).isoformat(),
@@ -700,6 +809,7 @@ def build_state(config: dict, desired: int, reason: str, actions: list[dict]) ->
         "timezone": config.get("timezone", "America/Los_Angeles"),
         "desired": desired,
         "reason": reason,
+        "target_override": override_record,
         "installed": len(units),
         "online": len(active) + len(busy_without_listener),
         "busy": len(busy),
@@ -734,20 +844,54 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="show planned actions")
     parser.add_argument("--json", action="store_true", help="print state as JSON")
     parser.add_argument("--target", type=int, help="override scheduled desired count")
+    parser.add_argument("--until", help="expiry for --target (ISO-8601 or HH:MM); writes target-override.json")
+    parser.add_argument("--reason", default="", help="reason recorded with a --target override")
     parser.add_argument("--drain", action="store_true", help="maintenance: hold at 0 runners, drain, report")
     parser.add_argument("--reboot", action="store_true", help="with --drain: reboot once fully drained")
     parser.add_argument("--resume", action="store_true", help="clear the maintenance hold")
     parser.add_argument("--drain-timeout", type=float, default=MAINTENANCE_DRAIN_TIMEOUT_SECONDS)
+    parser.add_argument(
+        "--stop-unit",
+        metavar="UNIT",
+        help="freeze/recheck stop for one actions.runner.* unit (#4046)",
+    )
     args = parser.parse_args()
     if args.reboot and not args.drain:
         parser.error("--reboot requires --drain")
     if args.drain and args.resume:
         parser.error("--drain and --resume are mutually exclusive")
+    if args.stop_unit:
+        if args.drain or args.resume or args.target is not None:
+            parser.error("--stop-unit cannot be combined with schedule overrides")
+        unit = lookup_unit(args.stop_unit, cleanup_stale=not args.dry_run)
+        if unit is None:
+            log.error("unknown unit %s", args.stop_unit)
+            return 2
+        if args.dry_run or not args.apply:
+            sys.stdout.write(f"would stop {unit.unit} safely busy={unit.busy}\n")
+            return 0
+        return 0 if stop_unit_by_name(args.stop_unit) else 1
 
     config = load_config()
     dry_run = args.dry_run or not args.apply
     if args.resume and not dry_run:
         set_maintenance(False)
+    if args.target is not None and not dry_run:
+        before = int(active_target_override()[0] or desired_capacity(config, None)[0])
+        until_store = None
+        if args.until:
+            until_dt = target_contract.parse_until(args.until, now=scheduler_clock())
+            until_store = until_dt.isoformat() if until_dt else args.until
+        host = platform.node()
+        clamped = target_contract.clamp_runners(args.target, host)
+        target_contract.write_target_override(
+            runners=clamped,
+            reason=args.reason or "cli: --target",
+            actor="cli",
+            before=before,
+            until=until_store,
+            created_at=scheduler_clock(),
+        )
     units = list_units(cleanup_stale=not dry_run)
     maintenance_report: dict | None = None
     if args.drain and not dry_run:

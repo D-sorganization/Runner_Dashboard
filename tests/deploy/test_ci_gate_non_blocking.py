@@ -56,6 +56,19 @@ def test_verify_closure_listed() -> None:
     assert "verify-closure" in NON_BLOCKING_DEPLOY_CHECK_NAMES
 
 
+def test_failed_queue_slo_check_does_not_block_release_or_deploy() -> None:
+    from main_auto_release.gate import commit_passes_publisher_ci_gate
+
+    runs = [
+        _run("quality-gate", "completed", "success", 1),
+        _run("slo", "completed", "failure", 2),
+    ]
+    ok, detail = ci_gate_for_deploy_commit(runs, _SHA)
+    assert ok is True, detail
+    passed, publisher_detail = commit_passes_publisher_ci_gate(runs, _SHA)
+    assert passed, publisher_detail
+
+
 @pytest.mark.parametrize("status,conclusion", [("in_progress", None), ("completed", "failure")])
 def test_split_publisher_gate_never_waits_on_itself(status: str, conclusion: str | None) -> None:
     from main_auto_release.gate import commit_passes_publisher_ci_gate, publisher_gate_failure_is_terminal

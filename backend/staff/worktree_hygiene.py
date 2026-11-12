@@ -10,13 +10,20 @@ import hashlib
 import logging
 import os
 import shutil
-import stat
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from staff import cli_projects
+from staff.worktree_links import (
+    _link_kind,
+    link_refusal_reason,
+    refuse_worktree_links,
+    unlink_worktree_links,
+)
+
+_TRACKED_GAAI_LINKS = frozenset({".gaai/agents", ".gaai/workflows", ".gaai/contexts"})
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
@@ -76,22 +83,7 @@ def _path_key(path: Path | str) -> str:
 
 
 def _has_links(path: Path) -> bool:
-    def linked(candidate: Path) -> bool:
-        return candidate.is_symlink() or bool(
-            getattr(candidate.lstat(), "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-        )
-
-    if any(linked(candidate) for candidate in (path, *path.parents)):
-        return True
-    pending = [path]
-    while pending:
-        with os.scandir(pending.pop()) as entries:
-            for entry in entries:
-                if linked(Path(entry.path)):
-                    return True
-                if entry.is_dir(follow_symlinks=False):
-                    pending.append(Path(entry.path))
-    return False
+    return link_refusal_reason(path) is not None
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -100,18 +92,196 @@ def _pid_is_running(pid: int) -> bool:
     return psutil.pid_exists(pid)
 
 
+def _git_in_worktree(worktree: Path, *args: str, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603
+        ["git", "-C", str(worktree), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+
+def _posix_rel(p: str) -> str:
+    return p.replace("\\", "/").strip()
+
+
+def _path_under_prefix(rel: str, prefix: str) -> bool:
+    rel_n, pre_n = _posix_rel(rel), _posix_rel(prefix)
+    if not pre_n:
+        return False
+    return rel_n == pre_n or rel_n.startswith(pre_n + "/")
+
+
+def _gitmodules_submodule_paths(worktree: Path) -> frozenset[str]:
+    """Paths declared in ``.gitmodules`` (forward slashes), empty when missing or unparseable."""
+    gm = worktree / ".gitmodules"
+    if not gm.is_file():
+        return frozenset()
+    paths: set[str] = set()
+    try:
+        text = gm.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return frozenset()
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.lower().startswith("path"):
+            continue
+        if "=" not in line:
+            continue
+        val = line.split("=", 1)[1].strip().strip('"').strip("'")
+        if val:
+            paths.add(_posix_rel(val))
+    return frozenset(paths)
+
+
+def _safe_force_untracked_allow_prefixes(worktree: Path) -> frozenset[str]:
+    """Prefixes where untracked/ignored debris alone may be removed with ``--force`` (#4142 follow-up)."""
+    allow = {".staff", ".gemini", ".venv"}
+    allow.update(_gitmodules_submodule_paths(worktree))
+    return frozenset(allow)
+
+
+def _untracked_paths_for_safe_force_scan(worktree: Path) -> list[str]:
+    """List relative paths that are untracked or ignored-from-standard (both matter for evidence)."""
+    out: list[str] = []
+    for extra in (
+        ("ls-files", "-z", "--others", "--exclude-standard"),
+        ("ls-files", "-z", "--others", "-i", "--exclude-standard"),
+    ):
+        res = _git_in_worktree(worktree, *extra, timeout=60)
+        if res.returncode != 0:
+            return [f"<git ls-files failed: {res.stderr.strip() or res.stdout}>"]
+        if not res.stdout:
+            continue
+        # NUL-separated; tolerate trailing NUL
+        for part in res.stdout.split("\0"):
+            rel = part.strip()
+            if rel:
+                out.append(_posix_rel(rel))
+    return out
+
+
+def _rel_touches_disposable_in_tree_link(worktree: Path, rel: str) -> bool:
+    """True when ``rel`` names a link entry or a path under an in-tree link (incl. Windows junctions)."""
+    parts = rel.replace("\\", "/").split("/")
+    for end in range(1, len(parts) + 1):
+        try:
+            if _link_kind(worktree.joinpath(*parts[:end])):
+                return True
+        except OSError:
+            return False
+    return False
+
+
+def _untracked_outside_safe_force_allowlist(worktree: Path) -> bool:
+    """True when any untracked/ignored path lies outside submodule paths and staff transcript dirs."""
+    prefixes = _safe_force_untracked_allow_prefixes(worktree)
+    for rel in _untracked_paths_for_safe_force_scan(worktree):
+        if rel.startswith("<git "):
+            return True  # refuse force when git state is unreadable
+        if not any(_path_under_prefix(rel, p) for p in prefixes) and not _rel_touches_disposable_in_tree_link(
+            worktree, rel
+        ):
+            return True
+    return False
+
+
+def _restore_tracked_gaai_symlinks(worktree: Path) -> None:
+    """Re-checkout tracked GAAI symlinks after a failed remove so the next sweep stays idempotent."""
+    missing = [rel for rel in _TRACKED_GAAI_LINKS if not (worktree / rel).exists()]
+    if not missing:
+        return
+    tracked: list[str] = []
+    for rel in missing:
+        known = _git_in_worktree(worktree, "ls-files", "--error-unmatch", "--", rel)
+        if known.returncode == 0:
+            tracked.append(rel)
+    if tracked:
+        _git_in_worktree(worktree, "checkout", "HEAD", "--", *tracked)
+
+
+def _worktree_tracked_clean_vs_head(worktree: Path) -> bool:
+    """True when index and tracked tree match HEAD (submodule pointers unchanged vs HEAD)."""
+    diff_files = _git_in_worktree(worktree, "diff-files", "--quiet")
+    diff_index = _git_in_worktree(worktree, "diff-index", "--quiet", "HEAD", "--")
+    return diff_files.returncode == 0 and diff_index.returncode == 0
+
+
+def _eligible_for_safe_force_removal(worktree: Path) -> bool:
+    """``git worktree remove --force`` only when tracked clean and no non-disposable untracked paths."""
+    if not _worktree_tracked_clean_vs_head(worktree):
+        return False
+    if _untracked_outside_safe_force_allowlist(worktree):
+        return False
+    return True
+
+
+def _stderr_suggests_safe_force(stderr: str) -> bool:
+    """Heuristic: git refused removal due to extra paths, not necessarily dirty tracked state."""
+    lower = stderr.lower()
+    needles = (
+        "modified or untracked files",
+        "untracked files",
+        "contains modified or untracked files",
+        "cannot remove worktree",
+    )
+    return any(n in lower for n in needles)
+
+
+def _registered_worktree_unlocked(checkout: Path, worktree: Path) -> bool:
+    """Require a registered, unlocked tree before unlinking tracked entries."""
+    result = _git_out(checkout, "worktree", "list", "--porcelain", "-z")
+    if result.returncode:
+        return False
+    for record in result.stdout.split("\0\0"):
+        fields = record.split("\0")
+        if fields[0].startswith("worktree ") and _path_key(fields[0][9:]) == _path_key(worktree):
+            return not any(field == "locked" or field.startswith("locked ") for field in fields)
+    return False
+
+
+def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[bool, subprocess.CompletedProcess[str]]:
+    """Run ``git worktree remove`` from ``checkout`` when provided, else from ``worktree``."""
+    git_cwd = checkout if checkout is not None else worktree
+    if _has_links(worktree):
+        if not _registered_worktree_unlocked(git_cwd, worktree) or not _eligible_for_safe_force_removal(worktree):
+            return False, subprocess.CompletedProcess([], 1, "", "worktree is not disposable")
+        unlink_worktree_links(worktree)
+        result = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
+        _git_out(git_cwd, "worktree", "prune")
+        if result.returncode != 0 or worktree.exists():
+            _restore_tracked_gaai_symlinks(worktree)
+        return result.returncode == 0 and not worktree.exists(), result
+    result = _git_out(git_cwd, "worktree", "remove", str(worktree), timeout=60)
+    if result.returncode == 0 and not worktree.exists():
+        return True, result
+    if (
+        result.returncode != 0
+        and _eligible_for_safe_force_removal(worktree)
+        and _stderr_suggests_safe_force(result.stderr)
+    ):
+        forced = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
+        _git_out(git_cwd, "worktree", "prune")
+        if forced.returncode == 0 and not worktree.exists():
+            return True, forced
+    return False, result
+
+
 def remove_worktree_checked(
     worktree: Path, checkout: Path | None, branch: str, preserved_transcript: Path | None = None
 ) -> bool:
-    """Never force Git removal or recursively erase a refused/unknown checkout."""
+    """Remove a finished staff worktree; may use ``--force`` only when safe (#submodule leak)."""
     from staff import workspace  # noqa: PLC0415
 
     try:
         root = workspace.staff_worktrees_root()
-        if _has_links(worktree):
+        if refuse_worktree_links(worktree):
             return False
         if (worktree / ".git").exists():
             if _path_key(worktree.parent) != _path_key(root):
+                return False
+            if (worktree / ".staff").exists() and _has_links(worktree / ".staff"):
                 return False
             source = worktree / ".staff" / "transcript.log"
             if source.exists() and (
@@ -120,8 +290,8 @@ def remove_worktree_checked(
                 or not _same_content(source, preserved_transcript)
             ):
                 return False
-            result = _git_out(checkout or worktree, "worktree", "remove", str(worktree), timeout=60)
-            if result.returncode != 0 or worktree.exists():
+            ok, _result = _try_remove_git_worktree(worktree, checkout)
+            if not ok:
                 return False
         else:
             worktree.rmdir()  # Only empty non-Git scratch directories are disposable.
@@ -158,10 +328,12 @@ def _cleanup_finished_worktree(store: Any, rec_id: str, workdir: Path, repo: str
             if not _has_links(workdir / ".staff"):
                 persist_run_transcript(store, rec_id, workdir)
             return False  # Owned cloud/scratch runs retain logging without becoming cleanup candidates.
-        if _has_links(workdir):
+        if refuse_worktree_links(workdir, store, rec_id):
             return False
         if workspace.worktree_has_unpushed_commits(workdir):
             store.append_event(rec_id, "worktree", f"unpushed worktree preserved at {workdir}")
+            return False
+        if _has_links(workdir / ".staff"):
             return False
         saved = persist_run_transcript(store, rec_id, workdir)
         if saved is None or not _same_content(workdir / ".staff" / "transcript.log", saved):
@@ -296,9 +468,9 @@ def sweep_stale_worktrees(
 
     wt_root = workspace.staff_worktrees_root()
     if not wt_root.is_dir():
-        return {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0}
+        return {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0, "preserved_links": 0}
 
-    empty = {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0}
+    empty = {"removed": 0, "preserved_unpushed": 0, "skipped_active": 0, "preserved_links": 0}
     try:
         active_norm = {_path_key(p) for p in (active_workdirs or set()) if p}
         active_norm.update(_path_key(rec.workdir) for rec in store.active_runs() if rec.workdir)
@@ -309,6 +481,7 @@ def sweep_stale_worktrees(
     removed = 0
     preserved_unpushed = 0
     skipped_active = 0
+    preserved_links = 0
     for child in sorted(wt_root.iterdir()):
         if not child.is_dir() or child.name.startswith(".") or child.name == "_scratch":
             continue
@@ -319,15 +492,17 @@ def sweep_stale_worktrees(
             continue
         if "-run-" not in child.name:
             continue
-        try:
-            if _has_links(child):
-                continue
-        except OSError as exc:
-            log.warning("worktree inspection preserved %s: %s", child, exc)
+        repo_prefix, suffix = child.name.rsplit("-run-", 1)
+        if refuse_worktree_links(child, store, "run-" + suffix):
+            preserved_links += 1
             continue
         if workspace.worktree_has_unpushed_commits(child):
             preserved_unpushed += 1
             continue
-        repo_prefix, suffix = child.name.rsplit("-run-", 1)
         removed += int(_cleanup_finished_worktree(store, "run-" + suffix, child, repo_prefix))
-    return {"removed": removed, "preserved_unpushed": preserved_unpushed, "skipped_active": skipped_active}
+    return {
+        "removed": removed,
+        "preserved_unpushed": preserved_unpushed,
+        "skipped_active": skipped_active,
+        "preserved_links": preserved_links,
+    }

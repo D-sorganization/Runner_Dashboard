@@ -306,6 +306,26 @@ class TestCryptoValidation:
             result = validate_envelope_crypto(envelope)
             assert result.valid is True
 
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("envelope_id", "changed-id"),
+            ("reason", "changed reason"),
+            ("schema_version", "dispatch-envelope.v3"),
+        ],
+    )
+    def test_crypto_validation_rejects_changed_signed_metadata(self, field, value):
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            envelope = CommandEnvelope(action="test.action", source="hub", target="node-1", requested_by="alice")
+            object.__setattr__(envelope, field, value)
+            assert validate_envelope_crypto(envelope).valid is False
+
+    def test_crypto_validation_rejects_legacy_schema(self):
+        with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):
+            envelope = CommandEnvelope(action="test.action", source="hub", target="node-1", requested_by="alice")
+            object.__setattr__(envelope, "schema_version", "dispatch-envelope.v1")
+            assert validate_envelope_crypto(envelope).valid is False
+
     def test_crypto_validation_rejects_missing_signature(self):
         """validate_envelope_crypto returns valid=False if signature is empty."""
         with patch.dict(os.environ, {"DISPATCH_SIGNING_SECRET": "test-secret"}):

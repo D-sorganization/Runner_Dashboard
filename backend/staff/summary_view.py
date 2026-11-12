@@ -7,12 +7,15 @@ can call it without importing router internals (Law of Demeter).
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from staff import fleet as staff_fleet
 from staff import friction_store
+from staff.anthropic_api_alerts import summary_fields as anthropic_api_summary_fields
 from staff.classifier import format_attention_items
+from staff.credential_mirror_health import attention_items_from_mirror_health
 from staff.exclusions import active_exclusions
 from staff.github_app_preflight import (
     attention_items_from_preflight,
@@ -36,6 +39,13 @@ def _operator_auth_health() -> dict[str, Any]:
     return dict(aggregate_operator_auth_health())
 
 
+async def _board_sessions() -> tuple[list[dict[str, Any]], str | None]:
+    """Desktop CLI and other agent sessions with live board presence (#2980); bounded, never raises."""
+    from coordination.service import board_sessions_bounded  # noqa: PLC0415 — coordination imports staff
+
+    return await board_sessions_bounded()
+
+
 async def build_staff_summary() -> dict[str, Any]:
     """The one-call brief for Barb and Orchestrator (#1195).
 
@@ -46,6 +56,7 @@ async def build_staff_summary() -> dict[str, Any]:
     and the roster with schedules.
     """
     runner = get_runner()
+    board_sessions_task = asyncio.create_task(_board_sessions())  # overlaps the peer fan-out below
     board_view = await staff_fleet.aggregate_board(staff_fleet.local_board(runner))
     since = (datetime.now(UTC) - timedelta(hours=24)).isoformat().replace("+00:00", "Z")
     recent = runner.store.list_runs(limit=200, since=since)
@@ -65,8 +76,11 @@ async def build_staff_summary() -> dict[str, Any]:
                 "machines": {runner.machine: local_auth},
             }
     auth_attention: list[dict[str, Any]] = []
-    for _machine, snap in (provider_auth.get("machines") or {}).items():
+    for machine_name, snap in (provider_auth.get("machines") or {}).items():
         auth_attention.extend(attention_items_from_provider_auth(snap))
+        mirror = snap.get("credential_mirrors")
+        if isinstance(mirror, dict):
+            auth_attention.extend(attention_items_from_mirror_health(mirror, machine=machine_name))
     standards = load_fleet_standards()
     attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
     keep = (
@@ -81,15 +95,19 @@ async def build_staff_summary() -> dict[str, Any]:
         "last_line",
     )
     in_flight = [{k: r.get(k) for k in keep} for r in [*board_view["running"], *board_view["queued"]]]
+    board_sessions, board_sessions_warning = await board_sessions_task
     return {
         "generated_at": board_view["generated_at"],
         "hub": board_view["hub"],
         "machines_online": board_view["online"],
         "machines_offline": board_view["offline"],
         "in_flight": in_flight,
+        "board_sessions": board_sessions,
+        **({"board_sessions_warning": board_sessions_warning} if board_sessions_warning else {}),
         "recent_24h": counts,
         "attention": attention[:20],
         "spend_today_usd": board_view["spend_today_usd"],
+        **anthropic_api_summary_fields(runner.store),
         "providers": board_view["providers"],
         "providers_cooldown": board_view.get("providers_cooldown", {}),
         "holds": staff_fleet.holds_snapshot(),

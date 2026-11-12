@@ -148,7 +148,7 @@ def test_autoscaler_watchdog_swallows_notifier_failure(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Dependency-free $NOTIFY_SOCKET fallback (issue #707 / OGLaptop 2026-06-09)
+# Dependency-free $NOTIFY_SOCKET fallback (issue #707 / node-b 2026-06-09)
 #
 # The crash-loop root cause: the `systemd` python binding is not a declared
 # dependency, so on the deployed host `_sd_notify is None` and the old watchdog
@@ -208,7 +208,7 @@ def _short_socket_dir() -> Path:
 def test_autoscaler_watchdog_delivers_over_notify_socket(monkeypatch) -> None:
     """End-to-end crash-loop fix: with the systemd binding absent
     (_sd_notify=None), _send_watchdog must still deliver WATCHDOG=1 by writing
-    $NOTIFY_SOCKET — exactly the OGLaptop deployment condition."""
+    $NOTIFY_SOCKET — exactly the node-b deployment condition."""
     import runner_autoscaler as ra
 
     # An AF_UNIX path is capped near 107 bytes. Self-hosted runners put TMPDIR

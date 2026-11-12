@@ -45,11 +45,11 @@ def _hub_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _node_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HUB_FLEET_TOKEN", _FLEET_SECRET)
     monkeypatch.setenv("MACHINE_ROLE", "node")
-    monkeypatch.setenv("HUB_URL", "http://deskcomputer:8321")
+    monkeypatch.setenv("HUB_URL", "http://hub-a:8321")
     import dashboard_config
 
     dashboard_config.MACHINE_ROLE = "node"
-    dashboard_config.HUB_URL = "http://deskcomputer:8321"
+    dashboard_config.HUB_URL = "http://hub-a:8321"
 
 
 def test_fleet_run_token_requires_fleet_bearer(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -94,13 +94,13 @@ def test_fleet_run_token_rejects_repo_outside_role_scope(client: TestClient, mon
     _hub_env(monkeypatch)
     role = _role(repos=("Runner_Dashboard",))
     with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="Brick"):
+        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
             resp = client.post(
                 "/api/fleet/run-token",
                 json={"run_id": "run-1", "role": "maintenance", "repositories": ["Other_Repo"]},
                 headers={
                     "Authorization": f"Bearer {_FLEET_SECRET}",
-                    "X-Fleet-Node": "Brick",
+                    "X-Fleet-Node": "node-c",
                     **_XHR,
                 },
             )
@@ -112,14 +112,14 @@ def test_fleet_run_token_mints_on_hub(client: TestClient, monkeypatch: pytest.Mo
     fake = StaffGithubToken(token=_FAKE_GHS, expires_at=1_800_000_000.0, source="github_app")
     role = _role()
     with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="Brick"):
+        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
             with patch("staff.fleet_run_token_service.mint_staff_run_github_token_local", return_value=fake) as mint:
                 resp = client.post(
                     "/api/fleet/run-token",
-                    json={"run_id": "run-brick-1", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
+                    json={"run_id": "run-node-c-1", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
                     headers={
                         "Authorization": f"Bearer {_FLEET_SECRET}",
-                        "X-Fleet-Node": "Brick",
+                        "X-Fleet-Node": "node-c",
                         **_XHR,
                     },
                 )
@@ -139,16 +139,16 @@ def test_fleet_run_token_scopes_installation_token_to_bare_repo_name(
 
     role = _role()
     with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="Brick"):
+        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
             with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
                 with patch("staff.github_run_env.mint_installation_access_token") as mint:
                     mint.return_value = InstallationToken(token=_FAKE_GHS, expires_at=1_800_000_000.0)
                     resp = client.post(
                         "/api/fleet/run-token",
-                        json={"run_id": "run-brick-scope", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
+                        json={"run_id": "run-node-c-scope", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
                         headers={
                             "Authorization": f"Bearer {_FLEET_SECRET}",
-                            "X-Fleet-Node": "Brick",
+                            "X-Fleet-Node": "node-c",
                             **_XHR,
                         },
                     )
@@ -163,14 +163,14 @@ def test_fleet_run_token_rejects_empty_repository_scope_without_minting(
     _hub_env(monkeypatch)
     role = _role()
     with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="Brick"):
+        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
             with patch("staff.fleet_run_token_service.mint_staff_run_github_token_local") as mint:
                 resp = client.post(
                     "/api/fleet/run-token",
-                    json={"run_id": "run-brick-empty-scope", "role": "maintenance", "repositories": []},
+                    json={"run_id": "run-node-c-empty-scope", "role": "maintenance", "repositories": []},
                     headers={
                         "Authorization": f"Bearer {_FLEET_SECRET}",
-                        "X-Fleet-Node": "Brick",
+                        "X-Fleet-Node": "node-c",
                         **_XHR,
                     },
                 )

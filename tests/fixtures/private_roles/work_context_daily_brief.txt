@@ -1,0 +1,4 @@
+FIXTURE PLACEHOLDER CONTENT — work-context-pilot / work-context-daily-brief.
+This is mock test data only. No real work content belongs in this repository;
+Dieter places real context only in the host-local store named by the overlay,
+never here.

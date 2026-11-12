@@ -13,9 +13,9 @@ claimed nothing, its role does not open PRs, or it reported an explicit skip / "
 with nothing pushed). Red head CI within ``STAFF_VERIFY_CI_GRACE_SECONDS`` (default 1800) of the
 run ending is ``unverified``, not ``failed``: CI starts seconds after the push, so a verdict taken at
 exit races it. A ``failed`` CI verdict is rechecked while the run is younger than
-:data:`RECHECK_WINDOW`, and a later green flips it to ``verified``. ``STAFF_VERIFY_MODE``: ``report``
-(default) records only; ``enforce`` also fails a ``succeeded`` run whose verdict is
-``failed``; ``off`` skips the check.
+:data:`RECHECK_WINDOW`, and a later green flips it to ``verified``. ``STAFF_VERIFY_MODE``: ``enforce``
+(default, #3544) fails a ``succeeded`` run whose verdict is ``failed``; ``report`` (opt-in)
+records only; ``off`` skips the check.
 """
 
 from __future__ import annotations
@@ -23,17 +23,22 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
-from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any, Protocol
-from urllib.parse import quote
+from typing import TYPE_CHECKING, Any
 
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
 from staff.roles import AD_HOC_ROLE, load_roles
-from staff.workspace import ORG
+from staff.verification_probe import GhCliPrProbe
+from staff.verification_types import (
+    GH_TIMEOUT_SECONDS,
+    GitHubLookupError,
+    PrProbe,
+    PullRequest,
+    Verdict,
+    ci_state,
+)
 
 if TYPE_CHECKING:
     from staff.store import RunRecord, RunStore
@@ -42,6 +47,7 @@ log = logging.getLogger("dashboard.staff.verification")
 
 MODE_ENV = "STAFF_VERIFY_MODE"
 MODES = ("off", "report", "enforce")
+DEFAULT_MODE = "enforce"
 UNVERIFIED_OUTPUT = "unverified_output"
 PENDING_LIMIT = timedelta(hours=6)
 RECHECK_WINDOW = timedelta(hours=24)
@@ -50,56 +56,28 @@ DEFAULT_CI_GRACE_SECONDS = 1800
 # A STAFF_RESULT summary that starts with one of these (case-insensitive) is a deliberate
 # skip / no-op, not a failed deliverable. Matched at the start only, to stay conservative.
 SKIP_MARKERS = ("staff_skip", "skip", "no work", "nothing to do", "no-op", "noop", "no action", "no change")
+# A STAFF_RESULT summary that starts with one of these (case-insensitive) reports a GitHub-side
+# remediation action that legitimately pushes no commit — a CI rerun, a branch update, or an
+# auto-merge re-arm — not a failure to deliver (#3312).
+NO_COMMIT_ACTION_MARKERS = ("rerun", "re-run", "update-branch", "update branch", "re-arm", "rearm")
 RESULT_PREFIX = "STAFF_RESULT:"
 CI_RED_DETAIL = "head CI is failing"
 RECHECK_BATCH = 20
-GH_TIMEOUT_SECONDS = 30
-
-# Check-run conclusions that fail the head. ``cancelled``/``stale`` runs were superseded
-# and neither pass nor fail it; ``success``/``neutral``/``skipped`` pass.
-_RED_CONCLUSIONS = frozenset({"failure", "timed_out", "action_required", "startup_failure"})
-_IGNORED_CONCLUSIONS = frozenset({"cancelled", "stale"})
-
-
-class GitHubLookupError(RuntimeError):
-    """GitHub could not answer; the run stays ``unverified``."""
-
-
-@dataclass(frozen=True)
-class PullRequest:
-    """The PR for a run's branch. ``state``: open | merged | closed; ``ci``: green | pending | red."""
-
-    number: int
-    state: str
-    ci: str
-
-
-@dataclass(frozen=True)
-class Verdict:
-    verification: str
-    detail: str
-    pr_number: int | None = None
-    artifact: str = ""  # typed completion evidence (#1808): pr_open | pr_merged | ""
-    ci_red: bool = False  # failed because head CI is red (the run's work may still be good)
-
-
-class PrProbe(Protocol):
-    def find(self, repo: str, branch: str) -> PullRequest | None:
-        """The newest PR whose head is ``branch`` in ``repo``, or None. Raises GitHubLookupError."""
-
-    def get(self, repo: str, number: int) -> PullRequest:
-        """PR ``number`` in ``repo`` with head CI state. Raises GitHubLookupError."""
-
-    def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
-        """Commits ``branch`` is ahead of ``base`` on the remote (0 if absent). Raises GitHubLookupError."""
 
 
 def verify_mode() -> str:
-    """``STAFF_VERIFY_MODE``, defaulting to ``report`` when unset or unknown."""
+    """``STAFF_VERIFY_MODE``, defaulting to ``enforce`` when unset or unknown (#3544)."""
     raw = os.environ.get(MODE_ENV, "").strip().lower()
     if raw and raw not in MODES:
-        log.warning("unknown %s=%r; using report", MODE_ENV, raw)
-    return raw if raw in MODES else "report"
+        log.warning("unknown %s=%r; using %s", MODE_ENV, raw, DEFAULT_MODE)
+    return raw if raw in MODES else DEFAULT_MODE
+
+
+def log_startup_mode() -> str:
+    """Log and return the active ``STAFF_VERIFY_MODE`` at startup (#3544)."""
+    mode = verify_mode()
+    log.info("staff verification mode: %s=%s", MODE_ENV, mode)
+    return mode
 
 
 def ci_grace() -> timedelta:
@@ -112,24 +90,25 @@ def ci_grace() -> timedelta:
     return timedelta(seconds=seconds if seconds >= 0 else DEFAULT_CI_GRACE_SECONDS)
 
 
-def is_skip_result(result_text: str) -> bool:
-    """True when the run's final ``STAFF_RESULT:`` summary is an explicit skip / no-work report."""
+def _result_summary(result_text: str) -> str:
+    """The first line of the run's ``STAFF_RESULT:`` summary, lowercased and markup-stripped; "" if absent."""
     _, sep, rest = (result_text or "").rpartition(RESULT_PREFIX)
     if not sep:
-        return False
+        return ""
     lines = rest.strip().splitlines()
-    summary = lines[0].strip().lower().lstrip("[(*_ ") if lines else ""
+    return lines[0].strip().lower().lstrip("[(*_ ") if lines else ""
+
+
+def is_skip_result(result_text: str) -> bool:
+    """True when the run's final ``STAFF_RESULT:`` summary is an explicit skip / no-work report."""
+    summary = _result_summary(result_text)
     return bool(summary) and summary.startswith(SKIP_MARKERS)
 
 
-def ci_state(check_runs: Iterable[Mapping[str, Any]]) -> str:
-    """``red`` if any head check failed, else ``pending`` until all counted checks completed."""
-    counted = [r for r in check_runs if r.get("conclusion") not in _IGNORED_CONCLUSIONS]
-    if any(r.get("conclusion") in _RED_CONCLUSIONS for r in counted):
-        return "red"
-    if not counted or any(r.get("status") != "completed" for r in counted):
-        return "pending"
-    return "green"
+def is_no_commit_action_result(result_text: str) -> bool:
+    """True when the run's ``STAFF_RESULT:`` summary reports a rerun, branch update, or re-arm (#3312)."""
+    summary = _result_summary(result_text)
+    return bool(summary) and summary.startswith(NO_COMMIT_ACTION_MARKERS)
 
 
 def decide(
@@ -200,6 +179,18 @@ def _target_pr_number(rec: RunRecord) -> int | None:
     return None
 
 
+def remote_deliverable_present(rec: RunRecord, probe: PrProbe) -> bool:
+    """True when the run's staff branch has an open/merged PR or unpushed remote commits (#2773)."""
+    if not rec.repo or not rec.branch:
+        return False
+    try:
+        if probe.find(rec.repo, rec.branch) is not None:
+            return True
+        return probe.remote_ahead_by(rec.repo, rec.branch) > 0
+    except GitHubLookupError:
+        return False
+
+
 def evaluate(
     rec: RunRecord,
     *,
@@ -244,6 +235,20 @@ def evaluate(
                     f"PR #{target_pr} already merged; no commits pushed",
                     target_pr,
                     ARTIFACT_PR_MERGED,
+                )
+            if remote_ahead_by == 0 and target.state == "open" and is_no_commit_action_result(result_text):
+                return Verdict(
+                    "not_applicable",
+                    f"PR #{target_pr} is still open; run reported a confirmed no-commit action",
+                    target_pr,
+                    ARTIFACT_PR_OPEN,
+                )
+            if remote_ahead_by == 0 and target.state == "open" and (target.auto_merge_armed or target.in_merge_queue):
+                return Verdict(
+                    "not_applicable",
+                    f"PR #{target_pr} is still open with auto-merge armed or queued; no commits pushed",
+                    target_pr,
+                    ARTIFACT_PR_OPEN,
                 )
             if remote_ahead_by > 0:
                 pr = target
@@ -389,8 +394,9 @@ def verify_and_record(
             verdict = Verdict("unverified", f"verification error: {exc}")
         if verdict.verification == "not_applicable" and verdict.detail == "role does not open pull requests":
             _record_role_open_pr_diagnostic(store, rec, resolver_path)
-        store.update_run(run_id, **updates_for(rec, verdict, mode))
+        # The verify event lands before the verdict, so a reader that sees the verdict sees it (#1489).
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
+        store.update_run(run_id, **updates_for(rec, verdict, mode))
         if verdict.verification == "verified":
             try:
                 from staff.review import auto_review_if_eligible
@@ -431,62 +437,12 @@ def recheck_runs(
     return [rec.id for rec in runs]
 
 
-Runner = Callable[..., "subprocess.CompletedProcess[str]"]
-
-
-class GhCliPrProbe:
-    """Finds a run's PR with two scoped ``gh api`` REST calls (the PR, then its head's check runs).
-
-    Uses the ``gh`` CLI so it works from the runner's plain worker threads, where the
-    event-loop-bound ``gh_client`` is unreachable (same approach as ``consolidation``).
-    """
-
-    def __init__(self, org: str = ORG, run: Runner = subprocess.run) -> None:
-        self.org, self._run = org, run
-
-    def _api(self, path: str) -> Any:
-        try:
-            proc = self._run(
-                ["gh", "api", path], capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS, check=False
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise GitHubLookupError(f"gh api {path}: {exc}") from exc
-        if proc.returncode != 0:
-            raise GitHubLookupError((proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[:300])
-        try:
-            return json.loads(proc.stdout)
-        except ValueError as exc:
-            raise GitHubLookupError(f"gh api {path}: invalid JSON") from exc
-
-    def _full(self, repo: str) -> str:
-        return repo if "/" in repo else f"{self.org}/{repo}"
-
-    def _with_ci(self, full: str, pr: Mapping[str, Any]) -> PullRequest:
-        state = "merged" if pr.get("merged_at") else str(pr.get("state") or "open")
-        checks = self._api(f"/repos/{full}/commits/{pr['head']['sha']}/check-runs?per_page=100")
-        return PullRequest(number=int(pr["number"]), state=state, ci=ci_state(checks.get("check_runs") or []))
-
-    def find(self, repo: str, branch: str) -> PullRequest | None:
-        full = self._full(repo)
-        owner = full.split("/", 1)[0]
-        head = quote(f"{owner}:{branch}", safe=":")
-        pulls = self._api(f"/repos/{full}/pulls?head={head}&state=all&per_page=1")
-        return self._with_ci(full, pulls[0]) if pulls else None
-
-    def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
-        """How many commits ``branch`` is ahead of ``base`` on the remote (0 if the branch is missing)."""
-        full = self._full(repo)
-        path = f"/repos/{full}/compare/{quote(base, safe='')}...{quote(branch, safe='')}"
-        try:
-            body = self._api(path)
-        except GitHubLookupError as exc:
-            msg = str(exc).lower()
-            if "404" in msg or "not found" in msg:
-                return 0
-            raise
-        return int(body.get("ahead_by") or 0)
-
-    def get(self, repo: str, number: int) -> PullRequest:
-        """PR ``number`` in ``repo`` with its head CI state (the Code Request acceptance check, #1605)."""
-        full = self._full(repo)
-        return self._with_ci(full, self._api(f"/repos/{full}/pulls/{int(number)}"))
+__all__ = [
+    "GH_TIMEOUT_SECONDS",
+    "GhCliPrProbe",
+    "GitHubLookupError",
+    "PrProbe",
+    "PullRequest",
+    "Verdict",
+    "ci_state",
+]

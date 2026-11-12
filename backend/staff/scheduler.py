@@ -24,20 +24,37 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from coordination import claims as coordination_claims
 from staff import claim_guard, consolidation, verification
+from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
-from staff.exclusions import ExclusionsList
 from staff.holds import HoldsList
+from staff.role_capsule import RoleCapsuleStore
 from staff.roles import RoleSpec
-from staff.runner import RunRequest, StaffRunner, get_runner
+from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
+from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
+from staff.scheduler_issue_pick import fetch_issue_claim_status, fetch_open_issues, scheduled_repo  # noqa: F401
+from staff.scheduler_leader_lease import (
+    acquire_leader_lease as _lease_acquire_leader_lease,
+)
+from staff.scheduler_leader_lease import (
+    leader_chain,
+    lease_allows_firing,
+    lease_ttl_seconds,
+)
+from staff.scheduler_leader_lease import (
+    leader_status as _lease_leader_status,
+)
+from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
+from staff.scheduler_named_jobs import named_jobs, queue_due_slot
+from staff.scheduler_persona_guards import persona_fire_guard
+from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
 
 log = logging.getLogger("dashboard.staff.scheduler")
@@ -48,82 +65,10 @@ SCHEDULED_PROMPT = (
     "can finish safely in this one run and ship them as a ready pull request armed with automerge_guard (pr_lifecycle: "
     "arm_and_exit). If nothing qualifies, open no PR and say why in the STAFF_RESULT line."
 )
-ISSUE_REMEDIATOR_ROLE = "issue-remediator"
-ISSUE_REMEDIATOR_SKIP_LABELS = frozenset(
-    {
-        "blocked",
-        "do-not-automate",
-        "judgement:contested",
-        "judgement:design",
-        "measurement",
-        "research",
-    }
+REPORT_ONLY_SCHEDULED_PROMPT = (
+    "Scheduled {title} {job} pass on {repo}. Follow your playbook for this repository. This role is report-only: "
+    "never push a branch, open a pull request, or merge. Report findings in the STAFF_RESULT line."
 )
-_PRIORITY_LABELS = {
-    "critical": 0,
-    "high": 1,
-    "medium": 2,
-    "low": 3,
-}
-
-
-def scheduled_repo(repos: tuple[str, ...] | list[str], now: datetime) -> str:
-    """Rotate a scheduled role through its repos, one per calendar day (first repo when none rotate)."""
-    return repos[now.toordinal() % len(repos)] if repos else ""
-
-
-def fetch_open_issues(repo: str) -> tuple[list[dict[str, Any]], str | None]:
-    """Best-effort open-issue fetch for one repository (pull requests are filtered out)."""
-    repo_full = claim_guard.full_repo(repo)
-    try:
-        payload = claim_guard._gh_cli(f"/repos/{repo_full}/issues?state=open&per_page=100")  # noqa: SLF001
-    except Exception as exc:  # noqa: BLE001
-        return [], str(exc)
-    if not isinstance(payload, list):
-        return [], "unexpected response shape"
-    issues = [row for row in payload if isinstance(row, dict) and row.get("pull_request") is None]
-    return issues, None
-
-
-def fetch_issue_claim_status(repo: str, issue: int) -> dict[str, Any]:
-    """Claim status from coordination scripts; fail-closed reasons are surfaced to callers."""
-    try:
-        return coordination_claims.check(repo, issue)
-    except Exception as exc:  # noqa: BLE001
-        return {"available": False, "held": None, "reason": f"claim check failed: {exc}"}
-
-
-def _label_names(issue: dict[str, Any]) -> set[str]:
-    labels = issue.get("labels") if isinstance(issue, dict) else []
-    names = set()
-    for label in labels or []:
-        if isinstance(label, dict):
-            name = str(label.get("name") or "").strip().lower()
-        else:
-            name = str(label).strip().lower()
-        if name:
-            names.add(name)
-    return names
-
-
-def _skip_label_reason(role: str, labels: set[str]) -> str:
-    if role != ISSUE_REMEDIATOR_ROLE:
-        return ""
-    if "do-not-automate" in labels:
-        return "skip label: do-not-automate"
-    matched = sorted(name for name in labels if name in ISSUE_REMEDIATOR_SKIP_LABELS)
-    if matched:
-        return f"skip labels: {', '.join(matched)}"
-    return ""
-
-
-def _priority_key(issue: dict[str, Any], labels: set[str]) -> tuple[int, int, int]:
-    priority = min((_PRIORITY_LABELS[name] for name in labels if name in _PRIORITY_LABELS), default=2)
-    quick_win_penalty = 0 if "quick-win" in labels else 1
-    issue_number = int(issue.get("number") or 0)
-    return priority, quick_win_penalty, issue_number
-
-
 REQUESTED_BY = "scheduler"
 VERIFY_RECHECK_SECONDS = 300.0  # how often unverified staff runs are re-checked against GitHub (#1516)
 
@@ -149,6 +94,9 @@ class StaffScheduler:
         state_file: Path | None = None,
         tz: str = DEFAULT_TZ,
         decider: Callable[[RoleSpec, str], dict[str, Any] | None] = consolidation.decide,
+        cartographer_continuity_store: BarbContinuityStore | None = None,
+        cartographer_capsule_store: RoleCapsuleStore | None = None,
+        cartographer_notify_opts: Mapping[str, Any] | None = None,
     ) -> None:
         assert tick_seconds > 0, "tick_seconds must be positive"  # noqa: S101
         self.runner = runner
@@ -164,6 +112,11 @@ class StaffScheduler:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._next_verify_at = 0.0
+        # Cartographer scheduler↔persona wiring (#3788); lazy so an idle role never touches the DB.
+        self._cartographer_continuity_store = cartographer_continuity_store
+        self._cartographer_capsule_store = cartographer_capsule_store
+        self._cartographer_notify_opts = dict(cartographer_notify_opts or {})
+        self._cartographer_pending: dict[str, dict[str, str]] = {}
 
     # ── lifecycle ────────────────────────────────────────────────────────
     def start(self) -> None:
@@ -173,6 +126,7 @@ class StaffScheduler:
             self._stop.clear()
             self._thread = threading.Thread(target=self._loop, name="staff-scheduler", daemon=True)
             self._thread.start()
+        mark_scheduler_started()
         log.info("staff scheduler started (tick %.0fs)", self.tick_seconds)
 
     def stop(self) -> None:
@@ -202,6 +156,27 @@ class StaffScheduler:
         except Exception:  # noqa: BLE001
             log.exception("staff run verification recheck failed")
 
+    # ── Cartographer persona wiring (#3788) ─────────────────────────────────
+    def _cartographer_continuity(self) -> BarbContinuityStore:
+        self._cartographer_continuity_store = self._cartographer_continuity_store or get_barb_continuity_store()
+        return self._cartographer_continuity_store
+
+    def _cartographer_capsules(self) -> RoleCapsuleStore:
+        self._cartographer_capsule_store = self._cartographer_capsule_store or RoleCapsuleStore()
+        return self._cartographer_capsule_store
+
+    def _reconcile_cartographer_pending(self) -> None:
+        reconcile_cartographer_pending(
+            self._lock,
+            self._cartographer_pending,
+            store=self.runner.store,
+            continuity_factory=self._cartographer_continuity,
+            capsules_factory=self._cartographer_capsules,
+            notify_opts=self._cartographer_notify_opts,
+            machine=self.runner.machine,
+            now=self._clock(),
+        )
+
     # ── state ────────────────────────────────────────────────────────────
     @property
     def path(self) -> Path:
@@ -219,7 +194,8 @@ class StaffScheduler:
 
     def _save_state(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
+        # Per-writer temp names avoid torn writes when tick and API paths save concurrently (#3927).
+        tmp = self.path.with_name(f"{self.path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(self._state or {}, indent=2), encoding="utf-8")
         os.replace(tmp, self.path)
 
@@ -248,61 +224,46 @@ class StaffScheduler:
         except ValueError:
             return False
 
-    def _pick_issue_target(self, role: RoleSpec, now: datetime) -> tuple[str, int] | tuple[None, None]:
-        repos = tuple(role.repos)
-        if not repos:
-            return None, None
-        start = now.toordinal() % len(repos)
-        rotated = list(repos[start:]) + list(repos[:start])
-        candidates: list[tuple[tuple[int, int, int], str, int]] = []
-        reasons: list[str] = []
-        for repo in rotated:
-            issues, fetch_error = fetch_open_issues(repo)
-            if fetch_error:
-                reasons.append(f"{repo}: issue lookup failed ({fetch_error})")
-                continue
-            if not issues:
-                reasons.append(f"{repo}: no open issues")
-                continue
-            repo_reason = "no eligible issues"
-            for issue in issues:
-                issue_number = int(issue.get("number") or 0)
-                if issue_number <= 0:
-                    continue
-                labels = _label_names(issue)
-                skip_reason = _skip_label_reason(role.name, labels)
-                if skip_reason:
-                    repo_reason = skip_reason
-                    continue
-                claim = fetch_issue_claim_status(repo, issue_number)
-                if not claim.get("available", False):
-                    repo_reason = f"claim check unavailable ({claim.get('reason') or 'unknown'})"
-                    continue
-                if claim.get("held"):
-                    repo_reason = f"held ({claim.get('reason') or 'claimed elsewhere'})"
-                    continue
-                guard_reason = claim_guard.scheduler_blocker(repo, issue_number, None, role.name)
-                if guard_reason:
-                    repo_reason = guard_reason
-                    continue
-                candidates.append((_priority_key(issue, labels), repo, issue_number))
-            if repo_reason:
-                reasons.append(f"{repo}: {repo_reason}")
-        if candidates:
-            _, repo, issue_number = min(candidates, key=lambda row: row[0])
-            return repo, issue_number
-        joined = "; ".join(reasons[:4]) if reasons else "no candidate repositories"
-        log.info("staff scheduler: issue-remediator target selection found no eligible issues (%s)", joined)
-        return None, None
+    # ── leader lease (fencing logic lives in scheduler_leader_lease.py; #cap) ──
+    def _lease_ttl_seconds(self) -> float:
+        return lease_ttl_seconds(self.tick_seconds)
+
+    def acquire_leader_lease(
+        self, machine: str, *, now: datetime | None = None, ttl_seconds: float | None = None
+    ) -> dict[str, Any]:
+        """Acquire/renew this scheduler lease on the local authority state file.
+
+        Precondition: ``machine`` is a non-empty fleet display name.
+        Postcondition: result includes ``granted`` and current ``holder``.
+        """
+        now = now or self._clock()
+        ttl = ttl_seconds if ttl_seconds is not None and ttl_seconds > 0 else self._lease_ttl_seconds()
+        with self._lock:
+            return _lease_acquire_leader_lease(self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl)
+
+    def _lease_allows_firing(self, now: datetime) -> bool:
+        return lease_allows_firing(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds())
+
+    def leader_status(self, now: datetime | None = None) -> dict[str, Any]:
+        now = now or self._clock()
+        return _lease_leader_status(self._load_state, leader_chain(), self.runner.machine, now)
 
     # ── evaluation ───────────────────────────────────────────────────────
-    def evaluate(self, role: RoleSpec, now: datetime) -> dict[str, Any]:
-        """Gate report for one role: what would happen if its slot were due right now."""
-        entry = self._load_state().get(role.name, {})
+    def _schedule_report(
+        self, role: RoleSpec, now: datetime, *, job: str | None = None, cron: str | None = None
+    ) -> dict[str, Any]:
+        """Gate report for one role, or one of its named jobs when ``job`` is given (#3790)."""
+        cron = cron if job else role.schedule
+        key = f"{role.name}::{job}" if job else role.name
+        entry = self._load_state().get(key, {})
         enabled = entry.get("enabled", True)
+        from staff.schedule_placement import load_placements, schedule_host_for_role  # noqa: PLC0415
+
+        placements = load_placements()
         out: dict[str, Any] = {
             "role": role.name,
-            "schedule": role.schedule,
+            "schedule": cron,
+            "host": schedule_host_for_role(role.name, placements, self.runner.machine),
             "window": role.window,
             "next_fire": None,
             "in_window": in_window(role.window, now, self._tz),
@@ -314,11 +275,11 @@ class StaffScheduler:
             "last_reason": entry.get("last_reason", ""),
             "enabled": enabled,
         }
-        if role.schedule:
+        if job:
+            out["job"] = job
+        if cron:
             try:
-                out["next_fire"] = _iso(
-                    next_fire(parse_cron(role.schedule), self._cursor(role.name, now, role.schedule), self._tz)
-                )
+                out["next_fire"] = _iso(next_fire(parse_cron(cron), self._cursor(key, now, cron), self._tz))
             except ValueError as exc:
                 out["schedule_error"] = str(exc)
         hold = self.holds.blocking(role.name, role.repos[0] if role.repos else "")
@@ -328,11 +289,26 @@ class StaffScheduler:
         out["budget_ok"], out["budget_reason"] = self.budget.can_run(role)
         return out
 
+    def evaluate(self, role: RoleSpec, now: datetime) -> dict[str, Any]:
+        """Gate report for one role: what would happen if its slot were due right now."""
+        return self._schedule_report(role, now)
+
     def _blocker(self, report: dict[str, Any]) -> str:
         if not report.get("enabled", True):
             return "schedule disabled for role"
         if report.get("schedule_error"):
             return f"bad schedule: {report['schedule_error']}"
+        from machine_registry import load_machine_registry  # noqa: PLC0415
+        from staff.schedule_placement import load_placements, schedule_host_skip_reason  # noqa: PLC0415
+
+        host_reason = schedule_host_skip_reason(
+            str(report.get("role") or ""),
+            self.runner.machine,
+            load_placements(),
+            load_machine_registry(),
+        )
+        if host_reason:
+            return host_reason
         if not report["in_window"]:
             return "outside run window"
         if report["hold"]:
@@ -342,6 +318,22 @@ class StaffScheduler:
         if not report["budget_ok"]:
             return f"budget: {report['budget_reason']}"
         return ""
+
+    def role_model_override(self, role_name: str) -> str | None:
+        """Current runtime model override for ``role_name``, or ``None`` when unset (epic #3295 S2)."""
+        with self._lock:
+            raw = self._load_state().get(role_name, {}).get("model_override")
+            return str(raw) if raw else None
+
+    def set_role_model_override(self, role_name: str, model: str | None) -> None:
+        """Persist (or clear, when ``model`` is ``None``) a role's runtime model override."""
+        with self._lock:
+            entry = self._load_state().setdefault(role_name, {})
+            if model:
+                entry["model_override"] = model
+            else:
+                entry.pop("model_override", None)
+            self._save_state()
 
     def set_role_schedule_enabled(self, role_name: str, enabled: bool) -> dict[str, Any]:
         """Enable or disable scheduling for a specific role (SC-D6, Issue #1320)."""
@@ -356,109 +348,139 @@ class StaffScheduler:
             return {"role": role_name, "enabled": enabled}
 
     def tick(self, now: datetime | None = None) -> list[dict[str, Any]]:
-        """Handle every due slot once. Returns one decision per due role."""
+        """Handle every due slot once. Returns one decision per due role or named job."""
         now = now or self._clock()
-        decisions: list[dict[str, Any]] = []
+        self._reconcile_cartographer_pending()
         with self._lock:
-            for name, role in sorted(self.runner.roles().items()):
-                if not (role.schedule and role.dispatchable):
+            if reconcile_scheduled_runs(self._load_state(), store=self.runner.store, machine=self.runner.machine):
+                self._save_state()
+        decisions: list[dict[str, Any]] = []
+        if not self._lease_allows_firing(now):
+            return decisions
+        pending_fires: list[dict[str, Any]] = []
+        with self._lock:
+            for role in sorted(self.runner.roles().values(), key=lambda r: r.name):
+                if not role.dispatchable:
                     continue
-                report = self.evaluate(role, now)
-                due = report["next_fire"]
-                if due is None or datetime.fromisoformat(due) > now:
-                    continue
-                blocker = self._blocker(report)
-                entry = self._load_state().setdefault(name, {})
-                entry["cursor"] = now.isoformat()
-                if blocker:
-                    entry["last_reason"] = f"skipped {due}: {blocker}"
-                    log.info("staff scheduler: %s slot %s skipped — %s", name, due, blocker)
-                    decisions.append({"role": name, "slot": due, "fired": False, "reason": blocker})
-                    continue
-                repo = scheduled_repo(role.repos, now)
-                issue_number: int | None = None
-                if role.name == ISSUE_REMEDIATOR_ROLE:
-                    selected_repo, selected_issue = self._pick_issue_target(role, now)
-                    if not selected_repo or not selected_issue:
-                        reason = "no eligible issues in scheduled repositories"
-                        entry["last_reason"] = f"skipped {due}: {reason}"
-                        decisions.append({"role": name, "slot": due, "fired": False, "reason": reason})
-                        continue
-                    repo = selected_repo
-                    issue_number = selected_issue
-                repo_hold = self.holds.blocking(name, repo)
-                if repo_hold:
-                    entry["last_reason"] = f"skipped {due}: hold: {repo_hold.text}"
-                    decisions.append({"role": name, "slot": due, "fired": False, "reason": f"hold: {repo_hold.text}"})
-                    continue
-                excluded = ExclusionsList().blocking(repo) if repo else None
-                if excluded:
-                    reason = f"excluded: {excluded.owner}: {excluded.reason}"
-                    entry["last_reason"] = f"skipped {due}: {reason}"
-                    log.info("staff scheduler: %s slot %s skipped - %s (%s)", name, due, reason, excluded.id)
-                    decisions.append({"role": name, "slot": due, "fired": False, "reason": reason})
-                    continue
-                decision = self._decider(role, repo)
-                prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
-                if issue_number:
-                    prompt = f"{prompt} Target issue #{issue_number} for this run."
-                req = RunRequest(
-                    role=name,
-                    repo=repo,
-                    issue=issue_number,
-                    prompt=prompt,
-                    requested_by=REQUESTED_BY,
-                    consolidation=decision,
-                )
-                claimed = claim_guard.scheduler_blocker(repo, req.issue, req.pr, name) if repo else ""
-                if claimed:  # fail closed: a claimed (or unreadable) target is skipped with the reason recorded (#2562)
-                    entry["last_reason"] = f"skipped {due}: {claimed}"
-                    log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
-                    decisions.append({"role": name, "slot": due, "fired": False, "reason": claimed})
-                    continue
-                try:
-                    rec = self.runner.submit(req)
-                except ValueError as exc:
-                    entry["last_reason"] = f"skipped {due}: {exc}"
-                    log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
-                    decisions.append({"role": name, "slot": due, "fired": False, "reason": str(exc)})
-                    continue
-                entry["last_fired"] = now.isoformat()
-                entry["last_reason"] = f"fired {due} as {rec.id}"
-                log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
-                fired: dict[str, Any] = {"role": name, "slot": due, "fired": True, "run_id": rec.id}
-                if decision:
-                    fired["consolidation"] = decision
-                decisions.append(fired)
+                jobs = named_jobs(role)
+                if jobs:
+                    for job, cron in sorted(jobs.items()):
+                        self._queue_due_slot(role, now, decisions, pending_fires, job=job, cron=cron)
+                elif role.schedule:
+                    self._queue_due_slot(role, now, decisions, pending_fires)
             if decisions:
                 self._save_state()
+        for pending in pending_fires:
+            decisions.append(self._fire_pending_slot(now, **pending))
+        if pending_fires:
+            with self._lock:
+                self._save_state()
         return decisions
+
+    def _queue_due_slot(
+        self,
+        role: RoleSpec,
+        now: datetime,
+        decisions: list[dict[str, Any]],
+        pending_fires: list[dict[str, Any]],
+        *,
+        job: str | None = None,
+        cron: str | None = None,
+    ) -> None:
+        """Evaluate one role (or one named job of it); append a skip decision or queue a fire."""
+
+        def _report(r: RoleSpec, n: datetime) -> dict[str, Any]:
+            return self._schedule_report(r, n, job=job, cron=cron) if job else self.evaluate(r, n)
+
+        queue_due_slot(
+            role,
+            now,
+            decisions,
+            pending_fires,
+            job=job,
+            schedule_report=_report,
+            blocker=self._blocker,
+            load_state=self._load_state,
+            holds_blocking=self.holds.blocking,
+        )
+
+    def _fire_pending_slot(
+        self,
+        now: datetime,
+        *,
+        name: str,
+        role: RoleSpec,
+        due: str,
+        repo: str | None,
+        issue_number: int | None,
+        job: str | None = None,
+    ) -> dict[str, Any]:
+        """Run slow consolidation/claim/submit work without holding the scheduler lock (#3526)."""
+        key = f"{name}::{job}" if job else name
+        cartographer_job, reason = persona_fire_guard(
+            role.name, continuity=self._cartographer_continuity, job=job, slot=due, now=now
+        )
+        if reason:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=reason)
+            log.info("staff scheduler: %s slot %s skipped - %s", name, due, reason)
+            return {"role": name, "slot": due, "fired": False, "reason": reason}
+        decision = self._decider(role, repo or "")
+        report_only = bool(job) and isinstance(role.scope, dict) and bool(role.scope.get("report_only"))
+        if report_only:
+            prompt = REPORT_ONLY_SCHEDULED_PROMPT.format(title=role.title, job=job, repo=repo or "the fleet")
+        else:
+            prompt = SCHEDULED_PROMPT.format(title=role.title, repo=repo or "the fleet")
+        if issue_number:
+            prompt = f"{prompt} Target issue #{issue_number} for this run."
+        req = RunRequest(
+            role=name,
+            repo=repo or "",
+            issue=issue_number,
+            prompt=prompt,
+            requested_by=REQUESTED_BY,
+            consolidation=decision,
+            task_type=job or "",
+        )
+
+        def _result(fired: dict[str, Any]) -> dict[str, Any]:
+            if job:
+                fired["job"] = job
+            return fired
+
+        claimed = claim_guard.scheduler_blocker(repo, req.issue, req.pr, name) if repo else ""
+        with self._lock:
+            entry = self._load_state().setdefault(key, {})
+            if claimed:
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
+                log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
+                return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
+            try:
+                rec = self.runner.submit(req)
+            except ValueError as exc:
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
+                log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
+                return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
+            record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat(), role=name, job=job)
+            if cartographer_job:
+                self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}
+        log.info("staff scheduler: %s slot %s → %s", name, due, rec.id)
+        fired: dict[str, Any] = {"role": name, "slot": due, "fired": True, "run_id": rec.id}
+        if decision:
+            fired["consolidation"] = decision
+        return _result(fired)
 
     def status(self, now: datetime | None = None) -> list[dict[str, Any]]:
         """Per-role gate report for ``GET /api/staff/schedule`` (scheduled roles first)."""
         now = now or self._clock()
         with self._lock:
-            reports = [self.evaluate(role, now) for _, role in sorted(self.runner.roles().items()) if role.dispatchable]
+            roles = [(n, r) for n, r in sorted(self.runner.roles().items()) if r.dispatchable]
+        reports = [self.evaluate(role, now) for _, role in roles]
         return sorted(reports, key=lambda r: (r["schedule"] is None, r["role"]))
 
 
+# Tests inject a fake scheduler here; ``scheduler_registry.get_scheduler`` honors it.
 _scheduler: StaffScheduler | None = None
-_scheduler_lock = threading.Lock()
 
-
-def get_scheduler() -> StaffScheduler:
-    """Process-wide scheduler bound to the process-wide runner."""
-    global _scheduler  # noqa: PLW0603
-    with _scheduler_lock:
-        if _scheduler is None:
-            runner = get_runner()
-            _scheduler = StaffScheduler(runner, HoldsList(roles_loader=runner.roles), BudgetGuard(runner.store))
-        return _scheduler
-
-
-def reset_scheduler() -> None:
-    global _scheduler  # noqa: PLW0603
-    with _scheduler_lock:
-        if _scheduler is not None:
-            _scheduler.stop()
-        _scheduler = None
+from staff.scheduler_registry import get_scheduler, reset_scheduler  # noqa: E402,F401

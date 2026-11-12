@@ -19,7 +19,7 @@ describe("remediationBulkRequest", () => {
         provider: "claude",
         prompt: "Fix bugs",
         force: true,
-        approved_by: "dieter",
+        approved_by: "operator",
       });
 
       expect(req).toEqual({
@@ -32,7 +32,7 @@ describe("remediationBulkRequest", () => {
         provider: "claude",
         prompt: "Fix bugs",
         force: true,
-        approved_by: "dieter",
+        approved_by: "operator",
         dry_run: false,
         machine: "local",
       });

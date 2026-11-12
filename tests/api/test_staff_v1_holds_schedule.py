@@ -50,6 +50,9 @@ class _Scheduler:
     def status(self, now: Any = None) -> list[dict[str, Any]]:  # noqa: ARG002
         return [{"role": "night-watch", "schedule": "0 22 * * *", "next_fire": None}]
 
+    def leader_status(self, now: Any = None) -> dict[str, Any]:  # noqa: ARG002
+        return {"configured": False, "chain": [], "holder": "", "active": False, "local_holder": False}
+
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:

@@ -34,9 +34,11 @@ def test_workflow_run_triggers_on_main_ci_completion() -> None:
     assert wr["types"] == ["completed"]
 
 
-def test_permissions_are_contents_write_only() -> None:
+def test_permissions_allow_reading_check_runs_for_the_gate() -> None:
+    # The publisher reads commits/<sha>/check-runs; without checks: read the
+    # token gets HTTP 403 and no release is ever published (#2933).
     perms = _load(WORKFLOW)["permissions"]
-    assert perms == {"contents": "write"}
+    assert perms == {"checks": "read", "contents": "write"}
 
 
 def test_same_repo_guard_on_publish_job() -> None:

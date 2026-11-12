@@ -22,3 +22,20 @@
 .projects-card > .section-header {
   margin-inline: -16px;
 }
+
+/* Mobile touch-target and text-size contract (#3748): per-card buttons use
+ * the shared `.btn` primitive and badges use the shared `Badge` primitive,
+ * both of which stay small by default for dense desktop layouts. Scope the
+ * fix to this page so Fleet/Queue/Staff (out of scope for #3748) are
+ * unaffected. Badge text is overridden unconditionally — per
+ * docs/mobile-design-system.md, type must not scale with viewport width. */
+.projects-page .badge {
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .projects-page button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

@@ -12,7 +12,7 @@ from staff.store import _now
 
 THREAD_KINDS = ("direct", "group", "auto", "panel")
 THREAD_STATUSES = ("open", "archived")
-MESSAGE_AUTHOR_KINDS = ("user", "role", "system")
+MESSAGE_AUTHOR_KINDS = ("user", "bot", "role", "system")
 MESSAGE_KINDS = (
     "text",
     "action_proposal",
@@ -254,6 +254,9 @@ class CreateThreadRequest(BaseModel):
     kind: str = "direct"
     role: str | None = None
     participants: list[str] = Field(default_factory=list)
+    # Intake threads (#3017): store posts without a paid reply turn; hide from non-participants.
+    no_auto_reply: bool = False
+    participants_only: bool = False
 
 
 class UpdateThreadRequest(BaseModel):
@@ -271,6 +274,14 @@ class PostMessageRequest(BaseModel):
 
 class AnswerNeedsInputRequest(BaseModel):
     answer: str
+
+
+class RelayAgentRequest(BaseModel):
+    """POST body for forwarding an agent-to-agent request to a Grok Bot counterpart (#3705)."""
+
+    from_role: str = Field(..., max_length=80)
+    to_grok_bot: str = Field(..., max_length=80)
+    request: str = Field(..., max_length=4000)
 
 
 class RelayRunCardRequest(BaseModel):

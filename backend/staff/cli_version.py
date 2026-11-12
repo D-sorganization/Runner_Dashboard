@@ -1,7 +1,7 @@
 """Minimum provider CLI versions and a cached ``--version`` probe (#1680).
 
 A node whose CLI predates a flag the adapter passes fails every run with
-``unknown option`` (seven DeskComputer runs on 2026-09-27: claude 2.1.79 vs
+``unknown option`` (seven hub-a runs on 2026-09-27: claude 2.1.79 vs
 ``--permission-prompts``). This module states each executable's floor, reads
 the installed version once per binary, refuses runs and chat turns below the
 floor with a non-retryable ``cli_outdated`` failure, and reports the same fact

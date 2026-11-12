@@ -36,6 +36,8 @@
         "ci-auto-deploy-regression.yml",
         "codex-review-request.yml",
         "collate-changes.yml",
+        "ci-private-roles-redaction-gate.yml",
+        "ci-standalone-smoke.yml",
         "conflict-disarm.yml",
         "arm-cap-reconcile.yml",
         "dependabot-auto-merge.yml",
@@ -43,10 +45,14 @@
         "labels-sync.yml",
         "lint-workflow-files.yml",
         "pr-cap.yml",
+        "pr-body-lint.yml",
+        "publish-guard.yml",
+        "rd-barb-hold-integrity.yml",
+        "merge-shepherd.yml",
+        "recurring-scan.yml",
         "reusable-pr-cap.yml",
         "taxonomy-rollout.yml",
-        "Verify-Issue-Closure.yml",
-        "verify-tag.yml"
+        "Verify-Issue-Closure.yml"
       ]
     },
     "docker": {
@@ -63,9 +69,8 @@
         "ci-nightly.yml",
         "ci-standard.yml",
         "frontend-tests.yml",
-        "lockfile-upgrade.yml",
-        "release.yml",
-        "main-ci-auto-release.yml"
+        "api-contract-regeneration.yml",
+        "lockfile-upgrade.yml"
       ]
     }
   }

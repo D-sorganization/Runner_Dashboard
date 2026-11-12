@@ -1,0 +1,1 @@
+- feat(coordination): add read-only merge-queue batching metrics (observed group time, merges/hr, and batch-size recommendations) to `/api/v1/fleet/overload` and surface `OVERLOADED`/`DRAIN` status in `/api/v1/fleet/brief` (issue #3293, slice 4).

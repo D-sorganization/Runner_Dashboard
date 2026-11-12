@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from node_auto_deploy.registry_migration import migrate_legacy_registry_to_local_config
 from node_auto_deploy.releases import release_root
 
 TransactionResult = Literal["success", "skipped", "failed", "rollback", "rollback_failed"]
@@ -164,6 +165,15 @@ def _copy_tree_contents(source: Path, target: Path, source_root: Path, target_ro
 
 _MUTABLE_TREES = (Path("config"), Path("backend/data"))
 _MUTABLE_FILES = (Path("backend/machine_registry.yml"), Path("agent_profiles.json"), Path("local_apps.json"))
+
+
+def _migrate_machine_registry_to_local_config(live_dashboard_root: Path) -> None:
+    backend_dir = live_dashboard_root / "backend"
+    if not backend_dir.is_dir():
+        return
+    migrate_legacy_registry_to_local_config(deploy_backend_dir=backend_dir)
+
+
 _MUTABLE_SUFFIXES = (
     ".db",
     ".db-wal",
@@ -221,6 +231,7 @@ def _copy_runtime_artifacts(source: Path, target: Path, source_root: Path, targe
 def copy_mutable_state(source_dir: Path, candidate: Path) -> None:
     """Copy documented operator state into the candidate without following symlinks."""
     source = source_dir.resolve(strict=True)
+    _migrate_machine_registry_to_local_config(source)
     target = candidate.resolve(strict=True)
     if source == target:
         raise UnsafeDeploymentPathError("source and candidate must differ")

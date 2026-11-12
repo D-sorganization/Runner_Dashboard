@@ -41,16 +41,16 @@ async def test_knowledge_retrieval_does_not_block_other_coroutines(conv_store, m
         await asyncio.sleep(0.01)
         release.set()
 
-    monkeypatch.setattr("staff.chat.build_knowledge_turn_block", retrieve)
-    monkeypatch.setattr("staff.chat.load_roles", lambda: {})
-    monkeypatch.setattr("staff.chat.load_fleet_standards", lambda: SimpleNamespace(pin="test", body="test"))
+    monkeypatch.setattr("staff.chat_turn_runner.build_knowledge_turn_block", retrieve)
+    monkeypatch.setattr("staff.chat_turn_runner.load_roles", lambda: {})
+    monkeypatch.setattr("staff.chat_turn_runner.load_fleet_standards", lambda: SimpleNamespace(pin="test", body="test"))
     for name in (
         "build_fleet_context_block",
         "build_issue_context_block",
         "build_shared_memory_context_block",
         "record_chat_capacity_failure",
     ):
-        monkeypatch.setattr("staff.chat." + name, AsyncMock(return_value=None))
+        monkeypatch.setattr("staff.chat_turn_runner." + name, AsyncMock(return_value=None))
     thread = conv_store.create_thread(title="responsive chat", role="scout", created_by="test")
     message = conv_store.add_message(thread.id, author_kind="user", author="test", body_md="solver")
     runner = ChatTurnRunner(conv_store=conv_store, pool=SimpleNamespace(acquire=AsyncMock(return_value=False)))
@@ -203,7 +203,7 @@ async def test_chat_turn_execution_carries_knowledge_block(
     runner = ChatTurnRunner(conv_store=conv_store)
     dispatched_prompts: list[str] = []
 
-    def mock_spawn(cmd: list[str], cwd: str, env: dict[str, str]) -> MagicMock:
+    def mock_spawn(cmd: list[str], cwd: str, env: dict[str, str], stdin_text: str | None = None) -> MagicMock:
         for i, arg in enumerate(cmd):
             if arg == "-p" and i + 1 < len(cmd):
                 dispatched_prompts.append(cmd[i + 1])
@@ -223,8 +223,8 @@ async def test_chat_turn_execution_carries_knowledge_block(
 
     with (
         patch.object(runner, "_spawn_cli_process", side_effect=mock_spawn),
-        patch("staff.chat.version_gate", return_value=None),
-        patch("staff.chat.load_roles", return_value={"disciple": disciple_role}),
+        patch("staff.chat_turn_runner.version_gate", return_value=None),
+        patch("staff.chat_turn_runner.load_roles", return_value={"disciple": disciple_role}),
     ):
         result = await runner.execute_turn(
             thread_id=thread.id,

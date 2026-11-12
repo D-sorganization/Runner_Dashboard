@@ -126,14 +126,14 @@ describe("FleetCommandPage — claims", () => {
     fireEvent.click(screen.getByRole("button", { name: "Check claim" }));
     await waitFor(() => expect(screen.getByTestId("claim-status")).toHaveTextContent("claimed by codex"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Claim" }));
+    fireEvent.click(screen.getByRole("button", { name: /Claim maintenance session/i }));
     await waitFor(() =>
       expect(screen.getByTestId("claim-error")).toHaveTextContent(
         "issue is claimed — held by codex — pick another issue",
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Release" }));
+    fireEvent.click(screen.getByRole("button", { name: /Release maintenance session/i }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Released Tools#42."));
     const release = writes(fetchMock, "POST").find(([u]) => u === "/api/coordination/claims/release");
     expect(release).toBeDefined();
@@ -197,5 +197,147 @@ describe("FleetCommandPage — dispatch", () => {
     render(<FleetCommandPage />);
     openSection("Dispatch");
     await waitFor(() => expect(screen.getByTestId("fleet-dispatch-unavailable")).toBeInTheDocument());
+  });
+});
+
+describe("FleetCommandPage — job board", () => {
+  const JOBS = {
+    available: true,
+    complete: true,
+    jobs: [
+      {
+        repo: "Tools",
+        issue: 10,
+        title: "High tools work",
+        url: "https://github.com/D-sorganization/Tools/issues/10",
+        labels: ["high"],
+        priority: "high",
+        updated_at: "2026-11-01T12:00:00Z",
+      },
+      {
+        repo: "Tools",
+        issue: 11,
+        title: "Low tools work",
+        url: "https://github.com/D-sorganization/Tools/issues/11",
+        labels: ["low"],
+        priority: "low",
+        updated_at: "2026-10-15T12:00:00Z",
+      },
+      {
+        repo: "Games",
+        issue: 5,
+        title: "Games task",
+        url: "https://github.com/D-sorganization/Games/issues/5",
+        labels: [],
+        priority: "",
+        updated_at: "2026-09-01T12:00:00Z",
+      },
+    ],
+    excluded: [],
+    warnings: [],
+    generated_at: "2026-11-04T00:00:00Z",
+  };
+
+  function jobsReply(url: string) {
+    if (url === "/api/coordination/jobs" || url.startsWith("/api/coordination/jobs?")) {
+      const q = new URL(url, "http://local");
+      const repo = q.searchParams.get("repo");
+      let jobs = JOBS.jobs;
+      if (repo) jobs = jobs.filter((j) => j.repo.toLowerCase() === repo.toLowerCase());
+      return { status: 200, body: { ...JOBS, jobs } };
+    }
+    if (url === "/api/auth/me") {
+      return {
+        status: 200,
+        body: {
+          id: "fleet-operator",
+          type: "human",
+          name: "Operator",
+          roles: ["operator"],
+          scopes: ["coordination.write", "fleet.read"],
+        },
+      };
+    }
+    return undefined;
+  }
+
+  it("renders jobs and filters by repo and priority", async () => {
+    const fetchMock = stubFetch(jobsReply);
+    const baseFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, opts?: RequestInit) => {
+      const bareJobs = url === "/api/coordination/jobs";
+      const allJobs = bareJobs || (url.startsWith("/api/coordination/jobs?") && !url.includes("repo="));
+      if (allJobs) await new Promise((resolve) => setTimeout(resolve, 50));
+      return baseFetch(url, opts);
+    });
+    render(<FleetCommandPage />);
+    openSection("Claims");
+    await waitFor(() => expect(screen.getByTestId("job-row-Games-5")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Filter jobs by repo"), { target: { value: "Tools" } });
+    await waitFor(() => expect(screen.queryByTestId("job-row-Games-5")).not.toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Filter jobs by priority"), { target: { value: "high" } });
+    expect(screen.getByTestId("job-row-Tools-10")).toBeInTheDocument();
+    expect(screen.queryByTestId("job-row-Tools-11")).not.toBeInTheDocument();
+  });
+
+  it("ignores a stale unfiltered jobs fetch after the repo filter refetch", async () => {
+    let releaseInitial: () => void = () => {};
+    const initialGate = new Promise<void>((resolve) => {
+      releaseInitial = resolve;
+    });
+    const fetchMock = stubFetch(jobsReply);
+    const baseFetch = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, opts?: RequestInit) => {
+      const bareJobs = url === "/api/coordination/jobs";
+      const allJobs = bareJobs || (url.startsWith("/api/coordination/jobs?") && !url.includes("repo="));
+      if (allJobs) {
+        await initialGate;
+      }
+      return baseFetch(url, opts);
+    });
+    render(<FleetCommandPage />);
+    openSection("Claims");
+    fireEvent.change(screen.getByLabelText("Filter jobs by repo"), { target: { value: "Tools" } });
+    await waitFor(() => expect(screen.queryByTestId("job-row-Games-5")).not.toBeInTheDocument());
+    releaseInitial();
+    await waitFor(() => expect(screen.queryByTestId("job-row-Games-5")).not.toBeInTheDocument());
+  });
+
+  it("shows degraded banner when unavailable or incomplete", async () => {
+    stubFetch((url) => {
+      if (url === "/api/coordination/jobs" || url.startsWith("/api/coordination/jobs?")) {
+        return {
+          status: 200,
+          body: { available: false, complete: false, jobs: [], warnings: ["holds list unreadable"], generated_at: "x" },
+        };
+      }
+      return jobsReply(url);
+    });
+    render(<FleetCommandPage />);
+    openSection("Claims");
+    await waitFor(() => expect(screen.getByTestId("job-board-degraded")).toHaveTextContent(/unavailable|holds/i));
+  });
+
+  it("shows 409 reason when a claim loses", async () => {
+    stubFetch((url, opts) => {
+      const jobs = jobsReply(url);
+      if (jobs) return jobs;
+      if (url === "/api/coordination/claims" && opts?.method === "POST") {
+        return {
+          status: 409,
+          body: { detail: { error: "issue is claimed", held_by: "gemini", guidance: "pick another issue" } },
+        };
+      }
+      return undefined;
+    });
+    render(<FleetCommandPage />);
+    openSection("Claims");
+    await waitFor(() => expect(screen.getByTestId("job-row-Tools-10")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Claim Tools#10" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("job-claim-error-Tools-10")).toHaveTextContent(
+        "issue is claimed — held by gemini — pick another issue",
+      ),
+    );
   });
 });

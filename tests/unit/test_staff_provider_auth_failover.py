@@ -114,7 +114,7 @@ def test_provider_auth_preflight_ok_with_refresh_token_and_4h_keepalive(
     monkeypatch.setattr("staff.cli_oauth_session.resolve_claude_config_dir", lambda: cred_dir)
 
     with patch("staff.provider_auth_preflight.provider_oauth_session_alive", return_value=(True, "ok")):
-        report = probe_local_provider_auth("Brick")
+        report = probe_local_provider_auth("node-c")
     assert report["providers"]["claude"]["status"] == "ok"
     assert report["providers"]["claude"]["has_refresh_token"] is True
     assert _KEEPALIVE_INTERVAL_SECONDS == 4 * 3600

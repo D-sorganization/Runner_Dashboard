@@ -5,6 +5,7 @@ import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { EmptyState } from "../../primitives/EmptyState";
 import { useHaptic } from "../../hooks/useHaptic";
+import { useVisibilityInterval } from "../../hooks/useVisibilityInterval";
 import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
 
 import { MobileRunCard } from "./MobileRunCard";
@@ -118,15 +119,13 @@ export function QueueMobile() {
 
   useEffect(() => {
     fetchQueue();
-    const interval = setInterval(fetchQueue, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
   }, [fetchQueue]);
+  useVisibilityInterval(fetchQueue, POLL_INTERVAL_MS);
 
   useEffect(() => {
     fetchStale();
-    const interval = setInterval(fetchStale, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
   }, [fetchStale]);
+  useVisibilityInterval(fetchStale, POLL_INTERVAL_MS);
 
   const handleRefresh = useCallback(async () => {
     haptic.medium();
@@ -364,6 +363,8 @@ export function QueueMobile() {
                 type="number"
                 value={minAge}
                 onChange={(e) => setMinAge(Number(e.target.value) || 0)}
+                aria-label="Minimum run age in minutes for stale cleanup"
+                title="Only consider runs older than this many minutes"
                 style={{
                   padding: "6px 10px",
                   fontSize: 13,
@@ -381,6 +382,8 @@ export function QueueMobile() {
                 placeholder="All repos"
                 value={repoFilter}
                 onChange={(e) => setRepoFilter(e.target.value)}
+                aria-label="Repository filter for stale cleanup"
+                title="Limit stale cleanup to this repository (blank = all repos)"
                 style={{
                   padding: "6px 10px",
                   fontSize: 13,
@@ -415,6 +418,11 @@ export function QueueMobile() {
             disabled={purging || staleData.filter(r => r.safe_to_cancel).length === 0}
             onClick={executePurge}
             variant={confirmPurge ? "danger" : "primary"}
+            title={
+              confirmPurge
+                ? "Confirm purging safe-to-cancel stale runs"
+                : "Purge stale workflow runs that are safe to cancel"
+            }
             style={{ minHeight: 40, width: "100%" }}
           >
             {confirmPurge

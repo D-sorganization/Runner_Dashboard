@@ -26,6 +26,6 @@ audit tracker and its final combined frontend/backend cleanup issue.
 ## Final Verification
 
 The final #949 implementation slice series through #1043 was merged to `main`
-and deployed on ControlTower. Post-merge CI passed for the merged heads, and
+and deployed on node-a. Post-merge CI passed for the merged heads, and
 the live dashboard reported healthy GitHub connectivity with the deployed
 commit `f23e8904d97fec559e99b7d60938e9e9dbcd069b`.

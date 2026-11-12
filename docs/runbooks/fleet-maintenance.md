@@ -54,9 +54,10 @@ written by the scheduler; keep it root-owned too and give the dashboard read
 access only.
 
 `DASHBOARD_LOOPBACK_AUTH=1` grants loopback callers an admin principal, so on a
-host with that flag any local process can call this endpoint (including
-`reboot`). Browser pages cannot: the global CSRF check requires the
-`X-Requested-With` header, which forces a CORS preflight.
+host with that explicit setting any local process can call this endpoint
+(including `reboot`). Keep the flag unset on deployed hosts. Requests with
+unconfigured Host values are rejected before routing; authenticated browser
+sessions and bearer tokens remain the supported operator access paths.
 
 ## Audit
 

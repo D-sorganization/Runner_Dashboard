@@ -66,6 +66,22 @@ describe("ActionCard", () => {
     expect(screen.getByRole("button", { name: /deny/i })).toBeEnabled();
   });
 
+  it("shows the real refusal on a failed card instead of a generic retry notice (#3631)", () => {
+    render(
+      <ActionCard
+        proposal={{
+          ...MOCK_PROPOSAL,
+          status: "failed",
+          fail_reason: "resource_saturated: io_pressure=49.0%>=35.0%",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Action failed: resource_saturated: io_pressure=49.0%>=35.0%. You can retry approval.",
+    );
+  });
+
   it("stays disabled while an accepted approval executes", async () => {
     const handleApprove = vi.fn(async () => true);
     render(<ActionCard proposal={MOCK_PROPOSAL} onApprove={handleApprove} />);
@@ -124,13 +140,13 @@ describe("ActionCard", () => {
     const decidedProposal: ActionProposalData = {
       ...MOCK_PROPOSAL,
       status: "approved",
-      decided_by: "dieter",
+      decided_by: "operator",
       decided_at: "2026-09-25T11:00:00.000Z",
     };
 
     render(<ActionCard proposal={decidedProposal} />);
 
-    expect(screen.getByText(/approved by dieter/i)).toBeInTheDocument();
+    expect(screen.getByText(/approved by operator/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /approve/i })).not.toBeInTheDocument();
   });
 

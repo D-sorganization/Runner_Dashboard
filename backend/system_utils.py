@@ -1220,22 +1220,40 @@ async def get_system_metrics_snapshot(
             "io_pressure": get_io_pressure_snapshot(),
             "host_recovery": _get_host_recovery_diagnostics(),
         }
+        try:
+            from fleet_backup_pilot_status import read_fleet_backup_pilot_status
+
+            metrics["fleet_backup_pilot"] = read_fleet_backup_pilot_status()
+        except Exception:  # noqa: BLE001 - telemetry must not fail the snapshot
+            metrics["fleet_backup_pilot"] = {"enabled": False, "pilot": "node-b"}
+
+        try:
+            from host_health import build_host_health_gauge  # noqa: PLC0415
+
+            metrics["host_health"] = build_host_health_gauge(HOSTNAME or "local", metrics)
+        except Exception:  # noqa: BLE001 - gauge must not break /api/system
+            metrics["host_health"] = {"level": "green", "host": HOSTNAME or "local"}
 
         return metrics
 
     return await asyncio.to_thread(_sync)
 
 
-async def run_cmd(cmd: list[str], timeout: int = 30, cwd: Path | None = None) -> tuple[int, str, str]:
-    """Run a shell command asynchronously."""
+async def run_cmd(
+    cmd: list[str], timeout: int = 30, cwd: Path | None = None, *, input_text: str | None = None
+) -> tuple[int, str, str]:
+    """Run an argv command asynchronously, optionally passing UTF-8 stdin."""
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            stdin=asyncio.subprocess.PIPE if input_text is not None else None,
             cwd=str(cwd) if cwd else None,
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        payload = input_text.encode("utf-8") if input_text is not None else None
+        communicate = proc.communicate(payload) if payload is not None else proc.communicate()
+        stdout, stderr = await asyncio.wait_for(communicate, timeout=timeout)
         return (
             proc.returncode if proc.returncode is not None else -1,
             stdout.decode("utf-8", errors="replace"),

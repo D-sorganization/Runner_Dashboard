@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "_comment": "Shapes and placeholders only (issue #3080). Never add a real private value here; real names come from the private overlay via --extra-patterns.",
+  "path_globs": {
+    "confidential-doc": ["**/*CONFIDENTIAL*", "**/*confidential*"],
+    "key-material": ["**/*.pem", "**/*.p12", "**/*.pfx", "**/id_rsa*", "**/id_ed25519*"],
+    "env-file": ["**/.env", "**/.env.local", "**/.env.production"]
+  },
+  "content_patterns": {
+    "tailnet-name": "\\b[a-z0-9-]+\\.[a-z0-9-]+\\.ts\\.net\\b",
+    "tailnet-address": "\\b100\\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\.[0-9]{1,3}\\.[0-9]{1,3}\\b",
+    "github-token": "\\b(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{60,})\\b",
+    "chat-token": "\\bxox[abprs]-[A-Za-z0-9-]{10,}",
+    "private-key-block": "-----BEGIN [A-Z ]*PRIV[A]TE KEY-----",
+    "personal-email": "\\b[A-Za-z0-9._%+-]+@(?:gmail|googlemail|outlook|hotmail|live|yahoo|icloud|proton|protonmail)\\.(?:com|me)\\b"
+  }
+}

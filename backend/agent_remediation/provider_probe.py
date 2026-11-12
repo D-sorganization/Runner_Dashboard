@@ -51,8 +51,8 @@ def _default_credential_probes() -> dict[str, CredentialProbe]:
 
     Resolved lazily (inside the call) so a monkeypatched router attribute is
     honoured and the router graph is not imported at module load. Async probes
-    (e.g. Cline's VS Code extension probe) are excluded: this function runs in
-    the request path and must stay cheap and synchronous.
+    are excluded: this function runs in the request path and must stay cheap
+    and synchronous.
     """
     from routers import (
         credentials,
@@ -65,6 +65,7 @@ def _default_credential_probes() -> dict[str, CredentialProbe]:
         "claude_code_cli": credentials._probe_claude_code_cli,  # noqa: SLF001
         "gemini_cli": credentials._probe_gemini_cli,  # noqa: SLF001
         "ollama": credentials._probe_ollama,  # noqa: SLF001
+        "cline": credentials._probe_cline,  # noqa: SLF001
         "antigravity": credentials._probe_antigravity_cli,  # noqa: SLF001
     }
     return {k: v for k, v in candidates.items() if not inspect.iscoroutinefunction(v)}

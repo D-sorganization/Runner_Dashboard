@@ -9,43 +9,45 @@ every run, and streams the output to the operator console.
 
 ## Contract
 
-| Concern                                                                     | Owner                                                           | Mechanism                                                                                                   |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Role definitions (`staff/roles/*.yml`) and playbooks (`docs/fleet-*.md`)    | Repository_Management                                           | Read by path (`STAFF_ROLES_DIR`, or the sibling checkout); never imported                                   |
-| Lease ritual (`check_agent_claim`, `post_agent_lease`, `agent_communicate`) | Repository_Management                                           | Subprocess from `STAFF_RM_ROOT` or the sibling checkout                                                     |
-| Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir                                                 |
-| Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent` on `PATH`; an Ollama server for `ollama`/`claude-ollama` |
+| Concern                                                                     | Owner                                                           | Mechanism                                                                                                           |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Role definitions (`staff/roles/*.yml`) and playbooks (`docs/fleet-*.md`)    | Repository_Management                                           | Read by path (`STAFF_ROLES_DIR`, or the sibling checkout); never imported                                           |
+| Lease ritual (`check_agent_claim`, `post_agent_lease`, `agent_communicate`) | Repository_Management                                           | Subprocess from `STAFF_RM_ROOT` or the sibling checkout                                                             |
+| Run store, scheduler, board, stream, API                                    | Runner Dashboard (`backend/staff/`, `backend/routers/staff.py`) | Node-local SQLite `staff_runs.sqlite3` under the config dir                                                         |
+| Provider CLIs                                                               | The node                                                        | `claude`, `codex`, `agy`, `gemini`, `cursor-agent`, `grok` on `PATH`; an Ollama server for `ollama`/`claude-ollama` |
 
-On DeskComputer-class nodes the dashboard service runs in **WSL** while provider CLIs are often
+On hub-a-class nodes the dashboard service runs in **WSL** while provider CLIs are often
 installed on Windows. Symlink `~/.local/bin/agy` to the WinGet `agy.exe` (see
-`docs/operations/controltower-staff-worker.md`). Staff dispatch executes `agy` from WSL `PATH`; a
+`docs/operations/node-a-staff-worker.md`). Staff dispatch executes `agy` from WSL `PATH`; a
 missing binary is classified `cli_missing`, an expired Google session `auth_expired` (run
 `agy` in WSL (select Google OAuth) and complete the browser flow).
 
 ## API (`/api/staff`)
 
-| Method | Path                          | Auth                      | Purpose                                                                                                                                                                                                   |
-| ------ | ----------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/staff/roster`           | fleet peer                | Roster: roles, provider availability, active counts                                                                                                                                                       |
-| GET    | `/api/staff/board`            | fleet peer                | Status monitor. Fleet-wide when peers are configured (`machines`, `online`, `offline`, merged `running`/`queued`/spend, `liveness_alerts`); `?local=1` returns this node only (with its `liveness` list)  |
-| GET    | `/api/staff/summary`          | fleet peer                | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `providers_cooldown`, `holds`, `liveness_alerts`, `roles` |
-| GET    | `/api/staff/runs`             | fleet peer                | History; filters `role`, `status`, `since`, `limit`                                                                                                                                                       |
-| GET    | `/api/staff/runs/{id}`        | fleet peer                | One run plus its events                                                                                                                                                                                   |
-| GET    | `/api/staff/runs/{id}/stream` | fleet peer                | Server-sent events until the run ends                                                                                                                                                                     |
-| POST   | `/api/staff/{role}/run`       | bearer (`staff.dispatch`) | Dispatch; `dry_run: true` returns the plan only; loopback without a bearer is rejected (#2053)                                                                                                            |
-| POST   | `/api/staff/runs/{id}/cancel` | orchestrator peer         | Terminate a run                                                                                                                                                                                           |
-| GET    | `/api/staff/schedule`         | fleet peer                | Per role: next fire, in window now, blocking hold, budget, last fired                                                                                                                                     |
-| GET    | `/api/staff/holds`            | fleet peer                | The holds list                                                                                                                                                                                            |
-| PUT    | `/api/staff/holds`            | orchestrator peer         | Replace the holds list                                                                                                                                                                                    |
-| GET    | `/api/staff/exclusions`       | fleet peer                | Dispatch exclusions (repo/issue lanes), each flagged `active`                                                                                                                                             |
-| POST   | `/api/staff/exclusions`       | orchestrator peer         | Add an exclusion; `repo`, `owner`, `reason` required; optional `issue`, `path_glob`, `expires_at`                                                                                                         |
-| DELETE | `/api/staff/exclusions/{id}`  | orchestrator peer         | Lift an exclusion                                                                                                                                                                                         |
-| GET    | `/api/staff/usage`            | fleet peer                | Cost and token usage grouped by `provider`, `role` or `day` (`?group=`, `?since=`), with totals and the daily budget percent                                                                              |
-| GET    | `/api/staff/usage/pricing`    | fleet peer                | The price table used for estimates                                                                                                                                                                        |
-| POST   | `/api/staff/usage/export`     | orchestrator peer         | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout)                                                    |
-| GET    | `/api/staff/quota`            | fleet peer                | Billing kind and live plan windows per provider (#1587); local files only                                                                                                                                 |
+| Method | Path                             | Auth                      | Purpose                                                                                                                                                                                                   |
+| ------ | -------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/staff/roster`              | fleet peer                | Roster: roles, provider availability, active counts                                                                                                                                                       |
+| GET    | `/api/staff/board`               | fleet peer                | Status monitor. Fleet-wide when peers are configured (`machines`, `online`, `offline`, merged `running`/`queued`/spend, `liveness_alerts`); `?local=1` returns this node only (with its `liveness` list)  |
+| GET    | `/api/staff/summary`             | fleet peer                | One-call brief for Barb/Orchestrator: `in_flight`, `attention` (failed/blocked 24 h), `recent_24h`, `spend_today_usd`, `providers` per machine, `providers_cooldown`, `holds`, `liveness_alerts`, `roles` |
+| GET    | `/api/staff/runs`                | fleet peer                | History; filters `role`, `status`, `since`, `limit`                                                                                                                                                       |
+| GET    | `/api/staff/runs/{id}`           | fleet peer                | One run plus its events                                                                                                                                                                                   |
+| GET    | `/api/staff/runs/{id}/stream`    | fleet peer                | Server-sent events until the run ends                                                                                                                                                                     |
+| POST   | `/api/staff/{role}/run`          | bearer (`staff.dispatch`) | Dispatch; `dry_run: true` returns the plan only; loopback without a bearer is rejected (#2053)                                                                                                            |
+| POST   | `/api/staff/{role}/self-test`    | bearer (`staff.dispatch`) | Dry-run dispatch plan for one role; optional `persona_drill=true` runs the isolated #3704 fallback drill (#3852)                                                                                          |
+| POST   | `/api/staff/self-test/desk-core` | bearer (`staff.dispatch`) | Same check for the seven Desk core roles (`STAFF_DESK_CORE_ROLES` override); aggregated per-role results (#3852)                                                                                          |
+| POST   | `/api/staff/runs/{id}/cancel`    | orchestrator peer         | Terminate a run                                                                                                                                                                                           |
+| GET    | `/api/staff/schedule`            | fleet peer                | Per role: next fire, in window now, blocking hold, budget, last fired                                                                                                                                     |
+| GET    | `/api/staff/holds`               | fleet peer                | The holds list                                                                                                                                                                                            |
+| PUT    | `/api/staff/holds`               | orchestrator peer         | Replace the holds list                                                                                                                                                                                    |
+| GET    | `/api/staff/exclusions`          | fleet peer                | Dispatch exclusions (repo/issue lanes), each flagged `active`                                                                                                                                             |
+| POST   | `/api/staff/exclusions`          | orchestrator peer         | Add an exclusion; `repo`, `owner`, `reason` required; optional `issue`, `path_glob`, `expires_at`                                                                                                         |
+| DELETE | `/api/staff/exclusions/{id}`     | orchestrator peer         | Lift an exclusion                                                                                                                                                                                         |
+| GET    | `/api/staff/usage`               | fleet peer                | Cost and token usage grouped by `provider`, `role` or `day` (`?group=`, `?since=`), with totals and the daily budget percent                                                                              |
+| GET    | `/api/staff/usage/pricing`       | fleet peer                | The price table used for estimates                                                                                                                                                                        |
+| POST   | `/api/staff/usage/export`        | orchestrator peer         | Append today's per-provider totals to Repository_Management `data/credit_usage.json` via `scripts/append_credit_usage.py` (503 without an RM checkout)                                                    |
+| GET    | `/api/staff/quota`               | fleet peer                | Billing kind and live plan windows per provider (#1587); local files only                                                                                                                                 |
 
-Fleet hub only (DeskComputer):
+Fleet hub only (hub-a):
 
 | Method | Path                   | Auth                        | Purpose                                                                      |
 | ------ | ---------------------- | --------------------------- | ---------------------------------------------------------------------------- |
@@ -324,11 +326,11 @@ them and never to contradict a directive. The paragraph appears as `focus` in a 
 
 Verified machine state, deployment identity, provider health evidence, network
 configuration, and rollback paths are recorded in the
-[OGLaptop worker runbook](operations/oglaptop-staff-worker.md) and
-[ControlTower worker runbook](operations/controltower-staff-worker.md). Check their
+[node-b worker runbook](operations/node-b-staff-worker.md) and
+[node-a worker runbook](operations/node-a-staff-worker.md). Check their
 verification dates and the live API before assuming the recorded state still holds.
 
-A node that runs staff roles needs four things beyond the dashboard install. DeskComputer was set up this
+A node that runs staff roles needs four things beyond the dashboard install. hub-a was set up this
 way on 2026-09-22; `_deploy/node_bootstrap_staff_hub.sh` in the operator workspace does all of it.
 
 1. **systemd drop-in** `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf`. The provider CLIs are
@@ -363,14 +365,14 @@ Use the dedicated **Linux** clone on `main`, with these absolute paths in
 `~/.config/runner-dashboard/env` (back up that file before changing it):
 
 ```ini
-STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management
-STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles
-GIT_CONFIG_GLOBAL=/home/dieterolson/.config/runner-dashboard/staff.gitconfig
+STAFF_RM_ROOT=/home/fleet-operator/staff-repos/Repository_Management
+STAFF_ROLES_DIR=/home/fleet-operator/staff-repos/Repository_Management/staff/roles
+GIT_CONFIG_GLOBAL=/home/fleet-operator/.config/runner-dashboard/staff.gitconfig
 ```
 
 Keep the former `~/staff-bundle/rm` directory for rollback; it is no longer the
-role source after migration. Preserve each node's scheduler setting: OGLaptop
-and ControlTower stay at `STAFF_SCHEDULER_ENABLED=0`; DeskComputer owns scheduling.
+role source after migration. Preserve each node's scheduler setting: node-b
+and node-a stay at `STAFF_SCHEDULER_ENABLED=0`; hub-a owns scheduling.
 
 Install the packaged `deploy/systemd-user/runner-dashboard-rm-sync.service` and
 `.timer` into `~/.config/systemd/user` (back up existing units first), then:
@@ -422,7 +424,7 @@ powershell.exe -NoProfile -File .\deploy\windows\ollama-wsl-bridge.ps1 -Install 
 ```
 
 The **owner**, in an elevated PowerShell, installs it with the same command
-without `-DryRun`. OGLaptop's earlier manually configured bridge requires the
+without `-DryRun`. node-b's earlier manually configured bridge requires the
 explicit `-AdoptExisting` flag on both commands; adoption only accepts its exact
 narrow address/subnet/interface rule and loopback forward. Foreign resources
 are refused, including conflicting port 11434 forwards and same-name tasks.
@@ -456,14 +458,14 @@ curl --fail --max-time 10 "http://$gateway:11434/api/version"
 Then run the `ollama` and `claude-ollama` dashboard ad-hoc health checks and
 confirm both reach `succeeded`. From a different tailnet host, port 11434 must
 remain unreachable. These are operator acceptance steps; dry-run tests do not
-establish reboot or external-connectivity success. OGLaptop remains scheduler-off.
+establish reboot or external-connectivity success. node-b remains scheduler-off.
 
 ### Node LAN addressing: duplicate-address outages (#1270)
 
 A node that reboots can be handed a DHCP address that another LAN device still
 uses. Windows then logs System/Tcpip event **4199** ("duplicate IP address"),
 and the node loses DNS, internet and Tailscale although its services recover.
-This happened to OGLaptop on 2026-09-23. The other device kept answering ARP,
+This happened to node-b on 2026-09-23. The other device kept answering ARP,
 but not ping, for an address outside the router's lease table. Typical sources
 are TVs, cameras and IoT devices with a static address inside the DHCP pool, or
 devices that keep an old lease across a router or mesh-node restart. Firewall
@@ -506,9 +508,9 @@ does not repeat it.
 
 The Staff Hub operates across three primary hardware nodes:
 
-1. **DeskComputer** — The dedicated fleet scheduler (`STAFF_SCHEDULER_ENABLED=1`).
-2. **OGLaptop** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [OGLaptop worker runbook](operations/oglaptop-staff-worker.md).
-3. **ControlTower** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [ControlTower worker runbook](operations/controltower-staff-worker.md).
+1. **hub-a** — The dedicated fleet scheduler (`STAFF_SCHEDULER_ENABLED=1`).
+2. **node-b** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [node-b worker runbook](operations/node-b-staff-worker.md).
+3. **node-a** — Worker node (`STAFF_SCHEDULER_ENABLED=0`). Runbook: [node-a worker runbook](operations/node-a-staff-worker.md).
 
 ### Unified Acceptance Standard
 
@@ -522,7 +524,7 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 
 ### Fleet Qualification Matrix
 
-| Dimension                     | DeskComputer                               | OGLaptop                                   | ControlTower                               |
+| Dimension                     | hub-a                                      | node-b                                     | node-a                                     |
 | ----------------------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------------------ |
 | **Role**                      | Scheduler                                  | Worker                                     | Worker                                     |
 | **`STAFF_SCHEDULER_ENABLED`** | `1`                                        | `0`                                        | `0`                                        |
@@ -540,25 +542,26 @@ The fleet is accepted when all three nodes pass `--run-ad-hoc --expect-sha <main
 
 1. **Deployment & API**: `curl -fsS http://127.0.0.1:8321/api/health` returns top-level status `healthy`, at the expected commit.
 2. **Identity**: `gh auth status` confirms valid WSL GitHub authentication with no embedded tokens.
-3. **CLIs**: Node v24 LTS in PATH; `claude`, `codex`, `agy`, `cursor-agent` executable.
+3. **CLIs**: Node v24 LTS in PATH; `claude`, `codex`, `agy`, `cursor-agent`, `grok` executable.
 4. **Service Drop-in**: `staff-hub.conf` has `MemoryDenyWriteExecute=false`, provider PATH, and all required `ReadWritePaths`.
 5. **Dynamic Role Sync**: `rm_source` in `/api/staff/board?local=1` reports status `updated` or `unchanged`, checked within the last hour; active timer refreshes at most every 15 min.
 6. **Holds**: `/api/staff/schedule` reports no worker roles blocked by active holds.
-7. **Scheduler Invariant**: Only DeskComputer runs with `STAFF_SCHEDULER_ENABLED=1`; worker nodes strictly enforce `0`.
+7. **Scheduler Invariant**: Only hub-a runs with `STAFF_SCHEDULER_ENABLED=1`; worker nodes strictly enforce `0`.
 8. **Ollama Reachability**: Gateway `11434/api/version` returns HTTP 200 without exposing Ollama to the physical LAN or Tailscale.
 9. **Provider Verification**: Ad-hoc health check runs succeed with exit code 0 and emit `STAFF_RESULT: ok`.
 
 ## Provider Options (#1252)
 
-| Provider        | Launch (unattended; never a permission bypass, #1586)                                         | Models                                          |
-| --------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `claude`        | `claude -p --permission-mode dontAsk --permission-prompts none --allowedTools <list>`         | Claude seat (`CLAUDE_CONFIG_DIR` service copy)  |
-| `codex`         | `codex exec --sandbox workspace-write --add-dir <git common dir> --json` (0.156+)             | ChatGPT seat                                    |
-| `antigravity`   | `agy --print … --mode plan --model <id> --add-dir <wt>` (no permission bypass, #1586)         | Google sign-in; default `gemini-3.8-flash-high` |
-| `cursor-agent`  | `cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt>`      | Cursor subscription, incl. Grok (`grok-4.7-*`)  |
-| `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`              | Any Ollama model; default `glm-5.3-flash:cloud` |
-| `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`) | Any Ollama model; default `glm-5.3-flash:cloud` |
-| `gemini`        | `gemini -p --approval-mode auto_edit --policy <generated> --output-format stream-json`        | Google                                          |
+| Provider        | Launch (unattended; never a permission bypass, #1586)                                                            | Models                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `claude`        | `claude -p --permission-mode dontAsk --permission-prompts none --allowedTools <list>`                            | Claude seat (`CLAUDE_CONFIG_DIR` service copy)                         |
+| `codex`         | `codex exec --sandbox workspace-write --add-dir <git common dir> --json` (0.156+)                                | ChatGPT seat                                                           |
+| `antigravity`   | `agy --print … --mode plan --model <id> --add-dir <wt>` (no permission bypass, #1586)                            | Google sign-in; default `gemini-3.8-flash-high`                        |
+| `cursor-agent`  | `cursor-agent -p --output-format stream-json --sandbox enabled --trust --workspace <wt>`                         | Cursor subscription, incl. Grok (`grok-4.7-*`)                         |
+| `grok`          | `grok -p … --output-format stream-json --allow … --deny … --no-auto-update -w <wt>` (never a bypass flag, #1586) | Standalone Grok CLI (SuperGrok plan; distinct from Cursor-hosted Grok) |
+| `ollama`        | `codex exec --oss --local-provider ollama` with `CODEX_OSS_BASE_URL=<ollama>/v1`                                 | Any Ollama model; default `glm-5.3-flash:cloud`                        |
+| `claude-ollama` | Claude Code with `ANTHROPIC_BASE_URL=<ollama>`, own `CLAUDE_CONFIG_DIR` (`.../claude-ollama`)                    | Any Ollama model; default `glm-5.3-flash:cloud`                        |
+| `gemini`        | `gemini -p --approval-mode auto_edit --policy <generated> --output-format stream-json`                           | Google                                                                 |
 
 Unattended runs use one shared shell allow-list and deny-list (`UNATTENDED_SHELL_ALLOW` /
 `UNATTENDED_SHELL_DENY` in `backend/staff/adapters.py`), rendered as Claude `Bash(<prefix>:*)` tool rules
@@ -571,6 +574,13 @@ Ollama models always run inside an agent harness (Codex or Claude Code), so they
 open PRs; bare `ollama run` chat cannot. On a NAT-mode WSL node the server is the Windows Ollama app,
 reached through the default gateway. Pass `model` on a run to pick another Ollama model
 (`kimi-k3:cloud`, `deepseek-v4-pro:cloud`, …) or another Cursor model (`cursor-grok-4.6-high`, …).
+
+The separate `deepseek-api` panel provider uses Claude Code against DeepSeek's Anthropic-compatible API.
+It is paid, disabled by default, excluded from board seats, ordinary staff chat, automatic fallback and
+subscription-only panels. It requires an operator-configured `DEEPSEEK_API_KEY`,
+`STAFF_DEEPSEEK_API_ENABLED=true`, explicit provider selection and `confirm_cost` on each panel request.
+Only `deepseek-flash` and `deepseek-v4-pro` are accepted. Pricing shown is an estimate, not a spending cap;
+obtain cost authorization before any live call. Credentials are never passed as command arguments.
 
 Check a node with a short ad-hoc run (`POST /api/staff/ad-hoc/run` with `{"provider": "claude", "prompt": "..."}`)
 and read `GET /api/staff/schedule`. Its `hold` column must be empty for scheduled worker roles.
@@ -636,8 +646,14 @@ The Board shows a **Plan quota** panel from `GET /api/staff/quota`.
 
 Every dispatchable role uses the repo default chain in `config/provider_failover.json`
 (codex → claude → antigravity → cursor-agent), filtered to the role's `providers` list.
+Grok CLI (`grok`) is currently opt-in per role via `providers:` in `staff/roles/*.yml`
+rather than the default failover chain, pending auth health (#4132) and usage tracking (#4133).
 Per-provider models come from the role's **tier** (`routine` | `standard` | `complex`)
 in `config/staff_model_tiers.json` unless the run or role overrides the model.
+Explicit models must pass staff validation against the live catalog (`GET /api/models/catalog`,
+seeded from each provider CLI; Claude accepts `claude-fable-5-2`, `claude-fable-5-1`,
+`claude-opus-5-5`, and the `haiku` / `sonnet` / `opus` aliases). Board and fleet-decision
+panel seats remain pinned to `claude-fable-5-1` until a dedicated seat cutover issue moves them.
 Roles may **tighten** the order with `retry.failover_chain` (each step must stay in
 `providers`); they cannot widen beyond allowed providers.
 
@@ -700,6 +716,36 @@ External AI agents (Claude Code, Claude Cowork, Codex CLI, Grok Bot, Gemini) int
 - [**Claude Code & Cowork Guide**](agents/claude.md) — Claude MCP setup, `staff.chat` token scopes, and conversing with Barb.
 - [**Codex CLI Guide**](agents/codex.md) — `config.toml` MCP configuration, bot principals, and work-item tracking.
 - [**Grok Bot Guide**](agents/grok.md) — Local-exec `curl` recipes, active Barb/Orchestrator roles, and remote connector notes.
+
+## Panel repo grounding (#2511)
+
+When a panel request includes `repos`, each expert seat runs with its working directory set to a disposable, read-only snapshot of `origin/main` (`git archive`: tracked files only, no `.git`, one folder per repo) and may use only read tools (Read, Grep, Glob; the CLI keeps its read-only flag), so it can verify the code it cites. The moderator still gets no tools. The snapshot is deleted when the panel ends. Set `ground_repos: false` to keep the old prompt-only behaviour (the Cartographer excerpt preload is unaffected). A repo with no local checkout, or an oversized one (> 400 MB), is skipped with a log line.
+
+```bash
+curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Bearer $DASHBOARD_TOKEN" -H "Content-Type: application/json" -H "X-Requested-With: XMLHttpRequest" -d '{"topic": "Does the heater model match the data?", "rounds": 2, "mode": "debate", "confirm_cost": true, "repos": ["Runner_Dashboard"], "experts": [{"name": "Ada", "perspective": "numerical methods"}, {"name": "Brook", "perspective": "experiments"}, {"name": "Cy", "perspective": "operations"}]}'
+```
+
+## Panel presets (#2511)
+
+`GET /api/v1/staff/panels/presets` (scope `staff.read`) returns ready-made expert line-ups and the panel providers enabled on this hub. Every seat carries `provider` (default `claude`), `model` and `available`, which is `false` when that provider is switched off on this node or has no read-only chat mode. An unavailable seat is shown as unavailable, never silently swapped for another provider. `fleet-decision` is the fleet decision panel:
+
+| Seat  | Perspective                                                      | Provider    | Model                 |
+| ----- | ---------------------------------------------------------------- | ----------- | --------------------- |
+| Argon | Systems efficiency, cost and latency, algorithmic rigor          | antigravity | `gemini-4-argon-high` |
+| Astra | Architecture, contracts, security boundaries and testability     | codex       | `gpt-6-astra`         |
+| Fable | Skeptic: failure modes, edge cases and long-term maintainability | claude      | `claude-fable-5-1`    |
+
+`backend/staff/panel_models.py` (`PANEL_PRESETS`) is the source of truth for the seats; the Staff Console's new-panel form prefills them when the preset is picked. A finished panel appends a Barb turnover note (scope `panel`); a turnover failure is logged and never fails the panel. Add `repos` for read-only grounding (above).
+
+`require_verified_subscription=true` is a separate opt-in policy. It rejects providers without an
+independently verifiable subscription path, including API providers, Cursor and Antigravity. Thus the
+default fleet-decision preset cannot pass this policy until Antigravity has a verified subscription
+checker. Claude and Codex also fail closed when their credential or endpoint configuration is ambiguous.
+Ordinary panels retain their configured provider and fallback behavior.
+
+```bash
+curl -sS http://localhost:8321/api/v1/staff/panels/presets -H "Authorization: Bearer $DASHBOARD_TOKEN" | jq '.presets[] | select(.id == "fleet-decision")'
+```
 
 ## Not yet here (tracked in the epic)
 

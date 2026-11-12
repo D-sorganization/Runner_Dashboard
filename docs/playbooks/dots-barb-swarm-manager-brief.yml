@@ -1,0 +1,39 @@
+schema_version: 1
+playbook_id: dots-barb-swarm-manager-brief
+version: "1.0.0"
+title: Dots Barb Swarm-Manager Brief
+summary: >
+  Brief an incoming swarm-manager shift on the state of active lanes, open
+  escalations, and anything that needs a decision before the next shift
+  starts.
+manual_anchors:
+  - claim-before-touching
+  - lane-scope
+  - reporting-cadence
+directive_refs:
+  - fleet-standards
+role_refs:
+  - barb
+  - dots
+parameters:
+  - name: shift_hours
+    param_type: integer
+    required: true
+    default: 8
+    description: Length of the shift this brief covers, in hours.
+  - name: escalation_mode
+    param_type: enum
+    required: false
+    default: summarize
+    choices: [summarize, full_detail]
+    description: "summarize: roll up open escalations into one line each; full_detail: include each escalation's full thread."
+  - name: outgoing_session_id
+    param_type: string
+    required: true
+    description: Session id of the swarm-manager handing off this shift.
+steps:
+  - "Phase 1 (Inventory): list every lane's current item, claim state, and open PRs; flag any lane whose claim looks stale."
+  - "Phase 2 (Escalations): collect every open ask-barb or blocked item raised during the shift, rendered per escalation_mode."
+  - "Phase 3 (Lane boundaries): confirm no lane picked up an item outside its declared scope during the shift; note any crossing for correction."
+  - "Phase 4 (Handoff): write the brief covering inventory, escalations, and boundary notes, then post it before outgoing_session_id ends its shift."
+  - "Phase 5 (Acknowledge): the incoming swarm-manager acknowledges the brief before any lane is told to resume work for the new shift."

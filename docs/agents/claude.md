@@ -22,6 +22,8 @@ Claude clients interact with the Staff Console through the fleet MCP server (`cl
                                                          +--------------------------+
 ```
 
+**Finding work:** call `GET /api/coordination/jobs` (or `fleet_briefing` for `jobs_hint`), claim with `POST /api/coordination/claims`, and release with `POST /api/coordination/claims/release` when the issue is done.
+
 ---
 
 ## 2. Token Minting (Least-Privilege Scopes)
@@ -75,7 +77,7 @@ Add the fleet MCP server using the `claude mcp add` command:
 
 ```bash
 claude mcp add fleet --scope user \
-  --env FLEET_API_URL=http://deskcomputer:8321 \
+  --env FLEET_API_URL=http://hub-a:8321 \
   --env FLEET_API_TOKEN=svc_YOUR_TOKEN_HERE \
   --env FLEET_AGENT=claude \
   -- python3 /path/to/Runner_Dashboard/clients/fleet/fleet_mcp.py
@@ -110,7 +112,7 @@ Add the `fleet` entry under `mcpServers`:
       "command": "python3",
       "args": ["/path/to/Runner_Dashboard/clients/fleet/fleet_mcp.py"],
       "env": {
-        "FLEET_API_URL": "http://deskcomputer:8321",
+        "FLEET_API_URL": "http://hub-a:8321",
         "FLEET_API_TOKEN": "svc_YOUR_TOKEN_HERE",
         "FLEET_AGENT": "claude"
       }

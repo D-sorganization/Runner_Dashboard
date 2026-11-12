@@ -20,6 +20,7 @@ import { CodeRequestsHistory } from "./CodeRequestsHistory";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { PromptNotesEditor } from "./CodeRequestsPromptNotes";
 import { errorMessage, submitStaffRequest } from "./Staff/staffApi";
+import "./CodeRequests.css";
 
 export type * from "./codeRequestsTypes";
 
@@ -132,7 +133,7 @@ export function CodeRequestsTab({
   }
 
   return (
-    <div style={{ padding: 20 }}>
+    <div className="code-requests-page" style={{ padding: 20 }}>
       <div className="section-header">
         <IssueGlyph size={14} />
         Code Requests
@@ -159,7 +160,7 @@ export function CodeRequestsTab({
           <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Repository
               </label>
@@ -190,11 +191,12 @@ export function CodeRequestsTab({
             </div>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Branch
               </label>
               <input
+                aria-label="Target branch"
                 value={selBranch}
                 onChange={(e) => {
                   setSelBranch(e.target.value);
@@ -211,7 +213,7 @@ export function CodeRequestsTab({
             </div>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Profile
               </label>
@@ -252,7 +254,7 @@ export function CodeRequestsTab({
             </div>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Provider
               </label>
@@ -316,7 +318,7 @@ export function CodeRequestsTab({
           })()}
           <div style={{ marginBottom: 10 }}>
             <label
-              style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+              style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
             >
               Standards to inject
             </label>
@@ -326,13 +328,15 @@ export function CodeRequestsTab({
                 return (
                   <button
                     key={s}
+                    title={active ? `Remove ${s} from injected standards` : `Include ${s} in injected standards`}
+                    aria-label={`Toggle ${s} coding standard`}
                     onClick={() => {
                       toggleStd(s);
                     }}
                     style={{
                       padding: "3px 10px",
                       borderRadius: 12,
-                      fontSize: 11,
+                      fontSize: 12,
                       cursor: "pointer",
                       border: "1px solid " + (active ? "var(--accent-purple)" : "var(--border)"),
                       background: active ? "rgba(160,130,220,0.15)" : "var(--bg-secondary)",
@@ -346,6 +350,7 @@ export function CodeRequestsTab({
             </div>
           </div>
           <textarea
+            aria-label="Code request prompt"
             value={promptText}
             onChange={(e) => {
               setPromptText(e.target.value);
@@ -374,6 +379,7 @@ export function CodeRequestsTab({
             </button>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input
+                aria-label="Prompt template name"
                 value={templateName}
                 onChange={(e) => {
                   setTemplateName(e.target.value);
@@ -438,7 +444,7 @@ export function CodeRequestsTab({
                   <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-primary)" }}>
                     {t.name}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                     {(t.prompt || "").slice(0, 60) + "…"}
                   </div>
                 </div>

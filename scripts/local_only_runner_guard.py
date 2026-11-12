@@ -38,6 +38,32 @@ _EXEMPT_WORKFLOW_FILES = frozenset(
     }
 )
 
+# Glue / dispatch workflows may stay on hosted runners when the repo is public.
+_HOSTED_WORKFLOW_ALLOWLIST = frozenset(
+    {
+        "Agent-Fleet-Dashboard.yml",
+        "Agent-Lease-Reaper.yml",
+        "Verify-Issue-Closure.yml",
+        "agent-panel-review.yml",
+        "apply-required-checks-supplement.yml",
+        "arm-cap-reconcile.yml",
+        "ci-nightly.yml",
+        "ci-slo-check.yml",
+        "collate-changes.yml",
+        "dependabot-auto-merge.yml",
+        "issue-taxonomy-backfill.yml",
+        "labels-sync.yml",
+        "lockfile-upgrade.yml",
+        "main-ci-auto-release.yml",
+        "priority-expedite-guard.yml",
+        "release.yml",
+        "reusable-pr-cap.yml",
+        "taxonomy-rollout.yml",
+        "util-queued-job-reaper.yml",
+        "verify-tag.yml",
+    }
+)
+
 
 def collect_runs_on(job: dict) -> list[str]:
     runs_on = job.get("runs-on")
@@ -71,7 +97,7 @@ def audit_workflows(workflow_dir: Path) -> list[str]:
         return violations
 
     for wf_path in sorted(workflow_dir.glob("*.y*ml")):
-        if wf_path.name in _EXEMPT_WORKFLOW_FILES:
+        if wf_path.name in _EXEMPT_WORKFLOW_FILES or wf_path.name in _HOSTED_WORKFLOW_ALLOWLIST:
             continue
         try:
             data = yaml.safe_load(wf_path.read_text(encoding="utf-8"))
@@ -92,15 +118,26 @@ def audit_workflows(workflow_dir: Path) -> list[str]:
 
             raw = job.get("runs-on")
             raw_text = raw if isinstance(raw, str) else ""
-            uses_fast = runs_on_uses_fast_checks_lane(raw_text)
+            uses_fast_checks_output = "fast_checks_runner" in raw_text.replace("\n", " ")
+            uses_required_lane = runs_on_uses_fast_checks_lane(raw_text)
             is_allowlisted = (wf_path.name, job_id) in allowlisted
 
-            if uses_fast and not is_allowlisted:
+            if uses_fast_checks_output and not is_allowlisted:
                 violations.append(
-                    f"{wf_path.name}::{job_id}: uses {RD_FAST_CHECKS_VAR} or fast_checks_runner "
+                    f"{wf_path.name}::{job_id}: uses fast_checks_runner "
                     "but is not an allowlisted required-check job"
                 )
-            if is_allowlisted and not uses_fast:
+            if (
+                RD_FAST_CHECKS_VAR in raw_text
+                and not is_allowlisted
+                and "fast_checks_runner" not in raw_text
+                and "CI_QUEUE_RUNNER_MODE" not in raw_text
+            ):
+                violations.append(
+                    f"{wf_path.name}::{job_id}: uses {RD_FAST_CHECKS_VAR} "
+                    "but is not an allowlisted required-check job"
+                )
+            if is_allowlisted and not uses_required_lane:
                 violations.append(
                     f"{wf_path.name}::{job_id}: required-check job must use fast-check runner routing"
                 )

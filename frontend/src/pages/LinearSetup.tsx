@@ -74,7 +74,7 @@ export function LinearSetup() {
       )}
 
       {saveMsg && (
-        <div className="linear-setup__success" role="status">
+        <div className="linear-setup__success" role="status" title={saveMsg}>
           {saveMsg}
         </div>
       )}

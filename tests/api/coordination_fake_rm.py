@@ -100,6 +100,7 @@ def install(
     from staff import store as store_mod  # noqa: PLC0415
 
     fake = FakeRM(tmp_path / "rm")
+    monkeypatch.setattr(claims_mod, "evidence_fetch", lambda _path: [])  # no live gh in a unit test (#3274)
     monkeypatch.setenv("STAFF_RM_ROOT", str(fake.root))
     monkeypatch.setenv("STAFF_RM_PYTHON", sys.executable)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
@@ -114,10 +115,14 @@ def install(
         store_mod.reset_store, runner_mod.reset_runner, scheduler_mod.reset_scheduler,
         board_mod.reset_cache, roster_mod.reset_cache, claims_mod.reset_locks,
     )  # fmt: skip
+    from coordination import jobs as jobs_mod  # noqa: PLC0415
+
     for reset in resets:
         reset()
+    jobs_mod.reset_job_board_claim_state()
     yield fake
     board_mod.join_refreshes()  # no background refresh may outlive the test and touch the next one
+    jobs_mod.reset_job_board_claim_state()
     for reset in reversed(resets):
         reset()
 
@@ -180,3 +185,36 @@ def release_result(*, label: bool = True, comment: bool = True, errors: list[str
     """``release_agent_lease`` stdout (rc 1 when not ok): ``LeaseWriteResult`` + ``ok``."""
     out = lease_result(label=label, comment=comment, errors=errors)
     return {k: out[k] for k in ("label_updated", "comment_posted", "receipt", "errors", "ok")}
+
+
+def issue(
+    number: int,
+    *,
+    repo: str = "Tools",
+    labels: list[str] | None = None,
+    title: str = "do the thing",
+    created_at: str = "2026-10-01T00:00:00Z",
+) -> dict[str, Any]:
+    """A GitHub ``GET /repos/.../issues`` entry, for ``coordination.claims.evidence_fetch`` fakes (#2782)."""
+    return {
+        "number": number,
+        "title": title,
+        "html_url": f"https://github.com/D-sorganization/{repo}/issues/{number}",
+        "labels": [{"name": name} for name in (labels or [])],
+        "updated_at": created_at,
+        "created_at": created_at,
+    }
+
+
+def pr(
+    number: int, *, closes: int, repo: str = "Tools", state: str = "open", merged_at: str | None = None
+) -> dict[str, Any]:
+    """A GitHub ``GET /repos/.../pulls`` entry whose body closes ``closes`` (#2782)."""
+    return {
+        "number": number,
+        "title": "fix: thing",
+        "body": f"Closes #{closes}",
+        "state": state,
+        "merged_at": merged_at,
+        "html_url": f"https://github.com/D-sorganization/{repo}/pull/{number}",
+    }

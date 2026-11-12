@@ -31,6 +31,8 @@ DEFAULT_TTL_HOURS = 24
 # How long a reservation may stay pending before its outcome is treated as unknown.
 DEFAULT_LEASE_SECONDS = 600
 
+MutationResult = Literal["ok", "not-owner"]
+
 ReservationState = Literal["acquired", "replay", "in_progress", "mismatch", "unknown_outcome"]
 
 # Columns added for atomic reservation (#1795); legacy rows are completed receipts.
@@ -156,8 +158,8 @@ class IdempotencyStore:
 
         Runs in one ``BEGIN IMMEDIATE`` transaction, which holds SQLite's write lock,
         so reservations on different connections or processes are serialised.
-        ``takeover_safe`` lets a lapsed reservation be resumed under the same operation
-        id; use it only for operations that are safe to repeat.
+        ``takeover_safe`` lets a lapsed reservation be resumed with a fresh operation id;
+        use it only for operations that are safe to repeat.
         """
         now_iso = _now()
         try:
@@ -216,11 +218,16 @@ class IdempotencyStore:
         if row["lease_expires_at"] > now_iso:
             return Reservation("in_progress", existing_op)
         if takeover_safe:
+            new_operation_id = f"op-{uuid.uuid4().hex[:12]}"
             self._conn.execute(
-                "UPDATE idempotency_keys SET lease_expires_at = ? WHERE key = ? AND endpoint = ? AND principal = ?",
-                (_iso_in(lease_seconds), *ident),
+                """
+                UPDATE idempotency_keys
+                SET lease_expires_at = ?, operation_id = ?
+                WHERE key = ? AND endpoint = ? AND principal = ?
+                """,
+                (_iso_in(lease_seconds), new_operation_id, *ident),
             )
-            return Reservation("acquired", existing_op, recovered=True)
+            return Reservation("acquired", new_operation_id, recovered=True)
         return Reservation("unknown_outcome", existing_op)
 
     def complete(
@@ -232,34 +239,57 @@ class IdempotencyStore:
         response_headers: dict[str, str],
         response_body: str,
         ttl_seconds: int | None = None,
-    ) -> None:
-        """Record the final receipt of a reservation this caller acquired."""
+        *,
+        operation_id: str,
+    ) -> MutationResult:
+        """Record a receipt only while this operation owns the pending reservation."""
+        if not isinstance(operation_id, str) or not operation_id.strip():
+            raise ValueError("operation_id must identify the reserved operation")
         ttl = ttl_seconds if ttl_seconds is not None else DEFAULT_TTL_HOURS * 3600
         skip_headers = ("content-length", "transfer-encoding")
         clean_headers = {k: v for k, v in response_headers.items() if k.lower() not in skip_headers}
         try:
             with self._lock:
-                self._conn.execute(
+                changed = self._conn.execute(
                     """
                     UPDATE idempotency_keys
                     SET state = 'done', status_code = ?, response_headers = ?, response_body = ?, expires_at = ?
-                    WHERE key = ? AND endpoint = ? AND principal = ?
+                    WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending' AND operation_id = ?
                     """,
-                    (status_code, json.dumps(clean_headers), response_body, _iso_in(ttl), key, endpoint, principal),
-                )
+                    (
+                        status_code,
+                        json.dumps(clean_headers),
+                        response_body,
+                        _iso_in(ttl),
+                        key,
+                        endpoint,
+                        principal,
+                        operation_id,
+                    ),
+                ).rowcount
+            if changed:
+                return "ok"
+            log.warning("Idempotency completion rejected: caller does not own pending reservation")
+            return "not-owner"
         except Exception as exc:
             log.error("Idempotency complete error: %s", exc)
             raise IdempotencyStoreError(f"Idempotency completion failed: {exc}") from exc
 
-    def release(self, key: str, endpoint: str, principal: str) -> None:
-        """Drop a pending reservation whose action failed before any effect."""
+    def release(self, key: str, endpoint: str, principal: str, *, operation_id: str) -> MutationResult:
+        """Drop only the pending reservation this operation owns."""
+        if not isinstance(operation_id, str) or not operation_id.strip():
+            raise ValueError("operation_id must identify the reserved operation")
         try:
             with self._lock:
-                self._conn.execute(
+                changed = self._conn.execute(
                     "DELETE FROM idempotency_keys"
-                    " WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending'",
-                    (key, endpoint, principal),
-                )
+                    " WHERE key = ? AND endpoint = ? AND principal = ? AND state = 'pending' AND operation_id = ?",
+                    (key, endpoint, principal, operation_id),
+                ).rowcount
+            if changed:
+                return "ok"
+            log.warning("Idempotency release rejected: caller does not own pending reservation")
+            return "not-owner"
         except Exception as exc:
             log.error("Idempotency release error: %s", exc)
             raise IdempotencyStoreError(f"Idempotency release failed: {exc}") from exc

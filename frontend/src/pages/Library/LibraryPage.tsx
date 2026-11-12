@@ -188,7 +188,18 @@ export function LibraryPage(): React.ReactElement {
           <div style={{ margin: "8px 0", padding: "8px 12px", background: "var(--bg-secondary)", borderRadius: 4 }}>
             <p style={{ margin: 0 }}>Hub view: sources are read-only. Manage each node's sources directly on its dashboard:</p>
             <div style={{ display: "flex", gap: "12px", marginTop: "6px" }}>
-              {sourcesData.nodes.map((n) => <a key={n.name} href={`${n.url}/library`} target="_blank" rel="noreferrer">{n.name}</a>)}
+              {sourcesData.nodes.map((n) => (
+                <a
+                  key={n.name}
+                  href={`${n.url}/library`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={`Open library dashboard on ${n.name}`}
+                  aria-label={`Open library on ${n.name}`}
+                >
+                  {n.name}
+                </a>
+              ))}
             </div>
           </div>
         )}

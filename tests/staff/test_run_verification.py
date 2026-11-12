@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import logging
 import subprocess
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
@@ -144,6 +145,88 @@ def test_no_op_pr_remediator_run_with_unpushed_branch_is_not_applicable() -> Non
     assert v.deliverable_failure_updates(rec, verdict, opens_pr=True) == {}
 
 
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "rerun: restarted the failing Vitest job",
+        "update-branch: merged origin/main, no conflicts",
+        "re-arm: re-armed auto-merge after a green recheck",
+    ],
+)
+def test_no_commit_remediation_action_on_open_target_pr_is_not_applicable(summary: str) -> None:
+    """#3312: pr-remediator confirms a rerun/update-branch/re-arm action; the target PR is still open."""
+    rec = _rec(
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_kind="pr",
+        target_ref="5201",
+        branch="staff/pr-remediator-5201-abc123",
+    )
+    open_pr = v.PullRequest(5201, "open", "pending")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=open_pr)
+
+    verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW, result_text=f"STAFF_RESULT: {summary}")
+
+    assert verdict.verification == "not_applicable"
+    assert "5201" in verdict.detail
+    assert v.deliverable_failure_updates(rec, verdict, opens_pr=True) == {}
+
+
+def test_open_target_pr_armed_without_commits_is_not_applicable() -> None:
+    rec = _rec(
+        role="pr-remediator",
+        repo="Runner_Dashboard",
+        target_kind="pr",
+        target_ref="4230",
+        branch="staff/pr-remediator-4230-abc",
+    )
+    open_pr = v.PullRequest(4230, "open", "green", auto_merge_armed=True)
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=open_pr)
+
+    verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: armed auto-merge")
+
+    assert verdict.verification == "not_applicable"
+    assert "auto-merge armed" in verdict.detail
+
+
+def test_no_commit_action_claim_without_matching_result_text_still_fails() -> None:
+    """An unconfirmed claim (no recognized action marker) keeps the existing no_change/failed behavior."""
+    rec = _rec(
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_kind="pr",
+        target_ref="5201",
+        branch="staff/pr-remediator-5201-abc123",
+    )
+    open_pr = v.PullRequest(5201, "open", "pending")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=open_pr)
+
+    verdict = v.evaluate(
+        rec, opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: investigated, found nothing actionable"
+    )
+
+    assert verdict.verification == "no_change"
+
+
+def test_closed_unmerged_target_pr_with_action_claim_still_fails() -> None:
+    """A closed-unmerged target PR is never treated as a confirmed no-commit action, even with a matching summary."""
+    rec = _rec(
+        role="pr-remediator",
+        repo="AffineDrift",
+        target_kind="pr",
+        target_ref="5201",
+        branch="staff/pr-remediator-5201-abc123",
+    )
+    closed_pr = v.PullRequest(5201, "closed", "red")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=closed_pr)
+
+    verdict = v.evaluate(
+        rec, opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: re-arm: re-armed auto-merge"
+    )
+
+    assert verdict.verification == "no_change"
+
+
 def test_pr_remediator_verifies_via_target_pr_when_branch_lookup_misses() -> None:
     """Commits on an existing PR head branch may not match ``find``'s head filter (#2478)."""
     pr = v.PullRequest(5117, "open", "green")
@@ -242,14 +325,73 @@ def test_a_github_error_past_the_limit_still_never_fails_the_run() -> None:
 
 # ── modes ────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize(
-    ("raw", "mode"), [(None, "report"), ("", "report"), ("enforce", "enforce"), ("OFF", "off"), ("bogus", "report")]
+    ("raw", "mode"),
+    [
+        (None, "enforce"),
+        ("", "enforce"),
+        ("enforce", "enforce"),
+        ("report", "report"),
+        ("REPORT", "report"),
+        ("OFF", "off"),
+        ("bogus", "enforce"),
+    ],
 )
-def test_verify_mode_defaults_to_report(raw: str | None, mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_verify_mode_defaults_to_enforce(raw: str | None, mode: str, monkeypatch: pytest.MonkeyPatch) -> None:
     if raw is None:
         monkeypatch.delenv(v.MODE_ENV, raising=False)
     else:
         monkeypatch.setenv(v.MODE_ENV, raw)
     assert v.verify_mode() == mode
+
+
+def test_unset_verify_mode_enforces_failed_verification_and_report_requires_opt_in(
+    store: RunStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(v.MODE_ENV, raising=False)
+    store.create_run(_rec(id="run_default_enforce"))
+    verdict = v.verify_and_record(
+        store,
+        "run_default_enforce",
+        opens_pr=True,
+        probe=FakeProbe(v.PullRequest(9, "closed", "green")),
+        now=NOW,
+    )
+    assert verdict is not None and verdict.verification == "failed"
+    enforced_rec = store.get_run("run_default_enforce")
+    assert enforced_rec is not None
+    assert (enforced_rec.status, enforced_rec.failure_class) == ("failed", v.UNVERIFIED_OUTPUT)
+
+    monkeypatch.setenv(v.MODE_ENV, "report")
+    store.create_run(_rec(id="run_opt_in_report"))
+    report_verdict = v.verify_and_record(
+        store,
+        "run_opt_in_report",
+        opens_pr=True,
+        probe=FakeProbe(v.PullRequest(9, "closed", "green")),
+        now=NOW,
+    )
+    assert report_verdict is not None and report_verdict.verification == "failed"
+    report_rec = store.get_run("run_opt_in_report")
+    assert report_rec is not None
+    assert (report_rec.status, report_rec.verification) == ("succeeded", "failed")
+
+
+def test_startup_logs_active_verify_mode(
+    store: RunStore, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from staff import reconcile  # noqa: PLC0415
+
+    monkeypatch.delenv(v.MODE_ENV, raising=False)
+    runner = SimpleNamespace(store=store, machine="TestNode", opens_pr=lambda role: True)
+    with caplog.at_level(logging.INFO, logger="dashboard.staff.verification"):
+        reconcile.reconcile_orphaned_runs(runner, event_store=object())  # type: ignore[arg-type]
+    assert any("STAFF_VERIFY_MODE=enforce" in rec.getMessage() for rec in caplog.records)
+
+    caplog.clear()
+    monkeypatch.setenv(v.MODE_ENV, "report")
+    with caplog.at_level(logging.INFO, logger="dashboard.staff.verification"):
+        assert v.log_startup_mode() == "report"
+    assert any("STAFF_VERIFY_MODE=report" in rec.getMessage() for rec in caplog.records)
 
 
 FAILED = v.Verdict("failed", "no PR", None)
@@ -302,6 +444,24 @@ def test_verify_and_record_persists_the_verdict_and_an_event(store: RunStore) ->
     assert rec is not None
     assert (rec.verification, rec.pr_number, rec.status) == ("verified", 12, "succeeded")
     assert any(e["kind"] == "verify" for e in store.events_after("run_1"))
+
+
+def test_verify_event_lands_before_the_verdict(store: RunStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reader that sees ``verification`` set also sees the ``verify`` event (#1489, #3628)."""
+    store.create_run(_rec())
+    kinds_when_verdict_written: list[list[str]] = []
+    real_update_run = store.update_run
+
+    def spying_update_run(run_id: str, **fields: Any) -> None:
+        if "verification" in fields:
+            kinds_when_verdict_written.append([e["kind"] for e in store.events_after(run_id)])
+        real_update_run(run_id, **fields)
+
+    monkeypatch.setattr(store, "update_run", spying_update_run)
+
+    v.verify_and_record(store, "run_1", opens_pr=True, probe=FakeProbe(), mode="enforce", now=NOW)
+
+    assert kinds_when_verdict_written and kinds_when_verdict_written[0][-1] == "verify"
 
 
 def test_off_mode_records_nothing_and_calls_nothing(store: RunStore) -> None:
@@ -416,7 +576,15 @@ def _gh(responses: dict[str, Any]) -> Callable[..., subprocess.CompletedProcess[
 
 def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
     calls: list[list[str]] = []
-    pulls = [{"number": 21, "state": "closed", "merged_at": "2026-09-25T10:00:00Z", "head": {"sha": "abc"}}]
+    pulls = [
+        {
+            "number": 21,
+            "state": "closed",
+            "merged_at": "2026-09-25T10:00:00Z",
+            "head": {"sha": "abc"},
+            "auto_merge": {"merge_method": "squash"},
+        }
+    ]
     checks = {"check_runs": [_check(), _check(conclusion="failure")]}
     runner = _gh({"/pulls?": pulls, "/commits/abc/check-runs": checks})
 
@@ -426,7 +594,7 @@ def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
 
     pr = v.GhCliPrProbe(org="D-sorganization", run=recording).find("Runner_Dashboard", "staff/x y")
 
-    assert pr == v.PullRequest(21, "merged", "red")
+    assert pr == v.PullRequest(21, "merged", "red", auto_merge_armed=True)
     assert "/repos/D-sorganization/Runner_Dashboard/pulls?head=D-sorganization:staff%2Fx%20y&state=all" in calls[0][2]
     assert len(calls) == 2  # one scoped lookup plus the head's check runs; never a sweep
 
@@ -434,14 +602,22 @@ def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
 def test_gh_probe_gets_a_pr_by_number_with_its_head_ci() -> None:
     """The Code Request acceptance check (#1605) looks a child's PR up by number."""
     calls: list[list[str]] = []
-    pull = {"number": 7, "state": "closed", "merged_at": "2026-09-26T10:00:00Z", "head": {"sha": "def"}}
+    pull = {
+        "number": 7,
+        "state": "closed",
+        "merged_at": "2026-09-26T10:00:00Z",
+        "head": {"sha": "def"},
+        "auto_merge": {"merge_method": "squash"},
+    }
     runner = _gh({"/pulls/7": pull, "/commits/def/check-runs": {"check_runs": [_check()]}})
 
     def recording(argv: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
         return runner(argv, **kw)
 
-    assert v.GhCliPrProbe(org="o", run=recording).get("r", 7) == v.PullRequest(7, "merged", "green")
+    assert v.GhCliPrProbe(org="o", run=recording).get("r", 7) == v.PullRequest(
+        7, "merged", "green", auto_merge_armed=True
+    )
     assert [c[2] for c in calls] == ["/repos/o/r/pulls/7", "/repos/o/r/commits/def/check-runs?per_page=100"]
 
 

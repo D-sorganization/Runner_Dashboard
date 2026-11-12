@@ -141,7 +141,7 @@ def test_pressure_tightens_the_window_to_30_minutes(tmp_path: Path) -> None:
 
 
 def test_pressure_log_line_does_not_corrupt_the_age_window(tmp_path: Path) -> None:
-    """2026-10-11, ControlTower: with /tmp at 76% the pressure notice was
+    """2026-10-11, node-a: with /tmp at 76% the pressure notice was
     written to stdout inside ``$(tmp_litter_age_min)``, so ``find -mmin``
     received the log line instead of ``30`` and the disk guard failed at the
     exact moment it was needed. Uses the script's real ``log``."""

@@ -40,6 +40,18 @@ def build_pending_proposals_block(conv_store: ConversationStore, thread_id: str)
 _CODEX_SESSION_RE = re.compile(r"Session(?:\s+ID)?:\s*([a-zA-Z0-9_-]+)", re.IGNORECASE)
 
 
+_SESSION_ID_KEYS = (
+    "session_id",
+    "sessionId",
+    "chat_id",
+    "chatId",
+    "conversation_id",
+    "conversationId",
+    "thread_id",
+    "threadId",
+)
+
+
 def extract_session_id(provider: str, event: dict[str, Any], raw_line: str = "") -> str | None:
     """Extract a provider session ID from an event dict or raw line.
 
@@ -47,7 +59,8 @@ def extract_session_id(provider: str, event: dict[str, Any], raw_line: str = "")
     - Claude Code init events: ``{"type": "init", "session_id": "..."}``
     - Cursor Agent init events: ``{"chat_id": "..."}`` or ``{"conversation_id": "..."}``
     - Antigravity init/result events: ``{"conversation_id": "..."}``
-    - Codex stdout text: ``Session: <session_id>`` or json session_id
+    - Codex ``thread.started``: ``{"type": "thread.started", "thread_id": "..."}``
+    - Codex agent text: ``Session: <session_id>`` (never tool output or arbitrary stdout)
     """
     raw = event.get("raw")
     if isinstance(raw, dict):
@@ -57,12 +70,19 @@ def extract_session_id(provider: str, event: dict[str, Any], raw_line: str = "")
             if isinstance(v, dict):
                 targets.append(v)
         for t in targets:
-            for key in ("session_id", "sessionId", "chat_id", "chatId", "conversation_id", "conversationId"):
+            for key in _SESSION_ID_KEYS:
                 sval = t.get(key)
                 if isinstance(sval, str) and sval.strip():
                     return sval.strip()
 
-    text = event.get("text") or raw_line
+    agent_text = (event.get("text") or "").strip()
+    if provider in ("codex", "ollama"):
+        if not agent_text:
+            return None
+        m = _CODEX_SESSION_RE.search(agent_text)
+        return m.group(1).strip() if m else None
+
+    text = agent_text or raw_line
     if text:
         m = _CODEX_SESSION_RE.search(text)
         if m:
@@ -118,7 +138,7 @@ def format_history_replay(
             continue
         if m.kind in ("text", "action_result") and m.body_md.strip():
             role_title = getattr(role, "title", None) or (role.name.title() if role else "Assistant")
-            prefix = "User" if m.author_kind == "user" else role_title
+            prefix = "User" if m.author_kind in ("user", "bot") else role_title
             turns.append(f"{prefix}: {m.body_md.strip()}")
             last_collected = m
         elif m.kind == "action_proposal":
@@ -133,7 +153,7 @@ def format_history_replay(
     # Drop current user message if already persisted as the last turn (#1631).
     if (
         last_collected
-        and last_collected.author_kind == "user"
+        and last_collected.author_kind in ("user", "bot")
         and last_collected.body_md.strip() == current_prompt.strip()
     ):
         turns.pop()

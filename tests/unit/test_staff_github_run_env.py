@@ -101,6 +101,8 @@ def test_build_staff_run_env_injects_token_and_refresh_hooks() -> None:
     assert "github_git_credential" in env["GIT_CONFIG_VALUE_0"]
     assert "x-access-token" not in env["GIT_CONFIG_VALUE_0"]
     assert env["STAFF_GITHUB_CREDENTIAL_URL"].endswith("/runs/run-env-01/github-credential")
+    assert env["GIT_AUTHOR_NAME"] == "d-sorggeneralagent[bot]"
+    assert env["GIT_COMMITTER_EMAIL"].endswith("@users.noreply.github.com")
 
 
 def test_mint_staff_run_github_token_fail_closed_without_app(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -109,6 +111,18 @@ def test_mint_staff_run_github_token_fail_closed_without_app(monkeypatch: pytest
     with patch("staff.github_run_env.github_app_auth_configured", return_value=False):
         with pytest.raises(RuntimeError, match="GitHub App"):
             mint_staff_run_github_token(role=_role(), repo="D-sorganization/Runner_Dashboard")
+
+
+def test_mint_staff_run_github_token_never_uses_personal_token_without_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Operator ``ghp_`` env must not be used unless ``STAFF_ALLOW_OPERATOR_TOKEN=1`` (#3000)."""
+    monkeypatch.delenv("STAFF_ALLOW_OPERATOR_TOKEN", raising=False)
+    monkeypatch.setenv("GH_TOKEN", _FAKE_GHP)
+    monkeypatch.setenv("GITHUB_TOKEN", _FAKE_GHP)
+    with patch("staff.github_run_env.github_app_auth_configured", return_value=False):
+        with pytest.raises(RuntimeError, match="GitHub App"):
+            mint_staff_run_github_token(role=_role(), repo="")
 
 
 def test_mint_staff_run_github_token_operator_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:

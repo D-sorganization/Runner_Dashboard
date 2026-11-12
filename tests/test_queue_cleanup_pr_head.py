@@ -56,7 +56,7 @@ def mock_gh_calls() -> Generator[dict[str, Any], None, None]:
                 if branch in existing_branches:
                     return 0, json.dumps({"name": branch}), ""
                 else:
-                    return 1, "", "Branch Not Found"
+                    return 1, "", "gh: Branch not found (HTTP 404)"
         return 1, "", "Unknown API call"
 
     with patch("queue_cleanup._gh", side_effect=fake_gh):

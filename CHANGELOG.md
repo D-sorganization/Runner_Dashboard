@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Staff post-run verification (#1516): a succeeded run that pushed no commits to its staff branch on the remote (missing branch or zero commits ahead of `main`) is recorded as `no_change` instead of `failed` when no pull request exists; runs that did push commits but have no PR still fail verification.
-- Staff node acceptance (#1276): `deploy/staff-node-acceptance.sh` no longer reports false failures on working nodes (nested health status, missing board `scheduler` key, `cursor` vs `cursor-agent`, OGLaptop user timer, 45 s ad-hoc wait) and no longer passes a broken role source; adds `--expect-sha`. ControlTower runbook corrected (distro, Python 3.12 artifact, Ollama rule names, reservation step).
+- Staff node acceptance (#1276): `deploy/staff-node-acceptance.sh` no longer reports false failures on working nodes (nested health status, missing board `scheduler` key, `cursor` vs `cursor-agent`, node-b user timer, 45 s ad-hoc wait) and no longer passes a broken role source; adds `--expect-sha`. node-a runbook corrected (distro, Python 3.12 artifact, Ollama rule names, reservation step).
 - Projects configuration includes the six omitted owners of published deferred-validation plans (#1251 under #1248); existing repositories and configuration overrides are preserved. Cards expose feature details and sanitized owner links. Owner charter publication and live rollout remain separately required.
 
 - Staff Hub codex and antigravity runs (#1249): codex adapter drops `--full-auto` (removed in codex 0.156) for `--dangerously-bypass-approvals-and-sandbox --skip-git-repo-check`; agy runs are no longer marked failed when they print `STAFF_RESULT:` (the answer arrives as `result.response`), and agy token usage is recorded.
@@ -55,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Staff Hub fleet view: hub fan-out `/api/staff/board`, `/api/staff/summary` brief for Barb/Orchestrator, and `machine: local|<peer>|auto` targeting with forwarding to peer nodes (#1195, #1197).
 - Provisioned production OAuth readiness and token validation boundaries for Tailscale egress with redacted health diagnostics and runbook documentation (#1141).
 - Updated Windows WSL resident keepalive task installer (`install-wsl-keepalive-task.ps1`) to run under an interactive user principal mode (`-LogonType Interactive`), failing closed against unsupported `SYSTEM` and `S4U` modes (#1139).
-- Enforced interactive-safe DeskComputer 1/2 runner schedule validation and capacity bounds (#1144).
+- Enforced interactive-safe hub-a 1/2 runner schedule validation and capacity bounds (#1144).
 - Added branch protection and ruleset drift detector to require all protected gates before auto-merge (#1119).
 - Hardened deterministic offline deployment bundle packaging, checksum verification, and offline wheelhouse installation (#1085).
 
@@ -67,11 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   signature, SBOM, attestation, and tag succeeded before GitHub release
   publication failed. Recovery rebuilds the exact tagged source and avoids
   filesystem-based repository discovery on self-hosted WSL runners. See #1129.
-- Aligned the canonical DeskComputer schedule with the fleet's
+- Aligned the canonical hub-a schedule with the fleet's
   interactive-safe capacity policy: one weekday-day runner, two
   weekend/overnight runners, and a hard two-runner ceiling (#1142).
 - Prepared the protected policy-bearing source for immutable schema-v2 release
-  and controlled re-entry while retaining the fail-closed DeskComputer drain
+  and controlled re-entry while retaining the fail-closed hub-a drain
   until artifact, rollback, runtime identity, and scheduler-cycle validation
   complete (#1144).
 
@@ -117,7 +117,7 @@ run build` succeed with no unmet/invalid dependency entries. See #1085.
 
 ### Fixed
 
-- Made the governed runner scheduler the sole DeskComputer capacity authority.
+- Made the governed runner scheduler the sole hub-a capacity authority.
   Fleet-health recovery now follows the current scheduled target and no longer
   starts all eight configured runner services when two daytime runners are
   intentionally online (#1113).

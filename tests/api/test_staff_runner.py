@@ -12,6 +12,7 @@ import json
 import sys
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from fastapi.testclient import TestClient
 from staff import adapters as adapters_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -202,7 +204,7 @@ def staff(
         adapters=adapters,
         machine="TestNode",
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -394,6 +396,34 @@ def test_cancel_terminates_running_process(staff: runner_mod.StaffRunner) -> Non
 
 
 @pytest.mark.integration
+def test_join_all_waits_for_outstanding_worker_before_returning(staff: runner_mod.StaffRunner) -> None:
+    """launch() starts a daemon thread with no caller holding a reference (#3778).
+
+    Without join_all(), a test can return right after submit() while the
+    worker thread is still mid-flight, leaving it to race the next test's
+    store/global-state reset.
+    """
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake", prompt="quick"))
+    leaked = staff.join_all(timeout=10.0)
+    assert leaked == []
+    done = staff.store.get_run(rec.id)
+    assert done is not None
+    assert done.status in ("succeeded", "failed")
+
+
+@pytest.mark.integration
+def test_join_all_reports_a_thread_still_running_within_timeout(staff: runner_mod.StaffRunner) -> None:
+    rec = staff.submit(runner_mod.RunRequest(role="ad-hoc", provider="fake-slow", prompt="sleep"))
+    _wait(staff.store, rec.id, ("running",))
+    leaked = staff.join_all(timeout=0.05)
+    assert leaked == [f"staff-{rec.id}"]
+    # Clean up: don't leak the 30s sleeping subprocess into later tests.
+    assert staff.cancel(rec.id) is True
+    _wait(staff.store, rec.id, ("cancelled", "failed", "succeeded"))
+    assert staff.join_all(timeout=10.0) == []
+
+
+@pytest.mark.integration
 def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises(
     staff: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -463,6 +493,48 @@ def test_roster_lists_roles_and_providers(client: TestClient, monkeypatch: pytes
     assert {"night-watch", "barb", "ad-hoc"} <= names
     assert "claude" in body["providers"]
     assert body["active_runs"] == 0
+
+
+@pytest.mark.unit
+def test_roster_reports_model_override(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET /roster surfaces a role's runtime model override (epic #3295 S2)."""
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
+
+    class _FakeSched:
+        def role_model_override(self, role_name: str) -> str | None:
+            return "claude-opus-5-5" if role_name == "night-watch" else None
+
+    monkeypatch.setattr("routers.staff.get_scheduler", lambda: _FakeSched())
+    body = client.get("/api/staff/roster").json()
+    roles_by_name = {r["name"]: r for r in body["roles"]}
+    overridden = roles_by_name["night-watch"]
+    assert overridden["model_override"] == "claude-opus-5-5"
+    assert overridden["effective_model"] == "claude-opus-5-5"
+    plain = roles_by_name["ad-hoc"]
+    assert plain.get("model_override") is None
+    # response_model_exclude_none=True drops effective_model too when it's None (no override, no YAML model).
+    assert plain.get("effective_model") == plain.get("model")
+
+
+@pytest.mark.unit
+def test_roster_reports_allowed_models_for_the_role_provider(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GET /roster lists selectable models for the Staff Console dropdown (epic #3295 S2)."""
+    from staff.model_tiers import allowed_models_for_provider
+
+    monkeypatch.setattr("routers.staff.provider_versions", lambda adapters: {})
+    body = client.get("/api/staff/roster").json()
+    roles_by_name = {r["name"]: r for r in body["roles"]}
+    night_watch = roles_by_name["night-watch"]
+    assert night_watch["providers"], "fixture role must declare at least one provider"
+    assert night_watch["allowed_models"] == sorted(allowed_models_for_provider(night_watch["providers"][0]))
+
+    ad_hoc = roles_by_name["ad-hoc"]
+    assert ad_hoc["providers"], "ad-hoc must declare at least one provider"
+    expected_ad_hoc = sorted(allowed_models_for_provider(ad_hoc["providers"][0]))
+    assert expected_ad_hoc, "ad-hoc's first provider must have at least one allowed model"
+    assert ad_hoc["allowed_models"] == expected_ad_hoc
 
 
 @pytest.mark.unit
@@ -656,3 +728,45 @@ def test_finished_run_is_verified_and_only_enforce_changes_its_status(
     assert lookups == [(done.repo, done.branch)]
     assert "no pull request" in done.verification_detail
     assert [e["kind"] for e in staff.store.events_after(rec.id)][-1] == "verify"
+
+
+def test_pr_remediator_arm_only_run_verifies_not_applicable(monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff import verification
+
+    rec = store_mod.RunRecord(
+        id="run-1fdc3be9d01e",
+        role="pr-remediator",
+        provider="fake",
+        model=None,
+        machine="TestNode",
+        repo="Runner_Dashboard",
+        target_kind="pr",
+        target_ref="4230",
+        prompt="arm",
+        status="succeeded",
+        branch="staff/pr-remediator-4230-deadbeef",
+        ended_at="2026-11-09T00:00:00Z",
+        pr_number=4230,
+    )
+    open_pr = verification.PullRequest(4230, "open", "green", auto_merge_armed=True)
+
+    class TargetOnly:
+        def find(self, repo: str, branch: str) -> None:
+            return None
+
+        def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
+            return 0
+
+        def get(self, repo: str, number: int) -> verification.PullRequest:
+            return open_pr
+
+    monkeypatch.setattr(verification, "GhCliPrProbe", TargetOnly)
+    verdict = verification.evaluate(
+        rec,
+        opens_pr=True,
+        probe=TargetOnly(),
+        now=datetime(2026, 11, 9, tzinfo=UTC),
+        result_text="STAFF_RESULT: armed auto-merge on green head",
+    )
+    assert verdict.verification == "not_applicable"
+    assert "4230" in verdict.detail

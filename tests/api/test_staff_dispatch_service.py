@@ -77,11 +77,11 @@ async def test_approved_dispatch_to_a_peer_is_forwarded(
         return 200, {"dry_run": False, "run": {"id": "run_peer", "role": "ad-hoc", "status": "queued"}}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
-    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "oglaptop"})
+    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "node-b"})
 
     assert res.success, res.error
     assert res.run_id == "run_peer"
-    assert res.result["forwarded_to"] == "OGLaptop"
+    assert res.result["forwarded_to"] == "node-b"
     assert seen["url"] == "http://og:8321/api/staff/ad-hoc/run"
     assert seen["body"]["machine"] == "local"
     assert seen["body"]["provider"] == "codex"
@@ -115,7 +115,7 @@ async def test_auto_dispatch_routes_to_peer_before_local_provider_plan(
                 "running": [],
                 "queued": [],
             },
-            "OGLaptop": {
+            "node-b": {
                 "status": "online",
                 "providers": {"codex": True, "claude": True, "antigravity": True},
                 "running": [],
@@ -129,7 +129,7 @@ async def test_auto_dispatch_routes_to_peer_before_local_provider_plan(
     res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "auto"})
 
     assert res.success, res.error
-    assert res.result["forwarded_to"] == "OGLaptop"
+    assert res.result["forwarded_to"] == "node-b"
     assert seen["body"]["provider"] == "codex"
     assert seen["body"]["machine"] == "local"
     assert staff.store.list_runs(limit=5) == []
@@ -171,7 +171,7 @@ async def test_remote_dispatch_refuses_internal_tier_until_peer_contract_support
         provider="codex",
         model_tier="routine",
         prompt="hi",
-        machine="OGLaptop",
+        machine="node-b",
     )
     with pytest.raises(HTTPException, match="internal model_tier") as exc_info:
         await dispatch_service.dispatch_staff_run(cmd, APPROVER)
@@ -333,10 +333,10 @@ async def test_unreachable_peer_fails_visibly(
         raise ConnectionError("down")
 
     monkeypatch.setattr(fleet_mod, "post_json", dead_post)
-    res = await _execute({"role": "ad-hoc", "prompt": "hi", "machine": "OGLaptop"})
+    res = await _execute({"role": "ad-hoc", "prompt": "hi", "machine": "node-b"})
 
     assert not res.success and res.failure_class == "peer_unreachable"
-    assert "OGLaptop" in (res.error or "")
+    assert "node-b" in (res.error or "")
 
 
 @pytest.mark.unit
@@ -357,7 +357,7 @@ def test_command_contract_rejects_an_empty_role() -> None:
 @pytest.mark.parametrize(
     ("result", "run_id", "ok"),
     [
-        ({"forwarded_to": "OGLaptop", "dry_run": False}, "run_peer", True),
+        ({"forwarded_to": "node-b", "dry_run": False}, "run_peer", True),
         ({"forwarded_to": None, "dry_run": True}, None, True),
         ({"forwarded_to": None, "dry_run": False}, None, False),
         ({"forwarded_to": None, "dry_run": False}, "run_missing", False),

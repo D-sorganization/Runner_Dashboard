@@ -132,12 +132,18 @@ def spawn_cli_process(
     cmd: list[str],
     cwd: str,
     env: dict[str, str],
+    stdin_text: str | None = None,
 ) -> subprocess.Popen[str]:
-    """Spawn the provider CLI subprocess in read-only scratch mode."""
-    return subprocess.Popen(
+    """Spawn the provider CLI subprocess in read-only scratch mode.
+
+    When ``stdin_text`` is given it is written to the child's stdin and stdin is closed, so a prompt too
+    long for argv (Windows command-line limit under WSL interop, #2744) still reaches the CLI.
+    """
+    proc = subprocess.Popen(
         cmd,
         cwd=cwd,
         env=env,
+        stdin=subprocess.PIPE if stdin_text is not None else None,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -145,6 +151,20 @@ def spawn_cli_process(
         errors="replace",
         bufsize=1,
     )
+    if stdin_text is not None and proc.stdin is not None:
+        try:
+            proc.stdin.write(stdin_text)
+        except OSError:  # the CLI exited early; its exit code and stderr carry the failure
+            pass
+        finally:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+            # Popen.communicate() re-flushes self.stdin if it is still set, which raises on an
+            # already-closed file; clear the attribute now that stdin has been fully delivered.
+            proc.stdin = None
+    return proc
 
 
 class LiveProcessReader:
@@ -277,7 +297,7 @@ async def stream_turn_output(
     t_first_token: float | None = None
     captured_session_id: str | None = None
     result_text = ""
-    chat_json = getattr(adapter, "chat_json", adapter.json_lines)  # codex chats are plain text (#1586)
+    chat_json = getattr(adapter, "chat_json", adapter.json_lines)
     summary_filter = _SummaryCapsuleStreamFilter() if hide_memory_summary else None
 
     async for line in reader.stream_lines():
@@ -285,12 +305,13 @@ async def stream_turn_output(
         event = adapter.parse_line(line)
 
         detected_sid = extract_session_id(adapter.provider_id, event, raw_line=line)
-        if detected_sid:
+        if detected_sid and (not captured_session_id or adapter.provider_id not in ("codex", "ollama")):
             captured_session_id = detected_sid
 
         # Plain-text parse_line strips newlines (and can interpret JSON prose as
         # events). The capsule filter needs the same exact text as final capture.
-        delta = line if hide_memory_summary and not chat_json else event.get("text", "")
+        preserve_line = adapter.provider_id in ("codex", "ollama") and event.get("kind") in ("text", "json")
+        delta = line if preserve_line or (hide_memory_summary and not chat_json) else event.get("text", "")
         if chat_json and event.get("kind") == "result":
             # The result event repeats the whole reply; stream it only when nothing was streamed before.
             result_text = delta

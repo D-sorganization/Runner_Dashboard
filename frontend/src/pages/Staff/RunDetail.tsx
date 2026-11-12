@@ -16,7 +16,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
-import { GITHUB_ORG } from "../FleetCommand/fleetApi";
 import {
   invalidateStaffQueries,
   updateStaffRunFromEvent,
@@ -27,22 +26,26 @@ import {
   cancelRun,
   errorMessage,
   fetchRun,
+  fetchRunReferences,
   formatEffortUsd,
   runStreamUrl,
   statusTone,
   STREAM_EVENT_KINDS,
   type RunEvent,
   type RunRecord,
+  type RunReference,
 } from "./staffApi";
+import {
+  branchCompareUrl,
+  codebaseReferenceGithubUrl,
+  issueUrl,
+  pullRequestFilesUrl,
+  pullRequestUrl,
+} from "./runDetailLinks";
 
 export interface RunDetailProps {
   runId: string;
   onBack: () => void;
-}
-
-function pullUrl(repo: string, pr: number): string {
-  const full = repo.includes("/") ? repo : `${GITHUB_ORG}/${repo}`;
-  return `https://github.com/${full}/pull/${pr}`;
 }
 
 function mergeEvents(existing: RunEvent[], incoming: RunEvent): RunEvent[] {
@@ -54,6 +57,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
   const client = useResolvedQueryClient();
   const [run, setRun] = useState<RunRecord | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
+  const [references, setReferences] = useState<RunReference[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState(false);
@@ -61,10 +65,11 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
 
   const load = useCallback(
     (signal?: AbortSignal) => {
-      fetchRun(runId, signal)
-        .then((data) => {
+      Promise.all([fetchRun(runId, signal), fetchRunReferences(runId, signal).catch(() => ({ references: [] }))])
+        .then(([data, refs]) => {
           setRun(data.run);
           setEvents(data.events);
+          setReferences(refs.references ?? []);
           setError(null);
         })
         .catch((e: unknown) => {
@@ -79,6 +84,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
     const controller = new AbortController();
     setRun(null);
     setEvents([]);
+    setReferences([]);
     load(controller.signal);
     return () => controller.abort();
   }, [load]);
@@ -194,7 +200,14 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
         <dd>{run.repo || "—"}</dd>
         <dt>Target</dt>
         <dd>
-          {run.target_kind} {run.target_ref}
+          {run.target_kind}{" "}
+          {run.target_kind === "issue" && run.target_ref && run.repo ? (
+            <a href={issueUrl(run.repo, run.target_ref)} target="_blank" rel="noreferrer">
+              Issue #{run.target_ref}
+            </a>
+          ) : (
+            run.target_ref
+          )}
         </dd>
         <dt>Branch</dt>
         <dd>{run.branch || "—"}</dd>
@@ -251,7 +264,7 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
               {run.pr_number ? (
                 <>
                   {" "}
-                  <a href={pullUrl(run.repo ?? "", run.pr_number)} target="_blank" rel="noreferrer">
+                  <a href={pullRequestUrl(run.repo ?? "", run.pr_number)} target="_blank" rel="noreferrer">
                     #{run.pr_number}
                   </a>
                 </>
@@ -260,6 +273,50 @@ export function RunDetail({ runId, onBack }: RunDetailProps) {
           </>
         ) : null}
       </dl>
+
+      {run.repo && (run.pr_number || run.branch) ? (
+        <div className="staff-run__links" data-testid="run-diff-links">
+          <h4 className="staff-run__events-title">Diff</h4>
+          <ul className="staff-run__link-list">
+            {run.pr_number ? (
+              <li>
+                <a href={pullRequestFilesUrl(run.repo, run.pr_number)} target="_blank" rel="noreferrer">
+                  PR #{run.pr_number} files
+                </a>
+              </li>
+            ) : null}
+            {run.branch ? (
+              <li>
+                <a href={branchCompareUrl(run.repo, run.branch)} target="_blank" rel="noreferrer">
+                  Compare branch {run.branch}
+                </a>
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+
+      {references.length > 0 ? (
+        <div className="staff-run__links" data-testid="run-evidence">
+          <h4 className="staff-run__events-title">Review evidence</h4>
+          <ul className="staff-run__link-list">
+            {references.map((ref, index) =>
+              ref.kind === "codebase" ? (
+                <li key={`${ref.kind}-${ref.content_hash}-${index}`}>
+                  <a href={codebaseReferenceGithubUrl(ref)} target="_blank" rel="noreferrer">
+                    {ref.relative_path}
+                    {ref.line_start ? `:${ref.line_start}-${ref.line_end}` : ""}
+                  </a>
+                </li>
+              ) : (
+                <li key={`${ref.kind}-${ref.passage_id}-${index}`}>
+                  <span>{ref.citation}</span>
+                </li>
+              ),
+            )}
+          </ul>
+        </div>
+      ) : null}
 
       <details className="staff-run__prompt">
         <summary>Prompt</summary>

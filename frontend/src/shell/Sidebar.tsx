@@ -145,7 +145,6 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
     const Icon = item.Icon;
     const itemBtn = (
       <button
-        key={item.id}
         type="button"
         data-nav-item="true"
         title={railCollapsed ? undefined : item.tooltip}
@@ -197,14 +196,20 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
       </button>
     );
 
-    if (railCollapsed) {
-      return (
-        <Tooltip key={item.id} content={item.label} placement="right">
-          {itemBtn}
-        </Tooltip>
-      );
-    }
-    return itemBtn;
+    // The parent nav list uses role="list" (see below); axe-core's
+    // `list` rule requires every direct child to carry role="listitem".
+    // The button keeps its own button semantics inside the wrapper.
+    return (
+      <div role="listitem" key={item.id}>
+        {railCollapsed ? (
+          <Tooltip content={item.label} placement="right">
+            {itemBtn}
+          </Tooltip>
+        ) : (
+          itemBtn
+        )}
+      </div>
+    );
   };
 
   return (
@@ -224,16 +229,20 @@ export function Sidebar({ activeTabId, onSelect }: SidebarProps): React.ReactEle
         overflow: "hidden",
       }}
     >
-      {/* Top Header: product mark, name, collapse button */}
+      {/* Top Header: product mark, name, collapse button.
+          Collapsed: the mark (22px) and toggle (28px) stack vertically —
+          side-by-side they need 58px of width, more than the 56px rail has
+          after its border, which clipped/overflowed the rail (#3494). */}
       <div
         style={{
           flex: "0 0 auto",
           display: "flex",
+          flexDirection: railCollapsed ? "column" : "row",
           alignItems: "center",
           justifyContent: railCollapsed ? "center" : "space-between",
           padding: railCollapsed ? "10px 0 8px" : "12px 12px 10px",
           borderBottom: "1px solid var(--border, #30363d)",
-          gap: 8,
+          gap: railCollapsed ? 6 : 8,
           minHeight: 48,
           boxSizing: "border-box",
         }}

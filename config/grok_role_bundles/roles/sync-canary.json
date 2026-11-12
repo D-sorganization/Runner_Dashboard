@@ -1,0 +1,27 @@
+{
+  "bundle_format": "grok-role-bundle/v1",
+  "chat": {
+    "providers": [
+      "grok-chat"
+    ],
+    "tools": []
+  },
+  "instructions": "Canary instructions for deterministic export hashing.\n",
+  "persona": {
+    "greeting": "Sync canary online.",
+    "voice": "neutral"
+  },
+  "policy_refs": {
+    "holds": [
+      "no bundle drift without re-export"
+    ],
+    "playbook": "docs/fleet-e2e.md",
+    "prompt_template": null,
+    "reports_to": "user"
+  },
+  "role": "sync-canary",
+  "summary": "Fixture role for hashed Grok Bot export bundles and drift checks.",
+  "surface": "both",
+  "title": "Sync Canary",
+  "tools": []
+}

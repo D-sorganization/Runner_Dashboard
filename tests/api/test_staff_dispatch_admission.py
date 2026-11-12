@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from fastapi import HTTPException
 from identity import Principal
-from staff import dispatch_service
+from staff import claim_guard, dispatch_service
 from staff import fleet as fleet_mod
 from staff import runner as runner_mod
 from staff.audit import AuditError, get_audit_store, reset_audit_store
@@ -110,19 +110,47 @@ async def test_launch_failure_leaves_a_failed_run_under_the_same_id(
     staff: runner_mod.StaffRunner,  # noqa: F811
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    released: list[tuple[str, str]] = []
+
+    async def apply_claim(run_id: str, repo: str, issue: int, role: str) -> str:
+        claim_guard._applied[run_id] = (repo, issue, "claim:staff")
+        return "claim:staff"
+
+    async def clear_claim_check(cmd: Any, caller: Any) -> dict[str, str]:
+        return {"claim_check": "clear"}
+
+    real_release = claim_guard.release_claim
+
+    def release_claim(run_id: str, status: str) -> bool:
+        return real_release(run_id, status, write=lambda endpoint, method: released.append((endpoint, method)))
+
+    monkeypatch.setattr(claim_guard, "apply_claim", apply_claim)
+    monkeypatch.setattr(claim_guard, "release_claim", release_claim)
+    monkeypatch.setattr(claim_guard, "enforce_claim_guard", clear_claim_check)
+
     def no_threads(rec: Any, plan: Any) -> None:
         raise RuntimeError("can't start new thread")
 
     monkeypatch.setattr(staff, "launch", no_threads)
 
     with pytest.raises(HTTPException) as err:
-        await dispatch_staff_run(_cmd(operation_id="op-feedfacecafe"), CALLER)
+        await dispatch_staff_run(
+            _cmd(
+                operation_id="op-feedfacecafe",
+                repo="Runner_Dashboard",
+                issue=7,
+                force_duplicate=True,
+                skip_premise_check=True,
+            ),
+            CALLER,
+        )
 
     assert err.value.status_code == 503
     assert err.value.detail["code"] == "launch_failed"
     assert err.value.detail["run_id"] == "run-feedfacecafe"
     rec = staff.store.get_run("run-feedfacecafe")
     assert rec is not None and rec.status == "failed" and rec.failure_class == "launch_failed"
+    assert released == [("/repos/Runner_Dashboard/issues/7/labels/claim%3Astaff", "DELETE")]
 
 
 @pytest.mark.unit
@@ -138,8 +166,8 @@ async def test_forwarded_dispatch_carries_the_operation_id(
         return 200, {"dry_run": False, "run": {"id": "run-0123456789ab", "role": "ad-hoc", "status": "queued"}}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
-    await dispatch_staff_run(_cmd(machine="oglaptop", operation_id="op-0123456789ab"), CALLER)
-    await dispatch_staff_run(_cmd(machine="oglaptop"), CALLER)
+    await dispatch_staff_run(_cmd(machine="node-b", operation_id="op-0123456789ab"), CALLER)
+    await dispatch_staff_run(_cmd(machine="node-b"), CALLER)
 
     assert bodies[0]["operation_id"] == "op-0123456789ab"
     assert "operation_id" not in bodies[1]  # peers on older builds never see an empty field
@@ -165,3 +193,101 @@ async def test_only_a_fleet_peer_may_name_the_operation(
 
     assert from_user["run"]["id"] != "run-0123456789ab"
     assert from_peer["run"]["id"] == "run-0123456789ab"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("cpu_pct", "mem_pct", "io_pct", "expected_breach_prefix"),
+    [
+        (92.0, 40.0, 5.0, "cpu=92.0%>=85.0%"),
+        (30.0, 91.5, 5.0, "mem=91.5%>=85.0%"),
+        (30.0, 40.0, 42.0, "io_pressure=42.0%>=35.0%"),
+    ],
+)
+async def test_resource_saturation_rejects_dispatch_before_admit_or_launch(
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    launches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    cpu_pct: float,
+    mem_pct: float,
+    io_pct: float,
+    expected_breach_prefix: str,
+) -> None:
+    """Saturated CPU, RAM, or I/O pressure rejects local dispatch with 503 (#3553)."""
+    from types import SimpleNamespace
+
+    import psutil
+    import system_utils
+
+    monkeypatch.setattr(psutil, "cpu_percent", lambda interval=None: cpu_pct)
+    monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(percent=mem_pct))
+    monkeypatch.setattr(
+        system_utils,
+        "get_io_pressure_snapshot",
+        lambda: {"full": {"avg10": io_pct}},
+    )
+
+    with pytest.raises(HTTPException) as err:
+        await dispatch_staff_run(_cmd(), CALLER)
+
+    assert err.value.status_code == 503
+    detail = err.value.detail
+    assert detail["code"] == "resource_saturated"
+    assert detail["failure_class"] == "resource_exhausted"
+    assert detail["retryable"] is True
+    assert expected_breach_prefix in detail["breaches"]
+    assert detail["metrics"] == {
+        "cpu_percent": cpu_pct,
+        "mem_percent": mem_pct,
+        "io_pressure_full_avg10": io_pct,
+    }
+    assert dispatch_service.failure_class_for(err.value) == "resource_exhausted"
+    assert launches == []
+    assert staff.store.list_runs(limit=5) == []
+    entries = get_audit_store().list_entries(action="dispatch")
+    assert len(entries) == 1
+    assert entries[0].outcome == "rejected"
+
+
+@pytest.mark.unit
+async def test_resource_admission_respects_custom_thresholds_and_dry_run(
+    staff: runner_mod.StaffRunner,  # noqa: F811
+    launches: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Custom env thresholds gate local dispatch while dry-run previews still succeed (#3553)."""
+    monkeypatch.setenv("STAFF_DISPATCH_CPU_MAX_PCT", "70")
+    monkeypatch.setenv("STAFF_DISPATCH_MEM_MAX_PCT", "75")
+    monkeypatch.setenv("STAFF_DISPATCH_IO_PRESSURE_MAX_PCT", "20")
+    monkeypatch.setattr(
+        dispatch_service,
+        "sample_dispatch_resources",
+        lambda: dispatch_service.DispatchResourceSnapshot(
+            cpu_percent=65.0,
+            mem_percent=76.0,
+            io_pressure_full_avg10=15.0,
+        ),
+    )
+
+    preview = await dispatch_staff_run(_cmd(dry_run=True), CALLER)
+    assert preview["dry_run"] is True
+
+    with pytest.raises(HTTPException) as err:
+        await dispatch_staff_run(_cmd(), CALLER)
+    assert err.value.status_code == 503
+    assert err.value.detail["code"] == "resource_saturated"
+    assert err.value.detail["breaches"] == ["mem=76.0%>=75.0%"]
+    assert launches == []
+
+    monkeypatch.setattr(
+        dispatch_service,
+        "sample_dispatch_resources",
+        lambda: dispatch_service.DispatchResourceSnapshot(
+            cpu_percent=50.0,
+            mem_percent=60.0,
+            io_pressure_full_avg10=10.0,
+        ),
+    )
+    admitted = await dispatch_staff_run(_cmd(), CALLER)
+    assert admitted["dry_run"] is False
+    assert len(launches) == 1

@@ -6,7 +6,7 @@ with the URL and token-file settings below to opt in:
 
 | Variable                        | Contract                                                                                                                                                                                  |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BARB_SHARED_MEMORY_URL`        | Explicit opt-in shared API origin, such as `https://controltower.example`; only the fixed `/api/v1/memory/context-pack` path is requested.                                                |
+| `BARB_SHARED_MEMORY_URL`        | Explicit opt-in shared API origin, such as `https://node-a.example`; only the fixed `/api/v1/memory/context-pack` path is requested.                                                |
 | `BARB_SHARED_MEMORY_TOKEN_FILE` | Absolute token file: `memory.read` for context only; explicitly opted-in summaries also require `memory.shared.summarize`. Never grant general `memory.write`. On POSIX, use mode `0600`. |
 | `BARB_SHARED_MEMORY_ALLOW_HTTP` | Optional operator opt-in for non-loopback HTTP; set to `1` only when the origin is protected by a trusted private transport.                                                              |
 

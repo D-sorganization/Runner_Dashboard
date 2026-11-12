@@ -24,6 +24,7 @@ CONNECT_MD = DOCS_AGENTS_DIR / "connect.md"
 CLAUDE_MD = DOCS_AGENTS_DIR / "claude.md"
 CODEX_MD = DOCS_AGENTS_DIR / "codex.md"
 GROK_MD = DOCS_AGENTS_DIR / "grok.md"
+GROK_CLI_MD = DOCS_AGENTS_DIR / "grok-cli.md"
 STAFF_HUB_MD = REPO_ROOT / "docs" / "staff-hub.md"
 
 
@@ -37,6 +38,7 @@ def test_dedicated_client_pages_exist() -> None:
     assert CLAUDE_MD.is_file(), "docs/agents/claude.md must exist"
     assert CODEX_MD.is_file(), "docs/agents/codex.md must exist"
     assert GROK_MD.is_file(), "docs/agents/grok.md must exist"
+    assert GROK_CLI_MD.is_file(), "docs/agents/grok-cli.md must exist"
 
 
 def test_claude_guide_contents() -> None:
@@ -67,6 +69,8 @@ def test_codex_guide_contents() -> None:
     assert "agent-codex" in text
     assert "staff.chat" in text
     assert "barb" in lower
+    assert "top-level `sandbox` key" in text
+    assert "sandbox_workspace_write.network_access=true" in text
 
 
 def test_grok_guide_contents() -> None:
@@ -85,9 +89,26 @@ def test_grok_guide_contents() -> None:
     assert "will route through the authenticated funnel" not in lower
 
 
+def test_grok_cli_guide_contents() -> None:
+    """Grok CLI guide covers installation, auth, headless flags, and provider distinction."""
+    text = _read(GROK_CLI_MD)
+    lower = text.lower()
+
+    assert "grok login" in text
+    assert "curl -fssl https://x.ai/cli/install.sh | bash" in lower or "https://x.ai/cli/install.sh" in text
+    assert "supergrok" in lower
+    assert "--no-auto-update" in text
+    assert "grok_cli" in text or "grok" in text
+    assert "cursor-agent" in text or "cursor" in lower  # Clarifies distinction from Cursor-hosted Grok
+    assert "grok.md" in text  # Points to Grok Bot guide
+    # ADR 0007: cloud-hosted clients are unsupported; no Funnel/connector promise.
+    assert "0007-agent-client-ingress-local-only.md" in text or "local-only" in lower
+    assert "will route through the authenticated funnel" not in lower
+
+
 def test_agent_guides_do_not_promise_funnel_or_cloud_ingress() -> None:
     """No agent guide promises Funnel or connector ingress (ADR 0007)."""
-    for path in (CONNECT_MD, CLAUDE_MD, CODEX_MD, GROK_MD):
+    for path in (CONNECT_MD, CLAUDE_MD, CODEX_MD, GROK_MD, GROK_CLI_MD):
         lower = _read(path).lower()
         assert "authenticated funnel" not in lower, f"{path.name} promises Funnel ingress"
         assert "funnel connector" not in lower, f"{path.name} promises a connector path"
@@ -113,13 +134,14 @@ def test_connect_md_has_supported_clients_and_networks_matrix() -> None:
 
 
 def test_connect_md_indexes_all_client_guides() -> None:
-    """connect.md links to claude.md, codex.md, and grok.md."""
+    """connect.md links to claude.md, codex.md, grok.md, and grok-cli.md."""
     text = _read(CONNECT_MD)
     assert "README.md" in text, "connect.md must link to docs/agents/README.md"
     assert "claude.md" in text, "connect.md must link to claude.md"
     assert "codex.md" in text, "connect.md must link to codex.md"
     assert "codex-hands.md" in text, "connect.md must link to codex-hands.md"
     assert "grok.md" in text, "connect.md must link to grok.md"
+    assert "grok-cli.md" in text, "connect.md must link to grok-cli.md"
 
 
 def test_connect_md_all_internal_markdown_links_resolve() -> None:

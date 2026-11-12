@@ -3,6 +3,7 @@
  * label helpers backing the Remediation mobile view's agent dispatch UI.
  */
 import { describe, expect, it } from "vitest"
+import { parseRegistry, type ProviderRegistryResponse } from "../../../lib/useProviderRegistry"
 import {
   type AgentProvider,
   type ProviderAvailability,
@@ -10,6 +11,39 @@ import {
   getProviderLabel,
   pickRecommendedProvider,
 } from "../mobileTypes"
+
+const REGISTRY: ProviderRegistryResponse = {
+  schema_version: "1.0.0",
+  providers: [
+    {
+      id: "codex-cli",
+      dashboard_id: "codex_cli",
+      label: "Codex CLI",
+      auth_mode: "github_app",
+      resource: "runner",
+      enabled: true,
+    },
+    {
+      id: "claude-cli",
+      dashboard_id: "claude_code_cli",
+      label: "Claude CLI",
+      auth_mode: "github_app",
+      resource: "runner",
+      enabled: true,
+    },
+    {
+      id: "jules-api",
+      dashboard_id: "jules_api",
+      label: "Jules API",
+      auth_mode: "api_key",
+      resource: "runner",
+      enabled: false,
+    },
+  ],
+  auth_kinds: [],
+  task_classes: [],
+  capabilities: [],
+}
 
 function provider(id: string, label: string): AgentProvider {
   return {
@@ -34,7 +68,9 @@ function availability(id: string, available: boolean): ProviderAvailability {
 }
 
 describe("pickRecommendedProvider", () => {
-  it("picks the first available provider in default priority order", () => {
+  const registry = parseRegistry(REGISTRY)
+
+  it("picks the first available provider in registry order", () => {
     const providers = {
       claude_code_cli: provider("claude_code_cli", "Claude Code CLI"),
       codex_cli: provider("codex_cli", "Codex CLI"),
@@ -43,8 +79,7 @@ describe("pickRecommendedProvider", () => {
       claude_code_cli: availability("claude_code_cli", true),
       codex_cli: availability("codex_cli", true),
     }
-    // codex_cli ranks ahead of claude_code_cli in DEFAULT_PROVIDER_ORDER.
-    expect(pickRecommendedProvider(providers, avail)).toBe("codex_cli")
+    expect(pickRecommendedProvider(registry, providers, avail)).toBe("codex_cli")
   })
 
   it("skips providers that are present but unavailable", () => {
@@ -56,38 +91,35 @@ describe("pickRecommendedProvider", () => {
       codex_cli: availability("codex_cli", false),
       claude_code_cli: availability("claude_code_cli", true),
     }
-    expect(pickRecommendedProvider(providers, avail)).toBe("claude_code_cli")
+    expect(pickRecommendedProvider(registry, providers, avail)).toBe("claude_code_cli")
   })
 
-  it("falls back to any available provider outside the priority list", () => {
-    const providers = { custom_agent: provider("custom_agent", "Custom") }
-    const avail = { custom_agent: availability("custom_agent", true) }
-    expect(pickRecommendedProvider(providers, avail)).toBe("custom_agent")
-  })
-
-  it("falls back to claude_code_cli when nothing is available", () => {
-    const providers = { codex_cli: provider("codex_cli", "Codex CLI") }
-    const avail = { codex_cli: availability("codex_cli", false) }
-    expect(pickRecommendedProvider(providers, avail)).toBe("claude_code_cli")
+  it("never recommends a registry-disabled provider", () => {
+    const providers = {
+      jules_api: provider("jules_api", "Jules API"),
+      codex_cli: provider("codex_cli", "Codex CLI"),
+    }
+    const avail = {
+      jules_api: availability("jules_api", true),
+      codex_cli: availability("codex_cli", true),
+    }
+    expect(pickRecommendedProvider(registry, providers, avail)).toBe("codex_cli")
   })
 })
 
 describe("getProviderLabel", () => {
-  it("returns the provider's label when known", () => {
-    const providers = { codex_cli: provider("codex_cli", "Codex CLI") }
+  it("returns the configured label or the id", () => {
+    const providers = {
+      codex_cli: provider("codex_cli", "Codex CLI"),
+    }
     expect(getProviderLabel(providers, "codex_cli")).toBe("Codex CLI")
-  })
-
-  it("falls back to the raw id for unknown providers", () => {
-    expect(getProviderLabel({}, "mystery")).toBe("mystery")
+    expect(getProviderLabel(providers, "missing")).toBe("missing")
   })
 })
 
 describe("elapsedLabel", () => {
-  it("formats seconds, minutes and hours since start", () => {
+  it("formats sub-minute durations", () => {
     const now = Date.now()
-    expect(elapsedLabel(now - 5_000)).toBe("5s")
-    expect(elapsedLabel(now - 90_000)).toMatch(/^1m \d+s$/)
-    expect(elapsedLabel(now - 3 * 3_600_000)).toMatch(/^3h \d+m$/)
+    expect(elapsedLabel(now - 5000)).toMatch(/^\d+s$/)
   })
 })

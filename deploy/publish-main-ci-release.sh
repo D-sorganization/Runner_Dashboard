@@ -165,7 +165,22 @@ for attempt in $(seq 1 "$GATE_ATTEMPTS"); do
     # A newer commit may have been released (or main may have moved) while we waited.
     verify_automatic_release_eligibility
   fi
-  gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100&filter=all" --paginate --slurp > "$CHECK_JSON"
+  gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs?per_page=100&filter=all" --paginate | python3 -c '
+import json
+import sys
+
+text = sys.stdin.read()
+decoder = json.JSONDecoder()
+pages = []
+index = 0
+while index < len(text):
+    while index < len(text) and text[index] in " \t\r\n":
+        index += 1
+    if index < len(text):
+        page, index = decoder.raw_decode(text, index)
+        pages.append(page)
+json.dump(pages, sys.stdout)
+' > "$CHECK_JSON"
   gate_status=0
   python3 "${REPO_ROOT}/deploy/main_auto_release/publish_cli.py" verify-gate \
     --publisher --sha "$SHA" --check-runs-json "$CHECK_JSON" || gate_status=$?

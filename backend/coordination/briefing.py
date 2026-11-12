@@ -29,6 +29,11 @@ CLAIMS_HINT = (
     "{repo, issue, agent, session}; 409 means another agent holds it — pick other work. Register presence with "
     "POST /api/coordination/presence and read GET /api/coordination/inbox?session= at each checkpoint."
 )
+JOBS_HINT = (
+    "Find unassigned fleet work on GET /api/coordination/jobs (Fleet Command job board or this briefing's "
+    "endpoints.jobs). Claim with POST /api/coordination/jobs/claim, release with POST /api/coordination/jobs/release, "
+    "heartbeat with POST /api/coordination/jobs/heartbeat when needed; never bypass holds or the job-board filters."
+)
 ENDPOINTS = {
     "briefing": "GET /api/coordination/briefing?repo=&agent=",
     "sessions": "GET /api/coordination/sessions?repo=",
@@ -39,10 +44,16 @@ ENDPOINTS = {
     "messages_ack": "POST /api/coordination/messages/ack",
     "claims": "GET|POST /api/coordination/claims",
     "claims_release": "POST /api/coordination/claims/release",
+    "jobs": "GET /api/coordination/jobs?repo=&limit=&include_excluded=",
+    "jobs_releases": "GET /api/coordination/jobs/releases?since=&limit=",
     "priorities": "GET /api/priorities",
     "staff": "GET /api/staff/summary",
     "friction": "GET|POST /api/v1/fleet/friction",
     "owner_questions": "GET|POST /api/v1/fleet/owner-questions",
+    "brief": "GET /api/v1/fleet/brief?repo=&limit=&format=json|markdown",
+    "overload": "GET /api/v1/fleet/overload?repo=&open_count_threshold=",
+    "activity_checkins": "POST /api/v1/activity/checkins",
+    "activity_context": "GET /api/v1/activity/context?repo=&budget_tokens=",
 }
 
 
@@ -73,10 +84,24 @@ def _holds() -> tuple[list[dict[str, Any]], list[str]]:
         return [], [f"holds unavailable: {exc}"]
 
 
+def _activity_context(repo: str | None) -> tuple[dict[str, Any], list[str]]:
+    try:
+        from activity import get_activity_store  # noqa: PLC0415
+        from activity_context import build_activity_context  # noqa: PLC0415
+
+        return build_activity_context(get_activity_store(), repo=repo).model_dump(mode="json"), []
+    except Exception as exc:  # noqa: BLE001
+        log.warning("coordination: activity_context unavailable: %s", exc)
+        return {"status": "unavailable", "available": False, "reason": str(exc)}, [
+            f"activity_context unavailable: {exc}"
+        ]
+
+
 async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
     """Everything an agent should know before starting in ``repo`` (all repos when None)."""
     priorities, w_priorities = await _priorities(PRIORITY_LIMIT)
     holds, w_holds = await asyncio.to_thread(_holds)
+    activity_ctx, w_activity = await asyncio.to_thread(_activity_context, repo)
     board_view = await asyncio.to_thread(board.read_sessions, repo)
     runs, w_runs = await staff_runs(repo)
     standards = load_fleet_standards()
@@ -92,15 +117,17 @@ async def build_briefing(repo: str | None, agent: str | None) -> dict[str, Any]:
         "agent": agent,
         "priorities": priorities,
         "holds": holds,
+        "activity_context": activity_ctx,
         "sessions": board_view["sessions"],
         "board_available": board_view["available"],
         "staff_runs": runs,
         "claims_hint": CLAIMS_HINT,
+        "jobs_hint": JOBS_HINT,
         "standards_pin": standards.pin,
         "standards_source": standards.source_path,
         "standards_version": standards.version,
         "rules": [standards.body],
         "endpoints": ENDPOINTS,
         "fleet_open": open_counts(),
-        "warnings": [*w_priorities, *w_holds, *board_warnings, *w_runs, *standards_warnings],
+        "warnings": [*w_priorities, *w_holds, *w_activity, *board_warnings, *w_runs, *standards_warnings],
     }

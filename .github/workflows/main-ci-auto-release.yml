@@ -19,6 +19,7 @@ on:
       - main
 
 permissions:
+  checks: read
   contents: write
 
 concurrency:
@@ -36,7 +37,10 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       github.event.workflow_run.head_branch == 'main'
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: write
     timeout-minutes: 60
     # Waiting is cheap and holds nothing worth protecting: a newer main commit replaces it.
     concurrency:
@@ -84,7 +88,10 @@ jobs:
     if: >-
       needs.gate.outputs.ok == 'true' &&
       github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: write
     timeout-minutes: 120
     # An upload/tag must never be interrupted; the script re-checks ordering before tagging.
     concurrency:
@@ -137,7 +144,10 @@ jobs:
   publish-dispatch:
     name: Publish dashboard release (manual dispatch)
     if: github.event_name == 'workflow_dispatch'
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: write
     timeout-minutes: 120
     concurrency:
       group: main-ci-auto-release-publish

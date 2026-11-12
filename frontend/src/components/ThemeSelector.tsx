@@ -174,6 +174,8 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
                 <button
                   key={id}
                   id={`theme-option-${id}`}
+                  title={`Switch to ${getFleetThemeDisplayName(id)} theme`}
+                  aria-label={`Select ${getFleetThemeDisplayName(id)} theme`}
                   onClick={() => handleSelect(id)}
                   style={{
                     ...optionStyle,

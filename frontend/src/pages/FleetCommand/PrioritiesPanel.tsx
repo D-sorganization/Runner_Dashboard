@@ -65,7 +65,13 @@ function ConsensusView({
                     <td>{p.assigned_to ? <OwnerMarkdown text={p.assigned_to} as="span" /> : "—"}</td>
                     <td>
                       {url ? (
-                        <a href={url} target="_blank" rel="noreferrer noopener">
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          title={`Open tracking link for ${p.item}`}
+                          aria-label={`Open tracking link for ${p.item}`}
+                        >
                           <OwnerMarkdown text={p.tracking} as="span" />
                         </a>
                       ) : p.tracking ? (
