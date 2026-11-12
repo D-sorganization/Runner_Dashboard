@@ -10,8 +10,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "scripts"))
 
@@ -50,6 +48,44 @@ def test_spawn_writes_pending_lane_file_before_pid_when_flag_on(tmp_path: Path) 
     assert final["state"] == "active"
     assert final["pid"] == 77
     assert order == ["spawn_called"]
+
+
+def test_rollback_live_process_transitions_lane_to_termination_pending(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "lane1.pid").write_text("303", encoding="utf-8")
+    (log_dir / "lane1.receipt.json").write_text(
+        json.dumps({"session": "lane1", "role": "lane", "pid": 303, "status": "active"})
+    )
+    (log_dir / "lane1.lane.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "pool-controller-lane.v1",
+                "session": "lane1",
+                "role": "lane",
+                "state": "active",
+                "pid": 303,
+                "updated_at": 1.0,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    with patch.dict(
+        os.environ,
+        {"RUNNER_DASHBOARD_ROOT": str(_ROOT), "DASHBOARD_ENABLE_POOL_CONTROLLER": "1"},
+    ):
+        spawn._POOL_CONTROLLER_IMPORTS = None
+        with patch("os.kill", side_effect=lambda pid, sig: None):
+            spawn._rollback_launched(log_dir, [("lane1", 303)])
+
+    lane = json.loads((log_dir / "lane1.lane.json").read_text(encoding="utf-8"))
+    assert lane["state"] == "termination_pending"
+    assert lane["pid"] == 303
+    rec = json.loads((log_dir / "lane1.receipt.json").read_text(encoding="utf-8"))
+    assert rec["status"] == "termination_pending"
 
 
 def test_spawn_skips_lane_file_when_flag_off(tmp_path: Path) -> None:

@@ -322,6 +322,13 @@ def _rollback_launched(log_dir: Path, newly_spawned: list[tuple[str, int]]) -> N
                     receipt_path.write_text(json.dumps(rec, indent=2, sort_keys=True), encoding="utf-8")
                 except Exception:
                     pass
+            if _transition_lane is not None and LaneState is not None:
+                lane_path = log_dir / f"{session}.lane.json"
+                if lane_path.is_file():
+                    try:
+                        _transition_lane(log_dir, session, LaneState.TERMINATION_PENDING, pid=pid)
+                    except Exception:
+                        pass
             cleanup_failures[session] = {
                 "pid": pid,
                 "status": "termination_pending",
