@@ -865,8 +865,10 @@ from routers import staff_review_metrics as _staff_review_metrics_router  # noqa
 app.include_router(_staff_review_metrics_router.router)  # review-flow metrics decision gate (#4250)
 
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+from routers import kanban_github as _kanban_github_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+app.include_router(_kanban_github_router.router)  # kanban GitHub ingestion (#4319)
 
 from routers import kanban as _kanban_router  # noqa: E402
 
