@@ -106,6 +106,7 @@ OLLAMA_TAGS_ENDPOINT = f"{OLLAMA_BASE_URL}/api/tags"
 # ``_PROVIDERS_WITH_MODEL_SELECTION`` set in the remediation router).
 _CLAUDE_MODELS = (
     "claude-opus-5-5",
+    "claude-fable-5-2",
     "claude-fable-5-1",
     "opus",
     "sonnet",
@@ -193,6 +194,24 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
             "Best automation backend for GitHub Actions because the documented Jules CLI login flow is interactive."
             + _JULES_RETIRED_NOTE
         ),
+    ),
+    ProviderEntry(
+        dashboard_id="deepseek_api",
+        conductor_id="deepseek-api",
+        label="DeepSeek API",
+        execution_mode="remote_session",
+        dispatch_mode="future",
+        auth_mode="api_key",
+        resource="runner",
+        capabilities=("code_review",),
+        cost_per_task=0.0,
+        max_concurrency=1,
+        models=("deepseek-flash", "deepseek-v4-pro"),
+        required_env=("DEEPSEEK_API_KEY",),
+        setup_hint="Explicitly enable the DeepSeek API route and configure its credential on the host.",
+        enabled=False,
+        cloud_mutation_allowed=False,
+        notes="Paid route, explicit chat selection only; unavailable to autonomous dispatch.",
     ),
     ProviderEntry(
         dashboard_id="anthropic_api",
@@ -418,6 +437,7 @@ PROVIDER_ID_COMPATIBILITY: dict[str, str] = {
     "gemini-cli": "gemini_cli",
     "agy": "antigravity",
     "anthropic-api": "anthropic_api",
+    "deepseek-api": "deepseek_api",
     "cursor-agent": "cursor_agent",
     "grok": "grok_cli",
     "grok-cli": "grok_cli",

@@ -7,8 +7,14 @@ import subprocess  # noqa: S404
 from typing import Any
 
 from coordination.rm_scripts import _rm_env
+from github_pagination import gh_cli_paginate
 
 GH_TIMEOUT_SECONDS = 20
+
+
+def gh_api_json_all(path: str) -> list[Any]:
+    """Paginated list fetch for coordination evidence (all pages, ``per_page=100``)."""
+    return gh_cli_paginate(path, env=_rm_env(), timeout=GH_TIMEOUT_SECONDS)
 
 
 def gh_api_json(path: str) -> Any:

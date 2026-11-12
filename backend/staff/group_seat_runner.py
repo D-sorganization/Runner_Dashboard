@@ -54,6 +54,8 @@ async def run_seat(
     turn_runner: Callable[[PanelSpeaker, str, str, str | None], Awaitable[TurnOutcome]] = default_turn_runner,
 ) -> SeatReply:
     """Execute one board seat turn using a real model turn runner."""
+    if seat.provider == "deepseek-api":
+        return SeatReply(seat_name=seat.name, status="error", text="Paid DeepSeek is not enabled for board seats.")
     speaker = PanelSpeaker(
         name=seat.title or seat.name,
         perspective=seat.mandate,

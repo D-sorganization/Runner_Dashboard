@@ -12,6 +12,7 @@ from identity import Principal, identity_manager
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _REMOTE = ("100.64.0.25", 52002)
+_BARB_MEMORY_SCOPE = "barb:memory"
 pytestmark = pytest.mark.integration
 
 
@@ -84,15 +85,31 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_grok_writes_session_digest(
-    remote_client: TestClient, memory_env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.fixture
+def grok_barb_memory_claim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """Live Barb lease for agent-grok memory writes (#3318 enforce default)."""
     from staff import barb_continuity  # noqa: PLC0415
 
     store = barb_continuity.BarbContinuityStore(tmp_path / "barb_continuity.sqlite3")
     monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", store)
-    lease = store.checkout_lease(scope="barb:memory", holder="agent-grok")["lease"]
+    lease = store.checkout_lease(scope=_BARB_MEMORY_SCOPE, holder="agent-grok")["lease"]
+    return {"X-Barb-Scope": _BARB_MEMORY_SCOPE, "X-Barb-Lease-Epoch": str(lease["epoch"])}
 
+
+@pytest.fixture
+def hands_barb_memory_claim(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """Live Barb lease for agent-codex-hands memory writes (#3318 enforce default)."""
+    from staff import barb_continuity  # noqa: PLC0415
+
+    store = barb_continuity.BarbContinuityStore(tmp_path / "barb_continuity.sqlite3")
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", store)
+    lease = store.checkout_lease(scope=_BARB_MEMORY_SCOPE, holder="agent-codex-hands")["lease"]
+    return {"X-Barb-Scope": _BARB_MEMORY_SCOPE, "X-Barb-Lease-Epoch": str(lease["epoch"])}
+
+
+def test_grok_writes_session_digest(
+    remote_client: TestClient, memory_env: dict[str, str], grok_barb_memory_claim: dict[str, str]
+) -> None:
     read = remote_client.get("/api/v1/memory/context-pack", headers=_auth(memory_env["grok"]))
     assert read.status_code == 200
 
@@ -101,8 +118,7 @@ def test_grok_writes_session_digest(
         headers={
             **_XHR,
             **_auth(memory_env["grok"]),
-            "X-Barb-Scope": "barb:memory",
-            "X-Barb-Lease-Epoch": str(lease["epoch"]),
+            **grok_barb_memory_claim,
         },
         json={
             "entry_type": "session_digest",
@@ -114,11 +130,13 @@ def test_grok_writes_session_digest(
     assert write.json()["entry"]["author_principal"].endswith("agent-grok")
 
 
-def test_append_digest_redacts_secrets_and_lists(remote_client: TestClient, memory_env: dict[str, str]) -> None:
+def test_append_digest_redacts_secrets_and_lists(
+    remote_client: TestClient, memory_env: dict[str, str], hands_barb_memory_claim: dict[str, str]
+) -> None:
     secret = "ghp_" + "A" * 36
     res = remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["hands"]), **hands_barb_memory_claim},
         json={
             "entry_type": "session_digest",
             "source_product": "codex",
@@ -139,10 +157,12 @@ def test_append_digest_redacts_secrets_and_lists(remote_client: TestClient, memo
     assert len(listed.json()["entries"]) == 1
 
 
-def test_task_supersede_chain(remote_client: TestClient, memory_env: dict[str, str]) -> None:
+def test_task_supersede_chain(
+    remote_client: TestClient, memory_env: dict[str, str], hands_barb_memory_claim: dict[str, str]
+) -> None:
     first = remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["hands"]), **hands_barb_memory_claim},
         json={
             "entry_type": "task",
             "source_product": "codex",
@@ -159,7 +179,7 @@ def test_task_supersede_chain(remote_client: TestClient, memory_env: dict[str, s
 
     second = remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["hands"]), **hands_barb_memory_claim},
         json={
             "entry_type": "task",
             "source_product": "codex",
@@ -182,11 +202,11 @@ def test_task_supersede_chain(remote_client: TestClient, memory_env: dict[str, s
 
 
 def test_context_pack_includes_digest_task_directives_holds(
-    remote_client: TestClient, memory_env: dict[str, str]
+    remote_client: TestClient, memory_env: dict[str, str], hands_barb_memory_claim: dict[str, str]
 ) -> None:
     remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["hands"]), **hands_barb_memory_claim},
         json={
             "entry_type": "session_digest",
             "source_product": "codex",
@@ -195,7 +215,7 @@ def test_context_pack_includes_digest_task_directives_holds(
     )
     remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["hands"]), **hands_barb_memory_claim},
         json={
             "entry_type": "task",
             "source_product": "codex",
@@ -211,11 +231,13 @@ def test_context_pack_includes_digest_task_directives_holds(
     assert "holds" in body
 
 
-def test_transcript_size_cap(remote_client: TestClient, memory_env: dict[str, str]) -> None:
+def test_transcript_size_cap(
+    remote_client: TestClient, memory_env: dict[str, str], hands_barb_memory_claim: dict[str, str]
+) -> None:
     huge = "x" * 50_000
     res = remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["hands"]), **hands_barb_memory_claim},
         json={
             "entry_type": "transcript",
             "source_product": "codex",

@@ -16,7 +16,7 @@ from typing import Any
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination import claims as claims_mod
-from coordination import job_board_lease
+from coordination import gh_cli, job_board_lease
 from coordination.board import RMScriptError
 from coordination.job_filters import gate_reason, repo_schedule_holds
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
@@ -84,7 +84,7 @@ def _closing_pr(repo_full: str, issue_number: int, pulls_by_repo: dict[str, list
     """An open/merged PR closing ``issue_number``; one pulls fetch per repo."""
     pulls = pulls_by_repo.get(repo_full)
     if pulls is None:
-        raw = claims_mod.evidence_fetch(f"/repos/{repo_full}/pulls?state=all&per_page=100")
+        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
         candidates = raw if isinstance(raw, list) else []
         pulls = [pr for pr in candidates if pr.get("state") != "closed" or pr.get("merged_at")]
         pulls_by_repo[repo_full] = pulls
@@ -95,7 +95,7 @@ def _candidates(repo: str, warnings: list[str]) -> tuple[list[dict[str, Any]], b
     """Open issues (PRs excluded) for ``repo``; ``(issues, repo_complete)``."""
     repo_full = full_repo(repo)
     try:
-        raw = claims_mod.evidence_fetch(f"/repos/{repo_full}/issues?state=open&per_page=100")
+        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/issues?state=open")
     except Exception as exc:  # noqa: BLE001
         warnings.append(f"{repo}: issue list unavailable ({exc})")
         return [], False

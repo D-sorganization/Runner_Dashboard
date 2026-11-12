@@ -17,7 +17,13 @@ from coordination.merge_shepherd import (
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
-from coordination.merge_shepherd_low_risk import arm_eligibility_reason
+from coordination.merge_shepherd_exact_head import (
+    DEFAULT_REVIEW_PASS_TTL_HOURS,
+    HeadReviewPass,
+    HoldReasonFn,
+    collect_review_passes_from_store,
+    shepherd_arm_eligibility,
+)
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
 
 log = logging.getLogger(__name__)
@@ -46,6 +52,7 @@ query($owner: String!, $name: String!) {
     }
     armedPullRequests: pullRequests(states: OPEN, first: 100) {
       totalCount
+      pageInfo { hasNextPage endCursor }
       nodes {
         number
         autoMergeRequest { enabledAt }
@@ -82,6 +89,20 @@ query($owner: String!, $name: String!) {
 }
 """
 
+ARMED_PULL_REQUESTS_PAGE_QUERY = """
+query($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    armedPullRequests: pullRequests(states: OPEN, first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number
+        autoMergeRequest { enabledAt }
+      }
+    }
+  }
+}
+"""
+
 
 @dataclass(frozen=True)
 class SkipPr:
@@ -96,6 +117,9 @@ class PassConfig:
     repo_root: Path = field(default_factory=Path.cwd)
     skip_path: Path | None = None
     low_risk_line_cap: int = field(default_factory=default_low_risk_line_cap)
+    review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS
+    hold_reason: HoldReasonFn | None = None
+    review_store: object | None = None
 
 
 @dataclass(frozen=True)
@@ -120,6 +144,17 @@ class PassSummary:
 
 def default_skip_path(repo_root: Path) -> Path:
     return repo_root / "config" / "merge_shepherd_skip.json"
+
+
+def resolve_merge_shepherd_review_store(*, repo_root: Path) -> object | None:
+    """Open the staff run store at the same path the hub ``RunStore`` uses."""
+    from staff.store import RunStore, default_db_path
+
+    _ = repo_root  # skip list and arming still key off the checkout; reviews live in config dir
+    path = default_db_path()
+    if not path.is_file():
+        return None
+    return RunStore(path=path)
 
 
 def load_skip_list(path: Path) -> frozenset[tuple[str, int]]:
@@ -235,6 +270,42 @@ def _pr_file_metadata(node: Mapping[str, Any]) -> tuple[tuple[str, ...], int, in
     return paths, additions, deletions, not has_next
 
 
+def count_armed_open_pull_requests(nodes: Sequence[Mapping[str, Any]]) -> int:
+    """Count open PRs that actually have auto-merge enabled (#4265)."""
+    return sum(1 for node in nodes if isinstance(node, Mapping) and node.get("autoMergeRequest") is not None)
+
+
+def stitch_armed_pull_request_pages(pages: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
+    """Concatenate armed ``pullRequests`` pages into one connection block (#4265)."""
+    nodes: list[Mapping[str, Any]] = []
+    for page in pages:
+        if not isinstance(page, Mapping):
+            continue
+        raw_nodes = page.get("nodes") or []
+        if isinstance(raw_nodes, list):
+            nodes.extend(n for n in raw_nodes if isinstance(n, Mapping))
+    last = pages[-1] if pages else {}
+    page_info = last.get("pageInfo") if isinstance(last, Mapping) else {}
+    if not isinstance(page_info, Mapping):
+        page_info = {}
+    return {
+        "totalCount": len(nodes),
+        "nodes": nodes,
+        "pageInfo": page_info,
+    }
+
+
+def armed_pull_requests_has_next_page(armed_block: Mapping[str, Any]) -> tuple[bool, str | None]:
+    """Return (hasNextPage, endCursor) from an armed PR GraphQL connection."""
+    page_info = armed_block.get("pageInfo")
+    if not isinstance(page_info, Mapping):
+        return False, None
+    has_next = bool(page_info.get("hasNextPage"))
+    cursor = page_info.get("endCursor")
+    end_cursor = cursor if isinstance(cursor, str) and cursor else None
+    return has_next, end_cursor
+
+
 def graphql_nodes(payload: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], int, int]:
     """Return open PR nodes, armed count, merge-queue depth from one GraphQL response."""
     repo = payload.get("repository") if isinstance(payload, Mapping) else {}
@@ -244,7 +315,8 @@ def graphql_nodes(payload: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], 
     queue_depth = int(mq.get("totalCount") or 0) if isinstance(mq, Mapping) else 0
     armed_block = repo.get("armedPullRequests") or {}
     armed_nodes = (armed_block.get("nodes") or []) if isinstance(armed_block, Mapping) else []
-    armed_count = int(armed_block.get("totalCount") or len(armed_nodes)) if isinstance(armed_block, Mapping) else 0
+    armed_models_filtered = [n for n in armed_nodes if isinstance(n, Mapping)]
+    armed_count = count_armed_open_pull_requests(armed_models_filtered)
     pr_block = repo.get("pullRequests") or {}
     nodes = (pr_block.get("nodes") or []) if isinstance(pr_block, Mapping) else []
     return [n for n in nodes if isinstance(n, Mapping)], armed_count, queue_depth
@@ -357,6 +429,9 @@ def plan_repo_pass(
     queue_depth: int,
     live: bool,
     line_cap: int | None = None,
+    review_passes: Sequence[HeadReviewPass] = (),
+    review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
+    hold_reason: HoldReasonFn | None = None,
 ) -> tuple[list[PassAction], list[dict[str, Any]], bool]:
     """Plan arm actions for one repo. Returns actions, skip audit rows, backoff flag."""
     if armed_count + queue_depth > QUEUE_BACKOFF_THRESHOLD:
@@ -374,7 +449,9 @@ def plan_repo_pass(
             skip_rows.append({"repo": repo, "pr": int(node["number"]), "reason": pre})
             continue
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
-        eligibility, eligibility_detail = arm_eligibility_reason(
+        number = int(node["number"])
+        head = str(node.get("headRefOid") or "")
+        eligibility, eligibility_detail = shepherd_arm_eligibility(
             review_decision=str(node.get("reviewDecision") or ""),
             file_paths=paths,
             additions=additions,
@@ -383,8 +460,11 @@ def plan_repo_pass(
             labels=_label_names(node),
             checks_state=_checks_state(node),
             files_complete=files_complete,
+            pr_number=number,
+            head_sha=head,
+            review_passes=review_passes,
+            review_pass_ttl_hours=review_pass_ttl_hours,
         )
-        number = int(node["number"])
         if eligibility == "no_approval":
             skip_rows.append(
                 {
@@ -418,6 +498,17 @@ def plan_repo_pass(
             if int(node.get("number") or 0) == decision.pr_number:
                 head = str(node.get("headRefOid") or "")
                 break
+        if hold_reason is not None:
+            hold = hold_reason(repo, decision.pr_number)
+            if hold:
+                skip_rows.append(
+                    {
+                        "repo": repo,
+                        "pr": decision.pr_number,
+                        "reason": f"merge_hold:{hold}",
+                    }
+                )
+                continue
         flag = decision.merge_flag or get_auto_merge_flag(repo)
         strategy = "squash" if "squash" in flag else "merge"
         actions.append(
@@ -453,6 +544,10 @@ def run_merge_shepherd_pass(
             summary.errors.append(f"{full}: {exc}")
             continue
         nodes, armed_count, queue_depth = graphql_nodes(payload)
+        repo_passes = collect_review_passes_from_store(
+            store=config.review_store,
+            repo=full.rsplit("/", 1)[-1],
+        )
         actions, skips, backoff = plan_repo_pass(
             full,
             nodes,
@@ -462,6 +557,9 @@ def run_merge_shepherd_pass(
             queue_depth=queue_depth,
             live=config.live and not config.dry_run,
             line_cap=config.low_risk_line_cap,
+            review_passes=repo_passes,
+            review_pass_ttl_hours=config.review_pass_ttl_hours,
+            hold_reason=config.hold_reason,
         )
         repo_row = {
             "repo": full,
