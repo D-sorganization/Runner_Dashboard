@@ -5,17 +5,17 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.api.test_memory_api import _XHR, _auth, memory_env, remote_client  # noqa: F401
+from tests.api.test_memory_api import _XHR, _auth, hands_barb_memory_claim, memory_env, remote_client  # noqa: F401
 
 pytestmark = pytest.mark.integration
 
 
 def test_memory_append_refuses_marge_tag_before_storage(
-    remote_client: TestClient, memory_env: dict[str, str]
+    remote_client: TestClient, memory_env: dict[str, str], hands_barb_memory_claim: dict[str, str]
 ) -> None:
     res = remote_client.post(
         "/api/v1/memory",
-        headers={**_XHR, **_auth(memory_env["hands"])},
+        headers={**_XHR, **_auth(memory_env["hands"]), **hands_barb_memory_claim},
         json={
             "entry_type": "task",
             "source_product": "codex",

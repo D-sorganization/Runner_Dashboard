@@ -869,6 +869,24 @@ COMMANDS: tuple[Command, ...] = (
         positional=("scope",),
     ),
     Command(
+        "fleet-target",
+        "fleet_set_runner_target",
+        "Set an expiring runner-count override on a fleet host (schedule resumes after until).",
+        {
+            "host": {"type": "string", "minLength": 1, "description": "Fleet host or alias, e.g. hub-a."},
+            "runners": {"type": "integer", "minimum": 0, "maximum": 32},
+            "until": {
+                "type": "string",
+                "description": "ISO-8601 or HH:MM when the override expires (schedule takes over).",
+            },
+            "reason": {"type": "string", "maxLength": 500},
+            "apply": {"type": "boolean", "description": "Run runner-scheduler --apply after saving (default true)."},
+        },
+        required=("host", "runners"),
+        tool="fleet_set_runner_target",
+        positional=("host", "runners"),
+    ),
+    Command(
         "barb seat release",
         "barb_seat_release",
         "Release your seat after writing a turnover; the hub refuses (409) without one.",

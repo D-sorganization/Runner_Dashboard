@@ -36,6 +36,7 @@ import quota_enforcement
 from dispatch_contract import DispatchAccess
 from dispatch_effort import EXPAND_EPIC_CHILDREN, Effort, normalize_dispatch_kind, resolve_effort
 from dispatch_premise import evaluate_dispatch_premise, log_dispatch_skip
+from dispatch_queue_link import log_dequeued
 from dispatch_routing import (
     ModelRoutingDecision,
     dispatch_queue_manager,
@@ -220,6 +221,31 @@ def _resolve_targets(
             result.append((full, item.number))
         return result
     return f"unknown selection mode: {mode}"
+
+
+def _bulk_fanout_item_outcome(
+    item: BaseException | tuple[str | None, str | None, str | None],
+) -> str:
+    if isinstance(item, BaseException):
+        return "dispatch_failed"
+    _env_id, _fp, reason = item
+    return "dispatch_failed" if reason else "dispatch_accepted"
+
+
+def _release_bulk_overlap_sessions(
+    filtered_targets: list[tuple[str, int]],
+    overlap_sessions: dict[tuple[str, int], str],
+    settled: list[BaseException | tuple[str | None, str | None, str | None]],
+) -> None:
+    for (repo, num), item in zip(filtered_targets, settled, strict=True):
+        session_id = overlap_sessions.get((repo, num))
+        if not session_id:
+            continue
+        dequeued = dispatch_queue_manager.release_session(
+            session_id,
+            outcome=_bulk_fanout_item_outcome(item),
+        )
+        log_dequeued(dequeued)
 
 
 async def _dispatch_one(
@@ -591,6 +617,7 @@ async def dispatch_to_issues(
     # ── Pickability pre-filter & premise check (RD-2 / #1847) ─────────────────
     pre_rejected: list[dict[str, Any]] = []
     filtered_targets: list[tuple[str, int]] = []
+    overlap_sessions: dict[tuple[str, int], str] = {}
     for repo, num in targets:
         if not req.force:
             not_pickable = _check_issue_pickable(repo, num)
@@ -687,6 +714,8 @@ async def dispatch_to_issues(
                     principal=req.principal,
                 )
                 continue
+            if attempt.session is not None:
+                overlap_sessions[(repo, num)] = attempt.session.session_id
         filtered_targets.append((repo, num))
 
     # ── Resolve model routing and effort (RD-3 #1848, USE-1 #1865) ────────────
@@ -715,7 +744,65 @@ async def dispatch_to_issues(
         )
         for repo, num in filtered_targets
     ]
-    results = await asyncio.gather(*tasks)
+    gather_task = asyncio.ensure_future(asyncio.gather(*tasks, return_exceptions=True))
+    settled: list[BaseException | tuple[str | None, str | None, str | None]] | None = None
+    caller_cancelled = False
+    try:
+        try:
+            settled = await asyncio.shield(gather_task)
+        except asyncio.CancelledError:
+            caller_cancelled = True
+            while not gather_task.done():
+                try:
+                    settled = await asyncio.shield(gather_task)
+                    break
+                except asyncio.CancelledError:
+                    caller_cancelled = True
+            if settled is None and gather_task.done():
+                settled = gather_task.result()
+    finally:
+        try:
+            while settled is None and overlap_sessions and not gather_task.done():
+                try:
+                    await asyncio.shield(gather_task)
+                except asyncio.CancelledError:
+                    caller_cancelled = True
+            if settled is None and gather_task.done():
+                try:
+                    settled = gather_task.result()
+                except asyncio.CancelledError:
+                    settled = None
+            if settled is not None:
+                _release_bulk_overlap_sessions(filtered_targets, overlap_sessions, settled)
+                overlap_sessions.clear()
+        finally:
+            for repo, num in filtered_targets:
+                session_id = overlap_sessions.pop((repo, num), None)
+                if not session_id:
+                    continue
+                dequeued = dispatch_queue_manager.release_session(
+                    session_id,
+                    outcome="dispatch_failed",
+                )
+                log_dequeued(dequeued)
+
+    if caller_cancelled:
+        raise asyncio.CancelledError()
+
+    if settled is None:
+        raise RuntimeError("bulk issue dispatch: gather finished without a settled result")
+
+    first_exc: BaseException | None = None
+    for item in settled:
+        if isinstance(item, BaseException) and first_exc is None:
+            first_exc = item
+
+    if first_exc is not None:
+        raise first_exc
+
+    results: list[tuple[str | None, str | None, str | None]] = [
+        item for item in settled if not isinstance(item, BaseException)
+    ]
 
     # ── Collate ───────────────────────────────────────────────────────────────
     envelope_ids: list[str] = []

@@ -189,6 +189,7 @@ class ClaudeSessionTailer:
     """Opt-in per-node JSONL session log tailer core with durable offset checkpointing."""
 
     ADAPTER_NAME: str = "claude_code"
+    ACTIVITY_SOURCE: str = "claude_desktop_adapter"
     SESSION_PREFIX: str = "claude"
     DEFAULT_PRINCIPAL: str = "agent-claude"
     DEFAULT_CHECKPOINT_FILENAME: str = "claude_tailer_checkpoints.json"
@@ -275,14 +276,16 @@ class ClaudeSessionTailer:
 
     def _ingest_chunk_and_meta(self, session_id: str, seq: int, rendered: str) -> None:
         body = redact_terminal_stream(rendered).encode("utf-8")
+        if self.chunk_store.get_chunk_body(session_id, seq) == body:
+            return
         now_ts = time.time()
         self.chunk_store.put_chunk(
             session_id=session_id, seq=seq, node=self.node, principal=self.principal, body=body, stored_at=now_ts
         )
         raw_env = {
             "schema_version": 1,
-            "event_id": f"desktop_adapter:{session_id}:{seq}",
-            "source": "desktop_adapter",
+            "event_id": f"{self.ACTIVITY_SOURCE}:{session_id}:{seq}",
+            "source": self.ACTIVITY_SOURCE,
             "principal": self.principal,
             "node": self.node,
             "session_id": session_id,

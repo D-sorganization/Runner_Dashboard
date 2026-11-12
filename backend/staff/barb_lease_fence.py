@@ -65,6 +65,7 @@ BARB_SEAT_IDS = frozenset(
         "agent-codex-barb",
         "agent-cursor-barb",
         "agent-agy-barb",
+        "openbot-barb",
     }
 )
 BARB_ID_SUFFIXES: frozenset[str] = frozenset(("-barb", "-grok", "-hands"))
@@ -78,6 +79,8 @@ class BarbClaim:
     epoch: int
     caller_id: str
     holder: str = ""
+    # Set only server-side after a verified hub→peer origin attestation (#4357); never from client JSON.
+    lease_validated_at_origin: bool = False
 
 
 class StaleBarbLease(Exception):
@@ -271,6 +274,9 @@ def barb_write_fence(
     when the fence rejects, a ``rejected`` row for the same context is appended so the trail stays accurate.
     """
     if claim is None:
+        yield
+        return
+    if claim.lease_validated_at_origin:
         yield
         return
     if store is None:

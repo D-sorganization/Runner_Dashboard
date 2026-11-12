@@ -43,13 +43,13 @@ def test_run_is_pending_and_conclusions() -> None:
     assert completed_run_conclusion_fails({"status": "completed", "conclusion": "failure"}) is True
 
 
-def test_check_name_passes_aggregates_duplicate_names() -> None:
-    assert check_name_passes([{"status": "completed", "conclusion": "skipped", "name": "guard"}]) is True
+def test_check_name_passes_fail_closed_on_skipped_and_duplicates() -> None:
+    assert not check_name_passes([{"status": "completed", "conclusion": "skipped", "name": "guard"}])
     both = [
         {"status": "completed", "conclusion": "skipped", "name": "lint"},
         {"status": "completed", "conclusion": "success", "name": "lint"},
     ]
-    assert check_name_passes(both) is True
+    assert not check_name_passes(both)
     assert (
         check_name_passes(
             [

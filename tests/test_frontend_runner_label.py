@@ -36,7 +36,9 @@ _LONG_CHAIN_OLD = (
     "vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == "
     "'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || "
     "github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && "
-    "'ubuntu-latest' || github.event_name == 'merge_group' && "
+    "'ubuntu-latest' || github.event.repository.private && github.event_name == "
+    "'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || "
+    "github.event_name == 'merge_group' && "
     "vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet' }}"
 )
 _OLD_RUNS_ON: dict[str, str] = {

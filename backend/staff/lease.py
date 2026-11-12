@@ -80,6 +80,18 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
         "post_agent_lease", "--repo", repo, "--issue", issue, "--agent", agent, "--session", session, root=root
     )
     store.append_event(run_id, "lease", f"post_agent_lease rc={res.rc}: {res.output[:300]}")
+    lease_payload = res.json() or {}
+    if res.rc != 0 or not lease_payload.get("ok"):
+        store.update_run(
+            run_id,
+            status="blocked",
+            failure_class="lease_blocked",
+            ended_at=_now(),
+            error="post_agent_lease failed",
+        )
+        claim_guard.release_claim(run_id, "blocked")
+        store.append_event(run_id, "blocked", "post_agent_lease failed; run not started")
+        return None
     res = run_module(
         "agent_communicate",
         *("--repo", repo, "--session", session, "register"),

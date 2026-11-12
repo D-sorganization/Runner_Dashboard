@@ -3,26 +3,69 @@
 from __future__ import annotations
 
 import os
+import posixpath
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 
 DEFAULT_LOW_RISK_LINE_CAP = 300
 
 LOW_RISK_BLOCKED_LABELS = frozenset({"do-not-merge", "hold", "needs-dieter"})
 
+_AGENT_INSTRUCTION_FILENAMES = frozenset({"AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md"})
+_AGENT_INSTRUCTION_PREFIXES = (
+    ".cursor/",
+    ".claude/",
+    ".agents/",
+    "fleet-rules/",
+)
+_TEST_BEHAVIOUR_FILENAMES = frozenset({"conftest.py", "pytest.ini", "pyproject.toml"})
 
-def low_risk_line_cap() -> int:
-    raw = os.environ.get("MERGE_SHEPHERD_LOW_RISK_LINE_CAP", "").strip()
-    if raw.isdigit() and int(raw) > 0:
-        return int(raw)
-    return DEFAULT_LOW_RISK_LINE_CAP
+
+def _normalize_changed_path(path: str) -> str:
+    raw = path.replace("\\", "/").lstrip("./")
+    return posixpath.normpath(raw)
+
+
+def _path_has_dotdot(path: str) -> bool:
+    parts = path.replace("\\", "/").lstrip("./").split("/")
+    return ".." in parts
+
+
+def _is_agent_instruction_path(normalized: str) -> bool:
+    name = posixpath.basename(normalized)
+    if name in _AGENT_INSTRUCTION_FILENAMES:
+        return True
+    return any(
+        normalized == prefix.rstrip("/") or normalized.startswith(prefix) for prefix in _AGENT_INSTRUCTION_PREFIXES
+    )
+
+
+def _is_test_behaviour_path(normalized: str) -> bool:
+    name = posixpath.basename(normalized)
+    if name in _TEST_BEHAVIOUR_FILENAMES:
+        return True
+    if name == "conftest.py":
+        return True
+    if normalized.startswith(".github/"):
+        return True
+    if normalized.startswith("tests/") and "/fixtures/" in f"/{normalized}/":
+        return True
+    return False
 
 
 def is_docs_or_tests_path(path: str) -> bool:
     """True when a changed file is confined to docs/tests surfaces only."""
-    normalized = path.replace("\\", "/").lstrip("./")
-    name = PurePosixPath(normalized).name
+    if _path_has_dotdot(path):
+        return False
+    normalized = _normalize_changed_path(path)
+    if not normalized or normalized in {".", ".."}:
+        return False
+    if _is_agent_instruction_path(normalized):
+        return False
+    if _is_test_behaviour_path(normalized):
+        return False
+
+    name = posixpath.basename(normalized)
     if name.endswith((".md", ".qmd", ".rst")):
         return True
     if normalized.startswith("docs/"):
@@ -68,6 +111,13 @@ def classify_docs_tests_only_arm(
     if disallowed:
         return LowRiskClassification(False, f"mixed_paths:{disallowed[0]}")
     return LowRiskClassification(True, "docs_tests_only")
+
+
+def low_risk_line_cap() -> int:
+    raw = os.environ.get("MERGE_SHEPHERD_LOW_RISK_LINE_CAP", "").strip()
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    return DEFAULT_LOW_RISK_LINE_CAP
 
 
 def arm_eligibility_reason(

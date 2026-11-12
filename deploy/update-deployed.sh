@@ -299,6 +299,19 @@ if [[ "$DEPLOY_SCOPE" == "system" ]]; then
     refresh_maintenance_assets
 fi
 
+# ── Host metrics cache probe timer (#4309) ───────────────────────────────────
+install_host_metrics_probe_timer() {
+    local installer; installer="$(dirname "$0")/install-host-metrics-probe.sh"
+    [[ -f "$installer" ]] || { warn "install-host-metrics-probe.sh not found; skipping"; return 0; }
+    if dry_run "bash $installer"; then
+        return 0
+    fi
+    # DEPLOY_DIR is where host-metrics-probe.py is deployed; pass through for non-default layouts.
+    RUNNER_DASHBOARD_DEPLOY_DIR="${DEPLOY_DIR}" \
+        bash "$installer" || warn "host-metrics-probe install failed — run: bash $installer"
+}
+install_host_metrics_probe_timer
+
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {
     curl -fsS --max-time 10 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1

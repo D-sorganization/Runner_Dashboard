@@ -7,10 +7,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from staff import consolidation
 from staff.model_tiers import validate_role_tier
+
+if TYPE_CHECKING:
+    from staff.dispatch_bundle import DispatchBundle
 
 _SAFE_BRANCH = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
@@ -95,6 +98,9 @@ class RunPlan:
     head_ref: str = ""
     model_tier: str = ""
     skill_pin: str = ""
+    # Planning-time dispatch bundle and library block; required when ``_execute`` recomposes the prompt (#4266 A-03).
+    dispatch_bundle: DispatchBundle | None = None
+    library_references: str = ""
     standards_version: str = ""
     standards_tokens: int = 0
     context_stamp: str = "{}"
