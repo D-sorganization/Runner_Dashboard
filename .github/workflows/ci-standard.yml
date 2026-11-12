@@ -136,6 +136,7 @@ jobs:
           CI_QUEUE_RUNNER_MODE: ${{ vars.CI_QUEUE_RUNNER_MODE }}
           CI_QUEUE_RUNNER_LABEL: ${{ vars.CI_QUEUE_RUNNER_LABEL }}
           CI_PR_RUNNER_MODE: ${{ vars.CI_PR_RUNNER_MODE }}
+          RD_FAST_CHECKS_RUNNER: ${{ vars.RD_FAST_CHECKS_RUNNER }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
           EVENT_NAME: ${{ github.event_name }}
           FORCE_LOCAL: ${{ github.event_name == 'workflow_dispatch' && inputs.force_local }}
@@ -190,7 +191,7 @@ jobs:
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
             echo "Public repo hosted runner (CI_RUNNER_MODE not local)" >> "$GITHUB_STEP_SUMMARY"
           fi
-          FAST_CHECKS="${{ vars.RD_FAST_CHECKS_RUNNER }}"
+          FAST_CHECKS="${RD_FAST_CHECKS_RUNNER:-}"
           if [ -n "$FAST_CHECKS" ] && [ "$FAST_CHECKS" != "hosted" ] && [ "$FAST_CHECKS" != "local" ]; then
             echo "::error::RD_FAST_CHECKS_RUNNER must be 'hosted', 'local', or unset (got '$FAST_CHECKS')"
             exit 1
@@ -198,6 +199,8 @@ jobs:
           if [ "$FORK_PR" = "true" ]; then
             echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
           elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
+            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
             echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
           elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$FAST_CHECKS" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
             echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"

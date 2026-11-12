@@ -32,9 +32,10 @@ def test_verify_tag_job_has_least_privilege_permissions() -> None:
 
 
 def test_go_public_part4_workflows_allowlisted_in_local_only_guard() -> None:
-    text = (ROOT / ".github" / "workflows" / "local-only-runner-guard.yml").read_text(encoding="utf-8")
-    assert '"verify-tag.yml"' in text
-    assert '"util-queued-job-reaper.yml"' in text
+    from scripts import local_only_runner_guard as guard
+
+    assert "verify-tag.yml" in guard._HOSTED_WORKFLOW_ALLOWLIST
+    assert "util-queued-job-reaper.yml" in guard._HOSTED_WORKFLOW_ALLOWLIST
 
 
 def test_reaper_job_has_explicit_actions_permissions() -> None:
