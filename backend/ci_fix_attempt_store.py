@@ -22,6 +22,7 @@ class AttemptCapDecision:
     reason: str = ""
     head_attempts: int = 0
     total_attempts: int = 0
+    reservation_id: int | None = None
 
 
 class CIFixAttemptStore:
@@ -141,37 +142,38 @@ class CIFixAttemptStore:
                         head_attempts=head_count,
                         total_attempts=total,
                     )
-                db.execute(
+                cur = db.execute(
                     "INSERT INTO ci_fix_attempts (repo, pr_number, head_sha, recorded_at) VALUES (?, ?, ?, ?)",
                     (repo_key, pr, head, utc_now_iso()),
                 )
+                reservation_id = int(cur.lastrowid)
                 db.execute("COMMIT")
                 return AttemptCapDecision(
                     allowed=True,
                     head_attempts=head_count + 1,
                     total_attempts=total + 1,
+                    reservation_id=reservation_id,
                 )
             except BaseException:
                 db.execute("ROLLBACK")
                 raise
 
-    def release_reserved_attempt(self, repo: str, pr_number: int, head_sha: str) -> bool:
-        """Drop the newest attempt row for this head when dispatch never launched (#4273)."""
-        repo_key, pr = self._key(repo, pr_number)
-        head = (head_sha or "").strip().lower()
+    def release_reserved_attempt(self, reservation_id: int) -> bool:
+        """Drop the attempt row created by reserve_attempt when dispatch never launched (#4273)."""
+        if reservation_id <= 0:
+            return False
         with self._lock:
             db = self._conn()
             db.execute("BEGIN IMMEDIATE")
             try:
                 row = db.execute(
-                    "SELECT id FROM ci_fix_attempts WHERE repo = ? AND pr_number = ? AND head_sha = ? "
-                    "ORDER BY id DESC LIMIT 1",
-                    (repo_key, pr, head),
+                    "SELECT id FROM ci_fix_attempts WHERE id = ?",
+                    (reservation_id,),
                 ).fetchone()
                 if row is None:
                     db.execute("ROLLBACK")
                     return False
-                db.execute("DELETE FROM ci_fix_attempts WHERE id = ?", (int(row[0]),))
+                db.execute("DELETE FROM ci_fix_attempts WHERE id = ?", (reservation_id,))
                 db.execute("COMMIT")
                 return True
             except BaseException:

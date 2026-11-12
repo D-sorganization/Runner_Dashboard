@@ -16,13 +16,27 @@ def test_reserve_attempt_enforces_per_head_cap(tmp_path: Path) -> None:
     assert "per-head" in blocked.reason
 
 
-def test_release_reserved_attempt_reverts_latest_head_row(tmp_path: Path) -> None:
+def test_release_reserved_attempt_by_reservation_id(tmp_path: Path) -> None:
     store = CIFixAttemptStore(tmp_path / "attempts.db")
-    assert store.reserve_attempt("Runner_Dashboard", 3, "abc123").allowed
+    cap = store.reserve_attempt("Runner_Dashboard", 3, "abc123")
+    assert cap.allowed
+    assert cap.reservation_id is not None
     assert store.counts("Runner_Dashboard", 3, "abc123") == (1, 1)
-    assert store.release_reserved_attempt("Runner_Dashboard", 3, "abc123")
+    assert store.release_reserved_attempt(cap.reservation_id)
     assert store.counts("Runner_Dashboard", 3, "abc123") == (0, 0)
-    assert not store.release_reserved_attempt("Runner_Dashboard", 3, "abc123")
+    assert not store.release_reserved_attempt(cap.reservation_id)
+
+
+def test_release_reserved_attempt_only_removes_own_reservation(tmp_path: Path) -> None:
+    store = CIFixAttemptStore(tmp_path / "attempts.db")
+    first = store.reserve_attempt("Runner_Dashboard", 3, "abc123")
+    second = store.reserve_attempt("Runner_Dashboard", 3, "abc123")
+    assert first.allowed and second.allowed
+    assert first.reservation_id is not None and second.reservation_id is not None
+    assert first.reservation_id != second.reservation_id
+    assert store.counts("Runner_Dashboard", 3, "abc123") == (2, 2)
+    assert store.release_reserved_attempt(first.reservation_id)
+    assert store.counts("Runner_Dashboard", 3, "abc123") == (1, 1)
 
 
 def test_reserve_attempt_enforces_per_pr_cap(tmp_path: Path) -> None:

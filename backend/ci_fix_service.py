@@ -376,7 +376,8 @@ async def _route_and_launch(
             "staff_run_id": staff_run_id,
         }
     except BaseException:
-        attempt_store.release_reserved_attempt(req.repo, req.pr_number, req.head_sha)
+        if cap.reservation_id is not None:
+            attempt_store.release_reserved_attempt(cap.reservation_id)
         raise
 
 
