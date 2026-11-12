@@ -19,11 +19,15 @@ import secrets
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any
 
 from staff.barb_lease_fence import BarbClaim
 
 log = logging.getLogger("dashboard.staff.barb_origin_fence")
+
+OriginEpochLookup = Callable[[str, str], int | None]
+_origin_epoch_lookup: OriginEpochLookup | None = None
 
 ORIGIN_FENCE_HEADER = "x-barb-origin-fence"
 DEFAULT_TTL_SECONDS = 300
@@ -59,8 +63,20 @@ class _OriginFenceReplayGuard:
         for jti in [k for k, ts in self._seen_jti.items() if ts < cutoff]:
             self._seen_jti.pop(jti, None)
 
-    def lease_epoch_floor(self, scope: str) -> int:
-        """Newest lease epoch this peer must enforce for ``scope`` (in-memory + local store)."""
+    def lease_epoch_floor(
+        self,
+        scope: str,
+        *,
+        origin_node: str = "",
+        require_origin_epoch: bool = False,
+    ) -> int | None:
+        """Newest lease epoch this peer must enforce for ``scope``.
+
+        Combines in-memory attestations, the local continuity store, and — when
+        ``origin_node`` is set — the authoritative lease epoch on that origin hub.
+        Returns ``None`` when ``require_origin_epoch`` is set and the origin epoch
+        cannot be determined (fail closed).
+        """
         norm = scope.strip()
         if not norm:
             return 0
@@ -80,6 +96,16 @@ class _OriginFenceReplayGuard:
                 floor = max(floor, int(row["epoch"]))
         except Exception:  # noqa: BLE001
             pass
+        origin = origin_node.strip()
+        if origin:
+            hub_epoch = _origin_hub_epoch_floor(norm, origin)
+            if hub_epoch is None:
+                if require_origin_epoch:
+                    return None
+            else:
+                floor = max(floor, int(hub_epoch))
+                with self._lock:
+                    self._max_epoch_by_scope[norm] = max(self._max_epoch_by_scope.get(norm, 0), int(hub_epoch))
         return floor
 
     def note_epoch_seen(self, scope: str, epoch: int) -> None:
@@ -98,9 +124,13 @@ class _OriginFenceReplayGuard:
             self._prune_jti(now)
             if token in self._seen_jti:
                 return False
+            if len(self._seen_jti) >= self._max_jti:
+                log.warning(
+                    "barb_origin_fence: jti replay cache at capacity (%s); rejecting new attestation",
+                    self._max_jti,
+                )
+                return False
             self._seen_jti[token] = now
-            while len(self._seen_jti) > self._max_jti:
-                self._seen_jti.popitem(last=False)
             return True
 
 
@@ -110,6 +140,58 @@ _REPLAY_GUARD = _OriginFenceReplayGuard()
 def reset_origin_fence_replay_guard() -> None:
     """Test hook: clear jti cache and in-memory epoch floors."""
     _REPLAY_GUARD.reset()
+
+
+def set_origin_epoch_lookup(lookup: OriginEpochLookup | None) -> None:
+    """Test/prod hook: resolve authoritative scope epoch on ``origin_node``."""
+    global _origin_epoch_lookup
+    _origin_epoch_lookup = lookup
+
+
+def configure_origin_fence_replay_guard_for_test(*, max_jti: int | None = None) -> None:
+    """Test hook: tune replay-guard bounds."""
+    if max_jti is not None:
+        _REPLAY_GUARD._max_jti = max(1, int(max_jti))  # noqa: SLF001
+
+
+def _default_origin_epoch_lookup(scope: str, origin_node: str) -> int | None:
+    """GET origin hub ``/barb/leases`` and return the live epoch for ``scope``."""
+    try:
+        import httpx
+        from dashboard_config import HOSTNAME  # noqa: PLC0415
+        from staff import fleet as staff_fleet  # noqa: PLC0415
+
+        want = origin_node.strip()
+        if not want:
+            return None
+        nodes = staff_fleet.peer_nodes()
+        base = nodes.get(want)
+        if not base:
+            local = (HOSTNAME or "").strip()
+            if want == local or want.lower() == local.lower():
+                base = os.environ.get("DASHBOARD_LOOPBACK_ORIGIN", "http://127.0.0.1:8321").rstrip("/")
+            else:
+                return None
+        url = f"{base}/api/v1/staff/barb/leases"
+        with httpx.Client(timeout=staff_fleet.PEER_TIMEOUT_SECONDS) as client:
+            resp = client.get(url, headers=staff_fleet.fleet_headers())
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+        if not isinstance(data, dict):
+            return None
+        for row in data.get("leases") or []:
+            if isinstance(row, dict) and str(row.get("scope") or "") == scope:
+                return int(row.get("epoch") or 0)
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        log.debug("origin hub lease epoch lookup failed for %s@%s: %s", scope, origin_node, exc)
+        return None
+
+
+def _origin_hub_epoch_floor(scope: str, origin_node: str) -> int | None:
+    lookup = _origin_epoch_lookup or _default_origin_epoch_lookup
+    return lookup(scope, origin_node)
 
 
 def sign_barb_origin_fence(claim: BarbClaim, *, origin_node: str) -> str:
@@ -161,9 +243,6 @@ def verify_barb_origin_fence(
         att_epoch = int(payload.get("epoch") or 0)
         if att_epoch != claim.epoch or att_epoch < 1:
             return False
-        floor = _REPLAY_GUARD.lease_epoch_floor(att_scope)
-        if att_epoch < floor:
-            return False
         declared_holder = str(payload.get("holder") or "")
         if declared_holder != (claim.holder or ""):
             return False
@@ -172,6 +251,14 @@ def verify_barb_origin_fence(
             return False
         expected = expected_origin_node.strip()
         if expected and origin_in_att != expected:
+            return False
+        require_origin_epoch = bool(expected) and origin_in_att == expected
+        floor = _REPLAY_GUARD.lease_epoch_floor(
+            att_scope,
+            origin_node=origin_in_att,
+            require_origin_epoch=require_origin_epoch,
+        )
+        if floor is None or att_epoch < floor:
             return False
         jti = str(payload.get("jti") or "").strip()
         if not jti or not _REPLAY_GUARD.consume_jti(jti, now=now):
