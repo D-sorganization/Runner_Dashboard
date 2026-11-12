@@ -74,3 +74,14 @@ def test_corrupt_env_skips_service_restart(tmp_path: Path) -> None:
     assert "alert:env_file_corrupt" in status["actions"]
     assert "WOULD_RESTART" not in stderr
     assert status["healthy"] is False
+
+
+def test_unterminated_quote_env_skips_service_restart(tmp_path: Path) -> None:
+    status, stderr = _run(
+        tmp_path,
+        env_bytes=b'FLEET_NODES=hub\nFOO="unterminated\n',
+        http_ok=False,
+    )
+    assert status["env_file_ok"] is False
+    assert "alert:env_file_corrupt" in status["actions"]
+    assert "WOULD_RESTART" not in stderr

@@ -50,6 +50,35 @@ def test_inspect_detects_invalid_assignment(tmp_path: Path) -> None:
     assert any(item["kind"] == "unparseable_line" for item in report["issues"])
 
 
+@pytest.mark.parametrize(
+    ("body", "detail_substr"),
+    [
+        ('FOO="unterminated\nBAR=1\n', "unterminated double-quoted"),
+        ("FOO='open\n", "unterminated single-quoted"),
+        ('FOO="bad\\z"\n', "invalid escape"),
+        ('FOO="extra"trailing\n', "trailing garbage"),
+        ("FOO='x'junk\n", "trailing garbage"),
+    ],
+)
+def test_inspect_detects_malformed_systemd_values(tmp_path: Path, body: str, detail_substr: str) -> None:
+    env = tmp_path / "env"
+    env.write_text(body, encoding="utf-8")
+    report = inspect_env_file(env)
+    assert report["ok"] is False
+    assert any(detail_substr in (item.get("detail") or "") for item in report["issues"])
+
+
+def test_inspect_accepts_quoted_escapes_and_line_continuation(tmp_path: Path) -> None:
+    env = tmp_path / "env"
+    env.write_text(
+        'FLEET_NODES=hub\nMULTI="line1\\\nline2"\nQUOTE=\'ok\'\nESC="tab\\there"\n',
+        encoding="utf-8",
+    )
+    report = inspect_env_file(env)
+    assert report["ok"] is True
+    assert report["issues"] == []
+
+
 def test_atomic_set_gh_token_preserves_other_lines_and_mode(tmp_path: Path) -> None:
     env = tmp_path / "env"
     env.write_text("FLEET_NODES=hub\n", encoding="utf-8")
