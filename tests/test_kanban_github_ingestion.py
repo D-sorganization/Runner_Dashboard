@@ -6,6 +6,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+import gh_client
 import kanban_github_ingestion as kgi
 import pytest
 from kanban_projection import KanbanColumn, project_kanban_column, snapshot_from_mapping
@@ -198,3 +199,183 @@ def test_budget_guard_raises_in_tests_when_exceeded() -> None:
     with pytest.raises(AssertionError, match="budget"):
         with kgi.github_sync_budget_guard(max_calls=0):
             kgi.record_github_api_call()
+
+
+def _merge_queue_timeline() -> list[dict]:
+    return [{"event": "added_to_merge_queue"}]
+
+
+def _armed_pull_fixture() -> dict[str, Any]:
+    body = "Closes #9"
+    return {
+        "/repos/o/r/pulls?state=open&per_page=100": [_pull(50, head="queue_head", body=body)],
+        "/repos/o/r/pulls/50": _pull(50, head="queue_head", body=body),
+        "/repos/o/r/commits/queue_head/check-runs?per_page=100": {
+            "check_runs": [{"status": "completed", "conclusion": "success"}],
+        },
+        "/repos/o/r/pulls/50/reviews": [],
+        "/repos/o/r/issues/50/timeline?per_page=30": _merge_queue_timeline(),
+    }
+
+
+@pytest.mark.parametrize(
+    ("exc_factory",),
+    [
+        (lambda path: gh_client.GhRateLimited(retry_after_seconds=30, endpoint=path),),
+        (lambda path: gh_client.GhServerError(502, path, "boom"),),
+        (lambda path: gh_client.GhClientError("timeout", kind="timeout", attempts=3),),
+    ],
+)
+def test_gh_client_errors_on_issues_list_yield_degraded_sync(exc_factory) -> None:
+    class GhErrorListPage:
+        def __init__(self, exc: BaseException) -> None:
+            self.exc = exc
+            self.calls = 0
+
+        async def list_page(self, url: str) -> tuple[list[dict], str | None]:
+            self.calls += 1
+            raise self.exc
+
+        async def get(self, path: str) -> Any:
+            if path == "/repos/o/r/pulls?state=open&per_page=100":
+                return []
+            raise AssertionError(f"unexpected get {path}")
+
+    exc = exc_factory("/repos/o/r/issues?state=open")
+    fetcher = GhErrorListPage(exc)
+    result = asyncio.run(
+        kgi.sync_repo_github_kanban(
+            "o",
+            "r",
+            github_get=fetcher.get,
+            list_page_fetcher=fetcher.list_page,
+            now=lambda: datetime(2026, 11, 11, 12, 0, tzinfo=UTC),
+        )
+    )
+    assert result.freshness["issues"].status == "degraded"
+    assert result.items == ()
+
+
+@pytest.mark.parametrize(
+    ("exc_factory",),
+    [
+        (lambda path: gh_client.GhRateLimited(retry_after_seconds=30, endpoint=path),),
+        (lambda path: gh_client.GhServerError(502, path, "boom"),),
+        (lambda path: gh_client.GhClientError("timeout", kind="timeout", attempts=3),),
+    ],
+)
+def test_gh_client_errors_on_open_pulls_list_yield_degraded_sync(exc_factory) -> None:
+    pulls_path = "/repos/o/r/pulls?state=open&per_page=100"
+
+    async def get(path: str) -> Any:
+        if path == pulls_path:
+            raise exc_factory(path)
+        raise AssertionError(f"unexpected get {path}")
+
+    fake = FakeGitHub(issue_pages=[[_issue(1)]], gets={})
+    result = asyncio.run(
+        kgi.sync_repo_github_kanban(
+            "o",
+            "r",
+            github_get=get,
+            list_page_fetcher=fake.list_page,
+            now=lambda: datetime(2026, 11, 11, 12, 0, tzinfo=UTC),
+        )
+    )
+    assert result.freshness["pull_requests"].status == "degraded"
+    row = next(i for i in result.items if i.issue_number == 1)
+    card = project_kanban_column(snapshot_from_mapping(row.snapshot))
+    assert card.column == KanbanColumn.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("exc_factory",),
+    [
+        (lambda path: gh_client.GhRateLimited(retry_after_seconds=30, endpoint=path),),
+        (lambda path: gh_client.GhServerError(502, path, "boom"),),
+        (lambda path: gh_client.GhClientError("timeout", kind="timeout", attempts=3),),
+    ],
+)
+def test_gh_client_errors_during_pull_enrich_yield_unknown_card(exc_factory) -> None:
+    body = "Closes #1"
+    detail_path = "/repos/o/r/pulls/2"
+    backing = FakeGitHub(
+        issue_pages=[[_issue(1)]],
+        gets={
+            "/repos/o/r/pulls?state=open&per_page=100": [_pull(2, head="abc", body=body)],
+            detail_path: _pull(2, head="abc", body=body),
+        },
+    )
+
+    async def get(path: str) -> Any:
+        if path == detail_path:
+            raise exc_factory(path)
+        return await backing.get(path)
+
+    list_fake = FakeGitHub(
+        issue_pages=[[_issue(1)]],
+        gets={
+            "/repos/o/r/pulls?state=open&per_page=100": [_pull(2, head="abc", body=body)],
+        },
+    )
+    result = asyncio.run(
+        kgi.sync_repo_github_kanban(
+            "o",
+            "r",
+            github_get=get,
+            list_page_fetcher=list_fake.list_page,
+            now=lambda: datetime(2026, 11, 11, 12, 0, tzinfo=UTC),
+        )
+    )
+    assert result.freshness["pull_requests"].status == "degraded"
+    row = next(i for i in result.items if i.issue_number == 1)
+    card = project_kanban_column(snapshot_from_mapping(row.snapshot))
+    assert card.column == KanbanColumn.UNKNOWN
+    assert row.snapshot["pull_request"]["available"] is False
+
+
+def test_failed_merge_queue_timeline_marks_degraded_not_false_in_queue() -> None:
+    gets = _armed_pull_fixture()
+    list_fake = FakeGitHub(issue_pages=[[_issue(9)]], gets=gets)
+
+    async def get_ok(path: str) -> Any:
+        return await list_fake.get(path)
+
+    ok = asyncio.run(
+        kgi.sync_repo_github_kanban(
+            "o",
+            "r",
+            github_get=get_ok,
+            list_page_fetcher=list_fake.list_page,
+            now=lambda: datetime(2026, 11, 11, 12, 0, tzinfo=UTC),
+        )
+    )
+    kgi.reset_kanban_github_cache()
+    row_ok = next(i for i in ok.items if i.issue_number == 9)
+    assert project_kanban_column(snapshot_from_mapping(row_ok.snapshot)).column == KanbanColumn.ARMED
+
+    timeline_path = "/repos/o/r/issues/50/timeline?per_page=30"
+    kgi.reset_kanban_github_cache()
+    list_fake_retry = FakeGitHub(issue_pages=[[_issue(9)]], gets=gets)
+
+    async def get_timeline_fail(path: str) -> Any:
+        if path == timeline_path:
+            raise gh_client.GhServerError(502, path, "timeline down")
+        return await list_fake_retry.get(path)
+
+    bad = asyncio.run(
+        kgi.sync_repo_github_kanban(
+            "o",
+            "r",
+            github_get=get_timeline_fail,
+            list_page_fetcher=list_fake_retry.list_page,
+            now=lambda: datetime(2026, 11, 11, 12, 0, tzinfo=UTC),
+            force_cold=True,
+        )
+    )
+    row_bad = next(i for i in bad.items if i.issue_number == 9)
+    assert bad.freshness["pull_requests"].status == "degraded"
+    assert row_bad.snapshot["pull_request"]["degraded"] is True
+    assert row_bad.snapshot["pull_request"]["in_merge_queue"] is False
+    card = project_kanban_column(snapshot_from_mapping(row_bad.snapshot))
+    assert card.column == KanbanColumn.UNKNOWN

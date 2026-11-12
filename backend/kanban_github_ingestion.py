@@ -54,6 +54,23 @@ class KanbanGithubSourceError(RuntimeError):
         self.endpoint = endpoint
 
 
+def _kanban_github_source_error(exc: BaseException, *, endpoint: str = "") -> KanbanGithubSourceError:
+    """Normalize ingestion errors from gh_client into KanbanGithubSourceError."""
+    if isinstance(exc, KanbanGithubSourceError):
+        return exc
+    import gh_client  # noqa: PLC0415
+
+    if isinstance(exc, gh_client.GhRateLimited):
+        path = endpoint or exc.endpoint
+        return KanbanGithubSourceError("rate_limited", str(exc), path)
+    if isinstance(exc, gh_client.GhServerError):
+        return KanbanGithubSourceError("server_error", str(exc), endpoint)
+    if isinstance(exc, gh_client.GhClientError):
+        kind = exc.kind if exc.kind != "unknown" else "github_error"
+        return KanbanGithubSourceError(kind, str(exc), endpoint)
+    raise exc
+
+
 @dataclass(frozen=True, slots=True)
 class SourceFreshness:
     status: Literal["ok", "degraded", "cached"]
@@ -275,7 +292,10 @@ async def _cached_get(
         raise KanbanGithubSourceError("budget", "github api budget exhausted")
     record_github_api_call()
     metrics["github_api_calls"] += 1
-    data = await fetch()
+    try:
+        data = await fetch()
+    except BaseException as exc:
+        raise _kanban_github_source_error(exc, endpoint=key) from exc
     _cache.set(key, data, ttl=ttl)
     return data, False
 
@@ -297,7 +317,10 @@ async def _github_list_pages(
             raise KanbanGithubSourceError("budget", "github api budget exhausted")
         record_github_api_call()
         metrics["github_api_calls"] += 1
-        page_items, url = await fetch_page(url)
+        try:
+            page_items, url = await fetch_page(url)
+        except BaseException as exc:
+            raise _kanban_github_source_error(exc, endpoint=url or path) from exc
         items.extend(page_items)
     return items
 
@@ -306,7 +329,10 @@ async def _default_list_page_fetch(url: str) -> tuple[list[dict], str | None]:
     """One GitHub list page via gh_client (Link header pagination, #4278 helper path)."""
     from gh_client import _parse_next_link, _request  # noqa: PLC0415
 
-    resp = await _request("GET", url)
+    try:
+        resp = await _request("GET", url)
+    except BaseException as exc:
+        raise _kanban_github_source_error(exc, endpoint=url) from exc
     body = resp.json()
     items = body if isinstance(body, list) else []
     return items, _parse_next_link(resp.headers.get("link", ""))
@@ -393,10 +419,9 @@ async def _enrich_pull(
         in_merge_queue=False,
     )
     auto_enabled = pr_payload.get("auto_merge") is not None
+    merge_queue_degraded = False
     in_queue = False
-    if auto_enabled:
-        in_queue = False
-    else:
+    if not auto_enabled:
         try:
             timeline, _ = await _cached_get(
                 f"kanban:gh:{full}:mq:{number}",
@@ -407,7 +432,7 @@ async def _enrich_pull(
             )
             in_queue = _merge_queue_from_timeline(timeline if isinstance(timeline, list) else [])
         except KanbanGithubSourceError:
-            in_queue = False
+            merge_queue_degraded = True
     pr_snap = KanbanPullRequestSnapshot(
         available=True,
         number=number,
@@ -416,6 +441,7 @@ async def _enrich_pull(
         head_sha=head_sha,
         html_url=str(pr_payload.get("html_url") or ""),
         in_merge_queue=in_queue,
+        degraded=merge_queue_degraded,
     )
     auto = KanbanAutoMergeSnapshot(available=True, enabled=auto_enabled)
     checks_raw, _ = await _cached_get(
@@ -561,6 +587,12 @@ async def sync_repo_github_kanban(
                     budget=budget,
                     metrics=tallies,
                 )
+                if pull.degraded:
+                    freshness["pull_requests"] = SourceFreshness(
+                        "degraded",
+                        synced_at,
+                        "merge queue timeline unavailable",
+                    )
             except KanbanGithubSourceError as exc:
                 freshness["pull_requests"] = SourceFreshness("degraded", synced_at, str(exc))
                 pull = KanbanPullRequestSnapshot(
