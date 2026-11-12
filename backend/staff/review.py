@@ -29,12 +29,14 @@ RUN_LOOKUP_LIMIT = 200
 PROVIDER_FAMILY: dict[str, str] = {
     "claude": "anthropic",
     "claude-ollama": "anthropic",
+    "anthropic-api": "anthropic",
     "codex": "openai",
     "gemini": "google",
     "antigravity": "google",
     "cursor-agent": "cursor",
     "ollama": "local",
-    "grok-chat": "xai",
+    "grok": "xai",
+    "grok-chat": "xai",  # legacy author ids on pre-registry runs
 }
 
 # Alternates must be CLI-accepted ids or aliases; a provider without an entry reviews on its default model.
