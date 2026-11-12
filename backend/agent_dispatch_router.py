@@ -786,6 +786,9 @@ async def dispatch_to_issues(
     if caller_cancelled:
         raise asyncio.CancelledError()
 
+    if settled is None:
+        raise RuntimeError("bulk issue dispatch: gather finished without a settled result")
+
     first_exc: BaseException | None = None
     for item in settled:
         if isinstance(item, BaseException) and first_exc is None:
