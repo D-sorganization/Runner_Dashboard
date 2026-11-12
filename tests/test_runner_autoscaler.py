@@ -23,6 +23,8 @@ import runner_autoscaler as ra
 def _idle_stop_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep stop admission off the host; busy detection itself uses the facade."""
     monkeypatch.setattr("autoscaler_busy._runner_is_busy", lambda unit: False)
+    # Production default is scheduler-owned (#4311); legacy poll tests expect mutations.
+    monkeypatch.setattr(ra, "DEFAULT_POOL_MUTATE", True)
 
 
 def test_main_identity_failure_exits_before_lock_or_poll(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -58,6 +58,7 @@ from autoscaler_config import (
     COOLDOWN_SECS,
     CPU_HIGH,
     CPU_LOW,
+    DEFAULT_POOL_MUTATE,
     DISK_HIGH,
     DISK_MIN_FREE_GB,
     DRY_RUN,  # noqa: PLC0414 (explicit re-export for tests)
@@ -778,6 +779,12 @@ def _run_poll_loop() -> None:
                         avg_disk=avg_disk,
                         min_disk_free=min_disk_free,
                     )
+                    if not DEFAULT_POOL_MUTATE:
+                        if overloaded:
+                            log.info("pool=default host overloaded (advisory; scheduler owns capacity)")
+                        elif recovered:
+                            log.info("pool=default host recovered (advisory; scheduler owns capacity)")
+                        continue
                     log.info(
                         "pool=default io_full=%.1f%% cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
                         " active=%d busy=%d idle=%d inactive=%d",
