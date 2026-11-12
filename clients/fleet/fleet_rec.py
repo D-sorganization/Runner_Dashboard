@@ -33,7 +33,13 @@ from fleet_client import FleetAPIError, FleetArgumentError, FleetClient  # noqa:
 from fleet_validators import PATTERNS, _check, _match, _opt, _positive_int, default_session, short_host  # noqa: E402
 
 SUPPORTED_CLIS: tuple[str, ...] = ("claude", "codex", "agy", "cursor-agent", "qwen")
-CLI_AGENT_MAP: dict[str, str] = {"claude": "claude", "codex": "codex", "agy": "antigravity", "cursor-agent": "cursor"}
+CLI_AGENT_MAP: dict[str, str] = {
+    "claude": "claude",
+    "codex": "codex",
+    "agy": "antigravity",
+    "cursor-agent": "cursor",
+    "qwen": "qwen",
+}
 _WIN_SUFFIX_RE = re.compile(r"(?i)\.(?:exe|cmd|ps1|bat)$")
 _POSIX_PLATFORMS = frozenset({"posix", "linux", "wsl"})
 _WINDOWS_PLATFORMS = frozenset({"windows", "win32", "nt", "conpty", "powershell"})
