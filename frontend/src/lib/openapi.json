@@ -2532,6 +2532,52 @@
         "title": "FleetRunTokenResponse",
         "type": "object"
       },
+      "FleetTargetSetRequest": {
+        "additionalProperties": false,
+        "description": "POST /api/fleet/target body (DbC: typed payload, no unknown fields).",
+        "properties": {
+          "apply": {
+            "default": true,
+            "description": "Run runner-scheduler --apply after saving override.",
+            "title": "Apply",
+            "type": "boolean"
+          },
+          "host": {
+            "description": "Fleet host or alias.",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Host",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "runners": {
+            "description": "Requested runner count (clamped to host cap).",
+            "minimum": 0.0,
+            "title": "Runners",
+            "type": "integer"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO-8601 timestamp or HH:MM expiry.",
+            "title": "Until"
+          }
+        },
+        "required": ["host", "runners"],
+        "title": "FleetTargetSetRequest",
+        "type": "object"
+      },
       "FrictionCreate": {
         "properties": {
           "detector": {
@@ -9914,7 +9960,7 @@
     },
     "/_drain": {
       "post": {
-        "description": "Activate process-local draining and reject new mutations with HTTP 503.\n\n``/readyz`` reports unready while draining. Requests already admitted are\nallowed to finish; this flag does not cancel or wait for in-flight work.\n\nPre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).\nPost-condition: _drain_mode is True after successful call.",
+        "description": "Activate process-local draining and reject new mutations with HTTP 503.\n\n``/readyz`` reports unready while draining. Requests already admitted are\nallowed to finish; this flag does not cancel or wait for in-flight work.\n\nRequires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).\nPost-condition: _drain_mode is True after successful call.",
         "operationId": "drain_endpoint__drain_post",
         "responses": {
           "200": {
@@ -9930,7 +9976,44 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
         "summary": "Drain Endpoint"
+      }
+    },
+    "/_undrain": {
+      "post": {
+        "description": "Clear process-local draining and resume normal mutation admission (#4274 F-04).",
+        "operationId": "undrain_endpoint__undrain_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Undrain Endpoint  Undrain Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Undrain Endpoint"
       }
     },
     "/api/admin/principals": {
@@ -15228,6 +15311,56 @@
         "tags": ["fleet"]
       }
     },
+    "/api/fleet/target": {
+      "post": {
+        "description": "Set an expiring runner-count override for a fleet host.",
+        "operationId": "fleet_target_api_fleet_target_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetTargetSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Fleet Target Api Fleet Target Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Fleet Target",
+        "tags": ["orchestration", "orchestration"]
+      }
+    },
     "/api/github/app-token": {
       "post": {
         "operationId": "post_github_app_token_api_github_app_token_post",
@@ -15576,6 +15709,72 @@
         ],
         "summary": "Api Dispatch To Issues",
         "tags": ["remediation", "agents", "remediation"]
+      }
+    },
+    "/api/kanban/github": {
+      "get": {
+        "description": "Return projected kanban cards from cached GitHub sources with freshness metadata.",
+        "operationId": "get_kanban_github_board_api_kanban_github_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "owner",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force_cold",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force Cold",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Kanban Github Board Api Kanban Github Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Kanban Github Board",
+        "tags": ["kanban"]
       }
     },
     "/api/launchers/generate": {
@@ -23584,6 +23783,65 @@
         ],
         "summary": "Get Fleet State Audit",
         "tags": ["fleet-state-audit"]
+      }
+    },
+    "/api/v1/kanban/columns/waiting-on-dieter": {
+      "get": {
+        "description": "Read-only Waiting-on-Dieter column from holds, owner labels, and pending approvals.",
+        "operationId": "get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Waiting On Dieter Column Api V1 Kanban Columns Waiting On Dieter Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Waiting On Dieter Column",
+        "tags": ["kanban"]
       }
     },
     "/api/v1/library/browse": {

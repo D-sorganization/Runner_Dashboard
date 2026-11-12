@@ -1055,6 +1055,9 @@ def test_scale_down_respects_virtual_leases(monkeypatch: pytest.MonkeyPatch, tmp
 
 
 def test_scale_down_blocked_by_unpinned_github_claim_lease(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """An unresolvable github-claim lease fails closed: nothing is stopped this tick."""
+    """#4273 J-06: unpinned github-claim leases do not block fleet scale-down."""
     stopped = _run_scale_down_tick(monkeypatch, tmp_path, "leases:\n  - runner_id: github-claim-42\n")
-    assert stopped == []
+    assert stopped == [
+        "actions.runner.org.runner-a.service",
+        "actions.runner.org.runner-b.service",
+    ]

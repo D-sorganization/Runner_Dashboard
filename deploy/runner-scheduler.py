@@ -19,9 +19,10 @@ from datetime import UTC, datetime, time, tzinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-_DEPLOY_DIR = Path(__file__).resolve().parent
-if str(_DEPLOY_DIR) not in sys.path:
-    sys.path.insert(0, str(_DEPLOY_DIR))
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+import runner_target_contract as target_contract  # noqa: E402
 from runner_scheduler_host_pressure import apply_host_pressure_guard, validate_host_pressure  # noqa: E402
 
 RUNNER_ROOT = Path(os.environ.get("RUNNER_ROOT", str(Path.home() / "actions-runners")))
@@ -161,6 +162,18 @@ def schedule_matches(entry: dict, now: datetime) -> bool:
     if start <= end:
         return today in days and start <= current < end
     return (today in days and current >= start) or (yesterday in days and current < end)
+
+
+def scheduler_clock() -> datetime:
+    """Wall clock for the scheduler; override with RUNNER_SCHEDULER_NOW in tests."""
+    raw = os.environ.get("RUNNER_SCHEDULER_NOW", "").strip()
+    if raw:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed
+    tz = _resolve_tz(os.environ.get("RUNNER_SCHEDULE_TIMEZONE", "America/Los_Angeles"))
+    return datetime.now(tz)
 
 
 def desired_capacity(
@@ -726,15 +739,35 @@ def apply_resource_floor(config: dict, desired: int, reason: str) -> tuple[int, 
     return apply_host_pressure_guard(floor, desired, reason)
 
 
+def active_target_override() -> tuple[int | None, str | None, dict | None]:
+    """Load the persisted override when present and unexpired."""
+    record = target_contract.load_target_override(now=scheduler_clock)
+    if not record:
+        return None, None, None
+    runners = int(record.get("runners", 0))
+    actor = str(record.get("actor") or "override")
+    return runners, f"target-override ({actor})", record
+
+
 def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
     """Desired runner count; an active maintenance hold overrides everything with 0."""
     if maintenance_active():
         return 0, "maintenance-drain"
-    desired, reason = desired_capacity(
-        config,
-        target,
-        target_source="cli: --target" if target is not None else None,
-    )
+    persisted, persisted_reason, _record = active_target_override()
+    if persisted is not None:
+        desired, reason = desired_capacity(
+            config,
+            persisted,
+            target_source=persisted_reason or "target-override",
+        )
+    elif target is not None:
+        desired, reason = desired_capacity(
+            config,
+            target,
+            target_source="cli: --target",
+        )
+    else:
+        desired, reason = desired_capacity(config, None)
     return apply_resource_floor(config, desired, reason)
 
 
@@ -769,6 +802,7 @@ def build_state(config: dict, desired: int, reason: str, actions: list[dict]) ->
     busy_active = [unit for unit in active if unit.busy]
     busy_without_listener = [unit for unit in busy if not unit.active]
     tz = _resolve_tz(config.get("timezone", "America/Los_Angeles"))
+    _, _, override_record = active_target_override()
     return {
         "hostname": platform.node(),
         "timestamp": datetime.now(tz).isoformat(),
@@ -777,6 +811,7 @@ def build_state(config: dict, desired: int, reason: str, actions: list[dict]) ->
         "timezone": config.get("timezone", "America/Los_Angeles"),
         "desired": desired,
         "reason": reason,
+        "target_override": override_record,
         "installed": len(units),
         "online": len(active) + len(busy_without_listener),
         "busy": len(busy),
@@ -811,6 +846,8 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="show planned actions")
     parser.add_argument("--json", action="store_true", help="print state as JSON")
     parser.add_argument("--target", type=int, help="override scheduled desired count")
+    parser.add_argument("--until", help="expiry for --target (ISO-8601 or HH:MM); writes target-override.json")
+    parser.add_argument("--reason", default="", help="reason recorded with a --target override")
     parser.add_argument("--drain", action="store_true", help="maintenance: hold at 0 runners, drain, report")
     parser.add_argument("--reboot", action="store_true", help="with --drain: reboot once fully drained")
     parser.add_argument("--resume", action="store_true", help="clear the maintenance hold")
@@ -841,6 +878,22 @@ def main() -> int:
     dry_run = args.dry_run or not args.apply
     if args.resume and not dry_run:
         set_maintenance(False)
+    if args.target is not None and not dry_run:
+        before = int(active_target_override()[0] or desired_capacity(config, None)[0])
+        until_store = None
+        if args.until:
+            until_dt = target_contract.parse_until(args.until, now=scheduler_clock())
+            until_store = until_dt.isoformat() if until_dt else args.until
+        host = platform.node()
+        clamped = target_contract.clamp_runners(args.target, host)
+        target_contract.write_target_override(
+            runners=clamped,
+            reason=args.reason or "cli: --target",
+            actor="cli",
+            before=before,
+            until=until_store,
+            created_at=scheduler_clock(),
+        )
     units = list_units(cleanup_stale=not dry_run)
     maintenance_report: dict | None = None
     if args.drain and not dry_run:

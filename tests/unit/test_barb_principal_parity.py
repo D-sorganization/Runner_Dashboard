@@ -22,6 +22,7 @@ BARB_PRINCIPAL_IDS = (
     "agent-codex-barb",
     "agent-cursor-barb",
     "agent-agy-barb",
+    "openbot-barb",
 )
 
 

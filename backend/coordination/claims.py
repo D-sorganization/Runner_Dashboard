@@ -27,6 +27,7 @@ from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
+from coordination import gh_cli
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError
 from coordination.board_pagination import board_config
 from coordination.gh_cli import gh_api_json
@@ -49,7 +50,7 @@ evidence_fetch: EvidenceFetch = gh_api_json
 
 def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:
     """An open or merged PR whose title/body closes ``issue`` (closed-unmerged doesn't count)."""
-    pulls = evidence_fetch(f"/repos/{repo_full}/pulls?state=all&per_page=100")
+    pulls = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
     candidates = [
         pr for pr in (pulls if isinstance(pulls, list) else []) if pr.get("state") != "closed" or pr.get("merged_at")
     ]
@@ -58,7 +59,7 @@ def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:
 
 def _pushed_branch(repo_full: str, issue: int) -> str | None:
     """Remote branch whose last path segment is ``<issue>-...`` (the fleet's lane-branch convention)."""
-    branches = evidence_fetch(f"/repos/{repo_full}/branches?per_page=100")
+    branches = gh_cli.gh_api_json_all(f"/repos/{repo_full}/branches")
     for entry in branches if isinstance(branches, list) else []:
         name = str(entry.get("name") or "") if isinstance(entry, dict) else ""
         match = _BRANCH_FOR_ISSUE.search(name)

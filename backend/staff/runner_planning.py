@@ -113,6 +113,8 @@ def build_run_plan(
         pr_restrictions=lifecycle.restrictions,
         head_ref=req.head_ref,
         skill_pin=bundle.skill_pin,
+        dispatch_bundle=bundle,
+        library_references=references_block,
         standards_version=bundle.standards_version,
         standards_tokens=bundle.standards_tokens or estimate_tokens(bundle.standards_block),
         context_stamp=json.dumps(bundle.context_stamp(prompt=prompt, lessons_tokens=repo_lessons.tokens)),

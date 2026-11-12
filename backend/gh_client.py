@@ -36,6 +36,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import gh_etag_cache
+import github_rate_governor as _gov
 import httpx
 
 log = logging.getLogger("dashboard.gh_client")
@@ -363,7 +364,18 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
         headers["If-None-Match"] = cached.etag
     last_exc: Exception | None = None
 
+    identity = get_auth_fingerprint()
     for attempt in range(_MAX_RETRIES):
+        try:
+            await _gov.acquire_before_github_call_async(identity=identity)
+        except _gov.GitHubGovernorExhausted as exc:
+            _set_status(
+                "rate_limited",
+                "GitHub rate governor exhausted before request",
+                endpoint=path,
+                retry_after_seconds=int(exc.retry_after_seconds),
+            )
+            raise GhRateLimited(retry_after_seconds=int(exc.retry_after_seconds), endpoint=path) from exc
         try:
             resp = await client.request(method, path, headers=headers, json=json)
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
@@ -384,10 +396,12 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
         # for async-processed actions (e.g. cancel_run); treating it as an error
         # reported a successful cancel as a GhServerError.
         if resp.status_code == 304 and cached is not None:
+            _gov.observe_github_response(resp.headers, identity=identity)
             # Unchanged since our last GET; GitHub did not charge the rate limit.
             _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
             return gh_etag_cache.replay(cached, resp)
         if 200 <= resp.status_code < 300:
+            _gov.observe_github_response(resp.headers, identity=identity)
             _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
             if etag_key is not None:
                 gh_etag_cache.remember(etag_key, resp)
@@ -399,6 +413,12 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
             _set_status("not_found", f"GitHub API returned 404 for {path}", endpoint=path)
             raise GhNotFound(path)
         if _is_rate_limited_response(resp):
+            _gov.record_github_rate_limit_from_response(
+                status_code=resp.status_code,
+                headers=resp.headers,
+                body=resp.text,
+                identity=identity,
+            )
             retry_after = _parse_retry_after(resp)
             _set_status(
                 "rate_limited",
@@ -774,29 +794,21 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
             resp = await _request("GET", url)
         except GhNotFound:
             return
+        from github_pagination import items_from_page, parse_next_link
+
         body = resp.json()
-        items: list[dict] = body if isinstance(body, list) else []
-        for key in ("workflow_runs", "jobs", "runners", "items", "repositories"):
-            if isinstance(body, dict) and key in body:
-                items = body[key]
-                break
-        for item in items:
-            yield item
+        for item in items_from_page(body):
+            if isinstance(item, dict):
+                yield item
         link = resp.headers.get("link", "")
-        url = _parse_next_link(link)
+        url = parse_next_link(link)
 
 
 def _parse_next_link(link_header: str) -> str | None:
-    """Extract the ``rel="next"`` URL from a GitHub Link header."""
-    if not link_header:
-        return None
-    for part in link_header.split(","):
-        url_part, *params = part.strip().split(";")
-        url = url_part.strip().strip("<>")
-        for param in params:
-            if param.strip() == 'rel="next"':
-                return url
-    return None
+    """Backward-compatible alias for tests and older imports."""
+    from github_pagination import parse_next_link
+
+    return parse_next_link(link_header)
 
 
 # ── High-level typed wrappers ────────────────────────────────────────────────
