@@ -62,7 +62,7 @@ def test_fetch_run_jwt_redacts_bootstrap_in_errors(monkeypatch: pytest.MonkeyPat
 
     import fleet_client
 
-    secret = "super-secret-bootstrap-value"
+    secret = "bootstrap-static-bearer-for-redaction-test"  # pragma: allowlist secret
     monkeypatch.setenv("FLEET_API_TOKEN", secret)
     monkeypatch.setenv("FLEET_RUN_JWT_RUN_ID", "run-1")
     monkeypatch.setenv("FLEET_RUN_JWT_PRINCIPAL_ID", "agent-grok")
