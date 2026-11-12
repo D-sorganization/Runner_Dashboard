@@ -64,10 +64,8 @@ def test_verify_closure_listed() -> None:
 
 
 def test_failed_shepherd_check_does_not_block_deploy() -> None:
-    runs = [
-        _run("quality-gate", "completed", "success", 1),
-        _run("shepherd", "completed", "failure", 2),
-    ]
+    runs = [dict(r, id=i) for i, r in enumerate(success_runs_for_required_contexts(_SHA), start=1)]
+    runs.append(_run("shepherd", "completed", "failure", len(runs) + 1))
     ok, detail = ci_gate_for_deploy_commit(runs, _SHA)
     assert ok is True, detail
     assert "shepherd" in NON_BLOCKING_DEPLOY_CHECK_NAMES
