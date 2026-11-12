@@ -144,28 +144,50 @@ jobs:
           FORK_PR: ${{ github.event.pull_request &&
             github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
+          emit_fast_checks_runner() {
+            local fast_checks="${RD_FAST_CHECKS_RUNNER:-}"
+            if [ -n "$fast_checks" ] && [ "$fast_checks" != "hosted" ] && [ "$fast_checks" != "local" ]; then
+              echo "::error::RD_FAST_CHECKS_RUNNER must be 'hosted', 'local', or unset (got '$fast_checks')"
+              exit 1
+            fi
+            if [ "$FORK_PR" = "true" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$fast_checks" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            else
+              echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
+            fi
+          }
           if [ "$FORK_PR" = "true" ]; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
             echo "Fork PR - never routed to the self-hosted fleet (RM#1989)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$FORCE_LOCAL" = "true" ]; then
             echo "runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
             echo "mode=local" >> "$GITHUB_OUTPUT"
             echo "Forced local fleet via workflow_dispatch input" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$HAS_EXPEDITE" = "true" ] && { [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "merge_group" ]; }; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-expedite" >> "$GITHUB_OUTPUT"
             echo "priority:expedite — GitHub-hosted runners (escalation lane #2952)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-queue" >> "$GITHUB_OUTPUT"
             echo "Merge queue on GitHub-hosted runners (CI_QUEUE_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           # Postcondition (#3046): merge_group only, not hosted, label set ->
@@ -174,12 +196,14 @@ jobs:
             echo "runner=$CI_QUEUE_RUNNER_LABEL" >> "$GITHUB_OUTPUT"
             echo "mode=queue-label" >> "$GITHUB_OUTPUT"
             echo "Merge queue routed to reserved runner label $CI_QUEUE_RUNNER_LABEL (#3046)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$CI_PR_RUNNER_MODE" = "hosted" ]; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-pr" >> "$GITHUB_OUTPUT"
             echo "PR checks on GitHub-hosted runners (CI_PR_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
@@ -191,22 +215,7 @@ jobs:
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
             echo "Public repo hosted runner (CI_RUNNER_MODE not local)" >> "$GITHUB_STEP_SUMMARY"
           fi
-          FAST_CHECKS="${RD_FAST_CHECKS_RUNNER:-}"
-          if [ -n "$FAST_CHECKS" ] && [ "$FAST_CHECKS" != "hosted" ] && [ "$FAST_CHECKS" != "local" ]; then
-            echo "::error::RD_FAST_CHECKS_RUNNER must be 'hosted', 'local', or unset (got '$FAST_CHECKS')"
-            exit 1
-          fi
-          if [ "$FORK_PR" = "true" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$FAST_CHECKS" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          else
-            echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
-          fi
+          emit_fast_checks_runner
 
   # ── Event tier + docs-only fast path (issue #1864, RM#1915) ─────────────
   # Decides how much of this workflow an event needs:

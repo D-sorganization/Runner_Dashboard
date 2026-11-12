@@ -98,6 +98,7 @@ def test_private_merge_group_hosted_selects_ubuntu_latest() -> None:
     assert code == 0
     assert outputs["runner"] == "ubuntu-latest"
     assert outputs["mode"] == "hosted-queue"
+    assert outputs["fast_checks_runner"] == "ubuntu-latest"
     assert "hosted-queue" in summary.lower() or "CI_QUEUE_RUNNER_MODE" in summary
 
 
@@ -163,6 +164,7 @@ def test_fork_pr_selects_hosted_runner() -> None:
     assert code == 0
     assert outputs["runner"] == "ubuntu-latest"
     assert outputs["mode"] == "hosted"
+    assert outputs["fast_checks_runner"] == "ubuntu-latest"
 
 
 def test_merge_group_workflow_uses_no_repository_secrets() -> None:

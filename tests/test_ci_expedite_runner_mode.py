@@ -70,6 +70,7 @@ def test_private_expedite_pull_request_uses_hosted() -> None:
     assert code == 0
     assert outputs["runner"] == "ubuntu-latest"
     assert outputs["mode"] == "hosted-expedite"
+    assert outputs["fast_checks_runner"] == "d-sorg-fleet"
 
 
 def test_private_expedite_merge_group_uses_hosted() -> None:
@@ -87,6 +88,7 @@ def test_private_expedite_merge_group_uses_hosted() -> None:
     assert code == 0
     assert outputs["runner"] == "ubuntu-latest"
     assert outputs["mode"] == "hosted-expedite"
+    assert outputs["fast_checks_runner"] == "d-sorg-fleet"
 
 
 def test_expedite_does_not_override_force_local() -> None:
@@ -103,6 +105,7 @@ def test_expedite_does_not_override_force_local() -> None:
     )
     assert code == 0
     assert outputs["runner"] == "d-sorg-fleet"
+    assert outputs["fast_checks_runner"] == "d-sorg-fleet"
 
 
 def test_workflow_defines_detect_expedite_step() -> None:

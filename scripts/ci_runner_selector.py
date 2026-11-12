@@ -85,25 +85,32 @@ def frontend_required_check_runs_on_expression() -> str:
     return f"${{{{ {_FORK_ROUTE}{_FRONTEND_FAST_CHECKS_TAIL} }}}}"
 
 
-def pick_runner_fast_checks_bash_fragment() -> str:
-    """Bash appended inside pick-runner to emit ``fast_checks_runner`` (no leading indent)."""
+def pick_runner_emit_fast_checks_runner_function_bash() -> str:
+    """Bash function for pick-runner; must run on every success path before ``exit 0``."""
     return f"""\
-FAST_CHECKS="${{{{ vars.{RD_FAST_CHECKS_VAR} }}}}"
-if [ -n "$FAST_CHECKS" ] && [ "$FAST_CHECKS" != "hosted" ] && [ "$FAST_CHECKS" != "local" ]; then
-  echo "::error::{RD_FAST_CHECKS_VAR} must be 'hosted', 'local', or unset (got '$FAST_CHECKS')"
-  exit 1
-fi
-if [ "$FORK_PR" = "true" ]; then
-  echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
-  echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
-  echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$FAST_CHECKS" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
-  echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-else
-  echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
-fi"""
+emit_fast_checks_runner() {{
+  local fast_checks="${{RD_FAST_CHECKS_RUNNER:-}}"
+  if [ -n "$fast_checks" ] && [ "$fast_checks" != "hosted" ] && [ "$fast_checks" != "local" ]; then
+    echo "::error::{RD_FAST_CHECKS_VAR} must be 'hosted', 'local', or unset (got '$fast_checks')"
+    exit 1
+  fi
+  if [ "$FORK_PR" = "true" ]; then
+    echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+  elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
+    echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+  elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
+    echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+  elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$fast_checks" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
+    echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+  else
+    echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
+  fi
+}}"""
+
+
+def pick_runner_fast_checks_bash_fragment() -> str:
+    """Single invocation of ``emit_fast_checks_runner`` (legacy name for tests and docs)."""
+    return "emit_fast_checks_runner"
 
 
 def pick_runner_runs_on_fork_tail() -> str:
