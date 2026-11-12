@@ -868,6 +868,10 @@ from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
 
+from routers import kanban as _kanban_router  # noqa: E402
+
+app.include_router(_kanban_router.router)  # kanban board projection (#4317, #4321)
+
 from routers import fleet_state_audit_route as _fleet_state_audit_router  # noqa: E402
 
 app.include_router(_fleet_state_audit_router.router)  # Barb state audit (#3640)
