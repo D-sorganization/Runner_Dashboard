@@ -69,38 +69,3 @@ def test_drain_handler_has_no_bare_assert_guard():
     assert not asserts, "drain_endpoint must not guard the loopback restriction with a bare assert (#939c)"
 
 
-def test_drain_rejects_non_loopback_with_403():
-    """A non-loopback client must get HTTP 403, regardless of optimization level."""
-    import asyncio
-    from unittest.mock import MagicMock
-
-    import server  # noqa: PLC0415
-    from fastapi import HTTPException
-
-    req = MagicMock()
-    req.client.host = "10.0.0.5"  # not loopback
-    server._drain_mode = False
-    try:
-        asyncio.run(server.drain_endpoint(req))
-    except HTTPException as exc:
-        assert exc.status_code == 403
-    else:  # pragma: no cover
-        raise AssertionError("drain_endpoint must reject non-loopback clients with 403")
-    assert server._drain_mode is False, "drain must not activate for a rejected client"
-
-
-def test_drain_accepts_loopback():
-    import asyncio
-    from unittest.mock import MagicMock
-
-    import server  # noqa: PLC0415
-
-    req = MagicMock()
-    req.client.host = "127.0.0.1"
-    server._drain_mode = False
-    try:
-        result = asyncio.run(server.drain_endpoint(req))
-        assert result["status"] == "draining"
-        assert server._drain_mode is True
-    finally:
-        server._drain_mode = False

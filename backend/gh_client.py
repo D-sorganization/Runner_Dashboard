@@ -794,29 +794,21 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
             resp = await _request("GET", url)
         except GhNotFound:
             return
+        from github_pagination import items_from_page, parse_next_link
+
         body = resp.json()
-        items: list[dict] = body if isinstance(body, list) else []
-        for key in ("workflow_runs", "jobs", "runners", "items", "repositories"):
-            if isinstance(body, dict) and key in body:
-                items = body[key]
-                break
-        for item in items:
-            yield item
+        for item in items_from_page(body):
+            if isinstance(item, dict):
+                yield item
         link = resp.headers.get("link", "")
-        url = _parse_next_link(link)
+        url = parse_next_link(link)
 
 
 def _parse_next_link(link_header: str) -> str | None:
-    """Extract the ``rel="next"`` URL from a GitHub Link header."""
-    if not link_header:
-        return None
-    for part in link_header.split(","):
-        url_part, *params = part.strip().split(";")
-        url = url_part.strip().strip("<>")
-        for param in params:
-            if param.strip() == 'rel="next"':
-                return url
-    return None
+    """Backward-compatible alias for tests and older imports."""
+    from github_pagination import parse_next_link
+
+    return parse_next_link(link_header)
 
 
 # ── High-level typed wrappers ────────────────────────────────────────────────

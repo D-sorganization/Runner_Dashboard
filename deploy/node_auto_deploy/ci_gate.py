@@ -38,6 +38,7 @@ NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
         "preview",  # Taxonomy rollout dry-run
         "apply",  # Taxonomy rollout apply
         "slo",  # CI Queue SLO Check (schedule); queue health, not code quality
+        "shepherd",  # Merge shepherd pass (schedule); bot maintenance, not code quality
     }
 )
 

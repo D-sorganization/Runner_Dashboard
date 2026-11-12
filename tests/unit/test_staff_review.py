@@ -120,6 +120,12 @@ class TestVerdictParser:
         assert v.pr_number == 42
         assert v.outcome == "review approve #42"
 
+    def test_valid_verdict_approve_includes_head_sha(self) -> None:
+        line = "STAFF_RESULT: review approve #42 @0000ab010000"
+        v = parse_review_verdict(line)
+        assert v.head_sha == "0000ab010000"
+        assert v.outcome == "review approve #42 @0000ab0"
+
     def test_valid_verdict_changes(self) -> None:
         line = "Everything tested.\nSTAFF_RESULT: review changes #1803\n"
         v = parse_review_verdict(line)

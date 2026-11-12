@@ -99,7 +99,7 @@ def start_scheduler() -> None:
             from staff.reconcile import reconcile_orphaned_runs
             from staff.runner import get_runner
 
-            reconcile_orphaned_runs(get_runner())
+            reconcile_orphaned_runs(get_runner(), requeue_queued=True)
         except Exception as exc:  # noqa: BLE001
             log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
         if sched is not None:
