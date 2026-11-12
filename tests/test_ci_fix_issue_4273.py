@@ -10,10 +10,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
-from ci_fix_attempt_store import CIFixAttemptStore, DEFAULT_PER_HEAD_CAP, DEFAULT_PER_PR_CAP
+from ci_fix_attempt_store import DEFAULT_PER_HEAD_CAP, DEFAULT_PER_PR_CAP, CIFixAttemptStore
 from ci_fix_dispatch import route_ci_fix
-from ci_fix_locks import CIFixLockManager, DEFAULT_LOCK_TTL_SECONDS
-from ci_fix_service import CIFixAttemptCapError, CIFixDispatchRequest, _route_and_launch
+from ci_fix_locks import DEFAULT_LOCK_TTL_SECONDS, CIFixLockManager
+from ci_fix_service import (
+    CIFixAttemptCapError,
+    CIFixDispatchRequest,
+    CIFixLaunchUnavailableError,
+    _route_and_launch,
+    dispatch_ci_fix,
+)
 from identity import Principal
 
 
@@ -81,6 +87,93 @@ async def test_stale_head_blocks_attempt_reservation(tmp_path: Path, monkeypatch
 
     with pytest.raises(CIFixAttemptCapError, match="per-head"):
         await _route_and_launch(req, caller, "sess2", FakeLauncher())
+
+
+@pytest.mark.asyncio
+async def test_dispatch_cursor_cloud_handoff_does_not_leave_pr_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = CIFixAttemptStore(tmp_path / "attempts.db")
+    monkeypatch.setattr("ci_fix_service.global_ci_fix_attempt_store", lambda: store)
+    locks = CIFixLockManager(path=tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.GLOBAL_CI_FIX_LOCK_MGR", locks)
+    monkeypatch.setattr(
+        "ci_fix_service.available_providers",
+        lambda: dict.fromkeys(("claude", "codex", "antigravity"), True),
+    )
+
+    req = CIFixDispatchRequest(
+        repo="Runner_Dashboard",
+        pr_number=88,
+        branch="cursor/ci-fix",
+        head_sha="cccc",
+        log_tail="FAILED t.py::handoff_lock",
+    )
+    caller = Principal(id="t", type="bot", name="t", scopes=["remediation.dispatch"])
+
+    with patch("scripts.cursor_cloud_handoff.emit_handoff_checkin") as emit:
+        emit.return_value = {"ok": True, "delivered": 1}
+        result = await dispatch_ci_fix(req, caller, launcher=lambda *_a: {})
+        assert result["launched_provider"] == "cursor_cloud"
+        assert result["staff_run_id"] == ""
+
+    assert not locks.is_locked("Runner_Dashboard", 88)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_staff_run_still_attaches_per_pr_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = CIFixAttemptStore(tmp_path / "attempts.db")
+    monkeypatch.setattr("ci_fix_service.global_ci_fix_attempt_store", lambda: store)
+    locks = CIFixLockManager(path=tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.GLOBAL_CI_FIX_LOCK_MGR", locks)
+    monkeypatch.setattr(
+        "ci_fix_service.available_providers",
+        lambda: dict.fromkeys(("claude", "codex", "antigravity"), True),
+    )
+
+    req = CIFixDispatchRequest(
+        repo="Runner_Dashboard",
+        pr_number=89,
+        branch="feat/fix",
+        head_sha="dddd",
+        log_tail="FAILED t.py::attach",
+    )
+    caller = Principal(id="t", type="bot", name="t", scopes=["remediation.dispatch"])
+
+    class FakeLauncher:
+        async def __call__(self, cmd: object, _caller: Principal) -> dict:
+            return {"run": {"id": "run-staff-89", "provider": "claude", "model": "m"}}
+
+    result = await dispatch_ci_fix(req, caller, launcher=FakeLauncher())
+    assert result["staff_run_id"] == "run-staff-89"
+    assert locks.get_lock_info("Runner_Dashboard", 89)["run_id"] == "run-staff-89"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_exception_still_releases_per_pr_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = CIFixAttemptStore(tmp_path / "attempts.db")
+    monkeypatch.setattr("ci_fix_service.global_ci_fix_attempt_store", lambda: store)
+    locks = CIFixLockManager(path=tmp_path / "locks.db")
+    monkeypatch.setattr("ci_fix_service.GLOBAL_CI_FIX_LOCK_MGR", locks)
+    monkeypatch.setattr(
+        "ci_fix_service.available_providers",
+        lambda: {"claude": True, "codex": False, "antigravity": False},
+    )
+
+    req = CIFixDispatchRequest(
+        repo="Runner_Dashboard",
+        pr_number=90,
+        branch="feat/fix",
+        head_sha="eeee",
+        workflow_name="Lint",
+        log_tail="ruff failed",
+    )
+    caller = Principal(id="t", type="bot", name="t", scopes=["remediation.dispatch"])
+
+    with pytest.raises(CIFixLaunchUnavailableError):
+        await dispatch_ci_fix(req, caller, launcher=lambda *_a: {})
+
+    assert not locks.is_locked("Runner_Dashboard", 90)
 
 
 @pytest.mark.asyncio
