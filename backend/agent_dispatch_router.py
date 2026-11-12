@@ -752,15 +752,45 @@ async def dispatch_to_issues(
             settled = await asyncio.shield(gather_task)
         except asyncio.CancelledError:
             caller_cancelled = True
-            settled = await gather_task
+            while not gather_task.done():
+                try:
+                    settled = await asyncio.shield(gather_task)
+                    break
+                except asyncio.CancelledError:
+                    caller_cancelled = True
+            if settled is None and gather_task.done():
+                settled = gather_task.result()
     finally:
-        if settled is None and gather_task.done():
-            settled = gather_task.result()
-        if settled is not None:
-            _release_bulk_overlap_sessions(filtered_targets, overlap_sessions, settled)
+        try:
+            while settled is None and overlap_sessions and not gather_task.done():
+                try:
+                    await asyncio.shield(gather_task)
+                except asyncio.CancelledError:
+                    caller_cancelled = True
+            if settled is None and gather_task.done():
+                try:
+                    settled = gather_task.result()
+                except asyncio.CancelledError:
+                    settled = None
+            if settled is not None:
+                _release_bulk_overlap_sessions(filtered_targets, overlap_sessions, settled)
+                overlap_sessions.clear()
+        finally:
+            for repo, num in filtered_targets:
+                session_id = overlap_sessions.pop((repo, num), None)
+                if not session_id:
+                    continue
+                dequeued = dispatch_queue_manager.release_session(
+                    session_id,
+                    outcome="dispatch_failed",
+                )
+                log_dequeued(dequeued)
 
     if caller_cancelled:
         raise asyncio.CancelledError()
+
+    if settled is None:
+        raise RuntimeError("bulk issue dispatch: gather finished without a settled result")
 
     first_exc: BaseException | None = None
     for item in settled:
