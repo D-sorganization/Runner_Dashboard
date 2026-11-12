@@ -229,7 +229,7 @@ def get_store() -> ClaimStateStore:
         return _store
 
 
-def reset_store() -> None:
+def reset_claim_state_store() -> None:
     """Forget the singleton and close any open connection (tests)."""
     global _store
     with _store_lock:

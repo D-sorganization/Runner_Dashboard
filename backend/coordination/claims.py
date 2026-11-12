@@ -130,7 +130,7 @@ def reset_locks() -> None:
     """Forget per-issue locks (tests)."""
     with _locks_guard:
         _issue_locks.clear()
-    claim_state_mod.reset_store()
+    claim_state_mod.reset_claim_state_store()
 
 
 @contextmanager

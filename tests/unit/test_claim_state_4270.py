@@ -32,7 +32,7 @@ def test_unheld_to_held_is_legal_other_holder_is_not() -> None:
 def test_acquire_compare_and_set_second_concurrent_loses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     db = tmp_path / "claim_state.sqlite3"
     monkeypatch.setenv("CLAIM_STATE_DB", str(db))
-    claim_state.reset_store()
+    claim_state.reset_claim_state_store()
     store = claim_state.get_store()
     repo, issue = "Tools", 4270
     barrier = threading.Barrier(2)
@@ -58,7 +58,7 @@ def test_acquire_compare_and_set_second_concurrent_loses(tmp_path: Path, monkeyp
 @pytest.mark.unit
 def test_acquire_renewal_same_agent_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAIM_STATE_DB", str(tmp_path / "claim_state.sqlite3"))
-    claim_state.reset_store()
+    claim_state.reset_claim_state_store()
     store = claim_state.get_store()
     first = store.try_acquire("Tools", 1, agent="codex", session="codex-1")
     second = store.try_acquire("Tools", 1, agent="codex", session="codex-1")
@@ -70,7 +70,7 @@ def test_acquire_renewal_same_agent_session(tmp_path: Path, monkeypatch: pytest.
 @pytest.mark.unit
 def test_release_clears_durable_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAIM_STATE_DB", str(tmp_path / "claim_state.sqlite3"))
-    claim_state.reset_store()
+    claim_state.reset_claim_state_store()
     store = claim_state.get_store()
     assert store.try_acquire("Tools", 9, agent="codex", session="codex-9").acquired
     store.release("Tools", 9, agent="codex", session="codex-9")
