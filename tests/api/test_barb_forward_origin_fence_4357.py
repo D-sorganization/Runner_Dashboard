@@ -91,9 +91,7 @@ def test_origin_fence_trust_skips_local_store_fence(
     origin_store.checkout_lease(scope=SCOPE, holder="agent-grok")
     claim = _claim(1)
     header = sign_barb_origin_fence(claim, origin_node="Desk")
-    trusted = apply_origin_fence_trust(
-        claim, header, trusted_forwarder=True, expected_origin_node="Desk"
-    )
+    trusted = apply_origin_fence_trust(claim, header, trusted_forwarder=True, expected_origin_node="Desk")
     assert trusted is not None and trusted.lease_validated_at_origin
     with barb_write_fence(trusted, surface="t", target="t", principal="p", store=peer_store):
         pass
@@ -147,9 +145,7 @@ def test_origin_fence_rejects_replayed_attestation(monkeypatch: pytest.MonkeyPat
     header = sign_barb_origin_fence(claim, origin_node="Desk")
     assert verify_barb_origin_fence(header, claim, expected_origin_node="Desk")
     assert not verify_barb_origin_fence(header, claim, expected_origin_node="Desk")
-    replayed = apply_origin_fence_trust(
-        claim, header, trusted_forwarder=True, expected_origin_node="Desk"
-    )
+    replayed = apply_origin_fence_trust(claim, header, trusted_forwarder=True, expected_origin_node="Desk")
     assert replayed is not None and not replayed.lease_validated_at_origin
 
 
@@ -164,9 +160,7 @@ def test_origin_fence_rejects_epoch_before_hub_takeover(
     header = sign_barb_origin_fence(claim_old, origin_node="Desk")
     peer_store.checkout_lease(scope=SCOPE, holder="agent-takeover", force=True)
     assert int(peer_store.list_leases(include_expired=True)[0]["epoch"]) == 2
-    trusted = apply_origin_fence_trust(
-        claim_old, header, trusted_forwarder=True, expected_origin_node="Desk"
-    )
+    trusted = apply_origin_fence_trust(claim_old, header, trusted_forwarder=True, expected_origin_node="Desk")
     assert trusted is not None and not trusted.lease_validated_at_origin
 
 

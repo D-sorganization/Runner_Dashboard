@@ -69,9 +69,13 @@ class _OriginFenceReplayGuard:
         try:
             from staff.barb_continuity import get_barb_continuity_store  # noqa: PLC0415
 
-            row = get_barb_continuity_store()._conn.execute(  # noqa: SLF001
-                "SELECT epoch FROM barb_scoped_leases WHERE scope = ?", (norm,)
-            ).fetchone()
+            row = (
+                get_barb_continuity_store()
+                ._conn.execute(  # noqa: SLF001
+                    "SELECT epoch FROM barb_scoped_leases WHERE scope = ?", (norm,)
+                )
+                .fetchone()
+            )
             if row is not None:
                 floor = max(floor, int(row["epoch"]))
         except Exception:  # noqa: BLE001
