@@ -20,6 +20,39 @@ from typing import Any
 
 _SIGKILL = getattr(signal, "SIGKILL", 9)
 
+_POOL_CONTROLLER_IMPORTS: tuple[Any, Any, Any, Any] | None = None
+
+
+def _pool_controller_imports() -> tuple[Any, Any, Any, Any] | None:
+    """Lazy-load pool_controller helpers when RUNNER_DASHBOARD_ROOT is set."""
+    global _POOL_CONTROLLER_IMPORTS
+    if _POOL_CONTROLLER_IMPORTS is not None:
+        return _POOL_CONTROLLER_IMPORTS
+    root = Path(os.environ.get("RUNNER_DASHBOARD_ROOT", "/opt/Runner_Dashboard"))
+    backend = root / "backend"
+    if not backend.is_dir():
+        _POOL_CONTROLLER_IMPORTS = None
+        return None
+    if str(backend) not in sys.path:
+        sys.path.insert(0, str(backend))
+    try:
+        from pool_controller.config import pool_controller_enabled
+        from pool_controller.lane_file import transition_lane_file, write_lane_file
+        from pool_controller.lane_state import LaneState
+    except Exception:
+        _POOL_CONTROLLER_IMPORTS = None
+        return None
+    _POOL_CONTROLLER_IMPORTS = (pool_controller_enabled, write_lane_file, transition_lane_file, LaneState)
+    return _POOL_CONTROLLER_IMPORTS
+
+
+def _pool_controller_lane_files_enabled() -> bool:
+    loaded = _pool_controller_imports()
+    if loaded is None:
+        return False
+    enabled_fn, *_ = loaded
+    return bool(enabled_fn())
+
 
 def _lane_env() -> dict[str, str]:
     env = dict(os.environ)
@@ -233,6 +266,8 @@ def _update_partial_manifest(log_dir: Path, launched: list[tuple[str, int]], pid
 
 def _rollback_launched(log_dir: Path, newly_spawned: list[tuple[str, int]]) -> None:
     """Stop only workers newly created in this spawn attempt (#4103)."""
+    pc = _pool_controller_imports() if _pool_controller_lane_files_enabled() else None
+    _, _write_lane, _transition_lane, LaneState = pc if pc else (None, None, None, None)
     cleanup_failures: dict[str, dict[str, Any]] = {}
     for session, pid in reversed(newly_spawned):
         if pid <= 1:
@@ -270,6 +305,13 @@ def _rollback_launched(log_dir: Path, newly_spawned: list[tuple[str, int]]) -> N
                     receipt_path.write_text(json.dumps(rec, indent=2, sort_keys=True), encoding="utf-8")
                 except Exception:
                     pass
+            if _transition_lane is not None and LaneState is not None:
+                lane_path = log_dir / f"{session}.lane.json"
+                if lane_path.is_file():
+                    try:
+                        _transition_lane(log_dir, session, LaneState.ROLLED_BACK, pid=pid)
+                    except Exception:
+                        pass
             (log_dir / f"{session}.pid").unlink(missing_ok=True)
             (log_dir / f"{session}.exit").unlink(missing_ok=True)
         else:
@@ -350,6 +392,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     plan: list[dict[str, Any]] = json.load(sys.stdin)
     env = _lane_env()
+    use_lane_files = _pool_controller_lane_files_enabled()
+    pc = _pool_controller_imports() if use_lane_files else None
+    _, write_lane_file, transition_lane_file, LaneState = pc if pc else (None, None, None, None)
     out: dict[str, int] = {}
     newly_spawned: list[tuple[str, int]] = []
     recovered: list[tuple[str, int]] = []
@@ -379,12 +424,28 @@ def main(argv: list[str] | None = None) -> int:
             if existing_pid is not None:
                 pid = existing_pid
                 recovered.append((session, pid))
+                if write_lane_file is not None and LaneState is not None:
+                    write_lane_file(log_dir, session, role, LaneState.RECOVERED, pid=pid)
                 _write_lane_receipt(log_dir, session, role, pid, status="recovered")
             else:
                 if rejected_candidate_pid is not None:
                     _retain_rejected_candidate(log_dir, session, rejected_candidate_pid)
-                pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
+                if write_lane_file is not None and LaneState is not None:
+                    write_lane_file(log_dir, session, role, LaneState.PENDING)
+                try:
+                    pid = _spawn_one(lane_sh, session, log_path, prompt_path, pidfile, env)
+                except Exception:
+                    if transition_lane_file is not None and LaneState is not None:
+                        lane_path = log_dir / f"{session}.lane.json"
+                        if lane_path.is_file():
+                            try:
+                                transition_lane_file(log_dir, session, LaneState.ROLLED_BACK)
+                            except Exception:
+                                pass
+                    raise
                 newly_spawned.append((session, pid))
+                if transition_lane_file is not None and LaneState is not None:
+                    transition_lane_file(log_dir, session, LaneState.ACTIVE, pid=pid)
                 _write_lane_receipt(log_dir, session, role, pid, status="active")
 
             if role == "supervisor":
