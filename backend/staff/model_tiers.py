@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from model_catalog import catalog_models_for_provider
+from model_catalog import DEFAULT_SEED_CATALOG, catalog_models_for_provider, normalize_catalog_provider
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.provider_defaults import default_model_for_provider
 
@@ -22,6 +22,12 @@ TierName = Literal["routine", "standard", "complex"]
 TIER_NAMES: tuple[TierName, ...] = ("routine", "standard", "complex")
 
 _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "staff_model_tiers.json"
+
+# ``models_by_tier.*.anthropic-api`` uses ``sonnet`` at every tier: ``allowed_models_for_provider``
+# only admits catalog ids, and the anthropic-api adapter/catalog exposes ``sonnet`` today.
+# ``backend/staff/pricing.py`` still lists ``opus-5`` as the billing default for cost estimates,
+# but that id is not in the launch catalog yet — wiring tier escalation to opus belongs in #3123
+# / #4267 follow-on once the adapter catalog includes it.
 
 # Claude Code CLI short names used in staff (``review.py``, ``test_staff_chat.py``), plus
 # claude-opus-5-5 (the Grok-offload epic's #3295 S2 default role-override model). Validation
@@ -35,6 +41,11 @@ def allowed_models_for_provider(provider_id: str, adapter: ProviderAdapter | Non
     """CLI-accepted model ids for validation (fail closed on unknown)."""
     adapter = adapter or ADAPTERS.get(provider_id)
     allowed: set[str] = set(catalog_models_for_provider(provider_id))
+    canonical = normalize_catalog_provider(provider_id)
+    if canonical:
+        # Tier tables are static; always accept the seed catalog even when a live CLI
+        # probe narrows the in-memory cache (common on CI runners).
+        allowed.update(DEFAULT_SEED_CATALOG.get(canonical, ()))
     if adapter is not None:
         allowed.update(adapter.models)
         if adapter.default_model:

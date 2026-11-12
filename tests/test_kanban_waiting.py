@@ -60,3 +60,50 @@ def test_build_waiting_column_includes_hold_and_issue(tmp_path: Path, monkeypatc
     assert out["column"] == "waiting_on_dieter"
     kinds = {item["source_kind"] for item in out["items"]}
     assert kinds >= {"hold", "issue"}
+
+
+def test_build_waiting_column_links_approval_for_qualified_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coordination import claims as claims_mod  # noqa: PLC0415
+    from staff.conversation_models import ActionProposalRecord  # noqa: PLC0415
+
+    holds_path = tmp_path / "holds.json"
+    HoldsList(path=holds_path).replace([_schedule_hold("rd-2657", "deploy hold").to_dict()])
+    monkeypatch.setenv("COORDINATION_REPOS", "Runner_Dashboard")
+
+    class _Store:
+        def list_proposals(self, **_: Any) -> list[ActionProposalRecord]:
+            return [
+                ActionProposalRecord(
+                    id="prop-1",
+                    message_id="msg-1",
+                    thread_id="thread-1",
+                    action="staff.dispatch",
+                    params={"repo": RD, "issue": 88},
+                    state="proposed",
+                )
+            ]
+
+    def fetch(path: str) -> Any:
+        if path == f"/repos/{RD}/issues?state=open&per_page=100":
+            return [
+                {
+                    "number": 88,
+                    "state": "open",
+                    "html_url": f"https://github.com/{RD}/issues/88",
+                    "labels": [{"name": "hold:rd-2657"}],
+                }
+            ]
+        return []
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", fetch)
+
+    out = build_waiting_on_dieter_column(
+        repo="Runner_Dashboard",
+        holds_list=HoldsList(path=holds_path),
+        conversation_store=_Store(),  # type: ignore[arg-type]
+    )
+    label = "Runner_Dashboard#88"
+    issue_item = next(i for i in out["items"] if i["source_kind"] == "issue" and i["source_label"] == label)
+    assert issue_item["approval_url"] == "/staff?thread=thread-1"

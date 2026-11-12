@@ -36,6 +36,12 @@ log = logging.getLogger("dashboard.kanban.waiting")
 SourceKind = Literal["hold", "issue", "approval"]
 
 
+def _bare_repo_name(repo: str) -> str:
+    """Normalize ``owner/name`` and bare slugs to the repository name segment."""
+    text = str(repo).strip().lstrip("/")
+    return text.rsplit("/", 1)[-1] if text else ""
+
+
 def _label_names(issue: dict[str, Any]) -> list[str]:
     raw = issue.get("labels") or []
     names: list[str] = []
@@ -160,7 +166,7 @@ def _proposal_issue_tuple(params: Any) -> tuple[str, int] | None:
     issue = params.get("issue") or params.get("issue_number") or params.get("number")
     if repo and issue is not None:
         try:
-            return str(repo).strip(), int(issue)
+            return _bare_repo_name(str(repo)), int(issue)
         except (TypeError, ValueError):
             return None
     return None
@@ -278,7 +284,7 @@ def build_waiting_on_dieter_column(
             number = issue.get("number")
             if not isinstance(number, int):
                 continue
-            approval = approval_by_issue.get((repo_name, number))
+            approval = approval_by_issue.get((_bare_repo_name(repo_name), number))
             approval_reason = approval[0] if approval else None
             snapshot = _work_item_snapshot(
                 "D-sorganization",

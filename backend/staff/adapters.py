@@ -36,6 +36,7 @@ from staff.adapter_policies import (
     grok_unattended_flags,
 )
 from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
+from staff.deepseek_provider import deepseek_available, deepseek_environment
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
@@ -216,8 +217,10 @@ class ProviderAdapter:
             )
         allowed = claude_allowed_tools(read_only_tools)
         chosen_model = model or self.default_model or default_model_for_provider(self.provider_id) or ""
+        if self.provider_id == "deepseek-api" and chosen_model not in self.models:
+            raise ValueError("unsupported DeepSeek model")
         read_only = list(_CHAT_READ_ONLY_FLAGS[self.provider_id])
-        if self.provider_id in ("claude", "claude-ollama", "anthropic-api"):
+        if self.provider_id in ("claude", "claude-ollama", "anthropic-api", "deepseek-api"):
             cmd = [
                 self.executable,
                 "-p",
@@ -227,6 +230,9 @@ class ProviderAdapter:
                 "--verbose",
             ]
             cmd += read_only + ["--disallowedTools", ",".join(CLAUDE_WRITE_TOOLS)]
+            if self.provider_id == "deepseek-api":
+                # Explicit allowlist also excludes separately billed web search/fetch.
+                cmd += ["--tools", ",".join(read_only_tools)]
             if allowed:
                 cmd += ["--allowedTools", ",".join(allowed)]
             if session_id:
@@ -370,6 +376,19 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         ),
     ),
     "anthropic-api": _build_anthropic_api_adapter(ProviderAdapter, _UNATTENDED_CLAUDE),
+    "deepseek-api": ProviderAdapter(
+        provider_id="deepseek-api",
+        label="DeepSeek API (explicit opt-in)",
+        executable="claude",
+        argv=_UNATTENDED_CLAUDE,
+        default_model="deepseek-flash",
+        models=("deepseek-flash", "deepseek-v4-pro"),
+        json_lines=True,
+        unattended=False,
+        installed_override=deepseek_available,
+        env_builder=deepseek_environment,
+        notes="Paid API; requires explicit host enablement and provider selection; chat only.",
+    ),
     "codex": ProviderAdapter(
         provider_id="codex",
         label="Codex CLI",

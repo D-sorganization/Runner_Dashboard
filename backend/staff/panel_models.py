@@ -158,6 +158,10 @@ class PanelCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _unique_names(self) -> PanelCreateRequest:
+        if not self.confirm_cost and (
+            self.moderator_provider == "deepseek-api" or any(e.provider == "deepseek-api" for e in self.experts)
+        ):
+            raise ValueError("DeepSeek API is paid and requires confirm_cost")
         names = [e.name.strip().lower() for e in self.experts]
         if len(set(names)) != len(names):
             raise ValueError("expert names must be unique (case-insensitive)")
