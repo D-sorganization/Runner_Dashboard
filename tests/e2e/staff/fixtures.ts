@@ -8,7 +8,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Page, type Route } from "@playwright/test";
 import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 import { NETWORK_CHANGED, isNetworkChanged, networkChangedMarker, retryAllowed } from "./networkChangedRetry";
 
@@ -89,23 +89,35 @@ export async function send(page: Page, text: string, options?: SendOptions): Pro
   const confirmActions = options?.confirmActions;
   const messagesRoute = "**/api/v1/staff/threads/*/messages";
   if (confirmActions?.length) {
-    await page.route(messagesRoute, async (route) => {
-      if (route.request().method() !== "POST") {
+    const injectConfirm = async (route: import("@playwright/test").Route) => {
+      const request = route.request();
+      if (request.method() !== "POST") {
         await route.fallback();
         return;
       }
-      const postData = route.request().postDataJSON() as { body: string; meta?: Record<string, unknown> };
-      await route.continue({
+      const postData = request.postDataJSON() as { body: string; meta?: Record<string, unknown> };
+      const response = await route.fetch({
         postData: JSON.stringify({
           ...postData,
           meta: { ...(postData.meta ?? {}), confirm_actions: confirmActions },
         }),
       });
-    });
+      await route.fulfill({ response });
+    };
+    await page.route(messagesRoute, injectConfirm);
   }
   await page.getByRole("textbox", { name: "Staff conversation input" }).fill(text);
+  const messagePosted =
+    confirmActions?.length &&
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/v1/staff/threads/") &&
+        response.url().endsWith("/messages"),
+    );
   await page.getByRole("button", { name: "Send message" }).click();
-  if (confirmActions?.length) {
+  if (messagePosted) {
+    await messagePosted;
     await page.unroute(messagesRoute);
   }
 }
