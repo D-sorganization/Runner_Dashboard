@@ -49,3 +49,28 @@ if [[ -n "${BARB_LANE_PROXY_PORT:-}" ]]; then
     export http_proxy="${http_proxy:-${HTTP_PROXY}}"
     export https_proxy="${https_proxy:-${HTTPS_PROXY}}"
 fi
+
+# Optional step-3 rollout (#3879): exchange static bootstrap bearer for per-run JWT.
+# Default off; on failure keep the bootstrap token (no mid-migration lockout).
+if [[ "${RUN_JWT_AGENT_SESSION:-0}" == "1" ]]; then
+    _rd_root="${RUNNER_DASHBOARD_ROOT:-}"
+    if [[ -z "${_rd_root}" ]]; then
+        _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        _rd_root="$(cd "${_script_dir}/../.." && pwd)"
+    fi
+    _jwt_helper="${_rd_root}/scripts/fleet_run_jwt.py"
+    if command -v python3 >/dev/null 2>&1 \
+        && [[ -f "${_jwt_helper}" ]] \
+        && [[ -n "${FLEET_API_TOKEN:-}" ]] \
+        && [[ -n "${FLEET_RUN_JWT_RUN_ID:-}" ]] \
+        && [[ -n "${FLEET_RUN_JWT_CALLER_NODE:-}" ]]; then
+        _principal="${FLEET_RUN_JWT_PRINCIPAL_ID:-${FLEET_AGENT:-}}"
+        if [[ -n "${_principal}" ]]; then
+            _run_jwt="$(python3 "${_jwt_helper}" token 2>/dev/null)" || _run_jwt=""
+            if [[ -n "${_run_jwt}" ]]; then
+                export FLEET_API_TOKEN="${_run_jwt}"
+            fi
+        fi
+    fi
+    unset _rd_root _script_dir _jwt_helper _principal _run_jwt
+fi
