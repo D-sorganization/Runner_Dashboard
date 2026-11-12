@@ -17,6 +17,7 @@ import activity_producers
 import pytest
 from activity import ActivityStore
 from coordination import claims as claims_mod
+from coordination import job_board_lease
 from coordination import jobs as jobs_mod
 from coordination.board import RMScriptError
 from staff import claim_guard
@@ -71,20 +72,24 @@ def test_claim_lifecycle_job_board_touches_six_store_classes(
     rm: FakeRM, monkeypatch: pytest.MonkeyPatch, activity_store: ActivityStore
 ) -> None:
     """#4270 B-24: claim success today fans out across RM GitHub, gh evidence, memory, and activity."""
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(ISSUE))
+    issue_fetch = f"/repos/D-sorganization/{REPO}/issues/{ISSUE}"
+    evidence_paths: list[str] = []
+    fetch_issue = _claim_fetch(ISSUE)
+
+    def spy_evidence_fetch(path: str) -> Any:
+        evidence_paths.append(path)
+        return fetch_issue(path)
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", spy_evidence_fetch)
+    rm.respond("check_agent_claim", claim_status(False))
     rm.respond("post_agent_lease", lease_result(agent=AGENT))
-    touched: dict[str, bool] = {
-        "rm_check": False,
-        "rm_post": False,
-        "gh_evidence": False,
-        "in_memory_fence": False,
-        "in_memory_ttl": False,
-        "activity_log": False,
-    }
+    rm_check_calls = {"n": 0}
+    lease_posted = {"n": 0}
+    real_check = claims_mod.check
 
     def check(repo: str, issue: int) -> dict[str, Any]:
-        touched["rm_check"] = True
-        if touched["rm_post"]:
+        rm_check_calls["n"] += 1
+        if lease_posted["n"] > 0:
             return {
                 "available": True,
                 "held": True,
@@ -93,23 +98,39 @@ def test_claim_lifecycle_job_board_touches_six_store_classes(
                 "reason": "active lease",
                 "expires_at": "2026-11-11T12:00:00+00:00",
             }
-        return {"available": True, "held": False, "agent": "", "session": "", "reason": "", "expires_at": None}
+        return real_check(repo, issue)
+
+    ttl_bookkeeping: list[dict[str, Any]] = []
+    real_remember = job_board_lease.remember_lease
+
+    def remember_lease(*args: Any, **kwargs: Any) -> None:
+        ttl_bookkeeping.append({"args": args, "kwargs": kwargs})
+        real_remember(*args, **kwargs)
 
     real_post = claims_mod.post_lease
 
     def post_lease(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        touched["rm_post"] = True
+        lease_posted["n"] += 1
         return real_post(*args, **kwargs)
 
     monkeypatch.setattr(claims_mod, "check", check)
     monkeypatch.setattr(claims_mod, "post_lease", post_lease)
+    monkeypatch.setattr(job_board_lease, "remember_lease", remember_lease)
 
     before = len(activity_store.read(session_id=f"{AGENT}-{ISSUE}").items)
     result = jobs_mod.claim_job(REPO, ISSUE, agent=AGENT, session=f"{AGENT}-{ISSUE}", intent="characterize")
-    touched["gh_evidence"] = True  # _assert_claimable / aging checks
-    touched["in_memory_fence"] = jobs_mod._current_fence(REPO, ISSUE) == result["fence"] > 0
-    touched["in_memory_ttl"] = True
-    touched["activity_log"] = len(activity_store.read(session_id=f"{AGENT}-{ISSUE}").items) > before
+    after = len(activity_store.read(session_id=f"{AGENT}-{ISSUE}").items)
+
+    rm_names = [name for name, _ in rm.calls()]
+    touched = {
+        "rm_check": rm_check_calls["n"] >= 1 and "check_agent_claim" in rm_names,
+        "rm_post": "post_agent_lease" in rm_names,
+        "gh_evidence": issue_fetch in evidence_paths,
+        "in_memory_fence": jobs_mod._current_fence(REPO, ISSUE) == result["fence"] > 0,
+        "in_memory_ttl": len(ttl_bookkeeping) == 1
+        and ttl_bookkeeping[0]["kwargs"].get("session") == f"{AGENT}-{ISSUE}",
+        "activity_log": after > before,
+    }
 
     assert result["claimed"] is True
     assert all(touched.values()), touched
@@ -173,24 +194,55 @@ def test_current_behavior_in_process_lock_serializes_claim_api_posts(
 def test_two_unserialized_acquires_both_succeed_without_process_lock(
     rm: FakeRM, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Simulates two workers that share RM but not this process's ``hold_issue`` lock."""
+    """Simulates two workers that share RM but not this process's ``_issue_lock`` serialization."""
+    rm.respond("check_agent_claim", claim_status(False))
     rm.respond("post_agent_lease", lease_result(agent=AGENT))
+    monkeypatch.setattr(claims_mod, "evidence_fetch", lambda _path: [])
+
+    # Fresh lock per ``claim()`` call — no cross-thread serialization (multi-worker / multi-process).
+    monkeypatch.setattr(claims_mod, "_issue_lock", lambda _repo, _issue: threading.Lock())
+
+    store_guard = threading.Lock()
+    durable_holder: dict[str, Any] = {"session": "", "posted": 0}
+    real_check = claims_mod.check
+    real_post = claims_mod._post
+
+    def shared_check(repo: str, issue: int) -> dict[str, Any]:
+        with store_guard:
+            if durable_holder["posted"] > 0:
+                return {
+                    "available": True,
+                    "held": True,
+                    "agent": AGENT,
+                    "session": durable_holder["session"],
+                    "reason": "lease",
+                    "expires_at": None,
+                }
+        return real_check(repo, issue)
+
+    def shared_post(repo: str, issue: int, agent: str, session: str, intent: str) -> dict[str, Any]:
+        result = real_post(repo, issue, agent, session, intent)
+        with store_guard:
+            durable_holder["posted"] += 1
+            durable_holder["session"] = session
+        return result
+
+    monkeypatch.setattr(claims_mod, "check", shared_check)
+    monkeypatch.setattr(claims_mod, "_post", shared_post)
+
     barrier = threading.Barrier(2)
     outcomes: list[str] = []
-
-    def fake_check(repo: str, issue: int) -> dict[str, Any]:
-        return {"available": True, "held": False, "agent": "", "session": "", "reason": "", "expires_at": None}
-
-    monkeypatch.setattr(claims_mod, "check", fake_check)
+    outcomes_guard = threading.Lock()
 
     def racer(session: str) -> None:
         barrier.wait(5)
-        status = claims_mod.check(REPO, ISSUE)
-        if status.get("held"):
-            outcomes.append("held")
-            return
-        claims_mod._post(REPO, ISSUE, AGENT, session, "race")
-        outcomes.append("ok")
+        try:
+            claims_mod.claim(REPO, ISSUE, agent=AGENT, session=session, intent="race")
+            with outcomes_guard:
+                outcomes.append("ok")
+        except claims_mod.ClaimHeldError:
+            with outcomes_guard:
+                outcomes.append("held")
 
     threads = [threading.Thread(target=racer, args=(f"{AGENT}-{suffix}",)) for suffix in ("x", "y")]
     for thread in threads:
