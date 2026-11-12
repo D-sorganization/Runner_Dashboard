@@ -101,12 +101,13 @@ def test_legacy_fallback_resolves_target_provider_model() -> None:
         mp.setattr("staff.retry.should_retry", lambda *a, **k: (False, "exhausted"))
         mp.setattr(
             "staff.retry.next_fallback_provider",
-            lambda role, provider, usable=None: "claude" if provider == "codex" else None,
+            lambda role, provider, usable=None, visited=None: "claude" if provider == "codex" else None,
         )
         mp.setattr("staff.failover_dispatch.try_chain_failover", lambda *a, **k: False)
         mp.setattr("staff.provider_fallback.try_declarative_fallback", lambda *a, **k: False)
         mp.setattr("staff.retry._schedule", lambda *a, **k: None)
         mp.setattr("staff.retry._claim", lambda store, rec: True)
+        mp.setattr("staff.claim_guard.scheduler_blocker", lambda *_a, **_k: "")
 
         scheduled = handle_post_execution_retry(runner, latest, plan)
     assert scheduled is True
