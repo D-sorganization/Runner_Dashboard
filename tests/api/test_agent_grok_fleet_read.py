@@ -102,10 +102,11 @@ def test_grok_ingested_with_fleet_read_and_reads_priorities(
     assert identity.principal_has_scope(prin, "memory.read")
     assert identity.principal_has_scope(prin, "memory.write")
     assert identity.principal_has_scope(prin, "staff.dispatch")
-    # Barb peer scopes (#3648, owner decision #3647), never admin (#3687).
+    # Barb peer scopes (#3648): barb preset operator surface (#4148), not wildcard admin role.
     assert identity.principal_has_scope(prin, "priorities.write")
     assert identity.principal_has_scope(prin, "staff.holds.write")
-    assert not identity.principal_has_scope(prin, "staff.admin")
+    assert identity.principal_has_scope(prin, "staff.admin")
+    assert not identity.principal_has_scope(prin, "admin")
     assert "admin" not in prin.roles
 
     resp = remote_client.get("/api/priorities", headers=_auth(grok_env["grok"]))

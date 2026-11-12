@@ -139,6 +139,90 @@ describe("OperationsDeploySection", () => {
     expect(await screen.findByText(/Deploy signal dispatched/i)).toBeInTheDocument();
   });
 
+  describe("useSubmit deploy guard (#4276)", () => {
+    it("double-click Execute Deploy sends one POST", async () => {
+      const fetchMock = mockDeployFetch();
+      render(<OperationsDeploySection />);
+      await screen.findAllByText("node-a");
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\. restart_runner/i), {
+        target: { value: "restart_runner" },
+      });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Confirm action/i }));
+      const btn = screen.getByRole("button", { name: /Execute Deploy/i });
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      await waitFor(() => {
+        const deployCalls = fetchMock.mock.calls.filter(
+          (c) => String(c[0]) === "/api/fleet/orchestration/deploy",
+        );
+        expect(deployCalls).toHaveLength(1);
+      });
+    });
+
+    it("HTTP 500 shows failure alert, not a success message", async () => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+        const urlStr = String(url);
+        if (urlStr === "/api/deployment/state") {
+          return Promise.resolve(jsonResponse(DEPLOYMENT_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration") {
+          return Promise.resolve(jsonResponse(ORCHESTRATION_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration/deploy" && init?.method === "POST") {
+          return Promise.resolve(
+            jsonResponse({ detail: "deploy blew up" }, 500),
+          );
+        }
+        return Promise.reject(new Error("unexpected url " + urlStr));
+      });
+      render(<OperationsDeploySection />);
+      await screen.findAllByText("node-a");
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\. restart_runner/i), {
+        target: { value: "restart_runner" },
+      });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Confirm action/i }));
+      fireEvent.click(screen.getByRole("button", { name: /Execute Deploy/i }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/deploy blew up|HTTP 500/i);
+      expect(screen.queryByText(/dispatched successfully/i)).not.toBeInTheDocument();
+    });
+
+    it("retry reuses Idempotency-Key", async () => {
+      let fail = true;
+      const keys: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+        const urlStr = String(url);
+        if (urlStr === "/api/deployment/state") {
+          return Promise.resolve(jsonResponse(DEPLOYMENT_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration") {
+          return Promise.resolve(jsonResponse(ORCHESTRATION_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration/deploy" && init?.method === "POST") {
+          const headers = init?.headers as Record<string, string>;
+          keys.push(headers["Idempotency-Key"]);
+          if (fail) {
+            fail = false;
+            return Promise.resolve(jsonResponse({ detail: "nope" }, 500));
+          }
+          return Promise.resolve(jsonResponse({ message: "Deploy signal dispatched" }));
+        }
+        return Promise.reject(new Error("unexpected url " + urlStr));
+      });
+      render(<OperationsDeploySection />);
+      await screen.findAllByText("node-a");
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\. restart_runner/i), {
+        target: { value: "restart_runner" },
+      });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Confirm action/i }));
+      const btn = screen.getByRole("button", { name: /Execute Deploy/i });
+      fireEvent.click(btn);
+      await screen.findByRole("alert");
+      fireEvent.click(btn);
+      await waitFor(() => expect(keys).toHaveLength(2));
+      expect(keys[0]).toBe(keys[1]);
+    });
+  });
+
   it("shows an error banner with a Retry button when fetch fails", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Deployment unreachable"));
 
