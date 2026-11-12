@@ -15,6 +15,7 @@ from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
+from coordination import claim_state as claim_state_mod
 from coordination import claims as claims_mod
 from coordination import gh_cli, job_board_lease
 from coordination.board import RMScriptError
@@ -331,7 +332,14 @@ def claim_job(
         aging_block = claim_blocked_by_aging_prs(agent, claim_repo=repo, fetch=claims_mod.evidence_fetch)
         if aging_block is not None:
             raise claims_mod.AgingPrBlockedError(aging_block)
-        posted = claims_mod.post_lease(repo, issue, agent, session, intent, ttl_hours=ttl_hours)
+        cas = claim_state_mod.acquire_compare_and_set(repo, issue, agent=agent, session=session)
+        if not cas.acquired:
+            raise claims_mod.ClaimHeldError(claim_state_mod.holder_status_from_row(repo, issue, cas))
+        try:
+            posted = claims_mod.post_lease(repo, issue, agent, session, intent, ttl_hours=ttl_hours)
+        except Exception:
+            claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
+            raise
         after = claims_mod.check(repo, issue)
         if not after["available"]:
             raise RMScriptError(f"check_agent_claim unavailable after post_agent_lease: {after['reason']}")
