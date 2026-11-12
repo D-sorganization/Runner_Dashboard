@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -75,3 +76,30 @@ def test_release_clears_durable_row(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert store.try_acquire("Tools", 9, agent="codex", session="codex-9").acquired
     store.release("Tools", 9, agent="codex", session="codex-9")
     assert store.read("Tools", 9) is None
+
+
+@pytest.mark.unit
+def test_acquire_blocks_different_holder_until_expired(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAIM_STATE_DB", str(tmp_path / "claim_state.sqlite3"))
+    monkeypatch.setenv("CLAIM_STATE_CAS_TTL_S", "60")
+    claim_state.reset_claim_state_store()
+    store = claim_state.get_store()
+    assert store.try_acquire("Tools", 42, agent="codex", session="codex-a", reserve_ttl_s=0.05).acquired
+    blocked = store.try_acquire("Tools", 42, agent="cursor", session="cursor-b")
+    assert not blocked.acquired
+    assert blocked.holder_agent == "codex"
+    time.sleep(0.06)
+    taken = store.try_acquire("Tools", 42, agent="cursor", session="cursor-b", reserve_ttl_s=60)
+    assert taken.acquired
+    row = store.read("Tools", 42)
+    assert row is not None and row.agent == "cursor" and row.session == "cursor-b"
+
+
+@pytest.mark.unit
+def test_active_holder_still_blocks_before_expiry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAIM_STATE_DB", str(tmp_path / "claim_state.sqlite3"))
+    claim_state.reset_claim_state_store()
+    store = claim_state.get_store()
+    assert store.try_acquire("Tools", 43, agent="codex", session="codex-a", reserve_ttl_s=3600).acquired
+    blocked = store.try_acquire("Tools", 43, agent="cursor", session="cursor-b")
+    assert not blocked.acquired and blocked.holder_expires_at is not None

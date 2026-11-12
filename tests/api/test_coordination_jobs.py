@@ -214,6 +214,12 @@ def test_jobs_claim_post_write_check_unavailable_is_not_success(rm: FakeRM, monk
     with pytest.raises(RMScriptError):
         jobs_mod.claim_job("Tools", 58, agent="codex", session="codex-58", intent="ship")
     assert jobs_mod._current_fence("Tools", 58) == 0
+    from coordination import claim_state as claim_state_mod
+
+    claim_state_mod.reset_claim_state_store()
+    store = claim_state_mod.get_store()
+    assert store.read("Tools", 58) is None
+    assert store.try_acquire("Tools", 58, agent="agy", session="agy-58").acquired
 
 
 @pytest.mark.unit

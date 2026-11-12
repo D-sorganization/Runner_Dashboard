@@ -8,6 +8,7 @@ the hub database from both posting.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
 import sqlite3
@@ -22,6 +23,15 @@ log = logging.getLogger("dashboard.coordination.claim_state")
 
 _SQLITE_BUSY_RETRIES = 8
 _SQLITE_BUSY_SLEEP_S = 0.05
+_DEFAULT_CAS_RESERVE_TTL_S = float(os.environ.get("CLAIM_STATE_CAS_TTL_S", "300"))
+
+
+def cas_reserve_ttl_seconds() -> float:
+    raw = os.environ.get("CLAIM_STATE_CAS_TTL_S")
+    if raw is not None and raw != "":
+        return float(raw)
+    return _DEFAULT_CAS_RESERVE_TTL_S
+
 
 _store_lock = threading.Lock()
 _store: ClaimStateStore | None = None
@@ -59,6 +69,7 @@ class ClaimRow:
     agent: str
     session: str
     state: ClaimState
+    expires_at: float | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +77,7 @@ class AcquireResult:
     acquired: bool
     holder_agent: str = ""
     holder_session: str = ""
+    holder_expires_at: float | None = None
 
 
 def _default_db_path() -> Path:
@@ -92,9 +104,13 @@ class ClaimStateStore:
             "  session TEXT NOT NULL,"
             "  state TEXT NOT NULL,"
             "  updated_at REAL NOT NULL,"
+            "  expires_at REAL,"
             "  PRIMARY KEY (repo, issue)"
             ")"
         )
+        columns = {str(row[1]) for row in self._execute("PRAGMA table_info(issue_claims)").fetchall()}
+        if "expires_at" not in columns:
+            self._execute("ALTER TABLE issue_claims ADD COLUMN expires_at REAL")
 
     def _retry(self, operation: Any) -> Any:
         for attempt in range(_SQLITE_BUSY_RETRIES):
@@ -117,22 +133,45 @@ class ClaimStateStore:
         repo_key, issue_num = self._key(repo, issue)
         with self._lock:
             row = self._execute(
-                "SELECT repo, issue, agent, session, state FROM issue_claims WHERE repo = ? AND issue = ?",
+                "SELECT repo, issue, agent, session, state, expires_at, updated_at "
+                "FROM issue_claims WHERE repo = ? AND issue = ?",
                 (repo_key, issue_num),
             ).fetchone()
         if row is None or str(row["state"]) == ClaimState.UNHELD:
             return None
+        expires_raw = row["expires_at"]
+        expires_at = float(expires_raw) if expires_raw is not None else None
+        if expires_at is None:
+            expires_at = float(row["updated_at"]) + cas_reserve_ttl_seconds()
         return ClaimRow(
             repo=str(row["repo"]),
             issue=int(row["issue"]),
             agent=str(row["agent"]),
             session=str(row["session"]),
             state=ClaimState(str(row["state"])),
+            expires_at=expires_at,
         )
 
-    def try_acquire(self, repo: str, issue: int, *, agent: str, session: str) -> AcquireResult:
+    @staticmethod
+    def _row_expires_at(row: sqlite3.Row, *, now: float) -> float:
+        raw = row["expires_at"]
+        if raw is not None:
+            return float(raw)
+        return float(row["updated_at"]) + cas_reserve_ttl_seconds()
+
+    def try_acquire(
+        self,
+        repo: str,
+        issue: int,
+        *,
+        agent: str,
+        session: str,
+        reserve_ttl_s: float | None = None,
+    ) -> AcquireResult:
         repo_key, issue_num = self._key(repo, issue)
         now = time.time()
+        ttl = cas_reserve_ttl_seconds() if reserve_ttl_s is None else float(reserve_ttl_s)
+        expires = now + ttl
 
         with self._lock:
 
@@ -140,16 +179,18 @@ class ClaimStateStore:
                 self._db.execute("BEGIN IMMEDIATE")
                 try:
                     row = self._db.execute(
-                        "SELECT agent, session, state FROM issue_claims WHERE repo = ? AND issue = ?",
+                        "SELECT agent, session, state, expires_at, updated_at FROM issue_claims "
+                        "WHERE repo = ? AND issue = ?",
                         (repo_key, issue_num),
                     ).fetchone()
                     if row is None:
                         if not is_legal_transition(ClaimState.UNHELD, ClaimState.HELD):
                             raise AssertionError("unheld->held must be legal")
                         self._db.execute(
-                            "INSERT INTO issue_claims (repo, issue, agent, session, state, updated_at) "
-                            "VALUES (?, ?, ?, ?, ?, ?)",
-                            (repo_key, issue_num, agent, session, ClaimState.HELD, now),
+                            "INSERT INTO issue_claims "
+                            "(repo, issue, agent, session, state, updated_at, expires_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (repo_key, issue_num, agent, session, ClaimState.HELD, now, expires),
                         )
                         self._db.execute("COMMIT")
                         return AcquireResult(acquired=True)
@@ -157,9 +198,9 @@ class ClaimStateStore:
                     holder_agent, holder_session = str(row["agent"]), str(row["session"])
                     if state == ClaimState.UNHELD:
                         self._db.execute(
-                            "UPDATE issue_claims SET agent = ?, session = ?, state = ?, updated_at = ? "
+                            "UPDATE issue_claims SET agent = ?, session = ?, state = ?, updated_at = ?, expires_at = ? "
                             "WHERE repo = ? AND issue = ?",
-                            (agent, session, ClaimState.HELD, now, repo_key, issue_num),
+                            (agent, session, ClaimState.HELD, now, expires, repo_key, issue_num),
                         )
                         self._db.execute("COMMIT")
                         return AcquireResult(acquired=True)
@@ -167,13 +208,53 @@ class ClaimStateStore:
                         if not is_legal_transition(ClaimState.HELD, ClaimState.HELD, same_holder=True):
                             raise AssertionError("renewal must be legal")
                         self._db.execute(
-                            "UPDATE issue_claims SET updated_at = ? WHERE repo = ? AND issue = ?",
-                            (now, repo_key, issue_num),
+                            "UPDATE issue_claims SET updated_at = ?, expires_at = ? WHERE repo = ? AND issue = ?",
+                            (now, expires, repo_key, issue_num),
                         )
                         self._db.execute("COMMIT")
                         return AcquireResult(acquired=True)
-                    self._db.execute("ROLLBACK")
-                    return AcquireResult(acquired=False, holder_agent=holder_agent, holder_session=holder_session)
+                    holder_expires = self._row_expires_at(row, now=now)
+                    if now < holder_expires:
+                        self._db.execute("ROLLBACK")
+                        return AcquireResult(
+                            acquired=False,
+                            holder_agent=holder_agent,
+                            holder_session=holder_session,
+                            holder_expires_at=holder_expires,
+                        )
+                    cur = self._db.execute(
+                        "UPDATE issue_claims SET agent = ?, session = ?, state = ?, updated_at = ?, expires_at = ? "
+                        "WHERE repo = ? AND issue = ? AND agent = ? AND session = ? AND state = ?",
+                        (
+                            agent,
+                            session,
+                            ClaimState.HELD,
+                            now,
+                            expires,
+                            repo_key,
+                            issue_num,
+                            holder_agent,
+                            holder_session,
+                            ClaimState.HELD,
+                        ),
+                    )
+                    if cur.rowcount != 1:
+                        self._db.execute("ROLLBACK")
+                        fresh = self._db.execute(
+                            "SELECT agent, session, expires_at, updated_at FROM issue_claims "
+                            "WHERE repo = ? AND issue = ?",
+                            (repo_key, issue_num),
+                        ).fetchone()
+                        if fresh is None:
+                            return AcquireResult(acquired=False)
+                        return AcquireResult(
+                            acquired=False,
+                            holder_agent=str(fresh["agent"]),
+                            holder_session=str(fresh["session"]),
+                            holder_expires_at=self._row_expires_at(fresh, now=now),
+                        )
+                    self._db.execute("COMMIT")
+                    return AcquireResult(acquired=True)
                 except Exception:
                     self._db.execute("ROLLBACK")
                     raise
@@ -244,11 +325,14 @@ def acquire_compare_and_set(repo: str, issue: int, *, agent: str, session: str) 
 
 def holder_status_from_row(repo: str, issue: int, result: AcquireResult) -> dict[str, Any]:
     """Shape a ``ClaimHeldError``-compatible status dict from a failed CAS."""
+    expires_iso: str | None = None
+    if result.holder_expires_at is not None:
+        expires_iso = dt.datetime.fromtimestamp(result.holder_expires_at, dt.UTC).isoformat()
     return {
         "available": True,
         "held": True,
         "agent": result.holder_agent,
         "session": result.holder_session,
         "reason": f"durable claim held by {result.holder_agent or 'another agent'}",
-        "expires_at": None,
+        "expires_at": expires_iso,
     }
