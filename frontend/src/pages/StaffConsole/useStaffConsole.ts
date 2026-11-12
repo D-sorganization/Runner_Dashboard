@@ -240,8 +240,15 @@ export function useStaffConsole({
     if (resyncPreferred) {
       request = threadApi.listThreads(initialRole);
     } else {
-      request = initialRoleThreads.current.get(restoreKey) ?? threadApi.listThreads(initialRole);
-      initialRoleThreads.current.set(restoreKey, request);
+      const inflight = initialRoleThreads.current.get(restoreKey);
+      if (inflight) {
+        request = inflight;
+      } else {
+        request = threadApi.listThreads(initialRole).finally(() => {
+          initialRoleThreads.current.delete(restoreKey);
+        });
+        initialRoleThreads.current.set(restoreKey, request);
+      }
     }
     if (!resyncPreferred) setOpeningRole(initialRole);
     request
