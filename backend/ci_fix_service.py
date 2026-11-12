@@ -176,8 +176,12 @@ async def dispatch_ci_fix(
     except BaseException:
         locks.release(req.repo, req.pr_number)
         raise
-    if result["staff_run_id"]:
-        locks.attach_run(req.repo, req.pr_number, result["staff_run_id"])
+    staff_run_id = result["staff_run_id"]
+    if staff_run_id:
+        locks.attach_run(req.repo, req.pr_number, staff_run_id)
+    elif result.get("launched_provider") == "cursor_cloud":
+        # Cloud handoff has no local staff run to bind; release so the next CI-fix is not blocked (#4278).
+        locks.release(req.repo, req.pr_number)
     return result
 
 
