@@ -1140,7 +1140,7 @@ def test_stalled_pr_enqueue_failure_is_reported_not_retried() -> None:
 # --------------------------------------------------------------------------
 
 
-def _independent_fix_needed_comment(sha: str = HEAD_SHA) -> dict[str, str]:
+def _independent_fix_needed_comment(sha: str = HEAD_SHA) -> dict[str, str | dict[str, str]]:
     return {
         "body": (
             "### Independent Exact-Head Acceptance Review (`seat` / `antigravity-Brick`) — "
@@ -1148,16 +1148,18 @@ def _independent_fix_needed_comment(sha: str = HEAD_SHA) -> dict[str, str]:
             f"**Verdict:** **`FIX-NEEDED @{sha}`**"
         ),
         "created_at": "2026-11-10T07:31:36Z",
+        "user": {"login": "d-sorg-runner-dashboard[bot]"},
     }
 
 
-def _independent_pass_comment(sha: str = HEAD_SHA) -> dict[str, str]:
+def _independent_pass_comment(sha: str = HEAD_SHA) -> dict[str, str | dict[str, str]]:
     return {
         "body": (
             "### Independent Exact-Head Acceptance Review (`seat` / `antigravity-Brick`) — "
             f"Verdict: `PASS @{sha}`"
         ),
         "created_at": "2026-11-10T08:00:00Z",
+        "user": {"login": "d-sorg-runner-dashboard[bot]"},
     }
 
 
@@ -1409,10 +1411,17 @@ def test_malformed_head_field_yields_a_verdict_not_a_crash() -> None:
     fake = FakeGh()
     fake.pull["head"] = "not-an-object"
     verdict = automerge_guard.evaluate_hold("o/r", 7, runner=fake)
-    assert verdict.held is True
-    assert "head SHA" in verdict.describe()
+    assert verdict.held is False
     assert verdict.head_sha == "" and verdict.head_ref == ""
     assert verdict.head_in_base_repo is False
+
+
+def test_malformed_head_with_active_independent_gate_fails_closed() -> None:
+    fake = FakeGh(labels=["agent:cursor"])
+    fake.pull["head"] = "not-an-object"
+    verdict = automerge_guard.evaluate_hold("o/r", 7, runner=fake)
+    assert verdict.held is True
+    assert "head SHA" in verdict.describe()
 
 
 def test_no_guard_function_exceeds_the_consumer_function_budget() -> None:

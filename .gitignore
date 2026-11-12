@@ -9,6 +9,8 @@ build/
 .ruff_cache/
 .env
 *.log
+.runner-dashboard.pid
+.runner-dashboard.log
 node_modules/
 coverage/
 test-results/
