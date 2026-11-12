@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from staff.roles import load_roles
+from staff.roles import load_roles as _default_load_roles
 
 if TYPE_CHECKING:
     from staff.store import RunRecord, RunStore
@@ -14,8 +15,15 @@ if TYPE_CHECKING:
 log = logging.getLogger("dashboard.staff.verification")
 
 
-def record_role_open_pr_diagnostic(store: RunStore, rec: RunRecord, resolver_path: str) -> None:
+def record_role_open_pr_diagnostic(
+    store: RunStore,
+    rec: RunRecord,
+    resolver_path: str,
+    *,
+    roles_loader: Callable[[], dict[str, Any]] | None = None,
+) -> None:
     """Telemetry for unexpected ``opens_pr=False`` verdict paths (diagnosis class E)."""
+    load_roles = roles_loader or _default_load_roles
     payload: dict[str, Any] = {
         "run_id": rec.id,
         "role": rec.role,

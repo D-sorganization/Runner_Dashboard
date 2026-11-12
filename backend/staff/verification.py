@@ -20,7 +20,6 @@ records only; ``off`` skips the check.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from collections.abc import Callable
@@ -30,9 +29,9 @@ from typing import TYPE_CHECKING, Any
 
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
 from staff.roles import AD_HOC_ROLE, load_roles
-from staff.verification_probe import GhCliPrProbe
 from staff.run_status import persist_run_updates
 from staff.verification_diag import record_role_open_pr_diagnostic
+from staff.verification_probe import GhCliPrProbe
 from staff.verification_types import (
     GH_TIMEOUT_SECONDS,
     GitHubLookupError,
@@ -373,7 +372,7 @@ def verify_and_record(
             log.exception("verification of run %s failed", run_id)
             verdict = Verdict("unverified", f"verification error: {exc}")
         if verdict.verification == "not_applicable" and verdict.detail == "role does not open pull requests":
-            record_role_open_pr_diagnostic(store, rec, resolver_path)
+            record_role_open_pr_diagnostic(store, rec, resolver_path, roles_loader=load_roles)
         # The verify event lands before the verdict, so a reader that sees the verdict sees it (#1489).
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
         persist_run_updates(store, rec, updates_for(rec, verdict, mode))

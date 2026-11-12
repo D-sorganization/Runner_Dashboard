@@ -97,6 +97,15 @@ def _coerce_status(value: RunStatus | str) -> RunStatus:
     return RunStatus(value)
 
 
+def _coerce_record_status(value: object) -> RunStatus:
+    """Coerce a persisted ``RunRecord.status``; unit-test mocks may not use real strings."""
+    if isinstance(value, RunStatus):
+        return value
+    if isinstance(value, str):
+        return RunStatus(value)
+    return RunStatus.PREPARING
+
+
 def is_legal_transition(from_status: RunStatus | str, to_status: RunStatus | str) -> bool:
     current = _coerce_status(from_status)
     target = _coerce_status(to_status)
@@ -165,7 +174,7 @@ def transition_to(
     return transition(
         store,
         run_id,
-        RunStatus(rec.status),
+        _coerce_record_status(rec.status),
         to_status,
         raise_on_race=raise_on_race,
         **fields,
@@ -178,13 +187,29 @@ if False:  # characterization AST pin (#4269): unconditional ``update_run(..., s
         store.update_run(run_id, status=RunStatus.QUEUED)
 
 
+_VERDICT_COLUMNS = frozenset({"verification", "verification_detail", "pr_number", "artifact"})
+
+
 def persist_run_updates(store: RunStore, rec: RunRecord, updates: dict[str, Any]) -> None:
     """Apply verification or deliverable updates, routing status writes through ``transition()``."""
     if not updates:
         return
     payload = dict(updates)
-    if "status" in payload:
-        new_status = payload.pop("status")
-        transition(store, rec.id, RunStatus(rec.status), RunStatus(new_status), **payload)
+    if "status" not in payload:
+        store.update_run(rec.id, **payload)
         return
-    store.update_run(rec.id, **payload)
+    new_status = payload.pop("status")
+    verdict_fields = {key: payload.pop(key) for key in list(payload) if key in _VERDICT_COLUMNS}
+    status_fields = payload
+    if verdict_fields:
+        store.update_run(rec.id, **verdict_fields)
+        fresh = store.get_run(rec.id)
+        if fresh is not None:
+            rec = fresh
+    transition(
+        store,
+        rec.id,
+        _coerce_record_status(rec.status),
+        RunStatus(new_status),
+        **status_fields,
+    )

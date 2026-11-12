@@ -160,8 +160,14 @@ class _WorkdirHarness:
         monkeypatch.setattr("staff.workspace.staff_worktrees_root", lambda: self.wt_root)
         store = MagicMock(spec=RunStore)
         store.update_run.side_effect = lambda _rid, **kw: self.updates.update(kw)
-        store.append_event.side_effect = lambda _rid, kind, msg: self.events.append((kind, msg))
-        self.store = store
+
+        def _compare_and_set(run_id: str, *, expected: str, status: str, **kw: object) -> bool:
+            del run_id, expected
+            self.updates.update(kw)
+            self.updates["status"] = status
+            return True
+
+        store.compare_and_set_run_status.side_effect = _compare_and_set
         self.rec = RunRecord(
             id="run-4212",
             role="worker",
@@ -172,7 +178,11 @@ class _WorkdirHarness:
             target_kind="issue",
             target_ref="#4212",
             prompt="fix",
+            status="preparing",
         )
+        store.get_run.return_value = self.rec
+        store.append_event.side_effect = lambda _rid, kind, msg: self.events.append((kind, msg))
+        self.store = store
 
     def make_plan(self, repo: str = "Tools", head_ref: str = "") -> RunPlan:
         return RunPlan(
