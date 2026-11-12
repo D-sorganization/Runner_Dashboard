@@ -1,0 +1,22 @@
+{
+  "owner": "D-sorganization",
+  "repo": "Runner_Dashboard",
+  "issue": {
+    "number": 210,
+    "state": "open",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/210"
+  },
+  "claim": {
+    "held": false,
+    "available": true,
+    "agent": null
+  },
+  "pull_request": {
+    "number": 70,
+    "state": "open",
+    "available": false,
+    "draft": false,
+    "head_sha": "unavail_head",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/70"
+  }
+}

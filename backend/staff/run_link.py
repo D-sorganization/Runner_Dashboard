@@ -324,6 +324,10 @@ def handle_run_status_change(
     relay_fn: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
+    if status in claim_guard.TERMINAL_STATUSES:
+        from dispatch_queue_link import release_run_session  # noqa: PLC0415
+
+        release_run_session(run.id, outcome=status)
     if status in claim_guard.TERMINAL_STATUSES and run.target_kind == "issue":
         # Drop the claim label this run applied (#2562); off-thread so a slow `gh` never delays the status change.
         threading.Thread(target=claim_guard.release_claim, args=(run.id, status), daemon=True).start()

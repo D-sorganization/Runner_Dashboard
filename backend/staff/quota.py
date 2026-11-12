@@ -48,6 +48,9 @@ BILLING: dict[str, str] = {
     "grok": "subscription",
     "grok_cli": "subscription",
     "grok-cli": "subscription",
+    "qwen": "subscription",
+    "qwen_cli": "subscription",
+    "qwen-cli": "subscription",
     "ollama": "local",
     "claude-ollama": "local",
 }

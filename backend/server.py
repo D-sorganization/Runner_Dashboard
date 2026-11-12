@@ -231,7 +231,6 @@ from runners.service_control import (  # noqa: E402
 )
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
-    sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
@@ -865,8 +864,14 @@ from routers import staff_review_metrics as _staff_review_metrics_router  # noqa
 app.include_router(_staff_review_metrics_router.router)  # review-flow metrics decision gate (#4250)
 
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+from routers import kanban_github as _kanban_github_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+app.include_router(_kanban_github_router.router)  # kanban GitHub ingestion (#4319)
+
+from routers import kanban as _kanban_router  # noqa: E402
+
+app.include_router(_kanban_router.router)  # kanban board projection (#4317, #4321)
 
 from routers import fleet_state_audit_route as _fleet_state_audit_router  # noqa: E402
 
@@ -1658,6 +1663,9 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
     env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
     env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
     env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
+    from runner_target_contract import TARGET_OVERRIDE_PATH  # noqa: PLC0415
+
+    env["RUNNER_TARGET_OVERRIDE"] = str(TARGET_OVERRIDE_PATH)
     try:
         result = subprocess.run(
             [sys.executable, RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
@@ -1684,6 +1692,11 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
             "config": config,
         }
     state["available"] = True
+    from runner_target_contract import load_target_override  # noqa: PLC0415
+
+    override = load_target_override()
+    if override:
+        state["target_override"] = override
     return state
 
 
@@ -3133,29 +3146,36 @@ _drain_mode: bool = False
 
 
 @app.post("/_drain")
-async def drain_endpoint(request: Request) -> dict:
+async def drain_endpoint(
+    request: Request,
+    caller: Principal = Depends(require_scope("admin")),  # noqa: B008
+) -> dict:
     """Activate process-local draining and reject new mutations with HTTP 503.
 
     ``/readyz`` reports unready while draining. Requests already admitted are
     allowed to finish; this flag does not cancel or wait for in-flight work.
 
-    Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+    Requires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).
     Post-condition: _drain_mode is True after successful call.
     """
     global _drain_mode
     client_host = request.client.host if request.client else "unknown"
-    # Issue #939c: a bare `assert` is compiled out under `python -O`, which would
-    # let ANY network peer drain the server. Enforce the loopback restriction
-    # with an explicit check that raises regardless of optimization level.
-    if client_host not in ("127.0.0.1", "::1", "localhost"):
-        log.warning(
-            "/_drain refused for non-loopback client %s",
-            sanitize_log_value(client_host),
-        )
-        raise HTTPException(status_code=403, detail="drain only from loopback")
     _drain_mode = True
-    log.info("/_drain activated by %s", client_host)
+    log.info("/_drain activated by %s principal=%s", client_host, caller.id)
     return {"status": "draining"}
+
+
+@app.post("/_undrain")
+async def undrain_endpoint(
+    request: Request,
+    caller: Principal = Depends(require_scope("admin")),  # noqa: B008
+) -> dict:
+    """Clear process-local draining and resume normal mutation admission (#4274 F-04)."""
+    global _drain_mode
+    client_host = request.client.host if request.client else "unknown"
+    _drain_mode = False
+    log.info("/_undrain activated by %s principal=%s", client_host, caller.id)
+    return {"status": "admitting"}
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

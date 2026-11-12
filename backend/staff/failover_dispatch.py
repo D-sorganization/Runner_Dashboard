@@ -119,7 +119,7 @@ def pick_machine_for_chain(
 ) -> str:
     """Choose an online machine with a healthy chain provider; least loaded wins."""
     cooling = machine_cooldowns or {}
-    best: tuple[int, int, int, str] | None = None
+    best: tuple[int, int, float, float, int, str] | None = None
     for name, node in (board.get("machines") or {}).items():
         if node.get("status") != "online":
             continue
@@ -135,11 +135,14 @@ def pick_machine_for_chain(
             break
         if pick_idx is None:
             continue
-        load = len(node.get("running", [])) + len(node.get("queued", []))
-        rank = (pick_idx, load, 0 if name == local_name else 1, name)
+        from staff.fleet import _placement_load  # noqa: PLC0415
+
+        runs, cpu, mem = _placement_load(node)
+        local_tie = 1 if name == local_name else 0
+        rank = (pick_idx, runs, cpu, mem, local_tie, name)
         if best is None or rank < best:
             best = rank
-    return best[3] if best else local_name
+    return best[5] if best else local_name
 
 
 def tried_slots_for_root(store: Any, root_id: str) -> set[str]:
@@ -260,6 +263,8 @@ def try_chain_failover(
         consolidation=plan.consolidation,
         focus=plan.focus,
         head_ref=plan.head_ref,
+        dispatch_bundle=plan.dispatch_bundle,
+        library_references=plan.library_references,
     )
     fallback_rec = RunRecord(
         id=attempt_id,

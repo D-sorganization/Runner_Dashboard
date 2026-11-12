@@ -153,6 +153,13 @@ before trusting a syntactically-valid, unexpired JWT:
 3. **Verification-wiring PR(s)** — have run-launching call sites request and
    use a per-run JWT instead of a static token, behind a flag/staged
    rollout. Static tokens remain valid for any caller that has not migrated.
+   In-repo slice: ``clients/fleet/fleet_run_jwt.py`` (library) and
+   ``scripts/exchange_run_jwt.py`` (CLI) exchange a bootstrap bearer
+   for ``POST /api/fleet/run-jwt``; ``scripts/barb-worker/with-fleet-env.sh``
+   performs that exchange when ``RUN_JWT_AGENT_SESSION=1`` (default off) and
+   ``FLEET_RUN_JWT_RUN_ID`` + ``FLEET_RUN_JWT_CALLER_NODE`` are set. Hub-local
+   agent sessions still need an owner decision on ``X-Fleet-Node`` / bootstrap
+   auth before cutover.
 4. **Separate security/infra sign-off issue** — only after 2 and 3 are
    merged and observed in staging does a dedicated issue retire static
    `agent-tokens/*.token` ingestion. This contract does not authorize that

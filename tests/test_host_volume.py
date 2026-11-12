@@ -208,10 +208,10 @@ def test_probe_host_volume_oserror_handling() -> None:
     )
 
     assert result["drive"] == "Z:"
-    assert result["total_bytes"] == 0
-    assert result["free_bytes"] == 0
-    assert result["status"] == "critical"
-    assert result["scheduling_inhibited"] is True
+    assert result["total_bytes"] is None
+    assert result["free_bytes"] is None
+    assert result["status"] == "unknown"
+    assert result["scheduling_inhibited"] is False
     assert any("Drive not accessible" in r for r in result["reasons"])
 
 

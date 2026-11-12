@@ -58,6 +58,7 @@ from autoscaler_config import (
     COOLDOWN_SECS,
     CPU_HIGH,
     CPU_LOW,
+    DEFAULT_POOL_MUTATE,
     DISK_HIGH,
     DISK_MIN_FREE_GB,
     DRY_RUN,  # noqa: PLC0414 (explicit re-export for tests)
@@ -646,10 +647,21 @@ def _record_stop_action(pool_name: str, now: float | None = None) -> None:
     pool_last_stop_action[pool_name] = time.time() if now is None else now
 
 
-def _cordon_stop_unit(unit: str, reason: str) -> None:
+def _cordon_stop_unit(unit: str, reason: str, *, force: bool = False) -> None:
     """Adapter for disk-full cordon drain stops (``_stop_unit`` returns bool)."""
-    _stop_unit(unit, reason=reason)
-    return
+    _stop_unit(unit, reason=reason, force=force)
+
+
+def _queued_staff_runs_count() -> int:
+    """Count in-flight staff runs waiting for runner capacity (#4273 J-05)."""
+    try:
+        from staff.store import ACTIVE_STATUSES, get_store
+
+        store = get_store()
+        return sum(1 for run in store.list_runs(limit=500) if run.status in ACTIVE_STATUSES)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("autoscaler: cannot read staff run queue depth: %s", exc)
+        return 0
 
 
 def _run_poll_loop() -> None:
@@ -767,6 +779,12 @@ def _run_poll_loop() -> None:
                         avg_disk=avg_disk,
                         min_disk_free=min_disk_free,
                     )
+                    if not DEFAULT_POOL_MUTATE:
+                        if overloaded:
+                            log.info("pool=default host overloaded (advisory; scheduler owns capacity)")
+                        elif recovered:
+                            log.info("pool=default host recovered (advisory; scheduler owns capacity)")
+                        continue
                     log.info(
                         "pool=default io_full=%.1f%% cpu=%.1f%% mem=%.1f%% load/core=%.2f disk=%.1f%% free=%.1fGB"
                         " active=%d busy=%d idle=%d inactive=%d",
@@ -898,7 +916,19 @@ def _run_poll_loop() -> None:
                                 _stop_unit(u, reason="host overloaded")
                             _record_stop_action(pool_name)
 
-                elif recovered and pool_inactive and len(pool_active) < pool_desired:
+                elif (
+                    (
+                        recovered
+                        or _queued_staff_runs_count() > 0
+                        or _should_restore_recovery_floor(
+                            overloaded=overloaded,
+                            active_count=len(pool_active),
+                            scheduled_desired=pool_desired,
+                        )
+                    )
+                    and pool_inactive
+                    and len(pool_active) < pool_desired
+                ):
                     if in_cooldown:
                         log.info(
                             "pool=%s recovered but in cooldown (elapsed < %ds) — skipping starts",
@@ -913,9 +943,13 @@ def _run_poll_loop() -> None:
                         to_start = pool_inactive[: min(step, room)]
                         if to_start:
                             recovery_msg = " (soft recovery rate-limit)" if in_soft_recovery else ""
+                            reason = (
+                                "queued staff work" if _queued_staff_runs_count() > 0 and not recovered else "recovered"
+                            )
                             log.info(
-                                "pool=%s recovered, starting %d runners%s",
+                                "pool=%s %s, starting %d runners%s",
                                 pool_name,
+                                reason,
                                 len(to_start),
                                 recovery_msg,
                             )
