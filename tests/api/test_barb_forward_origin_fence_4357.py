@@ -13,10 +13,10 @@ from staff import fleet as fleet_mod
 from staff import runner as runner_mod
 from staff.barb_continuity import BarbContinuityStore
 from staff.barb_lease_fence import (
-    BarbClaim,
     EPOCH_HEADER,
     HOLDER_HEADER,
     SCOPE_HEADER,
+    BarbClaim,
     barb_write_fence,
 )
 from staff.barb_origin_fence import (
@@ -228,7 +228,6 @@ def test_peer_direct_call_without_lease_still_409(peer_client: TestClient, monke
 def test_operator_cannot_spoof_origin_fence_on_peer(peer_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from routers import staff as staff_router  # noqa: PLC0415
 
-    token_key = "test-fleet-token-4357"  # pragma: allowlist secret
     claim = _claim(2)
     fence = sign_barb_origin_fence(claim, origin_node="Desk")
     peer_client.app.dependency_overrides[require_staff_run_dispatch()] = lambda: Principal(
