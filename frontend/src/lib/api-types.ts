@@ -40,10 +40,30 @@ export interface paths {
          *     ``/readyz`` reports unready while draining. Requests already admitted are
          *     allowed to finish; this flag does not cancel or wait for in-flight work.
          *
-         *     Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+         *     Requires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).
          *     Post-condition: _drain_mode is True after successful call.
          */
         post: operations["drain_endpoint__drain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_undrain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undrain Endpoint
+         * @description Clear process-local draining and resume normal mutation admission (#4274 F-04).
+         */
+        post: operations["undrain_endpoint__undrain_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13986,6 +14006,28 @@ export interface operations {
         };
     };
     drain_endpoint__drain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    undrain_endpoint__undrain_post: {
         parameters: {
             query?: never;
             header?: never;
