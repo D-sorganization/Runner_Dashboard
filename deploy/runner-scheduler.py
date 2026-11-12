@@ -23,6 +23,7 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 import runner_target_contract as target_contract  # noqa: E402
+from runner_scheduler_host_pressure import apply_host_pressure_guard, validate_host_pressure  # noqa: E402
 
 RUNNER_ROOT = Path(os.environ.get("RUNNER_ROOT", str(Path.home() / "actions-runners")))
 CONFIG_PATH = Path(
@@ -141,6 +142,7 @@ def validate_resource_floor(floor: object) -> None:
         raise ValueError("resource_floor.disk_path must be a string")
     if "readmit_disk_free_gb" in floor and floor["readmit_disk_free_gb"] < floor.get("min_disk_free_gb", 0):
         raise ValueError("resource_floor.readmit_disk_free_gb must be >= min_disk_free_gb")
+    validate_host_pressure(floor.get("host"))
 
 
 def load_config() -> dict:
@@ -731,10 +733,10 @@ def apply_resource_floor(config: dict, desired: int, reason: str) -> tuple[int, 
     if not floor:
         return desired, reason
     breaches = resource_floor_breaches(floor)
-    if not breaches:
-        return desired, reason
-    floored = min(desired, int(floor.get("runners", 1)))
-    return floored, f"{reason} + resource-floor ({', '.join(breaches)})"
+    if breaches:
+        desired = min(desired, int(floor.get("runners", 1)))
+        reason = f"{reason} + resource-floor ({', '.join(breaches)})"
+    return apply_host_pressure_guard(floor, desired, reason)
 
 
 def active_target_override() -> tuple[int | None, str | None, dict | None]:

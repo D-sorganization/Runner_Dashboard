@@ -371,7 +371,18 @@ class StaffScheduler:
             if decisions:
                 self._save_state()
         for pending in pending_fires:
-            decisions.append(self._fire_pending_slot(now, **pending))
+            try:
+                decisions.append(self._fire_pending_slot(now, **pending))
+            except Exception:  # noqa: BLE001
+                log.exception("staff scheduler: slot fire failed for %s", pending.get("name"))
+                decisions.append(
+                    {
+                        "role": pending.get("name"),
+                        "slot": pending.get("due"),
+                        "fired": False,
+                        "reason": "slot_fire_error",
+                    }
+                )
         if pending_fires:
             with self._lock:
                 self._save_state()
@@ -450,18 +461,22 @@ class StaffScheduler:
             return fired
 
         claimed = claim_guard.scheduler_blocker(repo, req.issue, req.pr, name) if repo else ""
+        if claimed:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
+            log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
+            return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
+        try:
+            rec = self.runner.submit(req)
+        except ValueError as exc:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
+            log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
+            return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
         with self._lock:
             entry = self._load_state().setdefault(key, {})
-            if claimed:
-                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
-                log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
-                return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
-            try:
-                rec = self.runner.submit(req)
-            except ValueError as exc:
-                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
-                log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
-                return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
             record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat(), role=name, job=job)
             if cartographer_job:
                 self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}
