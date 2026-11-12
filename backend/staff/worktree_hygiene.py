@@ -278,7 +278,10 @@ def _create_windows_junction(link: Path, target: str) -> None:
     try:
         import _winapi  # noqa: PLC0415 — Windows-only junction primitive
 
-        _winapi.CreateJunction(target_text, link_text)
+        create_junction = getattr(_winapi, "CreateJunction", None)
+        if create_junction is None:
+            raise OSError("CreateJunction is unavailable")
+        create_junction(target_text, link_text)
         return
     except (ImportError, AttributeError, OSError) as exc:
         primary_error = OSError(str(exc)) if not isinstance(exc, OSError) else exc
