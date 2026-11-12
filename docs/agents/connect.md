@@ -4,7 +4,8 @@ Any agent (Claude Code, Claude Cowork, Codex CLI, Gemini CLI, Grok Bot, staff ru
 same HTTP API on a dashboard node to learn priorities, see who is working on what, claim
 work and dispatch staff. The contract is Fleet Coordination API v1 (epic #1192); the
 clients are in [`clients/fleet/`](../../clients/fleet/README.md) (#1228). They are
-stdlib-only and need Python 3.10 or newer.
+stdlib-only and need Python 3.10 or newer. Repo-local MCP discovery and ops-MCP conformance are
+documented in [agent-api-adoption.md](agent-api-adoption.md) (`.mcp.json`, CI subset, #4305).
 
 ## Client Guides
 
