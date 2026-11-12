@@ -168,7 +168,7 @@ def test_automatic_retry_admission_respects_hold(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_automatic_retry_admission_proceeds_when_claim_check_unavailable(tmp_path: Path) -> None:
+def test_automatic_retry_admission_defers_when_claim_check_unavailable(tmp_path: Path) -> None:
     store = RunStore(tmp_path / "s2.sqlite3")
     runner = MagicMock()
     runner.store = store
@@ -190,8 +190,41 @@ def test_automatic_retry_admission_proceeds_when_claim_check_unavailable(tmp_pat
         return_value="claim_check_unavailable: gh offline",
     ):
         allowed, reason = automatic_retry_admission(runner, rec)
-    assert allowed is True
-    assert reason == "retry allowed"
+    assert allowed is False
+    assert "claim_check_unavailable" in reason
+
+
+@pytest.mark.unit
+def test_automatic_retry_admission_refuses_closed_issue(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "s2b.sqlite3")
+    runner = MagicMock()
+    runner.store = store
+    runner.roles.return_value = {"r": RoleSpec(name="r", title="R")}
+    rec = RunRecord(
+        id="run-1",
+        role="r",
+        provider="codex",
+        model=None,
+        machine="test",
+        repo="org/repo",
+        target_kind="issue",
+        target_ref="#99",
+        prompt="fix",
+        status="failed",
+    )
+
+    def fetch(ep: str) -> object:
+        if "/issues/" in ep:
+            return {"number": 99, "state": "closed", "labels": []}
+        return []
+
+    with (
+        patch("staff.claim_guard._gh_cli", side_effect=fetch),
+        patch("staff.claim_guard.enabled", return_value=True),
+    ):
+        allowed, reason = automatic_retry_admission(runner, rec)
+    assert allowed is False
+    assert "issue_closed" in reason
 
 
 @pytest.mark.unit
