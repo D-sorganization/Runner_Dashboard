@@ -159,6 +159,12 @@ function groupByRepo(targets: readonly BulkTarget[]): Map<string, BulkTarget[]> 
   return groups;
 }
 
+/** One staff POST per repository; each needs its own key, stable on retry of the same intent. */
+export function idempotencyKeyForBulkRepo(baseKey: string | undefined, repo: string): string | undefined {
+  if (!baseKey) return undefined;
+  return `${baseKey}::${repo}`;
+}
+
 /**
  * Dispatch a selection that may span repositories: one request per repository, since a
  * request targets a single repo. Post: every target is dispatched, awaiting approval, or
@@ -177,7 +183,7 @@ export async function dispatchBulkByRepo(
   const failed: BulkTarget[] = [];
   for (const [repo, inRepo] of groups) {
     try {
-      const resp = await submit(build(inRepo, options), options.idempotencyKey);
+      const resp = await submit(build(inRepo, options), idempotencyKeyForBulkRepo(options.idempotencyKey, repo));
       parts.push({ repo, outcome: formatBulkResponseResult(resp, inRepo.length, kindLabel) });
       const rejected = new Set(((resp.result as BulkResultShape | undefined)?.rejected ?? []).map((r) => r.number));
       failed.push(...inRepo.filter((t) => rejected.has(t.number)));
