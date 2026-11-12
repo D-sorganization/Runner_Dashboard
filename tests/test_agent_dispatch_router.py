@@ -2,6 +2,7 @@
 
 from __future__ import annotations  # noqa: E402
 
+import asyncio  # noqa: E402
 import json  # noqa: E402
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -475,7 +476,7 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             assert "haiku" in entry["model"].lower()
             assert "dictated_fix" in entry["routing_reason"]
 
-            # Second dispatch: overlapping path on same repo -> queued!
+            # Second sequential dispatch on same repo is admitted after the first releases its session.
             req2 = IssueDispatchRequest(
                 selection=DispatchSelection(
                     mode="single",
@@ -488,9 +489,8 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             )
             res2 = await _dispatch_issues(req2)
             assert isinstance(res2, BulkDispatchResponse)
-            assert res2.accepted == 0
-            assert len(res2.rejected) == 1
-            assert "queued_overlapping_paths" in res2.rejected[0]["reason"]
+            assert res2.accepted == 1
+            assert res2.rejected == []
     finally:
         adr._ISSUE_DISPATCH_HISTORY_PATH = original
 
@@ -610,3 +610,208 @@ async def test_expand_epic_children_routes_to_cli_sonnet_with_template_prompt(tm
     entry = json.loads((tmp_path / "issue.json").read_text(encoding="utf-8"))[-1]
     assert entry["tier"] == "cli"
     assert entry["dispatch_kind"] == "expand_epic_children"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_releases_overlap_sessions_when_gather_fails() -> None:
+    """Bulk issue dispatch must release path-overlap sessions when fan-out aborts (#4272)."""
+    from dispatch_routing import dispatch_queue_manager
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=77,
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/dispatch_queue_link.py` for overlap cleanup.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fan-out aborted"),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="fan-out aborted"):
+            await _dispatch_issues(req)
+    assert dispatch_queue_manager.get_active_sessions() == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_bulk_failure_waits_for_sibling_before_releasing_sessions() -> None:
+    """Overlap sessions must stay held until every bulk fan-out task has settled (#4272)."""
+    from uuid import uuid4
+
+    from dispatch_routing import (
+        ActiveSession,
+        DispatchAttemptResult,
+        dispatch_queue_manager,
+        extract_declared_paths,
+    )
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    slow_gate = asyncio.Event()
+
+    def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
+        session_id = uuid4().hex
+        session = ActiveSession(
+            session_id=session_id,
+            repository=str(_kwargs.get("repository", "")),
+            number=_kwargs.get("number"),
+            declared_paths=list(_kwargs.get("declared_paths") or []),
+            tier="strong",
+            model="test-model",
+        )
+        dispatch_queue_manager._active_sessions[session_id] = session
+        return DispatchAttemptResult(dispatched=True, session=session)
+
+    async def fanout_side_effect(**kwargs: object) -> tuple[str | None, str | None, str | None]:
+        number = int(kwargs.get("number", 0))
+        if number == 77:
+            raise RuntimeError("fast sibling failed")
+        await slow_gate.wait()
+        return ("env-slow", "fp-slow", None)
+
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="list",
+            items=[
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=77),
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=78),
+            ],
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/slow_a.py` and `backend/slow_b.py`.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch.object(dispatch_queue_manager, "try_dispatch", side_effect=admit_overlap),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=fanout_side_effect,
+        ),
+    ):
+        dispatch_task = asyncio.create_task(_dispatch_issues(req))
+        await asyncio.sleep(0.05)
+        assert not slow_gate.is_set()
+        assert len(dispatch_queue_manager.get_active_sessions()) == 2
+        overlap_paths = extract_declared_paths("Edit `backend/slow_a.py`.")
+        allowed_overlap, blocker = dispatch_queue_manager.can_dispatch(
+            "D-sorganization/runner-dashboard",
+            overlap_paths,
+        )
+        assert not allowed_overlap
+        assert blocker
+        slow_gate.set()
+        with pytest.raises(RuntimeError, match="fast sibling failed"):
+            await dispatch_task
+
+    assert dispatch_queue_manager.get_active_sessions() == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_bulk_cancel_mid_gather_releases_overlap_sessions() -> None:
+    """Caller cancellation during bulk fan-out must still release overlap sessions (#4272)."""
+    from uuid import uuid4
+
+    from dispatch_routing import (
+        ActiveSession,
+        DispatchAttemptResult,
+        dispatch_queue_manager,
+    )
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    slow_gate = asyncio.Event()
+
+    def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
+        session_id = uuid4().hex
+        session = ActiveSession(
+            session_id=session_id,
+            repository=str(_kwargs.get("repository", "")),
+            number=_kwargs.get("number"),
+            declared_paths=list(_kwargs.get("declared_paths") or []),
+            tier="strong",
+            model="test-model",
+        )
+        dispatch_queue_manager._active_sessions[session_id] = session
+        return DispatchAttemptResult(dispatched=True, session=session)
+
+    async def fanout_side_effect(**_kwargs: object) -> tuple[str | None, str | None, str | None]:
+        await slow_gate.wait()
+        return ("env", "fp", None)
+
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="list",
+            items=[
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=77),
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=78),
+            ],
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/cancel_a.py` and `backend/cancel_b.py`.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch.object(dispatch_queue_manager, "try_dispatch", side_effect=admit_overlap),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=fanout_side_effect,
+        ),
+    ):
+        dispatch_task = asyncio.create_task(_dispatch_issues(req))
+        await asyncio.sleep(0.05)
+        assert len(dispatch_queue_manager.get_active_sessions()) == 2
+        dispatch_task.cancel()
+        slow_gate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await dispatch_task
+
+    assert dispatch_queue_manager.get_active_sessions() == []
