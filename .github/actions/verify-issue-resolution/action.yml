@@ -13,7 +13,10 @@ runs:
     - name: Checkout path extractor
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        sparse-checkout: scripts
+        sparse-checkout: |
+          scripts/phantom_guard_issue_paths.py
+          scripts/phantom_guard_title.py
+        sparse-checkout-cone-mode: false
 
     - name: Verify diff substantively matches issue claims
       shell: bash
@@ -35,7 +38,7 @@ runs:
         fi
 
         TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title)
-        if echo "$TITLE" | grep -qiE '^feat[(:]|Implement|System|Engine|Framework'; then
+        if echo "$TITLE" | python3 scripts/phantom_guard_title.py; then
           PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
           CODE=$(echo "$PR_FILES" | grep -cE '^(backend/|frontend/src/|src/|rust_core/|api/)' || true)
           if [ "${CODE:-0}" -lt 1 ]; then
