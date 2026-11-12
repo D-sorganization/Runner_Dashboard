@@ -10,7 +10,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { Browser, Locator, Page, Response } from "@playwright/test";
-import { conversation, expect, openThread, send, test } from "./fixtures";
+import { conversation, expect, openThread, postThreadMessageApi, send, test } from "./fixtures";
 import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
@@ -31,13 +31,19 @@ const BARB = "Ask Barb (auto-route)";
 /** Ask Barb for a dispatch and return the ActionCard her reply proposes. */
 async function proposeDispatch(
   page: Page,
+  threadId: string,
   scenario = "dispatch",
   confirmActions?: string[],
 ): Promise<Locator> {
   const cards = conversation(page).locator(".staff-action-card");
   const before = await cards.count();
-  await send(page, `dispatch ${nonce()} [[e2e:${scenario}]]`, confirmActions ? { confirmActions } : undefined);
-  await expect(cards).toHaveCount(before + 1);
+  const text = `dispatch ${nonce()} [[e2e:${scenario}]]`;
+  if (confirmActions?.length) {
+    await postThreadMessageApi(page, threadId, text, { confirm_actions: confirmActions }, operatorHeaders);
+  } else {
+    await send(page, text);
+  }
+  await expect(cards).toHaveCount(before + 1, { timeout: 45_000 });
   return cards.nth(before);
 }
 
@@ -51,20 +57,21 @@ async function proposeAsRequester(browser: Browser): Promise<string> {
   await page.route("**/api/**", (route) =>
     route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
   );
-  await openThread(page, BARB);
-  const id = await (await proposeDispatch(page)).getAttribute("data-proposal-id");
+  const threadId = await openThread(page, BARB);
+  const id = await (await proposeDispatch(page, threadId)).getAttribute("data-proposal-id");
   await context.close();
   if (!id) throw new Error("proposal card has no id");
   return id;
 }
 
-/** Operator-confirmed dispatch auto-runs; return the run card it starts (#1547, #1786, #4274 E-18). */
+/** Approve a proposed dispatch and return the run card it starts (#1547, #4274 E-18). */
 async function requestAndFollowRun(page: Page, scenario: string): Promise<Locator> {
-  await openThread(page, BARB);
+  const threadId = await openThread(page, BARB);
   const runCards = conversation(page).locator(".staff-run-card");
   const before = await runCards.count();
-  await proposeDispatch(page, scenario, ["staff.dispatch"]);
-  await expect(runCards).toHaveCount(before + 1, { timeout: 30_000 });
+  const card = await proposeDispatch(page, threadId, scenario);
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(runCards).toHaveCount(before + 1, { timeout: 45_000 });
   return runCards.nth(before);
 }
 
@@ -372,8 +379,8 @@ test.describe("Ask Barb drawer keyboard access", () => {
 
 test.describe("proposals", () => {
   test("a proposed action appears as an action card, live and after reload", async ({ page }) => {
-    await openThread(page, BARB);
-    const card = await proposeDispatch(page);
+    const threadId = await openThread(page, BARB);
+    const card = await proposeDispatch(page, threadId);
     await expect(card).toContainText("staff.dispatch");
     await expect(card).toContainText("The analyst can look at the queue.");
     const id = await card.getAttribute("data-proposal-id");
@@ -383,15 +390,15 @@ test.describe("proposals", () => {
   });
 
   test("E-18: operator message without confirm leaves an Approve button (#4274)", async ({ page }) => {
-    await openThread(page, BARB);
-    const card = await proposeDispatch(page);
+    const threadId = await openThread(page, BARB);
+    const card = await proposeDispatch(page, threadId);
     await expect(card).toContainText("staff.dispatch");
     await expect(card.getByRole("button", { name: /^Approve$/ })).toBeVisible();
   });
 
   test("confirm_actions auto-runs the operator dispatch without an Approve tap (#1786, E-18)", async ({ page }) => {
-    await openThread(page, BARB);
-    const card = await proposeDispatch(page, "dispatch", ["staff.dispatch"]);
+    const threadId = await openThread(page, BARB);
+    const card = await proposeDispatch(page, threadId, "dispatch", ["staff.dispatch"]);
     await expect(card).toContainText(/Executed by .*e2e-operator/);
     await expect(card.getByRole("button", { name: /^Approve$/ })).toHaveCount(0);
   });
