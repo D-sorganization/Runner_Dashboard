@@ -19,6 +19,7 @@ from typing import Any
 
 from staff import cli_projects
 from staff.worktree_links import (
+    _is_junction_path,
     _link_kind,
     link_refusal_reason,
     refuse_worktree_links,
@@ -214,16 +215,29 @@ def _index_tracked_symlink_paths(worktree: Path) -> list[str]:
     return paths
 
 
+def _classify_tracked_link(entry: Path, raw_kind: str) -> tuple[str, bool]:
+    """Return journal kind (``junction`` or ``symlink``) and directory semantics."""
+    if raw_kind == "Windows reparse point":
+        if _is_junction_path(entry):
+            return "junction", True
+        attributes = getattr(entry.lstat(), "st_file_attributes", 0)
+        return "symlink", bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
+    if raw_kind == "symlink":
+        return "symlink", entry.is_dir()
+    raise OSError(f"unsupported tracked link kind: {raw_kind}")
+
+
 def _capture_tracked_symlink_journal(worktree: Path) -> tuple[_TrackedSymlinkSnapshot, ...]:
     """Snapshot tracked symlinks before unlink; refuse when they cannot be reconstructed."""
     snapshots: list[_TrackedSymlinkSnapshot] = []
     for rel in _index_tracked_symlink_paths(worktree):
         entry = worktree.joinpath(*rel.split("/"))
         try:
-            kind = _link_kind(entry)
-            if not kind:
+            raw_kind = _link_kind(entry)
+            if not raw_kind:
                 raise OSError(f"tracked path is not a link entry: {rel}")
             target = os.readlink(entry)
+            kind, target_is_directory = _classify_tracked_link(entry, raw_kind)
         except OSError as exc:
             raise OSError(f"cannot snapshot tracked symlink {rel}: {exc}") from exc
         snapshots.append(
@@ -231,28 +245,72 @@ def _capture_tracked_symlink_journal(worktree: Path) -> tuple[_TrackedSymlinkSna
                 rel_posix=rel,
                 kind=kind,
                 target=target,
-                target_is_directory=_link_target_is_directory(entry, kind),
+                target_is_directory=target_is_directory,
             )
         )
     return tuple(snapshots)
 
 
-def _link_target_is_directory(entry: Path, kind: str) -> bool:
-    """True when the snapshot must be recreated as a directory link or junction."""
-    if kind == "Windows reparse point":
-        attributes = getattr(entry.lstat(), "st_file_attributes", 0)
-        return bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
-    return entry.is_dir()
+def _snapshot_expects_junction(snap: _TrackedSymlinkSnapshot) -> bool:
+    return snap.kind == "junction" or (snap.kind == "Windows reparse point" and snap.target_is_directory)
+
+
+def _restored_link_matches_snapshot(entry: Path, snap: _TrackedSymlinkSnapshot) -> bool:
+    try:
+        if os.readlink(entry) != snap.target:
+            return False
+    except OSError:
+        return False
+    if _snapshot_expects_junction(snap):
+        return _is_junction_path(entry)
+    if snap.target_is_directory:
+        return entry.is_dir() and not _is_junction_path(entry)
+    return not entry.is_dir()
+
+
+def _create_windows_junction(link: Path, target: str) -> None:
+    """Create a directory junction on Windows (never a directory symlink)."""
+    if os.name != "nt":
+        raise OSError(f"cannot create junction on non-Windows platform: {link}")
+    target_text = os.fsdecode(target)
+    link_text = os.fsdecode(link)
+    primary_error: OSError | None = None
+    try:
+        import _winapi  # noqa: PLC0415 — Windows-only junction primitive
+
+        _winapi.CreateJunction(target_text, link_text)
+        return
+    except (ImportError, AttributeError, OSError) as exc:
+        primary_error = OSError(str(exc)) if not isinstance(exc, OSError) else exc
+    result = subprocess.run(  # noqa: S603
+        ["cmd", "/c", "mklink", "/J", link_text, target_text],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "mklink /J failed").strip()
+        raise OSError(f"junction creation failed for {link}: {detail}") from primary_error
+    if not link.exists():
+        raise OSError(f"junction creation reported success but {link} is missing")
 
 
 def _recreate_tracked_link_entry(entry: Path, snap: _TrackedSymlinkSnapshot) -> None:
     """Recreate a journal entry using the recorded kind and directory semantics."""
-    if snap.kind == "Windows reparse point":
-        entry.symlink_to(snap.target, target_is_directory=True)
-    elif snap.target_is_directory:
+    if _snapshot_expects_junction(snap):
+        _create_windows_junction(entry, snap.target)
+        if not entry.exists():
+            raise OSError(f"junction missing after recreate: {entry}")
+        if os.name == "nt" and not _is_junction_path(entry):
+            raise OSError(f"recreate changed link kind at {entry}: expected junction")
+        return
+    if snap.target_is_directory:
         entry.symlink_to(snap.target, target_is_directory=True)
     else:
         entry.symlink_to(snap.target)
+    if not entry.is_symlink() and not entry.exists():
+        raise OSError(f"symlink missing after recreate: {entry}")
 
 
 def _restore_tracked_symlinks_from_journal(
@@ -272,7 +330,7 @@ def _restore_tracked_symlinks_from_journal(
             except OSError:
                 kind = ""
             if kind:
-                if os.readlink(entry) == snap.target:
+                if _restored_link_matches_snapshot(entry, snap):
                     continue
                 failures.append(snap.rel_posix)
                 log.warning(

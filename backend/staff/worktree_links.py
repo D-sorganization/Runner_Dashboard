@@ -30,10 +30,87 @@ _O_NOFOLLOW = getattr(_real_os, "O_NOFOLLOW", 0)
 _OPEN_DIR_FLAGS = _real_os.O_RDONLY | _O_DIRECTORY | _O_NOFOLLOW
 _FILE_ATTRIBUTE_REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 _FILE_ATTRIBUTE_DIRECTORY = getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
+_IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
+_FSCTL_GET_REPARSE_POINT = 0x900A8
 
 # Windows: path-string walks are best-effort. Ancestor checks and in-tree junction
 # removal re-verify st_dev/st_ino before delete; without dir_fd on NT, TOCTOU is
 # narrowed but not eliminated the way the POSIX fd-relative walk does.
+
+
+def _windows_reparse_tag(path: Path) -> int | None:
+    """Return the reparse tag for a Windows path, or ``None`` when unknown."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    device_io_control = kernel32.DeviceIoControl
+    close_handle = kernel32.CloseHandle
+    invalid = wintypes.HANDLE(-1).value
+    handle = create_file(
+        str(path),
+        0x80000000,
+        1 | 2,
+        None,
+        3,
+        0x00200000 | 0x02000000,
+        None,
+    )
+    if handle == invalid:
+        return None
+    try:
+        buffer = (ctypes.c_byte * 16_384)()
+        returned = wintypes.DWORD()
+        if not device_io_control(
+            handle,
+            _FSCTL_GET_REPARSE_POINT,
+            None,
+            0,
+            ctypes.byref(buffer),
+            len(buffer),
+            ctypes.byref(returned),
+            None,
+        ):
+            return None
+        return int.from_bytes(bytes(buffer[:4]), "little", signed=False)
+    finally:
+        close_handle(handle)
+
+
+def _is_junction_path(path: Path) -> bool:
+    """True when ``path`` is a Windows junction (mount-point reparse tag)."""
+    isjunction = getattr(os.path, "isjunction", None)
+    if callable(isjunction):
+        try:
+            return bool(isjunction(path))
+        except OSError:
+            return False
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction):
+        try:
+            return bool(is_junction())
+        except OSError:
+            return False
+    if os.name != "nt":
+        return False
+    metadata = path.lstat()
+    attributes = getattr(metadata, "st_file_attributes", 0)
+    if not (attributes & _FILE_ATTRIBUTE_REPARSE_POINT):
+        return False
+    return _windows_reparse_tag(path) == _IO_REPARSE_TAG_MOUNT_POINT
 
 
 def _link_kind_from_stat(st: os.stat_result) -> str:

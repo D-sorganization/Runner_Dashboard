@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from staff import worktree_hygiene as hygiene
+from staff import worktree_links
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -236,6 +238,7 @@ def test_rollback_restores_directory_symlink_semantics(tracked_directory_symlink
     outside = tracked_directory_symlink_worktree["outside"]
     link = tree / rel
     journal = hygiene._capture_tracked_symlink_journal(tree)
+    assert journal[0].kind == "symlink"
     assert journal[0].target_is_directory
     link.unlink()
     assert not link.exists()
@@ -255,6 +258,30 @@ def test_rollback_restores_directory_symlink_semantics(tracked_directory_symlink
     assert (outside / "sentinel").read_text() == "dir target\n"
 
 
+def test_rollback_restores_file_symlink_without_directory_flag(tracked_symlink_worktree) -> None:
+    tree = tracked_symlink_worktree["tree"]
+    repo = tracked_symlink_worktree["repo"]
+    rel = "docs/model"
+    link = tree / rel
+    journal = hygiene._capture_tracked_symlink_journal(tree)
+    file_snap = next(s for s in journal if s.rel_posix == rel)
+    assert file_snap.kind == "symlink"
+    assert not file_snap.target_is_directory
+    link.unlink()
+    calls: list[dict[str, object]] = []
+    original_symlink_to = Path.symlink_to
+
+    def record(self, target, *args, **kwargs):
+        calls.append(dict(kwargs))
+        return original_symlink_to(self, target, *args, **kwargs)
+
+    with patch.object(Path, "symlink_to", record):
+        failures = hygiene._restore_tracked_symlinks_from_journal(tree, journal, repo)
+    assert failures == []
+    assert link.is_symlink()
+    assert calls == [{}]
+
+
 def test_rollback_restores_windows_junction_kind(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     root = tmp_path / "wt"
     root.mkdir()
@@ -263,18 +290,89 @@ def test_rollback_restores_windows_junction_kind(monkeypatch: pytest.MonkeyPatch
     target.mkdir()
     snap = hygiene._TrackedSymlinkSnapshot(
         rel_posix="junction",
-        kind="Windows reparse point",
+        kind="junction",
         target=str(target),
         target_is_directory=True,
     )
-    calls: list[dict[str, object]] = []
-    original_symlink_to = Path.symlink_to
+    junction_calls: list[tuple[Path, str]] = []
+    symlink_calls: list[Path] = []
 
-    def fake_symlink_to(self, link_target, *args, **kwargs):
-        calls.append({"target": link_target, "kwargs": dict(kwargs)})
-        return original_symlink_to(self, link_target, *args, **kwargs)
+    def fake_junction(link: Path, junction_target: str) -> None:
+        junction_calls.append((link, junction_target))
+        entry.mkdir(exist_ok=True)
 
+    def fake_symlink_to(self, *_args, **_kwargs):
+        symlink_calls.append(self)
+
+    monkeypatch.setattr(hygiene, "_create_windows_junction", fake_junction)
     with patch.object(Path, "symlink_to", fake_symlink_to):
         hygiene._recreate_tracked_link_entry(entry, snap)
-    assert calls == [{"target": str(target), "kwargs": {"target_is_directory": True}}]
+    assert junction_calls == [(entry, str(target))]
+    assert symlink_calls == []
+
+
+def test_capture_classifies_windows_junction(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    entry = tmp_path / "agents"
+    target = tmp_path / "outside"
+    target.mkdir()
+    monkeypatch.setattr(hygiene, "_is_junction_path", lambda _path: True)
+    kind, target_is_directory = hygiene._classify_tracked_link(entry, "Windows reparse point")
+    assert kind == "junction"
+    assert target_is_directory
+
+
+def test_capture_classifies_directory_symlink_reparse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    entry = tmp_path / "agents"
+    monkeypatch.setattr(hygiene, "_is_junction_path", lambda _path: False)
+    original_lstat = Path.lstat
+
+    def lstat(path, *args, **kwargs):
+        if path == entry:
+            return type("Stat", (), {"st_file_attributes": 0x410})()
+        return original_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    kind, target_is_directory = hygiene._classify_tracked_link(entry, "Windows reparse point")
+    assert kind == "symlink"
+    assert target_is_directory
+
+
+def test_recreate_junction_failure_surfaces_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    entry = tmp_path / "junction"
+    target = tmp_path / "outside"
+    target.mkdir()
+    snap = hygiene._TrackedSymlinkSnapshot(
+        rel_posix="junction",
+        kind="junction",
+        target=str(target),
+        target_is_directory=True,
+    )
+
+    def fail_junction(_link: Path, _target: str) -> None:
+        raise OSError("simulated junction create failure")
+
+    monkeypatch.setattr(hygiene, "_create_windows_junction", fail_junction)
+    with pytest.raises(OSError, match="simulated junction create failure"):
+        hygiene._recreate_tracked_link_entry(entry, snap)
+    assert not entry.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="requires Windows junction primitives")
+def test_windows_junction_round_trip_real(tmp_path: Path) -> None:
+    target = tmp_path / "outside"
+    target.mkdir()
+    (target / "sentinel").write_text("junction evidence\n")
+    entry = tmp_path / "junction"
+    hygiene._create_windows_junction(entry, str(target))
+    assert worktree_links._is_junction_path(entry)
     assert os.readlink(entry) == str(target)
+    snap = hygiene._TrackedSymlinkSnapshot(
+        rel_posix="junction",
+        kind="junction",
+        target=str(target),
+        target_is_directory=True,
+    )
+    entry.rmdir()
+    hygiene._recreate_tracked_link_entry(entry, snap)
+    assert worktree_links._is_junction_path(entry)
+    assert (target / "sentinel").read_text() == "junction evidence\n"
