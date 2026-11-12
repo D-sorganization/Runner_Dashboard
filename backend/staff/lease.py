@@ -16,7 +16,7 @@ from activity_producers import record_job_claim_activity
 from coordination.rm_scripts import run_module
 from staff import claim_guard
 from staff import dispatch_self_claim as dispatch_self_claim_mod
-from staff.run_status import RunStatus, transition
+from staff.run_status import RunStatus, transition_to
 from staff.store import RunRecord, RunStore
 from staff.workspace import rm_root
 
@@ -66,10 +66,9 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
     store.append_event(run_id, "lease", f"check_agent_claim rc={res.rc}: {res.output[:300]}")
     check = res.json()
     if _blocks_on_claim_check(run_id, res.output, check, agent=agent, session=session):
-        transition(
+        transition_to(
             store,
             run_id,
-            RunStatus.PREPARING,
             RunStatus.BLOCKED,
             failure_class="lease_blocked",
             ended_at=_now(),
@@ -85,10 +84,9 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
     store.append_event(run_id, "lease", f"post_agent_lease rc={res.rc}: {res.output[:300]}")
     lease_payload = res.json() or {}
     if res.rc != 0 or not lease_payload.get("ok"):
-        transition(
+        transition_to(
             store,
             run_id,
-            RunStatus.PREPARING,
             RunStatus.BLOCKED,
             failure_class="lease_blocked",
             ended_at=_now(),

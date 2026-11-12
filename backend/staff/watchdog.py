@@ -253,12 +253,11 @@ class StaffWatchdog:
             self.failure_class = "unkillable"
             self.error_message = unkillable_msg
             self.store.append_event(self.run_id, "error", unkillable_msg)
-            from staff.run_status import RunStatus, transition
+            from staff.run_status import RunStatus, transition_to
 
-            transition(
+            transition_to(
                 self.store,
                 self.run_id,
-                RunStatus.RUNNING,
                 RunStatus.FAILED,
                 failure_class="unkillable",
                 error=unkillable_msg,

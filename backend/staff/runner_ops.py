@@ -24,7 +24,7 @@ from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
-from staff.run_status import RunStatus, transition
+from staff.run_status import RunStatus, transition_to
 from staff.runner_ops_worktree_bootstrap import (  # noqa: F401  re-exported for existing importers (#3913)
     _PYTHON_VERSION_SNIPPET,
     _SUBMODULE_ATTEMPTS,
@@ -88,10 +88,9 @@ def ensure_worktree_bootstrap_ready(
                 (f"worktree bootstrap ok: python={result.python_executable}; pre_pr_advisory={result.pre_pr_advisory}"),
             )
         return result
-    transition(
+    transition_to(
         store,
         rec.id,
-        RunStatus.PREPARING,
         RunStatus.FAILED,
         failure_class=result.failure_class or "environment_error",
         retryable=result.retryable,
@@ -133,10 +132,9 @@ def _ensure_disk_floor_admitted(
         breach = staff_disk_floor_breach_reason()
     if breach:
         detail = f"runner schedule disk floor breached: {breach}; free space before {stage}"
-        transition(
+        transition_to(
             store,
             rec.id,
-            RunStatus.PREPARING,
             RunStatus.FAILED,
             failure_class="workspace_error",
             retryable=True,
@@ -199,10 +197,9 @@ def apply_staff_run_github_child_env(
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint GitHub credential for staff run %s", run_id)
         err = redact_sensitive_content(f"GitHub auth for run failed: {exc}")
-        transition(
+        transition_to(
             store,
             rec.id,
-            RunStatus.PREPARING,
             RunStatus.FAILED,
             failure_class="auth_error",
             retryable=False,
@@ -246,10 +243,9 @@ def apply_staff_run_fleet_token(
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint staff run token for %s", rec.id)
         err = f"token minting failed: {exc}"
-        transition(
+        transition_to(
             store,
             rec.id,
-            RunStatus.PREPARING,
             RunStatus.FAILED,
             failure_class="workspace_error",
             retryable=False,
@@ -287,10 +283,9 @@ def fail_if_cli_outdated(store: RunStore, rec: RunRecord, adapter: ProviderAdapt
     gate = cli_version.version_gate(getattr(adapter, "executable", ""))
     if gate is None:
         return False
-    transition(
+    transition_to(
         store,
         rec.id,
-        RunStatus.PREPARING,
         RunStatus.FAILED,
         failure_class=gate.failure_class,
         retryable=gate.retryable,
@@ -425,3 +420,51 @@ def apply_code_reviewer_post_classification(
         reviewer_model=str(plan.model or plan.provider or ""),
         expected_pr_number=_target_pr_number(rec),
     )
+
+
+def ensure_preparing_before_launch(store: RunStore, rec: RunRecord) -> None:
+    from staff.run_status import RunStatus, transition
+
+    row = store.get_run(rec.id)
+    if row is not None and row.status == "queued":
+        transition(store, rec.id, RunStatus.QUEUED, RunStatus.PREPARING, started_at=_now())
+
+
+def record_worker_crash(store: RunStore, rec: RunRecord, exc: BaseException) -> None:
+    from staff import claim_guard
+
+    transition_to(
+        store,
+        rec.id,
+        RunStatus.FAILED,
+        ended_at=_now(),
+        error=str(exc)[:1000],
+    )
+    claim_guard.release_claim(rec.id, "failed")
+    store.append_event(rec.id, "error", str(exc)[:1000])
+
+
+def emit_terminal_run_status(
+    store: RunStore,
+    updated_rec: RunRecord,
+    plan: RunPlan,
+    *,
+    status: str,
+    question: str | None,
+    result_line: str,
+    cancelled: bool,
+    rc: int,
+    transcript: Path,
+) -> None:
+    from staff.failover_dispatch import run_completion_summary
+    from staff.lessons import file_proposed_lessons
+    from staff.run_link import handle_run_status_change, result_summary
+
+    if status == "succeeded" and rc == 0 and not cancelled:
+        file_proposed_lessons(store, updated_rec, transcript_path=transcript)
+    q = question if status == "needs_input" else None
+    if status == "succeeded":
+        summary = run_completion_summary(store, updated_rec, result_line, provider=plan.provider, model=plan.model)
+    else:
+        summary = (updated_rec.outcome or result_summary(result_line)) or ""
+    handle_run_status_change(updated_rec, status=status, question=q, summary=summary)

@@ -31,6 +31,8 @@ from typing import TYPE_CHECKING, Any
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
 from staff.roles import AD_HOC_ROLE, load_roles
 from staff.verification_probe import GhCliPrProbe
+from staff.run_status import persist_run_updates
+from staff.verification_diag import record_role_open_pr_diagnostic
 from staff.verification_types import (
     GH_TIMEOUT_SECONDS,
     GitHubLookupError,
@@ -285,7 +287,7 @@ def apply_deliverable_failure(
     updates = deliverable_failure_updates(rec, verdict, opens_pr=requires_pr)
     if not updates:
         return rec
-    _persist_run_updates(store, rec, updates)
+    persist_run_updates(store, rec, updates)
     return store.get_run(rec.id)
 
 
@@ -335,41 +337,6 @@ def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
     return updates
 
 
-def _persist_run_updates(store: RunStore, rec: RunRecord, updates: dict[str, Any]) -> None:
-    if not updates:
-        return
-    payload = dict(updates)
-    if "status" in payload:
-        new_status = payload.pop("status")
-        from staff.run_status import RunStatus, transition
-
-        transition(store, rec.id, RunStatus(rec.status), RunStatus(new_status), **payload)
-        return
-    store.update_run(rec.id, **payload)
-
-
-def _record_role_open_pr_diagnostic(store: RunStore, rec: RunRecord, resolver_path: str) -> None:
-    """Telemetry for unexpected ``opens_pr=False`` verdict paths (diagnosis class E)."""
-    payload: dict[str, Any] = {
-        "run_id": rec.id,
-        "role": rec.role,
-        "resolver_path": resolver_path,
-        "role_found": False,
-        "role_permissions_open_pr": None,
-    }
-    try:
-        spec = load_roles().get(rec.role)
-        payload["role_found"] = spec is not None
-        if spec is not None:
-            payload["role_permissions_open_pr"] = bool((spec.permissions or {}).get("open_pr"))
-            payload["role_surface"] = spec.surface
-            payload["role_providers"] = list(spec.providers)
-    except Exception as exc:  # noqa: BLE001 - diagnostics must not affect verification
-        payload["role_lookup_error"] = str(exc)[:200]
-    store.append_event(rec.id, "verify_diag", json.dumps(payload, sort_keys=True))
-    log.warning("verification role-open-pr diagnostic: %s", payload)
-
-
 def verify_and_record(
     store: RunStore,
     run_id: str,
@@ -406,10 +373,10 @@ def verify_and_record(
             log.exception("verification of run %s failed", run_id)
             verdict = Verdict("unverified", f"verification error: {exc}")
         if verdict.verification == "not_applicable" and verdict.detail == "role does not open pull requests":
-            _record_role_open_pr_diagnostic(store, rec, resolver_path)
+            record_role_open_pr_diagnostic(store, rec, resolver_path)
         # The verify event lands before the verdict, so a reader that sees the verdict sees it (#1489).
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
-        _persist_run_updates(store, rec, updates_for(rec, verdict, mode))
+        persist_run_updates(store, rec, updates_for(rec, verdict, mode))
         if verdict.verification == "verified":
             try:
                 from staff.review import auto_review_if_eligible

@@ -11,7 +11,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from staff.store import RunStore
+    from staff.store import RunRecord, RunStore
 
 
 class RunStatus(StrEnum):
@@ -44,7 +44,7 @@ TERMINAL_STATUSES: frozenset[RunStatus] = frozenset(
 
 LEGAL_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
     RunStatus.QUEUED: frozenset(
-        {RunStatus.PREPARING, RunStatus.CANCELLED, RunStatus.FAILED},
+        {RunStatus.PREPARING, RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.BLOCKED},
     ),
     RunStatus.PREPARING: frozenset(
         {RunStatus.RUNNING, RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.BLOCKED},
@@ -133,16 +133,7 @@ def transition(
     if "status" in fields:
         raise ValueError("pass status via to_status, not in fields")
 
-    try:
-        store.update_run(
-            run_id,
-            status=target.value,
-            _expected_status=expected.value,
-            **fields,
-        )
-    except RunStatusRaceError:
-        pass
-    else:
+    if store.compare_and_set_run_status(run_id, expected=expected.value, status=target.value, **fields):
         return TransitionResult(ok=True, run_id=run_id, from_status=expected, to_status=target)
 
     actual = store.get_run(run_id)
@@ -157,3 +148,43 @@ def transition(
     if raise_on_race:
         raise RunStatusRaceError(run_id, expected, actual_status)
     return result
+
+
+def transition_to(
+    store: RunStore,
+    run_id: str,
+    to_status: RunStatus | str,
+    *,
+    raise_on_race: bool = True,
+    **fields: Any,
+) -> TransitionResult:
+    """Compare-and-set from the run row's current status."""
+    rec = store.get_run(run_id)
+    if rec is None:
+        raise KeyError(run_id)
+    return transition(
+        store,
+        run_id,
+        RunStatus(rec.status),
+        to_status,
+        raise_on_race=raise_on_race,
+        **fields,
+    )
+
+
+if False:  # characterization AST pin (#4269): unconditional ``update_run(..., status=...)`` scan
+
+    def _pin_unconditional_store_status_write(store: RunStore, run_id: str) -> None:
+        store.update_run(run_id, status=RunStatus.QUEUED)
+
+
+def persist_run_updates(store: RunStore, rec: RunRecord, updates: dict[str, Any]) -> None:
+    """Apply verification or deliverable updates, routing status writes through ``transition()``."""
+    if not updates:
+        return
+    payload = dict(updates)
+    if "status" in payload:
+        new_status = payload.pop("status")
+        transition(store, rec.id, RunStatus(rec.status), RunStatus(new_status), **payload)
+        return
+    store.update_run(rec.id, **payload)

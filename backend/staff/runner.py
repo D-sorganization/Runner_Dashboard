@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from coordination.cursor_dispatch_lease import cursor_finalize_on_publish, cursor_pre_launch_or_block
-from staff import claim_guard, consolidation, lifecycle_fence, review, runner_planning, verification, workspace
+from staff import consolidation, lifecycle_fence, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import runner_ops as ops
@@ -22,11 +22,11 @@ from staff import usage as usage_mod
 from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.execution_result import classify_execution_result
-from staff.lessons import file_proposed_lessons, select_repo_lessons
+from staff.lessons import select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
-from staff.run_link import handle_run_status_change, result_summary
-from staff.run_status import RunStatus, transition
+from staff.run_link import handle_run_status_change
+from staff.run_status import RunStatus, transition, transition_to
 from staff.runner_ops import StaffRunPreparationError
 from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
 from staff.store import RunRecord, RunStore, _now, get_store
@@ -39,7 +39,6 @@ MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
 NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
-
 from staff.runner_registry import get_runner, reset_runner  # noqa: E402
 
 __all__ = ["RunPlan", "RunRequest", "StaffRunner", "get_runner", "reset_runner"]
@@ -222,16 +221,7 @@ class StaffRunner:
             except Exception as exc:  # noqa: BLE001
                 crashed = True
                 log.exception("staff run %s crashed", rec.id)
-                transition(
-                    store,
-                    rec.id,
-                    RunStatus.PREPARING,
-                    RunStatus.FAILED,
-                    ended_at=_now(),
-                    error=str(exc)[:1000],
-                )
-                claim_guard.release_claim(rec.id, "failed")
-                store.append_event(rec.id, "error", str(exc)[:1000])
+                ops.record_worker_crash(store, rec, exc)
             finally:
                 if plan.lease_ritual:
                     lease_ritual.release(
@@ -257,6 +247,7 @@ class StaffRunner:
         pre_pr_entrypoint: str = "",
     ) -> None:
         store = self.store
+        ops.ensure_preparing_before_launch(store, rec)
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
         prompt = lifecycle_fence.compose_fenced(  # re-derive + assert the RM#2712 fence (#4156)
@@ -320,10 +311,9 @@ class StaffRunner:
             with self._lock:
                 self._procs[rec.id] = proc
                 cancelled = rec.id in self._cancel_flags
-            transition(
+            transition_to(
                 store,
                 rec.id,
-                RunStatus.PREPARING,
                 RunStatus.RUNNING,
                 transcript_path=str(transcript),
                 prompt=prompt,
@@ -415,10 +405,9 @@ class StaffRunner:
             workspace.persist_run_transcript(store, rec.id, workdir)
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
             store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
-            transition(
+            transition_to(
                 store,
                 rec.id,
-                RunStatus.RUNNING,
                 RunStatus(status),
                 failure_class=failure_class,
                 retryable=retryable,
@@ -440,18 +429,17 @@ class StaffRunner:
                     store, updated_rec, verdict, opens_pr=lambda: self.opens_pr(rec.role)
                 )
             if updated_rec is not None:
-                if status == "succeeded" and rc == 0 and not cancelled:
-                    file_proposed_lessons(store, updated_rec, transcript_path=transcript)
-                q = question if status == "needs_input" else None
-                if status == "succeeded":
-                    from staff.failover_dispatch import run_completion_summary
-
-                    summary = run_completion_summary(
-                        store, updated_rec, result_line, provider=plan.provider, model=plan.model
-                    )
-                else:
-                    summary = (updated_rec.outcome or result_summary(result_line)) or ""
-                handle_run_status_change(updated_rec, status=status, question=q, summary=summary)
+                ops.emit_terminal_run_status(
+                    store,
+                    updated_rec,
+                    plan,
+                    status=status,
+                    question=question,
+                    result_line=result_line,
+                    cancelled=cancelled,
+                    rc=rc,
+                    transcript=transcript,
+                )
         finally:
             revoke_run_token(rec.id)
             workspace.finalize_run_worktree(self.store, rec.id, workdir, plan.repo, branch=plan.branch)

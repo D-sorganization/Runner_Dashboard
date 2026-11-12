@@ -74,12 +74,11 @@ def cursor_pre_launch_or_block(run_store: Any, plan: Any, rec: Any, wall_clock_t
     issue_number, pr_number = targets_from_record(plan.target_kind, plan.target_ref)
     lease = pre_launch_lease_recheck(plan.repo, issue_number, pr_number, rec.id, wall_clock_timeout + 300.0)
     if lease is None:
-        from staff.run_status import RunStatus, transition
+        from staff.run_status import RunStatus, transition_to
 
-        transition(
+        transition_to(
             run_store,
             rec.id,
-            RunStatus.PREPARING,
             RunStatus.BLOCKED,
             failure_class="cursor_path_lease_blocked",
             ended_at=_now(),
