@@ -154,7 +154,7 @@ def test_with_fleet_env_run_jwt_exchange_default_off_keeps_bootstrap(tmp_path: P
     rd = tmp_path / "rd"
     scripts = rd / "scripts"
     scripts.mkdir(parents=True)
-    helper = scripts / "fleet_run_jwt.py"
+    helper = scripts / "exchange_run_jwt.py"
     helper.write_text("#!/usr/bin/env python3\nimport sys\nsys.stdout.write('must-not-run')\n", encoding="utf-8")
     helper.chmod(0o755)
     rd_cfg = tmp_path / ".config" / "runner-dashboard"
@@ -173,7 +173,7 @@ def test_with_fleet_env_run_jwt_exchange_when_flagged(tmp_path: Path) -> None:
     rd = tmp_path / "rd"
     scripts = rd / "scripts"
     scripts.mkdir(parents=True)
-    helper = scripts / "fleet_run_jwt.py"
+    helper = scripts / "exchange_run_jwt.py"
     helper.write_text("#!/usr/bin/env python3\nimport sys\nsys.stdout.write('run-jwt-value')\n", encoding="utf-8")
     helper.chmod(0o755)
     rd_cfg = tmp_path / ".config" / "runner-dashboard"

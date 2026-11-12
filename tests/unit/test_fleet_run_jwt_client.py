@@ -1,4 +1,4 @@
-"""Tests for scripts/fleet_run_jwt.py (#3879 step 3)."""
+"""Tests for clients/fleet/fleet_run_jwt.py (#3879 step 3)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 import fleet_run_jwt as mod
-from scripts import fleet_run_jwt as cli
+from scripts import exchange_run_jwt as cli
 
 
 def test_fetch_run_jwt_exchanges_bootstrap_bearer(monkeypatch: pytest.MonkeyPatch) -> None:

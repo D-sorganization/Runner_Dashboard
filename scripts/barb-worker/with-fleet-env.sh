@@ -58,7 +58,7 @@ if [[ "${RUN_JWT_AGENT_SESSION:-0}" == "1" ]]; then
         _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         _rd_root="$(cd "${_script_dir}/../.." && pwd)"
     fi
-    _jwt_helper="${_rd_root}/scripts/fleet_run_jwt.py"
+    _jwt_helper="${_rd_root}/scripts/exchange_run_jwt.py"
     if command -v python3 >/dev/null 2>&1 \
         && [[ -f "${_jwt_helper}" ]] \
         && [[ -n "${FLEET_API_TOKEN:-}" ]] \

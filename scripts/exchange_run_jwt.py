@@ -17,7 +17,7 @@ log = logging.getLogger("fleet.run_jwt")
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] != ["token"]:
-        log.error("usage: fleet_run_jwt.py token")
+        log.error("usage: exchange_run_jwt.py token")
         return 2
     try:
         minted, _expires_at, _jti = fetch_run_jwt()
