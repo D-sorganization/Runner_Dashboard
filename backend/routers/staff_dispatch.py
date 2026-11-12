@@ -123,6 +123,7 @@ async def run_dispatch(
         barb_claim,
         headers.get(ORIGIN_FENCE_HEADER),
         trusted_forwarder=trusted_forwarder,
+        expected_origin_node=origin_node if trusted_hub_forward else "",
     )
     # Hub→peer forwards: the origin hub already fenced Barb-authored dispatches before
     # calling forward_run; re-checking X-Barb-* against this node's lease store rejects

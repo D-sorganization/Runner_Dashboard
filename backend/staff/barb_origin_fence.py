@@ -15,7 +15,10 @@ import hmac
 import json
 import logging
 import os
+import secrets
+import threading
 import time
+from collections import OrderedDict
 from typing import Any
 
 from staff.barb_lease_fence import BarbClaim
@@ -24,10 +27,85 @@ log = logging.getLogger("dashboard.staff.barb_origin_fence")
 
 ORIGIN_FENCE_HEADER = "x-barb-origin-fence"
 DEFAULT_TTL_SECONDS = 300
+_DEFAULT_MAX_JTI_CACHE = 4096
 
 
 def _signing_key() -> str:
     return os.environ.get("HUB_FLEET_TOKEN") or os.environ.get("SESSION_SECRET") or ""
+
+
+class _OriginFenceReplayGuard:
+    """Bounded single-use jti cache and per-scope lease epoch floor for peer verification."""
+
+    def __init__(
+        self,
+        *,
+        ttl_seconds: float = float(DEFAULT_TTL_SECONDS),
+        max_jti: int = _DEFAULT_MAX_JTI_CACHE,
+    ) -> None:
+        self._ttl_seconds = ttl_seconds
+        self._max_jti = max(1, int(max_jti))
+        self._lock = threading.RLock()
+        self._seen_jti: OrderedDict[str, float] = OrderedDict()
+        self._max_epoch_by_scope: dict[str, int] = {}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._seen_jti.clear()
+            self._max_epoch_by_scope.clear()
+
+    def _prune_jti(self, now: float) -> None:
+        cutoff = now - self._ttl_seconds
+        for jti in [k for k, ts in self._seen_jti.items() if ts < cutoff]:
+            self._seen_jti.pop(jti, None)
+
+    def lease_epoch_floor(self, scope: str) -> int:
+        """Newest lease epoch this peer must enforce for ``scope`` (in-memory + local store)."""
+        norm = scope.strip()
+        if not norm:
+            return 0
+        with self._lock:
+            floor = self._max_epoch_by_scope.get(norm, 0)
+        try:
+            from staff.barb_continuity import get_barb_continuity_store  # noqa: PLC0415
+
+            row = get_barb_continuity_store()._conn.execute(  # noqa: SLF001
+                "SELECT epoch FROM barb_scoped_leases WHERE scope = ?", (norm,)
+            ).fetchone()
+            if row is not None:
+                floor = max(floor, int(row["epoch"]))
+        except Exception:  # noqa: BLE001
+            pass
+        return floor
+
+    def note_epoch_seen(self, scope: str, epoch: int) -> None:
+        norm = scope.strip()
+        if not norm or epoch < 1:
+            return
+        with self._lock:
+            self._max_epoch_by_scope[norm] = max(self._max_epoch_by_scope.get(norm, 0), int(epoch))
+
+    def consume_jti(self, jti: str, *, now: float) -> bool:
+        """Record ``jti``; return False when it was already consumed within the TTL window."""
+        token = jti.strip()
+        if not token:
+            return False
+        with self._lock:
+            self._prune_jti(now)
+            if token in self._seen_jti:
+                return False
+            self._seen_jti[token] = now
+            while len(self._seen_jti) > self._max_jti:
+                self._seen_jti.popitem(last=False)
+            return True
+
+
+_REPLAY_GUARD = _OriginFenceReplayGuard()
+
+
+def reset_origin_fence_replay_guard() -> None:
+    """Test hook: clear jti cache and in-memory epoch floors."""
+    _REPLAY_GUARD.reset()
 
 
 def sign_barb_origin_fence(claim: BarbClaim, *, origin_node: str) -> str:
@@ -39,6 +117,7 @@ def sign_barb_origin_fence(claim: BarbClaim, *, origin_node: str) -> str:
         "holder": claim.holder,
         "origin_node": origin_node,
         "iat": int(time.time()),
+        "jti": secrets.token_hex(16),
     }
     payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     payload_b64 = base64.urlsafe_b64encode(payload_json).decode("ascii")
@@ -51,8 +130,9 @@ def verify_barb_origin_fence(
     claim: BarbClaim,
     *,
     ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    expected_origin_node: str = "",
 ) -> bool:
-    """True when ``header`` is a valid, unexpired attestation for ``claim``."""
+    """True when ``header`` is a valid, unexpired, non-replayed attestation for ``claim``."""
     key = _signing_key()
     if not key or not header or "." not in header:
         return False
@@ -71,14 +151,29 @@ def verify_barb_origin_fence(
         now = time.time()
         if now - iat > ttl_seconds or iat - now > 60:
             return False
-        if str(payload.get("scope") or "") != claim.scope:
+        att_scope = str(payload.get("scope") or "")
+        if att_scope != claim.scope:
             return False
-        if int(payload.get("epoch") or 0) != claim.epoch:
+        att_epoch = int(payload.get("epoch") or 0)
+        if att_epoch != claim.epoch or att_epoch < 1:
+            return False
+        floor = _REPLAY_GUARD.lease_epoch_floor(att_scope)
+        if att_epoch < floor:
             return False
         declared_holder = str(payload.get("holder") or "")
         if declared_holder != (claim.holder or ""):
             return False
-        return bool(str(payload.get("origin_node") or "").strip())
+        origin_in_att = str(payload.get("origin_node") or "").strip()
+        if not origin_in_att:
+            return False
+        expected = expected_origin_node.strip()
+        if expected and origin_in_att != expected:
+            return False
+        jti = str(payload.get("jti") or "").strip()
+        if not jti or not _REPLAY_GUARD.consume_jti(jti, now=now):
+            return False
+        _REPLAY_GUARD.note_epoch_seen(att_scope, att_epoch)
+        return True
     except Exception as exc:  # noqa: BLE001
         log.debug("verify_barb_origin_fence failed: %s", exc)
         return False
@@ -89,11 +184,12 @@ def apply_origin_fence_trust(
     header: str | None,
     *,
     trusted_forwarder: bool,
+    expected_origin_node: str = "",
 ) -> BarbClaim | None:
     """Return a claim marked origin-validated when the attestation checks out (#4357)."""
     if claim is None or not trusted_forwarder:
         return claim
-    if verify_barb_origin_fence(header, claim):
+    if verify_barb_origin_fence(header, claim, expected_origin_node=expected_origin_node):
         return BarbClaim(
             scope=claim.scope,
             epoch=claim.epoch,

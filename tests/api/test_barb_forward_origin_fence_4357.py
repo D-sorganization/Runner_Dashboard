@@ -22,7 +22,9 @@ from staff.barb_lease_fence import (
 from staff.barb_origin_fence import (
     ORIGIN_FENCE_HEADER,
     apply_origin_fence_trust,
+    reset_origin_fence_replay_guard,
     sign_barb_origin_fence,
+    verify_barb_origin_fence,
 )
 from staff.dispatch_auth import require_staff_run_dispatch
 
@@ -30,6 +32,11 @@ from tests.api.test_staff_fleet import peers, staff  # noqa: F401,F811
 from tests.api.test_staff_on_behalf_of import _XHR
 
 SCOPE = "barb:dispatch-coordinator"
+
+
+@pytest.fixture(autouse=True)
+def _clear_origin_fence_replay_guard() -> None:
+    reset_origin_fence_replay_guard()
 
 
 def _claim(epoch: int) -> BarbClaim:
@@ -84,7 +91,9 @@ def test_origin_fence_trust_skips_local_store_fence(
     origin_store.checkout_lease(scope=SCOPE, holder="agent-grok")
     claim = _claim(1)
     header = sign_barb_origin_fence(claim, origin_node="Desk")
-    trusted = apply_origin_fence_trust(claim, header, trusted_forwarder=True)
+    trusted = apply_origin_fence_trust(
+        claim, header, trusted_forwarder=True, expected_origin_node="Desk"
+    )
     assert trusted is not None and trusted.lease_validated_at_origin
     with barb_write_fence(trusted, surface="t", target="t", principal="p", store=peer_store):
         pass
@@ -128,7 +137,45 @@ async def test_forward_run_attaches_signed_origin_fence(monkeypatch: pytest.Monk
     assert ORIGIN_FENCE_HEADER in seen or "X-Barb-Origin-Fence" in seen
     fence_val = seen.get(ORIGIN_FENCE_HEADER) or seen.get("X-Barb-Origin-Fence")
     assert fence_val
-    assert apply_origin_fence_trust(claim, fence_val, trusted_forwarder=True) is not None
+    assert apply_origin_fence_trust(claim, fence_val, trusted_forwarder=True, expected_origin_node="Desk") is not None
+
+
+@pytest.mark.unit
+def test_origin_fence_rejects_replayed_attestation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "unit-test-origin-fence")  # pragma: allowlist secret
+    claim = _claim(4)
+    header = sign_barb_origin_fence(claim, origin_node="Desk")
+    assert verify_barb_origin_fence(header, claim, expected_origin_node="Desk")
+    assert not verify_barb_origin_fence(header, claim, expected_origin_node="Desk")
+    replayed = apply_origin_fence_trust(
+        claim, header, trusted_forwarder=True, expected_origin_node="Desk"
+    )
+    assert replayed is not None and not replayed.lease_validated_at_origin
+
+
+@pytest.mark.unit
+def test_origin_fence_rejects_epoch_before_hub_takeover(
+    peer_store: BarbContinuityStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "unit-test-origin-fence")  # pragma: allowlist secret
+    peer_store.checkout_lease(scope=SCOPE, holder="agent-grok")
+    claim_old = _claim(1)
+    header = sign_barb_origin_fence(claim_old, origin_node="Desk")
+    peer_store.checkout_lease(scope=SCOPE, holder="agent-takeover", force=True)
+    assert int(peer_store.list_leases(include_expired=True)[0]["epoch"]) == 2
+    trusted = apply_origin_fence_trust(
+        claim_old, header, trusted_forwarder=True, expected_origin_node="Desk"
+    )
+    assert trusted is not None and not trusted.lease_validated_at_origin
+
+
+@pytest.mark.unit
+def test_origin_fence_rejects_wrong_origin_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HUB_FLEET_TOKEN", "unit-test-origin-fence")  # pragma: allowlist secret
+    claim = _claim(7)
+    header = sign_barb_origin_fence(claim, origin_node="Desk")
+    assert not verify_barb_origin_fence(header, claim, expected_origin_node="Peer-B")
 
 
 @pytest.mark.unit
