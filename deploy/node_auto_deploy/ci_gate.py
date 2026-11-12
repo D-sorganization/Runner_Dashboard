@@ -13,7 +13,10 @@ from node_auto_deploy.check_runs import (
     run_is_pending,
     validate_check_run_record,
 )
-from node_auto_deploy.required_contexts import load_required_deploy_contexts
+from node_auto_deploy.required_contexts import (
+    RequiredContextsPolicyError,
+    load_required_deploy_contexts,
+)
 
 DEFAULT_MAIN_HISTORY_LIMIT = 20
 
@@ -108,7 +111,13 @@ def ci_gate_for_commit(
     for run in relevant:
         by_name[run["name"]].append(run)
 
-    required = required_contexts if required_contexts is not None else load_required_deploy_contexts()
+    if required_contexts is not None:
+        required = required_contexts
+    else:
+        try:
+            required = load_required_deploy_contexts()
+        except RequiredContextsPolicyError as exc:
+            return False, f"required checks policy error: {exc}"
     blocking_required = [name for name in required if name not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
     missing_required = sorted(name for name in blocking_required if name not in by_name)
     if missing_required:
