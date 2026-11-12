@@ -152,4 +152,60 @@ describe("FleetOrchestrationPage", () => {
       await screen.findByText("Restart runner dispatched to node-a"),
     ).toBeInTheDocument();
   });
+
+  describe("useSubmit deploy (#4276)", () => {
+    it("double-click Deploy sends one POST", async () => {
+      const fetchMock = mockFleetOrchestrationFetch();
+      render(<FleetOrchestrationPage />);
+      await screen.findByText("fleet_deploy");
+      const selects = screen.getAllByRole("combobox");
+      fireEvent.change(selects[0], { target: { value: "node-a" } });
+      fireEvent.click(
+        screen.getByLabelText("I confirm this action against the selected machine"),
+      );
+      const btn = screen.getByRole("button", { name: /^Deploy$/i });
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      await waitFor(() => {
+        const deployCalls = fetchMock.mock.calls.filter(
+          (c) => String(c[0]) === "/api/fleet/orchestration/deploy",
+        );
+        expect(deployCalls).toHaveLength(1);
+      });
+    });
+
+    it("HTTP 500 surfaces failure instead of success", async () => {
+      const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+        if (url === "/api/fleet/orchestration") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                machines: [{ name: "node-a", display_name: "node-a", online: true }],
+                audit_log: [{ orchestration_type: "fleet_deploy", deploy_action: "restart_runner" }],
+              }),
+          } as Response);
+        }
+        if (url === "/api/fleet/orchestration/deploy" && init?.method === "POST") {
+          return Promise.resolve({
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({ detail: "deploy failed" }),
+          } as Response);
+        }
+        return Promise.reject(new Error("unexpected"));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<FleetOrchestrationPage />);
+      await screen.findByText("fleet_deploy");
+      const selects = screen.getAllByRole("combobox");
+      fireEvent.change(selects[0], { target: { value: "node-a" } });
+      fireEvent.click(
+        screen.getByLabelText("I confirm this action against the selected machine"),
+      );
+      fireEvent.click(screen.getByRole("button", { name: /^Deploy$/i }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/deploy failed/i);
+    });
+  });
 });

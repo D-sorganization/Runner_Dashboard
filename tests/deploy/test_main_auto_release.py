@@ -23,6 +23,7 @@ from main_auto_release.naming import (  # noqa: E402
 from main_auto_release.release_index import commit_has_release, re_semver_tag  # noqa: E402
 from main_auto_release.retention import select_releases_to_delete  # noqa: E402
 from node_auto_deploy.artifact import pick_release_assets  # noqa: E402
+from required_context_helper import success_runs_for_required_contexts  # noqa: E402
 
 _GREEN_SHA = "a474ee662a55f9437677116a4d269f74946a8d10"  # pragma: allowlist secret
 _FAIL_SHA = "87fa0117aacefbf7b02ca72d52d207599fedd305"  # pragma: allowlist secret
@@ -31,18 +32,20 @@ _COMMIT_DATE = "2026-10-22T02:11:34Z"
 
 
 def _minimal_green_runs(sha: str) -> list[dict[str, object]]:
-    return [
-        {"head_sha": sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
-        {"head_sha": sha, "name": "tests (3.11)", "status": "completed", "conclusion": "success"},
-        {"head_sha": sha, "name": "guard", "status": "completed", "conclusion": "skipped"},
-    ]
+    return success_runs_for_required_contexts(
+        sha,
+        extra=[
+            {"head_sha": sha, "name": "tests (3.11)", "status": "completed", "conclusion": "success"},
+        ],
+    )
 
 
 def _minimal_failing_runs(sha: str, *, failing_name: str, failing_conclusion: str) -> list[dict[str, object]]:
-    return [
+    runs = success_runs_for_required_contexts(sha)
+    runs.append(
         {"head_sha": sha, "name": failing_name, "status": "completed", "conclusion": failing_conclusion},
-        {"head_sha": sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
-    ]
+    )
+    return runs
 
 
 def test_publisher_gate_ignores_in_flight_self_check() -> None:
@@ -172,10 +175,12 @@ def test_pick_release_assets_supports_auto_version_string() -> None:
 def test_select_green_commit_with_release_skips_head_without_release() -> None:
     head = _minimal_green_runs(_GREEN_SHA)
     older_sha = "b" * 40
-    older = [
-        {"head_sha": older_sha, "name": "quality-gate", "status": "completed", "conclusion": "success"},
-        {"head_sha": older_sha, "name": "tests (3.11)", "status": "completed", "conclusion": "success"},
-    ]
+    older = success_runs_for_required_contexts(
+        older_sha,
+        extra=[
+            {"head_sha": older_sha, "name": "tests (3.11)", "status": "completed", "conclusion": "success"},
+        ],
+    )
     releases = [
         {
             "draft": False,

@@ -1,24 +1,43 @@
 {
+  "_note_anthropic_api_tiers": "anthropic-api rows use sonnet (not opus-5): model_catalog + adapter only expose sonnet; pricing.DEFAULT_MODEL uses opus-5 for billing (#3123 / #4267 follow-on).",
   "schema_version": "staff-model-tiers.v1",
   "tier_order": ["routine", "standard", "complex"],
   "models_by_tier": {
     "routine": {
+      "anthropic-api": "sonnet",
       "claude": "haiku",
+      "claude-ollama": "glm-5.3-flash:cloud",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash",
-      "cursor-agent": "composer-2.5"
+      "cursor-agent": "composer-2.5",
+      "gemini": "gemini-2.5-flash",
+      "grok": "grok-4.7-low",
+      "qwen": "qwen3.8-flash",
+      "ollama": "glm-5.3-flash:cloud"
     },
     "standard": {
+      "anthropic-api": "sonnet",
       "claude": "sonnet",
+      "claude-ollama": "glm-5.3-flash:cloud",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash-high",
-      "cursor-agent": "composer-2.5"
+      "cursor-agent": "composer-2.5",
+      "gemini": "gemini-2.5-pro",
+      "grok": "grok-4.7-high",
+      "qwen": "qwen3.8-max",
+      "ollama": "glm-5.3-flash:cloud"
     },
     "complex": {
+      "anthropic-api": "sonnet",
       "claude": "opus",
+      "claude-ollama": "glm-5.3-flash:cloud",
       "codex": "gpt-6-luna",
       "antigravity": "gemini-3.8-flash-high",
-      "cursor-agent": "grok-4.7-high"
+      "cursor-agent": "grok-4.7-high",
+      "gemini": "gemini-2.5-pro",
+      "grok": "grok-4.7-high",
+      "qwen": "qwen4-max-preview",
+      "ollama": "glm-5.3-flash:cloud"
     }
   }
 }

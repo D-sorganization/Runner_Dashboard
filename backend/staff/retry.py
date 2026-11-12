@@ -75,6 +75,7 @@ def handle_post_execution_retry(
 
     from staff.budget import BudgetGuard
     from staff.failover_dispatch import try_chain_failover
+    from staff.plan import derive_run_plan
     from staff.provider_fallback import try_declarative_fallback
     from staff.store import RunRecord
 
@@ -113,8 +114,6 @@ def handle_post_execution_retry(
         next_attempt = latest.attempt + 1
         attempt_id = attempt_run_id(root_id, next_attempt)
         next_branch = f"{plan.branch}-retry-{next_attempt}"
-        from staff.plan import derive_run_plan  # noqa: PLC0415
-
         attempt_plan = derive_run_plan(plan, branch=next_branch)
         attempt_rec = RunRecord(
             id=attempt_id,

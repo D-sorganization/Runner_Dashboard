@@ -10,6 +10,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 
+import { throwIfHttpError, useSubmit } from "../../hooks/useSubmit";
 import { Badge } from "../../primitives/Badge";
 import { Collapse } from "../../components/Collapse";
 import { Stat } from "../../components/Stat";
@@ -167,6 +168,7 @@ export function QueueTab(p: QueueTabProps) {
   const [confirmRun, setConfirmRun] = useState<string | null>(null);
   // Inline status message replaces alert() (issue #51)
   const [cancelMsg, setCancelMsg] = useState<InlineMessage | null>(null);
+  const bulkWorkflowCancel = useSubmit<{ cancelled_count?: number; errors?: string[] }>();
   const [ipSort, setIpSort] = useState<SortState>({
     key: "runningFor",
     dir: "desc",
@@ -269,38 +271,39 @@ export function QueueTab(p: QueueTabProps) {
     // Two-step inline confirmation: first call arms, second call fires (issue #7)
     const key = workflowName + (repo ? "/" + repo : "");
     if (confirmWorkflow !== key) {
+      bulkWorkflowCancel.reset();
+      setCancelMsg(null);
       setConfirmWorkflow(key);
       setTimeout(() => {
         setConfirmWorkflow((cur) => (cur === key ? null : cur));
       }, CONFIRM_TIMEOUT_MS);
       return;
     }
-    setConfirmWorkflow(null);
-    fetch("/api/queue/cancel-workflow", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify({ workflow_name: workflowName, repo: repo ?? null }),
-    })
-      .then((r) => r.json())
-      .then((d: { cancelled_count?: number; errors?: string[] }) => {
-        const msg =
-          "Cancelled " +
-          (d.cancelled_count ?? 0) +
-          " run(s)" +
-          (d.errors && d.errors.length > 0
-            ? " — Errors: " + d.errors.join(", ")
-            : "");
-        setCancelMsg({ type: "success", text: msg });
-        setTimeout(() => setCancelMsg(null), 6000);
-        if (onRefresh) setTimeout(onRefresh, REFRESH_DELAY_MS);
-      })
-      .catch(() => {
-        setCancelMsg({ type: "error", text: "Cancel request failed" });
-        setTimeout(() => setCancelMsg(null), 6000);
+    if (bulkWorkflowCancel.isSubmitting) return;
+    bulkWorkflowCancel.submit(async ({ idempotencyKey, signal }) => {
+      const response = await fetch("/api/queue/cancel-workflow", {
+        method: "POST",
+        signal,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({ workflow_name: workflowName, repo: repo ?? null }),
       });
+      await throwIfHttpError(response, "Cancel request failed");
+      const d = (await response.json()) as { cancelled_count?: number; errors?: string[] };
+      const msg =
+        "Cancelled " +
+        (d.cancelled_count ?? 0) +
+        " run(s)" +
+        (d.errors && d.errors.length > 0 ? " — Errors: " + d.errors.join(", ") : "");
+      setCancelMsg({ type: "success", text: msg });
+      setTimeout(() => setCancelMsg(null), 6000);
+      if (onRefresh) setTimeout(onRefresh, REFRESH_DELAY_MS);
+      setConfirmWorkflow(null);
+      return d;
+    });
   }
 
   // Group queued runs by workflow name for bulk-cancel
@@ -313,9 +316,15 @@ export function QueueTab(p: QueueTabProps) {
     (n) => workflowGroups[n].length > 1,
   );
 
+  const inlineCancelMsg: InlineMessage | null =
+    cancelMsg ??
+    (bulkWorkflowCancel.failureText
+      ? { type: "error", text: bulkWorkflowCancel.failureText }
+      : null);
+
   return (
     <div>
-      {cancelMsg ? (
+      {inlineCancelMsg ? (
         <div
           role="alert"
           style={{
@@ -323,22 +332,22 @@ export function QueueTab(p: QueueTabProps) {
             padding: "10px 16px",
             borderRadius: 6,
             background:
-              cancelMsg.type === "error"
+              inlineCancelMsg.type === "error"
                 ? "rgba(248,81,73,0.15)"
                 : "rgba(63,185,80,0.15)",
             color:
-              cancelMsg.type === "error"
+              inlineCancelMsg.type === "error"
                 ? "var(--accent-red)"
                 : "var(--accent-green)",
             border:
               "1px solid " +
-              (cancelMsg.type === "error"
+              (inlineCancelMsg.type === "error"
                 ? "var(--accent-red)"
                 : "var(--accent-green)"),
             fontSize: 13,
           }}
         >
-          {cancelMsg.text}
+          {inlineCancelMsg.text}
         </div>
       ) : null}
 
@@ -559,6 +568,7 @@ export function QueueTab(p: QueueTabProps) {
                     <button
                       key={name}
                       onClick={() => cancelWorkflow(name)}
+                      disabled={bulkWorkflowCancel.isSubmitting && isPending}
                       title={
                         isPending
                           ? `Confirm bulk cancel of all ${name} workflow runs`

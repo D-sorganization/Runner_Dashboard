@@ -65,6 +65,7 @@ BARB_SEAT_IDS = frozenset(
         "agent-codex-barb",
         "agent-cursor-barb",
         "agent-agy-barb",
+        "openbot-barb",
     }
 )
 BARB_ID_SUFFIXES: frozenset[str] = frozenset(("-barb", "-grok", "-hands"))

@@ -119,6 +119,61 @@ describe("CodeRequestsTab", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  describe("useSubmit dispatch (#4276)", () => {
+    function fillAndGetDispatchBtn() {
+      const selects = screen.getAllByRole("combobox");
+      fireEvent.change(selects[0], { target: { value: "Runner_Dashboard" } });
+      fireEvent.change(
+        screen.getByPlaceholderText("Describe the code request to plan and execute…"),
+        { target: { value: "x" } },
+      );
+      return screen.getByRole("button", { name: /Dispatch/ });
+    }
+
+    it("double-click sends one onDispatch call", async () => {
+      let resolve!: () => void;
+      const pending = new Promise<void>((res) => {
+        resolve = res;
+      });
+      const onDispatch = vi.fn(() => pending);
+      setup({ onDispatch });
+      const btn = fillAndGetDispatchBtn();
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      expect(onDispatch).toHaveBeenCalledTimes(1);
+      resolve();
+      await waitFor(() => expect(onDispatch).toHaveBeenCalledTimes(1));
+    });
+
+    it("HTTP 500 from onDispatch renders failure", async () => {
+      const onDispatch = vi.fn().mockRejectedValue(new Error("HTTP 500: kaput"));
+      setup({ onDispatch });
+      fireEvent.click(fillAndGetDispatchBtn());
+      await waitFor(() =>
+        expect(screen.getByRole("alert")).toHaveTextContent("Dispatch failed: HTTP 500: kaput"),
+      );
+    });
+
+    it("retry reuses idempotency key option", async () => {
+      const keys: Array<string | undefined> = [];
+      let calls = 0;
+      const onDispatch = vi.fn((_p, o) => {
+        keys.push(o?.idempotencyKey);
+        calls += 1;
+        if (calls === 1) return Promise.reject(new Error("HTTP 500"));
+        return Promise.resolve(undefined);
+      });
+      setup({ onDispatch });
+      const btn = fillAndGetDispatchBtn();
+      fireEvent.click(btn);
+      await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+      fireEvent.click(btn);
+      await waitFor(() => expect(onDispatch).toHaveBeenCalledTimes(2));
+      expect(keys[0]).toBeTruthy();
+      expect(keys[0]).toBe(keys[1]);
+    });
+  });
+
   it("disables dispatch and explains why when the dispatch target is unavailable (#1280)", () => {
     setup({
       dispatchTarget: {
