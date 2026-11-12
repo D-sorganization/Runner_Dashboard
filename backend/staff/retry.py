@@ -60,13 +60,19 @@ def handle_post_execution_retry(
     # If this attempt succeeded and it was a retry attempt:
     if latest.status == "succeeded":
         if latest.retry_of:
-            store.update_run(
-                latest.retry_of,
-                status="succeeded",
-                ended_at=latest.ended_at,
-                outcome=latest.outcome,
-                error="",
-            )
+            from staff.run_status import RunStatus, transition
+
+            root = store.get_run(latest.retry_of)
+            if root is not None:
+                transition(
+                    store,
+                    latest.retry_of,
+                    RunStatus(root.status),
+                    RunStatus.SUCCEEDED,
+                    ended_at=latest.ended_at,
+                    outcome=latest.outcome,
+                    error="",
+                )
             store.append_event(latest.retry_of, "retry_success", f"attempt {latest.attempt} succeeded")
         return False
 

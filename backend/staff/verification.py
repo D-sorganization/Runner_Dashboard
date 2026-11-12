@@ -285,7 +285,7 @@ def apply_deliverable_failure(
     updates = deliverable_failure_updates(rec, verdict, opens_pr=requires_pr)
     if not updates:
         return rec
-    store.update_run(rec.id, **updates)
+    _persist_run_updates(store, rec, updates)
     return store.get_run(rec.id)
 
 
@@ -333,6 +333,19 @@ def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
         # The failure was verification alone (CI raced the check); CI is green now, so restore the run.
         updates.update(status="succeeded", failure_class="", error="", remediation="", retryable=False)
     return updates
+
+
+def _persist_run_updates(store: RunStore, rec: RunRecord, updates: dict[str, Any]) -> None:
+    if not updates:
+        return
+    payload = dict(updates)
+    if "status" in payload:
+        new_status = payload.pop("status")
+        from staff.run_status import RunStatus, transition
+
+        transition(store, rec.id, RunStatus(rec.status), RunStatus(new_status), **payload)
+        return
+    store.update_run(rec.id, **payload)
 
 
 def _record_role_open_pr_diagnostic(store: RunStore, rec: RunRecord, resolver_path: str) -> None:
@@ -396,7 +409,7 @@ def verify_and_record(
             _record_role_open_pr_diagnostic(store, rec, resolver_path)
         # The verify event lands before the verdict, so a reader that sees the verdict sees it (#1489).
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
-        store.update_run(run_id, **updates_for(rec, verdict, mode))
+        _persist_run_updates(store, rec, updates_for(rec, verdict, mode))
         if verdict.verification == "verified":
             try:
                 from staff.review import auto_review_if_eligible

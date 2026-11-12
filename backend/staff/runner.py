@@ -26,6 +26,7 @@ from staff.lessons import file_proposed_lessons, select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
+from staff.run_status import RunStatus, transition
 from staff.runner_ops import StaffRunPreparationError
 from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
 from staff.store import RunRecord, RunStore, _now, get_store
@@ -169,7 +170,7 @@ class StaffRunner:
             handle_run_status_change(rec, "cancelled")
             return True
         if rec.status in ("queued", "preparing"):
-            self.store.update_run(run_id, status="cancelled", ended_at=_now())
+            transition(self.store, run_id, RunStatus(rec.status), RunStatus.CANCELLED, ended_at=_now())
             self.store.append_event(run_id, "cancel", "cancelled before start")
             handle_run_status_change(rec, "cancelled")
             return True
@@ -187,7 +188,7 @@ class StaffRunner:
                 return
             crashed = False
             try:
-                store.update_run(rec.id, status="preparing", started_at=_now())
+                transition(store, rec.id, RunStatus.QUEUED, RunStatus.PREPARING, started_at=_now())
                 handle_run_status_change(rec, "preparing")
                 cloud_run = plan.execution_mode == "cloud"
                 if not cloud_run and ops.fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
@@ -221,7 +222,14 @@ class StaffRunner:
             except Exception as exc:  # noqa: BLE001
                 crashed = True
                 log.exception("staff run %s crashed", rec.id)
-                store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
+                transition(
+                    store,
+                    rec.id,
+                    RunStatus.PREPARING,
+                    RunStatus.FAILED,
+                    ended_at=_now(),
+                    error=str(exc)[:1000],
+                )
                 claim_guard.release_claim(rec.id, "failed")
                 store.append_event(rec.id, "error", str(exc)[:1000])
             finally:
@@ -312,7 +320,15 @@ class StaffRunner:
             with self._lock:
                 self._procs[rec.id] = proc
                 cancelled = rec.id in self._cancel_flags
-            store.update_run(rec.id, status="running", transcript_path=str(transcript), prompt=prompt, pid=proc.pid)
+            transition(
+                store,
+                rec.id,
+                RunStatus.PREPARING,
+                RunStatus.RUNNING,
+                transcript_path=str(transcript),
+                prompt=prompt,
+                pid=proc.pid,
+            )
             store.append_event(rec.id, "start", f"{launch_label} in {workdir}")
             handle_run_status_change(rec, "running")
             if cancelled:
@@ -399,9 +415,11 @@ class StaffRunner:
             workspace.persist_run_transcript(store, rec.id, workdir)
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
             store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
-            store.update_run(
+            transition(
+                store,
                 rec.id,
-                status=status,
+                RunStatus.RUNNING,
+                RunStatus(status),
                 failure_class=failure_class,
                 retryable=retryable,
                 remediation=remediation,

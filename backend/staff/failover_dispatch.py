@@ -17,6 +17,7 @@ from staff.provider_cooldown import (
 )
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain
 from staff.roles import RoleSpec
+from staff.run_status import RunStatus, transition
 from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 log = logging.getLogger("dashboard.staff.failover_dispatch")
@@ -302,9 +303,11 @@ def try_chain_failover(
 def _mark_providers_exhausted(store: Any, latest: Any, root_id: str, plan: Any) -> None:
     reset_at = earliest_cooldown_reset() or ""
     msg = f"All providers in failover chain exhausted; earliest reset {reset_at or 'unknown'}"
-    store.update_run(
+    transition(
+        store,
         latest.id,
-        status="blocked",
+        RunStatus(latest.status),
+        RunStatus.BLOCKED,
         failure_class="providers_exhausted",
         retryable=False,
         remediation=msg,
@@ -312,15 +315,19 @@ def _mark_providers_exhausted(store: Any, latest: Any, root_id: str, plan: Any) 
         next_attempt_at=reset_at or None,
     )
     if root_id != latest.id:
-        store.update_run(
-            root_id,
-            status="blocked",
-            failure_class="providers_exhausted",
-            retryable=False,
-            remediation=msg,
-            error=msg,
-            next_attempt_at=reset_at or None,
-        )
+        root = store.get_run(root_id)
+        if root is not None:
+            transition(
+                store,
+                root_id,
+                RunStatus(root.status),
+                RunStatus.BLOCKED,
+                failure_class="providers_exhausted",
+                retryable=False,
+                remediation=msg,
+                error=msg,
+                next_attempt_at=reset_at or None,
+            )
     store.append_event(root_id, "providers_exhausted", msg)
 
 

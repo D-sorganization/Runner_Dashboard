@@ -16,9 +16,7 @@ from staff.dispatcher_metrics import dispatcher_origin
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
-
-RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked", "needs_input")
-ACTIVE_STATUSES = ("queued", "preparing", "running")
+from staff.run_status import ACTIVE_STATUSES, RUN_STATUSES  # noqa: F401 — re-exported for importers
 
 
 def _config_dir() -> Path:
@@ -205,6 +203,17 @@ class RunStore:
     def update_run(self, run_id: str, **fields: Any) -> None:
         if not fields:
             return
+        expected_status = fields.pop("_expected_status", None)
+        if expected_status is not None:
+            assert "status" in fields, "compare-and-set update requires status="  # noqa: S101
+            status = str(fields.pop("status"))
+            if not self.compare_and_set_run_status(run_id, expected=expected_status, status=status, **fields):
+                from staff.run_status import RunStatus, RunStatusRaceError
+
+                actual = self.get_run(run_id)
+                actual_status = None if actual is None else actual.status
+                raise RunStatusRaceError(run_id, RunStatus(expected_status), actual_status)
+            return
         unknown = set(fields) - set(_COLUMNS)
         assert not unknown, f"unknown columns: {unknown}"  # noqa: S101
         if "status" in fields:
@@ -213,6 +222,29 @@ class RunStore:
         with self._lock:
             values = tuple(_redacted(k, v) for k, v in fields.items())
             self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*values, run_id))  # noqa: S608
+
+    def compare_and_set_run_status(
+        self,
+        run_id: str,
+        *,
+        expected: str,
+        status: str,
+        **fields: Any,
+    ) -> bool:
+        """Update ``status`` and optional fields only when the row's status equals ``expected``."""
+        assert expected in RUN_STATUSES, expected  # noqa: S101
+        assert status in RUN_STATUSES, status  # noqa: S101
+        merged = {**fields, "status": status}
+        unknown = set(merged) - set(_COLUMNS)
+        assert not unknown, f"unknown columns: {unknown}"  # noqa: S101
+        sets = ", ".join(f"{k} = ?" for k in merged)
+        with self._lock:
+            values = tuple(_redacted(k, v) for k, v in merged.items())
+            cur = self._conn.execute(
+                f"UPDATE runs SET {sets} WHERE id = ? AND status = ?",  # noqa: S608
+                (*values, run_id, expected),
+            )
+            return cur.rowcount == 1
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:

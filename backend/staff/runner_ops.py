@@ -24,6 +24,7 @@ from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
 from staff.roles import RoleSpec
+from staff.run_status import RunStatus, transition
 from staff.runner_ops_worktree_bootstrap import (  # noqa: F401  re-exported for existing importers (#3913)
     _PYTHON_VERSION_SNIPPET,
     _SUBMODULE_ATTEMPTS,
@@ -87,9 +88,11 @@ def ensure_worktree_bootstrap_ready(
                 (f"worktree bootstrap ok: python={result.python_executable}; pre_pr_advisory={result.pre_pr_advisory}"),
             )
         return result
-    store.update_run(
+    transition(
+        store,
         rec.id,
-        status="failed",
+        RunStatus.PREPARING,
+        RunStatus.FAILED,
         failure_class=result.failure_class or "environment_error",
         retryable=result.retryable,
         remediation=result.remediation
@@ -130,9 +133,11 @@ def _ensure_disk_floor_admitted(
         breach = staff_disk_floor_breach_reason()
     if breach:
         detail = f"runner schedule disk floor breached: {breach}; free space before {stage}"
-        store.update_run(
+        transition(
+            store,
             rec.id,
-            status="failed",
+            RunStatus.PREPARING,
+            RunStatus.FAILED,
             failure_class="workspace_error",
             retryable=True,
             remediation="Free disk space until the runner-scheduler resource_floor readmits, then retry.",
@@ -194,9 +199,11 @@ def apply_staff_run_github_child_env(
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint GitHub credential for staff run %s", run_id)
         err = redact_sensitive_content(f"GitHub auth for run failed: {exc}")
-        store.update_run(
+        transition(
+            store,
             rec.id,
-            status="failed",
+            RunStatus.PREPARING,
+            RunStatus.FAILED,
             failure_class="auth_error",
             retryable=False,
             remediation=_GITHUB_AUTH_REMEDIATION,
@@ -239,9 +246,11 @@ def apply_staff_run_fleet_token(
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to mint staff run token for %s", rec.id)
         err = f"token minting failed: {exc}"
-        store.update_run(
+        transition(
+            store,
             rec.id,
-            status="failed",
+            RunStatus.PREPARING,
+            RunStatus.FAILED,
             failure_class="workspace_error",
             retryable=False,
             remediation="Token minting failed; verify node identity configuration.",
@@ -278,9 +287,11 @@ def fail_if_cli_outdated(store: RunStore, rec: RunRecord, adapter: ProviderAdapt
     gate = cli_version.version_gate(getattr(adapter, "executable", ""))
     if gate is None:
         return False
-    store.update_run(
+    transition(
+        store,
         rec.id,
-        status="failed",
+        RunStatus.PREPARING,
+        RunStatus.FAILED,
         failure_class=gate.failure_class,
         retryable=gate.retryable,
         remediation=gate.remediation,
