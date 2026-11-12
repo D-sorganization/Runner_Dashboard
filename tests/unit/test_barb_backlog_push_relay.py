@@ -407,11 +407,13 @@ def test_pid_disappearance_without_evidence_is_unknown_not_completed(tmp_path: P
 )
 def test_recovery_across_restarts_distinguishes_outcome(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     exit_val: str | None,
     expected_outcome: str,
     expected_summary_part: str,
 ) -> None:
     """#4104: across relay restart, loaded active state resolves correctly from exit evidence."""
+    monkeypatch.setattr(relay, "_pid_alive", lambda _pid: False)
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     session = "barb-bpush-8-sup"
