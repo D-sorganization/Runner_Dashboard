@@ -94,7 +94,7 @@ from fastapi.responses import (  # noqa: E402
 )
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from identity import Principal, require_scope  # noqa: B008, E402
-from middleware import MaxBodySizeMiddleware  # noqa: E402
+from middleware import DEFAULT_MAX_BODY_SIZE, MaxBodySizeMiddleware  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 from routers import admin as admin_router  # noqa: E402
 from routers import auth as auth_router  # noqa: E402
@@ -171,7 +171,6 @@ from middleware import (  # noqa: E402
     add_security_headers,
     auth_perimeter_check,
     csrf_check,
-    max_body_size_check,
 )
 from models.requests import HelpChatRequest  # noqa: E402
 from platform_utils.wsl_paths import windows_repositories_root  # noqa: E402
@@ -546,12 +545,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content=error_body.model_dump(),
     )
 
-
-# Issue #350 — early body-size guard (ASGI middleware, runs before routing)
-app.add_middleware(
-    MaxBodySizeMiddleware,
-    default_limit=1 * 1024 * 1024,  # 1 MB
-)
 
 # Issue #330 — Prometheus HTTP instrumentation middleware
 app.add_middleware(_prometheus_metrics_router.PrometheusMiddleware)
@@ -974,9 +967,10 @@ app.add_middleware(
 )
 
 
-@app.middleware("http")
-async def _max_body_size(request, call_next):
-    return await max_body_size_check(request, call_next)
+# Issue #350 / #4274 F-07: the single request-body limit. Registered here so it
+# wraps auth, session and routing (inside CSRF and security headers): it rejects a
+# declared oversize before routing and counts the bytes actually streamed.
+app.add_middleware(MaxBodySizeMiddleware, default_limit=DEFAULT_MAX_BODY_SIZE)
 
 
 @app.middleware("http")
