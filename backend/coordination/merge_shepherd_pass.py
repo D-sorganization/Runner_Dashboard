@@ -42,6 +42,10 @@ QUEUE_BACKOFF_THRESHOLD = 6
 ARM_CAP_RD = 2
 ARM_CAP_DEFAULT = 4
 SHEPHERD_HOLD_LABELS = frozenset({"hold", "do-not-merge", "needs-dieter", "dnm"})
+# The only fetch failures that mean "this token may not read this repo": GitHub's
+# 403 text for an App installation, and GraphQL's not-found for a repo it cannot see.
+_REPO_ACCESS_DENIED = "Resource not accessible by integration"
+_REPO_NOT_VISIBLE = re.compile(r"Could not resolve to a Repository with the name '[^']+'\.")
 _PR_REF = re.compile(r"\b(?:PR\s*#|#)(\d+)\b", re.IGNORECASE)
 
 OPEN_PRS_QUERY = """
@@ -140,6 +144,7 @@ class PassSummary:
     skipped: list[dict[str, Any]] = field(default_factory=list)
     backoff: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    inaccessible_repos: list[dict[str, str]] = field(default_factory=list)
 
 
 def default_skip_path(repo_root: Path) -> Path:
@@ -257,6 +262,21 @@ def holds_gate_failed_payload(*, live: bool, reason: str) -> dict[str, Any]:
     payload["holds_unavailable"] = reason
     payload["status"] = "holds_unavailable"
     return payload
+
+
+def _access_denial_lines(message: str) -> list[str]:
+    return [line.strip().removeprefix("gh: ") for line in message.splitlines() if line.strip()]
+
+
+def is_repo_access_error(message: str) -> bool:
+    """Return True only when a fetch failure is purely "this token cannot read this repo".
+
+    Contract: every non-empty line of ``message`` (``gh`` prints one per denied node)
+    must be an access denial. An empty message, or a denial mixed with any other
+    error (auth, rate limit, server, malformed payload), is not an access error.
+    """
+    lines = _access_denial_lines(message)
+    return bool(lines) and all(line == _REPO_ACCESS_DENIED or _REPO_NOT_VISIBLE.fullmatch(line) for line in lines)
 
 
 def _pr_file_metadata(node: Mapping[str, Any]) -> tuple[tuple[str, ...], int, int, bool]:
@@ -541,7 +561,12 @@ def run_merge_shepherd_pass(
         try:
             payload = fetch_graphql(owner, name)
         except OSError as exc:
-            summary.errors.append(f"{full}: {exc}")
+            if is_repo_access_error(str(exc)):
+                reason = _access_denial_lines(str(exc))[0]
+                log.warning("merge shepherd skipping inaccessible repo %s: %s", full, reason)
+                summary.inaccessible_repos.append({"repo": full, "reason": reason})
+            else:
+                summary.errors.append(f"{full}: {exc}")
             continue
         nodes, armed_count, queue_depth = graphql_nodes(payload)
         repo_passes = collect_review_passes_from_store(
@@ -586,6 +611,9 @@ def run_merge_shepherd_pass(
                     "eligibility": act.eligibility,
                 }
             )
+    if summary.inaccessible_repos and not summary.repos and not summary.errors:
+        # No repo was readable: the token is broken, not one repo's installation.
+        summary.errors.append(f"all_repos_inaccessible:{len(summary.inaccessible_repos)}")
     return summary
 
 
@@ -596,4 +624,5 @@ def summary_to_json(summary: PassSummary) -> dict[str, Any]:
         "skipped": summary.skipped,
         "backoff": summary.backoff,
         "errors": summary.errors,
+        "inaccessible_repos": summary.inaccessible_repos,
     }
