@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import logging
 import threading
@@ -9,7 +10,6 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
 from overlay_contract import get_overlay
 from security import safe_yaml_load, validate_config_path
 
@@ -196,8 +196,9 @@ def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
 
     A new ``config/agent_principals.yml`` row plus its ``agent-tokens/*.token``
     file become live without a hub restart. The merge is the startup merge,
-    unchanged: it only adds principals and tokens and unions config roles and
-    scopes into existing principals; it never removes or revokes anything.
+    unchanged: it adds principals and tokens and unions config roles and scopes into
+    existing principals (a ``checkin-only`` config role replaces the role list);
+    it never removes a principal or revokes a token.
 
     Contract:
       * Post: returns ``{"added", "updated", "tokens_ingested", "total"}`` where
@@ -205,30 +206,33 @@ def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
         count. No token, token hash, or file content is returned or logged.
       * Post: a second call with unchanged inputs returns three empty lists and
         leaves the manager unchanged (idempotent).
-      * Raises :class:`AgentPrincipalReloadError` when the config or a token file
-        cannot be read; the manager's principals and tokens are then exactly as
-        they were before the call (all or nothing).
+      * Raises :class:`AgentPrincipalReloadError` when the merge fails for any
+        reason (unreadable or malformed config or token file); nothing from the
+        failed reload is applied (all or nothing).
+      * Post: only this reload's own additions and changes are written to the
+        manager, entry by entry. A token revoked or minted by another caller
+        while the reload runs is never restored or dropped.
     """
     with _RELOAD_LOCK:
         principals_before = dict(manager.principals)
-        tokens_before = list(manager.tokens)
+        known_hashes = {t.token_hash for t in manager.tokens}
+        scratch = copy.copy(manager)
+        scratch.principals = dict(principals_before)
+        scratch.tokens = list(manager.tokens)
         try:
-            merge_agent_principal_defaults(manager)
-        except (OSError, ValueError, yaml.YAMLError) as exc:
-            # The merge replaces entries rather than mutating them, so the shallow
-            # snapshots restore the exact prior state.
-            manager.principals = principals_before
-            manager.tokens = tokens_before
+            merge_agent_principal_defaults(scratch)
+        except Exception as exc:
+            # Boundary catch: the merge ran on a scratch copy, so discarding it is the rollback.
             log.warning("agent principals reload failed (%s); identity store unchanged", type(exc).__name__)
             raise AgentPrincipalReloadError(type(exc).__name__) from None
-        added = sorted(set(manager.principals) - set(principals_before))
-        updated = sorted(
-            agent_id
-            for agent_id, before in principals_before.items()
-            if agent_id in manager.principals and manager.principals[agent_id] != before
-        )
-        known_hashes = {t.token_hash for t in tokens_before}
-        tokens_ingested = sorted({t.principal_id for t in manager.tokens if t.token_hash not in known_hashes})
+        changed = {pid: p for pid, p in scratch.principals.items() if principals_before.get(pid) != p}
+        new_tokens = [t for t in scratch.tokens if t.token_hash not in known_hashes]
+        manager.principals.update(changed)
+        live_hashes = {t.token_hash for t in manager.tokens}
+        manager.tokens.extend(t for t in new_tokens if t.token_hash not in live_hashes)
+        added = sorted(set(changed) - set(principals_before))
+        updated = sorted(set(changed) & set(principals_before))
+        tokens_ingested = sorted({t.principal_id for t in new_tokens})
         total = len(manager.principals)
     log.info(
         "agent principals reloaded: added=%s updated=%s tokens_ingested=%s total=%d",

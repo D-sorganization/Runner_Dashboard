@@ -11,10 +11,11 @@ import json
 import logging
 from pathlib import Path
 
+import agent_principal_defaults
 import identity
 import pytest
 import yaml
-from agent_principal_defaults import reload_agent_principals
+from agent_principal_defaults import AgentPrincipalReloadError, reload_agent_principals
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from identity import IdentityManager, principal_has_scope
@@ -233,3 +234,80 @@ def test_route_is_a_sync_admin_post() -> None:
     route = next(r for r in admin.router.routes if getattr(r, "path", "") == _RELOAD)
     assert route.methods == {"POST"}
     assert not inspect.iscoroutinefunction(route.endpoint)
+
+
+def test_malformed_row_applies_nothing(mgr: IdentityManager, config_path: Path) -> None:
+    """A row the merge cannot parse (``roles: 5``) must not leave the rows before it applied."""
+    _add_newcomer(mgr, config_path)
+    data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    data["agents"].append({"id": "agent-broken", "roles": 5})
+    config_path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    _write_token(mgr.config_dir, "agent-broken", "svc_fixture_broken_reload")
+    principals_before, tokens_before = dict(mgr.principals), list(mgr.tokens)
+
+    with pytest.raises(AgentPrincipalReloadError):
+        reload_agent_principals(mgr)
+
+    assert mgr.principals == principals_before
+    assert mgr.tokens == tokens_before
+    assert mgr.verify_token(_NEW_TOKEN) is None
+
+
+def test_failed_reload_does_not_resurrect_a_token_revoked_meanwhile(
+    mgr: IdentityManager, config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A revoke that lands while a reload is failing must stay revoked."""
+    doomed = mgr.mint_service_token("plain-bot", name="fixture-doomed")
+    doomed_hash = hashlib.sha256(doomed.encode()).hexdigest()
+
+    def revoke_then_fail(manager: IdentityManager) -> dict[str, Path]:
+        mgr.revoke_token(doomed_hash)
+        raise OSError("token directory unreadable")
+
+    monkeypatch.setattr(agent_principal_defaults, "agent_token_files", revoke_then_fail)
+    with pytest.raises(AgentPrincipalReloadError):
+        reload_agent_principals(mgr)
+
+    assert mgr.verify_token(doomed) is None
+    assert all(t.token_hash != doomed_hash for t in mgr.tokens)
+
+
+def test_successful_reload_keeps_a_concurrent_revoke_and_mint(
+    mgr: IdentityManager, config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_newcomer(mgr, config_path)
+    doomed = mgr.mint_service_token("plain-bot", name="fixture-doomed")
+    real_token_files = agent_principal_defaults.agent_token_files
+    minted: list[str] = []
+
+    def revoke_and_mint_then_list(manager: IdentityManager) -> dict[str, Path]:
+        mgr.revoke_token(hashlib.sha256(doomed.encode()).hexdigest())
+        minted.append(mgr.mint_service_token("plain-bot", name="fixture-concurrent"))
+        return real_token_files(manager)
+
+    monkeypatch.setattr(agent_principal_defaults, "agent_token_files", revoke_and_mint_then_list)
+    result = reload_agent_principals(mgr)
+
+    assert result["added"] == [_NEW_ID]
+    assert mgr.verify_token(doomed) is None
+    assert mgr.verify_token(minted[0]) is mgr.principals["plain-bot"]
+    assert mgr.verify_token(_NEW_TOKEN) is mgr.principals[_NEW_ID]
+
+
+def test_audit_line_names_every_change_kind(
+    mgr: IdentityManager,
+    config_path: Path,
+    client: TestClient,
+    admin_token: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Scope widening on an existing principal and a newly attached bearer are both audited by id."""
+    _write_config(config_path, with_newcomer=True, grok_scopes=("fleet.read",))
+    _write_token(mgr.config_dir, _NEW_ID, _NEW_TOKEN)
+    with caplog.at_level(logging.INFO):
+        assert client.post(_RELOAD, headers=_bearer(admin_token)).status_code == 200
+    audit = [r.getMessage() for r in caplog.records if r.getMessage().startswith("audit: agent-principals reload")]
+    assert len(audit) == 1
+    assert f"added=['{_NEW_ID}']" in audit[0]
+    assert "updated=['agent-grok']" in audit[0]
+    assert f"tokens_ingested=['{_NEW_ID}']" in audit[0]
