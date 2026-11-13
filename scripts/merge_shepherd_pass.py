@@ -180,6 +180,9 @@ def _write_step_summary(payload: dict[str, Any]) -> None:
         return
     with open(path, "a", encoding="utf-8") as fh:
         fh.write("## Merge shepherd pass\n\n")
+        inaccessible = [str(row["repo"]) for row in payload.get("inaccessible_repos") or ()]
+        if inaccessible:
+            fh.write(f"Skipped {len(inaccessible)} inaccessible repo(s): {', '.join(inaccessible)}\n\n")
         fh.write("```json\n")
         fh.write(json.dumps(payload, indent=2, sort_keys=True))
         fh.write("\n```\n")
