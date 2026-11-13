@@ -77,7 +77,7 @@ def _tier1_blocks_from_prompt(prompt: str) -> tuple[str, str]:
 
 
 def test_oversize_skill_respects_tier1_cap_when_lessons_leave_low_skill_budget(skills_env: Path) -> None:
-    """Regression: skill truncation must not floor skill_budget at 16 tokens past Tier 1 cap."""
+    """Regression (#4266, #4420): skill truncation respects Tier 1 cap with tiny skill headroom."""
     bundle = resolve_dispatch_bundle(role="ad-hoc", repo="Runner_Dashboard", task_type="staff-dispatch")
     pin = bundle.skill_pin or bundle.skill_version
     pointer = f"\n\n(Skill package truncated; full registry pin: {pin})"
@@ -109,8 +109,16 @@ def test_oversize_skill_respects_tier1_cap_when_lessons_leave_low_skill_budget(s
         dispatch_bundle=bundle,
         repo_lessons_result=repo_lessons,
     )
-    skill_block, lessons_block_out = _tier1_blocks_from_prompt(prompt)
-    tier1_tokens = estimate_tokens(skill_block) + estimate_tokens(lessons_block_out)
+    lessons_idx = prompt.find(_LESSONS_HEADER)
+    if lessons_idx != -1:
+        skill_block, lessons_block_out = _tier1_blocks_from_prompt(prompt)
+        tier1_tokens = estimate_tokens(skill_block) + estimate_tokens(lessons_block_out)
+    else:
+        skill_start = prompt.find("Skill pack")
+        assert skill_start != -1
+        intro = prompt.find("You are the fleet staff role", skill_start)
+        skill_block = prompt[skill_start:intro].strip() if intro != -1 else prompt[skill_start:].strip()
+        tier1_tokens = estimate_tokens(skill_block)
     assert tier1_tokens <= TIER1_TOKEN_CAP
     assert bundle.skill_pin in skill_block
     assert "registry pin:" in skill_block
