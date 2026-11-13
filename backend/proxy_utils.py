@@ -85,7 +85,31 @@ def _translate_upstream_response(resp: httpx.Response, upstream_name: str, reque
             "[%s] %s returned non-JSON (%d). Body: %s", request_id, upstream_name, resp.status_code, body_snippet
         )
         raise HTTPException(status_code=502, detail=f"{upstream_name} returned non-JSON ({resp.status_code})")
-    return resp.json()
+    body = resp.json()
+    if not 200 <= resp.status_code < 300:
+        raise _upstream_error(resp.status_code, body, upstream_name)
+    return body
+
+
+# The upstream refused this machine's own fleet credential. The caller's session is
+# fine, so the caller must not be told it is unauthenticated or forbidden.
+_UPSTREAM_CREDENTIAL_REJECTED: frozenset[int] = frozenset({401, 403})
+
+
+def _upstream_error(status: int, body: object, upstream_name: str) -> HTTPException:
+    """Map an upstream error answer to the error this machine's caller gets (#4417).
+
+    Precondition: ``status`` is outside 2xx. An upstream error is never returned as a
+    success body. 4xx about the request itself keeps its status and ``detail``; a
+    rejected fleet credential and any other status become 502 without the upstream body.
+    """
+    if 400 <= status < 500 and status not in _UPSTREAM_CREDENTIAL_REJECTED:
+        detail = body.get("detail") if isinstance(body, dict) else None
+        return HTTPException(status_code=status, detail=detail or f"{upstream_name} returned HTTP {status}")
+    if status in _UPSTREAM_CREDENTIAL_REJECTED:
+        log.warning("%s rejected this machine's fleet credential (HTTP %d)", upstream_name, status)
+        return HTTPException(status_code=502, detail=f"{upstream_name} rejected the fleet credential (HTTP {status})")
+    return HTTPException(status_code=502, detail=f"{upstream_name} returned HTTP {status}")
 
 
 def _safe_forward_headers(request: Request) -> dict[str, str]:
