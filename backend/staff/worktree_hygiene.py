@@ -316,18 +316,119 @@ def _recreate_tracked_link_entry(entry: Path, snap: _TrackedSymlinkSnapshot) -> 
         raise OSError(f"symlink missing after recreate: {entry}")
 
 
+_DIR_FD_LINKS = all(fn in os.supports_dir_fd for fn in (os.open, os.mkdir, os.symlink))
+
+
+def _path_based_link_restore_is_unsafe(snap: _TrackedSymlinkSnapshot) -> bool:
+    """True when link recreation cannot use a directory descriptor (TOCTOU-safe)."""
+    return not _DIR_FD_LINKS or _snapshot_expects_junction(snap)
+
+
+def _refuse_path_based_link_restore(snap: _TrackedSymlinkSnapshot) -> None:
+    """Refuse restore without creating parents or links by path (#4360, #4400 review)."""
+    if not _path_based_link_restore_is_unsafe(snap):
+        return
+    raise OSError(
+        f"{snap.kind} {snap.rel_posix} not restored: this platform cannot create a link "
+        "relative to an open directory, and a path-based create is open to a parent swap"
+    )
+
+
+def _open_real_parent_dir(worktree: Path, rel_posix: str) -> int:
+    """Open the parent of ``rel_posix`` without following a link at or below ``worktree``.
+
+    Pre: ``_DIR_FD_LINKS``. Post: returns a descriptor the caller must close; it
+    names the real directory that was checked, so a later swap of any path
+    component cannot redirect what is created through it. Missing parents are
+    created; a link or non-directory component raises ``OSError``.
+    """
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(worktree, flags)  # the root itself must be a real directory too
+    try:
+        for part in rel_posix.split("/")[:-1]:
+            try:
+                os.mkdir(part, dir_fd=fd)
+            except FileExistsError:
+                pass
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _recreate_tracked_link_under_real_parents(worktree: Path, snap: _TrackedSymlinkSnapshot) -> None:
+    """Recreate ``snap`` inside ``worktree``; never through a parent that is, or becomes, a link.
+
+    Pre: none. Post: the link exists in the real directory that was checked, or
+    ``OSError`` is raised and nothing was created. Where the platform cannot create
+    a link relative to an open directory (Windows, and so every junction), a
+    path-based create could be redirected by swapping a parent between the check
+    and the create, so the entry is refused instead: rollback reports it as
+    unrestored and the tree is left as it is.
+    """
+    _refuse_path_based_link_restore(snap)
+    parent_fd = _open_real_parent_dir(worktree, snap.rel_posix)
+    try:
+        name = snap.rel_posix.rsplit("/", 1)[-1]
+        os.symlink(snap.target, name, snap.target_is_directory, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
+
+
 def _restore_tracked_symlinks_from_journal(
     worktree: Path,
     journal: tuple[_TrackedSymlinkSnapshot, ...],
     git_cwd: Path,
 ) -> list[str]:
-    """Restore index-tracked symlinks removed during a failed disposal attempt."""
-    if not journal or not worktree.exists() or not _registered_worktree_unlocked(git_cwd, worktree):
+    """Restore index-tracked symlinks removed during a failed disposal attempt.
+
+    Pre: ``journal`` was captured from this worktree before unlinking.
+    Post: each journal entry that is missing is recreated with its recorded raw
+    target; an existing entry (same or different) and every link target are left
+    untouched. Returns the relative paths that could not be restored. A tree that
+    cannot be confirmed as registered and unlocked is not written to: every journal
+    entry is then returned as unrestored, so the skip is reported, not silent.
+    """
+    if not journal or not worktree.exists():
         return []
+    if not _registered_worktree_unlocked(git_cwd, worktree):
+        log.warning(
+            "tracked symlink rollback skipped for %s: not confirmed as a registered, unlocked worktree",
+            worktree,
+        )
+        return [snap.rel_posix for snap in journal]
     failures: list[str] = []
     for snap in journal:
-        entry = worktree.joinpath(*snap.rel_posix.split("/"))
         try:
+            if _path_based_link_restore_is_unsafe(snap):
+                entry = worktree.joinpath(*snap.rel_posix.split("/"))
+                try:
+                    kind = _link_kind(entry)
+                except OSError:
+                    kind = ""
+                if kind and _restored_link_matches_snapshot(entry, snap):
+                    continue
+                if kind:
+                    failures.append(snap.rel_posix)
+                    log.warning(
+                        "rollback preserved concurrent link at %s under %s",
+                        snap.rel_posix,
+                        worktree,
+                    )
+                    continue
+                if entry.exists():
+                    failures.append(snap.rel_posix)
+                    log.warning(
+                        "rollback refused non-link occupant at %s under %s",
+                        snap.rel_posix,
+                        worktree,
+                    )
+                    continue
+                _refuse_path_based_link_restore(snap)
+            entry = worktree.joinpath(*snap.rel_posix.split("/"))
             try:
                 kind = _link_kind(entry)
             except OSError:
@@ -350,15 +451,16 @@ def _restore_tracked_symlinks_from_journal(
                     worktree,
                 )
                 continue
-            entry.parent.mkdir(parents=True, exist_ok=True)
-            _recreate_tracked_link_entry(entry, snap)
+            _recreate_tracked_link_under_real_parents(worktree, snap)
             log.info(
                 "restored tracked %s %s -> %s",
                 snap.kind,
                 snap.rel_posix,
                 snap.target,
             )
-        except OSError as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
+            # SubprocessError: a junction is recreated with ``mklink``, which can time out.
+            # One entry failing must not abandon the rest of the journal.
             failures.append(snap.rel_posix)
             log.warning("rollback failed for %s under %s: %s", snap.rel_posix, worktree, exc)
     if worktree.exists():
@@ -406,17 +508,34 @@ def _registered_worktree_unlocked(checkout: Path, worktree: Path) -> bool:
     return False
 
 
-def _prune_worktrees_after_removal_attempt(
-    git_cwd: Path,
+def _rollback_tracked_symlinks_best_effort(
     worktree: Path,
     journal: tuple[_TrackedSymlinkSnapshot, ...],
+    git_cwd: Path,
 ) -> None:
+    """Roll back a failed disposal attempt without hiding the original failure.
+
+    Pre: the attempt did not confirm removal. Post: when the registered worktree
+    survives, missing journal entries are restored; a rollback step that fails
+    is logged with the worktree path and never raised (#4360).
+    """
+    try:
+        if not worktree.exists():
+            return  # Git removed the tree; never recreate it or its registration.
+        failures = _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("tracked symlink rollback incomplete for %s: %s", worktree, exc)
+        return
+    if failures:
+        log.warning("tracked symlink rollback left %s unrestored under %s", ", ".join(failures), worktree)
+
+
+def _prune_worktrees_after_removal_attempt(git_cwd: Path, worktree: Path) -> None:
+    """Prune once removal/rollback is settled; a prune failure cannot change that outcome."""
     try:
         _git_out(git_cwd, "worktree", "prune")
-    except subprocess.TimeoutExpired:
-        if worktree.exists():
-            _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("worktree prune after removal attempt failed for %s: %s", worktree, exc)
 
 
 def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[bool, subprocess.CompletedProcess[str]]:
@@ -435,21 +554,14 @@ def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[boo
             unlink_worktree_links(worktree)
             result = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
             removed = result.returncode == 0 and not worktree.exists()
-            if not removed and worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-        except KeyboardInterrupt:
-            if worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-            raise
-        except subprocess.TimeoutExpired:
-            if worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-            raise
         except OSError as exc:
-            if worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
             return False, subprocess.CompletedProcess([], 1, "", str(exc))
-        _prune_worktrees_after_removal_attempt(git_cwd, worktree, journal)
+        finally:
+            # Every exit without confirmed removal (nonzero, timeout, partial unlink,
+            # interruption, unexpected error) rolls back before anything propagates.
+            if not removed:
+                _rollback_tracked_symlinks_best_effort(worktree, journal, git_cwd)
+        _prune_worktrees_after_removal_attempt(git_cwd, worktree)
         return removed, result
     result = _git_out(git_cwd, "worktree", "remove", str(worktree), timeout=60)
     if result.returncode == 0 and not worktree.exists():
