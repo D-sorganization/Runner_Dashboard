@@ -1,4 +1,4 @@
 ---
 issue: 4360
-summary: "Harden staff worktree symlink rollback: run it on every failed-removal exit, never mask the original error, never write through a replaced parent, and keep prune errors from failing a confirmed removal"
+summary: "Harden staff worktree symlink rollback: run it on every failed-removal exit, never mask the original error, never write through a replaced parent (including no-dir_fd refusal before any path mkdir), and keep prune errors from failing a confirmed removal"
 ---

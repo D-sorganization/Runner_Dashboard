@@ -319,6 +319,21 @@ def _recreate_tracked_link_entry(entry: Path, snap: _TrackedSymlinkSnapshot) -> 
 _DIR_FD_LINKS = all(fn in os.supports_dir_fd for fn in (os.open, os.mkdir, os.symlink))
 
 
+def _path_based_link_restore_is_unsafe(snap: _TrackedSymlinkSnapshot) -> bool:
+    """True when link recreation cannot use a directory descriptor (TOCTOU-safe)."""
+    return not _DIR_FD_LINKS or _snapshot_expects_junction(snap)
+
+
+def _refuse_path_based_link_restore(snap: _TrackedSymlinkSnapshot) -> None:
+    """Refuse restore without creating parents or links by path (#4360, #4400 review)."""
+    if not _path_based_link_restore_is_unsafe(snap):
+        return
+    raise OSError(
+        f"{snap.kind} {snap.rel_posix} not restored: this platform cannot create a link "
+        "relative to an open directory, and a path-based create is open to a parent swap"
+    )
+
+
 def _open_real_parent_dir(worktree: Path, rel_posix: str) -> int:
     """Open the parent of ``rel_posix`` without following a link at or below ``worktree``.
 
@@ -354,11 +369,7 @@ def _recreate_tracked_link_under_real_parents(worktree: Path, snap: _TrackedSyml
     and the create, so the entry is refused instead: rollback reports it as
     unrestored and the tree is left as it is.
     """
-    if not _DIR_FD_LINKS or _snapshot_expects_junction(snap):
-        raise OSError(
-            f"{snap.kind} {snap.rel_posix} not restored: this platform cannot create a link "
-            "relative to an open directory, and a path-based create is open to a parent swap"
-        )
+    _refuse_path_based_link_restore(snap)
     parent_fd = _open_real_parent_dir(worktree, snap.rel_posix)
     try:
         name = snap.rel_posix.rsplit("/", 1)[-1]
@@ -391,8 +402,33 @@ def _restore_tracked_symlinks_from_journal(
         return [snap.rel_posix for snap in journal]
     failures: list[str] = []
     for snap in journal:
-        entry = worktree.joinpath(*snap.rel_posix.split("/"))
         try:
+            if _path_based_link_restore_is_unsafe(snap):
+                entry = worktree.joinpath(*snap.rel_posix.split("/"))
+                try:
+                    kind = _link_kind(entry)
+                except OSError:
+                    kind = ""
+                if kind and _restored_link_matches_snapshot(entry, snap):
+                    continue
+                if kind:
+                    failures.append(snap.rel_posix)
+                    log.warning(
+                        "rollback preserved concurrent link at %s under %s",
+                        snap.rel_posix,
+                        worktree,
+                    )
+                    continue
+                if entry.exists():
+                    failures.append(snap.rel_posix)
+                    log.warning(
+                        "rollback refused non-link occupant at %s under %s",
+                        snap.rel_posix,
+                        worktree,
+                    )
+                    continue
+                _refuse_path_based_link_restore(snap)
+            entry = worktree.joinpath(*snap.rel_posix.split("/"))
             try:
                 kind = _link_kind(entry)
             except OSError:

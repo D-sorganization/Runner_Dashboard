@@ -211,6 +211,85 @@ def test_rollback_create_failure_is_reported(tracked_symlink_worktree, monkeypat
     assert not (tree / "docs/model").exists()
 
 
+@pytest.fixture
+def nested_tracked_symlink_worktree(tmp_path: Path):
+    root = Path(tempfile.mkdtemp(dir=tmp_path, prefix="rd4360-nested-"))
+    repo = root / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    sentinel = root / "external-sentinel"
+    sentinel.write_text("outside worktree\n")
+    rel = "mount/deep/agents"
+    link = repo / rel
+    link.parent.mkdir(parents=True, exist_ok=True)
+    link.symlink_to(sentinel)
+    _git(repo, "add", "--", rel)
+    _git(repo, "commit", "-qm", "nested tracked symlink fixture")
+    tree = root / "worktree"
+    _git(repo, "worktree", "add", "-q", "--detach", str(tree))
+    outside = root / "outside-redirect"
+    outside.mkdir()
+    assert hygiene._eligible_for_safe_force_removal(tree)
+    return {
+        "root": root,
+        "repo": repo,
+        "tree": tree,
+        "sentinel": sentinel,
+        "rel": rel,
+        "outside": outside,
+    }
+
+
+def test_rollback_no_dir_fd_refuses_before_mkdir_through_symlink_parent(
+    nested_tracked_symlink_worktree, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """No dir_fd: a swapped parent with a missing deeper segment must not mkdir outside the tree."""
+    import shutil
+
+    repo = nested_tracked_symlink_worktree["repo"]
+    tree = nested_tracked_symlink_worktree["tree"]
+    outside = nested_tracked_symlink_worktree["outside"]
+    rel = nested_tracked_symlink_worktree["rel"]
+
+    mkdir_calls: list[Path] = []
+    real_path_mkdir = Path.mkdir
+    real_os_mkdir = os.mkdir
+
+    def track_path_mkdir(self, *args, **kwargs):
+        mkdir_calls.append(Path(self))
+        return real_path_mkdir(self, *args, **kwargs)
+
+    def track_os_mkdir(path, *args, **kwargs):
+        mkdir_calls.append(Path(path))
+        return real_os_mkdir(path, *args, **kwargs)
+
+    monkeypatch.setattr(hygiene, "_DIR_FD_LINKS", False)
+    monkeypatch.setattr(Path, "mkdir", track_path_mkdir)
+    monkeypatch.setattr(os, "mkdir", track_os_mkdir)
+
+    def swap_parent_then_fail(args, _timeout):
+        deep = tree / "mount/deep"
+        if deep.is_dir():
+            shutil.rmtree(deep)
+        mount = tree / "mount"
+        if mount.is_dir() and not any(mount.iterdir()):
+            mount.rmdir()
+        elif mount.is_symlink():
+            mount.unlink()
+        (tree / "mount").symlink_to(outside, target_is_directory=True)
+        return subprocess.CompletedProcess(args, 128, "", "injected")
+
+    with caplog.at_level("WARNING"), _inject_remove(nested_tracked_symlink_worktree, swap_parent_then_fail):
+        removed, _ = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert not removed
+    assert mkdir_calls == []
+    assert list(outside.iterdir()) == []
+    assert not (tree / rel).exists()
+    assert f"rollback failed for {rel}" in caplog.text
+    assert "open to a parent swap" in caplog.text
+
+
 def test_rollback_refuses_path_based_create_without_dir_fd_support(
     tracked_symlink_worktree, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
