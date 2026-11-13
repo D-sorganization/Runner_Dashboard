@@ -86,8 +86,8 @@ def handle_post_execution_retry(
 
     from staff.budget import BudgetGuard
     from staff.failover_dispatch import try_chain_failover
+    from staff.plan import derive_run_plan
     from staff.provider_fallback import try_declarative_fallback
-    from staff.runner import RunPlan
     from staff.store import RunRecord
 
     guard = BudgetGuard(store)
@@ -125,24 +125,7 @@ def handle_post_execution_retry(
         next_attempt = latest.attempt + 1
         attempt_id = attempt_run_id(root_id, next_attempt)
         next_branch = f"{plan.branch}-retry-{next_attempt}"
-        attempt_plan = RunPlan(
-            role=plan.role,
-            provider=plan.provider,
-            model=plan.model,
-            repo=plan.repo,
-            target_kind=plan.target_kind,
-            target_ref=plan.target_ref,
-            operator_prompt=plan.operator_prompt,
-            prompt=plan.prompt,
-            argv=plan.argv,
-            branch=next_branch,
-            lease_ritual=plan.lease_ritual,
-            consolidation=plan.consolidation,
-            focus=plan.focus,
-            head_ref=plan.head_ref,
-            dispatch_bundle=plan.dispatch_bundle,
-            library_references=plan.library_references,
-        )
+        attempt_plan = derive_run_plan(plan, branch=next_branch)
         attempt_rec = RunRecord(
             id=attempt_id,
             role=plan.role,
@@ -213,23 +196,12 @@ def handle_post_execution_retry(
                 argv = runner._adapters[fallback].build_command(
                     plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role)
                 )
-                fallback_plan = RunPlan(
-                    role=plan.role,
+                fallback_plan = derive_run_plan(
+                    plan,
                     provider=fallback,
                     model=fallback_model,
-                    repo=plan.repo,
-                    target_kind=plan.target_kind,
-                    target_ref=plan.target_ref,
-                    operator_prompt=plan.operator_prompt,
-                    prompt=plan.prompt,
                     argv=argv,
                     branch=next_branch,
-                    lease_ritual=plan.lease_ritual,
-                    consolidation=plan.consolidation,
-                    focus=plan.focus,
-                    head_ref=plan.head_ref,
-                    dispatch_bundle=plan.dispatch_bundle,
-                    library_references=plan.library_references,
                 )
                 fallback_rec = RunRecord(
                     id=attempt_id,

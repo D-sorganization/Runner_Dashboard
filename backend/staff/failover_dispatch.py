@@ -174,7 +174,6 @@ def try_chain_failover(
     retries_exhausted: bool,
 ) -> bool:
     """Schedule the next provider in the fleet failover chain when appropriate."""
-    from staff.plan import RunPlan  # noqa: PLC0415
     from staff.retry import _claim, _provenance, _schedule, attempt_run_id  # noqa: PLC0415
     from staff.store import RunRecord  # noqa: PLC0415
 
@@ -247,24 +246,15 @@ def try_chain_failover(
     argv = runner._adapters[next_step.provider].build_command(
         plan.prompt, "<workdir>", target_model, **read_only_kwargs(role)
     )
-    fallback_plan = RunPlan(
-        role=plan.role,
+    from staff.plan import derive_run_plan  # noqa: PLC0415
+
+    fallback_plan = derive_run_plan(
+        plan,
         provider=next_step.provider,
         model=target_model,
         model_tier=resolved_tier,
-        repo=plan.repo,
-        target_kind=plan.target_kind,
-        target_ref=plan.target_ref,
-        operator_prompt=plan.operator_prompt,
-        prompt=plan.prompt,
         argv=argv,
         branch=next_branch,
-        lease_ritual=plan.lease_ritual,
-        consolidation=plan.consolidation,
-        focus=plan.focus,
-        head_ref=plan.head_ref,
-        dispatch_bundle=plan.dispatch_bundle,
-        library_references=plan.library_references,
     )
     fallback_rec = RunRecord(
         id=attempt_id,
