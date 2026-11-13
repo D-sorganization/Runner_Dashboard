@@ -177,6 +177,18 @@ else
     find "${STAGE_DIR}/scripts" -type f -name '*.pyc' -delete 2>/dev/null || true
 fi
 
+# 5c. Vendored runtime helpers used by backend review finalization (#4359).
+# Keep the package intact so its imports resolve without a source checkout.
+mkdir -p "${STAGE_DIR}/shared_scripts"
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
+        "${SCRIPT_DIR}/shared_scripts/" "${STAGE_DIR}/shared_scripts/"
+else
+    cp -r "${SCRIPT_DIR}/shared_scripts/." "${STAGE_DIR}/shared_scripts/"
+    find "${STAGE_DIR}/shared_scripts" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+    find "${STAGE_DIR}/shared_scripts" -type f -name '*.pyc' -delete 2>/dev/null || true
+fi
+
 # 6. Generate deployment.json from a second identity check after the build.
 METADATA_ARGS=(
     --repo-root "${SCRIPT_DIR}" --version "${VERSION}" --python-minor "${PYTHON_MINOR}"

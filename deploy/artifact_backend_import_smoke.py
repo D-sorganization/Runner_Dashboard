@@ -3,8 +3,9 @@
 
 The hub runs ``backend/server.py`` with only ``backend/`` on ``sys.path``; modules
 such as ``routers.staff_pr_hygiene`` shim in the artifact root so ``from scripts
-import …`` resolves. This script verifies every ``scripts.*`` module imported at
-module scope under ``backend/`` is present in a staged or installed artifact tree.
+import …`` resolves. This script verifies every ``scripts.*`` and
+``shared_scripts.*`` module imported under ``backend/`` (including lazy imports)
+is present in a staged or installed artifact tree.
 
 Usage (packager sets ``ARTIFACT_ROOT`` to the throwaway install directory)::
 
@@ -19,9 +20,11 @@ import os
 import sys
 from pathlib import Path
 
+RUNTIME_PACKAGES = ("scripts", "shared_scripts")
+
 
 def _backend_scripts_imports(backend_dir: Path) -> set[str]:
-    """Return dotted module names under ``scripts`` imported at module scope."""
+    """Return repo-root runtime modules imported by backend code."""
     modules: set[str] = set()
     for path in backend_dir.rglob("*.py"):
         try:
@@ -30,18 +33,18 @@ def _backend_scripts_imports(backend_dir: Path) -> set[str]:
             raise SystemExit(f"failed to parse {path}: {exc}") from exc
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                if node.module == "scripts" or node.module.startswith("scripts."):
-                    if node.module == "scripts":
+                if node.module.split(".", 1)[0] in RUNTIME_PACKAGES:
+                    if node.module in RUNTIME_PACKAGES:
                         for alias in node.names:
                             if alias.name == "*":
-                                raise SystemExit(f"wildcard scripts import in {path} is unsupported for smoke")
-                            modules.add(f"scripts.{alias.name}")
+                                raise SystemExit(f"wildcard runtime-package import in {path} is unsupported for smoke")
+                            modules.add(f"{node.module}.{alias.name}")
                     else:
                         modules.add(node.module)
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     name = alias.name
-                    if name == "scripts" or name.startswith("scripts."):
+                    if name.split(".", 1)[0] in RUNTIME_PACKAGES:
                         modules.add(name)
     return modules
 
@@ -69,19 +72,26 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.setdefault("FLEET_NODES", "")
 
     backend_dir = artifact_root / "backend"
+    if not backend_dir.is_dir():
+        raise SystemExit(f"artifact missing backend/: {backend_dir}")
     missing: list[str] = []
     for module_name in sorted(_backend_scripts_imports(backend_dir)):
         rel = f"{module_name.replace('.', '/')}.py"
-        if not (artifact_root / rel).is_file():
+        module_file = artifact_root / rel
+        package_file = artifact_root / module_name.replace(".", "/") / "__init__.py"
+        if not module_file.is_file() and not package_file.is_file():
             missing.append(rel)
             continue
         if files_only:
             continue
-        importlib.import_module(module_name)
+        imported = importlib.import_module(module_name)
+        source = getattr(imported, "__file__", None)
+        if source is None or not Path(source).resolve().is_relative_to(artifact_root):
+            raise SystemExit(f"runtime import escaped artifact: {module_name} ({source})")
 
     if missing:
         listed = ", ".join(missing)
-        raise SystemExit(f"artifact is missing backend scripts imports: {listed}")
+        raise SystemExit(f"artifact is missing backend runtime imports: {listed}")
 
     return 0
 
