@@ -6401,7 +6401,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Context Pack */
+        /**
+         * Get Context Pack
+         * @description Return a scoped memory snapshot. Deprecated for Barb session startup — use Barb continuity + priorities/holds.
+         */
         get: operations["get_context_pack_api_v1_memory_context_pack_get"];
         put?: never;
         post?: never;
