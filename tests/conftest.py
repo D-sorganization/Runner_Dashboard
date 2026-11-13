@@ -460,7 +460,6 @@ def mock_auth():
 @pytest.fixture(scope="session", autouse=True)
 def _session_staff_workspace(tmp_path_factory):
     """Keep leaked workers away from operator checkouts between tests (#2925)."""
-    import agent_worktree_hygiene  # noqa: PLC0415
     from staff import knowledge_refresh, workspace  # noqa: PLC0415
 
     root = tmp_path_factory.mktemp("staff-session")
@@ -478,7 +477,6 @@ def _session_staff_workspace(tmp_path_factory):
         patch.setenv("STAFF_RM_ROOT", str(root / "rm"))
         patch.setattr(workspace, "repos_roots", configured_roots_only)
         patch.setattr(knowledge_refresh, "repos_roots", configured_roots_only)
-        patch.setattr(agent_worktree_hygiene, "repos_roots", configured_roots_only)
         patch.setattr(workspace, "clone_repo", no_clone)
         yield
 

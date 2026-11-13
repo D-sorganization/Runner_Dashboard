@@ -265,9 +265,19 @@ def test_discovery_does_not_load_the_staff_engine() -> None:
     assert res.stdout.strip() == "['staff', 'staff.repo_roots']"
 
 
-def test_discovery_stays_hermetic_under_pytest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """conftest must keep the default roots (real operator checkouts) out of checkout discovery."""
+def test_discovery_uses_only_existing_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Discovery reads the configured and built-in roots, and never a root that does not exist."""
+    import staff.repo_roots as repo_roots  # noqa: PLC0415
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(repo_roots, "windows_repositories_root", lambda: tmp_path / "no-windows-profile")
+    monkeypatch.delenv("STAFF_REPOS_ROOT", raising=False)
     assert hygiene.discover_repo_checkouts() == []
-    monkeypatch.setenv("STAFF_REPOS_ROOT", str(tmp_path))
-    checkout = _checkout(tmp_path, "Some_Repo")
+
+    configured = tmp_path / "configured"
+    configured.mkdir()
+    monkeypatch.setenv("STAFF_REPOS_ROOT", str(configured))
+    checkout = _checkout(configured, "Some_Repo")
     assert hygiene.discover_repo_checkouts() == [checkout]
