@@ -735,6 +735,25 @@ def test_required_typecheck_job_always_reports_context() -> None:
     assert job["name"] == "TypeScript typecheck (tsc)"
 
 
+def test_job_level_if_never_references_secrets() -> None:
+    """GitHub Actions rejects ``secrets.*`` in workflow-level or job-level ``if:`` (#4300)."""
+    violations: list[str] = []
+    for path in _workflow_files():
+        data = _load_workflow(path)
+        workflow_if = data.get("if")
+        if workflow_if is not None and "secrets." in str(workflow_if):
+            violations.append(f"{path.name}:workflow")
+        for job_name, job in (data.get("jobs") or {}).items():
+            job_if = (job or {}).get("if")
+            if job_if is not None and "secrets." in str(job_if):
+                violations.append(f"{path.name}:{job_name}")
+    assert not violations, (
+        "Workflow-level and job-level `if:` must not reference secrets.*; "
+        "gate on missing credentials inside a step or a reusable workflow instead. "
+        f"Violations: {violations}"
+    )
+
+
 def test_detect_secrets_runs_on_fork_prs() -> None:
     text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
     job_block = text.split("detect-secrets:", 1)[1].split("gitleaks:", 1)[0]

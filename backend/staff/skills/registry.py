@@ -13,7 +13,7 @@ from staff.workspace import is_standalone_mode, rm_root
 
 log = logging.getLogger("dashboard.staff.skills")
 SKILLS_DIR_ENV = "STAFF_SKILLS_DIR"
-_SKILL_GLOB = "*/*/SKILL.md"
+_SKILL_GLOB_PATTERNS = ("*/SKILL.md", "*/*/SKILL.md")
 
 _CACHE_LOCK = threading.Lock()
 _CACHE_DIR_SIG: tuple[str, tuple[tuple[str, int, int], ...]] | None = None
@@ -58,7 +58,23 @@ def _load_directory(root: Path) -> None:
     summaries: dict[str, SkillSummary] = {}
     details: dict[tuple[str, str], SkillDetail] = {}
     errors: dict[str, list[str]] = {}
-    for skill_file in sorted(root.glob(_SKILL_GLOB)):
+    skill_files: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in _SKILL_GLOB_PATTERNS:
+        for skill_file in root.glob(pattern):
+            try:
+                resolved = skill_file.resolve()
+            except (OSError, RuntimeError) as exc:
+                # A symlink loop raises RuntimeError before Python 3.13 and OSError
+                # after; either way it must not abort indexing of siblings (C-16).
+                rel = str(skill_file.relative_to(root))
+                errors[rel] = [f"unresolvable skill path: {exc}"]
+                log.warning("skill validation failed for %s: %s", rel, exc)
+                continue
+            if resolved not in seen:
+                seen.add(resolved)
+                skill_files.append(skill_file)
+    for skill_file in sorted(skill_files):
         rel = str(skill_file.relative_to(root))
         try:
             body_text, package_dir, _ = resolve_skill_source(skill_file)
@@ -69,6 +85,7 @@ def _load_directory(root: Path) -> None:
             )
         except (OSError, SkillValidationError) as exc:
             errors[rel] = [str(exc)]
+            log.warning("skill validation failed for %s: %s", rel, exc)
             continue
         key = (detail.name, detail.version)
         if key in details:

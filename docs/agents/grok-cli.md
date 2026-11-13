@@ -20,7 +20,7 @@ The Grok CLI is the standalone terminal coding tool from xAI. In the Runner Dash
 
 To prevent confusion between similar names across the fleet:
 
-1. **Grok Bot ([grok.md](grok.md)):** Personal assistant front-door agent (**Barb**) interacting via `curl` and `fleetctl.py` with principal `agent-grok`. That guide documents assistant routing and shared memory, not the standalone coding CLI.
+1. **Grok Bot ([grok.md](grok.md)):** Personal assistant front-door agent (**Barb**) interacting via `curl` and `fleetctl.py` with principal `agent-grok`. That guide documents assistant routing, Barb continuity, and priorities/holds — not the standalone coding CLI.
 2. **Cursor-hosted Grok models (`cursor-agent`):** Grok models (`grok-4.7-*`, `cursor-grok-4.6-*`) executed through the Cursor CLI seat under the Cursor subscription. These do not require a separate xAI plan.
 3. **Standalone Grok CLI (`grok_cli`, this guide):** The dedicated `grok` binary running directly on fleet host machines under a SuperGrok subscription.
 

@@ -7,7 +7,8 @@ sources; the board stores no card state. Slice 1 defines the column mapper and
 its contracts. GitHub ingestion (#4319), claims/leases (#4320), holds (#4321),
 and UI (#4322) are out of scope here.
 
-Implementation: `backend/kanban_projection.py`.
+Implementation: `backend/kanban_projection.py`. GitHub ingestion (#4319):
+`backend/kanban_github_ingestion.py` and [kanban-github-ingestion.md](kanban-github-ingestion.md).
 
 ## Columns
 
@@ -36,9 +37,9 @@ Ingestion (#4319–#4321) assembles a `KanbanWorkItemSnapshot` per card:
 | Checks | `KanbanChecksSnapshot` | GitHub check runs on PR head |
 | Reviews | `KanbanReviewsSnapshot` | GitHub review events on PR |
 | Auto-merge | `KanbanAutoMergeSnapshot` | GitHub `auto_merge` / merge queue |
-| Claim / lease | `KanbanClaimSnapshot` | RM lease scripts / coordination API |
-| Owner wait | `KanbanOwnerWaitSnapshot` | Holds list, issue labels, staff approvals |
-| Staff run | `KanbanStaffRunSnapshot` | Staff runs linked to the issue |
+| Claim / lease | `KanbanClaimSnapshot` | `kanban_claims_ingestion.claim_snapshot_from_check` ← `coordination.claims.check` (read-only) |
+| Owner wait | `KanbanOwnerWaitSnapshot` | Holds list, issue labels, staff approvals (`backend/kanban_owner_wait.py`, #4321) |
+| Staff run | `KanbanStaffRunSnapshot` | `kanban_claims_ingestion.staff_run_snapshot_for_issue` ← `staff.store.RunStore` (read-only) |
 
 Each sub-record carries `available`, optional `degraded`, and URLs for source
 links. Slice 1 accepts these structures as plain data; it performs no I/O.
@@ -150,8 +151,32 @@ even when `available` is false so the UI can show broken provenance.
 | `reasons` | list | Fail-closed and informational strings |
 | `sources` | list | Source links |
 
+## Claims and staff runs (slice 3, #4320)
+
+`backend/kanban_claims_ingestion.py` maps coordination claim checks and Staff
+Hub runs into snapshot records without writing leases or claims:
+
+- **Live lease** — `claims.check` reports `available` with an active lease (or
+  board presence); `KanbanClaimSnapshot.held` is true.
+- **Released / expired** — `held: false` from RM; card can be Issue open.
+- **Bare `claim:*` label** — RM reports held with reason containing
+  `(no active lease)`; snapshot is `available: false`, `degraded: true` so the
+  projector shows **unknown** (never Claimed).
+- **Incomplete history** — `available: false` from RM (comment/page limits, fail
+  open, or incomplete pagination); same fail-closed **unknown** path.
+- **Staff run** — newest active (or latest) run with `target_kind=issue` and
+  `target_ref=#N` from `RunStore.list_runs` (read scan); exposed as a `staff_run`
+  source link on the card.
+
+Use `ingest_claim_and_staff(repo, issue, ...)` to fetch both snapshots in one
+read-only call.
+
 ## Testing
 
 Hermetic tests live in `tests/test_kanban_projection.py` with JSON fixtures
 under `tests/fixtures/kanban/`. Each column has at least one fixture; additional
 fixtures cover `unknown` and stale review cases.
+
+Claims and staff ingestion behavior is covered in
+`tests/test_kanban_claims_ingestion.py` (live lease, released lease, bare label,
+degraded history, staff run link, no-write guard).

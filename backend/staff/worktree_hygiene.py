@@ -10,22 +10,34 @@ import hashlib
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from staff import cli_projects
 from staff.worktree_links import (
+    _is_junction_path,
     _link_kind,
     link_refusal_reason,
     refuse_worktree_links,
     unlink_worktree_links,
 )
 
-_TRACKED_GAAI_LINKS = frozenset({".gaai/agents", ".gaai/workflows", ".gaai/contexts"})
-
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
+
+
+_FILE_ATTRIBUTE_DIRECTORY = getattr(stat, "FILE_ATTRIBUTE_DIRECTORY", 0x10)
+
+
+@dataclass(frozen=True)
+class _TrackedSymlinkSnapshot:
+    rel_posix: str
+    kind: str
+    target: str
+    target_is_directory: bool
 
 
 def persist_run_transcript(store: Any, rec_id: str, workdir: Path) -> Path | None:
@@ -187,18 +199,171 @@ def _untracked_outside_safe_force_allowlist(worktree: Path) -> bool:
     return False
 
 
-def _restore_tracked_gaai_symlinks(worktree: Path) -> None:
-    """Re-checkout tracked GAAI symlinks after a failed remove so the next sweep stays idempotent."""
-    missing = [rel for rel in _TRACKED_GAAI_LINKS if not (worktree / rel).exists()]
-    if not missing:
+def _index_tracked_symlink_paths(worktree: Path) -> list[str]:
+    """Relative POSIX paths for stage-zero index entries with symlink mode (120000)."""
+    res = _git_in_worktree(worktree, "ls-files", "-s", "-z")
+    if res.returncode != 0:
+        raise OSError(res.stderr.strip() or "git ls-files failed")
+    paths: list[str] = []
+    for chunk in res.stdout.split("\0"):
+        if not chunk or "\t" not in chunk:
+            continue
+        meta, path = chunk.split("\t", 1)
+        if meta.split()[0] != "120000":
+            continue
+        paths.append(_posix_rel(path))
+    return paths
+
+
+def _classify_tracked_link(entry: Path, raw_kind: str) -> tuple[str, bool]:
+    """Return journal kind (``junction`` or ``symlink``) and directory semantics."""
+    if raw_kind == "Windows reparse point":
+        if _is_junction_path(entry):
+            return "junction", True
+        attributes = getattr(entry.lstat(), "st_file_attributes", 0)
+        return "symlink", bool(attributes & _FILE_ATTRIBUTE_DIRECTORY)
+    if raw_kind == "symlink":
+        return "symlink", entry.is_dir()
+    raise OSError(f"unsupported tracked link kind: {raw_kind}")
+
+
+def _capture_tracked_symlink_journal(worktree: Path) -> tuple[_TrackedSymlinkSnapshot, ...]:
+    """Snapshot tracked symlinks before unlink; refuse when they cannot be reconstructed."""
+    snapshots: list[_TrackedSymlinkSnapshot] = []
+    for rel in _index_tracked_symlink_paths(worktree):
+        entry = worktree.joinpath(*rel.split("/"))
+        try:
+            raw_kind = _link_kind(entry)
+            if not raw_kind:
+                raise OSError(f"tracked path is not a link entry: {rel}")
+            target = os.readlink(entry)
+            kind, target_is_directory = _classify_tracked_link(entry, raw_kind)
+        except OSError as exc:
+            raise OSError(f"cannot snapshot tracked symlink {rel}: {exc}") from exc
+        snapshots.append(
+            _TrackedSymlinkSnapshot(
+                rel_posix=rel,
+                kind=kind,
+                target=target,
+                target_is_directory=target_is_directory,
+            )
+        )
+    return tuple(snapshots)
+
+
+def _snapshot_expects_junction(snap: _TrackedSymlinkSnapshot) -> bool:
+    return snap.kind == "junction" or (snap.kind == "Windows reparse point" and snap.target_is_directory)
+
+
+def _restored_link_matches_snapshot(entry: Path, snap: _TrackedSymlinkSnapshot) -> bool:
+    try:
+        if os.readlink(entry) != snap.target:
+            return False
+    except OSError:
+        return False
+    if _snapshot_expects_junction(snap):
+        return _is_junction_path(entry)
+    if snap.target_is_directory:
+        return entry.is_dir() and not _is_junction_path(entry)
+    return not entry.is_dir()
+
+
+def _create_windows_junction(link: Path, target: str) -> None:
+    """Create a directory junction on Windows (never a directory symlink)."""
+    if os.name != "nt":
+        raise OSError(f"cannot create junction on non-Windows platform: {link}")
+    target_text = os.fsdecode(target)
+    link_text = os.fsdecode(link)
+    primary_error: OSError | None = None
+    try:
+        import _winapi  # noqa: PLC0415 — Windows-only junction primitive
+
+        create_junction = getattr(_winapi, "CreateJunction", None)
+        if create_junction is None:
+            raise OSError("CreateJunction is unavailable")
+        create_junction(target_text, link_text)
         return
-    tracked: list[str] = []
-    for rel in missing:
-        known = _git_in_worktree(worktree, "ls-files", "--error-unmatch", "--", rel)
-        if known.returncode == 0:
-            tracked.append(rel)
-    if tracked:
-        _git_in_worktree(worktree, "checkout", "HEAD", "--", *tracked)
+    except (ImportError, AttributeError, OSError) as exc:
+        primary_error = OSError(str(exc)) if not isinstance(exc, OSError) else exc
+    result = subprocess.run(  # noqa: S603
+        ["cmd", "/c", "mklink", "/J", link_text, target_text],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "mklink /J failed").strip()
+        raise OSError(f"junction creation failed for {link}: {detail}") from primary_error
+    if not link.exists():
+        raise OSError(f"junction creation reported success but {link} is missing")
+
+
+def _recreate_tracked_link_entry(entry: Path, snap: _TrackedSymlinkSnapshot) -> None:
+    """Recreate a journal entry using the recorded kind and directory semantics."""
+    if _snapshot_expects_junction(snap):
+        _create_windows_junction(entry, snap.target)
+        if not entry.exists():
+            raise OSError(f"junction missing after recreate: {entry}")
+        if os.name == "nt" and not _is_junction_path(entry):
+            raise OSError(f"recreate changed link kind at {entry}: expected junction")
+        return
+    if snap.target_is_directory:
+        entry.symlink_to(snap.target, target_is_directory=True)
+    else:
+        entry.symlink_to(snap.target)
+    if not entry.is_symlink() and not entry.exists():
+        raise OSError(f"symlink missing after recreate: {entry}")
+
+
+def _restore_tracked_symlinks_from_journal(
+    worktree: Path,
+    journal: tuple[_TrackedSymlinkSnapshot, ...],
+    git_cwd: Path,
+) -> list[str]:
+    """Restore index-tracked symlinks removed during a failed disposal attempt."""
+    if not journal or not worktree.exists() or not _registered_worktree_unlocked(git_cwd, worktree):
+        return []
+    failures: list[str] = []
+    for snap in journal:
+        entry = worktree.joinpath(*snap.rel_posix.split("/"))
+        try:
+            try:
+                kind = _link_kind(entry)
+            except OSError:
+                kind = ""
+            if kind:
+                if _restored_link_matches_snapshot(entry, snap):
+                    continue
+                failures.append(snap.rel_posix)
+                log.warning(
+                    "rollback preserved concurrent link at %s under %s",
+                    snap.rel_posix,
+                    worktree,
+                )
+                continue
+            if entry.exists():
+                failures.append(snap.rel_posix)
+                log.warning(
+                    "rollback refused non-link occupant at %s under %s",
+                    snap.rel_posix,
+                    worktree,
+                )
+                continue
+            entry.parent.mkdir(parents=True, exist_ok=True)
+            _recreate_tracked_link_entry(entry, snap)
+            log.info(
+                "restored tracked %s %s -> %s",
+                snap.kind,
+                snap.rel_posix,
+                snap.target,
+            )
+        except OSError as exc:
+            failures.append(snap.rel_posix)
+            log.warning("rollback failed for %s under %s: %s", snap.rel_posix, worktree, exc)
+    if worktree.exists():
+        _git_in_worktree(worktree, "update-index", "--refresh")
+    return failures
 
 
 def _worktree_tracked_clean_vs_head(worktree: Path) -> bool:
@@ -241,18 +406,51 @@ def _registered_worktree_unlocked(checkout: Path, worktree: Path) -> bool:
     return False
 
 
+def _prune_worktrees_after_removal_attempt(
+    git_cwd: Path,
+    worktree: Path,
+    journal: tuple[_TrackedSymlinkSnapshot, ...],
+) -> None:
+    try:
+        _git_out(git_cwd, "worktree", "prune")
+    except subprocess.TimeoutExpired:
+        if worktree.exists():
+            _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
+        raise
+
+
 def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[bool, subprocess.CompletedProcess[str]]:
     """Run ``git worktree remove`` from ``checkout`` when provided, else from ``worktree``."""
     git_cwd = checkout if checkout is not None else worktree
     if _has_links(worktree):
         if not _registered_worktree_unlocked(git_cwd, worktree) or not _eligible_for_safe_force_removal(worktree):
             return False, subprocess.CompletedProcess([], 1, "", "worktree is not disposable")
-        unlink_worktree_links(worktree)
-        result = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
-        _git_out(git_cwd, "worktree", "prune")
-        if result.returncode != 0 or worktree.exists():
-            _restore_tracked_gaai_symlinks(worktree)
-        return result.returncode == 0 and not worktree.exists(), result
+        try:
+            journal = _capture_tracked_symlink_journal(worktree)
+        except OSError as exc:
+            return False, subprocess.CompletedProcess([], 1, "", str(exc))
+        result = subprocess.CompletedProcess(["worktree", "remove", "--force"], 1, "", "")
+        removed = False
+        try:
+            unlink_worktree_links(worktree)
+            result = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
+            removed = result.returncode == 0 and not worktree.exists()
+            if not removed and worktree.exists():
+                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
+        except KeyboardInterrupt:
+            if worktree.exists():
+                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
+            raise
+        except subprocess.TimeoutExpired:
+            if worktree.exists():
+                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
+            raise
+        except OSError as exc:
+            if worktree.exists():
+                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
+            return False, subprocess.CompletedProcess([], 1, "", str(exc))
+        _prune_worktrees_after_removal_attempt(git_cwd, worktree, journal)
+        return removed, result
     result = _git_out(git_cwd, "worktree", "remove", str(worktree), timeout=60)
     if result.returncode == 0 and not worktree.exists():
         return True, result

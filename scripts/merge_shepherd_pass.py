@@ -18,12 +18,16 @@ if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
 from coordination.merge_shepherd_pass import (  # noqa: E402
+    ARMED_PULL_REQUESTS_PAGE_QUERY,
     OPEN_PRS_QUERY,
     PassConfig,
+    armed_pull_requests_has_next_page,
     holds_gate_failed_payload,
     resolve_hub_holds_policy,
     resolve_live_arming,
+    resolve_merge_shepherd_review_store,
     run_merge_shepherd_pass,
+    stitch_armed_pull_request_pages,
     summary_to_json,
 )
 
@@ -34,24 +38,70 @@ def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(list(cmd), capture_output=True, text=True, check=False)
 
 
-def _graphql(owner: str, name: str, *, runner=_default_runner) -> Mapping[str, Any]:
-    proc = runner(
-        [
-            "gh",
-            "api",
-            "graphql",
-            "-f",
-            f"query={OPEN_PRS_QUERY}",
-            "-f",
-            f"owner={owner}",
-            "-f",
-            f"name={name}",
-        ]
-    )
+def _graphql_query(
+    query: str,
+    owner: str,
+    name: str,
+    *,
+    after: str | None = None,
+    runner=_default_runner,
+) -> Mapping[str, Any]:
+    cmd = [
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"query={query}",
+        "-f",
+        f"owner={owner}",
+        "-f",
+        f"name={name}",
+    ]
+    if after:
+        cmd.extend(["-f", f"after={after}"])
+    proc = runner(cmd)
     if proc.returncode != 0:
         raise OSError(proc.stderr.strip() or proc.stdout.strip() or "graphql failed")
     data = json.loads(proc.stdout or "{}")
     return data.get("data") if isinstance(data, dict) else {}
+
+
+def _graphql(owner: str, name: str, *, runner=_default_runner) -> Mapping[str, Any]:
+    data = _graphql_query(OPEN_PRS_QUERY, owner, name, runner=runner)
+    if not isinstance(data, Mapping):
+        return {}
+    repo = data.get("repository")
+    if not isinstance(repo, Mapping):
+        return data
+    armed_block = repo.get("armedPullRequests")
+    if not isinstance(armed_block, Mapping):
+        return data
+    pages: list[Mapping[str, Any]] = [armed_block]
+    has_next, cursor = armed_pull_requests_has_next_page(armed_block)
+    while has_next:
+        if not cursor:
+            raise OSError("armed_pull_requests_pagination_incomplete:missing_end_cursor")
+        page_data = _graphql_query(
+            ARMED_PULL_REQUESTS_PAGE_QUERY,
+            owner,
+            name,
+            after=cursor,
+            runner=runner,
+        )
+        if not isinstance(page_data, Mapping):
+            raise OSError("armed_pull_requests_pagination_incomplete:invalid_page_payload")
+        next_repo = page_data.get("repository")
+        if not isinstance(next_repo, Mapping):
+            raise OSError("armed_pull_requests_pagination_incomplete:missing_repository")
+        next_block = next_repo.get("armedPullRequests")
+        if not isinstance(next_block, Mapping):
+            raise OSError("armed_pull_requests_pagination_incomplete:missing_armed_pull_requests")
+        pages.append(next_block)
+        has_next, cursor = armed_pull_requests_has_next_page(next_block)
+    stitched = stitch_armed_pull_request_pages(pages)
+    merged_repo = dict(repo)
+    merged_repo["armedPullRequests"] = stitched
+    return {**data, "repository": merged_repo}
 
 
 def _fetch_hub_holds(url: str, token: str) -> list[dict[str, Any]]:
@@ -130,6 +180,9 @@ def _write_step_summary(payload: dict[str, Any]) -> None:
         return
     with open(path, "a", encoding="utf-8") as fh:
         fh.write("## Merge shepherd pass\n\n")
+        inaccessible = [str(row["repo"]) for row in payload.get("inaccessible_repos") or ()]
+        if inaccessible:
+            fh.write(f"Skipped {len(inaccessible)} inaccessible repo(s): {', '.join(inaccessible)}\n\n")
         fh.write("```json\n")
         fh.write(json.dumps(payload, indent=2, sort_keys=True))
         fh.write("\n```\n")
@@ -150,10 +203,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         github_event_name=os.environ.get("GITHUB_EVENT_NAME", ""),
     )
 
+    def _hold_reason(repo: str, pr: int) -> str:
+        try:
+            if _SCRIPT_DIR not in sys.path:
+                sys.path.insert(0, _SCRIPT_DIR)
+            import automerge_guard  # noqa: PLC0415
+
+            verdict = automerge_guard.evaluate_hold(repo, pr)
+            return verdict.describe() if verdict.held else ""
+        except Exception as exc:  # noqa: BLE001 — fail closed at arm if hold checks break
+            return f"hold_check_failed:{exc}"
+
+    _SCRIPT_DIR = str(Path(__file__).resolve().parent)
+
+    repo_root = args.repo_root.resolve()
     config = PassConfig(
         live=live,
         dry_run=not live,
-        repo_root=args.repo_root.resolve(),
+        repo_root=repo_root,
+        hold_reason=_hold_reason,
+        review_store=resolve_merge_shepherd_review_store(repo_root=repo_root),
     )
     holds, hold_error = _resolve_hub_holds()
     if hold_error:

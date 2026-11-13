@@ -205,6 +205,32 @@
       "chat_read_only_argv": [],
       "lease_agent": "grok"
     },
+    "qwen": {
+      "executable": "qwen",
+      "argv_template": [
+        "--auth-type",
+        "openai",
+        "--output-format",
+        "stream-json",
+        "--approval-mode",
+        "auto-edit",
+        "--channel",
+        "CI",
+        "--model",
+        "{model}",
+        "{prompt}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL"
+      ],
+      "chat_read_only_argv": [
+        "--approval-mode",
+        "plan"
+      ],
+      "lease_agent": "qwen"
+    },
     "ollama": {
       "executable": "codex",
       "argv_template": [

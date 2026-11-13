@@ -13,10 +13,14 @@ from coordination.board import RMScriptError
 log = logging.getLogger("dashboard.coordination.job_board_lease")
 
 _lease_guard = threading.Lock()
-_lease_state: dict[str, tuple[str, int, str, str, int, datetime, float]] = {}
+_LeaseRow = tuple[str, int, str, str, int, datetime, float]
+_lease_state: dict[str, _LeaseRow] = {}
+_release_failures: dict[str, int] = {}  # consecutive failed sweeper releases per lease key
 DEFAULT_TTL_HOURS = 2.0
 MIN_TTL_HOURS = 0.1
 MAX_TTL_HOURS = 8.0
+# An expired row whose release keeps failing is dead-lettered after this many attempts (#4270 B-11).
+MAX_JOB_RELEASE_ATTEMPTS = 5
 
 
 def _lease_key(repo: str, issue: int) -> str:
@@ -26,6 +30,7 @@ def _lease_key(repo: str, issue: int) -> str:
 def clear_lease_state() -> None:
     with _lease_guard:
         _lease_state.clear()
+        _release_failures.clear()
 
 
 def parse_expires(raw: str | None, *, ttl_hours: float) -> datetime:
@@ -47,13 +52,17 @@ def remember_lease(
     expires_at: str | None,
 ) -> None:
     expires = parse_expires(expires_at, ttl_hours=ttl_hours)
+    key = _lease_key(repo, issue)
     with _lease_guard:
-        _lease_state[_lease_key(repo, issue)] = (repo, issue, agent, session, fence, expires, ttl_hours)
+        _lease_state[key] = (repo, issue, agent, session, fence, expires, ttl_hours)
+        _release_failures.pop(key, None)  # a claim or renewal starts with a full retry budget
 
 
 def drop_lease(repo: str, issue: int) -> None:
+    key = _lease_key(repo, issue)
     with _lease_guard:
-        _lease_state.pop(_lease_key(repo, issue), None)
+        _lease_state.pop(key, None)
+        _release_failures.pop(key, None)
 
 
 def validate_ttl(ttl_hours: float) -> None:
@@ -102,16 +111,40 @@ def heartbeat_job(
         # fmt: on
 
 
+def _forget_swept_row(key: str, row: _LeaseRow) -> None:
+    """Drop ``row`` unless a newer claim or renewal replaced it while the sweep ran."""
+    with _lease_guard:
+        if _lease_state.get(key) is row:
+            del _lease_state[key]
+            _release_failures.pop(key, None)
+
+
+def _count_release_failure(key: str, row: _LeaseRow) -> int:
+    """Record one failed release of ``row``; 0 when the row was replaced and the failure is moot."""
+    with _lease_guard:
+        if _lease_state.get(key) is not row:
+            return 0
+        failures = _release_failures.get(key, 0) + 1
+        _release_failures[key] = failures
+        return failures
+
+
 def sweep_expired_job_claims(*, now: datetime | None = None) -> dict[str, Any]:
-    """Release heartbeated job-board leases past their TTL (#2785)."""
+    """Release heartbeated job-board leases past their TTL (#2785).
+
+    Every expired row settles (#4270 B-11): released as its holder agent; ``forgotten``
+    without a release when the job is no longer that holder's (stale fence); or, when
+    the release fails, kept for a retry and dead-lettered (ERROR log, then forgotten)
+    at ``MAX_JOB_RELEASE_ATTEMPTS``. One row's failure never stops the others.
+    """
     from coordination import jobs as jobs_mod
 
     moment = now or datetime.now(UTC)
     with _lease_guard:
         snapshot = list(_lease_state.items())
-    released = 0
+    released = forgotten = dead_lettered = 0
     errors: list[str] = []
-    for _key, row in snapshot:
+    for key, row in snapshot:
         repo, issue, agent, session, fence, expires, _ttl = row
         if moment < expires:
             continue
@@ -125,8 +158,24 @@ def sweep_expired_job_claims(*, now: datetime | None = None) -> dict[str, Any]:
                 reason="agent_bus lease expired",
             )
             released += 1
+        except jobs_mod.StaleFenceError as exc:
+            _forget_swept_row(key, row)
+            forgotten += 1
+            log.info("jobs: expiry sweep forgot %s#%s, no longer held by %s: %s", repo, issue, session, exc)
         except Exception as exc:  # noqa: BLE001 — sweep continues on one failure
-            msg = f"{repo}#{issue}: {exc}"
-            errors.append(msg)
-            log.warning("jobs: expiry sweep failed for %s#%s: %s", repo, issue, exc)
-    return {"released": released, "errors": errors}
+            failures = _count_release_failure(key, row)
+            if not failures:
+                log.info("jobs: expiry sweep failure for %s#%s is moot, the row was replaced: %s", repo, issue, exc)
+                continue
+            errors.append(f"{repo}#{issue}: {exc}")
+            if failures < MAX_JOB_RELEASE_ATTEMPTS:
+                log.warning("jobs: expiry sweep failed for %s#%s: %s", repo, issue, exc)
+                continue
+            _forget_swept_row(key, row)
+            dead_lettered += 1
+            log.error(
+                "job-board sweeper dead-letter: giving up on %s#%s for session %s (agent %s) after %d failed "
+                "releases; the lease stays until its own expiry: %s",
+                repo, issue, session, agent, failures, exc,
+            )  # fmt: skip
+    return {"released": released, "errors": errors, "forgotten": forgotten, "dead_lettered": dead_lettered}

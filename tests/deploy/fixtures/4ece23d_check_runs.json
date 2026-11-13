@@ -4,8 +4,12 @@
     {"conclusion": "success", "name": "Build and scan image", "status": "completed"},
     {"conclusion": "success", "name": "TypeScript typecheck (tsc)", "status": "completed"},
     {"conclusion": "success", "name": "quality-gate", "status": "completed"},
+    {"conclusion": "success", "name": "tests", "status": "completed"},
     {"conclusion": "success", "name": "tests (3.11)", "status": "completed"},
-    {"conclusion": "skipped", "name": "guard", "status": "completed"},
+    {"conclusion": "success", "name": "guard", "status": "completed"},
+    {"conclusion": "success", "name": "frontend-required", "status": "completed"},
+    {"conclusion": "success", "name": "api-contract-regeneration", "status": "completed"},
+    {"conclusion": "success", "name": "Adversarial redaction gate fixtures", "status": "completed"},
     {"conclusion": "success", "name": "detect-secrets (baseline diff)", "status": "completed"},
     {"conclusion": "success", "name": "Auto-deploy live regression", "status": "completed"}
   ]

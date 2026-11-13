@@ -94,7 +94,7 @@ from fastapi.responses import (  # noqa: E402
 )
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from identity import Principal, require_scope  # noqa: B008, E402
-from middleware import MaxBodySizeMiddleware  # noqa: E402
+from middleware import DEFAULT_MAX_BODY_SIZE, MaxBodySizeMiddleware  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 from routers import admin as admin_router  # noqa: E402
 from routers import auth as auth_router  # noqa: E402
@@ -171,7 +171,6 @@ from middleware import (  # noqa: E402
     add_security_headers,
     auth_perimeter_check,
     csrf_check,
-    max_body_size_check,
 )
 from models.requests import HelpChatRequest  # noqa: E402
 from platform_utils.wsl_paths import windows_repositories_root  # noqa: E402
@@ -231,7 +230,6 @@ from runners.service_control import (  # noqa: E402
 )
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
-    sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
@@ -548,12 +546,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-# Issue #350 — early body-size guard (ASGI middleware, runs before routing)
-app.add_middleware(
-    MaxBodySizeMiddleware,
-    default_limit=1 * 1024 * 1024,  # 1 MB
-)
-
 # Issue #330 — Prometheus HTTP instrumentation middleware
 app.add_middleware(_prometheus_metrics_router.PrometheusMiddleware)
 
@@ -865,8 +857,14 @@ from routers import staff_review_metrics as _staff_review_metrics_router  # noqa
 app.include_router(_staff_review_metrics_router.router)  # review-flow metrics decision gate (#4250)
 
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+from routers import kanban_github as _kanban_github_router  # noqa: E402
 
 app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+app.include_router(_kanban_github_router.router)  # kanban GitHub ingestion (#4319)
+
+from routers import kanban as _kanban_router  # noqa: E402
+
+app.include_router(_kanban_router.router)  # kanban board projection (#4317, #4321)
 
 from routers import fleet_state_audit_route as _fleet_state_audit_router  # noqa: E402
 
@@ -969,9 +967,10 @@ app.add_middleware(
 )
 
 
-@app.middleware("http")
-async def _max_body_size(request, call_next):
-    return await max_body_size_check(request, call_next)
+# Issue #350 / #4274 F-07: the single request-body limit. Registered here so it
+# wraps auth, session and routing (inside CSRF and security headers): it rejects a
+# declared oversize before routing and counts the bytes actually streamed.
+app.add_middleware(MaxBodySizeMiddleware, default_limit=DEFAULT_MAX_BODY_SIZE)
 
 
 @app.middleware("http")
@@ -2126,10 +2125,16 @@ async def _fleet_control_local(action: str) -> dict:
 
 
 async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
-    """Ask a node dashboard to apply a runner action locally."""
+    """Ask a node dashboard to apply a runner action locally.
+
+    Sends the shared hub -> node headers (fleet bearer token when configured,
+    plus the CSRF sentinel); without them the node rejects the POST (#4274 F-05).
+    """
+    from staff.fleet import fleet_headers  # noqa: PLC0415
+
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1")
+            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1", headers=fleet_headers())
         if resp.status_code != 200:
             return {
                 "machine": name,
@@ -3053,6 +3058,10 @@ async def _startup() -> None:
 
     start_library_ingest_loop()
 
+    from activity_session_tailer_runtime import start_session_tailer_loop  # noqa: PLC0415
+
+    start_session_tailer_loop(node=HOSTNAME)
+
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
 
@@ -3141,29 +3150,36 @@ _drain_mode: bool = False
 
 
 @app.post("/_drain")
-async def drain_endpoint(request: Request) -> dict:
+async def drain_endpoint(
+    request: Request,
+    caller: Principal = Depends(require_scope("admin")),  # noqa: B008
+) -> dict:
     """Activate process-local draining and reject new mutations with HTTP 503.
 
     ``/readyz`` reports unready while draining. Requests already admitted are
     allowed to finish; this flag does not cancel or wait for in-flight work.
 
-    Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+    Requires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).
     Post-condition: _drain_mode is True after successful call.
     """
     global _drain_mode
     client_host = request.client.host if request.client else "unknown"
-    # Issue #939c: a bare `assert` is compiled out under `python -O`, which would
-    # let ANY network peer drain the server. Enforce the loopback restriction
-    # with an explicit check that raises regardless of optimization level.
-    if client_host not in ("127.0.0.1", "::1", "localhost"):
-        log.warning(
-            "/_drain refused for non-loopback client %s",
-            sanitize_log_value(client_host),
-        )
-        raise HTTPException(status_code=403, detail="drain only from loopback")
     _drain_mode = True
-    log.info("/_drain activated by %s", client_host)
+    log.info("/_drain activated by %s principal=%s", client_host, caller.id)
     return {"status": "draining"}
+
+
+@app.post("/_undrain")
+async def undrain_endpoint(
+    request: Request,
+    caller: Principal = Depends(require_scope("admin")),  # noqa: B008
+) -> dict:
+    """Clear process-local draining and resume normal mutation admission (#4274 F-04)."""
+    global _drain_mode
+    client_host = request.client.host if request.client else "unknown"
+    _drain_mode = False
+    log.info("/_undrain activated by %s principal=%s", client_host, caller.id)
+    return {"status": "admitting"}
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

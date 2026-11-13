@@ -119,7 +119,7 @@ def pick_machine_for_chain(
 ) -> str:
     """Choose an online machine with a healthy chain provider; least loaded wins."""
     cooling = machine_cooldowns or {}
-    best: tuple[int, int, int, str] | None = None
+    best: tuple[int, int, float, float, int, str] | None = None
     for name, node in (board.get("machines") or {}).items():
         if node.get("status") != "online":
             continue
@@ -135,11 +135,14 @@ def pick_machine_for_chain(
             break
         if pick_idx is None:
             continue
-        load = len(node.get("running", [])) + len(node.get("queued", []))
-        rank = (pick_idx, load, 0 if name == local_name else 1, name)
+        from staff.fleet import _placement_load  # noqa: PLC0415
+
+        runs, cpu, mem = _placement_load(node)
+        local_tie = 1 if name == local_name else 0
+        rank = (pick_idx, runs, cpu, mem, local_tie, name)
         if best is None or rank < best:
             best = rank
-    return best[3] if best else local_name
+    return best[5] if best else local_name
 
 
 def tried_slots_for_root(store: Any, root_id: str) -> set[str]:
@@ -171,7 +174,6 @@ def try_chain_failover(
     retries_exhausted: bool,
 ) -> bool:
     """Schedule the next provider in the fleet failover chain when appropriate."""
-    from staff.plan import RunPlan  # noqa: PLC0415
     from staff.retry import _claim, _provenance, _schedule, attempt_run_id  # noqa: PLC0415
     from staff.store import RunRecord  # noqa: PLC0415
 
@@ -244,24 +246,15 @@ def try_chain_failover(
     argv = runner._adapters[next_step.provider].build_command(
         plan.prompt, "<workdir>", target_model, **read_only_kwargs(role)
     )
-    fallback_plan = RunPlan(
-        role=plan.role,
+    from staff.plan import derive_run_plan  # noqa: PLC0415
+
+    fallback_plan = derive_run_plan(
+        plan,
         provider=next_step.provider,
         model=target_model,
         model_tier=resolved_tier,
-        repo=plan.repo,
-        target_kind=plan.target_kind,
-        target_ref=plan.target_ref,
-        operator_prompt=plan.operator_prompt,
-        prompt=plan.prompt,
         argv=argv,
         branch=next_branch,
-        lease_ritual=plan.lease_ritual,
-        consolidation=plan.consolidation,
-        focus=plan.focus,
-        head_ref=plan.head_ref,
-        dispatch_bundle=plan.dispatch_bundle,
-        library_references=plan.library_references,
     )
     fallback_rec = RunRecord(
         id=attempt_id,

@@ -62,7 +62,10 @@ export interface CodeRequestsProps {
   standards?: unknown;
   loading?: boolean;
   promptNotes?: PromptNotes;
-  onDispatch?: (payload: CodeDispatchPayload) => Promise<unknown>;
+  onDispatch?: (
+    payload: CodeDispatchPayload,
+    options?: { idempotencyKey?: string },
+  ) => Promise<unknown>;
   onSaveTemplate: (template: PromptTemplate) => Promise<unknown>;
   onSavePromptNotes: (notes: PromptNotes) => Promise<unknown>;
   onRefresh: () => void;
