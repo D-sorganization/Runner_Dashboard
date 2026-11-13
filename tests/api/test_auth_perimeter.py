@@ -80,6 +80,7 @@ ADMIN_ONLY_ROUTES = [
     ("GET", "/api/admin/principals"),
     ("GET", "/api/admin/tokens"),
     ("POST", "/api/admin/principals/test-id/token"),
+    ("POST", "/api/admin/agent-principals/reload"),
 ]
 
 
