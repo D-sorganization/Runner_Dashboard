@@ -39,7 +39,14 @@ _DEPLOY_RELEASE_PATH_GLOBS = (
     ".github/workflows/ci-auto-deploy-regression.yml",
 )
 _DEPLOY_RELEASE_PROMPT_RE = re.compile(
-    r"\b(auto[- ]release|dashboard-releases?|release packaging|deploy[-/ ]release)\b",
+    r"\b("
+    r"auto[- ]release|"
+    r"dashboard-releases?|"
+    r"release packaging|"
+    r"release feature|"
+    r"deployment|"
+    r"deploy[-/ ]release"
+    r")\b",
     re.IGNORECASE,
 )
 
@@ -63,11 +70,18 @@ def _path_is_deploy_release(path: str) -> bool:
     return False
 
 
+def _declared_paths_wildcard_only(declared: list[str]) -> bool:
+    touched = {p.strip().replace("\\", "/").lstrip("/") for p in declared if p.strip()}
+    return touched == {"*"}
+
+
 def is_deploy_release_slice(repo: str, prompt: str, paths: list[str] | None = None) -> bool:
     """True when dispatch targets Runner_Dashboard deploy or release feature work."""
     if normalize_repo_name(repo) != "runner_dashboard":
         return False
     declared = paths if paths is not None else extract_declared_paths(prompt)
+    if _declared_paths_wildcard_only(declared) and prompt and _DEPLOY_RELEASE_PROMPT_RE.search(prompt):
+        return True
     if any(_path_is_deploy_release(p) for p in declared):
         return True
     return bool(prompt and _DEPLOY_RELEASE_PROMPT_RE.search(prompt))
@@ -87,11 +101,9 @@ def is_auto_release_fix(repo: str, prompt: str, paths: list[str] | None = None) 
     if not prompt or not re.search(r"\bauto[- ]release\b", prompt, re.IGNORECASE):
         return False
     declared = paths if paths is not None else extract_declared_paths(prompt)
-    if not declared or declared == ["*"]:
-        return True
     touched = {p.strip().replace("\\", "/").lstrip("/") for p in declared if p.strip()}
-    if not touched:
-        return True
+    if not touched or "*" in touched:
+        return False
     return all(_path_allowed_for_auto_release_fix(p) for p in touched)
 
 

@@ -11,7 +11,8 @@ import pytest
 from fastapi import HTTPException
 from identity import Principal
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
-from staff.holds import HoldsList, RD_DEPLOY_RELEASE_HOLD_TEXT
+from staff.hold_dispatch import blocking_dispatch_hold, is_auto_release_fix, is_deploy_release_slice
+from staff.holds import RD_DEPLOY_RELEASE_HOLD_TEXT, HoldsList
 
 _OPERATOR = Principal(id="tester", type="user", name="Tester", roles=["operator"], scopes=["staff.dispatch"])
 
@@ -34,6 +35,71 @@ def holds_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("STAFF_HOLDS_FILE", str(path))
     HoldsList(path, roles_loader=dict).replace([_hold_body()])
     return path
+
+
+@pytest.mark.unit
+def test_deploy_release_slice_matches_pathless_deployment_prompt() -> None:
+    assert is_deploy_release_slice("Runner_Dashboard", "Ship a new deployment/release feature for hubs.")
+    assert is_deploy_release_slice("Runner_Dashboard", "Work on release feature slices.", paths=[])
+
+
+@pytest.mark.unit
+def test_deploy_release_slice_wildcard_requires_deploy_release_prompt() -> None:
+    assert is_deploy_release_slice(
+        "Runner_Dashboard",
+        "Add auto-release packaging feature",
+        paths=["*"],
+    )
+    assert not is_deploy_release_slice("Runner_Dashboard", "routine bugfix", paths=["*"])
+
+
+@pytest.mark.unit
+def test_auto_release_fix_rejects_empty_or_wildcard_paths() -> None:
+    prompt = "Fix auto-release regression"
+    assert is_auto_release_fix("Runner_Dashboard", prompt, paths=[]) is False
+    assert is_auto_release_fix("Runner_Dashboard", prompt, paths=["*"]) is False
+    assert (
+        is_auto_release_fix(
+            "Runner_Dashboard",
+            prompt,
+            paths=[".github/workflows/main-ci-auto-release.yml"],
+        )
+        is True
+    )
+
+
+@pytest.mark.unit
+def test_blocking_hold_refuses_auto_release_wildcard_bypass(holds_file: Path) -> None:
+    holds = HoldsList(holds_file, roles_loader=dict)
+    hit = blocking_dispatch_hold(
+        holds,
+        "ad-hoc",
+        "Runner_Dashboard",
+        "Add auto-release packaging feature",
+    )
+    assert hit is not None
+    assert hit.text.startswith("RD deploy/release HOLD:")
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_dispatch_refused_for_pathless_deployment_prompt_under_hold(
+    holds_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cmd = DispatchCommand(
+        role="ad-hoc",
+        requested_by="tester",
+        repo="Runner_Dashboard",
+        prompt="Ship a new deployment/release feature without naming paths yet.",
+        dry_run=True,
+    )
+    with patch("staff.dispatch_service._refuse_if_excluded"), patch(
+        "staff.dispatch_service.get_runner"
+    ) as get_runner:
+        get_runner.return_value.roles.return_value = {"ad-hoc": object()}
+        with pytest.raises(HTTPException) as exc:
+            await dispatch_staff_run(cmd, _OPERATOR)
+    assert exc.value.status_code == 409
 
 
 @pytest.mark.unit
