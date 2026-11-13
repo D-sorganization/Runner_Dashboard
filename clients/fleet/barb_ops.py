@@ -17,7 +17,40 @@ def register_ops_commands(sub: Any) -> None:
     co.add_argument("--scope", default="barb:front-door")
     co.add_argument("--holder", default="", help="Optional; the hub derives it from your token.")
     co.add_argument("--persona", default="rd-barb")
-    co.add_argument("--ttl", type=int, default=3600)
+    co.add_argument("--ttl", type=int, default=14400)
+
+    hb = sub.add_parser("heartbeat", help="Extend a live Barb lease (requires epoch).")
+    hb.add_argument("--scope", required=True)
+    hb.add_argument("--epoch", type=int, required=True)
+    hb.add_argument("--holder", default="")
+    hb.add_argument("--ttl", type=int, default=14400)
+
+    rn = sub.add_parser("renew", help="One-call renew or re-acquire a Barb lease (no epoch).")
+    rn.add_argument("--scope", default="barb:front-door")
+    rn.add_argument("--holder", default="")
+    rn.add_argument("--persona", default="")
+    rn.add_argument("--machine", default="")
+    rn.add_argument("--ttl", type=int, default=14400)
+    rn.add_argument("--summary", default="")
+
+    hl = sub.add_parser(
+        "handoff-lease",
+        help="Atomic lease turnover with release, transfer to next_holder, or takeover.",
+    )
+    hl.add_argument("--scope", default="barb:front-door")
+    hl.add_argument("--holder", default="")
+    hl.add_argument("--persona", default="rd-barb")
+    hl.add_argument("--summary", required=True)
+    hl.add_argument("--completed", action="append", default=[])
+    hl.add_argument("--in-progress", action="append", default=[])
+    hl.add_argument("--next-action", action="append", default=[])
+    hl.add_argument("--blocker", action="append", default=[])
+    hl.add_argument("--next-holder", default="")
+    hl.add_argument("--next-persona", default="")
+    hl.add_argument("--takeover", action="store_true")
+    hl.add_argument("--reason", default="")
+    hl.add_argument("--ttl", type=int, default=14400)
+    hl.add_argument("--mode", default="")
     co.add_argument("--summary", default="")
     co.add_argument("--takeover", action="store_true", help="Operator only; requires --reason.")
     co.add_argument("--reason", default="")
@@ -76,6 +109,55 @@ def handle_ops_command(client: FleetClient, args: argparse.Namespace) -> int | N
     cmd = args.command
     if cmd == "continuity":
         print(json.dumps(client.request("GET", "/api/v1/staff/barb/continuity"), indent=2))
+        return 0
+    if cmd == "heartbeat":
+        res = client.request(
+            "POST",
+            "/api/v1/staff/barb/leases/heartbeat",
+            body={
+                "scope": args.scope,
+                "epoch": args.epoch,
+                "ttl_sec": args.ttl,
+                **({"holder": args.holder} if args.holder else {}),
+            },
+        )
+        print(json.dumps(res, indent=2))
+        return 0
+    if cmd == "renew":
+        body: dict[str, Any] = {"scope": args.scope, "ttl_sec": args.ttl}
+        for key, val in (
+            ("holder", args.holder),
+            ("persona", args.persona),
+            ("machine", args.machine),
+            ("summary", args.summary),
+        ):
+            if val:
+                body[key] = val
+        res = client.request("POST", "/api/v1/staff/barb/leases/renew", body=body)
+        print(json.dumps(res, indent=2))
+        return 0
+    if cmd == "handoff-lease":
+        res = client.request(
+            "POST",
+            "/api/v1/staff/barb/leases/handoff",
+            body={
+                "scope": args.scope,
+                "persona": args.persona,
+                "summary": args.summary,
+                "ttl_sec": args.ttl,
+                "completed_items": args.completed,
+                "in_progress_items": getattr(args, "in_progress", []),
+                "next_actions": getattr(args, "next_action", []),
+                "blockers": getattr(args, "blocker", []),
+                "takeover": bool(args.takeover),
+                "reason": args.reason,
+                **({"holder": args.holder} if args.holder else {}),
+                **({"next_holder": args.next_holder} if args.next_holder else {}),
+                **({"next_persona": args.next_persona} if args.next_persona else {}),
+                **({"mode": args.mode} if args.mode else {}),
+            },
+        )
+        print(json.dumps(res, indent=2))
         return 0
     if cmd == "checkout":
         res = client.request(

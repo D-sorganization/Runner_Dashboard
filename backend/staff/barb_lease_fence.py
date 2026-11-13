@@ -34,7 +34,7 @@ import os
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from fastapi import HTTPException
@@ -190,11 +190,17 @@ class BarbLeaseFenceMixin:
     _lock: Any
     _conn: Any
 
-    def assert_lease_claim(self, claim: BarbClaim, *, now: datetime | None = None) -> dict[str, Any]:
+    def assert_lease_claim(
+        self, claim: BarbClaim, *, now: datetime | None = None, auto_extend: bool = False
+    ) -> dict[str, Any]:
         """Raise :class:`StaleBarbLease` unless ``claim`` is the live lease. Call with the lock held."""
+        from staff.barb_continuity import AUTO_EXTEND_REMAINING_SEC, DEFAULT_LEASE_TTL_SECONDS  # noqa: PLC0415
         from staff.barb_task_inventory import _now_iso  # noqa: PLC0415
 
-        now_s = _now_iso(now)
+        dt = now if now is not None else datetime.now(tz=UTC)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=UTC)
+        now_s = _now_iso(dt)
         row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (claim.scope,)).fetchone()
         if row is None:
             raise StaleBarbLease(
@@ -217,13 +223,26 @@ class BarbLeaseFenceMixin:
             raise stale("expired")
         if epoch != claim.epoch:
             raise stale("stale_epoch")
+        if auto_extend:
+            exp_s = str(row["expires_at"])
+            exp_ts = datetime.fromisoformat(exp_s.replace("Z", "+00:00")).timestamp()
+            remaining = exp_ts - dt.timestamp()
+            if remaining < AUTO_EXTEND_REMAINING_SEC:
+                candidate = _now_iso(datetime.fromtimestamp(dt.timestamp() + DEFAULT_LEASE_TTL_SECONDS, tz=UTC))
+                if candidate > exp_s:
+                    self._conn.execute(
+                        "UPDATE barb_scoped_leases SET heartbeat_at=?, expires_at=? WHERE scope=?",
+                        (now_s, candidate, claim.scope),
+                    )
         return {"scope": claim.scope, "epoch": epoch, "holder": holder}
 
     @contextmanager
-    def fence(self, claim: BarbClaim, *, now: datetime | None = None) -> Iterator[dict[str, Any]]:
+    def fence(
+        self, claim: BarbClaim, *, now: datetime | None = None, auto_extend: bool = False
+    ) -> Iterator[dict[str, Any]]:
         """Validate ``claim`` and keep every lease mutation out until the ``with`` body finishes."""
         with self._lock:
-            yield self.assert_lease_claim(claim, now=now)
+            yield self.assert_lease_claim(claim, now=now, auto_extend=auto_extend)
 
 
 def reject_stale(
@@ -283,9 +302,10 @@ def barb_write_fence(
         from staff.barb_continuity import get_barb_continuity_store  # noqa: PLC0415
 
         store = get_barb_continuity_store()
+    slide_ttl = surface in {"barb.turnover", "barb.inventory", "barb.handoff"}
     with ExitStack() as stack:
         try:
-            stack.enter_context(store.fence(claim))
+            stack.enter_context(store.fence(claim, auto_extend=slide_ttl))
         except StaleBarbLease as exc:
             rejection = reject_stale(
                 exc, claimed_holder=claim.holder or claim.caller_id, surface=surface, target=target, principal=principal
