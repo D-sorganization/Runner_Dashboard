@@ -1,4 +1,16 @@
-"""Post independent exact-head verdict PR comments as the Runner Dashboard GitHub App (#4323)."""
+"""Post independent exact-head verdict PR comments as the Runner Dashboard GitHub App (#4323).
+
+MIRRORED CONTRACT. ``INDEPENDENT_REVIEW_MARKER`` and ``head_sha_matches`` (the
+latter via ``coordination.merge_shepherd_exact_head``) are backend copies of
+``shared_scripts/independent_exact_head_review.py``: the deploy artifact and
+``python backend/server.py`` do not put the repo root (which holds
+``shared_scripts``) on ``sys.path``, so importing it here crashed the
+code-reviewer finalizer with ``No module named 'shared_scripts'`` (#4359).
+``tests/unit/test_independent_exact_head_verdict_import.py`` and
+``deploy/staff_code_reviewer_finalize_probe.py`` (wired through
+``deploy/artifact_backend_import_smoke.py``) pin both copies to the originals
+and block regressions at package time.
+"""
 
 from __future__ import annotations
 
@@ -7,14 +19,15 @@ import re
 from dataclasses import dataclass
 
 import httpx
+from coordination.merge_shepherd_exact_head import head_sha_matches
 from dashboard_config import ORG
 from github_app_auth import github_app_auth_configured, mint_installation_access_token
 from security import validate_repo_slug
 from staff.github_run_env import StaffGithubToken
 
-from shared_scripts.independent_exact_head_review import head_sha_matches
-
 log = logging.getLogger("dashboard.staff.independent_exact_head_verdict")
+
+INDEPENDENT_REVIEW_MARKER = "Independent Exact-Head Acceptance Review"
 
 VERDICT_COMMENT_PERMISSIONS = {
     "contents": "read",
@@ -155,8 +168,6 @@ def build_independent_verdict_comment_body(
     reviewer_model: str,
     seat: str = "code-reviewer",
 ) -> str:
-    from shared_scripts.independent_exact_head_review import INDEPENDENT_REVIEW_MARKER
-
     v = verdict.upper()
     sha = head_sha.lower()
     model = reviewer_model.strip() or "unknown"

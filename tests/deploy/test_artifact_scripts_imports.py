@@ -35,6 +35,14 @@ def test_packager_stages_full_scripts_tree() -> None:
     assert "claude_statusline_quota.py" not in content.split("# 5b.")[1].split("# 6.")[0]
 
 
+def test_code_reviewer_finalizer_static_guard_passes_on_repo_tree() -> None:
+    from deploy.staff_code_reviewer_finalize_probe import (
+        assert_code_reviewer_finalizer_has_no_shared_scripts_imports,
+    )
+
+    assert_code_reviewer_finalizer_has_no_shared_scripts_imports(REPO_ROOT / "backend")
+
+
 def test_backend_scripts_import_modules_exist_in_repo() -> None:
     required = smoke._backend_scripts_imports(REPO_ROOT / "backend")
     assert "scripts.automerge_guard" in required

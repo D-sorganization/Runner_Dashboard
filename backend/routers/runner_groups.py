@@ -35,10 +35,10 @@ async def get_runner_group(request: Request, group_label: str) -> dict[str, Any]
     Raises:
         HTTPException: If GitHub API fails.
     """
+    # Outside the try: a hub error keeps its own status instead of "GitHub API error" (#4417).
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
     try:
-        if should_proxy_fleet_to_hub(request):
-            return await proxy_to_hub(request)
-
         from dashboard_config import ORG
 
         data = await fetch_org_runners(gh_api_admin, ORG)
