@@ -129,8 +129,9 @@ class ChatTurnRunner:
     ) -> ChatTurnResult:
         """Execute a conversational chat turn with fallback chain and degraded mode.
 
-        ``requester`` is who sent the message; when their message may approve an action
-        the role proposes, it runs at once instead of waiting on a card (#1786).
+        ``requester`` is who sent the message; when they list an action in
+        ``message.meta.confirm_actions`` and may approve it, that proposal may run in-turn
+        (#1786, #4274 E-18). Otherwise proposals wait for an explicit decide/execute.
         """
         roles = load_roles()
         role = roles.get(role_name)
@@ -145,6 +146,7 @@ class ChatTurnRunner:
 
         user_msg = self.conv_store.get_message(user_message_id)
         raw_prompt = user_msg.body_md if user_msg else ""
+        user_message_meta = dict(user_msg.meta) if user_msg and user_msg.meta else {}
         digest = str(thread.meta.get("handoff_digest") or "").strip()
         st = load_fleet_standards()
         context_blocks = cap_chat_context(
@@ -226,6 +228,7 @@ class ChatTurnRunner:
                         is_resume=True,
                         requester=requester,
                         turn_epoch=turn_epoch,
+                        user_message_meta=user_message_meta,
                     )
                     if result.ok:
                         record_successful_turn(
@@ -271,6 +274,7 @@ class ChatTurnRunner:
                     replayed_history=was_fallback,
                     requester=requester,
                     turn_epoch=turn_epoch,
+                    user_message_meta=user_message_meta,
                 )
                 if result.ok:
                     record_successful_turn(
@@ -342,6 +346,7 @@ class ChatTurnRunner:
         replayed_history: bool = False,
         requester: Principal | None = None,
         turn_epoch: int = 0,
+        user_message_meta: dict[str, Any] | None = None,
     ) -> ChatTurnResult:
         scratch_dir = thread_scratch_dir(thread_id)
         bus = get_thread_bus()
@@ -491,7 +496,11 @@ class ChatTurnRunner:
                 log.warning("Failed to persist action proposal %s: %s", action.action, exc)
                 continue
             rname = role.name if role else None
-            if requester is not None and prop.state == "proposed" and request_approves(requester, action.action, rname):
+            if (
+                requester is not None
+                and prop.state == "proposed"
+                and request_approves(requester, action.action, rname, message_meta=user_message_meta)
+            ):
                 await run_for_requester(self.conv_store, bus, prop.id, requester)
 
         # Persist provider session id on thread metadata
