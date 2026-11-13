@@ -70,6 +70,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/agent-principals/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reload Agent Principals Route
+         * @description Ingest new agent principals and token files without a hub restart; admin only, ids only (#4256).
+         */
+        post: operations["reload_agent_principals_route_api_admin_agent_principals_reload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/principals": {
         parameters: {
             query?: never;
@@ -6401,7 +6421,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Context Pack */
+        /**
+         * Get Context Pack
+         * @description Return a scoped memory snapshot. Deprecated for Barb session startup — use Barb continuity + priorities/holds.
+         */
         get: operations["get_context_pack_api_v1_memory_context_pack_get"];
         put?: never;
         post?: never;
@@ -14055,6 +14078,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    reload_agent_principals_route_api_admin_agent_principals_reload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

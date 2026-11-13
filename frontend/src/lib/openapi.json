@@ -10029,6 +10029,32 @@
         "summary": "Undrain Endpoint"
       }
     },
+    "/api/admin/agent-principals/reload": {
+      "post": {
+        "description": "Ingest new agent principals and token files without a hub restart; admin only, ids only (#4256).",
+        "operationId": "reload_agent_principals_route_api_admin_agent_principals_reload_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reload Agent Principals Route",
+        "tags": ["admin"]
+      }
+    },
     "/api/admin/principals": {
       "get": {
         "description": "List all registered principals and their quotas.",
@@ -24975,6 +25001,7 @@
     },
     "/api/v1/memory/context-pack": {
       "get": {
+        "description": "Return a scoped memory snapshot. Deprecated for Barb session startup \u2014 use Barb continuity + priorities/holds.",
         "operationId": "get_context_pack_api_v1_memory_context_pack_get",
         "responses": {
           "200": {
