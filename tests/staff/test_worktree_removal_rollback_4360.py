@@ -211,6 +211,48 @@ def test_rollback_create_failure_is_reported(tracked_symlink_worktree, monkeypat
     assert not (tree / "docs/model").exists()
 
 
+def test_rollback_refuses_path_based_create_without_dir_fd_support(
+    tracked_symlink_worktree, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """No descriptor-relative create (as on Windows): nothing is created by path; each link is reported."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    created: list[object] = []
+    monkeypatch.setattr(hygiene, "_DIR_FD_LINKS", False)
+    monkeypatch.setattr(os, "symlink", lambda *args, **kwargs: created.append(args))
+    monkeypatch.setattr(Path, "symlink_to", lambda *args, **kwargs: created.append(args))
+    monkeypatch.setattr(Path, "mkdir", lambda *args, **kwargs: created.append(args))
+
+    def fail_remove(args, _timeout):
+        return subprocess.CompletedProcess(args, 128, "", "injected")
+
+    with caplog.at_level("WARNING"), _inject_remove(tracked_symlink_worktree, fail_remove):
+        removed, _ = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert not removed
+    assert created == []
+    for rel in tracked_symlink_worktree["links"]:
+        assert not (tree / rel).is_symlink()
+        assert f"rollback failed for {rel}" in caplog.text
+    assert "open to a parent swap" in caplog.text
+
+
+def test_junction_snapshot_is_refused_not_created_by_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A junction only exists where links cannot be created relative to an open directory."""
+    root = tmp_path / "wt"
+    root.mkdir()
+    snap = hygiene._TrackedSymlinkSnapshot(
+        rel_posix="deps/junction", kind="junction", target=str(tmp_path), target_is_directory=True
+    )
+    calls: list[object] = []
+    monkeypatch.setattr(hygiene, "_create_windows_junction", lambda *args: calls.append(args))
+
+    with pytest.raises(OSError, match="not restored"):
+        hygiene._recreate_tracked_link_under_real_parents(root, snap)
+
+    assert calls == []
+    assert list(root.iterdir()) == []
+
+
 @pytest.mark.parametrize("list_outcome", ["nonzero", "locked"])
 def test_rollback_that_cannot_confirm_the_worktree_is_reported(
     tracked_symlink_worktree, caplog: pytest.LogCaptureFixture, list_outcome: str

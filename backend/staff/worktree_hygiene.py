@@ -316,25 +316,6 @@ def _recreate_tracked_link_entry(entry: Path, snap: _TrackedSymlinkSnapshot) -> 
         raise OSError(f"symlink missing after recreate: {entry}")
 
 
-def _ensure_real_parent_dirs(worktree: Path, rel_posix: str) -> None:
-    """Post: every parent of ``rel_posix`` is a real directory inside ``worktree``.
-
-    Missing parents are created one level at a time. A link or non-directory
-    occupant raises ``OSError`` so rollback never writes through it. Path-based,
-    so only for platforms without ``dir_fd`` support (see ``_open_real_parent_dir``).
-    """
-    current = worktree
-    for part in rel_posix.split("/")[:-1]:
-        current = current / part
-        try:
-            metadata = current.lstat()
-        except FileNotFoundError:
-            current.mkdir()
-            continue
-        if _link_kind(current) or not stat.S_ISDIR(metadata.st_mode):
-            raise OSError(f"parent is not a real directory: {current}")
-
-
 _DIR_FD_LINKS = all(fn in os.supports_dir_fd for fn in (os.open, os.mkdir, os.symlink))
 
 
@@ -364,15 +345,24 @@ def _open_real_parent_dir(worktree: Path, rel_posix: str) -> int:
 
 
 def _recreate_tracked_link_under_real_parents(worktree: Path, snap: _TrackedSymlinkSnapshot) -> None:
-    """Recreate ``snap`` inside ``worktree``; never through a parent that is, or becomes, a link."""
-    entry = worktree.joinpath(*snap.rel_posix.split("/"))
+    """Recreate ``snap`` inside ``worktree``; never through a parent that is, or becomes, a link.
+
+    Pre: none. Post: the link exists in the real directory that was checked, or
+    ``OSError`` is raised and nothing was created. Where the platform cannot create
+    a link relative to an open directory (Windows, and so every junction), a
+    path-based create could be redirected by swapping a parent between the check
+    and the create, so the entry is refused instead: rollback reports it as
+    unrestored and the tree is left as it is.
+    """
     if not _DIR_FD_LINKS or _snapshot_expects_junction(snap):
-        _ensure_real_parent_dirs(worktree, snap.rel_posix)
-        _recreate_tracked_link_entry(entry, snap)
-        return
+        raise OSError(
+            f"{snap.kind} {snap.rel_posix} not restored: this platform cannot create a link "
+            "relative to an open directory, and a path-based create is open to a parent swap"
+        )
     parent_fd = _open_real_parent_dir(worktree, snap.rel_posix)
     try:
-        os.symlink(snap.target, entry.name, snap.target_is_directory, dir_fd=parent_fd)
+        name = snap.rel_posix.rsplit("/", 1)[-1]
+        os.symlink(snap.target, name, snap.target_is_directory, dir_fd=parent_fd)
     finally:
         os.close(parent_fd)
 
