@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from coordination.merge_shepherd_exact_head import HeadReviewPass
@@ -31,7 +33,9 @@ def _review_pass(pr: int, head: str) -> HeadReviewPass:
         pr=pr,
         head_sha=head,
         verdict="approve",
-        recorded_at="2026-11-10T12:00:00+00:00",
+        # #4393: a fixed date aged past the 72 h review-pass TTL on 2026-11-13 and the
+        # planner stopped arming; a pass is "recorded now" whenever the test runs.
+        recorded_at=datetime.now(UTC).isoformat(),
     )
 
 
