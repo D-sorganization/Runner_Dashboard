@@ -6,8 +6,10 @@ latter via ``coordination.merge_shepherd_exact_head``) are backend copies of
 ``python backend/server.py`` do not put the repo root (which holds
 ``shared_scripts``) on ``sys.path``, so importing it here crashed the
 code-reviewer finalizer with ``No module named 'shared_scripts'`` (#4359).
-``tests/unit/test_independent_exact_head_verdict_import.py`` pins both copies to
-the originals.
+``tests/unit/test_independent_exact_head_verdict_import.py`` and
+``deploy/staff_code_reviewer_finalize_probe.py`` (wired through
+``deploy/artifact_backend_import_smoke.py``) pin both copies to the originals
+and block regressions at package time.
 """
 
 from __future__ import annotations
