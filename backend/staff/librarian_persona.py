@@ -23,6 +23,7 @@ import staff.persona_fallback_lease as _fl  # noqa: E402
 from staff.barb_continuity import BarbContinuityStore  # noqa: E402
 from staff.role_capsule import RoleCapsuleStore  # noqa: E402
 from staff.role_health import RoleHealthStore  # noqa: E402
+from staff.provider_failover_config import FailoverStep
 from staff.role_spec import RoleSpec, read_and_parse_role_file  # noqa: E402
 from staff.schedule import DEFAULT_TZ, next_fire, parse_cron  # noqa: E402
 
@@ -32,6 +33,12 @@ LA = ZoneInfo(DEFAULT_TZ)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ROLE = "librarian"
+
+LIBRARIAN_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
+)
 
 LIBRARIAN_SCHEDULE_ENTRIES: Mapping[str, str] = {
     "weekly_lesson_review": "0 10 * * 5",
@@ -47,6 +54,7 @@ def librarian_role_data() -> dict[str, Any]:
     perms["lease"] = True
     perms["push_branch"] = True
     perms["open_pr"] = True
+    chain = [{"provider": s.provider, **({"model": s.model} if s.model else {})} for s in LIBRARIAN_FAILOVER_CHAIN]
     return {
         "name": ROLE,
         "title": "Fleet Librarian",
@@ -71,7 +79,7 @@ def librarian_role_data() -> dict[str, Any]:
             "with Barb as the operator front door; coordinates with board-secretary on meeting "
             "cadence, fleet-rules promotion, and board-facing gap reports."
         ),
-        "providers": ["claude"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 10 * * 5",
         "window": None,
@@ -91,6 +99,7 @@ def librarian_role_data() -> dict[str, Any]:
         },
         "budget": {"usd_per_run": 2.0, "usd_per_day": 2.0},
         "permissions": perms,
+        "retry": {"max_attempts": 3, "failover_chain": chain},
         "reports_to": "barb",
         "holds": [],
         "surface": "dashboard",

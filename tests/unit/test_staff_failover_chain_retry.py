@@ -28,6 +28,56 @@ def _role(providers: tuple[str, ...]) -> RoleSpec:
     return RoleSpec(name="worker", title="Worker", providers=providers)
 
 
+def test_chain_failover_on_auth_expired(tmp_path) -> None:
+    store = RunStore(path=tmp_path / "auth.sqlite3")
+    root = RunRecord(
+        id="run-auth",
+        role="worker",
+        provider="claude",
+        model="claude-opus-5-5",
+        machine="test",
+        repo="",
+        target_kind="prompt",
+        target_ref="",
+        prompt="do work",
+        status="failed",
+        failure_class="auth_expired",
+        attempt=1,
+        max_attempts=2,
+    )
+    store.create_run(root)
+    plan = MagicMock(
+        role="worker",
+        provider="claude",
+        model="claude-opus-5-5",
+        repo="",
+        target_kind="prompt",
+        target_ref="",
+        operator_prompt="",
+        prompt="do work",
+        branch="staff/worker-task",
+        lease_ritual=False,
+        consolidation=None,
+        focus="",
+        head_ref="",
+        strategy_mode="",
+    )
+    role = _role(("claude", "codex"))
+    runner = MagicMock()
+    runner.store = store
+    runner.machine = "test"
+    runner._adapters = {
+        "claude": MagicMock(installed=lambda: True, unattended=True, build_command=lambda *a, **k: ["claude"]),
+        "codex": MagicMock(installed=lambda: True, unattended=True, build_command=lambda *a, **k: ["codex"]),
+    }
+    guard = MagicMock()
+    guard.can_run.return_value = (True, "")
+    latest = store.get_run("run-auth")
+    assert latest is not None
+    assert try_chain_failover(runner, latest, plan, role, guard, retries_exhausted=False) is True
+    assert store.get_run("run-auth-a2") is not None
+
+
 def test_chain_failover_schedules_next_provider(tmp_path) -> None:
     store = RunStore(path=tmp_path / "runs.sqlite3")
     root = RunRecord(

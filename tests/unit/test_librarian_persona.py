@@ -53,13 +53,9 @@ def test_librarian_yaml_passes_schema_validation_and_loads_into_roster(tmp_path:
     assert slots["weekly_lesson_review"].startswith("2026-11-06T10:00:00")
 
 
-def test_librarian_rd_barb_provider_chain_is_claude_only() -> None:
-    # The real staff/roles/librarian.yml lists a single provider (claude) and has no retry
-    # block, so the static PERSONA_ROLE_CHAINS entry is a one-step chain, matching the real
-    # file's single-provider scope -- never falling back to rd_barb_provider's generic
-    # multi-provider DEFAULT_CHAIN.
-    assert rp.select({}, role="librarian") == rp.Decision("claude", "opus", False)
-    assert rp.chain({}, role="librarian") == (FailoverStep("claude", "opus"),)
+def test_librarian_rd_barb_provider_chain_matches_approved_policy() -> None:
+    assert rp.select({}, role="librarian") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert [s.provider for s in rp.chain({}, role="librarian")] == ["claude", "codex", "cursor-agent"]
 
 
 def test_librarian_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

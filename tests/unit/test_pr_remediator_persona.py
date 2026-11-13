@@ -45,18 +45,11 @@ def test_pr_remediator_yaml_passes_schema_validation_and_loads_into_roster(tmp_p
     assert slots["nightly_remediation"].startswith("2026-11-02T01:00:00")
 
 
-def test_pr_remediator_declarative_fallback_matches_real_role_yaml(tmp_path: Path) -> None:
+def test_pr_remediator_failover_chain_matches_approved_policy(tmp_path: Path) -> None:
     pr_.write_pr_remediator_role_yaml(tmp_path)
-    assert validate_provider_fallback_rules_data(pr_.load_pr_remediator_role_spec(tmp_path, raw=True)) == []
     spec = pr_.load_pr_remediator_role_spec(tmp_path)
-    assert spec.failover_chain == () and len(spec.provider_fallbacks) == 1
-    rule = spec.provider_fallbacks[0]
-    assert rule.from_provider == "codex" and rule.target.provider == "antigravity"
-    assert rule.target.model == "gemini-3.8-flash-high"
-    fb = spec.provider_fallbacks
-    assert match_provider_fallback(fb, "provider_capacity", "codex", retries_exhausted=False) is rule
-    assert match_provider_fallback(fb, "rate_limited", "codex", retries_exhausted=False) is None
-    assert match_provider_fallback(fb, "rate_limited", "codex", retries_exhausted=True) is rule
+    assert [s.provider for s in spec.failover_chain] == ["codex", "cursor-agent", "claude"]
+    assert spec.provider_fallbacks == ()
 
 
 def test_pr_remediator_rd_barb_provider_chain_has_no_cursor_agent_step() -> None:

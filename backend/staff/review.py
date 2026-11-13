@@ -17,7 +17,7 @@ from staff.verification import GhCliPrProbe
 log = logging.getLogger("dashboard.staff.review")
 
 DEFAULT_REVIEW_FOCUS = "code review"
-DEFAULT_REVIEWER_PROVIDERS: tuple[str, ...] = ("claude", "codex", "gemini", "antigravity")
+DEFAULT_REVIEWER_PROVIDERS: tuple[str, ...] = ("codex", "claude", "cursor-agent")
 REVIEWER_ROLE = "code-reviewer"
 AUTO_REVIEW_REQUESTER = "staff:auto-review"
 # Carried in the review prompt so the runner, which only sees the run record, knows the
@@ -127,28 +127,48 @@ class ReviewVerdict:
 def select_reviewer_provider(
     author_provider: str | None,
     role_providers: list[str] | None = None,
+    *,
+    role_spec: Any = None,
 ) -> ReviewSelection:
-    """Pick a reviewer provider that differs in provider family from the author.
+    """Pick the first provider in the role failover chain that is not the PR author.
 
-    If only one provider family is available, uses an alternate model and flags same-provider.
-    If the author is unknown, uses the first listed provider in role_providers.
+    Walks ``retry.failover_chain`` order when ``role_spec`` is set, else ``role_providers``.
+    If only the author's provider family remains, uses an alternate model and flags same-provider.
     """
-    providers = list(role_providers or DEFAULT_REVIEWER_PROVIDERS)
+    from staff.provider_failover_config import resolve_failover_chain
+
+    chain: tuple[Any, ...] = ()
+    if role_spec is not None:
+        skip = frozenset({author_provider}) if author_provider else None
+        chain = resolve_failover_chain(role_spec, skip_providers=skip)
+        providers = [s.provider for s in chain] or list(role_providers or DEFAULT_REVIEWER_PROVIDERS)
+    else:
+        providers = list(role_providers or DEFAULT_REVIEWER_PROVIDERS)
     if not providers:
         return ReviewSelection(provider="claude", model=None, same_provider=False)
 
     if not author_provider:
-        return ReviewSelection(provider=providers[0], model=None, same_provider=False)
+        head = chain[0] if role_spec is not None and chain else None
+        model = head.model if head is not None else None
+        return ReviewSelection(provider=providers[0], model=model, same_provider=False)
 
     author_family = PROVIDER_FAMILY.get(author_provider, author_provider)
+    steps = chain if role_spec is not None else []
+    if steps:
+        for step in steps:
+            p = step.provider
+            p_family = PROVIDER_FAMILY.get(p, p)
+            if p != author_provider and p_family != author_family:
+                return ReviewSelection(provider=p, model=step.model, same_provider=False)
     for p in providers:
         p_family = PROVIDER_FAMILY.get(p, p)
         if p != author_provider and p_family != author_family:
             return ReviewSelection(provider=p, model=None, same_provider=False)
 
-    # Only the author's provider or provider family is available
     fallback_provider = providers[0]
     alt_model = ALTERNATE_MODELS.get(fallback_provider)
+    if role_spec is not None and steps:
+        alt_model = steps[0].model or alt_model
     return ReviewSelection(provider=fallback_provider, model=alt_model, same_provider=True)
 
 
@@ -184,6 +204,13 @@ def detect_author_provider(
                     return m.group(1).lower()
         except Exception:
             log.warning("Failed to inspect commit trailers for PR #%s in repo %s", pr_number, repo, exc_info=True)
+
+    from staff.role_provider_chains import infer_author_provider_from_branch
+
+    if branch:
+        from_branch = infer_author_provider_from_branch(branch)
+        if from_branch:
+            return from_branch
 
     return None
 
@@ -293,11 +320,19 @@ def prepare_review_params(
         clean_params["skill"] = "fleet-review"
 
     if not clean_params.get("provider"):
+        branch = str(clean_params.get("branch") or clean_params.get("head_ref") or "")
         author = (
-            detect_author_provider(repo=repo, pr_number=int(pr), store=store, gh_probe=gh_probe)
+            detect_author_provider(
+                repo=repo,
+                pr_number=int(pr),
+                branch=branch,
+                store=store,
+                gh_probe=gh_probe,
+            )
             if pr and repo
             else None
         )
+        role_spec = roster.get(role) if roster is not None else None
         candidates = list(_role_providers(roster, role) or DEFAULT_REVIEWER_PROVIDERS)
         healthy, skipped = _fail_fast_unhealthy_providers(candidates)
         if skipped:
@@ -306,7 +341,7 @@ def prepare_review_params(
                 skipped,
             )
             clean_params["skipped_providers"] = skipped
-        sel = select_reviewer_provider(author, healthy)
+        sel = select_reviewer_provider(author, healthy, role_spec=role_spec)
         clean_params["provider"] = sel.provider
         if sel.model:
             clean_params["model"] = sel.model

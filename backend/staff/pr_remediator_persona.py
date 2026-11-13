@@ -23,6 +23,8 @@ import staff.persona_fallback_lease as _fl  # noqa: E402
 from staff.barb_continuity import BarbContinuityStore  # noqa: E402
 from staff.role_capsule import RoleCapsuleStore  # noqa: E402
 from staff.role_health import RoleHealthStore  # noqa: E402
+from staff.provider_failover_config import FailoverStep
+from staff.provider_failover_config import FailoverStep  # noqa: E402
 from staff.role_spec import RoleSpec, read_and_parse_role_file  # noqa: E402
 from staff.schedule import DEFAULT_TZ, next_fire, parse_cron  # noqa: E402
 
@@ -33,6 +35,12 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ROLE = "pr-remediator"
 
+PR_REMEDIATOR_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
+    FailoverStep("claude", "claude-opus-5-5"),
+)
+
 PR_REMEDIATOR_SCHEDULE_ENTRIES: Mapping[str, str] = {
     "nightly_remediation": "0 1 * * *",
 }
@@ -40,12 +48,10 @@ PR_REMEDIATOR_SCHEDULE_ENTRIES: Mapping[str, str] = {
 PR_REMEDIATOR_TARGETS: tuple[str, ...] = ("idle-open-prs", "simple-ci-failures")
 PR_REMEDIATOR_SKIPS: tuple[str, ...] = ("draft", "do-not-automate", "claim:local", "redesign")
 
-PR_REMEDIATOR_PROVIDER_FALLBACKS: tuple[dict[str, Any], ...] = (
-    {
-        "when": ["provider_capacity", "rate_limited"],
-        "from": "codex",
-        "to": {"provider": "antigravity", "model": "gemini-3.8-flash-high"},
-    },
+PR_REMEDIATOR_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
+    FailoverStep("claude", "claude-opus-5-5"),
 )
 
 
@@ -55,6 +61,7 @@ def pr_remediator_role_data() -> dict[str, Any]:
     perms["lease"] = True
     perms["push_branch"] = True
     perms["open_pr"] = True
+    chain = [{"provider": s.provider, **({"model": s.model} if s.model else {})} for s in PR_REMEDIATOR_FAILOVER_CHAIN]
     return {
         "name": ROLE,
         "title": "PR Remediator",
@@ -70,7 +77,7 @@ def pr_remediator_role_data() -> dict[str, Any]:
             "Barb). When a repository's queue crosses the strategy.consolidate_when thresholds, "
             "consolidate it into one PR per fleet-rules/pr-queue-consolidation.md instead of draining serially."
         ),
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["codex", "cursor-agent", "claude"],
         "model": "default",
         "schedule": "0 1 * * *",
         "window": {"start": "22:00", "end": "06:00"},
@@ -89,7 +96,7 @@ def pr_remediator_role_data() -> dict[str, Any]:
         "strategy": {"consolidate_when": {"open_prs": 6, "utilisation_pct": 70}},
         "budget": {"usd_per_run": 5.0, "usd_per_day": 15.0},
         "permissions": perms,
-        "retry": {"provider_fallbacks": [dict(r) for r in PR_REMEDIATOR_PROVIDER_FALLBACKS]},
+        "retry": {"max_attempts": 3, "failover_chain": chain},
         "reports_to": "night-watch",
         "holds": [],
         "surface": "dashboard",

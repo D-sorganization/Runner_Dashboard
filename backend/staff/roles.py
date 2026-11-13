@@ -128,7 +128,7 @@ _FALLBACK_ROLES: tuple[dict[str, Any], ...] = (
         "name": AD_HOC_ROLE,
         "title": "Ad-hoc task",
         "summary": "Free-form coding task dispatched by an operator.",
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "permissions": {
             "lease": True,
             "push_branch": True,

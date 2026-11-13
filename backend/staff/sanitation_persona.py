@@ -21,6 +21,7 @@ import staff.persona_fallback_lease as _fl  # noqa: E402
 from staff.barb_continuity import BarbContinuityStore  # noqa: E402
 from staff.role_capsule import RoleCapsuleStore  # noqa: E402
 from staff.role_health import RoleHealthStore  # noqa: E402
+from staff.provider_failover_config import FailoverStep
 from staff.role_spec import RoleSpec, read_and_parse_role_file  # noqa: E402
 from staff.schedule import DEFAULT_TZ, next_fire, parse_cron  # noqa: E402
 
@@ -30,6 +31,12 @@ LA = ZoneInfo(DEFAULT_TZ)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ROLE = "sanitation"
+
+SANITATION_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("cursor-agent", None),
+)
 
 SANITATION_SCHEDULE_ENTRIES: Mapping[str, str] = {
     "overnight_sweep": "0 3 * * *",
@@ -76,7 +83,7 @@ def sanitation_role_data() -> dict[str, Any]:
             "Repository_Management playbook, not bot memory. Coordinates with Night Watch (overnight triage) "
             "and Cartographer (maps). Does not steal claims, no admin merges, no Board remediation floods."
         ),
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["codex", "claude", "cursor-agent"],
         "model": "default",
         "schedule": "0 3 * * *",
         "window": {"start": "22:00", "end": "06:00"},

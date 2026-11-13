@@ -23,6 +23,7 @@ import staff.persona_fallback_lease as _fl  # noqa: E402
 from staff.barb_continuity import BarbContinuityStore  # noqa: E402
 from staff.role_capsule import RoleCapsuleStore  # noqa: E402
 from staff.role_health import RoleHealthStore  # noqa: E402
+from staff.provider_failover_config import FailoverStep
 from staff.role_spec import RoleSpec, read_and_parse_role_file  # noqa: E402
 from staff.schedule import DEFAULT_TZ, next_fire, parse_cron  # noqa: E402
 
@@ -32,6 +33,12 @@ LA = ZoneInfo(DEFAULT_TZ)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ROLE = "vision-quest"
+
+VISION_QUEST_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
+)
 VISION_QUEST_SCHEDULE_ENTRIES: Mapping[str, str] = {"monthly_quest": "0 9 1 * *"}
 
 VISION_QUEST_REPOS: tuple[str, ...] = ("UpstreamDrift", "AffineDrift", "Gasification_Model", "Tools")
@@ -68,7 +75,7 @@ def vision_quest_role_data() -> dict[str, Any]:
             "reading files alone; memos.md/brief.md cite the panel thread ids. A chair that cannot reach the "
             "panel does not write lens memos itself: it stops, or labels the output single-seat."
         ),
-        "providers": ["claude", "antigravity", "codex", "cursor-agent"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 9 1 * *",
         "window": None,

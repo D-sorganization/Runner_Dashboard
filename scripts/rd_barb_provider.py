@@ -147,21 +147,50 @@ PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
         FailoverStep("codex", None),
         FailoverStep("cursor-agent", None),
     ),
-    "librarian": (FailoverStep("claude", None),),
+    "librarian": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
     "sanitation": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("cursor-agent", None),
     ),
     "disciple": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
     ),
     "fleet-curator": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "night-watch": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "issue-remediator": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "pr-remediator": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+        FailoverStep("claude", "claude-opus-5-5"),
+    ),
+    "research-scout": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("antigravity", "gemini-3.8-flash-high"),
+    ),
+    "oss-scout": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("antigravity", "gemini-3.8-flash-high"),
     ),
 }
 SWITCH_ON = frozenset({"auth_expired", "rate_limited", "quota_exhausted", "provider_capacity", "crash"})

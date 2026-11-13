@@ -195,8 +195,13 @@ def parse_role(
     *,
     errors: tuple[str, ...] = (),
     avatars_dir: Path | None = None,
+    enrich_policy: bool = True,
 ) -> RoleSpec:
     """Build a RoleSpec from a parsed YAML mapping."""
+    if enrich_policy:
+        from staff.role_provider_chains import enrich_role_provider_policy
+
+        data = enrich_role_provider_policy(data)
     name = str(data.get("name") or (Path(source_path).stem if source_path else "")).strip()
     if not name:
         name = "unnamed"
@@ -361,6 +366,9 @@ def read_and_parse_role_file(path: Path) -> RoleSpec:
             errors=("top level is not a mapping",),
             source_path=str(path),
         )
+    from staff.role_provider_chains import enrich_role_provider_policy
+
+    data = enrich_role_provider_policy(data)
     errs = validate_role_data(data)
     from staff.role_avatar_paths import staff_avatars_dir_for_roles
 

@@ -17,9 +17,16 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from staff.provider_failover_config import FailoverStep
 from staff.role_spec import RoleSpec, read_and_parse_role_file  # noqa: E402
 
 ROLE = "disciple"
+
+DISCIPLE_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
+)
 
 DISCIPLE_REPOS: tuple[str, ...] = ("UpstreamDrift", "AffineDrift")
 DISCIPLE_AUTHORITY: tuple[str, ...] = ("published", "findings", "reviews")
@@ -54,7 +61,7 @@ def disciple_role_data() -> dict[str, Any]:
             "which source has the higher authority (published > findings > reviews) instead of "
             "blending. Read-only: it files nothing, leases nothing and writes nothing."
         ),
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": None,
         "window": None,

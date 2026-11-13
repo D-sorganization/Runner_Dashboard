@@ -23,6 +23,8 @@ import staff.persona_fallback_lease as _fl  # noqa: E402
 from staff.barb_continuity import BarbContinuityStore  # noqa: E402
 from staff.role_capsule import RoleCapsuleStore  # noqa: E402
 from staff.role_health import RoleHealthStore  # noqa: E402
+from staff.provider_failover_config import FailoverStep
+from staff.provider_failover_config import FailoverStep  # noqa: E402
 from staff.role_spec import RoleSpec, read_and_parse_role_file  # noqa: E402
 from staff.schedule import DEFAULT_TZ, next_fire, parse_cron  # noqa: E402
 
@@ -32,6 +34,12 @@ LA = ZoneInfo(DEFAULT_TZ)
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ROLE = "issue-remediator"
+
+ISSUE_REMEDIATOR_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
+)
 
 ISSUE_REMEDIATOR_SCHEDULE_ENTRIES: Mapping[str, str] = {
     "overnight_remediation": "0 23 * * *",
@@ -58,6 +66,7 @@ def issue_remediator_role_data() -> dict[str, Any]:
     perms["lease"] = True
     perms["push_branch"] = True
     perms["open_pr"] = True
+    chain = [{"provider": s.provider, **({"model": s.model} if s.model else {})} for s in ISSUE_REMEDIATOR_FAILOVER_CHAIN]
     return {
         "name": ROLE,
         "title": "Issue Remediator",
@@ -76,7 +85,7 @@ def issue_remediator_role_data() -> dict[str, Any]:
             "Source of truth: the playbook (bot-optional). No admin merges, no claim theft. Escalate tricky "
             "problems via Call the Board (one free consult; further calls notify Dieter through Barb)."
         ),
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 23 * * *",
         "window": {"start": "22:00", "end": "06:00"},
@@ -91,6 +100,7 @@ def issue_remediator_role_data() -> dict[str, Any]:
         },
         "budget": {"usd_per_run": 5.0, "usd_per_day": 15.0},
         "permissions": perms,
+        "retry": {"max_attempts": 3, "failover_chain": chain},
         "reports_to": "night-watch",
         "holds": [],
         "surface": "dashboard",
