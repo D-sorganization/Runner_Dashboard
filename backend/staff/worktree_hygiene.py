@@ -387,10 +387,18 @@ def _restore_tracked_symlinks_from_journal(
     Pre: ``journal`` was captured from this worktree before unlinking.
     Post: each journal entry that is missing is recreated with its recorded raw
     target; an existing entry (same or different) and every link target are left
-    untouched. Returns the relative paths that could not be restored.
+    untouched. Returns the relative paths that could not be restored. A tree that
+    cannot be confirmed as registered and unlocked is not written to: every journal
+    entry is then returned as unrestored, so the skip is reported, not silent.
     """
-    if not journal or not worktree.exists() or not _registered_worktree_unlocked(git_cwd, worktree):
+    if not journal or not worktree.exists():
         return []
+    if not _registered_worktree_unlocked(git_cwd, worktree):
+        log.warning(
+            "tracked symlink rollback skipped for %s: not confirmed as a registered, unlocked worktree",
+            worktree,
+        )
+        return [snap.rel_posix for snap in journal]
     failures: list[str] = []
     for snap in journal:
         entry = worktree.joinpath(*snap.rel_posix.split("/"))
@@ -424,7 +432,9 @@ def _restore_tracked_symlinks_from_journal(
                 snap.rel_posix,
                 snap.target,
             )
-        except OSError as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
+            # SubprocessError: a junction is recreated with ``mklink``, which can time out.
+            # One entry failing must not abandon the rest of the journal.
             failures.append(snap.rel_posix)
             log.warning("rollback failed for %s under %s: %s", snap.rel_posix, worktree, exc)
     if worktree.exists():

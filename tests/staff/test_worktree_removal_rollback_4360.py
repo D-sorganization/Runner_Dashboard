@@ -211,6 +211,41 @@ def test_rollback_create_failure_is_reported(tracked_symlink_worktree, monkeypat
     assert not (tree / "docs/model").exists()
 
 
+@pytest.mark.parametrize("list_outcome", ["nonzero", "locked"])
+def test_rollback_that_cannot_confirm_the_worktree_is_reported(
+    tracked_symlink_worktree, caplog: pytest.LogCaptureFixture, list_outcome: str
+) -> None:
+    """A rollback skipped because the tree is unconfirmed or locked must say which links it left."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    git_out = hygiene._git_out
+    removal_attempted = False
+
+    def inject(cwd: Path, *args: str, timeout: int = 30):
+        nonlocal removal_attempted
+        if args[:2] == ("worktree", "remove"):
+            removal_attempted = True
+            return subprocess.CompletedProcess(list(args), 128, "", "injected")
+        if args[:2] == ("worktree", "prune"):
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        if args[:2] == ("worktree", "list") and removal_attempted:
+            if list_outcome == "nonzero":
+                return subprocess.CompletedProcess(list(args), 1, "", "injected list failure")
+            real = git_out(cwd, *args, timeout=timeout)
+            return subprocess.CompletedProcess(list(args), 0, real.stdout.replace("\0\0", "\0locked\0\0"), "")
+        return git_out(cwd, *args, timeout=timeout)
+
+    with (
+        caplog.at_level("WARNING", logger=hygiene.log.name),
+        patch.object(hygiene, "_git_out", side_effect=inject),
+    ):
+        removed, _ = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert not removed
+    assert "rollback skipped" in caplog.text
+    for rel in tracked_symlink_worktree["links"]:
+        assert rel in caplog.text, f"the unrestored link {rel} must be named"
+
+
 @pytest.fixture
 def tracked_directory_symlink_worktree(tmp_path: Path):
     root = Path(tempfile.mkdtemp(dir=tmp_path, prefix="rd4360-dir-"))
