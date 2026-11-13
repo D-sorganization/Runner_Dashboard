@@ -66,8 +66,7 @@ def issue_remediator_role_data() -> dict[str, Any]:
     perms["push_branch"] = True
     perms["open_pr"] = True
     chain = [
-        {"provider": s.provider, **({"model": s.model} if s.model else {})}
-        for s in ISSUE_REMEDIATOR_FAILOVER_CHAIN
+        {"provider": s.provider, **({"model": s.model} if s.model else {})} for s in ISSUE_REMEDIATOR_FAILOVER_CHAIN
     ]
     return {
         "name": ROLE,

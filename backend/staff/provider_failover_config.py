@@ -151,6 +151,7 @@ def resolve_failover_chain(
     When ``requested_provider`` is set, the chain starts at that provider (if allowed)
     and continues through later steps; earlier defaults are skipped.
     """
+
     def _done(steps: tuple[FailoverStep, ...]) -> tuple[FailoverStep, ...]:
         return _apply_chain_policy(steps, repo=repo, skip_providers=skip_providers)
 

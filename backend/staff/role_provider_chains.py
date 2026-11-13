@@ -160,8 +160,7 @@ def enrich_role_provider_policy(data: dict[str, Any]) -> dict[str, Any]:
     out = dict(data)
     out["providers"] = list(chain)
     steps = [
-        {"provider": s.provider, **({"model": s.model} if s.model else {})}
-        for s in failover_steps_for_providers(chain)
+        {"provider": s.provider, **({"model": s.model} if s.model else {})} for s in failover_steps_for_providers(chain)
     ]
     retry = dict(out["retry"]) if isinstance(out.get("retry"), dict) else {}
     retry.setdefault("max_attempts", 3)

@@ -51,9 +51,7 @@ def vision_quest_role_data() -> dict[str, Any]:
     perms = dict.fromkeys(("lease", "merge", "host_shell", "notify_user"), False)
     perms["push_branch"] = True
     perms["open_pr"] = True
-    chain = [
-        {"provider": s.provider, **({"model": s.model} if s.model else {})} for s in VISION_QUEST_FAILOVER_CHAIN
-    ]
+    chain = [{"provider": s.provider, **({"model": s.model} if s.model else {})} for s in VISION_QUEST_FAILOVER_CHAIN]
     return {
         "name": ROLE,
         "title": "Vision Quest",

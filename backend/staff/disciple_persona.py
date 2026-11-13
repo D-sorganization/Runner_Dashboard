@@ -38,9 +38,7 @@ _CITATION_RE = re.compile(r"^[^:]+:[^#]+#[^\s@]+ @ [^\s]+$")
 def disciple_role_data() -> dict[str, Any]:
     """Canonical staff/roles/disciple.yml mapping conforming to staff/schema.json (#3704)."""
     perms = dict.fromkeys(("lease", "push_branch", "open_pr", "merge", "host_shell", "notify_user"), False)
-    chain = [
-        {"provider": s.provider, **({"model": s.model} if s.model else {})} for s in DISCIPLE_FAILOVER_CHAIN
-    ]
+    chain = [{"provider": s.provider, **({"model": s.model} if s.model else {})} for s in DISCIPLE_FAILOVER_CHAIN]
     return {
         "name": ROLE,
         "title": "Disciple",

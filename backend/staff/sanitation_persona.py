@@ -67,9 +67,7 @@ def sanitation_role_data() -> dict[str, Any]:
     perms["lease"] = True
     perms["push_branch"] = True
     perms["open_pr"] = True
-    chain = [
-        {"provider": s.provider, **({"model": s.model} if s.model else {})} for s in SANITATION_FAILOVER_CHAIN
-    ]
+    chain = [{"provider": s.provider, **({"model": s.model} if s.model else {})} for s in SANITATION_FAILOVER_CHAIN]
     return {
         "name": ROLE,
         "title": "Sanitation Engineer",
