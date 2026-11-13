@@ -144,6 +144,13 @@ def closing_pr_for(pulls: Any, issue: int) -> dict[str, Any] | None:
 
 
 def evaluate(payload: Any, pulls: Any, *, repo: str, issue: int | None, pr: int | None) -> ClaimVerdict:
+    if isinstance(payload, dict) and str(payload.get("state") or "").lower() == "closed":
+        target = f"{repo}#{issue or pr}"
+        return ClaimVerdict(
+            "blocked",
+            "issue_closed",
+            f"{target} is closed; automation must not dispatch or retry it.",
+        )
     labels = _label_names(payload)
     if issue:
         if skipped := _skip_label(labels):

@@ -4,7 +4,9 @@
 The hub runs ``backend/server.py`` with only ``backend/`` on ``sys.path``; modules
 such as ``routers.staff_pr_hygiene`` shim in the artifact root so ``from scripts
 import …`` resolves. This script verifies every ``scripts.*`` module imported at
-module scope under ``backend/`` is present in a staged or installed artifact tree.
+module scope under ``backend/`` is present in a staged or installed artifact tree,
+and that the ``code-reviewer`` post-run finalizer never imports repo-root
+``shared_scripts`` (#4359).
 
 Usage (packager sets ``ARTIFACT_ROOT`` to the throwaway install directory)::
 
@@ -15,9 +17,30 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
 import os
 import sys
 from pathlib import Path
+from types import ModuleType
+
+_DEPLOY_DIR = Path(__file__).resolve().parent
+
+
+def _load_finalize_probe() -> ModuleType:
+    path = _DEPLOY_DIR / "staff_code_reviewer_finalize_probe.py"
+    spec = importlib.util.spec_from_file_location("_staff_code_reviewer_finalize_probe", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"failed to load staff finalize probe from {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_finalize_probe = _load_finalize_probe()
+assert_code_reviewer_finalizer_has_no_shared_scripts_imports = (
+    _finalize_probe.assert_code_reviewer_finalizer_has_no_shared_scripts_imports
+)
+verify_code_reviewer_finalize_from_foreign_cwd = _finalize_probe.verify_code_reviewer_finalize_from_foreign_cwd
 
 
 def _backend_scripts_imports(backend_dir: Path) -> set[str]:
@@ -69,6 +92,18 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.setdefault("FLEET_NODES", "")
 
     backend_dir = artifact_root / "backend"
+    assert_code_reviewer_finalizer_has_no_shared_scripts_imports(backend_dir)
+    if not files_only:
+        foreign_cwd = artifact_root / ".smoke-foreign-workdir"
+        rc, out, err = verify_code_reviewer_finalize_from_foreign_cwd(
+            backend_dir=backend_dir,
+            foreign_cwd=foreign_cwd,
+            python_executable=sys.executable,
+        )
+        if rc != 0:
+            detail = (err or out or "").strip()[:500]
+            raise SystemExit(f"code-reviewer finalize smoke failed (rc={rc}): {detail}")
+
     missing: list[str] = []
     for module_name in sorted(_backend_scripts_imports(backend_dir)):
         rel = f"{module_name.replace('.', '/')}.py"

@@ -31,6 +31,7 @@ def compose_prompt(
     repo_lessons_result: Any | None = None,
     prompt_token_cap: int | None = None,
     lifecycle_fence: str = "",
+    trim_report: dict[str, Any] | None = None,
 ) -> str:
     """Assemble the agent prompt from the role, the target and the fleet rules or reply contract.
 
@@ -38,6 +39,7 @@ def compose_prompt(
     Static prefix: standards -> skills -> accepted lessons.
     Dynamic suffix: role instructions, playbook, repository, target, and task.
     """
+    from staff.context_budget_trim import trim_tier1_optional
     from staff.standards_registry import (
         LESSONS_TOKEN_CAP,
         TIER0_TOKEN_CAP,
@@ -48,6 +50,12 @@ def compose_prompt(
         load_fleet_standards,
     )
     from staff.workspace import ORG, READ_ONLY_FLEET_RULES, _truncate_for_budget, dashboard_api_note, playbook_text
+
+    skill_block = ""
+    lessons_block = ""
+    lessons_tokens = 0
+    t0_tokens = 0
+    standards_block = ""
 
     static_blocks: list[str] = []
     if not chat_turn:
@@ -122,10 +130,28 @@ def compose_prompt(
             lessons_block = ""
             lessons_tokens = 0
 
-        tier1_tokens = skill_tokens + lessons_tokens
-        if tier1_tokens > TIER1_TOKEN_CAP:
+        tier1_cap = min(TIER1_TOKEN_CAP, max(0, TOTAL_CONTEXT_TOKEN_CAP - t0_tokens))
+        trim = trim_tier1_optional(
+            skill_block=skill_block,
+            lessons_block=lessons_block,
+            tier1_cap=tier1_cap,
+            dispatch_bundle=dispatch_bundle,
+            truncate=_truncate_for_budget,
+        )
+        skill_block, lessons_block = trim.skill_block, trim.lessons_block
+        skill_tokens, lessons_tokens = trim.skill_tokens, trim.lessons_tokens
+        if trim_report is not None:
+            trim_report["tier1_lessons_tokens"] = lessons_tokens
+            trim_report["tier1_skills_tokens"] = skill_tokens
+            if trim.degraded:
+                trim_report["context_degraded"] = True
+                trim_report["context_trimmed"] = list(trim.trimmed)
+        tier1_tokens = trim.tier1_tokens
+        if tier1_tokens > tier1_cap:
+            which = "skills" if skill_block and not lessons_block else "lessons" if lessons_block else "tier-1"
             raise ContextBudgetExceededError(
-                f"Tier 1 context budget exceeded: {tier1_tokens} > {TIER1_TOKEN_CAP} tokens"
+                f"Tier 1 required context exceeds cap: {tier1_tokens} > {tier1_cap} tokens "
+                f"({which} cannot trim further)"
             )
 
         static_blocks = [b for b in (standards_block, skill_block, lessons_block) if b]
@@ -225,6 +251,31 @@ def compose_prompt(
             target_tokens = max(40, current_tokens - overflow - 32)
             parts[instructions_idx] = _truncate_for_budget(current, target_tokens)
             full_prompt = _joined()
+
+        if estimate_tokens(full_prompt) > prompt_token_cap and (skill_block or lessons_block):
+            dynamic_tail = parts[len(static_blocks) :]
+            non_static_tokens = estimate_tokens("\n\n".join(p for p in dynamic_tail if p))
+            tier1_room = min(
+                TIER1_TOKEN_CAP,
+                max(0, TOTAL_CONTEXT_TOKEN_CAP - t0_tokens),
+                max(0, prompt_token_cap - t0_tokens - non_static_tokens),
+            )
+            extra_trim = trim_tier1_optional(
+                skill_block=skill_block,
+                lessons_block=lessons_block,
+                tier1_cap=max(0, tier1_room),
+                dispatch_bundle=dispatch_bundle,
+                truncate=_truncate_for_budget,
+            )
+            if extra_trim.tier1_tokens <= tier1_room or extra_trim.degraded:
+                skill_block, lessons_block = extra_trim.skill_block, extra_trim.lessons_block
+                if extra_trim.degraded and trim_report is not None:
+                    trim_report["context_degraded"] = True
+                    prior = set(trim_report.get("context_trimmed") or [])
+                    trim_report["context_trimmed"] = sorted(prior | set(extra_trim.trimmed))
+                static_blocks = [b for b in (standards_block, skill_block, lessons_block) if b]
+                parts = [*static_blocks, *dynamic_tail]
+                full_prompt = _joined()
 
         if estimate_tokens(full_prompt) > prompt_token_cap:
             raise ContextBudgetExceededError(

@@ -1,0 +1,19 @@
+[Unit]
+Description=Sample Windows/WSL host metrics into on-disk cache (#4309)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@DASHBOARD_USER@
+Environment=HOME=@DASHBOARD_HOME@
+Environment=RUNNER_DASHBOARD_STATE_DIR=@STATE_DIR@
+Environment=WSL_INTEROP=/run/WSL/1_interop
+Environment=PYTHONPATH=@REPO_ROOT@/backend
+ExecStart=@PYTHON_BIN@ @REPO_ROOT@/deploy/host-metrics-probe.py
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

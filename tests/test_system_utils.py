@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -191,42 +192,35 @@ def test_disk_pressure_path_passthrough() -> None:
     assert result["path"] == "/runners"
 
 
-def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkeypatch) -> None:
+def test_windows_host_resource_snapshot_reads_disk_cache_only(monkeypatch, tmp_path: Path) -> None:
+    import host_metrics_cache as hmc
+
     monkeypatch.setattr(
         system_utils.platform,
         "uname",
         lambda: type("Uname", (), {"release": "6.6.87.2-microsoft-standard-WSL2"})(),
     )
-    # Pin the candidate list so the test does not depend on the runner's
-    # actual /mnt/* drives (e.g. node-a-SSD runners mount /mnt/d).
-    monkeypatch.setattr(
-        system_utils,
-        "get_powershell_candidates",
-        lambda: [
-            "powershell.exe",
-            "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
-        ],
-    )
+    monkeypatch.setattr(hmc, "cache_file_path", lambda: tmp_path / "host_metrics.json")
+    payload = {
+        "schema_version": 1,
+        "sampled_at": datetime.now(UTC).isoformat(),
+        "windows": {
+            "cpu_percent": 17.0,
+            "memory_total_gb": 127.9,
+            "memory_used_gb": 52.0,
+            "memory_available_gb": 75.9,
+            "memory_percent": 40.7,
+        },
+    }
+    (tmp_path / "host_metrics.json").write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
     calls = []
 
-    def fake_run(args, **_kwargs):
-        calls.append(args[0])
-        if args[0] == "powershell.exe":
-            raise OSError("PATH unavailable under systemd")
-        return _cp(
-            json.dumps(
-                {
-                    "cpu_percent": 17.0,
-                    "memory_total_gb": 127.9,
-                    "memory_used_gb": 52.0,
-                    "memory_available_gb": 75.9,
-                    "memory_percent": 40.7,
-                }
-            )
-        )
+    def forbid_powershell(*_args, **_kwargs):
+        calls.append("powershell")
+        raise AssertionError("API path must not fork powershell (#4309)")
 
-    monkeypatch.setattr(system_utils.subprocess, "run", fake_run)
-    monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
+    monkeypatch.setattr(system_utils.subprocess, "run", forbid_powershell)
 
     assert system_utils._windows_host_resource_snapshot() == {
         "cpu_percent": 17.0,
@@ -235,10 +229,7 @@ def test_windows_host_resource_snapshot_uses_absolute_powershell_fallback(monkey
         "memory_available_gb": 75.9,
         "memory_percent": 40.7,
     }
-    assert calls == [
-        "powershell.exe",
-        "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
-    ]
+    assert calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -423,12 +414,12 @@ def test_run_windows_powershell_launches_hidden(monkeypatch) -> None:
 
 
 def test_host_snapshot_caches_within_ttl(monkeypatch) -> None:
-    """Rapid successive calls must reuse one PowerShell fork within the TTL."""
+    """Rapid successive calls must reuse one on-disk cache read within the TTL."""
     monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
     monkeypatch.setattr(system_utils, "_HOST_SNAPSHOT_TTL_S", 60.0)
     calls = []
 
-    def fake_uncached() -> dict[str, float]:
+    def fake_from_disk() -> dict[str, float] | None:
         calls.append(1)
         return {
             "cpu_percent": 12.0,
@@ -438,35 +429,23 @@ def test_host_snapshot_caches_within_ttl(monkeypatch) -> None:
             "memory_percent": 31.0,
         }
 
-    monkeypatch.setattr(system_utils, "_windows_host_resource_snapshot_uncached", fake_uncached)
+    monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
+    import host_metrics_cache as hmc
+
+    monkeypatch.setattr(hmc, "windows_host_from_cache", fake_from_disk)
     first = system_utils._windows_host_resource_snapshot()
     second = system_utils._windows_host_resource_snapshot()
     assert first == second
     assert first is not None and first["cpu_percent"] == 12.0
-    assert len(calls) == 1  # second call served from cache
+    assert len(calls) == 1
 
 
-def test_host_snapshot_serves_stale_on_probe_failure(monkeypatch) -> None:
-    """If a refresh probe fails, the last good value is served, not None."""
-    monkeypatch.setattr(
-        system_utils,
-        "_host_snapshot_cache",
-        (
-            {
-                "cpu_percent": 5.0,
-                "memory_total_gb": 1.0,
-                "memory_used_gb": 0.5,
-                "memory_available_gb": 0.5,
-                "memory_percent": 50.0,
-            },
-            time.monotonic() - 999,
-        ),
-    )
-    monkeypatch.setattr(system_utils, "_HOST_SNAPSHOT_TTL_S", 2.5)
-    monkeypatch.setattr(system_utils, "_windows_host_resource_snapshot_uncached", lambda: None)
-    result = system_utils._windows_host_resource_snapshot()
-    assert result is not None
-    assert result["cpu_percent"] == 5.0
+def test_host_snapshot_returns_none_when_disk_cache_unavailable(monkeypatch) -> None:
+    import host_metrics_cache as hmc
+
+    monkeypatch.setattr(system_utils, "_host_snapshot_cache", None)
+    monkeypatch.setattr(hmc, "windows_host_from_cache", lambda: None)
+    assert system_utils._windows_host_resource_snapshot() is None
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +555,24 @@ def test_resource_offline_reason_critical_disk() -> None:
     result = system_utils.resource_offline_reason(system)
     assert result is not None
     assert result["offline_reason"] == "disk-pressure"
+
+
+def test_resource_offline_reason_unknown_memory_percent_is_not_pressure() -> None:
+    """A WSL node whose Windows host probe failed reports ``percent: None`` (source "unknown").
+
+    Unknown memory must not crash the classifier (it 500'd ``GET /api/fleet/status``) and must
+    not be read as OOM pressure.
+    """
+    system = {
+        "disk": {"pressure": {"status": "healthy"}},
+        "memory": {"percent": None, "source": "unknown"},
+    }
+    assert system_utils.resource_offline_reason(system) is None
+
+
+def test_resource_offline_reason_non_numeric_memory_percent_is_not_pressure() -> None:
+    system = {"memory": {"percent": "n/a"}}
+    assert system_utils.resource_offline_reason(system) is None
 
 
 def test_resource_offline_reason_high_memory() -> None:

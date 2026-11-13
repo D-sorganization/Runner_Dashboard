@@ -33,11 +33,13 @@ import dispatch_contract
 import orchestration_audit as _audit
 import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE, ORG, PORT, REPO_ROOT
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
-from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
+from identity import Principal, principal_has_scope, require_any_scope, require_fleet_peer, require_scope  # noqa: B008
 from machine_registry import load_machine_registry
+from routers import fleet_health_routes as _health_routes
 from routers import fleet_maintenance_routes as _maintenance_routes
+from routers import fleet_target_routes as _target_routes
 from routers import orchestration_audit_routes as _audit_routes
 from routers import orchestration_node_routes as _node_routes
 from routers import orchestration_schedule_routes as _schedule_routes
@@ -56,6 +58,8 @@ router = APIRouter(tags=["orchestration"])
 router.include_router(_audit_routes.router)
 router.include_router(_schedule_routes.router)
 router.include_router(_maintenance_routes.router)
+router.include_router(_health_routes.router)
+router.include_router(_target_routes.router)
 router.include_router(_node_routes.router)
 
 
@@ -77,6 +81,7 @@ def set_dependencies(  # noqa: PLR0913
     get_fleet_nodes_impl: Callable,
     get_runner_capacity_snapshot: Callable,
     validate_runner_schedule: Callable,
+    sanitize_runner_schedule: Callable[..., tuple[dict, list[str]]],
     write_runner_schedule_config: Callable,
     runner_scheduler_apply_command: Callable,
     run_cmd: Callable,
@@ -96,6 +101,7 @@ def set_dependencies(  # noqa: PLR0913
     _schedule_routes.set_dependencies(
         get_runner_capacity_snapshot=get_runner_capacity_snapshot,
         validate_runner_schedule=validate_runner_schedule,
+        sanitize_runner_schedule=sanitize_runner_schedule,
         write_runner_schedule_config=write_runner_schedule_config,
         runner_scheduler_apply_command=runner_scheduler_apply_command,
         runner_scheduler_bin=runner_scheduler_bin,
@@ -437,13 +443,24 @@ async def fleet_orchestration_deploy(
     )
 
 
+# #4274 F-05: an operator holds ``fleet.control``. The hub's fan-out arrives with the fleet
+# token, whose ``fleet-peer`` role holds ``fleet.maintain`` (already enough to start and stop
+# runners, see ``staff.tokens``) but not ``fleet.control``; it is accepted for a local-only
+# call and nothing wider.
+FLEET_CONTROL_CALLER = require_any_scope("fleet.control", "fleet.maintain")
+# A node answers 400 when the action is unknown or there is nothing to do; that is the
+# caller's request, not an upstream failure.
+_NODE_REQUEST_ERROR = 400
+
+
 @router.post("/api/fleet/control/{action}", dependencies=[Depends(require_fleet_peer)])
 async def fleet_control(
     action: str,
     request: Request,
+    response: Response,
     *,
     deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
-    principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
+    principal: Principal = Depends(FLEET_CONTROL_CALLER),  # noqa: B008
 ) -> dict:
     """Scale runners from any dashboard.
 
@@ -451,11 +468,16 @@ async def fleet_control(
     locally and fans it out to configured nodes. Internal fan-out calls use
     ``?local=1`` so each node controls its own runner services.
     """
+    local_only = proxy_utils.request_prefers_local(request)
+    if not local_only and not principal_has_scope(principal, "fleet.control"):
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "Authorization failed", "required_scope": "fleet.control", "principal": principal.id},
+        )
     if proxy_utils.should_proxy_fleet_to_hub(request):
         return await proxy_utils.proxy_to_hub(request)
 
-    scope = request.query_params.get("scope", "fleet")
-    should_fan_out = MACHINE_ROLE == "hub" and scope != "local" and bool(FLEET_NODES)
+    should_fan_out = MACHINE_ROLE == "hub" and not local_only and bool(FLEET_NODES)
     local_machine = HOSTNAME
     try:
         local_result = await deps.fleet_control_local(action)
@@ -485,10 +507,23 @@ async def fleet_control(
         )
         node_results.extend(remotes)
 
-    return {
+    body = {
         "action": action,
-        "scope": "local" if scope == "local" else "fleet",
+        "scope": "local" if local_only else "fleet",
         "machine": local_machine,
         "results": local_result["results"],
         "nodes": node_results,
     }
+    # #4274 F-05: a node that refused or could not be reached is an upstream
+    # failure, not a 200. Per-node outcomes stay in ``nodes`` for the caller.
+    failed = [
+        str(node.get("machine"))
+        for node in node_results[1:]
+        if not node.get("success") and node.get("status_code") != _NODE_REQUEST_ERROR
+    ]
+    if failed:
+        log.warning("fleet control %s failed on nodes: %s", sanitize_log_value(action), ", ".join(failed))
+        response.status_code = 502
+        body["error"] = "upstream_error"
+        body["detail"] = f"fleet control failed on: {', '.join(failed)}"
+    return body

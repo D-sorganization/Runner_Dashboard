@@ -99,7 +99,7 @@ def start_scheduler() -> None:
             from staff.reconcile import reconcile_orphaned_runs
             from staff.runner import get_runner
 
-            reconcile_orphaned_runs(get_runner())
+            reconcile_orphaned_runs(get_runner(), requeue_queued=True)
         except Exception as exc:  # noqa: BLE001
             log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
         if sched is not None:
@@ -327,9 +327,11 @@ def migrate_schedule_off_host(
 @router.post("/schedule/leader-lease", response_model_exclude_none=True)
 async def post_leader_lease(
     body: LeaderLeaseBody,
-    _peer: Principal = Depends(require_scope("staff.read")),
+    _peer: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     """Acquire or renew the scheduler leader lease (fleet peer internal contract)."""
+    # The holder decides which host submits scheduled runs, so this needs ``staff.dispatch``
+    # (which fleet peers carry), never the read scope (#4274 D-13).
     sched = get_scheduler()
     return sched.acquire_leader_lease(body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds)
 

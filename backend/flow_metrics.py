@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 from cache_utils import Cache
 from coordination.board import fleet_repos
+from github_pagination import decode_concatenated_json, merge_page_chunks
 from staff.claim_guard import full_repo
 
 log = logging.getLogger("dashboard.flow_metrics")
@@ -180,6 +181,16 @@ async def _gh_json(run_gh: RunGh, args: list[str]) -> tuple[Any | None, str | No
         return None, f"JSON decode error: {exc}"
 
 
+async def _gh_json_paginated_list(run_gh: RunGh, api_path: str) -> tuple[list[Any], str | None]:
+    code, stdout, stderr = await run_gh(["api", "--paginate", api_path], _GH_TIMEOUT)
+    if code != 0:
+        return [], (stderr or stdout or f"gh exit {code}").strip()[:300]
+    try:
+        return merge_page_chunks(decode_concatenated_json(stdout)), None
+    except json.JSONDecodeError as exc:
+        return [], f"JSON decode error: {exc}"
+
+
 def _week_range(now: datetime | None = None) -> tuple[str, str]:
     end = (now or datetime.now(tz=UTC)).date()
     start = end - timedelta(days=WEEKLY_DAYS - 1)
@@ -206,11 +217,9 @@ def open_pr_age_hours(created_at: str, *, now: datetime | None = None) -> float:
 async def _fetch_open_pr_ages(
     run_gh: RunGh, repo_full: str, *, now: datetime | None = None
 ) -> tuple[list[float], list[dict[str, Any]], str | None]:
-    payload, err = await _gh_json(run_gh, ["api", f"/repos/{repo_full}/pulls?state=open&per_page=100"])
+    payload, err = await _gh_json_paginated_list(run_gh, f"/repos/{repo_full}/pulls?state=open&per_page=100")
     if err:
         return [], [], err
-    if not isinstance(payload, list):
-        return [], [], "unexpected pulls response"
     pulls = [pr for pr in payload if isinstance(pr, dict)]
     ages = [_age_hours(str(pr.get("created_at") or ""), now=now) for pr in pulls]
     return ages, flag_aging_open_prs(pulls), None

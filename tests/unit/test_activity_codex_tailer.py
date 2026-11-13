@@ -117,7 +117,7 @@ def test_versioned_parser_ingests_codex_cli_and_desktop_logs_with_redaction_befo
 
     events = activity_store.read(session_id="codex-cli-77").items
     assert len(events) == 2 and all(
-        e.source == "desktop_adapter"
+        e.source == "codex_desktop_adapter"
         and e.redaction_version == REDACTION_VERSION
         and e.payload.get("adapter") == "codex"
         for e in events
