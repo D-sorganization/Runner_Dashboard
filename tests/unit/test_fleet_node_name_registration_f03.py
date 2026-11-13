@@ -72,6 +72,10 @@ def test_unknown_or_retired_names_stay_unregistered(monkeypatch: pytest.MonkeyPa
         "-Kiln",
         "Kiln_",
         "---",
+        "Kil--n",
+        "Kiln__1",
+        "Kiln  1",
+        "Kiln-_1",
         "K" * 65,
         "Kïln",
     ],
@@ -106,7 +110,9 @@ def test_machine_and_its_own_pool_sharing_a_name_is_not_a_collision(monkeypatch:
 def test_canonical_node_token_contract() -> None:
     assert canonical_node_token("HubAlpha-Runner") == "hubalpharunner"
     assert canonical_node_token(" Lab_Bench ") == canonical_node_token("lab bench") == "labbench"
-    for bad in ("", "a/b", "a\x1fb", "a.b", "-a"):
+    assert canonical_node_token("a-b_c d") == "abcd"
+    assert canonical_node_token("a" * 64) == "a" * 64
+    for bad in ("", "a/b", "a\x1fb", "a.b", "-a", "a--b", "a_ b", "a" * 65):
         with pytest.raises(ValueError, match="node name"):
             canonical_node_token(bad)
 

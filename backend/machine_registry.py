@@ -251,25 +251,27 @@ def _normalize_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
-# A presented node name: ASCII letters/digits, with single-line '-', '_' or space
-# separators allowed only between them; 1-64 characters after trimming.
-_NODE_NAME_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9 _-]{0,62}[A-Za-z0-9])?")
+# A presented node name: runs of ASCII letters/digits joined by exactly one '-', '_'
+# or space; 1-64 characters after trimming. Repeated separators ("Kil--n") are refused.
+_NODE_NAME_MAX_LEN = 64
+_NODE_NAME_RE = re.compile(r"[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*")
 
 
 def canonical_node_token(name: str) -> str:
     """Return the one canonical lookup token for a presented fleet node name.
 
     Pre: ``name``, once surrounding whitespace is trimmed, is 1-64 characters of
-    ASCII letters and digits, optionally separated by '-', '_' or space, and it
-    starts and ends with a letter or digit. Control characters, path separators,
-    dots and non-ASCII text are refused with ``ValueError``.
+    ASCII letters and digits, with at most one '-', '_' or space between two of
+    them, and it starts and ends with a letter or digit. Repeated separators,
+    control characters, path separators, dots and non-ASCII text are refused
+    with ``ValueError``.
     Post: the token is exactly what ``build_machine_registry_index`` keys on
     (lower-cased, separators removed), so both sides of a registry comparison
     agree. The match stays exact on that token: no prefix or substring matching.
     """
     text = str(name or "").strip()
-    if not _NODE_NAME_RE.fullmatch(text):
-        raise ValueError("node name must be 1-64 ASCII letters or digits, separated only by '-', '_' or space")
+    if len(text) > _NODE_NAME_MAX_LEN or not _NODE_NAME_RE.fullmatch(text):
+        raise ValueError("node name must be 1-64 ASCII letters or digits, joined only by single '-', '_' or space")
     return _normalize_token(text)
 
 
