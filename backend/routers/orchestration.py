@@ -33,7 +33,7 @@ import dispatch_contract
 import orchestration_audit as _audit
 import proxy_utils
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE, ORG, PORT, REPO_ROOT
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from identity import Principal, require_fleet_peer, require_scope  # noqa: B008
 from machine_registry import load_machine_registry
@@ -447,6 +447,7 @@ async def fleet_orchestration_deploy(
 async def fleet_control(
     action: str,
     request: Request,
+    response: Response,
     *,
     deps: OrchestrationDeps = Depends(orchestration_deps),  # noqa: B008
     principal: Principal = Depends(require_scope("fleet.control")),  # noqa: B008
@@ -491,10 +492,19 @@ async def fleet_control(
         )
         node_results.extend(remotes)
 
-    return {
+    body = {
         "action": action,
         "scope": "local" if scope == "local" else "fleet",
         "machine": local_machine,
         "results": local_result["results"],
         "nodes": node_results,
     }
+    # #4274 F-05: a node that refused or could not be reached is an upstream
+    # failure, not a 200. Per-node outcomes stay in ``nodes`` for the caller.
+    failed = [str(node.get("machine")) for node in node_results[1:] if not node.get("success")]
+    if failed:
+        log.warning("fleet control %s failed on nodes: %s", sanitize_log_value(action), ", ".join(failed))
+        response.status_code = 502
+        body["error"] = "upstream_error"
+        body["detail"] = f"fleet control failed on: {', '.join(failed)}"
+    return body
