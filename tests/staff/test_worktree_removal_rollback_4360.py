@@ -376,3 +376,133 @@ def test_windows_junction_round_trip_real(tmp_path: Path) -> None:
     hygiene._recreate_tracked_link_entry(entry, snap)
     assert worktree_links._is_junction_path(entry)
     assert (target / "sentinel").read_text() == "junction evidence\n"
+
+
+def _inject_remove(tracked, on_remove):
+    """Patch ``_git_out`` so only ``worktree remove`` is intercepted; prune is a no-op."""
+    git_out = hygiene._git_out
+
+    def inject(cwd: Path, *args: str, timeout: int = 30):
+        if args[:2] == ("worktree", "remove"):
+            return on_remove(list(args), timeout)
+        if args[:2] == ("worktree", "prune"):
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        return git_out(cwd, *args, timeout=timeout)
+
+    return patch.object(hygiene, "_git_out", side_effect=inject)
+
+
+def test_unexpected_unlink_error_still_restores_removed_links(tracked_symlink_worktree) -> None:
+    """Rollback is unconditional: an error type nobody anticipated still restores (#4360)."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    links = tracked_symlink_worktree["links"]
+
+    def partial_then_unexpected(path: Path, *args, **kwargs):
+        (path / links[0]).unlink()
+        raise RuntimeError("injected non-OSError after the first link was removed")
+
+    with (
+        patch.object(hygiene, "unlink_worktree_links", side_effect=partial_then_unexpected),
+        pytest.raises(RuntimeError, match="injected non-OSError"),
+    ):
+        hygiene._try_remove_git_worktree(tree, repo)
+
+    assert [rel for rel in links if (tree / rel).is_symlink()] == list(links)
+    assert tracked_symlink_worktree["sentinel"].read_text() == "outside worktree\n"
+    assert hygiene._eligible_for_safe_force_removal(tree)
+
+
+def test_rollback_refresh_timeout_does_not_mask_removal_result(tracked_symlink_worktree) -> None:
+    """A failing rollback step is logged; the original exit 128 is still what the caller sees."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    links = tracked_symlink_worktree["links"]
+    git_in_worktree = hygiene._git_in_worktree
+
+    def refresh_times_out(worktree: Path, *args: str, timeout: int = 30):
+        if args[:1] == ("update-index",):
+            raise subprocess.TimeoutExpired(list(args), timeout)
+        return git_in_worktree(worktree, *args, timeout=timeout)
+
+    with (
+        _inject_remove(tracked_symlink_worktree, lambda args, _t: subprocess.CompletedProcess(args, 128, "", "boom")),
+        patch.object(hygiene, "_git_in_worktree", side_effect=refresh_times_out),
+    ):
+        removed, result = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert not removed
+    assert (result.returncode, result.stderr) == (128, "boom")
+    assert [rel for rel in links if (tree / rel).is_symlink()] == list(links)
+    # The skipped refresh leaves the index stat-dirty only; the content matches HEAD.
+    status = subprocess.run(
+        ["git", "-C", str(tree), "status", "--porcelain"], capture_output=True, text=True, check=True, timeout=20
+    )
+    assert status.stdout == ""
+    assert hygiene._eligible_for_safe_force_removal(tree)
+
+
+def test_rollback_registration_timeout_does_not_mask_remove_timeout(
+    tracked_symlink_worktree, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Unverifiable registration skips restoration, is reported, and keeps the original error."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    git_out = hygiene._git_out
+    listed = {"count": 0}
+
+    def inject(cwd: Path, *args: str, timeout: int = 30):
+        if args[:2] == ("worktree", "remove"):
+            raise subprocess.TimeoutExpired(["worktree", "remove"], timeout)
+        if args[:2] == ("worktree", "list"):
+            listed["count"] += 1
+            if listed["count"] > 1:  # the pre-unlink check passes; the rollback check hangs
+                raise subprocess.TimeoutExpired(["worktree", "list"], timeout)
+        return git_out(cwd, *args, timeout=timeout)
+
+    with (
+        patch.object(hygiene, "_git_out", side_effect=inject),
+        caplog.at_level("WARNING", logger="dashboard.staff.worktree_hygiene"),
+        pytest.raises(subprocess.TimeoutExpired) as raised,
+    ):
+        hygiene._try_remove_git_worktree(tree, repo)
+
+    assert raised.value.cmd == ["worktree", "remove"]
+    assert any("rollback" in rec.getMessage() and str(tree) in rec.getMessage() for rec in caplog.records)
+    assert tracked_symlink_worktree["sentinel"].read_text() == "outside worktree\n"
+
+
+def test_prune_timeout_cannot_turn_confirmed_removal_into_failure(tracked_symlink_worktree) -> None:
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    git_out = hygiene._git_out
+
+    def inject(cwd: Path, *args: str, timeout: int = 30):
+        if args[:2] == ("worktree", "prune"):
+            raise subprocess.TimeoutExpired(list(args), timeout)
+        return git_out(cwd, *args, timeout=timeout)  # real removal of the scratch fixture
+
+    with patch.object(hygiene, "_git_out", side_effect=inject):
+        removed, result = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert removed
+    assert result.returncode == 0
+    assert not tree.exists()
+    assert tracked_symlink_worktree["sentinel"].read_text() == "outside worktree\n"
+
+
+def test_rollback_never_writes_through_a_replaced_parent(tracked_symlink_worktree) -> None:
+    """A parent swapped for a link mid-attempt is preserved; nothing is created outside the tree."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    outside = tracked_symlink_worktree["root"] / "external-dir"
+    outside.mkdir()
+
+    def swap_parent(args, _timeout):
+        (tree / "docs").rmdir()  # empty once its tracked link was unlinked
+        (tree / "docs").symlink_to(outside, target_is_directory=True)
+        return subprocess.CompletedProcess(args, 128, "", "injected")
+
+    with _inject_remove(tracked_symlink_worktree, swap_parent):
+        removed, _ = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert not removed
+    assert list(outside.iterdir()) == []
+    assert os.readlink(tree / "docs") == str(outside)
+    assert (tree / ".gaai/agents").is_symlink()
+    assert tracked_symlink_worktree["sentinel"].read_text() == "outside worktree\n"

@@ -316,12 +316,36 @@ def _recreate_tracked_link_entry(entry: Path, snap: _TrackedSymlinkSnapshot) -> 
         raise OSError(f"symlink missing after recreate: {entry}")
 
 
+def _ensure_real_parent_dirs(worktree: Path, rel_posix: str) -> None:
+    """Post: every parent of ``rel_posix`` is a real directory inside ``worktree``.
+
+    Missing parents are created one level at a time. A link or non-directory
+    occupant raises ``OSError`` so rollback never writes through it.
+    """
+    current = worktree
+    for part in rel_posix.split("/")[:-1]:
+        current = current / part
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            current.mkdir()
+            continue
+        if _link_kind(current) or not stat.S_ISDIR(metadata.st_mode):
+            raise OSError(f"parent is not a real directory: {current}")
+
+
 def _restore_tracked_symlinks_from_journal(
     worktree: Path,
     journal: tuple[_TrackedSymlinkSnapshot, ...],
     git_cwd: Path,
 ) -> list[str]:
-    """Restore index-tracked symlinks removed during a failed disposal attempt."""
+    """Restore index-tracked symlinks removed during a failed disposal attempt.
+
+    Pre: ``journal`` was captured from this worktree before unlinking.
+    Post: each journal entry that is missing is recreated with its recorded raw
+    target; an existing entry (same or different) and every link target are left
+    untouched. Returns the relative paths that could not be restored.
+    """
     if not journal or not worktree.exists() or not _registered_worktree_unlocked(git_cwd, worktree):
         return []
     failures: list[str] = []
@@ -350,7 +374,7 @@ def _restore_tracked_symlinks_from_journal(
                     worktree,
                 )
                 continue
-            entry.parent.mkdir(parents=True, exist_ok=True)
+            _ensure_real_parent_dirs(worktree, snap.rel_posix)
             _recreate_tracked_link_entry(entry, snap)
             log.info(
                 "restored tracked %s %s -> %s",
@@ -406,17 +430,34 @@ def _registered_worktree_unlocked(checkout: Path, worktree: Path) -> bool:
     return False
 
 
-def _prune_worktrees_after_removal_attempt(
-    git_cwd: Path,
+def _rollback_tracked_symlinks_best_effort(
     worktree: Path,
     journal: tuple[_TrackedSymlinkSnapshot, ...],
+    git_cwd: Path,
 ) -> None:
+    """Roll back a failed disposal attempt without hiding the original failure.
+
+    Pre: the attempt did not confirm removal. Post: when the registered worktree
+    survives, missing journal entries are restored; a rollback step that fails
+    is logged with the worktree path and never raised (#4360).
+    """
+    try:
+        if not worktree.exists():
+            return  # Git removed the tree; never recreate it or its registration.
+        failures = _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("tracked symlink rollback incomplete for %s: %s", worktree, exc)
+        return
+    if failures:
+        log.warning("tracked symlink rollback left %s unrestored under %s", ", ".join(failures), worktree)
+
+
+def _prune_worktrees_after_removal_attempt(git_cwd: Path, worktree: Path) -> None:
+    """Prune once removal/rollback is settled; a prune failure cannot change that outcome."""
     try:
         _git_out(git_cwd, "worktree", "prune")
-    except subprocess.TimeoutExpired:
-        if worktree.exists():
-            _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("worktree prune after removal attempt failed for %s: %s", worktree, exc)
 
 
 def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[bool, subprocess.CompletedProcess[str]]:
@@ -435,21 +476,14 @@ def _try_remove_git_worktree(worktree: Path, checkout: Path | None) -> tuple[boo
             unlink_worktree_links(worktree)
             result = _git_out(git_cwd, "worktree", "remove", "--force", str(worktree), timeout=60)
             removed = result.returncode == 0 and not worktree.exists()
-            if not removed and worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-        except KeyboardInterrupt:
-            if worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-            raise
-        except subprocess.TimeoutExpired:
-            if worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
-            raise
         except OSError as exc:
-            if worktree.exists():
-                _restore_tracked_symlinks_from_journal(worktree, journal, git_cwd)
             return False, subprocess.CompletedProcess([], 1, "", str(exc))
-        _prune_worktrees_after_removal_attempt(git_cwd, worktree, journal)
+        finally:
+            # Every exit without confirmed removal (nonzero, timeout, partial unlink,
+            # interruption, unexpected error) rolls back before anything propagates.
+            if not removed:
+                _rollback_tracked_symlinks_best_effort(worktree, journal, git_cwd)
+        _prune_worktrees_after_removal_attempt(git_cwd, worktree)
         return removed, result
     result = _git_out(git_cwd, "worktree", "remove", str(worktree), timeout=60)
     if result.returncode == 0 and not worktree.exists():
