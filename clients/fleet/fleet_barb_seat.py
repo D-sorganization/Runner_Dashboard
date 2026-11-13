@@ -134,6 +134,7 @@ class BarbSeatMixin:
         blockers: list[str] | None = None,
         next_holder: str | None = None,
         next_persona: str | None = None,
+        next_machine: str | None = None,
         takeover: bool = False,
         reason: str | None = None,
         ttl_sec: int | None = None,
@@ -159,6 +160,8 @@ class BarbSeatMixin:
             body["next_holder"] = _text(next_holder, "next_holder", 128, form="line")
         if next_persona is not None:
             body["next_persona"] = _text(next_persona, "next_persona", 64, form="line")
+        if next_machine is not None:
+            body["next_machine"] = _text(next_machine, "next_machine", 64, form="line")
         if reason is not None:
             body["reason"] = _text(reason, "reason", 500)
         if mode is not None:

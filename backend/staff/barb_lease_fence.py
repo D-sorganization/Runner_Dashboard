@@ -226,7 +226,7 @@ class BarbLeaseFenceMixin:
         if auto_extend:
             exp_s = str(row["expires_at"])
             exp_ts = datetime.fromisoformat(exp_s.replace("Z", "+00:00")).timestamp()
-            remaining = exp_ts - dt.timestamp()
+            remaining = int(exp_ts - dt.timestamp())
             if remaining < AUTO_EXTEND_REMAINING_SEC:
                 candidate = _now_iso(datetime.fromtimestamp(dt.timestamp() + DEFAULT_LEASE_TTL_SECONDS, tz=UTC))
                 if candidate > exp_s:

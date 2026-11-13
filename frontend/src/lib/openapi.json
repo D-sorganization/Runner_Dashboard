@@ -562,6 +562,12 @@
             ],
             "title": "Next Holder"
           },
+          "next_machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Next Machine",
+            "type": "string"
+          },
           "next_persona": {
             "default": "",
             "maxLength": 64,

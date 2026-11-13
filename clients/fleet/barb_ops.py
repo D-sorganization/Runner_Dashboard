@@ -47,6 +47,7 @@ def register_ops_commands(sub: Any) -> None:
     hl.add_argument("--blocker", action="append", default=[])
     hl.add_argument("--next-holder", default="")
     hl.add_argument("--next-persona", default="")
+    hl.add_argument("--next-machine", default="")
     hl.add_argument("--takeover", action="store_true")
     hl.add_argument("--reason", default="")
     hl.add_argument("--ttl", type=int, default=14400)
@@ -154,6 +155,7 @@ def handle_ops_command(client: FleetClient, args: argparse.Namespace) -> int | N
                 **({"holder": args.holder} if args.holder else {}),
                 **({"next_holder": args.next_holder} if args.next_holder else {}),
                 **({"next_persona": args.next_persona} if args.next_persona else {}),
+                **({"next_machine": args.next_machine} if args.next_machine else {}),
                 **({"mode": args.mode} if args.mode else {}),
             },
         )

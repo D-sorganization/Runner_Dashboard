@@ -287,8 +287,8 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
         takeover: bool = False,
         next_holder: str | None = None,
         next_persona: str = "",
+        next_machine: str = "",
         ttl_seconds: int = DEFAULT_LEASE_TTL_SECONDS,
-        allow_mismatched_holder: bool = False,
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """Atomic turnover log plus release, direct transfer, or contested takeover."""
@@ -299,6 +299,7 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
         now_s = _now_iso(dt)
         exp_s = _lease_expires_at(dt, ttl_seconds)
         handoff_summary = summary if summary.startswith("BARB-HANDOFF") else f"BARB-HANDOFF: {summary.strip()}"
+        displaced_holder = ""
         with self._lock, self._conn:
             cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
             if not takeover:
@@ -306,17 +307,16 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
                     lease = self._row_to_lease(cur, now_s) if cur is not None else None
                     return {"handoff": False, "reason": "no_live_lease", "lease": lease}
                 seat_holder = str(cur["holder"])
-                if seat_holder != author and not allow_mismatched_holder:
+                if seat_holder != author:
                     return {
                         "handoff": False,
                         "reason": "holder_mismatch",
                         "lease": self._row_to_lease(cur, now_s),
                     }
-                turnover_author = seat_holder if allow_mismatched_holder and seat_holder != author else author
                 entry_id = self._insert_turnover(
                     cur,
                     scope=norm_scope,
-                    author=turnover_author,
+                    author=author,
                     summary=handoff_summary,
                     persona=persona,
                     machine=machine,
@@ -328,11 +328,23 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
                 )
                 if next_holder:
                     dest_persona = next_persona or persona
+                    dest_machine = next_machine.strip()
                     next_epoch = int(cur["epoch"]) + 1
                     self._conn.execute(
                         "UPDATE barb_scoped_leases SET holder=?, persona=?, machine=?, epoch=?, "
-                        "acquired_at=?, heartbeat_at=?, expires_at=?, last_turnover_id=?, released_at='' WHERE scope=?",
-                        (next_holder, dest_persona, machine, next_epoch, now_s, now_s, exp_s, entry_id, norm_scope),
+                        "acquired_at=?, heartbeat_at=?, expires_at=?, last_turnover_id=?, released_at='' "
+                        "WHERE scope=?",
+                        (
+                            next_holder,
+                            dest_persona,
+                            dest_machine,
+                            next_epoch,
+                            now_s,
+                            now_s,
+                            exp_s,
+                            entry_id,
+                            norm_scope,
+                        ),
                     )
                     mode = "push_transfer"
                 else:
@@ -342,6 +354,13 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
                     )
                     mode = "push_release"
             else:
+                if (
+                    cur is not None
+                    and not _is_released(cur)
+                    and str(cur["expires_at"]) > now_s
+                    and str(cur["holder"]).strip()
+                ):
+                    displaced_holder = str(cur["holder"])
                 entry_id = self._insert_turnover(
                     cur,
                     scope=norm_scope,
@@ -375,13 +394,16 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
                 mode = "pull_takeover"
             row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
             turnover_row = self._conn.execute("SELECT * FROM barb_turnover_log WHERE id = ?", (entry_id,)).fetchone()
-        return {
+        out: dict[str, Any] = {
             "handoff": True,
             "mode": mode,
             "turnover_id": entry_id,
             "turnover": self._row_to_turnover(turnover_row),
             "lease": self._row_to_lease(row, now_s),
         }
+        if displaced_holder:
+            out["displaced_holder"] = displaced_holder
+        return out
 
     def release_lease(
         self,

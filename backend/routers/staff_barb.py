@@ -108,6 +108,7 @@ class BarbLeaseHandoffRequest(BaseModel):
     reason: str = Field(default="", max_length=500)
     next_holder: str | None = Field(default=None, max_length=128)
     next_persona: str = Field(default="", max_length=64)
+    next_machine: str = Field(default="", max_length=64)
     ttl_sec: int = Field(default=DEFAULT_LEASE_TTL_SEC, ge=60, le=MAX_LEASE_TTL_SEC)
 
 
@@ -322,7 +323,6 @@ async def post_barb_lease_handoff(
             raise HTTPException(status_code=422, detail={"error": "takeover_reason_required"})
     if req.next_holder:
         _valid_handoff_target(req.next_holder)
-    operator = principal_has_scope(_caller, "staff.admin")
     with _invalid_lease_request_as_422():
         res = get_barb_continuity_store().handoff_lease(
             scope=req.scope,
@@ -337,26 +337,28 @@ async def post_barb_lease_handoff(
             takeover=pull,
             next_holder=req.next_holder.strip() if req.next_holder else None,
             next_persona=req.next_persona,
+            next_machine=req.next_machine,
             ttl_seconds=req.ttl_sec,
-            allow_mismatched_holder=operator and not pull,
         )
     if not res.get("handoff"):
         code = 403 if res.get("reason") == "holder_mismatch" else 409
         raise HTTPException(status_code=code, detail=res)
     if pull:
-        await _audit.append_orchestration_audit(
-            {
-                "orchestration_type": "barb_lease",
-                "action": "barb.lease.handoff_takeover",
-                "scope": req.scope,
-                "new_holder": holder,
-                "epoch": res["lease"]["epoch"],
-                "reason": req.reason.strip(),
-                "requested_by": _caller.id,
-                "caller": format_caller(_caller),
-                "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            }
-        )
+        audit_row: dict[str, Any] = {
+            "orchestration_type": "barb_lease",
+            "action": "barb.lease.handoff_takeover",
+            "scope": req.scope,
+            "new_holder": holder,
+            "epoch": res["lease"]["epoch"],
+            "reason": req.reason.strip(),
+            "requested_by": _caller.id,
+            "caller": format_caller(_caller),
+            "turnover_author": res["turnover"]["author"],
+            "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        if res.get("displaced_holder"):
+            audit_row["displaced_holder"] = res["displaced_holder"]
+        await _audit.append_orchestration_audit(audit_row)
     return {"ok": True, **res}
 
 

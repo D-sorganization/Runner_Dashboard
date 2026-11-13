@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -64,6 +65,10 @@ def _renew(client: TestClient, who: str, **body: Any) -> Any:
     return client.post("/api/v1/staff/barb/leases/renew", headers=_h(who), json={"scope": SCOPE, **body})
 
 
+def _handoff(client: TestClient, who: str, **body: Any) -> Any:
+    return client.post("/api/v1/staff/barb/leases/handoff", headers=_h(who), json={"scope": SCOPE, **body})
+
+
 def test_list_leases_include_expired_alias(client: TestClient, store: Any) -> None:
     past = datetime.now(UTC) - timedelta(hours=1)
     store.checkout_lease(scope=SCOPE, holder="openbot-barb", ttl_seconds=30, now=past)
@@ -121,15 +126,46 @@ def test_renew_cross_principal_holder_spoof_403(client: TestClient) -> None:
     assert spoof.status_code == 403
 
 
-def test_auto_extend_on_fenced_turnover(client: TestClient, store: Any) -> None:
+def test_auto_extend_boundary_strictly_under_one_hour(store: Any) -> None:
+    from staff.barb_continuity import AUTO_EXTEND_REMAINING_SEC  # noqa: PLC0415
+    from staff.barb_lease_fence import BarbClaim  # noqa: PLC0415
+
     now = datetime.now(UTC)
-    lease = store.checkout_lease(
+    # One second above the 1h floor so remaining is not < 3600 at checkout time.
+    store.checkout_lease(
+        scope=SCOPE,
+        holder="openbot-barb",
+        ttl_seconds=AUTO_EXTEND_REMAINING_SEC + 1,
+        now=now,
+    )
+    before = store.list_leases(now=now)[0]["expires_at"]
+    store.assert_lease_claim(
+        BarbClaim(scope=SCOPE, epoch=1, caller_id="openbot-barb"),
+        now=now,
+        auto_extend=True,
+    )
+    assert store.list_leases(now=now)[0]["expires_at"] == before
+    later = now + timedelta(seconds=2)
+    store.assert_lease_claim(
+        BarbClaim(scope=SCOPE, epoch=1, caller_id="openbot-barb"),
+        now=later,
+        auto_extend=True,
+    )
+    assert store.list_leases(now=later)[0]["expires_at"] > before
+
+
+def _lease_low_ttl(store: Any) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    return store.checkout_lease(
         scope=SCOPE,
         holder="openbot-barb",
         ttl_seconds=3600,
         now=now - timedelta(seconds=3500),
     )["lease"]
-    assert lease["epoch"] == 1
+
+
+def test_auto_extend_on_fenced_turnover(client: TestClient, store: Any) -> None:
+    lease = _lease_low_ttl(store)
     before = store.list_leases()[0]["expires_at"]
     ok = client.post(
         "/api/v1/staff/barb/turnover",
@@ -137,8 +173,38 @@ def test_auto_extend_on_fenced_turnover(client: TestClient, store: Any) -> None:
         json={"scope": SCOPE, "summary": "mid-shift", "next_actions": ["watch queue"]},
     )
     assert ok.status_code == 200, ok.text
-    after = store.list_leases()[0]["expires_at"]
-    assert after > before
+    assert store.list_leases()[0]["expires_at"] > before
+
+
+def test_auto_extend_on_fenced_inventory(client: TestClient, store: Any) -> None:
+    lease = _lease_low_ttl(store)
+    before = store.list_leases()[0]["expires_at"]
+    ok = client.post(
+        "/api/v1/staff/barb/inventory",
+        headers=_h("alpha", SCOPE, lease["epoch"]),
+        json={"title": "watch CI", "scope": SCOPE},
+    )
+    assert ok.status_code == 200, ok.text
+    assert store.list_leases()[0]["expires_at"] > before
+
+
+def test_auto_extend_on_fenced_task_handoff(client: TestClient, store: Any) -> None:
+    lease = _lease_low_ttl(store)
+    task = store.upsert_task(title="desktop triage", scope=SCOPE)
+    before = store.list_leases()[0]["expires_at"]
+    ok = client.post(
+        "/api/v1/staff/barb/handoff",
+        headers=_h("alpha", SCOPE, lease["epoch"]),
+        json={
+            "task_id": task["task_id"],
+            "action": "request_desktop",
+            "actor": "openbot-barb",
+            "expected_epoch": task["fencing_epoch"],
+            "reason": "needs UI",
+        },
+    )
+    assert ok.status_code == 200, ok.text
+    assert store.list_leases()[0]["expires_at"] > before
 
 
 def test_handoff_push_release(client: TestClient) -> None:
@@ -160,22 +226,76 @@ def test_handoff_push_release(client: TestClient) -> None:
 
 
 def test_handoff_push_transfer(client: TestClient) -> None:
-    _renew(client, "alpha")
-    res = client.post(
-        "/api/v1/staff/barb/leases/handoff",
-        headers=_h("alpha"),
-        json={
-            "scope": SCOPE,
-            "summary": "passing seat",
-            "next_holder": "agent-codex-hands",
-            "next_persona": "codex-barb",
-        },
+    _renew(client, "alpha", machine="departing-node")
+    res = _handoff(
+        client,
+        "alpha",
+        summary="passing seat",
+        next_holder="agent-codex-hands",
+        next_persona="codex-barb",
+        machine="departing-node",
     )
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["mode"] == "push_transfer"
     assert body["lease"]["holder"] == "agent-codex-hands"
+    assert body["lease"]["machine"] == ""
     assert body["lease"]["epoch"] >= 2
+
+
+def test_handoff_push_transfer_next_machine(client: TestClient) -> None:
+    _renew(client, "alpha")
+    res = _handoff(
+        client,
+        "alpha",
+        summary="passing seat",
+        next_holder="agent-codex-hands",
+        next_machine="node-c",
+    )
+    assert res.status_code == 200
+    assert res.json()["lease"]["machine"] == "node-c"
+
+
+def test_handoff_no_live_lease_409(client: TestClient) -> None:
+    res = _handoff(client, "alpha", summary="empty scope")
+    assert res.status_code == 409
+
+
+def test_handoff_push_non_holder_403(client: TestClient) -> None:
+    _renew(client, "alpha")
+    assert _handoff(client, "beta", summary="not my seat").status_code == 403
+
+
+def test_handoff_push_admin_without_takeover_403(client: TestClient) -> None:
+    _renew(client, "alpha")
+    res = _handoff(client, "oper", summary="operator push")
+    assert res.status_code == 403
+
+
+def test_handoff_pull_non_barb_403(client: TestClient) -> None:
+    _renew(client, "alpha")
+    res = _handoff(client, "beta", summary="takeover", takeover=True, reason="nope")
+    assert res.status_code == 403
+
+
+def test_handoff_pull_missing_reason_422(client: TestClient) -> None:
+    _renew(client, "alpha")
+    assert _handoff(client, "dots", summary="takeover", takeover=True).status_code == 422
+    assert _handoff(client, "oper", summary="takeover", mode="pull").status_code == 422
+
+
+def test_handoff_admin_pull_takeover_audited_and_attributed(client: TestClient, tmp_path: Path) -> None:
+    _renew(client, "alpha")
+    res = _handoff(client, "oper", summary="operator pull", takeover=True, reason="stuck seat")
+    assert res.status_code == 200, res.text
+    assert res.json()["turnover"]["author"] == "op-1"
+    assert res.json()["displaced_holder"] == "openbot-barb"
+    rows = [json.loads(line) for line in (tmp_path / "audit.ndjson").read_text().splitlines()]
+    audit = rows[-1]
+    assert audit["action"] == "barb.lease.handoff_takeover"
+    assert audit["requested_by"] == "op-1"
+    assert audit["turnover_author"] == "op-1"
+    assert audit["displaced_holder"] == "openbot-barb"
 
 
 def test_handoff_pull_takeover(client: TestClient, tmp_path: Path) -> None:

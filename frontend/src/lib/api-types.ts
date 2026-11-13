@@ -9577,6 +9577,11 @@ export interface components {
             /** Next Holder */
             next_holder?: string | null;
             /**
+             * Next Machine
+             * @default
+             */
+            next_machine: string;
+            /**
              * Next Persona
              * @default
              */
