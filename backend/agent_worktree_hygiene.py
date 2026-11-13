@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from staff.repo_roots import repos_roots
+
 log = logging.getLogger("dashboard.agent_worktree_hygiene")
 
 DEFAULT_PROTECTED_WORKTREES: tuple[str, ...] = ("pr-10507", "pr-10633")
@@ -147,6 +149,23 @@ def _git_worktree_remove(checkout: Path, path: Path) -> bool:
     return not path.exists()
 
 
+def _refresh_origin(checkout: Path) -> None:
+    """Fetch and prune ``origin`` unless it is a local path; raises ``TimeoutExpired`` on a slow remote."""
+    url_res = _git(checkout, "remote", "get-url", "origin")
+    if url_res.returncode != 0:
+        return
+    origin_url = url_res.stdout.strip()
+    local_origin = origin_url.startswith("file:") or (origin_url.startswith("/") and Path(origin_url).exists())
+    if not local_origin:
+        _git(checkout, "fetch", "origin", "--prune", "--quiet")
+
+
+def _git_subcommand(exc: subprocess.TimeoutExpired) -> str:
+    """The git subcommand of a timed-out ``_git`` call (``git -C <cwd> <subcommand> ...``)."""
+    cmd = exc.cmd if isinstance(exc.cmd, (list, tuple)) else []
+    return str(cmd[3]) if len(cmd) > 3 else "unknown"
+
+
 def plan_agent_worktree_prune(
     repo_checkouts: list[Path],
     *,
@@ -157,17 +176,23 @@ def plan_agent_worktree_prune(
     """Scan checkouts and optionally remove eligible agent worktrees."""
     would_remove: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
+    skipped_checkouts: list[dict[str, str]] = []
     removed = 0
     for checkout in repo_checkouts:
         if not (checkout / ".git").exists():
             continue
-        url_res = _git(checkout, "remote", "get-url", "origin")
-        if url_res.returncode == 0:
-            origin_url = url_res.stdout.strip()
-            local_origin = origin_url.startswith("file:") or (origin_url.startswith("/") and Path(origin_url).exists())
-            if not local_origin:
-                _git(checkout, "fetch", "origin", "--prune", "--quiet")
-        for entry in _parse_worktree_list(checkout):
+        try:
+            _refresh_origin(checkout)
+            entries = _parse_worktree_list(checkout)
+        except subprocess.TimeoutExpired as exc:
+            # Refs may be stale, so nothing in this checkout is judged or removed on this run.
+            command = _git_subcommand(exc)
+            log.warning("skipping checkout %s: git %s timed out after %ss", checkout, command, exc.timeout)
+            skipped_checkouts.append(
+                {"repo": checkout.name, "path": str(checkout), "reason": "git_timeout", "command": command}
+            )
+            continue
+        for entry in entries:
             if _is_primary_checkout(entry.path):
                 continue
             ok, reason = worktree_entry_is_eligible(
@@ -194,13 +219,12 @@ def plan_agent_worktree_prune(
         "dry_run": not apply,
         "would_remove": would_remove,
         "skipped": skipped,
+        "skipped_checkouts": skipped_checkouts,
         "removed": removed,
     }
 
 
 def discover_repo_checkouts(extra_roots: list[Path] | None = None) -> list[Path]:
-    from staff.workspace import repos_roots  # noqa: PLC0415
-
     seen: set[str] = set()
     out: list[Path] = []
     for root in repos_roots() + (extra_roots or []):
