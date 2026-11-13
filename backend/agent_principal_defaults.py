@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import logging
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import yaml
 from overlay_contract import get_overlay
 from security import safe_yaml_load, validate_config_path
 
@@ -191,13 +192,62 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
         log.info("ingested agent bearer from %s for principal %s", path.name, agent_id)
 
 
+_PRINCIPALS_LOCK_INIT = threading.Lock()
+
+
+def principals_lock(manager: IdentityManager) -> threading.RLock:
+    """The lock every runtime writer of ``manager.principals`` takes (created on first use).
+
+    Readers do not take it: a single ``principals[...]`` lookup is safe on its own.
+    A read-modify-write must hold it for the whole step, or use :func:`update_principal`.
+    """
+    lock = manager.__dict__.get("_principals_lock")
+    if lock is None:
+        with _PRINCIPALS_LOCK_INIT:
+            lock = manager.__dict__.setdefault("_principals_lock", threading.RLock())
+    return lock
+
+
+def update_principal(manager: IdentityManager, principal_id: str, update: Callable[[Any], Any]) -> Any:
+    """Replace one principal atomically: ``update`` gets the live entry (or None) and returns the new one.
+
+    Pre: ``principal_id`` is non-empty and ``update`` returns a principal with that id.
+    """
+    if not principal_id:
+        raise ValueError("principal_id must be non-empty")
+    with principals_lock(manager):
+        new = update(manager.principals.get(principal_id))
+        if getattr(new, "id", None) != principal_id:
+            raise ValueError(f"update must return the principal for {principal_id}")
+        manager.principals[principal_id] = new
+        return new
+
+
+RELOAD_ATTEMPTS = 3  # merges per reload when another caller keeps writing the same principals
+
+
+def _changed_meanwhile(
+    manager: IdentityManager,
+    principal_id: str,
+    principals_before: dict[str, Any],
+    state_before: dict[str, dict[str, Any]],
+) -> bool:
+    """True when ``principal_id`` was replaced, added or edited in place since the snapshot."""
+    live = manager.principals.get(principal_id)
+    before = principals_before.get(principal_id)
+    if live is not before:
+        return True
+    return before is not None and before.model_dump() != state_before[principal_id]
+
+
 def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
     """Re-run :func:`merge_agent_principal_defaults` on a live manager (#4256 ask 1).
 
     A new ``config/agent_principals.yml`` row plus its ``agent-tokens/*.token``
     file become live without a hub restart. The merge is the startup merge,
-    unchanged: it only adds principals and tokens and unions config roles and
-    scopes into existing principals; it never removes or revokes anything.
+    unchanged: it adds principals and tokens and unions config roles and scopes into
+    existing principals (a ``checkin-only`` config role replaces the role list);
+    it never removes a principal or revokes a token.
 
     Contract:
       * Post: returns ``{"added", "updated", "tokens_ingested", "total"}`` where
@@ -205,30 +255,54 @@ def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
         count. No token, token hash, or file content is returned or logged.
       * Post: a second call with unchanged inputs returns three empty lists and
         leaves the manager unchanged (idempotent).
-      * Raises :class:`AgentPrincipalReloadError` when the config or a token file
-        cannot be read; the manager's principals and tokens are then exactly as
-        they were before the call (all or nothing).
+      * Raises :class:`AgentPrincipalReloadError` when the merge fails for any
+        reason (unreadable or malformed config or token file); nothing from the
+        failed reload is applied (all or nothing).
+      * Post: only this reload's own additions and changes are written to the
+        manager, entry by entry. A token revoked or minted by another caller
+        while the reload runs is never restored or dropped.
+      * Post: a principal another caller replaced or edited after this reload's
+        snapshot is never overwritten with the stale merged copy. The staleness
+        check and the write run under ``principals_lock(manager)``, the lock a
+        runtime writer takes (:func:`update_principal`, token rotation), so no such
+        writer can land between them. A stale merge is
+        redone on the fresh state, up to ``RELOAD_ATTEMPTS`` times; if it still
+        cannot settle, :class:`AgentPrincipalReloadError` is raised and nothing
+        is applied. Code that writes ``manager.principals`` without that lock
+        is outside this guarantee.
     """
     with _RELOAD_LOCK:
-        principals_before = dict(manager.principals)
-        tokens_before = list(manager.tokens)
-        try:
-            merge_agent_principal_defaults(manager)
-        except (OSError, ValueError, yaml.YAMLError) as exc:
-            # The merge replaces entries rather than mutating them, so the shallow
-            # snapshots restore the exact prior state.
-            manager.principals = principals_before
-            manager.tokens = tokens_before
-            log.warning("agent principals reload failed (%s); identity store unchanged", type(exc).__name__)
-            raise AgentPrincipalReloadError(type(exc).__name__) from None
-        added = sorted(set(manager.principals) - set(principals_before))
-        updated = sorted(
-            agent_id
-            for agent_id, before in principals_before.items()
-            if agent_id in manager.principals and manager.principals[agent_id] != before
-        )
-        known_hashes = {t.token_hash for t in tokens_before}
-        tokens_ingested = sorted({t.principal_id for t in manager.tokens if t.token_hash not in known_hashes})
+        for _attempt in range(RELOAD_ATTEMPTS):
+            principals_before = dict(manager.principals)
+            state_before = {pid: p.model_dump() for pid, p in principals_before.items()}
+            known_hashes = {t.token_hash for t in manager.tokens}
+            scratch = copy.copy(manager)
+            scratch.principals = dict(principals_before)
+            scratch.tokens = list(manager.tokens)
+            try:
+                merge_agent_principal_defaults(scratch)
+            except Exception as exc:
+                # Boundary catch: the merge ran on a scratch copy, so discarding it is the rollback.
+                log.warning("agent principals reload failed (%s); identity store unchanged", type(exc).__name__)
+                raise AgentPrincipalReloadError(type(exc).__name__) from None
+            changed = {pid: p for pid, p in scratch.principals.items() if principals_before.get(pid) != p}
+            new_tokens = [t for t in scratch.tokens if t.token_hash not in known_hashes]
+            # Check and write under the manager's writer lock, so no other writer can land between them.
+            with principals_lock(manager):
+                if any(_changed_meanwhile(manager, pid, principals_before, state_before) for pid in changed):
+                    # Another caller wrote one of these principals after the snapshot: the merged copy
+                    # is stale, so writing it would drop that caller's change. Merge again.
+                    continue
+                manager.principals.update(changed)
+                live_hashes = {t.token_hash for t in manager.tokens}
+                manager.tokens.extend(t for t in new_tokens if t.token_hash not in live_hashes)
+            break
+        else:
+            log.warning("agent principals reload gave up after %d contended attempts", RELOAD_ATTEMPTS)
+            raise AgentPrincipalReloadError("ConcurrentUpdate")
+        added = sorted(set(changed) - set(principals_before))
+        updated = sorted(set(changed) & set(principals_before))
+        tokens_ingested = sorted({t.principal_id for t in new_tokens})
         total = len(manager.principals)
     log.info(
         "agent principals reloaded: added=%s updated=%s tokens_ingested=%s total=%d",
