@@ -1,7 +1,7 @@
 """Code-reviewer finalizer must not import repo-root ``shared_scripts`` (#4359).
 
-Hosted ``code-reviewer`` runs on DeskComputer use provider subprocesses with cwd
-in arbitrary fleet repo worktrees. Post-run classification imports
+Hosted ``code-reviewer`` runs launch provider subprocesses with cwd in arbitrary
+fleet repo worktrees. Post-run classification imports
 ``staff.review`` from the hub backend process (``backend/`` only on ``sys.path``).
 """
 
@@ -14,6 +14,7 @@ import pytest
 
 from deploy.staff_code_reviewer_finalize_probe import (
     assert_code_reviewer_finalizer_has_no_shared_scripts_imports,
+    module_level_shared_scripts_imports,
     verify_code_reviewer_finalize_from_foreign_cwd,
 )
 
@@ -25,6 +26,18 @@ BACKEND = REPO / "backend"
 
 def test_finalizer_modules_have_no_module_level_shared_scripts_imports() -> None:
     assert_code_reviewer_finalizer_has_no_shared_scripts_imports(BACKEND)
+
+
+def test_static_guard_fails_on_pre_fix_shared_scripts_import(tmp_path: Path) -> None:
+    """Regression guard must catch the #4396 bug shape (module-level shared_scripts import)."""
+    broken = tmp_path / "staff" / "independent_exact_head_verdict.py"
+    broken.parent.mkdir(parents=True)
+    broken.write_text(
+        "from shared_scripts.independent_exact_head_review import head_sha_matches\n",
+        encoding="utf-8",
+    )
+    violations = module_level_shared_scripts_imports(broken)
+    assert violations
 
 
 def test_finalize_code_reviewer_run_from_foreign_cwd_without_shared_scripts(tmp_path: Path) -> None:
