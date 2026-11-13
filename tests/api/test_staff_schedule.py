@@ -779,7 +779,8 @@ def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monke
     s = scheduler_mod.StaffScheduler(runner, holds, guard, clock=lambda: clock["now"], state_file=state_file)  # type: ignore[arg-type]
     assert s.tick() == []  # anchor cursor before the due slot while lease logic is disabled
     monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "hub-a,node-b")
-    s.acquire_leader_lease("hub-a", now=_la(2026, 9, 22, 22, 0, 0), ttl_seconds=20)
+    # hub-a last renewed before the 22:00 slot, so that slot is still unhandled at takeover (#4274 D-13).
+    s.acquire_leader_lease("hub-a", now=_la(2026, 9, 22, 21, 59, 58), ttl_seconds=20)
     clock["now"] = _la(2026, 9, 22, 22, 0, 5)
     assert s.tick() == []
     assert runner.submitted == []
