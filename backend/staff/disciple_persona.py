@@ -17,7 +17,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from staff.provider_failover_config import FailoverStep
+from staff.provider_failover_config import FailoverStep  # noqa: E402
 from staff.role_spec import RoleSpec, read_and_parse_role_file  # noqa: E402
 
 ROLE = "disciple"
@@ -38,6 +38,9 @@ _CITATION_RE = re.compile(r"^[^:]+:[^#]+#[^\s@]+ @ [^\s]+$")
 def disciple_role_data() -> dict[str, Any]:
     """Canonical staff/roles/disciple.yml mapping conforming to staff/schema.json (#3704)."""
     perms = dict.fromkeys(("lease", "push_branch", "open_pr", "merge", "host_shell", "notify_user"), False)
+    chain = [
+        {"provider": s.provider, **({"model": s.model} if s.model else {})} for s in DISCIPLE_FAILOVER_CHAIN
+    ]
     return {
         "name": ROLE,
         "title": "Disciple",
@@ -73,6 +76,7 @@ def disciple_role_data() -> dict[str, Any]:
         },
         "budget": {"usd_per_run": 1.0, "usd_per_day": 10.0},
         "permissions": perms,
+        "retry": {"max_attempts": 3, "failover_chain": chain},
         "reports_to": "user",
         "holds": [],
         "surface": "dashboard",
@@ -92,7 +96,7 @@ def disciple_role_data() -> dict[str, Any]:
         },
         "chat": {
             "contract": "staff/prompts/_chat_contract.md",
-            "providers": ["claude", "codex", "antigravity"],
+            "providers": ["claude", "codex", "cursor-agent"],
             "tools": ["search_knowledge", "read_repo"],
         },
     }

@@ -138,12 +138,16 @@ def select_reviewer_provider(
     from staff.provider_failover_config import resolve_failover_chain
 
     chain: tuple[Any, ...] = ()
+    healthy = list(role_providers or []) if role_providers else None
     if role_spec is not None:
         skip = frozenset({author_provider}) if author_provider else None
         chain = resolve_failover_chain(role_spec, skip_providers=skip)
-        providers = [s.provider for s in chain] or list(role_providers or DEFAULT_REVIEWER_PROVIDERS)
+        if healthy is not None:
+            allowed = frozenset(healthy)
+            chain = tuple(s for s in chain if s.provider in allowed)
+        providers = [s.provider for s in chain] or list(healthy or DEFAULT_REVIEWER_PROVIDERS)
     else:
-        providers = list(role_providers or DEFAULT_REVIEWER_PROVIDERS)
+        providers = list(healthy or DEFAULT_REVIEWER_PROVIDERS)
     if not providers:
         return ReviewSelection(provider="claude", model=None, same_provider=False)
 

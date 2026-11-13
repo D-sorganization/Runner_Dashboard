@@ -37,6 +37,13 @@ def test_enrich_skips_unchanged_roles() -> None:
     assert enrich_role_provider_policy(raw) is raw
 
 
+def test_enrich_skips_fake_provider_fixtures() -> None:
+    raw = {"name": "night-watch", "title": "Night Watch", "providers": ["fake", "claude"]}
+    assert enrich_role_provider_policy(raw) is raw
+    bare = {"name": "pr-remediator", "title": "PR Remediator", "repos": ["UpstreamDrift"]}
+    assert enrich_role_provider_policy(bare) is bare
+
+
 def test_antigravity_denied_on_restricted_repos() -> None:
     assert is_antigravity_restricted_repo("Gasification_Model")
     assert is_antigravity_restricted_repo("org/SBIR_Foo")

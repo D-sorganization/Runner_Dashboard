@@ -121,6 +121,30 @@ def _has_explicit_failover_chain(data: dict[str, Any]) -> bool:
     return bool(data.get("failover_chain"))
 
 
+_LEGACY_RM_PROVIDER_TRIPLE = frozenset({"codex", "cursor-agent", "claude"})
+_LEGACY_ANTIGRAVITY_TRIPLE = frozenset({"claude", "codex", "antigravity"})
+_POLICY_ENRICHABLE_PROVIDERS = frozenset({"claude", "codex", "cursor-agent", "antigravity"})
+
+
+def _yaml_awaits_policy_enrichment(data: dict[str, Any], role_name: str) -> bool:
+    """True when RM-style YAML has providers but no explicit failover chain yet."""
+    raw = data.get("providers") or []
+    if not isinstance(raw, list):
+        return False
+    provs = frozenset(str(p).strip().lower() for p in raw if str(p).strip())
+    if not provs:
+        return False
+    if not provs.issubset(_POLICY_ENRICHABLE_PROVIDERS):
+        return False
+    if provs == _LEGACY_RM_PROVIDER_TRIPLE:
+        return True
+    if provs == _LEGACY_ANTIGRAVITY_TRIPLE:
+        return True
+    if role_name == "librarian" and provs == frozenset({"claude"}):
+        return True
+    return False
+
+
 def enrich_role_provider_policy(data: dict[str, Any]) -> dict[str, Any]:
     """Copy-on-write: apply approved chains when the YAML has no explicit failover_chain."""
     if not isinstance(data, dict):
@@ -131,9 +155,14 @@ def enrich_role_provider_policy(data: dict[str, Any]) -> dict[str, Any]:
         return data
     if _has_explicit_failover_chain(data):
         return data
+    if not _yaml_awaits_policy_enrichment(data, name):
+        return data
     out = dict(data)
     out["providers"] = list(chain)
-    steps = [{"provider": s.provider, **({"model": s.model} if s.model else {})} for s in failover_steps_for_providers(chain)]
+    steps = [
+        {"provider": s.provider, **({"model": s.model} if s.model else {})}
+        for s in failover_steps_for_providers(chain)
+    ]
     retry = dict(out["retry"]) if isinstance(out.get("retry"), dict) else {}
     retry.setdefault("max_attempts", 3)
     retry["failover_chain"] = steps

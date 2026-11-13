@@ -34,7 +34,7 @@ def test_board_secretary_yaml_passes_schema_validation_and_loads_into_roster(tmp
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["window"] is None
     assert spec_raw["reports_to"] == "barb" and spec_raw["surface"] == "both"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity", "cursor-agent"]
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
     clear_roles_cache()
     role = load_roles(tmp_path)["board-secretary"]
     assert role.valid
@@ -47,12 +47,10 @@ def test_board_secretary_yaml_passes_schema_validation_and_loads_into_roster(tmp
 def test_board_secretary_resolved_chain_has_no_model_override(tmp_path: Path) -> None:
     bs.write_board_secretary_role_yaml(tmp_path)
     resolved = resolve_failover_chain(bs.load_board_secretary_role_spec(tmp_path))
-    assert resolved == bs.BOARD_SECRETARY_FAILOVER_CHAIN == (FailoverStep("claude", None), *resolved[1:])
-    assert [s.provider for s in resolved] == ["claude", "codex", "antigravity", "cursor-agent"]
-    # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it.
-    assert rp.select({}, role="board-secretary") == rp.Decision("claude", "opus", False)
-    tail = bs.BOARD_SECRETARY_FAILOVER_CHAIN[1:]
-    assert rp.chain({}, role="board-secretary") == (FailoverStep("claude", "opus"), *tail)
+    assert resolved == bs.BOARD_SECRETARY_FAILOVER_CHAIN
+    assert [s.provider for s in resolved] == ["claude", "codex", "cursor-agent"]
+    assert rp.select({}, role="board-secretary") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert rp.chain({}, role="board-secretary") == bs.BOARD_SECRETARY_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
     args = ["--role", "board-secretary", "next", "--current", "claude", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)

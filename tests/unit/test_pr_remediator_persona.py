@@ -32,7 +32,7 @@ def test_pr_remediator_yaml_passes_schema_validation_and_loads_into_roster(tmp_p
     assert all(perms[k] for k in ("lease", "push_branch", "open_pr"))
     assert not any(perms[k] for k in ("merge", "host_shell", "notify_user"))
     assert spec_raw["reports_to"] == "night-watch" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity"]
+    assert spec_raw["providers"] == ["codex", "cursor-agent", "claude"]
     scope = spec_raw["scope"]
     assert scope["targets"] == list(pr_.PR_REMEDIATOR_TARGETS) and scope["skips"] == list(pr_.PR_REMEDIATOR_SKIPS)
     assert scope["max_lease_hours"] == 2
@@ -53,14 +53,13 @@ def test_pr_remediator_failover_chain_matches_approved_policy(tmp_path: Path) ->
 
 
 def test_pr_remediator_rd_barb_provider_chain_has_no_cursor_agent_step() -> None:
-    assert rp.select({}, role="pr-remediator") == rp.Decision("claude", "opus", False)
-    chain = (FailoverStep("claude", "opus"), FailoverStep("codex", None), FailoverStep("antigravity", None))
-    assert rp.chain({}, role="pr-remediator") == chain
+    assert rp.select({}, role="pr-remediator") == rp.Decision("codex", "gpt-6.1-sol", False)
+    assert rp.chain({}, role="pr-remediator") == pr_.PR_REMEDIATOR_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
-    args = ["--role", "pr-remediator", "next", "--current", "claude", "--failure", "rate_limited"]
+    args = ["--role", "pr-remediator", "next", "--current", "codex", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "pr-remediator" and "codex" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "pr-remediator" and "cursor-agent" in sent[0]["summary"]
 
 
 def test_pr_remediator_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

@@ -41,8 +41,8 @@ def test_librarian_yaml_passes_schema_validation_and_loads_into_roster(tmp_path:
     assert "pathway-log.md" not in instructions
     assert "Reports to the Board" in instructions
     assert "board-secretary" in instructions
-    assert spec_raw["providers"] == ["claude"]
-    assert "retry" not in spec_raw
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
+    assert "failover_chain" in spec_raw["retry"]
     clear_roles_cache()
     role = load_roles(tmp_path)["librarian"]
     assert role.valid

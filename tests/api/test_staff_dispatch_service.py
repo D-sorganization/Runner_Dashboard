@@ -237,7 +237,7 @@ async def test_ci_fix_uses_generic_chain_when_routed_primary_is_not_installed(
     assert [step.provider for step in resolve_failover_chain(role, requested_provider="codex")] == [
         "codex",
         "claude",
-        "antigravity",
+        "cursor-agent",
     ]
     audit_path = tmp_path / "ci-fix-audit.json"
     monkeypatch.setattr(ci_fix_dispatch, "DEFAULT_AUDIT_PATH", audit_path)

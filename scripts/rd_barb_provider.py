@@ -40,10 +40,19 @@ DEFAULT_PROVIDER = "claude"
 DEFAULT_MODEL = "opus"
 DEFAULT_CHAIN = ("claude", "codex", "antigravity", "cursor-agent")
 PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
-    "rd-barb": (
-        FailoverStep("claude", "opus"),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
+    "ad-hoc": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "bean-counter": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "board-secretary": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
         FailoverStep("cursor-agent", None),
     ),
     "bob": (
@@ -52,107 +61,17 @@ PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
         FailoverStep("cursor-agent", None),
         FailoverStep("codex", "gpt-6.1-sol"),
     ),
-    "pm-gasification": (
-        FailoverStep("claude", "claude-opus-5-5"),
-        FailoverStep("antigravity", "gemini-3.8-flash-high"),
-        FailoverStep("cursor-agent", None),
-        FailoverStep("codex", "gpt-6.1-sol"),
-    ),
-    "pm-upstreamdrift": (
-        FailoverStep("claude", "claude-opus-5-5"),
-        FailoverStep("antigravity", "gemini-3.8-flash-high"),
-        FailoverStep("cursor-agent", None),
-        FailoverStep("codex", "gpt-6.1-sol"),
-    ),
-    "fleet-dispatcher": (
-        FailoverStep("claude", "claude-opus-5-5"),
-        FailoverStep("antigravity", "gemini-3.8-flash-high"),
-        FailoverStep("cursor-agent", None),
-        FailoverStep("codex", "gpt-6.1-sol"),
-    ),
-    "pm-sidekick": (
-        FailoverStep("claude", "claude-opus-5-5"),
-        FailoverStep("antigravity", "gemini-3.8-flash-high"),
-        FailoverStep("cursor-agent", None),
-        FailoverStep("codex", "gpt-6.1-sol"),
-    ),
-    "expert-panel": (
-        FailoverStep("claude", "claude-opus-5-5"),
-        FailoverStep("antigravity", "gemini-3.8-flash-high"),
-        FailoverStep("cursor-agent", None),
-        FailoverStep("codex", "gpt-6.1-sol"),
-    ),
-    "pm-affinedrift": (
-        FailoverStep("claude", "claude-opus-5-5"),
-        FailoverStep("antigravity", "gemini-3.8-flash-high"),
-        FailoverStep("cursor-agent", None),
-        FailoverStep("codex", "gpt-6.1-sol"),
-    ),
-    "pragmatic-programmer": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-        FailoverStep("cursor-agent", None),
-    ),
     "cartographer": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-    ),
-    "research-scout": (
-        FailoverStep("claude", None),
-        FailoverStep("antigravity", None),
-        FailoverStep("cursor-agent", None),
-    ),
-    "mad-scientist": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-    ),
-    "oss-scout": (
-        FailoverStep("claude", None),
-        FailoverStep("antigravity", None),
-        FailoverStep("cursor-agent", None),
-    ),
-    "board-secretary": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-        FailoverStep("cursor-agent", None),
-    ),
-    "night-watch": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-    ),
-    "fleet-critic": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-        FailoverStep("cursor-agent", None),
-    ),
-    "pr-remediator": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-    ),
-    "issue-remediator": (
-        FailoverStep("claude", None),
-        FailoverStep("codex", None),
-        FailoverStep("antigravity", None),
-    ),
-    "vision-quest": (
-        FailoverStep("claude", None),
-        FailoverStep("antigravity", None),
-        FailoverStep("codex", None),
-        FailoverStep("cursor-agent", None),
-    ),
-    "librarian": (
         FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("codex", "gpt-6.1-sol"),
         FailoverStep("cursor-agent", None),
     ),
-    "sanitation": (
+    "chief-architect": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "code-reviewer": (
         FailoverStep("codex", "gpt-6.1-sol"),
         FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("cursor-agent", None),
@@ -162,7 +81,49 @@ PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
         FailoverStep("codex", "gpt-6.1-sol"),
         FailoverStep("cursor-agent", None),
     ),
+    "expert-panel": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("antigravity", "gemini-3.8-flash-high"),
+        FailoverStep("cursor-agent", None),
+        FailoverStep("codex", "gpt-6.1-sol"),
+    ),
+    "fleet-critic": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
     "fleet-curator": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "fleet-dispatcher": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("antigravity", "gemini-3.8-flash-high"),
+        FailoverStep("cursor-agent", None),
+        FailoverStep("codex", "gpt-6.1-sol"),
+    ),
+    "fleet-watch": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "issue-remediator": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "librarian": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "mad-scientist": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "maintenance": (
         FailoverStep("codex", "gpt-6.1-sol"),
         FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("cursor-agent", None),
@@ -172,9 +133,34 @@ PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
         FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("cursor-agent", None),
     ),
-    "issue-remediator": (
+    "oss-scout": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("antigravity", "gemini-3.8-flash-high"),
+    ),
+    "pm-affinedrift": (
         FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "pm-gasification": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "pm-sidekick": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "pm-upstreamdrift": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "postman": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("cursor-agent", None),
     ),
     "pr-remediator": (
@@ -182,15 +168,51 @@ PERSONA_ROLE_CHAINS: dict[str, tuple[FailoverStep, ...]] = {
         FailoverStep("cursor-agent", None),
         FailoverStep("claude", "claude-opus-5-5"),
     ),
+    "pragmatic-programmer": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "product-owner": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "project-steward": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "rd-barb": (
+        FailoverStep("claude", "opus"),
+        FailoverStep("codex", None),
+        FailoverStep("antigravity", None),
+        FailoverStep("cursor-agent", None),
+    ),
     "research-scout": (
         FailoverStep("codex", "gpt-6.1-sol"),
         FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("antigravity", "gemini-3.8-flash-high"),
     ),
-    "oss-scout": (
+    "sanitation": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("cursor-agent", None),
+    ),
+    "test-hygiene": (
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
+        FailoverStep("claude", "claude-opus-5-5"),
+    ),
+    "tooling-scout": (
         FailoverStep("codex", "gpt-6.1-sol"),
         FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("antigravity", "gemini-3.8-flash-high"),
+    ),
+    "vision-quest": (
+        FailoverStep("claude", "claude-opus-5-5"),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("cursor-agent", None),
     ),
 }
 SWITCH_ON = frozenset({"auth_expired", "rate_limited", "quota_exhausted", "provider_capacity", "crash"})
