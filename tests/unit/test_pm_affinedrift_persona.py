@@ -53,7 +53,7 @@ def test_pm_affinedrift_resolved_chain_puts_opus_5_5_first_and_override_emits_on
         notify=sent.append,
     )
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "pm-affinedrift" and "antigravity" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "pm-affinedrift" and "codex" in sent[0]["summary"]
 
 
 def test_pm_affinedrift_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:
