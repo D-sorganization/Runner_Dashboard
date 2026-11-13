@@ -166,6 +166,13 @@ def _git_subcommand(exc: subprocess.TimeoutExpired) -> str:
     return str(cmd[3]) if len(cmd) > 3 else "unknown"
 
 
+def _worktree_timeout_reason(worktree: Path, exc: subprocess.TimeoutExpired) -> str:
+    """Log a timed-out git call for one worktree; return its ``skipped`` reason (``git_timeout:<subcommand>``)."""
+    command = _git_subcommand(exc)
+    log.warning("skipping worktree %s: git %s timed out after %ss", worktree, command, exc.timeout)
+    return f"git_timeout:{command}"
+
+
 def plan_agent_worktree_prune(
     repo_checkouts: list[Path],
     *,
@@ -195,17 +202,20 @@ def plan_agent_worktree_prune(
         for entry in entries:
             if _is_primary_checkout(entry.path):
                 continue
-            ok, reason = worktree_entry_is_eligible(
-                checkout,
-                entry,
-                min_age_hours=min_age_hours,
-                protected=protected,
-            )
-            item = {"repo": checkout.name, "path": str(entry.path), "branch": entry.branch, "reason": reason}
+            item = {"repo": checkout.name, "path": str(entry.path), "branch": entry.branch}
+            try:
+                ok, reason = worktree_entry_is_eligible(
+                    checkout,
+                    entry,
+                    min_age_hours=min_age_hours,
+                    protected=protected,
+                )
+            except subprocess.TimeoutExpired as exc:
+                ok, reason = False, _worktree_timeout_reason(entry.path, exc)
             if not ok:
-                skipped.append(item)
+                skipped.append({**item, "reason": reason})
                 continue
-            would_remove.append(item)
+            would_remove.append({**item, "reason": reason})
             log.info(
                 "%s agent worktree %s (%s) branch=%s",
                 "would remove" if not apply else "removing",
@@ -213,8 +223,12 @@ def plan_agent_worktree_prune(
                 checkout.name,
                 entry.branch,
             )
-            if apply and _git_worktree_remove(checkout, entry.path):
-                removed += 1
+            if not apply:
+                continue
+            try:
+                removed += _git_worktree_remove(checkout, entry.path)
+            except subprocess.TimeoutExpired as exc:
+                skipped.append({**item, "reason": _worktree_timeout_reason(entry.path, exc)})
     return {
         "dry_run": not apply,
         "would_remove": would_remove,

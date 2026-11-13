@@ -212,6 +212,57 @@ def test_fetch_timeout_skips_that_checkout_and_continues(
     assert len(warnings) == 1 and "Slow_Repo" in warnings[0] and "fetch" in warnings[0]
 
 
+def _timeout(cwd: Path, *args: str) -> subprocess.TimeoutExpired:
+    return subprocess.TimeoutExpired(cmd=["git", "-C", str(cwd), *args], timeout=60)
+
+
+def test_status_timeout_skips_that_worktree_and_continues(
+    two_checkouts: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A slow ``git status`` in one worktree must not abort the run or hide the other worktrees."""
+    healthy = two_checkouts["healthy"]
+    slow_wt, fine_wt = tmp_path / "slow-wt", tmp_path / "fine-wt"
+    entries = [hygiene.WorktreeEntry(path=p, branch="merged/slice") for p in (slow_wt, fine_wt)]
+    monkeypatch.setattr(hygiene, "_parse_worktree_list", lambda checkout: entries)
+
+    def eligibility(checkout: Path, entry: hygiene.WorktreeEntry, **kw: object) -> tuple[bool, str]:
+        if entry.path == slow_wt:
+            raise _timeout(entry.path, "status", "--porcelain")
+        return True, "eligible"
+
+    monkeypatch.setattr(hygiene, "worktree_entry_is_eligible", eligibility)
+    report = hygiene.plan_agent_worktree_prune([healthy], apply=True)
+
+    assert report["skipped"] == [
+        {"repo": "Healthy_Repo", "path": str(slow_wt), "branch": "merged/slice", "reason": "git_timeout:status"}
+    ]
+    assert two_checkouts["removed"] == [fine_wt] and report["removed"] == 1
+    assert report["skipped_checkouts"] == []
+
+
+def test_remove_timeout_is_reported_and_the_run_continues(
+    two_checkouts: dict[str, object], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    healthy = two_checkouts["healthy"]
+    stuck_wt, fine_wt = tmp_path / "stuck-wt", tmp_path / "fine-wt"
+    entries = [hygiene.WorktreeEntry(path=p, branch="merged/slice") for p in (stuck_wt, fine_wt)]
+    monkeypatch.setattr(hygiene, "_parse_worktree_list", lambda checkout: entries)
+
+    def remove(checkout: Path, path: Path) -> bool:
+        if path == stuck_wt:
+            raise _timeout(checkout, "worktree", "remove", str(path))
+        return True
+
+    monkeypatch.setattr(hygiene, "_git_worktree_remove", remove)
+    report = hygiene.plan_agent_worktree_prune([healthy], apply=True)
+
+    assert report["removed"] == 1
+    assert [item["path"] for item in report["would_remove"]] == [str(stuck_wt), str(fine_wt)]
+    assert report["skipped"] == [
+        {"repo": "Healthy_Repo", "path": str(stuck_wt), "branch": "merged/slice", "reason": "git_timeout:worktree"}
+    ]
+
+
 def test_other_git_failures_are_not_swallowed(
     two_checkouts: dict[str, object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
