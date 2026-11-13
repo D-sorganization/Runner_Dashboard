@@ -33,7 +33,7 @@ def _review_pass(pr: int, head: str) -> HeadReviewPass:
         pr=pr,
         head_sha=head,
         verdict="approve",
-        # #4393: a fixed date aged past the 72 h review-pass TTL on 2026-11-13 and the
+        # #4414: a fixed date aged past the 72 h review-pass window on 2026-11-13 and the
         # planner stopped arming; a pass is "recorded now" whenever the test runs.
         recorded_at=datetime.now(UTC).isoformat(),
     )
