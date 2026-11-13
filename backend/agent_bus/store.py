@@ -74,6 +74,7 @@ class AgentBusStore:
                 "role TEXT NOT NULL, claimed_at TEXT NOT NULL, "
                 "PRIMARY KEY (session_id, repo, issue))"
             )
+            store_ops.ensure_claim_failure_column(conn)
             conn.close()
 
     def _conn(self) -> sqlite3.Connection:

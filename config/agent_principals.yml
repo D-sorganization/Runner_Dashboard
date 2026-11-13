@@ -110,7 +110,7 @@ agents:
       - barb
   - id: openbot-barb
     kind: other
-    name: OpenBot Barb (OpenBot desktop lane, #4254)
+    name: "OpenBot Barb (OpenBot desktop lane, #4254)"
     roles:
       - bot
       - barb
