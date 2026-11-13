@@ -1,0 +1,15 @@
+# Runner Dashboard
+
+> Fleet operator console and coordination API. Model execution MCPs live in sibling code repos; RD exposes coordination MCP tools and the REST API only.
+
+## Agent connection
+
+- [docs/agents/connect.md](docs/agents/connect.md): MCP, CLI, tokens, scopes, and generated MCP tool inventory.
+
+## REST API
+
+- [frontend/src/lib/openapi.json](frontend/src/lib/openapi.json): OpenAPI snapshot served at `GET /openapi.json`.
+
+## MCP tool inventory
+
+- [clients/fleet/README.md#mcp-tool-inventory](clients/fleet/README.md): Generated inventories for `fleet_mcp.py` and `rd_threads_mcp.py` (auth scope per tool).
