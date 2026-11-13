@@ -55,7 +55,11 @@ def lock_is_stale(
     clock: Callable[[], float] = time.time,
     ttl_seconds: float | None = None,
 ) -> bool:
-    """True when the recorded owner is gone or the lock has outlived ``ttl_seconds``."""
+    """True when the owner is dead, on another host, or its heartbeat is older than ``ttl_seconds``.
+
+    ``ttl_seconds`` is a heartbeat window (``heartbeat_at`` refresh or legacy mtime), not
+    an absolute limit on how long a deployment may run while the owner pid stays alive.
+    """
     ttl = DEFAULT_LOCK_TTL_SECONDS if ttl_seconds is None else float(ttl_seconds)
     assert ttl > 0  # noqa: S101 - contract
     fields = lock_fields(text)
@@ -66,13 +70,15 @@ def lock_is_stale(
     pid = int(pid_value) if pid_value.isdigit() else None
     started_value = fields.get("started_at", "")
     started_at = float(started_value) if started_value else None
+    heartbeat_value = fields.get("heartbeat_at", "")
+    heartbeat_at = float(heartbeat_value) if heartbeat_value else None
     now = clock()
-    if started_at is not None and now - started_at >= ttl:
+    if heartbeat_at is not None and now - heartbeat_at >= ttl:
         return True
     if pid is not None:
         if not _pid_alive(pid, proc_root):
             return True
-        if started_at is None and lock_path is not None:
+        if heartbeat_at is None and started_at is None and lock_path is not None:
             age = _lock_age_seconds(lock_path, clock)
             if age is not None and age >= ttl:
                 return True
