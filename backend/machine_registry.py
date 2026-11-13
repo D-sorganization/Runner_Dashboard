@@ -251,6 +251,47 @@ def _normalize_token(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
+# A presented node name: ASCII letters/digits, with single-line '-', '_' or space
+# separators allowed only between them; 1-64 characters after trimming.
+_NODE_NAME_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9 _-]{0,62}[A-Za-z0-9])?")
+
+
+def canonical_node_token(name: str) -> str:
+    """Return the one canonical lookup token for a presented fleet node name.
+
+    Pre: ``name``, once surrounding whitespace is trimmed, is 1-64 characters of
+    ASCII letters and digits, optionally separated by '-', '_' or space, and it
+    starts and ends with a letter or digit. Control characters, path separators,
+    dots and non-ASCII text are refused with ``ValueError``.
+    Post: the token is exactly what ``build_machine_registry_index`` keys on
+    (lower-cased, separators removed), so both sides of a registry comparison
+    agree. The match stays exact on that token: no prefix or substring matching.
+    """
+    text = str(name or "").strip()
+    if not _NODE_NAME_RE.fullmatch(text):
+        raise ValueError("node name must be 1-64 ASCII letters or digits, separated only by '-', '_' or space")
+    return _normalize_token(text)
+
+
+def machines_claiming_node_token(registry: dict[str, Any], token: str) -> list[str]:
+    """Names of the distinct top-level machines whose names, aliases or pools use ``token``.
+
+    More than one name means two registrations collide after normalisation; a
+    trust decision must refuse such a token instead of picking one of them.
+    """
+    owners: list[str] = []
+    for machine in registry.get("machines", []) or []:
+        if not isinstance(machine, dict):
+            continue
+        keys = [machine.get("name", ""), *(machine.get("aliases", []) or [])]
+        for pool in machine.get("runner_pools", []) or []:
+            if isinstance(pool, dict):
+                keys += [pool.get("name", ""), *(pool.get("aliases", []) or [])]
+        if any(_normalize_token(str(key)) == token for key in keys):
+            owners.append(str(machine.get("name", "")))
+    return owners
+
+
 def _coerce_str_list(value: Any) -> list[str]:
     if value is None:
         return []
