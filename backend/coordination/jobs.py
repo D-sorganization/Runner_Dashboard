@@ -336,7 +336,9 @@ def claim_job(
         if not cas.acquired:
             raise claims_mod.ClaimHeldError(claim_state_mod.holder_status_from_row(repo, issue, cas))
         try:
-            posted = claims_mod.post_lease(repo, issue, agent, session, intent, ttl_hours=ttl_hours)
+            posted = claims_mod.post_lease(
+                repo, issue, agent, session, intent, ttl_hours=ttl_hours, rollback_orphan_label=True
+            )
         except Exception:
             claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
             raise

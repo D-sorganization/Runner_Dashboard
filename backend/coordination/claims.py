@@ -236,6 +236,9 @@ def check(repo: str, issue: int) -> dict[str, Any]:
     }
 
 
+ROLLBACK_ATTEMPTS = 2  # bounded: runs under the per-issue lock
+
+
 def _is_own(status: dict[str, Any], agent: str, session: str) -> bool:
     """Renewal needs the same agent AND session; an unknown holder or session counts as someone else."""
     holder, holder_session = status.get("agent") or "", status.get("session") or ""
@@ -255,36 +258,36 @@ def _write_result(script: str, res: ScriptResult) -> dict[str, Any]:
     raise RMScriptError(f"{script} failed: {'; '.join(errors) or res.failure()}")
 
 
-def _rollback_failed_lease_write(repo: str, issue: int, agent: str, session: str) -> None:
-    """Remove an orphan ``claim:*`` label when the lease comment never posted (#4270 B-08)."""
-    try:
-        run_module(
-            "release_agent_lease",
-            "--repo",
+def _rollback_failed_lease_write(repo: str, issue: int, agent: str, session: str) -> str | None:
+    """Remove an orphan ``claim:*`` label when the lease comment never posted (#4270 B-08).
+
+    Post: ``None`` once RM reports the label removed; otherwise the last failure reason after
+    ``ROLLBACK_ATTEMPTS`` tries (never raises, so the original lease error still propagates).
+    """
+    args = ("--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session)
+    failure = "not attempted"
+    for attempt in range(1, ROLLBACK_ATTEMPTS + 1):
+        try:
+            res = run_module("release_agent_lease", *args, "--reason", "rollback: lease comment failed")
+            data = res.json() or {}
+            if data.get("ok") or data.get("label_updated"):
+                return None
+            failure = res.failure()
+        except Exception as exc:  # noqa: BLE001 — reported to the caller via the return value
+            failure = f"{type(exc).__name__}: {exc}"
+        log.warning(
+            "claims: rollback release_agent_lease attempt %s/%s failed for %s#%s: %s",
+            attempt,
+            ROLLBACK_ATTEMPTS,
             repo,
-            "--issue",
-            str(issue),
-            "--agent",
-            agent,
-            "--session",
-            session,
-            "--reason",
-            "rollback: lease comment failed",
+            issue,
+            failure,
         )
-    except Exception:  # noqa: BLE001 — rollback is best-effort; original error still propagates
-        log.warning("claims: rollback release_agent_lease failed for %s#%s", repo, issue, exc_info=True)
+    return failure
 
 
 def _post(repo: str, issue: int, agent: str, session: str, intent: str) -> dict[str, Any]:
-    args = ("--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session, "--intent", intent)
-    res = run_module("post_agent_lease", *args)
-    try:
-        return _write_result("post_agent_lease", res)
-    except RMScriptError:
-        data = res.json() or {}
-        if data.get("label_updated") and not data.get("comment_posted"):
-            _rollback_failed_lease_write(repo, issue, agent, session)
-        raise
+    return post_lease(repo, issue, agent, session, intent, rollback_orphan_label=True)
 
 
 def post_lease(
@@ -295,8 +298,15 @@ def post_lease(
     intent: str,
     *,
     ttl_hours: float | None = None,
+    rollback_orphan_label: bool = False,
 ) -> dict[str, Any]:
-    """Post an RM lease comment and ``claim:*`` label (same subprocess as :func:`claim`)."""
+    """Post an RM lease comment and ``claim:*`` label (same subprocess as :func:`claim`).
+
+    ``rollback_orphan_label`` is for a NEW claim only: when the post set the label but never
+    posted the lease comment, the label is removed again (#4270 B-08) and a failed removal is
+    named in the raised ``RMScriptError``. Renewals (heartbeat) leave it False so a failed
+    post never releases the valid lease being renewed.
+    """
     args: list[str] = [
         "--repo",
         repo,
@@ -311,7 +321,16 @@ def post_lease(
     ]
     if ttl_hours is not None:
         args += ["--ttl-hours", str(float(ttl_hours))]
-    return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
+    res = run_module("post_agent_lease", *args)
+    try:
+        return _write_result("post_agent_lease", res)
+    except RMScriptError as exc:
+        data = res.json() or {}
+        if rollback_orphan_label and data.get("label_updated") and not data.get("comment_posted"):
+            failure = _rollback_failed_lease_write(repo, issue, agent, session)
+            if failure is not None:
+                raise RMScriptError(f"{exc}; orphan claim label rollback failed: {failure}") from exc
+        raise
 
 
 def claim(
