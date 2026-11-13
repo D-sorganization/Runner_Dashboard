@@ -47,12 +47,6 @@ PR_REMEDIATOR_SCHEDULE_ENTRIES: Mapping[str, str] = {
 PR_REMEDIATOR_TARGETS: tuple[str, ...] = ("idle-open-prs", "simple-ci-failures")
 PR_REMEDIATOR_SKIPS: tuple[str, ...] = ("draft", "do-not-automate", "claim:local", "redesign")
 
-PR_REMEDIATOR_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("codex", "gpt-6.1-sol"),
-    FailoverStep("cursor-agent", None),
-    FailoverStep("claude", "claude-opus-5-5"),
-)
-
 
 def pr_remediator_role_data() -> dict[str, Any]:
     """Canonical staff/roles/pr-remediator.yml mapping conforming to staff/schema.json (#3704)."""

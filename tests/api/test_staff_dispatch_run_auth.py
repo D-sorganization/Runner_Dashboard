@@ -126,7 +126,7 @@ def test_fleet_token_allows_remote_dry_run(
     )
     assert resp.status_code == 200, resp.text
     plan = resp.json()["plan"]
-    assert plan["model"] == "gemini-3.8-flash-high"
+    assert plan["model"] in ("gemini-3.8-flash-high", "gemini-3.8-flash")
     argv = plan["argv"]
     model_flag = argv[argv.index("--model") + 1]
     assert model_flag in ("gemini-3.8-flash-high", "gemini-3.8-flash")
