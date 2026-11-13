@@ -143,6 +143,10 @@ async def test_auto_dispatch_keeps_local_target_after_provider_fallback(
     staff._adapters = {
         **staff._adapters,
         "codex": replace(staff._adapters["codex"], executable="rd-test-codex-not-installed"),
+        "cursor-agent": replace(
+            staff._adapters["cursor-agent"],
+            executable=staff._adapters["claude"].executable,
+        ),
     }
     selected: list[str] = []
 
@@ -236,8 +240,7 @@ async def test_ci_fix_uses_generic_chain_when_routed_primary_is_not_installed(
     assert failover_dispatch._usable_provider(staff._adapters, role, "claude")
     assert [step.provider for step in resolve_failover_chain(role, requested_provider="codex")] == [
         "codex",
-        "claude",
-        "antigravity",
+        "cursor-agent",
     ]
     audit_path = tmp_path / "ci-fix-audit.json"
     monkeypatch.setattr(ci_fix_dispatch, "DEFAULT_AUDIT_PATH", audit_path)

@@ -87,7 +87,10 @@ beforeEach(() => {
     messages: [],
   }));
   api.fetchThreadMessages.mockResolvedValue({ messages: [] });
-  api.createThread.mockResolvedValue(threads[1]);
+  api.createThread.mockImplementation(async () => {
+    api.fetchThreads.mockResolvedValue({ threads });
+    return threads[1];
+  });
   api.postThreadMessage.mockResolvedValue({});
 });
 afterEach(() => {
@@ -170,6 +173,7 @@ it("central New conversation refreshes the sidebar's authorized list for the new
   await waitFor(() =>
     expect(new URLSearchParams(window.location.search).get("thread")).toBe("b"),
   );
+  await waitFor(() => expect(api.fetchThreads).toHaveBeenCalled());
   fireEvent.change(
     sidebar.getByRole("textbox", { name: /staff conversation input/i }),
     { target: { value: "new mission" } },

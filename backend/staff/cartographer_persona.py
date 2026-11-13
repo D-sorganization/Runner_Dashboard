@@ -48,9 +48,9 @@ CARTOGRAPHER_WINDOW: Mapping[str, str] = {"start": "22:00", "end": "06:00"}
 # override) -- preserved as-is rather than the 4-step chain with model overrides used by the
 # invented personas, which do not have a prior real role file to match.
 CARTOGRAPHER_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("codex", None),
-    FailoverStep("antigravity", None),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
 )
 
 _STALE_REPOS_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
@@ -80,7 +80,7 @@ def cartographer_role_data() -> dict[str, Any]:
             "and open a PR when `stale_sections` is non-empty. Runs with Night Watch; reports map "
             "freshness to Orchestrator/Board."
         ),
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 4 * * 0",
         "window": dict(CARTOGRAPHER_WINDOW),

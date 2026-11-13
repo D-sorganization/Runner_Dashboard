@@ -21,8 +21,19 @@ from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 log = logging.getLogger("dashboard.staff.failover_dispatch")
 
-FAILOVER_FAILURE_CLASSES = frozenset({"provider_capacity", "quota_exhausted", "rate_limited"})
-IMMEDIATE_FAILOVER_CLASSES = frozenset({"provider_capacity", "quota_exhausted"})
+FAILOVER_FAILURE_CLASSES = frozenset(
+    {
+        "provider_capacity",
+        "quota_exhausted",
+        "rate_limited",
+        "auth_expired",
+        "auth_stale",
+        "upstream_unavailable",
+    }
+)
+IMMEDIATE_FAILOVER_CLASSES = frozenset(
+    {"provider_capacity", "quota_exhausted", "auth_expired", "auth_stale", "upstream_unavailable"}
+)
 
 
 def is_failover_failure(failure_class: str) -> bool:
@@ -199,7 +210,7 @@ def try_chain_failover(
         tier=active_tier,
     )
 
-    chain = resolve_failover_chain(role, requested_provider=None)
+    chain = resolve_failover_chain(role, requested_provider=None, repo=str(getattr(plan, "repo", "") or ""))
     tried_slots = tried_slots_for_root(runner.store, root_id)
     next_step: FailoverStep | None = None
     next_tier = active_tier
@@ -430,7 +441,10 @@ def select_provider_from_chain(
     from staff.failover_model import resolve_launch_model, role_base_tier
 
     auth_skipped: list[dict[str, str]] = []
-    chain = resolve_failover_chain(role, requested_provider=requested_provider)
+    repo = ""
+    if req is not None:
+        repo = str(getattr(req, "repo", "") or "")
+    chain = resolve_failover_chain(role, requested_provider=requested_provider, repo=repo)
     step = pick_launch_step(chain, adapters, role, skip_cooling=True, machine=machine, auth_skipped=auth_skipped)
     if step is None:
         step = pick_launch_step(chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped)
