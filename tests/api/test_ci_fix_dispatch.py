@@ -352,6 +352,12 @@ def test_remediation_ci_fix_dispatch_lifecycle(
     isolated = BareLockManager()
     monkeypatch.setattr(ci_fix_service, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
     monkeypatch.setattr(remediation_ci_fix, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
+    # The default attempt store is the host's ~/.local/share/runner-dashboard/ci_fix_locks.db: the two
+    # attempts recorded below would persist there and trip the per-head cap (429) on every later run.
+    from ci_fix_attempt_store import CIFixAttemptStore
+
+    attempt_store = CIFixAttemptStore(tmp_path / "ci_fix_attempts.db")
+    monkeypatch.setattr(ci_fix_service, "global_ci_fix_attempt_store", lambda: attempt_store)
     dispatch_payload = {
         "repo": "Runner_Dashboard",
         "pr_number": 202,
