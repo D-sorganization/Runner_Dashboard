@@ -1,4 +1,4 @@
 ---
 issue: 4270
-summary: "Job-board claim removes the orphan claim label when the lease comment fails; rollback release is retried and a failed rollback is reported (WP15 B-08)"
+summary: "Job-board claim attempts to release when the lease comment fails and reports a rollback that did not remove the claim label, including the lease service's nothing-to-release answer (WP15 B-08)"
 ---
