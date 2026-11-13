@@ -159,6 +159,27 @@ def transition(
     return result
 
 
+def mark_run_blocked(
+    store: RunStore,
+    run_id: str,
+    from_status: RunStatus | str,
+    **fields: Any,
+) -> None:
+    """Mark ``blocked`` when provider failover is exhausted (#2047, #4269)."""
+    expected = _coerce_status(from_status)
+    if fields.get("status") is not None:
+        raise ValueError("pass status via mark_run_blocked, not in fields")
+    if is_legal_transition(expected, RunStatus.BLOCKED):
+        transition(store, run_id, expected, RunStatus.BLOCKED, raise_on_race=False, **fields)
+        return
+    if expected == RunStatus.BLOCKED:
+        if fields:
+            store.update_run(run_id, **fields)
+        return
+    # Lifecycle terminal ``failed`` cannot transition; relabel via store for cooldown hold.
+    store.update_run(run_id, status=RunStatus.BLOCKED.value, **fields)
+
+
 def transition_to(
     store: RunStore,
     run_id: str,
