@@ -9,13 +9,14 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 from pathlib import Path
 
 import agent_principal_defaults
 import identity
 import pytest
 import yaml
-from agent_principal_defaults import AgentPrincipalReloadError, reload_agent_principals
+from agent_principal_defaults import AgentPrincipalReloadError, reload_agent_principals, update_principal
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from identity import IdentityManager, principal_has_scope
@@ -358,6 +359,41 @@ def test_reload_that_cannot_settle_fails_and_applies_nothing(
     assert mgr.principals["agent-grok"].scopes == [seen[-1]]
     assert _NEW_ID not in mgr.principals
     assert mgr.verify_token(_NEW_TOKEN) is None
+
+
+def test_a_write_between_the_reloads_check_and_its_write_is_not_lost(
+    mgr: IdentityManager, config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A writer arriving after the staleness check must wait for the reload's write, then apply on top."""
+    _write_config(config_path, with_newcomer=False, grok_scopes=("fleet.read",))
+    real_check = agent_principal_defaults._changed_meanwhile
+    writers: list[threading.Thread] = []
+
+    def add_scope() -> None:
+        update_principal(mgr, "agent-grok", lambda cur: cur.model_copy(update={"scopes": [*cur.scopes, "staff.read"]}))
+
+    def check_then_race(*args: object) -> bool:
+        result = real_check(*args)
+        if not writers:
+            writers.append(threading.Thread(target=add_scope))
+            writers[0].start()
+            writers[0].join(0.5)  # unlocked: the write lands here and the reload then overwrites it
+        return result
+
+    monkeypatch.setattr(agent_principal_defaults, "_changed_meanwhile", check_then_race)
+    reload_agent_principals(mgr)
+    writers[0].join(5)
+
+    assert not writers[0].is_alive()
+    assert set(mgr.principals["agent-grok"].scopes) == {"fleet.read", "staff.read"}
+
+
+def test_update_principal_rejects_a_wrong_or_missing_result(mgr: IdentityManager) -> None:
+    with pytest.raises(ValueError, match="non-empty"):
+        update_principal(mgr, "", lambda cur: cur)
+    with pytest.raises(ValueError, match="must return"):
+        update_principal(mgr, "agent-grok", lambda cur: mgr.principals["plain-bot"])
+    assert mgr.principals["agent-grok"].id == "agent-grok"
 
 
 def test_audit_line_names_every_change_kind(

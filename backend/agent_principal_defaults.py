@@ -7,6 +7,7 @@ import hashlib
 import logging
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -191,6 +192,37 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
         log.info("ingested agent bearer from %s for principal %s", path.name, agent_id)
 
 
+_PRINCIPALS_LOCK_INIT = threading.Lock()
+
+
+def principals_lock(manager: IdentityManager) -> threading.RLock:
+    """The lock every runtime writer of ``manager.principals`` takes (created on first use).
+
+    Readers do not take it: a single ``principals[...]`` lookup is safe on its own.
+    A read-modify-write must hold it for the whole step, or use :func:`update_principal`.
+    """
+    lock = manager.__dict__.get("_principals_lock")
+    if lock is None:
+        with _PRINCIPALS_LOCK_INIT:
+            lock = manager.__dict__.setdefault("_principals_lock", threading.RLock())
+    return lock
+
+
+def update_principal(manager: IdentityManager, principal_id: str, update: Callable[[Any], Any]) -> Any:
+    """Replace one principal atomically: ``update`` gets the live entry (or None) and returns the new one.
+
+    Pre: ``principal_id`` is non-empty and ``update`` returns a principal with that id.
+    """
+    if not principal_id:
+        raise ValueError("principal_id must be non-empty")
+    with principals_lock(manager):
+        new = update(manager.principals.get(principal_id))
+        if getattr(new, "id", None) != principal_id:
+            raise ValueError(f"update must return the principal for {principal_id}")
+        manager.principals[principal_id] = new
+        return new
+
+
 RELOAD_ATTEMPTS = 3  # merges per reload when another caller keeps writing the same principals
 
 
@@ -230,12 +262,14 @@ def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
         manager, entry by entry. A token revoked or minted by another caller
         while the reload runs is never restored or dropped.
       * Post: a principal another caller replaced or edited after this reload's
-        snapshot is never overwritten with the stale merged copy. The merge is
+        snapshot is never overwritten with the stale merged copy. The staleness
+        check and the write run under ``principals_lock(manager)``, the lock a
+        runtime writer takes (:func:`update_principal`, token rotation), so no such
+        writer can land between them. A stale merge is
         redone on the fresh state, up to ``RELOAD_ATTEMPTS`` times; if it still
         cannot settle, :class:`AgentPrincipalReloadError` is raised and nothing
-        is applied. The check and the write are not one atomic step (the
-        identity manager has no lock of its own), so a write landing between
-        them can still be lost.
+        is applied. Code that writes ``manager.principals`` without that lock
+        is outside this guarantee.
     """
     with _RELOAD_LOCK:
         for _attempt in range(RELOAD_ATTEMPTS):
@@ -252,17 +286,20 @@ def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
                 log.warning("agent principals reload failed (%s); identity store unchanged", type(exc).__name__)
                 raise AgentPrincipalReloadError(type(exc).__name__) from None
             changed = {pid: p for pid, p in scratch.principals.items() if principals_before.get(pid) != p}
-            if not any(_changed_meanwhile(manager, pid, principals_before, state_before) for pid in changed):
-                break
-            # Another caller wrote one of these principals after the snapshot: the merged copy is
-            # stale, so writing it would drop that caller's change. Merge again on the fresh state.
+            new_tokens = [t for t in scratch.tokens if t.token_hash not in known_hashes]
+            # Check and write under the manager's writer lock, so no other writer can land between them.
+            with principals_lock(manager):
+                if any(_changed_meanwhile(manager, pid, principals_before, state_before) for pid in changed):
+                    # Another caller wrote one of these principals after the snapshot: the merged copy
+                    # is stale, so writing it would drop that caller's change. Merge again.
+                    continue
+                manager.principals.update(changed)
+                live_hashes = {t.token_hash for t in manager.tokens}
+                manager.tokens.extend(t for t in new_tokens if t.token_hash not in live_hashes)
+            break
         else:
             log.warning("agent principals reload gave up after %d contended attempts", RELOAD_ATTEMPTS)
             raise AgentPrincipalReloadError("ConcurrentUpdate")
-        new_tokens = [t for t in scratch.tokens if t.token_hash not in known_hashes]
-        manager.principals.update(changed)
-        live_hashes = {t.token_hash for t in manager.tokens}
-        manager.tokens.extend(t for t in new_tokens if t.token_hash not in live_hashes)
         added = sorted(set(changed) - set(principals_before))
         updated = sorted(set(changed) & set(principals_before))
         tokens_ingested = sorted({t.principal_id for t in new_tokens})
