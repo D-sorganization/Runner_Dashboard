@@ -62,7 +62,15 @@ def _load_directory(root: Path) -> None:
     seen: set[Path] = set()
     for pattern in _SKILL_GLOB_PATTERNS:
         for skill_file in root.glob(pattern):
-            resolved = skill_file.resolve()
+            try:
+                resolved = skill_file.resolve()
+            except (OSError, RuntimeError) as exc:
+                # A symlink loop raises RuntimeError before Python 3.13 and OSError
+                # after; either way it must not abort indexing of siblings (C-16).
+                rel = str(skill_file.relative_to(root))
+                errors[rel] = [f"unresolvable skill path: {exc}"]
+                log.warning("skill validation failed for %s: %s", rel, exc)
+                continue
             if resolved not in seen:
                 seen.add(resolved)
                 skill_files.append(skill_file)

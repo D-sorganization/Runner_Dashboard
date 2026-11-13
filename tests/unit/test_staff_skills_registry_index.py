@@ -71,3 +71,44 @@ Good body.
     errors = skill_validation_errors()
     assert errors
     assert any("broken" in key for key in errors)
+
+
+_GOOD_SKILL_MD = """---
+name: good-skill
+version: 1.0.0
+description: ok
+roles:
+  - ad-hoc
+repos:
+  - "*"
+task_types:
+  - staff-dispatch
+---
+Good body.
+"""
+
+
+@pytest.mark.parametrize("exc_type", [RuntimeError, OSError])
+def test_unresolvable_skill_path_isolated_from_siblings(
+    skills_env: Path, monkeypatch: pytest.MonkeyPatch, exc_type: type[Exception]
+) -> None:
+    """A SKILL.md whose path cannot be resolved (symlink loop) must not abort indexing (C-16)."""
+    good = skills_env / "fleet" / "good-skill"
+    good.mkdir(parents=True)
+    (good / "SKILL.md").write_text(_GOOD_SKILL_MD, encoding="utf-8")
+    looping = skills_env / "fleet" / "looping"
+    looping.mkdir(parents=True)
+    (looping / "SKILL.md").write_text(_GOOD_SKILL_MD.replace("good-skill", "looping"), encoding="utf-8")
+
+    real_resolve = Path.resolve
+
+    def fake_resolve(self: Path, strict: bool = False) -> Path:
+        if self.parent.name == "looping":
+            raise exc_type(f"Symlink loop from {self}")
+        return real_resolve(self, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fake_resolve)
+
+    assert {s.name for s in list_skills()} == {"good-skill"}
+    errors = skill_validation_errors()
+    assert [key for key in errors if "looping" in key], errors
