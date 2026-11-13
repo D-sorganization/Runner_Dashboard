@@ -261,8 +261,11 @@ def _write_result(script: str, res: ScriptResult) -> dict[str, Any]:
 def _rollback_failed_lease_write(repo: str, issue: int, agent: str, session: str) -> str | None:
     """Remove an orphan ``claim:*`` label when the lease comment never posted (#4270 B-08).
 
-    Post: ``None`` once RM reports the label removed; otherwise the last failure reason after
-    ``ROLLBACK_ATTEMPTS`` tries (never raises, so the original lease error still propagates).
+    Post: ``None`` only when RM reports ``label_updated`` (label removed or already absent);
+    otherwise the last failure reason (never raises, so the original lease error still
+    propagates). RM's release removes a label only for a lease comment it can find, so its
+    "nothing to release" no-op (``already_released``) is reported as a failed rollback, at
+    once and without a retry: the label is still there.
     """
     args = ("--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session)
     failure = "not attempted"
@@ -270,8 +273,10 @@ def _rollback_failed_lease_write(repo: str, issue: int, agent: str, session: str
         try:
             res = run_module("release_agent_lease", *args, "--reason", "rollback: lease comment failed")
             data = res.json() or {}
-            if data.get("ok") or data.get("label_updated"):
+            if data.get("label_updated"):
                 return None
+            if data.get("already_released"):
+                return "RM found no lease to release, so the claim label was not removed"
             failure = res.failure()
         except Exception as exc:  # noqa: BLE001 — reported to the caller via the return value
             failure = f"{type(exc).__name__}: {exc}"
@@ -325,8 +330,10 @@ def post_lease(
     try:
         return _write_result("post_agent_lease", res)
     except RMScriptError as exc:
-        data = res.json() or {}
-        if rollback_orphan_label and data.get("label_updated") and not data.get("comment_posted"):
+        data = res.json()
+        # No JSON (timeout or crash) means the label may have been written before the script died.
+        label_orphaned = data is None or (data.get("label_updated") and not data.get("comment_posted"))
+        if rollback_orphan_label and label_orphaned:
             failure = _rollback_failed_lease_write(repo, issue, agent, session)
             if failure is not None:
                 raise RMScriptError(f"{exc}; orphan claim label rollback failed: {failure}") from exc

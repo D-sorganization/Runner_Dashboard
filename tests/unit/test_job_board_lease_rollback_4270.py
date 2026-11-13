@@ -94,6 +94,50 @@ def test_job_claim_rollback_failure_is_retried_and_reported(rm: FakeRM, monkeypa
     assert claim_state_mod.get_store().read(REPO, issue) is None
 
 
+_NOTHING_TO_RELEASE = {
+    "label_updated": False,
+    "comment_posted": False,
+    "receipt": "",
+    "errors": [],
+    "already_released": True,
+    "ok": True,
+}
+
+
+@pytest.mark.unit
+def test_job_claim_rollback_noop_release_is_reported_not_trusted(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """RM's real answer here: no lease comment exists, so release is a no-op and the label stays."""
+    issue = 4305
+    patch_gh_list_fetch(monkeypatch, _open_issue_fetch(issue))
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result(label=True, comment=False, errors=_COMMENT_FAILED), rc=1)
+    rm.respond("release_agent_lease", _NOTHING_TO_RELEASE)
+
+    with pytest.raises(RMScriptError) as excinfo:
+        _claim(issue)
+
+    message = str(excinfo.value)
+    assert "HTTP 502" in message
+    assert "rollback failed" in message and "label was not removed" in message
+    assert len(_releases(rm)) == 1, "a no-op release is deterministic: no retry"
+
+
+@pytest.mark.unit
+def test_job_claim_post_without_output_still_attempts_rollback(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A post that died without JSON (timeout, crash) may have written the label first."""
+    issue = 4306
+    patch_gh_list_fetch(monkeypatch, _open_issue_fetch(issue))
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", None, rc=1, stderr="timed out")
+    rm.respond("release_agent_lease", release_result())
+
+    with pytest.raises(RMScriptError):
+        _claim(issue)
+
+    assert len(_releases(rm)) == 1
+    assert jobs_mod._current_fence(REPO, issue) == 0
+
+
 @pytest.mark.unit
 def test_job_claim_failed_post_without_label_does_not_release(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
     """Only a label this call added is removed: no label written → no release call."""
