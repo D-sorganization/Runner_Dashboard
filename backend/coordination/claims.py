@@ -261,11 +261,13 @@ def _write_result(script: str, res: ScriptResult) -> dict[str, Any]:
 def _rollback_failed_lease_write(repo: str, issue: int, agent: str, session: str) -> str | None:
     """Remove an orphan ``claim:*`` label when the lease comment never posted (#4270 B-08).
 
-    Post: ``None`` only when RM reports ``label_updated`` (label removed or already absent);
-    otherwise the last failure reason (never raises, so the original lease error still
-    propagates). RM's release removes a label only for a lease comment it can find, so its
-    "nothing to release" no-op (``already_released``) is reported as a failed rollback, at
-    once and without a retry: the label is still there.
+    RM's release removes a label only for a lease comment it can find. With no comment it
+    answers ``already_released`` and changes nothing; that answer also says no lease is
+    current on the issue, so the label is an orphan and is deleted here directly.
+
+    Post: ``None`` once the label is gone (RM reported ``label_updated``, or the direct
+    delete succeeded); otherwise the last failure reason after ``ROLLBACK_ATTEMPTS`` tries
+    (never raises, so the original lease error still propagates).
     """
     args = ("--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session)
     failure = "not attempted"
@@ -276,7 +278,8 @@ def _rollback_failed_lease_write(repo: str, issue: int, agent: str, session: str
             if data.get("label_updated"):
                 return None
             if data.get("already_released"):
-                return "RM found no lease to release, so the claim label was not removed"
+                gh_cli.remove_issue_label(full_repo(repo), issue, f"claim:{agent}")
+                return None
             failure = res.failure()
         except Exception as exc:  # noqa: BLE001 — reported to the caller via the return value
             failure = f"{type(exc).__name__}: {exc}"

@@ -105,21 +105,49 @@ _NOTHING_TO_RELEASE = {
 
 
 @pytest.mark.unit
-def test_job_claim_rollback_noop_release_is_reported_not_trusted(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
-    """RM's real answer here: no lease comment exists, so release is a no-op and the label stays."""
+def test_job_claim_rollback_deletes_the_label_when_rm_has_nothing_to_release(
+    rm: FakeRM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RM's real answer here: no lease comment exists, so its release is a no-op. RD deletes the label."""
     issue = 4305
     patch_gh_list_fetch(monkeypatch, _open_issue_fetch(issue))
     rm.respond("check_agent_claim", claim_status(False))
     rm.respond("post_agent_lease", lease_result(label=True, comment=False, errors=_COMMENT_FAILED), rc=1)
     rm.respond("release_agent_lease", _NOTHING_TO_RELEASE)
+    removed: list[tuple[str, int, str]] = []
+    monkeypatch.setattr(claims_mod.gh_cli, "remove_issue_label", lambda *args: removed.append(args))
+
+    with pytest.raises(RMScriptError) as excinfo:
+        _claim(issue)
+
+    message = str(excinfo.value)
+    assert "HTTP 502" in message and "rollback failed" not in message
+    assert removed == [(f"D-sorganization/{REPO}", issue, f"claim:{AGENT}")]
+    assert len(_releases(rm)) == 1
+
+
+@pytest.mark.unit
+def test_job_claim_rollback_reports_a_label_it_could_not_delete(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    issue = 4307
+    patch_gh_list_fetch(monkeypatch, _open_issue_fetch(issue))
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result(label=True, comment=False, errors=_COMMENT_FAILED), rc=1)
+    rm.respond("release_agent_lease", _NOTHING_TO_RELEASE)
+    attempts: list[int] = []
+
+    def fail_delete(*_args: Any) -> None:
+        attempts.append(1)
+        raise RuntimeError("HTTP 500 from label delete")
+
+    monkeypatch.setattr(claims_mod.gh_cli, "remove_issue_label", fail_delete)
 
     with pytest.raises(RMScriptError) as excinfo:
         _claim(issue)
 
     message = str(excinfo.value)
     assert "HTTP 502" in message
-    assert "rollback failed" in message and "label was not removed" in message
-    assert len(_releases(rm)) == 1, "a no-op release is deterministic: no retry"
+    assert "rollback failed" in message and "HTTP 500 from label delete" in message
+    assert len(attempts) == claims_mod.ROLLBACK_ATTEMPTS
 
 
 @pytest.mark.unit

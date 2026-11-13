@@ -1,4 +1,4 @@
 ---
 issue: 4270
-summary: "Job-board claim attempts to release when the lease comment fails and reports a rollback that did not remove the claim label, including the lease service's nothing-to-release answer (WP15 B-08)"
+summary: "A failed lease post no longer leaves an orphan claim label: the job-board and claims paths release, and when the lease service has nothing to release the label is deleted directly; a rollback that still fails is retried and reported (WP15 B-08)"
 ---
