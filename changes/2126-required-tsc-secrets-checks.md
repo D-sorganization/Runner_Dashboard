@@ -1,3 +1,8 @@
+---
+issue: 2126
+summary: "Policy, workflow, and repository ruleset supplement to require `TypeScript typecheck (tsc)` and `detect-secrets (baseline diff)` on `main`."
+---
+
 # Required TypeScript typecheck and detect-secrets on main
 
 - Policy, workflow, and repository ruleset supplement to require `TypeScript typecheck (tsc)` and `detect-secrets (baseline diff)` on `main`.
