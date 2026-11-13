@@ -557,6 +557,24 @@ def test_resource_offline_reason_critical_disk() -> None:
     assert result["offline_reason"] == "disk-pressure"
 
 
+def test_resource_offline_reason_unknown_memory_percent_is_not_pressure() -> None:
+    """A WSL node whose Windows host probe failed reports ``percent: None`` (source "unknown").
+
+    Unknown memory must not crash the classifier (it 500'd ``GET /api/fleet/status``) and must
+    not be read as OOM pressure.
+    """
+    system = {
+        "disk": {"pressure": {"status": "healthy"}},
+        "memory": {"percent": None, "source": "unknown"},
+    }
+    assert system_utils.resource_offline_reason(system) is None
+
+
+def test_resource_offline_reason_non_numeric_memory_percent_is_not_pressure() -> None:
+    system = {"memory": {"percent": "n/a"}}
+    assert system_utils.resource_offline_reason(system) is None
+
+
 def test_resource_offline_reason_high_memory() -> None:
     system = {
         "disk": {"pressure": {"status": "healthy"}},
