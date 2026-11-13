@@ -190,7 +190,7 @@ def test_second_sweep_succeeds_after_rollback(tracked_symlink_worktree) -> None:
 def test_rollback_create_failure_is_reported(tracked_symlink_worktree, monkeypatch: pytest.MonkeyPatch) -> None:
     repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
     git_out = hygiene._git_out
-    original_symlink_to = Path.symlink_to
+    real_symlink = os.symlink
 
     def inject(cwd: Path, *args: str, timeout: int = 30):
         if args[:2] == ("worktree", "remove"):
@@ -199,12 +199,12 @@ def test_rollback_create_failure_is_reported(tracked_symlink_worktree, monkeypat
             return subprocess.CompletedProcess(list(args), 0, "", "")
         return git_out(cwd, *args, timeout=timeout)
 
-    def fail_symlink(self, target, *args, **kwargs):
-        if "docs" in str(self):
+    def fail_symlink(src, dst, *args, **kwargs):
+        if Path(dst).name == "model":
             raise OSError("simulated rollback create failure")
-        return original_symlink_to(self, target, *args, **kwargs)
+        return real_symlink(src, dst, *args, **kwargs)
 
-    with patch.object(hygiene, "_git_out", side_effect=inject), patch.object(Path, "symlink_to", fail_symlink):
+    with patch.object(hygiene, "_git_out", side_effect=inject), patch.object(os, "symlink", fail_symlink):
         removed, _ = hygiene._try_remove_git_worktree(tree, repo)
     assert not removed
     assert (tree / ".gaai/agents").is_symlink()
@@ -243,13 +243,13 @@ def test_rollback_restores_directory_symlink_semantics(tracked_directory_symlink
     link.unlink()
     assert not link.exists()
     recreated: list[bool] = []
-    original_symlink_to = Path.symlink_to
+    real_symlink = os.symlink
 
-    def record_directory_semantics(self, target, *args, **kwargs):
-        recreated.append(bool(kwargs.get("target_is_directory")))
-        return original_symlink_to(self, target, *args, **kwargs)
+    def record_directory_semantics(src, dst, target_is_directory=False, **kwargs):
+        recreated.append(bool(target_is_directory))
+        return real_symlink(src, dst, target_is_directory, **kwargs)
 
-    with patch.object(Path, "symlink_to", record_directory_semantics):
+    with patch.object(os, "symlink", record_directory_semantics):
         failures = hygiene._restore_tracked_symlinks_from_journal(tree, journal, repo)
     assert failures == []
     assert link.is_symlink()
@@ -268,18 +268,18 @@ def test_rollback_restores_file_symlink_without_directory_flag(tracked_symlink_w
     assert file_snap.kind == "symlink"
     assert not file_snap.target_is_directory
     link.unlink()
-    calls: list[dict[str, object]] = []
-    original_symlink_to = Path.symlink_to
+    directory_flags: list[bool] = []
+    real_symlink = os.symlink
 
-    def record(self, target, *args, **kwargs):
-        calls.append(dict(kwargs))
-        return original_symlink_to(self, target, *args, **kwargs)
+    def record(src, dst, target_is_directory=False, **kwargs):
+        directory_flags.append(bool(target_is_directory))
+        return real_symlink(src, dst, target_is_directory, **kwargs)
 
-    with patch.object(Path, "symlink_to", record):
+    with patch.object(os, "symlink", record):
         failures = hygiene._restore_tracked_symlinks_from_journal(tree, journal, repo)
     assert failures == []
     assert link.is_symlink()
-    assert calls == [{}]
+    assert directory_flags == [False]
 
 
 def test_rollback_restores_windows_junction_kind(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -506,3 +506,51 @@ def test_rollback_never_writes_through_a_replaced_parent(tracked_symlink_worktre
     assert os.readlink(tree / "docs") == str(outside)
     assert (tree / ".gaai/agents").is_symlink()
     assert tracked_symlink_worktree["sentinel"].read_text() == "outside worktree\n"
+
+
+@pytest.mark.skipif(os.symlink not in os.supports_dir_fd, reason="needs dir_fd-relative symlink creation")
+def test_rollback_survives_parent_swap_between_check_and_create(tracked_symlink_worktree) -> None:
+    """A parent swapped for a link after it was checked must not redirect the restored link (#4400 review)."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    outside = tracked_symlink_worktree["root"] / "external-dir"
+    outside.mkdir()
+    real_symlink = os.symlink
+    swapped: list[str] = []
+
+    def swap_parent_then_create(src, dst, *args, **kwargs):
+        if Path(dst).name == "model" and not swapped:
+            swapped.append(str(dst))
+            (tree / "docs").rename(tree / "docs-checked")
+            real_symlink(outside, tree / "docs", True)
+        return real_symlink(src, dst, *args, **kwargs)
+
+    failed = subprocess.CompletedProcess([], 128, "", "injected")
+    with (
+        _inject_remove(tracked_symlink_worktree, lambda _a, _t: failed),
+        patch.object(os, "symlink", swap_parent_then_create),
+    ):
+        removed, _ = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert not removed
+    assert swapped, "the swap hook never ran"
+    assert list(outside.iterdir()) == []
+    assert os.readlink(tree / "docs-checked" / "model") == str(tracked_symlink_worktree["sentinel"])
+
+
+@pytest.mark.skipif(os.symlink not in os.supports_dir_fd, reason="needs dir_fd-relative symlink creation")
+def test_rollback_never_writes_through_a_replaced_worktree_root(tracked_symlink_worktree) -> None:
+    """The worktree directory itself swapped for a link: rollback creates nothing behind it."""
+    repo, tree = tracked_symlink_worktree["repo"], tracked_symlink_worktree["tree"]
+    outside = tracked_symlink_worktree["root"] / "external-dir"
+    outside.mkdir()
+
+    def swap_root(args, _timeout):
+        tree.rename(tree.with_name("worktree-moved"))
+        tree.symlink_to(outside, target_is_directory=True)
+        return subprocess.CompletedProcess(args, 128, "", "injected")
+
+    with _inject_remove(tracked_symlink_worktree, swap_root):
+        removed, _ = hygiene._try_remove_git_worktree(tree, repo)
+
+    assert not removed
+    assert list(outside.iterdir()) == []

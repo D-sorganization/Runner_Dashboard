@@ -320,7 +320,8 @@ def _ensure_real_parent_dirs(worktree: Path, rel_posix: str) -> None:
     """Post: every parent of ``rel_posix`` is a real directory inside ``worktree``.
 
     Missing parents are created one level at a time. A link or non-directory
-    occupant raises ``OSError`` so rollback never writes through it.
+    occupant raises ``OSError`` so rollback never writes through it. Path-based,
+    so only for platforms without ``dir_fd`` support (see ``_open_real_parent_dir``).
     """
     current = worktree
     for part in rel_posix.split("/")[:-1]:
@@ -332,6 +333,48 @@ def _ensure_real_parent_dirs(worktree: Path, rel_posix: str) -> None:
             continue
         if _link_kind(current) or not stat.S_ISDIR(metadata.st_mode):
             raise OSError(f"parent is not a real directory: {current}")
+
+
+_DIR_FD_LINKS = all(fn in os.supports_dir_fd for fn in (os.open, os.mkdir, os.symlink))
+
+
+def _open_real_parent_dir(worktree: Path, rel_posix: str) -> int:
+    """Open the parent of ``rel_posix`` without following a link at or below ``worktree``.
+
+    Pre: ``_DIR_FD_LINKS``. Post: returns a descriptor the caller must close; it
+    names the real directory that was checked, so a later swap of any path
+    component cannot redirect what is created through it. Missing parents are
+    created; a link or non-directory component raises ``OSError``.
+    """
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open(worktree, flags)  # the root itself must be a real directory too
+    try:
+        for part in rel_posix.split("/")[:-1]:
+            try:
+                os.mkdir(part, dir_fd=fd)
+            except FileExistsError:
+                pass
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _recreate_tracked_link_under_real_parents(worktree: Path, snap: _TrackedSymlinkSnapshot) -> None:
+    """Recreate ``snap`` inside ``worktree``; never through a parent that is, or becomes, a link."""
+    entry = worktree.joinpath(*snap.rel_posix.split("/"))
+    if not _DIR_FD_LINKS or _snapshot_expects_junction(snap):
+        _ensure_real_parent_dirs(worktree, snap.rel_posix)
+        _recreate_tracked_link_entry(entry, snap)
+        return
+    parent_fd = _open_real_parent_dir(worktree, snap.rel_posix)
+    try:
+        os.symlink(snap.target, entry.name, snap.target_is_directory, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
 
 
 def _restore_tracked_symlinks_from_journal(
@@ -374,8 +417,7 @@ def _restore_tracked_symlinks_from_journal(
                     worktree,
                 )
                 continue
-            _ensure_real_parent_dirs(worktree, snap.rel_posix)
-            _recreate_tracked_link_entry(entry, snap)
+            _recreate_tracked_link_under_real_parents(worktree, snap)
             log.info(
                 "restored tracked %s %s -> %s",
                 snap.kind,
