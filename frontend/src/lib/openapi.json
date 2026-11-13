@@ -24975,6 +24975,7 @@
     },
     "/api/v1/memory/context-pack": {
       "get": {
+        "description": "Return a scoped memory snapshot. Deprecated for Barb session startup \u2014 use Barb continuity + priorities/holds.",
         "operationId": "get_context_pack_api_v1_memory_context_pack_get",
         "responses": {
           "200": {

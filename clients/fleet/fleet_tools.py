@@ -99,7 +99,10 @@ COMMANDS: tuple[Command, ...] = (
     Command(
         "memory-context-pack",
         "memory_context_pack",
-        "Read the shared memory context pack for this authenticated principal.",
+        (
+            "Legacy: read /api/v1/memory/context-pack "
+            "(deprecated for Barb session startup; prefer fleet_briefing, fleet_memory_brief, or Barb continuity)."
+        ),
         tool="fleet_memory_context_pack",
         untrusted=True,
     ),

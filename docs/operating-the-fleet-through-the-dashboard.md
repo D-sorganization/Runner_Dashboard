@@ -168,12 +168,17 @@ Rules:
 
 ## 5. Shared memory
 
+> **Barb session startup (2026-11-12):** use Barb continuity (`GET /api/v1/staff/barb/continuity`), plus
+> `GET /api/priorities` and `GET /api/v1/staff/holds`. The cross-agent `context-pack` / digest bank is retired for
+> agents; `/api/v1/memory` remains for legacy data, lessons, and operator tools.
+
 `/api/v1/memory`; scopes `memory.read`, `memory.write`, `memory.shared.summarize`. `bot` does not include them: `agent-grok`
 and `agent-codex-hands` list them in `config/agent_principals.yml`; others need them added to their principal.
 
 | Need                      | Call                                                                                                                 |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Start of session          | `GET /api/v1/memory/context-pack` (`fleetctl memory-context-pack`): pin, accepted lessons, holds, directives         |
+| Start of Barb session     | `GET /api/v1/staff/barb/continuity`; `GET /api/priorities`; `GET /api/v1/staff/holds`                                 |
+| Legacy context pack       | `GET /api/v1/memory/context-pack` (`fleetctl memory-context-pack`) — deprecated for agent startup                     |
 | Search                    | `GET /api/v1/memory?type=&tag=&author=&since=&limit=` (`memory-list`), or `fleetctl query --source memory`           |
 | Checkpoint a turn         | `POST /api/v1/memory/session-digest` (`memory-append-session-digest`): short summary, idempotent, never a transcript |
 | Record a decision or task | `POST /api/v1/memory` with `entry_type` `decision` or `task` (`memory-append`)                                       |
