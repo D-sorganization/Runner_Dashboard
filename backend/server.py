@@ -2125,10 +2125,16 @@ async def _fleet_control_local(action: str) -> dict:
 
 
 async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
-    """Ask a node dashboard to apply a runner action locally."""
+    """Ask a node dashboard to apply a runner action locally.
+
+    Sends the shared hub -> node headers (fleet bearer token when configured,
+    plus the CSRF sentinel); without them the node rejects the POST (#4274 F-05).
+    """
+    from staff.fleet import fleet_headers  # noqa: PLC0415
+
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1")
+            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1", headers=fleet_headers())
         if resp.status_code != 200:
             return {
                 "machine": name,

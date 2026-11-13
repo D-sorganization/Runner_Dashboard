@@ -160,7 +160,8 @@ async def proxy_to_hub(request: Request, *, require_success: bool = False):
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
 
-def _request_prefers_local(request: Request) -> bool:
+def request_prefers_local(request: Request) -> bool:
+    """True when the caller asked for this machine only (``?local=1`` or ``?scope=local``)."""
     local_value = request.query_params.get("local", "").lower()
     scope_value = request.query_params.get("scope", "").lower()
     return local_value in {"1", "true", "yes", "local"} or scope_value == "local"
@@ -172,7 +173,7 @@ def should_mark_hub_circuit_degraded(request: Request) -> bool:
         dashboard_config.MACHINE_ROLE == "node"
         and bool(dashboard_config.HUB_URL)
         and hub_in_cooldown()
-        and not _request_prefers_local(request)
+        and not request_prefers_local(request)
     )
 
 
@@ -185,4 +186,4 @@ def should_proxy_fleet_to_hub(request: Request) -> bool:
     """
     if dashboard_config.MACHINE_ROLE != "node" or not dashboard_config.HUB_URL or hub_in_cooldown():
         return False
-    return not _request_prefers_local(request)
+    return not request_prefers_local(request)
