@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -295,9 +296,11 @@ def deliverable_failure_updates(
     verdict: Verdict | None,
     *,
     opens_pr: bool,
+    execution_status: str | None = None,
 ) -> dict[str, Any]:
     """Fail succeeded runs that targeted an issue/PR but delivered no commits or PR (#2171)."""
-    if rec.status != "succeeded" or not opens_pr or rec.target_kind not in ("issue", "pr"):
+    claimed = (execution_status or rec.status or "").strip()
+    if claimed != "succeeded" or not opens_pr or rec.target_kind not in ("issue", "pr"):
         return {}
     if verdict is None or verdict.verification not in ("no_change", "failed"):
         return {}
@@ -320,19 +323,65 @@ def deliverable_failure_updates(
     }
 
 
+def apply_enforce_before_terminal(
+    rec: RunRecord,
+    *,
+    classified_status: str,
+    failure_class: str,
+    retryable: bool,
+    error: str,
+    remediation: str,
+    opens_pr: bool,
+    probe: PrProbe,
+    mode: str | None = None,
+    now: datetime | None = None,
+    result_text: str = "",
+) -> tuple[str, str, bool, str, str, Verdict | None]:
+    """Fold enforce/deliverable outcomes into the first terminal transition (#4269).
+
+    Terminal lifecycle states are immutable once written; verification must not
+    mutate ``succeeded``/``failed``/``cancelled`` afterward.
+    """
+    mode = mode or verify_mode()
+    if classified_status != "succeeded" or not opens_pr or mode == "off":
+        return classified_status, failure_class, retryable, error, remediation, None
+    evaluation = evaluate(
+        replace(rec, status=classified_status),
+        opens_pr=True,
+        probe=probe,
+        now=now or datetime.now(UTC),
+        result_text=result_text,
+    )
+    if mode == "enforce" and evaluation.verification == "failed":
+        return "failed", UNVERIFIED_OUTPUT, False, evaluation.detail, remediation, evaluation
+    deliverable = deliverable_failure_updates(
+        rec,
+        evaluation,
+        opens_pr=opens_pr,
+        execution_status=classified_status,
+    )
+    if deliverable:
+        return (
+            str(deliverable.get("status", classified_status)),
+            str(deliverable.get("failure_class", failure_class)),
+            bool(deliverable.get("retryable", retryable)),
+            str(deliverable.get("error", error)),
+            str(deliverable.get("remediation", remediation)),
+            evaluation,
+        )
+    return classified_status, failure_class, retryable, error, remediation, evaluation
+
+
 def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
-    """The run fields to write. Only ``enforce`` changes the status of a succeeded run."""
+    """The run fields to write. Status changes belong in :func:`apply_enforce_before_terminal`."""
     updates: dict[str, Any] = {
         "verification": verdict.verification,
         "verification_detail": verdict.detail,
         "pr_number": verdict.pr_number,
         "artifact": verdict.artifact,
     }
-    if mode == "enforce" and verdict.verification == "failed" and rec.status == "succeeded":
-        updates.update(status="failed", failure_class=UNVERIFIED_OUTPUT, error=verdict.detail)
-    elif verdict.verification == "verified" and rec.status == "failed" and rec.failure_class == UNVERIFIED_OUTPUT:
-        # The failure was verification alone (CI raced the check); CI is green now, so restore the run.
-        updates.update(status="succeeded", failure_class="", error="", remediation="", retryable=False)
+    if verdict.verification == "verified" and rec.status == "failed" and rec.failure_class == UNVERIFIED_OUTPUT:
+        updates.update(failure_class="", error="", remediation="", retryable=False)
     return updates
 
 
@@ -344,6 +393,7 @@ def verify_and_record(
     probe: PrProbe | None = None,
     mode: str | None = None,
     now: datetime | None = None,
+    precomputed_verdict: Verdict | None = None,
 ) -> Verdict | None:
     """Verify one finished run and persist the verdict with a ``verify`` event.
 
@@ -359,18 +409,21 @@ def verify_and_record(
         if mode == "off" or rec is None:
             return None
         resolver_path = "callable" if callable(opens_pr) else "direct-value"
-        try:
-            is_opens_pr = opens_pr() if callable(opens_pr) else bool(opens_pr)
-            verdict = evaluate(
-                rec,
-                opens_pr=is_opens_pr,
-                probe=probe or GhCliPrProbe(),
-                now=now or datetime.now(UTC),
-                result_text=store.last_result_line(run_id),
-            )
-        except Exception as exc:  # noqa: BLE001 - verification must never break a run
-            log.exception("verification of run %s failed", run_id)
-            verdict = Verdict("unverified", f"verification error: {exc}")
+        if precomputed_verdict is not None:
+            verdict = precomputed_verdict
+        else:
+            try:
+                is_opens_pr = opens_pr() if callable(opens_pr) else bool(opens_pr)
+                verdict = evaluate(
+                    rec,
+                    opens_pr=is_opens_pr,
+                    probe=probe or GhCliPrProbe(),
+                    now=now or datetime.now(UTC),
+                    result_text=store.last_result_line(run_id),
+                )
+            except Exception as exc:  # noqa: BLE001 - verification must never break a run
+                log.exception("verification of run %s failed", run_id)
+                verdict = Verdict("unverified", f"verification error: {exc}")
         if verdict.verification == "not_applicable" and verdict.detail == "role does not open pull requests":
             record_role_open_pr_diagnostic(store, rec, resolver_path, roles_loader=load_roles)
         # The verify event lands before the verdict, so a reader that sees the verdict sees it (#1489).

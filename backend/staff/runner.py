@@ -403,6 +403,27 @@ class StaffRunner:
             )
 
             workspace.persist_run_transcript(store, rec.id, workdir)
+            opens_pr = self.opens_pr(rec.role)
+            pre_terminal_verdict: verification.Verdict | None = None
+            if status == "succeeded" and not cancelled:
+                (
+                    status,
+                    failure_class,
+                    retryable,
+                    error,
+                    remediation,
+                    pre_terminal_verdict,
+                ) = verification.apply_enforce_before_terminal(
+                    rec,
+                    classified_status=status,
+                    failure_class=failure_class,
+                    retryable=retryable,
+                    error=error,
+                    remediation=remediation,
+                    opens_pr=opens_pr,
+                    probe=verification.GhCliPrProbe(),
+                    result_text=result_line,
+                )
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
             store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
             transition_to(
@@ -422,18 +443,23 @@ class StaffRunner:
                 or consolidation.parse_outcome(result_line),
             )
             usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            verdict = verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
-            updated_rec = store.get_run(rec.id)
-            if updated_rec is not None:
-                updated_rec = verification.apply_deliverable_failure(
-                    store, updated_rec, verdict, opens_pr=lambda: self.opens_pr(rec.role)
+            verdict = pre_terminal_verdict
+            if verdict is None:
+                verdict = verification.verify_and_record(store, rec.id, opens_pr=lambda: opens_pr)
+            else:
+                verification.verify_and_record(
+                    store,
+                    rec.id,
+                    opens_pr=lambda: opens_pr,
+                    precomputed_verdict=verdict,
                 )
+            updated_rec = store.get_run(rec.id)
             if updated_rec is not None:
                 ops.emit_terminal_run_status(
                     store,
                     updated_rec,
                     plan,
-                    status=status,
+                    status=updated_rec.status,
                     question=question,
                     result_line=result_line,
                     cancelled=cancelled,

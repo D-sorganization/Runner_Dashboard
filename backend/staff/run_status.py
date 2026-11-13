@@ -61,9 +61,9 @@ LEGAL_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
     RunStatus.NEEDS_INPUT: frozenset(
         {RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.SUCCEEDED},
     ),
-    RunStatus.FAILED: frozenset({RunStatus.SUCCEEDED, RunStatus.BLOCKED}),
-    RunStatus.SUCCEEDED: frozenset({RunStatus.FAILED}),
-    RunStatus.CANCELLED: frozenset({RunStatus.FAILED}),
+    RunStatus.FAILED: frozenset(),
+    RunStatus.SUCCEEDED: frozenset(),
+    RunStatus.CANCELLED: frozenset(),
     RunStatus.BLOCKED: frozenset(),
 }
 

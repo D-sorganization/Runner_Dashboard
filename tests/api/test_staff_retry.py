@@ -367,16 +367,16 @@ def test_bounded_retry_fake_provider_429_twice_then_success(
 
     rec = runner.submit(runner_mod.RunRequest(role="flaky-worker", prompt="process data"))
 
-    # Wait for logical run and attempts to reach terminal state
+    # Wait for the retry chain to finish (success is recorded on the attempt row; root stays terminal).
     for _ in range(300):
-        row = temp_store.get_run(rec.id)
-        if row and row.status == "succeeded":
+        attempts = temp_store.get_attempts(rec.id)
+        if attempts and attempts[-1].status == "succeeded":
             break
         time.sleep(0.05)
 
     final_root = temp_store.get_run(rec.id)
     assert final_root is not None
-    assert final_root.status == "succeeded"
+    assert final_root.status == "failed"
 
     attempts = temp_store.get_attempts(rec.id)
     assert len(attempts) == 3
@@ -396,7 +396,7 @@ def test_bounded_retry_fake_provider_429_twice_then_success(
     logical_runs = temp_store.list_runs(logical_only=True)
     assert len(logical_runs) == 1
     assert logical_runs[0].id == rec.id
-    assert logical_runs[0].status == "succeeded"
+    assert logical_runs[0].status == "failed"
 
 
 def test_reconcile_preserves_scheduled_retries(temp_store: RunStore) -> None:

@@ -33,15 +33,12 @@ def test_run_status_enum_values_match_legacy_literals() -> None:
 def test_transition_table_is_closed_and_terminal_states_sticky() -> None:
     for status in RunStatus:
         assert status in LEGAL_TRANSITIONS
-        if status in TERMINAL_STATUSES and status not in (
-            RunStatus.FAILED,
-            RunStatus.SUCCEEDED,
-            RunStatus.CANCELLED,
-        ):
-            assert LEGAL_TRANSITIONS[status] == frozenset()
-    assert RunStatus.CANCELLED not in LEGAL_TRANSITIONS[RunStatus.SUCCEEDED]
+        if status in TERMINAL_STATUSES:
+            assert LEGAL_TRANSITIONS[status] == frozenset(), status
     assert not is_legal_transition(RunStatus.CANCELLED, RunStatus.RUNNING)
     assert not is_legal_transition(RunStatus.BLOCKED, RunStatus.RUNNING)
+    assert not is_legal_transition(RunStatus.FAILED, RunStatus.SUCCEEDED)
+    assert not is_legal_transition(RunStatus.SUCCEEDED, RunStatus.FAILED)
 
 
 @pytest.mark.unit
@@ -52,13 +49,26 @@ def test_transition_table_is_closed_and_terminal_states_sticky() -> None:
         (RunStatus.PREPARING, RunStatus.RUNNING),
         (RunStatus.RUNNING, RunStatus.SUCCEEDED),
         (RunStatus.RUNNING, RunStatus.NEEDS_INPUT),
-        (RunStatus.FAILED, RunStatus.SUCCEEDED),
-        (RunStatus.SUCCEEDED, RunStatus.FAILED),
-        (RunStatus.CANCELLED, RunStatus.FAILED),
     ],
 )
 def test_legal_transitions_succeed(from_status: RunStatus, to_status: RunStatus) -> None:
     assert is_legal_transition(from_status, to_status)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("from_status", "to_status"),
+    [
+        (RunStatus.FAILED, RunStatus.SUCCEEDED),
+        (RunStatus.SUCCEEDED, RunStatus.FAILED),
+        (RunStatus.CANCELLED, RunStatus.FAILED),
+        (RunStatus.CANCELLED, RunStatus.RUNNING),
+    ],
+)
+def test_terminal_lifecycle_states_reject_outbound_transitions(
+    from_status: RunStatus, to_status: RunStatus
+) -> None:
+    assert not is_legal_transition(from_status, to_status)
 
 
 @pytest.mark.unit
