@@ -228,16 +228,18 @@ def test_report_lists_no_skipped_checkouts_on_a_clean_run(two_checkouts: dict[st
     assert report["skipped_checkouts"] == []
 
 
-def test_cli_exits_partial_when_a_checkout_was_skipped(
+def test_cli_exits_zero_and_reports_a_skipped_checkout(
     cli: ModuleType,
     two_checkouts: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """A slow checkout is a warning, not a failure: the daily oneshot unit must not go red for it."""
     monkeypatch.delenv("AGENT_WORKTREE_HYGIENE_APPLY", raising=False)
     monkeypatch.setattr(cli, "discover_repo_checkouts", lambda extra: [two_checkouts["slow"], two_checkouts["healthy"]])
 
-    assert cli.main([]) == cli.EXIT_PARTIAL == 3
+    assert cli.main([]) == 0
+    assert not hasattr(cli, "EXIT_PARTIAL")
 
     report = json.loads(capsys.readouterr().out)
     assert [item["repo"] for item in report["skipped_checkouts"]] == ["Slow_Repo"]

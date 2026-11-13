@@ -21,9 +21,6 @@ from agent_worktree_hygiene import (  # noqa: E402
     plan_agent_worktree_prune,
 )
 
-# Some checkouts were skipped (git timed out); every other checkout was processed normally.
-EXIT_PARTIAL = 3
-
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Prune stale agent git worktrees under fleet repo checkouts.")
@@ -65,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         protected=protected,
     )
     sys.stdout.write(json.dumps(report, indent=2) + "\n")
-    return EXIT_PARTIAL if report["skipped_checkouts"] else 0
+    return 0
 
 
 if __name__ == "__main__":
