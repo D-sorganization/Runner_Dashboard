@@ -191,6 +191,23 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
         log.info("ingested agent bearer from %s for principal %s", path.name, agent_id)
 
 
+RELOAD_ATTEMPTS = 3  # merges per reload when another caller keeps writing the same principals
+
+
+def _changed_meanwhile(
+    manager: IdentityManager,
+    principal_id: str,
+    principals_before: dict[str, Any],
+    state_before: dict[str, dict[str, Any]],
+) -> bool:
+    """True when ``principal_id`` was replaced, added or edited in place since the snapshot."""
+    live = manager.principals.get(principal_id)
+    before = principals_before.get(principal_id)
+    if live is not before:
+        return True
+    return before is not None and before.model_dump() != state_before[principal_id]
+
+
 def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
     """Re-run :func:`merge_agent_principal_defaults` on a live manager (#4256 ask 1).
 
@@ -212,20 +229,36 @@ def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
       * Post: only this reload's own additions and changes are written to the
         manager, entry by entry. A token revoked or minted by another caller
         while the reload runs is never restored or dropped.
+      * Post: a principal another caller replaced or edited after this reload's
+        snapshot is never overwritten with the stale merged copy. The merge is
+        redone on the fresh state, up to ``RELOAD_ATTEMPTS`` times; if it still
+        cannot settle, :class:`AgentPrincipalReloadError` is raised and nothing
+        is applied. The check and the write are not one atomic step (the
+        identity manager has no lock of its own), so a write landing between
+        them can still be lost.
     """
     with _RELOAD_LOCK:
-        principals_before = dict(manager.principals)
-        known_hashes = {t.token_hash for t in manager.tokens}
-        scratch = copy.copy(manager)
-        scratch.principals = dict(principals_before)
-        scratch.tokens = list(manager.tokens)
-        try:
-            merge_agent_principal_defaults(scratch)
-        except Exception as exc:
-            # Boundary catch: the merge ran on a scratch copy, so discarding it is the rollback.
-            log.warning("agent principals reload failed (%s); identity store unchanged", type(exc).__name__)
-            raise AgentPrincipalReloadError(type(exc).__name__) from None
-        changed = {pid: p for pid, p in scratch.principals.items() if principals_before.get(pid) != p}
+        for _attempt in range(RELOAD_ATTEMPTS):
+            principals_before = dict(manager.principals)
+            state_before = {pid: p.model_dump() for pid, p in principals_before.items()}
+            known_hashes = {t.token_hash for t in manager.tokens}
+            scratch = copy.copy(manager)
+            scratch.principals = dict(principals_before)
+            scratch.tokens = list(manager.tokens)
+            try:
+                merge_agent_principal_defaults(scratch)
+            except Exception as exc:
+                # Boundary catch: the merge ran on a scratch copy, so discarding it is the rollback.
+                log.warning("agent principals reload failed (%s); identity store unchanged", type(exc).__name__)
+                raise AgentPrincipalReloadError(type(exc).__name__) from None
+            changed = {pid: p for pid, p in scratch.principals.items() if principals_before.get(pid) != p}
+            if not any(_changed_meanwhile(manager, pid, principals_before, state_before) for pid in changed):
+                break
+            # Another caller wrote one of these principals after the snapshot: the merged copy is
+            # stale, so writing it would drop that caller's change. Merge again on the fresh state.
+        else:
+            log.warning("agent principals reload gave up after %d contended attempts", RELOAD_ATTEMPTS)
+            raise AgentPrincipalReloadError("ConcurrentUpdate")
         new_tokens = [t for t in scratch.tokens if t.token_hash not in known_hashes]
         manager.principals.update(changed)
         live_hashes = {t.token_hash for t in manager.tokens}

@@ -294,6 +294,72 @@ def test_successful_reload_keeps_a_concurrent_revoke_and_mint(
     assert mgr.verify_token(_NEW_TOKEN) is mgr.principals[_NEW_ID]
 
 
+def _concurrent_writer(mgr: IdentityManager, monkeypatch: pytest.MonkeyPatch, write, *, times: int) -> list[int]:
+    """Run ``write`` right after the merge computed its result, as another caller would mid-reload."""
+    real_merge = agent_principal_defaults.merge_agent_principal_defaults
+    calls: list[int] = []
+
+    def merge_then_write(manager: IdentityManager) -> None:
+        real_merge(manager)
+        calls.append(1)
+        if len(calls) <= times:
+            write()
+
+    monkeypatch.setattr(agent_principal_defaults, "merge_agent_principal_defaults", merge_then_write)
+    return calls
+
+
+def test_reload_keeps_a_principal_replaced_by_another_caller_meanwhile(
+    mgr: IdentityManager, config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_config(config_path, with_newcomer=False, grok_scopes=("fleet.read",))
+
+    def replace() -> None:
+        mgr.principals["agent-grok"] = mgr.principals["agent-grok"].model_copy(update={"scopes": ["staff.read"]})
+
+    calls = _concurrent_writer(mgr, monkeypatch, replace, times=1)
+    result = reload_agent_principals(mgr)
+
+    assert set(mgr.principals["agent-grok"].scopes) == {"staff.read", "fleet.read"}
+    assert result["updated"] == ["agent-grok"]
+    assert len(calls) == 2  # the stale merge was redone on the fresh state
+
+
+def test_reload_keeps_a_principal_edited_in_place_meanwhile(
+    mgr: IdentityManager, config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_config(config_path, with_newcomer=False, grok_scopes=("fleet.read",))
+
+    def edit() -> None:
+        mgr.principals["agent-grok"].scopes = ["staff.read"]
+
+    _concurrent_writer(mgr, monkeypatch, edit, times=1)
+    reload_agent_principals(mgr)
+
+    assert set(mgr.principals["agent-grok"].scopes) == {"staff.read", "fleet.read"}
+
+
+def test_reload_that_cannot_settle_fails_and_applies_nothing(
+    mgr: IdentityManager, config_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_newcomer(mgr, config_path)
+    _write_config(config_path, with_newcomer=True, grok_scopes=("fleet.read",))
+    seen: list[str] = []
+
+    def replace() -> None:
+        seen.append(f"staff.read.{len(seen)}")
+        mgr.principals["agent-grok"] = mgr.principals["agent-grok"].model_copy(update={"scopes": [seen[-1]]})
+
+    calls = _concurrent_writer(mgr, monkeypatch, replace, times=99)
+    with pytest.raises(AgentPrincipalReloadError):
+        reload_agent_principals(mgr)
+
+    assert len(calls) == agent_principal_defaults.RELOAD_ATTEMPTS
+    assert mgr.principals["agent-grok"].scopes == [seen[-1]]
+    assert _NEW_ID not in mgr.principals
+    assert mgr.verify_token(_NEW_TOKEN) is None
+
+
 def test_audit_line_names_every_change_kind(
     mgr: IdentityManager,
     config_path: Path,
