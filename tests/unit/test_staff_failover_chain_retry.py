@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from staff.adapter_failure import parse_chain_summary
 from staff.failover_dispatch import (
+    is_failover_failure,
     parse_chain_log,
     tried_providers_for_root,
     try_chain_failover,
@@ -26,6 +27,87 @@ def _reset() -> None:
 
 def _role(providers: tuple[str, ...]) -> RoleSpec:
     return RoleSpec(name="worker", title="Worker", providers=providers)
+
+
+def test_rate_limited_skips_failover_until_retries_exhausted(tmp_path) -> None:
+    store = RunStore(path=tmp_path / "rate.sqlite3")
+    root = RunRecord(
+        id="run-rate",
+        role="worker",
+        provider="codex",
+        model="gpt-6.1-sol",
+        machine="test",
+        repo="",
+        target_kind="prompt",
+        target_ref="",
+        prompt="do work",
+        status="failed",
+        failure_class="rate_limited",
+        attempt=1,
+        max_attempts=2,
+    )
+    store.create_run(root)
+    plan = MagicMock(provider="codex", branch="staff/worker-task")
+    role = _role(("codex", "claude"))
+    runner = MagicMock(store=store, machine="test")
+    runner._adapters = {
+        "codex": MagicMock(installed=lambda: True, unattended=True),
+        "claude": MagicMock(installed=lambda: True, unattended=True),
+    }
+    guard = MagicMock()
+    guard.can_run.return_value = (True, "")
+    latest = store.get_run("run-rate")
+    assert latest is not None
+    assert is_failover_failure("rate_limited")
+    assert try_chain_failover(runner, latest, plan, role, guard, retries_exhausted=False) is False
+
+
+def test_quota_exhausted_schedules_immediate_chain_failover(tmp_path) -> None:
+    store = RunStore(path=tmp_path / "quota.sqlite3")
+    root = RunRecord(
+        id="run-quota",
+        role="worker",
+        provider="codex",
+        model="gpt-6.1-sol",
+        machine="test",
+        repo="",
+        target_kind="prompt",
+        target_ref="",
+        prompt="do work",
+        status="failed",
+        failure_class="quota_exhausted",
+        attempt=1,
+        max_attempts=2,
+    )
+    store.create_run(root)
+    plan = MagicMock(
+        role="worker",
+        provider="codex",
+        model="gpt-6.1-sol",
+        repo="",
+        target_kind="prompt",
+        target_ref="",
+        operator_prompt="",
+        prompt="do work",
+        branch="staff/worker-task",
+        lease_ritual=False,
+        consolidation=None,
+        focus="",
+        head_ref="",
+        strategy_mode="",
+    )
+    role = _role(("codex", "claude"))
+    runner = MagicMock(store=store, machine="test")
+    runner._adapters = {
+        "codex": MagicMock(installed=lambda: True, unattended=True, build_command=lambda *a, **k: ["codex"]),
+        "claude": MagicMock(installed=lambda: True, unattended=True, build_command=lambda *a, **k: ["claude"]),
+    }
+    guard = MagicMock()
+    guard.can_run.return_value = (True, "")
+    latest = store.get_run("run-quota")
+    assert latest is not None
+    assert try_chain_failover(runner, latest, plan, role, guard, retries_exhausted=False) is True
+    assert store.get_run("run-quota-a2") is not None
 
 
 def test_chain_failover_on_auth_expired(tmp_path) -> None:

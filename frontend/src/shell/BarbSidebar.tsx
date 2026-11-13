@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Composer } from "../pages/StaffConsole/Composer";
 import { ConsoleErrorBanner } from "../pages/StaffConsole/ConsoleErrorBanner";
 import { GroupCostConfirm } from "../pages/StaffConsole/GroupCostConfirm";
@@ -19,10 +20,6 @@ const QUICK_ROUTES = [
   { label: "Queue", tabId: "queue" },
 ];
 
-function selectedThreadFromUrl(): string | null {
-  if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("thread");
-}
 export interface BarbSidebarProps {
   open: boolean;
   onClose: () => void;
@@ -35,10 +32,15 @@ export interface BarbSidebarProps {
 export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef, onThreadSelected }: BarbSidebarProps): React.ReactElement {
   // Specialist navigation must not replace the last Barb selection. The hook
   // still validates this id against Barb's authorized auto-thread list.
-  const preferredThreadRef = useRef(selectedThreadFromUrl());
-  const urlRole = new URLSearchParams(window.location.search).get("role");
-  if (!urlRole || urlRole === "barb") preferredThreadRef.current = selectedThreadFromUrl();
-  const preferredRoleThreadId = preferredThreadRef.current;
+  const location = useLocation();
+  const urlParams = new URLSearchParams(location.search);
+  const urlRole = urlParams.get("role");
+  const urlThread = urlParams.get("thread");
+  const frozenBarbThreadRef = useRef<string | null>(urlThread);
+  if (!urlRole || urlRole === "barb") {
+    frozenBarbThreadRef.current = urlThread;
+  }
+  const preferredRoleThreadId = frozenBarbThreadRef.current;
   const sc = useStaffConsole({
     initialRole: "barb",
     preferredRoleThreadId,
