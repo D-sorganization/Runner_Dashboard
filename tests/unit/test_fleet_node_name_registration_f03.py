@@ -109,3 +109,31 @@ def test_canonical_node_token_contract() -> None:
     for bad in ("", "a/b", "a\x1fb", "a.b", "-a"):
         with pytest.raises(ValueError, match="node name"):
             canonical_node_token(bad)
+
+
+def test_runner_pool_of_a_retired_machine_is_unregistered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pool entry has no ``retired`` flag of its own; its machine's flag governs."""
+    registry = _registry(
+        {"name": "OldNode7", "role": "node", "retired": True, "runner_pools": [{"name": "OldNode7-Runner"}]},
+    )
+    for header in ("OldNode7-Runner", "OldNode7"):
+        with pytest.raises(HTTPException) as exc:
+            _resolve(monkeypatch, registry, header)
+        assert (exc.value.status_code, exc.value.detail) == (403, "unregistered fleet node")
+
+
+def test_retired_machine_sharing_its_pool_name_is_unregistered(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A pool named like its machine replaces the machine in the index; retirement must survive that."""
+    registry = _registry({"name": "node-a", "role": "node", "retired": True, "runner_pools": [{"name": "node-a"}]})
+    with pytest.raises(HTTPException) as exc:
+        _resolve(monkeypatch, registry, "node-a")
+    assert exc.value.detail == "unregistered fleet node"
+
+
+def test_runner_pool_of_the_hub_is_refused_like_the_hub(monkeypatch: pytest.MonkeyPatch) -> None:
+    registry = _registry(
+        {"name": "HubAlpha", "role": "hub", "runner_pools": [{"name": "HubAlpha-Runner", "role": "runner_pool"}]},
+    )
+    with pytest.raises(HTTPException) as exc:
+        _resolve(monkeypatch, registry, "HubAlpha-Runner")
+    assert exc.value.detail == "hub cannot request spoke run tokens"

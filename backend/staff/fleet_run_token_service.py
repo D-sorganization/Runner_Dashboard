@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import dashboard_config
 from dashboard_config import ORG
@@ -32,6 +33,18 @@ def full_repo_slug(repo: str) -> str:
     return f"{ORG}/{slug}"
 
 
+def _machine_named(registry: dict[str, Any], name: str) -> dict[str, Any] | None:
+    """The top-level registry machine called ``name``, or None."""
+    for machine in registry.get("machines", []) or []:
+        if isinstance(machine, dict) and str(machine.get("name", "")) == name:
+            return machine
+    return None
+
+
+def _role_of(entry: dict[str, Any]) -> str:
+    return str(entry.get("role", "node")).strip().lower()
+
+
 def assert_registered_fleet_node(node_header: str) -> str:
     """Pre: ``node_header`` names the calling fleet node. Post: canonical registry name.
 
@@ -47,14 +60,18 @@ def assert_registered_fleet_node(node_header: str) -> str:
     except ValueError as exc:
         raise HTTPException(status_code=403, detail="invalid X-Fleet-Node header") from exc
     registry = load_machine_registry()
-    if len(machines_claiming_node_token(registry, token)) > 1:
+    owners = machines_claiming_node_token(registry, token)
+    if len(owners) > 1:
         log.warning("fleet run-token request refused: node token %s matches several registry machines", token)
         raise HTTPException(status_code=403, detail="ambiguous fleet node name")
     entry = build_machine_registry_index(registry).get(token)
-    if entry is None or entry.get("retired"):
+    # A runner-pool entry carries neither its machine's ``retired`` flag nor its role, so
+    # the machine that owns the token is checked as well: a retired machine's pool is
+    # retired, and the hub's pool is the hub.
+    machine = _machine_named(registry, owners[0]) if owners else None
+    if entry is None or machine is None or entry.get("retired") or machine.get("retired"):
         raise HTTPException(status_code=403, detail="unregistered fleet node")
-    role = str(entry.get("role", "node")).strip().lower()
-    if role == "hub":
+    if "hub" in {_role_of(entry), _role_of(machine)}:
         raise HTTPException(status_code=403, detail="hub cannot request spoke run tokens")
     canonical = str(entry.get("name") or name).strip()
     log.debug("fleet run-token request from registered node %s", canonical)
