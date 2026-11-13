@@ -86,7 +86,7 @@ def test_renew_live_same_holder(client: TestClient) -> None:
 
 
 def test_renew_same_principal_new_suffix_bumps_epoch(client: TestClient) -> None:
-    lease = _renew(client, "alpha", holder="openbot-barb:deskcomputer").json()["lease"]
+    lease = _renew(client, "alpha", holder="openbot-barb:seat2").json()["lease"]
     assert lease["epoch"] == 1
     renewed = _renew(client, "alpha", holder="openbot-barb:laptop")
     assert renewed.status_code == 200, renewed.text
