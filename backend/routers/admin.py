@@ -49,7 +49,13 @@ def reload_agent_principals_route(auth: Principal = Depends(require_scope("admin
         result = reload_agent_principals(identity_manager)
     except AgentPrincipalReloadError as exc:
         raise HTTPException(status_code=500, detail="Agent principals could not be reloaded") from exc
-    log.info("audit: agent-principals reload by=%s added=%s", auth.id, result["added"])
+    log.info(
+        "audit: agent-principals reload by=%s added=%s updated=%s tokens_ingested=%s",
+        auth.id,
+        result["added"],
+        result["updated"],
+        result["tokens_ingested"],
+    )
     return result
 
 
