@@ -341,18 +341,32 @@ def _is_rate_limited_response(resp: httpx.Response) -> bool:
     )
 
 
-async def _request(method: str, path: str, *, json: Any = None) -> httpx.Response:
+def _is_idempotent(method: str) -> bool:
+    """Return True if the method is idempotent (safe to retry)."""
+    return method in {"GET", "HEAD", "OPTIONS", "PUT", "DELETE"}
+
+
+async def _request(method: str, path: str, *, json: Any = None, idempotent: bool = False) -> httpx.Response:
     """Execute authenticated GitHub API request with retry on transient errors.
 
     Pre-condition: path starts with '/' or is a full URL.
     Post-condition: returns httpx.Response or raises a GhClientError subclass.
 
-    Retries on: TimeoutException, ConnectError, 5xx, 429.
-    Does NOT retry on: 4xx client errors (except 429).
+    Retries for idempotent methods on: TimeoutException, ConnectError, 5xx, 429.
+    Retries for non-idempotent methods (POST/PATCH) only if idempotent=True,
+    and only on ConnectError (where the request provably was not sent).
+    Does NOT retry on: 4xx client errors (except 429 for idempotent methods).
+
+    Args:
+        method: HTTP method (GET, POST, PATCH, etc.)
+        path: API path
+        json: Optional JSON body
+        idempotent: If True, retry non-idempotent methods (POST/PATCH) on
+            ConnectError. Only use if the endpoint is truly idempotent.
 
     Raises:
         GhAuthError: token missing.
-        GhRateLimited: 429 after all retries exhausted.
+        GhRateLimited: 429 after all retries exhausted (idempotent only).
         GhNotFound: 404.
         GhServerError: non-retryable client error or auth error.
         GhClientError: timeout/connect error after all retries exhausted.
@@ -363,6 +377,7 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
     if cached is not None:
         headers["If-None-Match"] = cached.etag
     last_exc: Exception | None = None
+    is_method_idempotent = _is_idempotent(method) or idempotent
 
     identity = get_auth_fingerprint()
     for attempt in range(_MAX_RETRIES):
@@ -379,6 +394,13 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
         try:
             resp = await client.request(method, path, headers=headers, json=json)
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            should_retry = is_method_idempotent or (isinstance(exc, httpx.ConnectError) and idempotent)
+            if not should_retry:
+                raise GhClientError(
+                    f"GitHub API connection failed: {path}",
+                    kind="connection",
+                    attempts=1,
+                ) from exc
             backoff = min(2**attempt + random.uniform(0, 1), 32)
             log.warning(
                 "gh_client: retry attempt=%d reason=%s path=%s backoff=%.1fs",
@@ -439,6 +461,8 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
             # multiplies pressure on the same exhausted token.
             raise last_exc
         if resp.status_code >= 500:
+            if not is_method_idempotent:
+                raise GhServerError(resp.status_code, path, resp.text)
             backoff = min(2**attempt + random.uniform(0, 1), 32)
             log.warning(
                 "gh_client: server error %d on %s (attempt=%d) backoff=%.1fs",
@@ -730,34 +754,38 @@ async def download_actions_artifact(repo_full: str, artifact_id: int, *, max_byt
     return result
 
 
-async def post(path: str, *, json: Any = None) -> Any:
+async def post(path: str, *, json: Any = None, idempotent: bool = False) -> Any:
     """POST to a GitHub API path.
 
     Args:
         path: Relative API path.
         json: Optional JSON body.
+        idempotent: If True, retry on ConnectError. Only use if the endpoint
+            is truly idempotent (e.g., a webhook registration that deduplicates).
 
     Returns:
         Parsed JSON body (including the created resource for 201), or an
         empty dict for 204 No Content.
     """
-    resp = await _request("POST", path, json=json)
+    resp = await _request("POST", path, json=json, idempotent=idempotent)
     if resp.status_code == 204:
         return {}
     return resp.json()
 
 
-async def patch(path: str, *, json: Any = None) -> Any:
+async def patch(path: str, *, json: Any = None, idempotent: bool = False) -> Any:
     """PATCH a GitHub API path (e.g. edit an issue comment, #1865).
 
     Args:
         path: Relative API path.
         json: Optional JSON body.
+        idempotent: If True, retry on ConnectError. Only use if the endpoint
+            is truly idempotent (e.g., updating a label set that replaces).
 
     Returns:
         Parsed JSON body, or empty dict for 204.
     """
-    resp = await _request("PATCH", path, json=json)
+    resp = await _request("PATCH", path, json=json, idempotent=idempotent)
     if resp.status_code == 204:
         return {}
     return resp.json()
