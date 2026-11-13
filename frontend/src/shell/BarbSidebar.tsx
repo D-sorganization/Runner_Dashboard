@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useInRouterContext, useLocation } from "react-router-dom";
 import { Composer } from "../pages/StaffConsole/Composer";
 import { ConsoleErrorBanner } from "../pages/StaffConsole/ConsoleErrorBanner";
 import { GroupCostConfirm } from "../pages/StaffConsole/GroupCostConfirm";
@@ -29,11 +29,31 @@ export interface BarbSidebarProps {
   onThreadSelected?: (threadId: string, role: string) => void;
 }
 
-export function BarbSidebar({ open, onClose, onNavigate, mobile = false, restoreFocusTargetRef, onThreadSelected }: BarbSidebarProps): React.ReactElement {
+function BarbSidebarRouted(props: BarbSidebarProps): React.ReactElement {
+  const { search } = useLocation();
+  return <BarbSidebarBody {...props} locationSearch={search} />;
+}
+
+export function BarbSidebar(props: BarbSidebarProps): React.ReactElement {
+  if (useInRouterContext()) {
+    return <BarbSidebarRouted {...props} />;
+  }
+  const search = typeof window !== "undefined" ? window.location.search : "";
+  return <BarbSidebarBody {...props} locationSearch={search} />;
+}
+
+function BarbSidebarBody({
+  open,
+  onClose,
+  onNavigate,
+  mobile = false,
+  restoreFocusTargetRef,
+  onThreadSelected,
+  locationSearch,
+}: BarbSidebarProps & { locationSearch: string }): React.ReactElement {
   // Specialist navigation must not replace the last Barb selection. The hook
   // still validates this id against Barb's authorized auto-thread list.
-  const location = useLocation();
-  const urlParams = new URLSearchParams(location.search);
+  const urlParams = new URLSearchParams(locationSearch);
   const urlRole = urlParams.get("role");
   const urlThread = urlParams.get("thread");
   const frozenBarbThreadRef = useRef<string | null>(urlThread);
