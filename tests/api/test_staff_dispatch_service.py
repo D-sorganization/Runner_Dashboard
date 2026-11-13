@@ -160,7 +160,7 @@ async def test_auto_dispatch_keeps_local_target_after_provider_fallback(
     result = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "auto"})
 
     assert result.success, result.error
-    assert selected == ["cursor-agent"]
+    assert selected == ["codex"]
     assert staff.store.get_run(result.run_id or "") is not None
 
 
